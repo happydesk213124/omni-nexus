@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+const run = JSON.parse(fs.readFileSync(process.argv[2] ?? '.parity/old.json', 'utf8'));
+const threw = run.transcript.filter((t) => !t.ok);
+console.log(`target=${run.target} steps=${run.transcript.length} threw=${threw.length}`);
+for (const t of threw) console.log(`  THREW ${t.name}: status=${t.error.status} ${String(t.error.message).slice(0, 90)}`);
+const traffic = run.transcript.find((t) => t.name === 'host.traffic');
+console.log('\nstorage keys:', traffic?.value?.storageKeys?.join(', '));
+console.log('unmocked URLs:', traffic?.value?.unmocked);
+const named = (n) => run.transcript.find((t) => t.name === n)?.value;
+console.log('\njob card count      :', named('job.card_count'));
+console.log('gallery data-url    :', named('gallery.first_card_is_data_url'));
+console.log('bridge.resolveImage :', named('bridge.resolveImageUrl'));
+console.log('prompt keys         :', named('prompts.keys')?.join(','));
+console.log('export shape        :', JSON.stringify(named('gallery.export_shape')));
+console.log('autotag             :', JSON.stringify(named('autotag'))?.slice(0, 220));
+console.log('debug shape         :', JSON.stringify(named('debug.snapshot_shape'))?.slice(0, 300));

@@ -1,0 +1,49 @@
+{
+  "name": "omni-nexus",
+  "displayName": "Omni Nexus",
+  "version": "0.1.0",
+  "description": "Omni Nexus LLM tagging + NovelAI overlay",
+  "type": "module",
+  "private": true,
+  "main": "dist/omninexus.js",
+  "browser": "dist/omninexus.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "test:settings-ux": "node tools/extract-preview-ux.mjs && node tools/check-settings-ux.mjs && node tools/check-character-switch.mjs && node tools/check-spinner-layout.mjs",
+    "build": "node tools/extract-preview-ux.mjs && vite build",
+    "build:dev": "vite build --mode development",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "unit": "node tools/build-tests.mjs && node --test tests/*.test.mjs",
+    "audit": "node tools/audit.mjs && node tools/check-docs.mjs",
+    "smoke": "node tools/smoke.mjs",
+    "bench": "node tools/bench-gallery.mjs --route=gallery && node tools/bench-gallery.mjs --route=explore && node tools/bench-gallery.mjs --route=window && node tools/bench-gallery.mjs --route=arrows",
+    "parity:old": "node tools/parity/run.mjs --target=old --out=.parity/old.json",
+    "parity:new": "node tools/parity/run.mjs --target=new --out=.parity/new.json",
+    "parity": "npm run parity:old && npm run parity:new && node tools/parity/compare.mjs .parity/old.json .parity/new.json",
+    "perf": "node tools/parity/perf-report.mjs",
+    "test": "npm run typecheck && npm run unit && npm run build && npm run audit && npm run smoke && npm run bench && npm run parity && npm run test:settings-ux"
+  },
+  "keywords": [
+    "risuai",
+    "risu-ai",
+    "plugin",
+    "omni-nexus"
+  ],
+  "author": "Chaebboong",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.12.0",
+    "dompurify": "^3.3.3",
+    "esbuild": "^0.28.0",
+    "playwright": "^1.63.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.10"
+  },
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10.0.0"
+  }
+}

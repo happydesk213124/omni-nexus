@@ -1,0 +1,9 @@
+# Prompt files are embedded verbatim into the built plugin and sent to the LLM,
+# so their line endings are part of the payload. Checking them out unchanged
+# keeps a clone byte-identical to the shipped build on every platform.
+prompts/*.txt -text
+
+# Reference copies of the 1.x build that the audit and parity harness diff
+# against. Any rewriting here would produce phantom differences.
+reference/** -text
+vendor/** -text
