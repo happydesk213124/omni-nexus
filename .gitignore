@@ -1,0 +1,32 @@
+node_modules
+.env
+.DS_Store
+*.log
+
+# Build intermediates and harness output.
+.test-build
+.parity
+
+# Local prompt sources — never commit plaintext. The build embeds an opaque
+# pack into dist/; keep these files on the machine that runs `npm run build`.
+prompts/*.txt
+!prompts/.gitkeep
+
+# 1.x golden bundle embeds the same plaintext prompt pack — keep local for
+# parity/audit, never publish.
+reference/old-built-plugin.js
+
+# Local catalog extracts (NSFW reference) — never publish.
+reference/*extract*/
+
+# Local peek helpers (dev only)
+tools/_peek-vendor*.mjs
+
+# The built plugin is the artifact users load into RisuAI, so it is committed
+# even though it is generated. Everything else under dist/ is not.
+dist/*
+!dist/omninexus.js
+
+# Local-only root drafts — never publish.
+/아카라이브_HTML_GUIDE*.md
+/아카라이브_인레이넥서스_가이드.html

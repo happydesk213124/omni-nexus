@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+const s = fs.readFileSync('dist/omninexus.js', 'utf8');
+const lines = s.split('\n');
+console.log('--- head (12 lines) ---');
+console.log(lines.slice(0, 12).map((l, i) => `${i + 1}| ${l.slice(0, 150)}`).join('\n'));
+console.log('--- tail (3 lines) ---');
+console.log(lines.slice(-3).map((l) => l.slice(0, 150)).join('\n'));
+console.log('--- checks ---');
+console.log('//@version byte offset :', s.indexOf('//@version'));
+console.log('bytes                  :', Buffer.byteLength(s));
+console.log('top-level import/export:', /^\s*(import|export)[\s{*]/m.test(s));
+console.log('vendor version patched :', s.includes('He = "2.0.0"'));
+console.log('has native bridge      :', s.includes('globalThis.__INLAY_NATIVE__'));
+const re = /^(var|let|const|function|class|async function)\s+([A-Za-z_$][\w$]*)/;
+const names = lines.map((l) => re.exec(l)?.[2]).filter(Boolean);
+console.log('top-level decls        :', names.join(', '));
+console.log('duplicate top-level    :', names.filter((n, i) => names.indexOf(n) !== i));

@@ -1,0 +1,69 @@
+<div style="max-width:860px;margin:0 auto;background:linear-gradient(160deg,#f7f4ef,#efe8de,#f7f4ef);color:#3a342c;font-family:'Noto Sans KR',Malgun Gothic,sans-serif;border:1px solid #d4c8b4;">
+  <div style="padding:28px 24px 22px;border-bottom:2px solid #c9b89a;">
+    <div style="font-size:11px;letter-spacing:3px;color:#8a7a62;font-weight:700;">INLAY NEXUS · 2.1.0 · UPDATE</div>
+    <div style="font-size:26px;line-height:1.3;font-weight:900;color:#2b261f;margin-top:10px;">Inlay Nexus 2.1.0</div>
+    <div style="font-size:14px;line-height:1.8;color:#4a4338;margin-top:8px;">큐레이터·스티키 비율 맞춤·NAI 해상도 제한 완화 등. 아래 Proton 링크로 받으세요.</div>
+  </div>
+
+  <div style="padding:22px 24px;border-bottom:1px solid #d4c8b4;">
+    <div style="font-size:11px;letter-spacing:2px;color:#8a7a62;font-weight:700;margin-bottom:10px;">DOWNLOAD</div>
+    <div style="font-size:16px;font-weight:800;color:#2b261f;">프로톤 다운로드</div>
+    <div style="font-size:13px;line-height:1.75;color:#4a4338;margin-top:6px;">플러그인 JS를 Proton Drive에서 받을 수 있습니다. (새 탭)</div>
+    <div style="margin-top:14px;">
+      <a href="https://drive.proton.me/urls/RNQYPMX7WR#rUctr9qyJFpo" target="_blank" rel="noopener noreferrer" style="text-decoration:none;"><span style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#5c6b4a,#3f4a34);border:1px solid #3f4a34;border-radius:6px;color:#f7f4ef;font-size:14px;font-weight:800;">다운로드 · 새 탭</span></a>
+    </div>
+  </div>
+
+  <div style="padding:22px 24px;border-bottom:1px solid #d4c8b4;">
+    <div style="font-size:18px;font-weight:800;color:#2b261f;margin-bottom:12px;">큐레이터 사용법</div>
+    <div style="font-size:14px;line-height:1.85;color:#3a342c;">
+      설정 탭의 <strong>큐레이팅</strong>에서 모드를 고릅니다.
+    </div>
+    <div style="margin-top:12px;padding:14px 16px;background:linear-gradient(180deg,#f3eee6,#ebe3d6);border:1px solid #d4c8b4;">
+      <div style="font-size:14px;line-height:1.8;color:#3a342c;"><strong>사용 안 함</strong> — 지금과 같이 자유 태그 생성.</div>
+      <div style="font-size:14px;line-height:1.8;color:#3a342c;margin-top:6px;"><strong>2단</strong> — LLM이 카탈로그 그룹·옵션을 고른 뒤, 그 ID로 장면/액션 태그를 조립합니다. 캐릭터 외형·복장 태그는 카탈로그가 덮어쓰지 않습니다.</div>
+      <div style="font-size:14px;line-height:1.8;color:#3a342c;margin-top:6px;"><strong>임베딩식</strong> — 자유 태그를 카탈로그와 비슷한 항목으로 스냅합니다. (임베딩 API·사전 임베딩 필요)</div>
+    </div>
+    <div style="font-size:14px;line-height:1.85;color:#3a342c;margin-top:12px;">
+      기본 카탈로그는 소형 SFW입니다. NovelAI식 그룹 JSON을 <strong>카탈로그 업로드</strong>로 넣을 수 있습니다.<br>
+      <strong>엄격 ID 모드</strong>(2단일 때만): 카메라·상황·자연어·액션/표정을 자유 문장으로 쓰지 않고 카탈로그 ID만으로 조립합니다.
+    </div>
+  </div>
+
+  <div style="padding:22px 24px;border-bottom:1px solid #d4c8b4;">
+    <div style="font-size:18px;font-weight:800;color:#2b261f;margin-bottom:10px;">왜 쓰면 좋은가 / 단점</div>
+    <div style="font-size:14px;line-height:1.85;color:#3a342c;">
+      <strong>장점</strong><br>
+      · 장면·포즈·소품 표현을 카탈로그 어휘로 맞추기 쉬움<br>
+      · 캐릭터 외형/복장은 로스터 쪽을 유지한 채 상황만 정리<br>
+      · 엄격 ID면 환각성 자유 태그 대신 등록된 옵션만 사용
+    </div>
+    <div style="font-size:14px;line-height:1.85;color:#3a342c;margin-top:12px;">
+      <strong>단점</strong><br>
+      · LLM 호출이 한 번 더 들어가 비용·지연이 늘 수 있음<br>
+      · 엄격 모드·임베딩식은 카탈로그 업로드(및 임베딩 설정)가 사실상 필요<br>
+      · 마법이 아님 — 카탈로그에 없는 연출은 고를 수 없고, 품질은 카탈로그·프롬프트에 좌우됨
+    </div>
+  </div>
+
+  <div style="padding:22px 24px;border-bottom:1px solid #d4c8b4;">
+    <div style="font-size:18px;font-weight:800;color:#2b261f;margin-bottom:10px;">업데이트 사안</div>
+    <div style="font-size:14px;line-height:1.85;color:#3a342c;">
+      · <strong>큐레이팅</strong> 탭: 모드 / 엄격 ID / 카탈로그 업로드·리셋 / 임베딩 생성·테스트<br>
+      · 스티키 항상이미지: NAI 가로·세로 비율에 맞게 프레임을 줄이고, <strong>잘리지 않게(contain)</strong> 표시. 레터박스 배경은 투명<br>
+      · NAI 해상도: 예전 832×1216 상한·픽셀 상한을 완화 (사용자 설정 크기를 더 그대로 사용, 비정상 값만 1~5000 클램프)<br>
+      · 인원 태그 강조: 카드 설정의 사람 태그 가중치(0~5, 기본 3)로 <span style="font-family:Consolas,monospace;font-size:13px;">N::1girl, 1boy::</span> 형태 적용<br>
+      · 프롬프트 탭: 기본값 일괄 복원(작성자 노트 제외), 전체/개별 JSON 내보내기·가져오기<br>
+      · 장신구·무기 힌트 분리 등 태그/로스터 쪽 정리
+    </div>
+  </div>
+
+  <div style="padding:22px 24px;">
+    <div style="font-size:18px;font-weight:800;color:#2b261f;margin-bottom:10px;">향후 개발 방향</div>
+    <div style="font-size:14px;line-height:1.85;color:#3a342c;">
+      · 캐릭터 에셋을 자동으로 찾아, 캐릭터 프롬프트를 미리 채워 두기<br>
+      · 이미지 메시지 삽입 기능 추가 예정 (삽화 모듈처럼)
+    </div>
+    <div style="font-size:12px;line-height:1.7;color:#8a7a62;margin-top:18px;">GitHub: happydesk213124/inlaynex2.0 · version 2.1.0</div>
+  </div>
+</div>

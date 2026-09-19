@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+test('second boot neither writes chats/settings/modules nor decodes reference images',async()=>{
+ const built=await build({stdin:{contents:`export {ready} from './src/bridge/native';export {flushPersist} from './src/storage/stores';export {ensureInrayDisplayModule} from './src/storage/inray-display-module';export {DEFAULT_CONFIG} from './src/config/defaults';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node',loader:{'.txt':'text'}});
+ const code=built.outputFiles[0].text,kv=new Map(),reads=[],writes=[];let legacyOpens=0,keyScans=0;
+ let db={modules:[],enabledModules:[],characters:[]};
+ globalThis.risuai={getLocalPluginStorage:async()=>{legacyOpens++;throw Error('boot must not open legacy IDB');},pluginStorage:{keys:async()=>{keyScans++;throw Error('boot must not enumerate save keys');},getItem:async key=>{reads.push(key);return structuredClone(kv.get(key));},setItem:async(key,value)=>{writes.push('settings');kv.set(key,structuredClone(value));},removeItem:async key=>kv.delete(key)},getDatabase:async()=>structuredClone(db),setDatabase:async next=>{writes.push('module');db={...db,...structuredClone(next)};},getChatFromIndex:async()=>{throw Error('boot read a chat');},setChatToIndex:async()=>{throw Error('boot wrote a chat');}};
+ const load=n=>import('data:text/javascript;base64,'+Buffer.from(code+'\n//boot '+n).toString('base64'));
+ const first=await load(1);await first.ready();await first.ensureInrayDisplayModule();await first.flushPersist();
+ const installedWrites=writes.length;
+ const meta=kv.get('onx_nxstore_meta');
+ assert.ok(meta,'first install must persist its prompt pack');
+ const value=typeof meta==='string'?JSON.parse(meta):meta;
+ value.reference_image={key:'reference_image'};kv.set('onx_nxstore_meta',value);kv.set('onx_nxref_image','AQID');
+ writes.length=0;reads.length=0;
+ const second=await load(2),start=performance.now();await second.ready();await second.ensureInrayDisplayModule();await second.flushPersist();
+ assert.deepEqual(writes,[]);assert.equal(legacyOpens,0);assert.equal(keyScans,0);
+ assert.ok(!reads.includes('onx_nxref_image'));
+ console.log('[boot fixture] first-install writes='+installedWrites+'; second-boot writes=0; second-ready ms='+Math.round(performance.now()-start));
+ delete globalThis.risuai;
+});

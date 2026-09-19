@@ -1,0 +1,2717 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Omni Nexus 설정 · UX 초안</title>
+  <style>
+    :root {
+      --accent: #7132f5;
+      --accent-dark: #5741d8;
+      --accent-deep: #5b1ecf;
+      --accent-lip: #3d1894;
+      --accent-soft: rgba(133, 91, 251, 0.16);
+      --ok: #149e61;
+      --ok-text: #026b3f;
+      --font: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, "Noto Sans KR", sans-serif;
+      --r-btn: 12px;
+      --header-h: 56px;
+      --nav-w: 220px;
+    }
+    html[data-theme="dark"] {
+      --bg: #080b12;
+      --surface: #101622;
+      --surface-2: #161d2b;
+      --text: #f4f7fb;
+      --muted: #9497a9;
+      --border: rgba(163, 184, 216, .16);
+      --row: rgba(255, 255, 255, .03);
+      --shadow: 0 8px 24px rgba(0, 0, 0, .35);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font: 16px/1.38 var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .app {
+      height: 100dvh;
+      display: grid;
+      grid-template-columns: var(--nav-w) 1fr;
+      grid-template-rows: var(--header-h) auto minmax(0, 1fr);
+    }
+    .top {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .menu {
+      display: none;
+      width: 42px; height: 42px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-btn);
+      background: var(--surface-2);
+    }
+    .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .brand h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+    .brand small { color: var(--muted); font-size: 12px; }
+    .top-right { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .live { font-size: 12px; color: var(--ok); font-weight: 600; }
+    html[data-theme="dark"] .live { color: #68d9a0; }
+    .icon-btn {
+      min-height: 42px; padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-btn);
+      background: var(--surface-2);
+      color: var(--text);
+    }
+    .help-toggle {
+      width: 42px; min-height: 42px; padding: 0;
+      font: 700 18px/42px var(--font);
+    }
+    .help-toggle[aria-pressed="true"] {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: rgba(113, 50, 245, .45);
+    }
+    .head-help {
+      display: none;
+      grid-column: 1 / -1;
+      grid-row: 2;
+      position: relative;
+      height: 120px;
+      padding: 8px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(7, 10, 17, .72);
+      overflow: hidden;
+    }
+    body.help-on .head-help { display: block; }
+    .head-help.is-active { background: rgba(113, 50, 245, .08); }
+    .head-help-title {
+      font-size: 11px; font-weight: 700; color: #c4b5fd;
+      letter-spacing: .01em; margin: 0 0 4px;
+    }
+    .head-help-body {
+      margin: 0;
+      font-size: 12px; line-height: 1.4; color: var(--muted);
+      max-height: 88px; overflow: auto;
+      white-space: pre-wrap;
+    }
+    .is-help-active {
+      outline: 1px solid rgba(113, 50, 245, .35);
+      outline-offset: -1px;
+      background: rgba(113, 50, 245, .06);
+    }
+    .nav {
+      grid-row: 3;
+      min-height: 0;
+      align-self: stretch;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      overflow: auto;
+      padding: 10px 8px 20px;
+    }
+    .nav-label {
+      margin: 12px 10px 4px;
+      font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .nav button {
+      width: 100%;
+      display: flex; align-items: center; gap: 8px;
+      min-height: 40px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      font-size: 14px; font-weight: 500;
+    }
+    .nav button[aria-current="page"] {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .alarm { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: #ff7e92; }
+    .main {
+      grid-row: 3;
+      min-height: 0;
+      align-self: stretch;
+      overflow: auto;
+      padding: 12px 16px 32px;
+    }
+    .main:has(#style_presets.active) {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 12px;
+    }
+    #style_presets.active {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+    #style_presets .preset-page {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    #style_presets .preset-top { flex: 0 0 auto; }
+    #style_presets .preset-mid { flex: 1; min-height: 0; overflow: auto; }
+    #style_presets .preset-dock {
+      flex: 0 0 auto;
+      margin-top: auto;
+    }
+    .main:has(#explorer.active) {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 12px;
+    }
+    #explorer.active {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      height: 100%;
+      min-height: 0;
+      gap: 8px;
+    }
+    #explorer .ex-page {
+      flex: 1; min-width: 0; min-height: 0;
+      display: flex; flex-direction: column;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    #explorer .ex-top { flex: 0 0 auto; }
+    #explorer .ex-mid { flex: 1; min-height: 0; overflow: hidden; display:flex; flex-direction:column; }
+    #explorer .ex {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      padding: 10px 12px;
+    }
+    #explorer .thumb { aspect-ratio: 1; }
+    .ex-filters {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .ex-pick-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    #nx-ex-pick { width: min(420px, 92vw); }
+    #nx-ex-pick .risu-pick-head { gap: 6px; }
+    #nx-ex-pick .risu-pick-head .dock-btn { flex: 1; min-height: 38px; }
+    .ex-pick-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    #nx-ex-pick .risu-pick-tiles {
+      flex: 1 1 52%;
+      min-width: 0;
+      min-height: 88px;
+      max-height: none;
+    }
+    .ex-pick-resize {
+      flex: 0 0 8px;
+      cursor: row-resize;
+      background: var(--border);
+      touch-action: none;
+    }
+    .ex-pick-resize:hover, .ex-pick-resize.drag { background: rgba(113, 50, 245, .55); }
+    .ex-pick-split {
+      flex: 1 1 48%;
+      min-width: 0;
+      min-height: 96px;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px;
+      border: 0;
+    }
+    .ex-pick-split .dock-btn,
+    .ex-pick-split button.chat-pick {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 10px;
+    }
+    .ex-pick-split button.on {
+      background: var(--accent-soft);
+      color: #ddd3ff;
+      border-color: rgba(113, 50, 245, .45);
+    }
+    .ex-pick-hint { color: var(--muted); font-size: 12px; padding: 4px 2px; }
+    #nx-ex-chats { display: flex; flex-direction: column; gap: 6px; }
+    .main:has(#characters.active) {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 12px;
+    }
+    #characters.active {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      height: 100%;
+      min-height: 0;
+      gap: 8px;
+    }
+    .preset-tiles[hidden] { display: none !important; }
+    .char-rail {
+      flex: 0 0 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .char-rail button {
+      width: 100%; height: 100%;
+      border: 0; background: transparent;
+      color: #c4b5fd; font-size: 28px; font-weight: 700;
+    }
+    #characters .preset-page {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    #characters .preset-top { flex: 0 0 auto; }
+    #characters .preset-mid { flex: 1; min-height: 0; overflow: auto; }
+    #characters .preset-dock {
+      display: flex;
+      flex-wrap: wrap;
+      flex: 0 0 auto;
+      margin-top: auto;
+    }
+    #characters .preset-dock .dock-btn:not(.dock-up) {
+      flex: 1 1 148px;
+      min-height: 44px;
+      padding: 10px 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    #characters .preset-dock .dock-up {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+    #characters .preset-scope { padding: 10px 12px; }
+    .risu-pick-bg {
+      display: none; position: fixed; z-index: 22;
+      inset: 0; background: rgba(0,0,0,.35);
+    }
+    .risu-pick-bg.on { display: block; }
+    .risu-pick {
+      position: fixed; z-index: 23;
+      top: var(--header-h); right: 0; bottom: 0;
+      width: min(320px, 86vw);
+      display: flex; flex-direction: column;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      transform: translateX(110%);
+      transition: transform 220ms ease-out;
+    }
+    .risu-pick.open { transform: translateX(0); }
+    .risu-pick-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .risu-pick-head b { flex: 1; }
+    .risu-pick-tiles {
+      grid-auto-rows: max-content;
+      flex: 1; min-height: 0; overflow: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 10px 12px 16px;
+      align-content: start;
+    }
+    .pane { display: none; width: 100%; max-width: none; }
+    .pane.active { display: block; }
+    @media (min-width: 900px) {
+      .dash-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      .dash-left, .dash-right { min-width: 0; }
+      .dash-left .group:last-child { margin-bottom: 0; }
+    }
+    .lead { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+    .group { margin-bottom: 16px; }
+    .group > h3 {
+      margin: 0 0 6px; padding: 0 2px;
+      font-size: 12px; font-weight: 700; color: var(--muted);
+    }
+    .stack {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      min-height: 48px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .stack > .row:first-child { border-top: 0; }
+    .row-text { flex: 1; min-width: 0; }
+    .row-text b { display: block; font-size: 14px; font-weight: 600; }
+    .row-text small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.33; }
+    .ctrl { flex: 0 0 auto; max-width: 46%; }
+    select, input[type="number"], input[type="text"], input[type="password"], input[type="url"] {
+      width: 100%;
+      min-height: 38px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+    }
+    textarea {
+      width: 100%;
+      min-height: 88px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface-2);
+      resize: vertical;
+    }
+    .block { display: block; padding: 10px 12px; border-top: 1px solid var(--border); }
+    .block span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+    .sw { position: relative; width: 44px; height: 26px; flex: 0 0 44px; }
+    .sw input { appearance: none; width: 44px; height: 26px; margin: 0; border-radius: 999px; background: #686b82; }
+    .sw input:checked { background: var(--accent); }
+    .sw input::after {
+      content: ""; position: absolute; top: 3px; left: 3px;
+      width: 20px; height: 20px; border-radius: 50%; background: #fff;
+      transition: transform 150ms ease-out;
+    }
+    .sw input:checked::after { transform: translateX(18px); }
+    .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); }
+    .seg button {
+      flex: 1; min-height: 34px; border: 0; border-radius: 10px;
+      background: transparent; font-size: 13px; font-weight: 600;
+    }
+    .seg button.on { background: var(--accent); color: #fff; }
+    .btn {
+      min-height: 42px; padding: 10px 16px;
+      border: 0; border-radius: var(--r-btn);
+      background: var(--accent);
+      color: #fff; font-weight: 600;
+      box-shadow: none;
+    }
+    .btn:active { transform: scale(.98); box-shadow: none; }
+    .btn-ghost {
+      min-height: 42px; padding: 10px 16px;
+      border: 1px solid var(--accent-dark);
+      border-radius: var(--r-btn);
+      background: transparent; color: var(--accent-dark); font-weight: 600;
+    }
+    html[data-theme="dark"] .btn-ghost { color: #c4b5fd; border-color: #5741d8; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .field-grid {
+      display: grid;
+      gap: 8px 10px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .stack > .field-grid:first-child { border-top: 0; }
+    .field-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .field-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .field > span, .field-sw > span:first-child {
+      font-size: 12px; font-weight: 600; color: var(--muted);
+    }
+    .field input, .field select, .field textarea { width: 100%; max-width: none; }
+    #comic_gen .comic-opts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    #comic_gen .comic-opts .row:nth-child(-n+2) { border-top: 0; }
+    #comic_gen .comic-notes { margin-top: 12px; }
+    #comic_gen .comic-notes textarea { min-height: 220px; }
+    .char-edit-head {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+    }
+    .char-edit-head .title { flex: 1; min-width: 80px; font-weight: 700; }
+    .char-edit-head .warn { color: #fbbf24; font-weight: 500; }
+    .char-edit-head .prio {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; color: var(--muted);
+    }
+    .char-edit-head .prio input { width: 56px; min-height: 34px; }
+    .char-name-grid {
+      display: flex; flex-wrap: nowrap; align-items: center; gap: 6px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .char-name-grid .lab { color: var(--muted); font-size: 12px; font-weight: 700; flex: 0 0 auto; }
+    .char-name-grid input { min-width: 0; flex: 1; min-height: 34px; }
+    .char-looks-row {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .char-wear-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .char-wear-head {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 6px; font-size: 12px; font-weight: 700; color: var(--muted);
+    }
+    .lock-sw {
+      margin-left: auto;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; color: var(--muted);
+    }
+    .lock-sw .sw { width: 36px; height: 22px; flex: 0 0 36px; }
+    .lock-sw .sw input { width: 36px; height: 22px; }
+    .lock-sw .sw input::after { width: 16px; height: 16px; }
+    .lock-sw .sw input:checked::after { transform: translateX(14px); }
+    .char-costume {
+      display: flex; flex-wrap: nowrap; gap: 6px; align-items: center;
+      padding: 10px 12px; border-top: 1px solid var(--border);
+    }
+    .char-costume input[data-char-costume-name] { width: 140px; flex: 0 0 140px; }
+    .char-costume input[data-char-costume-note] { flex: 1; min-width: 0; }
+    .char-costume-pick { position: relative; width: 36px; flex: 0 0 36px; height: 38px; }
+    .char-costume-pick span {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface-2); pointer-events: none;
+    }
+    .char-costume-pick select {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0;
+    }
+    .char-ref-row {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      padding: 10px 12px; border-top: 1px solid var(--border);
+    }
+    .char-ref-row .look { width: 42px; height: 42px; flex: 0 0 42px; }
+    .empty-hint { padding: 8px 12px; color: var(--muted); font-size: 12px; }
+    .field-sw {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; min-height: 38px;
+    }
+    .subhead {
+      margin: 0; padding: 10px 12px 0;
+      border-top: 1px solid var(--border);
+      font-size: 12px; font-weight: 700; color: var(--muted);
+    }
+    .fold { border-top: 1px solid var(--border); }
+    .fold-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding-right: 12px;
+    }
+    .fold-head {
+      flex: 1; min-width: 0;
+      display: flex; align-items: center; gap: 8px;
+      min-height: 48px; padding: 8px 4px 8px 12px;
+      border: 0; background: transparent; color: inherit; text-align: left;
+    }
+    .fold-head .chev {
+      flex: 0 0 auto; color: var(--muted);
+      transition: transform 150ms ease-out;
+    }
+    .fold.open .fold-head .chev { transform: rotate(180deg); }
+    .fold-body { display: none; }
+    .fold.open .fold-body { display: block; }
+    .fold[data-vibe="off"] [data-vibe-only] { display: none; }
+    .chars { display: grid; gap: 8px; }
+    .char {
+      display: grid; grid-template-columns: 44px 1fr auto;
+      gap: 10px; align-items: center;
+      padding: 8px 10px; border-radius: 12px; background: var(--row);
+    }
+    .av { width: 44px; height: 44px; border-radius: 10px; background: var(--accent-soft); }
+    .ex { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .thumb { aspect-ratio: 3/4; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 34px; padding: 4px 10px;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 600;
+    }
+    .chip.on { background: var(--accent-soft); border-color: rgba(113,50,245,.45); color: var(--accent); }
+    .chip.second { background: rgba(20,158,97,.16); border-color: rgba(20,158,97,.45); color: #149e61; }
+    .chip .dot { width: 18px; height: 18px; border-radius: 4px; background: var(--accent-soft); }
+    .look { width: 72px; height: 72px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+    .preset-search {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .preset-search input[type="search"] {
+      width: 100%; max-width: none; min-height: 38px;
+    }
+    .preset-load-btn {
+      display: inline-flex; align-items: stretch;
+      min-height: 38px;
+      border: 1px solid #5741d8;
+      border-radius: var(--r-btn);
+      overflow: hidden;
+      background: transparent;
+      color: #c4b5fd;
+    }
+    .preset-load-btn > button {
+      min-height: 0; padding: 0 12px;
+      border: 0; border-radius: 0;
+      background: transparent; color: inherit; font-weight: 600;
+      white-space: nowrap;
+    }
+    .preset-load-btn .in-filter {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 0 10px;
+      border-left: 1px solid #5741d8;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .preset-load-btn .in-filter .sw { width: 36px; height: 22px; flex: 0 0 36px; }
+    .preset-load-btn .in-filter .sw input { width: 36px; height: 22px; }
+    .preset-load-btn .in-filter .sw input::after { width: 16px; height: 16px; }
+    .preset-load-btn .in-filter .sw input:checked::after { transform: translateX(14px); }
+    .preset-current {
+      display: flex; align-items: center; gap: 10px;
+      min-height: 48px; padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .preset-current > b { flex: 1; min-width: 0; font-weight: 600; }
+    .preset-current .actions { padding: 0; margin-left: auto; }
+    #characters .preset-current .actions {
+      display: grid;
+      grid-template-columns: minmax(92px, 1.45fr) repeat(4, minmax(52px, 1fr));
+      width: min(100%, 430px);
+      gap: 6px;
+    }
+    #characters .preset-current .actions button {
+      min-width: 0;
+      padding: 7px 8px;
+      white-space: nowrap;
+    }
+    #nx-lorefilter-slot { padding: 0 12px 10px; }
+    #nx-lorefilter-slot:empty { display: none; }
+    #nx-lorefilter-slot #nx-lorefilter {
+      margin: 0 !important;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+    #nx-lorefilter-slot #nx-lorefilter > summary {
+      min-height: 42px;
+      padding: 8px 10px !important;
+      background: transparent;
+    }
+    #nx-lorefilter-slot #nx-lorefilter button {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255,255,255,.035);
+      color: var(--text);
+      box-shadow: none;
+    }
+    #nx-lorefilter-slot #nx-lorefilter button:hover,
+    #nx-lorefilter-slot #nx-lorefilter button:focus-visible {
+      border-color: rgba(113,50,245,.65);
+      background: var(--accent-soft);
+    }
+    .preset-looks {
+      display: grid;
+      grid-template-columns: 132px 132px;
+      gap: 10px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .preset-look-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface-2);
+    }
+    .preset-look-card .look {
+      width: 100%; height: 150px; aspect-ratio: auto;
+      border: 0; border-radius: 0;
+    }
+    .preset-look-card b { display: block; padding: 8px 10px; font-size: 13px; }
+    .preset-dock {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .dock-btn {
+      min-height: 48px; padding: 8px 4px;
+      border: 1px solid var(--accent-dark);
+      border-radius: var(--r-btn);
+      background: var(--surface-2);
+      color: #c4b5fd;
+      font-size: 12px; font-weight: 700;
+    }
+    .vibe-row {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .vibe-row .look {
+      width: 120px; height: 80px; margin: 0;
+      cursor: pointer;
+    }
+    .dock-up {
+      grid-column: 1 / -1;
+      min-height: 68px;
+      font-size: 18px;
+      background: var(--accent-soft);
+      border-color: rgba(113,50,245,.45);
+      color: var(--accent);
+    }
+    .preset-sheet-bg {
+      display: none; position: fixed; z-index: 24;
+      inset: 0; background: rgba(0,0,0,.45);
+    }
+    .preset-sheet-bg.on { display: block; }
+    .preset-sheet {
+      position: fixed; z-index: 25;
+      left: var(--nav-w); right: 0; bottom: 0;
+      height: 80dvh;
+      max-height: 80dvh;
+      display: flex; flex-direction: column;
+      background: var(--surface);
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -12px 40px rgba(0,0,0,.45);
+      transform: translateY(110%);
+      transition: transform 220ms ease-out;
+    }
+    .preset-sheet.open { transform: translateY(0); }
+    .preset-sheet-head {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .preset-sheet-head b { flex: 1; }
+    .preset-sheet-scroll { flex: 1; min-height: 0; overflow: auto; }
+    .pop-bg {
+      display: none; position: fixed; z-index: 30;
+      inset: 0; background: rgba(0,0,0,.5);
+    }
+    .pop-bg.on { display: block; }
+    .pop {
+      display: none; position: fixed; z-index: 31;
+      left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(560px, calc(100vw - 32px));
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .pop.on { display: block; }
+    .pop h3 { margin: 0 0 10px; font-size: 16px; }
+    .pop textarea { min-height: 180px; }
+    .pop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .preset-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .preset-tile {
+      position: relative;
+      aspect-ratio: 1;
+      padding: 0; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--surface-2);
+      overflow: hidden; text-align: left; color: inherit;
+    }
+    .preset-tile .look {
+      width: 100%; height: 100%; aspect-ratio: 1;
+      border: 0; border-radius: 0;
+      object-fit: cover;
+    }
+    .preset-tile b, .preset-tile small {
+      position: absolute; left: 0; right: 0;
+      padding: 6px 8px;
+      background: linear-gradient(transparent, rgba(0,0,0,.72));
+    }
+    .preset-tile b {
+      bottom: 18px;
+      font-size: 13px; font-weight: 600;
+    }
+    .preset-tile small {
+      bottom: 0;
+      color: #c9c4d6; font-size: 11px;
+    }
+    .preset-tile.on { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .preset-tile.ex-all .look {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      padding: 8px;
+      background: #2a2438;
+    }
+    .preset-tile.ex-all .look i {
+      display: block;
+      border-radius: 4px;
+      background: linear-gradient(145deg, #4a3d6e, #2f2744);
+    }
+    .preset-tile.second { outline: 3px solid #149e61; outline-offset: -3px; }
+    .preset-tile.second::after { content:'2순위'; position:absolute; left:6px; top:6px; padding:4px 6px; border-radius:6px; background:#149e61; color:white; font-size:12px; }
+    .preset-tile.active.second::after { content:'적용 중 · 2순위'; }
+    .preset-tile.hidden { display: none; }
+    .preset-empty { display: none; padding: 16px 12px; color: var(--muted); font-size: 13px; }
+    .preset-empty.show { display: block; }
+    .drawer-bg {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 20;
+    }
+    @media (max-width: 768px) {
+      .app { grid-template-columns: 1fr; }
+      .nav {
+        display: none; position: fixed; z-index: 21;
+        top: 0; bottom: 0; left: 0; width: min(84vw, 300px);
+        box-shadow: var(--shadow);
+      }
+      body.nav-open .nav, body.nav-open .drawer-bg { display: block; }
+      .menu { display: inline-flex; align-items: center; justify-content: center; }
+      .main { padding: 10px 12px calc(24px + env(safe-area-inset-bottom)); }
+      .ctrl { max-width: 52%; }
+      .field-grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #comic_gen .comic-opts { grid-template-columns: 1fr 1fr; }
+      #comic_gen .comic-notes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .preset-search { grid-template-columns: minmax(0, 1fr) auto; }
+      .preset-sheet { left: 0; }
+      .risu-pick { top: var(--header-h); }
+      .preset-dock { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      #characters .preset-dock { display: flex; flex-wrap: wrap; }
+      .preset-sheet .field-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .char-looks-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .char-wear-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid2, .ex { grid-template-columns: 1fr 1fr; }
+      .row { min-height: 52px; }
+    }
+    @media (min-width: 1280px) {
+      .main { padding-left: 20px; }
+    }
+
+    .risu-tile,.preset-tile { min-width:0; width:100%; aspect-ratio:1; overflow:hidden; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .preset-tile img, #nx-preset-chips .preset-tile img, [data-ux-character-tile] img { position:absolute; inset:0; display:block; width:100%; height:100%; min-height:0; object-fit:contain; margin:0; border-radius:0; }
+    .preset-tile span { max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+    [data-preset-label], [data-character-label] { position:absolute; left:0; right:0; bottom:0; padding:24px 8px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:left; color:#fff; background:linear-gradient(transparent,rgba(5,7,12,.88)); font-size:13px; font-weight:600; pointer-events:none; }
+    .risu-tile { padding:0; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); color:#fff; }
+    .risu-tile { box-sizing:border-box; min-height:0; align-self:start; }
+    #nx-char-sheet-close .warn { color:#fbbf24; font-weight:500; }
+    .risu-tile img { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:contain; }
+    .risu-tile span { position:absolute; z-index:1; left:0; right:0; bottom:0; padding:28px 8px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; background:linear-gradient(transparent,rgba(5,7,12,.88)); color:#fff; }
+    .risu-tile.on { outline:2px solid var(--accent); outline-offset:-2px; }
+    .risu-tile.pending::after { content:''; position:absolute; z-index:2; top:8px; right:8px; width:18px; height:18px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:nx-ref-spin .7s linear infinite; }
+    @keyframes nx-ref-spin { to { transform:rotate(360deg); } }
+    #nx-char-scope-slot[hidden], [data-ux-llm-role][hidden] { display:none!important; }
+    html.nx-ux-on #nx-char-import-modal { box-sizing:border-box; overflow:hidden; }
+    html.nx-ux-on #nx-char-import-modal > div {
+      height:min(86dvh,720px)!important; max-height:calc(100dvh - 24px); min-height:0;
+      display:flex!important; flex-direction:column; overflow:hidden;
+    }
+    html.nx-ux-on #nx-char-import-modal > div > :not([data-imp-list]) { flex-shrink:0; }
+    html.nx-ux-on #nx-char-import-modal [data-imp-list] { flex:1 1 0!important; min-height:0; overflow:auto!important; overscroll-behavior:contain; }
+    #nx-llm-role-tabs { display:flex; flex-wrap:wrap; }
+    #nx-llm-role-tabs .on { background:rgba(113,50,245,.16); border-color:#7132f5; color:var(--accent); }
+    .preset-tile.active { border:2px solid #7132f5!important; background:rgba(113,50,245,.16)!important; }
+    .preset-tile.active::after { content:'적용 중'; position:absolute; left:6px; top:6px; padding:4px 6px; border-radius:6px; background:#7132f5; color:white; font-size:12px; }
+    #nx-char-sheet { max-width:1120px; left:50%; right:auto; width:100%; transform:translate(-50%,100%); }
+    #nx-char-sheet.open { transform:translate(-50%,0); }
+    #nx-risu-pick-tiles { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; align-content:start; overflow:auto; min-height:0; }
+    .explorer-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; }
+    [data-explorer-id] { min-width:0; overflow:hidden; border-radius:12px; background:var(--surface); }
+    [data-explorer-id] img { display:block; width:100%; aspect-ratio:1; height:auto; object-fit:contain; border-radius:10px; }
+
+    .explorer-lightbox { display:none; position:fixed; inset:0; z-index:10000; background:#080b12; color:#f4f7fb; }
+    .explorer-lightbox.show { display:flex; flex-direction:column; }
+    .explorer-lightbox img { max-width:100%; max-height:calc(100dvh - 130px); object-fit:contain; border-radius:10px; }
+    .explorer-lightbox .lb-stage, .explorer-lightbox .explorer-lb-stage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    #nx-explorer-lightbox { height:100dvh; width:100%; padding:12px; gap:10px; box-sizing:border-box; }
+    #nx-explorer-lightbox .lb-stage { position:relative; flex:1 1 0; min-height:0; min-width:0; width:100%; }
+    #nx-explorer-lightbox .lb-stage img { display:block; width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; transform-origin:center; }
+    #nx-explorer-lightbox .lb-bar { position:relative; z-index:1; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px; flex:0 0 auto; width:100%; min-height:48px; margin-top:auto; padding-bottom:env(safe-area-inset-bottom,0px); }
+    #nx-explorer-lightbox [data-lb-meta] { width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .explorer-lightbox button { background:#161e2c; color:#f4f7fb; border:1px solid #344052; border-radius:12px; padding:10px 14px; box-shadow:none; cursor:pointer; }
+    .explorer-lightbox button:hover { background:#5741d8; }
+    .nx-seg { display:flex; flex-wrap:wrap; gap:6px; }
+    .nx-seg .active { background:rgba(113,50,245,.16); border-color:#7132f5; }
+    [data-ux-llm-role] [type="hidden"] { display:none!important; }
+    #nx-explorer-grid { position:relative; display:block; flex:1 1 0; min-width:0; min-height:0; overflow:auto; overflow-anchor:none; padding:12px; }
+    #nx-explorer-grid .explorer-loading { position:absolute; top:12px; right:12px; z-index:5; display:flex; align-items:center; gap:8px; padding:8px; border-radius:12px; background:var(--surface); pointer-events:none; }
+    #nx-explorer-grid .explorer-marquee { position:absolute; display:none; pointer-events:none; }
+    #nx-explorer-grid .explorer-win { display:grid; grid-template-columns:repeat(var(--ex-cols,2),minmax(0,1fr)); gap:12px; }
+    #nx-explorer-grid .explorer-card { position:relative; aspect-ratio:1; min-width:0; overflow:hidden; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+    #nx-explorer-grid .explorer-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+    #nx-explorer-grid .explorer-card .cap { display:none; }
+    #nx-explorer-grid .explorer-card.selected { border-color:#7132f5; box-shadow:inset 0 0 0 2px #7132f5; }
+    @media(max-width:768px) {
+      .brand {display:none;} .top {gap:4px;padding:6px;} .top-right {gap:4px;flex:1;min-width:0;flex-wrap:nowrap;} .top-right button {padding:6px;font-size:11px;min-width:28px;} .live {font-size:10px;flex:1;white-space:nowrap;}
+      #characters .preset-current { display:block; padding:7px 8px; }
+      #characters .preset-current > b { display:block; margin:0 0 6px; font-size:12px; }
+      #characters .preset-current .actions {
+        grid-template-columns: minmax(76px,1.45fr) repeat(4,minmax(42px,1fr));
+        width:100%; gap:3px;
+      }
+      #characters .preset-current .actions button {
+        min-height:34px; padding:5px 3px; font-size:10px; letter-spacing:-.04em;
+      }
+      #nx-lorefilter-slot { padding:0 8px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="drawer-bg" id="drawerBg"></div>
+  <div class="app">
+    <header class="top">
+      <button class="menu" type="button" id="menuBtn" aria-label="메뉴">☰</button>
+      <div class="brand">
+        <h1>⚛️ Omni Nexus</h1>
+        <small id="nx-version-line">대시보드</small>
+      </div>
+      <div class="top-right">
+        <span class="live" id="live">바로 저장됨</span>
+        <button class="icon-btn help-toggle" type="button" id="nx-help-toggle" aria-pressed="false" aria-label="도움말">?</button>
+        <button class="icon-btn" type="button" id="nx-export-all">EXPORT</button>
+        <button class="icon-btn" type="button" id="nx-import-all">IMPORT</button>
+        <input id="nx-import-all-file" type="file" accept=".json,application/json,text/plain" hidden>
+        <button class="icon-btn" type="button" id="nx-close" aria-label="닫기">닫기</button>
+      </div>
+    </header>
+    <div class="head-help" id="nx-head-help" aria-live="polite">
+      <div class="head-help-title" id="nx-head-help-title">도움말</div>
+      <p class="head-help-body" id="nx-head-help-body">설정에 마우스를 올리면 설명이 여기에 나타납니다.</p>
+    </div>
+
+    <nav class="nav" id="nav">
+      <div class="nav-label">쓰기</div>
+      <button type="button" data-tab="dashboard" data-title="대시보드" aria-current="page">대시보드</button>
+      <button type="button" data-tab="gen_options" data-title="생성 옵션">생성 옵션</button>
+      <button type="button" data-tab="comic_gen" data-title="만화 생성">만화 생성</button>
+      <button type="button" data-tab="style_presets" data-title="스타일 프리셋">스타일 프리셋</button>
+      <button type="button" data-tab="characters" data-title="캐릭터">캐릭터</button>
+      <div class="nav-label">연결</div>
+      <button type="button" data-tab="models" data-title="모델 설정">모델 설정 <i class="alarm" title="nai 키 없음"></i></button>
+      <button type="button" data-tab="tts" data-title="TTS">TTS</button>
+      <button type="button" data-tab="prompts" data-title="프롬프트">프롬프트</button>
+      <div class="nav-label">보기</div>
+      <button type="button" data-tab="explorer" data-title="이미지 탐색">이미지 탐색</button>
+      <button type="button" data-tab="changelog" data-title="업데이트 내역">업데이트 내역</button>
+      <button type="button" data-tab="debug" data-title="디버그">디버그</button>
+    </nav>
+
+    <main class="main">
+      <section class="pane active" id="dashboard">
+        <div class="dash-cols">
+        <div class="dash-left">
+        <div class="group">
+          <h3>화면</h3>
+          <div class="stack">
+            <label class="row"><span class="row-text"><b>Power ON</b></span><span class="sw"><input id="nx-power" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>플로팅 뷰어</b></span><span class="sw"><input id="nx-floating-viewer" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>디버그 패널</b></span><span class="sw"><input id="nx-debug-panel" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>Risu 설정 바로가기</b></span><span class="sw"><input id="nx-risu-settings-button" type="checkbox" checked></span></label>
+            <div class="row" style="display:none"><span class="row-text"><b>상시 이미지 크기 (%)</b></span><input class="ctrl" id="nx-inline-pct" type="number" min="0" step="10" value="100"></div>
+            <div class="row"><span class="row-text"><b>접힘 표시 방식</b></span>
+              <select class="ctrl" id="nx-minimize-mode"><option value="icon" selected>플로팅 아이콘</option><option value="toolbar">상단 툴바</option><option value="actions">재생성·태그 플로팅</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <h3>알림 · 기타</h3>
+          <div class="stack">
+            <label class="row"><span class="row-text"><b>진행 토스트</b></span><span class="sw"><input id="nx-progress-toast" type="checkbox"></span></label>
+            <div class="row"><span class="row-text"><b>토스트 위치</b></span>
+              <select class="ctrl" id="nx-toast-anchor"><option value="tl">좌상단</option><option value="bl">좌하단</option><option value="tr">우상단</option><option value="br">우하단</option><option value="tc" selected>중상단</option></select>
+            </div>
+            <label class="row"><span class="row-text"><b>스크롤 붙잡기</b></span><span class="sw"><input id="nx-scroll-hold" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>할당량 끝나면 NAI4 폴백</b></span><span class="sw"><input id="nx-nai4-fallback" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>응답 후 자동 생성</b></span><span class="sw"><input id="nx-auto-gen-reply" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>Lorebook 주입</b></span><span class="sw"><input id="nx-lore" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>CharInfo</b></span><span class="sw"><input id="nx-charinfo" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>UserInfo</b></span><span class="sw"><input id="nx-userinfo" type="checkbox"></span></label>
+          </div>
+        </div>
+        </div>
+        <div class="dash-right">
+        <div class="group">
+          <h3>채팅 그림</h3>
+          <div class="stack">
+            <label class="row"><span class="row-text"><b>이미지 채팅에</b><small>생성 중에만 스피너·겹침</small></span><span class="sw"><input id="nx-inline-chat" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>채팅안에 바로가기툴 추가</b></span><span class="sw"><input id="nx-inline-msg-fan" type="checkbox"></span></label>
+            <div class="row"><span class="row-text"><b>선택된글 위치</b></span>
+              <select class="ctrl" id="nx-inline-text-side"><option value="before" selected>글자 앞</option><option value="after">글자 뒤</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>이미지 채팅 배율 (%)</b></span><input class="ctrl" id="nx-inline-chat-scale" type="number" min="25" max="200" step="5" value="100"></div>
+            <div class="row"><span class="row-text"><b>이미지 크게보기</b></span>
+              <select class="ctrl" id="nx-image-press"><option value="off">사용안함</option><option value="two">더블 탭</option><option value="three">트리플 탭</option><option value="hold" selected>꾸욱 누르기</option><option value="both">꾸욱 + 더블탭</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>캐릭터 참고이미지</b></span>
+              <select class="ctrl" id="nx-char-ref-mode"><option value="off" selected>안함</option><option value="vibe">NAI vibe</option><option value="image">NAI image reference</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>참고 Strength</b></span><input class="ctrl" id="nx-char-ref-strength" type="number" min="0.01" max="1" step="0.01" value="0.6"></div>
+            <div class="row"><span class="row-text"><b>참고 Fidelity</b></span><input class="ctrl" id="nx-char-ref-fidelity" type="number" min="0.01" max="1" step="0.01" value="1"></div>
+            <div class="row"><span class="row-text"><b>참고 Image 종류</b></span>
+              <select class="ctrl" id="nx-char-ref-image-type"><option value="character">character</option><option value="character&style" selected>character & style</option><option value="style">style</option></select>
+            </div>
+          </div>
+        </div>
+        </div>
+        </div>
+        <div class="group">
+          <h3>데이터</h3>
+          <div class="stack">
+            <div class="actions">
+              <button class="btn-ghost" type="button" id="nx-run-now">지금 생성 (수동)</button>
+              <button class="btn-ghost" type="button" id="nx-open-viewer">뷰어 앞으로</button>
+              <button class="btn-ghost" type="button" id="nx-reset-windows">창위치 초기화</button>
+              <button class="btn-ghost" type="button" id="nx-reset-settings">전체 초기화</button>
+              <button class="btn-ghost" type="button" id="nx-reset-char-refs">레퍼런스 이미지 초기화</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane" id="gen_options">
+        <div class="dash-cols">
+        <div class="dash-left">
+        <div class="group">
+          <h3>기본</h3>
+          <div class="stack">
+            <div class="row"><span class="row-text"><b>Mode</b></span>
+              <select class="ctrl" id="nx-mode"><option value="illustration" selected>삽화</option><option value="asset">에셋</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>Image Min</b></span><input class="ctrl" id="nx-min" type="number" min="1" max="6" value="3"></div>
+            <div class="row"><span class="row-text"><b>Image Max</b></span><input class="ctrl" id="nx-max" type="number" min="1" max="6" value="3"></div>
+            <div class="row"><span class="row-text"><b>캐릭터 수 제한</b></span><input class="ctrl" id="nx-char-max" type="number" min="1" max="6" value="6"></div>
+            <div class="row"><span class="row-text"><b>포함할 채팅수</b></span><input class="ctrl" id="nx-include-max" type="number" min="0" max="20" value="0"></div>
+            <div class="row" hidden><span class="row-text"><b>Include Min</b></span><input class="ctrl" id="nx-include-min" type="number" min="0" max="20" value="0"></div>
+            <div class="row"><span class="row-text"><b>자연어 base</b></span>
+              <select class="ctrl" id="nx-natural-base"><option value="off">안넣기</option><option value="short" selected>짧게 넣기</option><option value="detailed">구도·자세히</option><option value="supplement">태그 보완 자연어</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>V5 자연어 태그</b></span>
+              <select class="ctrl" id="nx-v5-natural-lang"><option value="en" selected>English</option><option value="ja">日本語</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <h3>NovelAI</h3>
+          <div class="stack">
+            <label class="row"><span class="row-text"><b>NAI 위치 좌표</b></span><span class="sw"><input id="nx-nai-coords" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>LLM한테 V4/V5 선택권</b></span><span class="sw"><input id="nx-nai5-first" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>무조건 NAI V5만</b></span><span class="sw"><input id="nx-nai5-only" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>NAI5 대사삽입</b></span><span class="sw"><input id="nx-nai5-speech" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>자동 비율 조절</b></span><span class="sw"><input id="nx-auto-aspect" type="checkbox"></span></label>
+          </div>
+        </div>
+        <div class="group">
+          <h3>캐릭터 태그</h3>
+          <div class="stack">
+            <label class="row"><span class="row-text"><b>캐릭 1명일 때 solo</b></span><span class="sw"><input id="nx-person-tag-solo" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>코스튬</b></span><span class="sw"><input id="nx-costume" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>캐릭 없을 때 no humans</b></span><span class="sw"><input id="nx-no-humans" type="checkbox"></span></label>
+            <div class="row"><span class="row-text"><b>사람 태그 자동넣기</b></span>
+              <select class="ctrl" id="nx-person-tag-mode"><option value="gender" selected>성별 분리</option><option value="girls">인원수 → girls</option><option value="people">인원수 → people</option><option value="off">안 넣기</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>사람 태그 강조 (0–5)</b></span><input class="ctrl" id="nx-person-tag-weight" type="number" min="0" max="5" value="3"></div>
+            <div class="row"><span class="row-text"><b>lb-xnai.lb.extra</b></span>
+              <select class="ctrl" id="nx-lore-extra"><option value="tags" selected>캐릭터 태그만</option><option value="full">전체</option><option value="off">넣지 않음</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>에셋 NAI 태그</b></span>
+              <select class="ctrl" id="nx-asset-nai-tags"><option value="off" selected>사용안함</option><option value="inline">통째로 보내기</option><option value="prepass">LLM 따로 호출</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>중점 캐릭터</b></span>
+              <select class="ctrl" id="nx-focus-character"><option value="off" selected>사용안함</option><option value="female">여성위주</option><option value="male">남성위주</option><option value="auto">LLM이 알아서</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>중점강도</b></span><input class="ctrl" id="nx-focus-weight" type="number" min="0" max="5" step="0.1" value="2"></div>
+            <div class="row"><span class="row-text"><b>프롬프트 강도</b></span>
+              <select class="ctrl" id="nx-focus-prompt"><option value="default" selected>기본값</option><option value="strong">좀더 강하게</option><option value="always">무조건</option><option value="manual">수동</option></select>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="dash-right">
+        <div class="group">
+          <h3>LLM 버릇</h3>
+          <div class="stack">
+            <label class="row"><span class="row-text"><b>CharAppearance 누적</b></span><span class="sw"><input id="nx-appearance" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>JSON 오류 시 재시도</b></span><span class="sw"><input id="nx-llm-json-retry" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>역바</b></span><span class="sw"><input id="nx-llm-reverse-bar" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>태칼</b></span><span class="sw"><input id="nx-llm-tag-cal" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>Preprocessing</b></span><span class="sw"><input id="nx-preprocess" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>스트리밍 키워드</b></span><span class="sw"><input id="nx-stream-keywords-on" type="checkbox"></span></label>
+            <label class="block"><span>키워드</span><textarea id="nx-stream-keywords" placeholder="future plan, RP-Guide"></textarea></label>
+          </div>
+        </div>
+        <div class="group">
+          <h3>고정 프롬프트</h3>
+          <div class="stack">
+            <label class="block"><span>선행</span><textarea id="nx-fixed-prompt-prefix" placeholder="프리셋·장면 앞에 항상 붙음"></textarea></label>
+            <label class="block"><span>후행</span><textarea id="nx-fixed-prompt-suffix" placeholder="품질 태그 앞에 항상 붙음"></textarea></label>
+            <div class="actions">
+              <button class="btn-ghost" type="button" id="nx-fixed-prompt-export">EXPORT</button>
+              <button class="btn-ghost" type="button" id="nx-fixed-prompt-import">IMPORT</button>
+              <input id="nx-fixed-prompt-file" type="file" accept=".json,application/json,text/plain" hidden>
+            </div>
+          </div>
+        </div>
+        </div>
+        </div>
+      </section>
+
+      <section class="pane" id="comic_gen">
+        <div class="stack comic-opts">
+          <div class="row"><span class="row-text"><b>만화 생성</b></span>
+            <select class="ctrl" id="nx-comic-gen"><option value="off" selected>끄기</option><option value="on">켜기</option></select>
+          </div>
+          <div class="row"><span class="row-text"><b>만화 LLM</b></span>
+            <select class="ctrl" id="nx-comic-llm-batch"><option value="once" selected>메시지 1회</option><option value="per_shot">샷마다</option><option value="with_main">메인태거에 한번에</option></select>
+          </div>
+          <div class="row"><span class="row-text"><b>생성 순서</b></span>
+            <select class="ctrl" id="nx-comic-schedule"><option value="overlap" selected>겹쳐 생성</option><option value="wait_taggers">태거 전부 완료 후</option></select>
+          </div>
+          <div class="row"><span class="row-text"><b>만화 생성 비율 (%)</b></span><input class="ctrl" id="nx-comic-gen-ratio" type="number" min="0" max="100" value="50"></div>
+          <div class="row" style="display:none"><span class="row-text"><b>최대 페이지</b></span><input class="ctrl" id="nx-comic-max-pages" type="number" min="1" max="8" value="2"></div>
+          <div class="row"><span class="row-text"><b>위치</b></span>
+            <select class="ctrl" id="nx-comic-coords"><option value="llm" selected>LLM이 알아서</option><option value="position">Position</option><option value="ai_choice">AI choice</option></select>
+          </div>
+          <div class="row"><span class="row-text"><b>만화 비율</b></span>
+            <select class="ctrl" id="nx-comic-aspect"><option value="llm" selected>LLM이 알아서</option><option value="landscape">가로</option><option value="portrait">세로</option><option value="square">정사각</option></select>
+          </div>
+          <div class="row"><span class="row-text"><b>Steps</b></span><input class="ctrl" id="nx-comic-steps" type="number" placeholder="기존"></div>
+          <div class="row"><span class="row-text"><b>샘플러</b></span>
+            <select class="ctrl" id="nx-comic-sampler"><option value="" selected>기존</option><option value="k_euler_ancestral">Euler Ancestral</option><option value="k_euler">Euler</option></select>
+          </div>
+          <div class="row"><span class="row-text"><b>가이던스</b></span><input class="ctrl" id="nx-comic-cfg" type="number" step="0.1" placeholder="기존"></div>
+          <div class="row"><span class="row-text"><b>리스케일</b></span><input class="ctrl" id="nx-comic-cfg-rescale" type="number" step="0.01" placeholder="기존"></div>
+        </div>
+        <div class="field-grid cols-3 comic-notes">
+          <label class="field"><span>작가의 프롬프트</span><textarea id="nx-comic-author-note" rows="10"></textarea></label>
+          <label class="field"><span>선행 프롬프트</span><textarea id="nx-comic-prompt-prefix" rows="10"></textarea></label>
+          <label class="field"><span>후행 프롬프트</span><textarea id="nx-comic-prompt-suffix" rows="10"></textarea></label>
+        </div>
+      </section>
+
+      <section class="pane" id="style_presets">
+        <div class="preset-page">
+          <div class="preset-top">
+            <div class="preset-search">
+              <input id="nx-preset-search" type="search" placeholder="이름, NAI5, positive, negative">
+              <div class="preset-load-btn">
+                <button type="button" id="nx-preset-from-image">이미지 프리셋 로드</button>
+                <button type="button" id="nx-preset-from-image-head" hidden></button>
+                <label class="in-filter">필터 <span class="sw"><input id="nx-preset-from-image-filter" type="checkbox"></span></label>
+              </div>
+            </div>
+            <div class="preset-current">
+              <b id="nx-preset-current">프리셋 1</b>
+              <div class="actions">
+                <button class="btn-ghost" type="button" id="nx-preset-second">2순위로 사용하기</button>
+                <button class="btn-ghost" type="button" id="nx-preset-new">새 프리셋</button>
+                <button class="btn-ghost" type="button" id="nx-preset-dup">복제</button>
+                <button class="btn-ghost" type="button" id="nx-preset-del">삭제</button>
+              </div>
+            </div>
+            <select id="nx-preset-select" hidden></select>
+          </div>
+          <div class="preset-mid">
+            <div class="preset-tiles" id="nx-preset-chips"></div>
+            <div class="preset-empty" id="nx-preset-empty">맞는 프리셋이 없습니다.</div>
+            <div class="look" id="nx-preset-look-thumb" hidden></div>
+          </div>
+          <div class="preset-dock">
+            <button class="dock-btn" type="button" id="nx-preset-look-act">참고컷 등록</button>
+            <button class="dock-btn" type="button" id="nx-preset-look-gen">참고컷 생성</button>
+            <button class="dock-btn" type="button" id="nx-preset-export">JSON 내보내기</button>
+            <button class="dock-btn" type="button" id="nx-preset-file">JSON 불러오기</button>
+            <button class="dock-btn" type="button" id="nx-preset-import">붙여넣기 가져오기</button>
+            <input id="nx-preset-look-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
+            <input id="nx-preset-file-input" type="file" accept=".json,application/json,text/plain" hidden>
+            <button class="dock-btn dock-up" type="button" id="nx-preset-edit-btn" aria-expanded="false" aria-controls="nx-preset-sheet">▲ 프리셋 수정</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane" id="characters">
+        <div class="preset-page">
+          <div class="preset-top">
+            <div class="preset-scope" id="nx-char-scope-slot" hidden>
+              <div class="seg" id="nx-char-scope-bar">
+                <button type="button" class="on" data-char-scope="session">현재 캐릭터 챗</button>
+                <button type="button" data-char-scope="global">전역 로스터</button>
+              </div>
+            </div>
+            <div class="preset-search">
+              <input type="search" id="nx-char-search" placeholder="이름 · 별칭 · 원작 · 외형 태그 검색" aria-label="캐릭터 검색">
+            </div>
+            <div id="nx-lorefilter-slot"></div>
+            <div class="preset-current">
+              <b id="nx-char-current">린</b>
+              <div class="actions">
+                <button class="btn-ghost" type="button" id="nx-char-to-global">전역 로스터로</button>
+                <button class="btn-ghost" type="button" id="nx-char-del-all">전체삭제</button>
+                <button class="btn-ghost" type="button" id="nx-char-add-session">새 캐릭터</button>
+                <button class="btn-ghost" type="button" id="nx-char-add-global" hidden>새 캐릭터</button>
+                <button class="btn-ghost" type="button" id="nx-char-dup">복제</button>
+                <button class="btn-ghost" type="button" id="nx-char-del">삭제</button>
+                <button type="button" id="nx-save-chars" hidden></button>
+                <button type="button" id="nx-save-global-chars" hidden></button>
+              </div>
+            </div>
+            <select id="nx-scope-char" hidden><option selected>린</option></select>
+            <select id="nx-scope-chat" hidden><option value="unified" selected>통합 챗</option></select>
+          </div>
+          <div class="preset-mid">
+            <div class="preset-tiles" id="nx-char-session-list"></div>
+            <div class="preset-tiles" id="nx-char-global-list" hidden></div>
+            <div class="preset-empty" id="nx-char-empty">캐릭터가 없습니다.</div>
+          </div>
+          <div class="preset-dock">
+            <button class="dock-btn" type="button" id="nx-char-look-act">참고컷 등록</button>
+            <button class="dock-btn" type="button" id="nx-char-look-gen">참고컷 생성</button>
+
+            <button class="dock-btn" type="button" id="nx-char-import-session">로어북에서</button><button class="dock-btn" type="button" id="nx-char-import-global">페르소나에서</button>
+            <button class="dock-btn" type="button" id="nx-export-session-chars">JSON 내보내기</button>
+            <button class="dock-btn" type="button" id="nx-export-global-chars" hidden>JSON 내보내기</button>
+            <button class="dock-btn" type="button" id="nx-import-session-chars">JSON 불러오기</button>
+            <button class="dock-btn" type="button" id="nx-import-global-chars" hidden>JSON 불러오기</button>
+            <input id="nx-import-session-chars-file" type="file" accept=".json,application/json,text/plain" hidden>
+            <input id="nx-import-global-chars-file" type="file" accept=".json,application/json,text/plain" hidden>
+            <input id="nx-char-look-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
+
+            <button type="button" id="nx-unify-rebuild" hidden></button>
+
+            <button type="button" id="nx-refresh-chars" hidden></button>
+            <button class="dock-btn dock-up" type="button" id="nx-char-edit-btn" aria-expanded="false" aria-controls="nx-char-sheet">▲ 캐릭터 수정</button>
+          </div>
+        </div>
+        <div class="char-rail">
+          <button type="button" id="nx-char-risu-open" aria-expanded="false" aria-controls="nx-risu-pick">‹</button>
+        </div>
+      </section>
+
+      <section class="pane" id="models">
+        <div class="dash-cols">
+        <div class="dash-left">
+        <div class="group">
+          <h3>그림 · NovelAI</h3>
+          <div class="stack">
+            <input type="hidden" id="nx-img-backend" value="nai">
+            <div class="seg" id="nx-img-backend-bar" style="margin:10px">
+              <button type="button" class="on" data-backend="nai">NovelAI</button>
+              <button type="button" data-backend="comfy">ComfyUI</button>
+            </div>
+            <div class="seg" id="nx-nai-family-bar" style="margin:10px">
+              <button type="button" data-nai-family="v5">NAI5</button>
+              <button type="button" class="on" data-nai-family="v4">NAI4</button>
+            </div>
+            <label class="block"><span>공급자 이름</span><input id="nx-nai-provider" value="Novel AI"></label>
+            <input type="hidden" id="nx-nai-model" value="nai-diffusion-4-5-full">
+            <div class="row" data-nx-nai-pane="v5"><span class="row-text"><b>NAI5 모델</b></span>
+              <select class="ctrl" id="nx-nai-model-v5"><option selected>nai-diffusion-5-full</option><option>nai-diffusion-5-curated</option></select>
+            </div>
+            <div class="row" data-nx-nai-pane="v4"><span class="row-text"><b>NAI4 모델</b></span>
+              <select class="ctrl" id="nx-nai-model-v4"><option selected>nai-diffusion-4-5-full</option><option>nai-diffusion-4-5-curated</option><option>nai-diffusion-4-full</option></select>
+            </div>
+            <label class="block" data-nx-nai-pane="v5"><span>NAI5 API 키</span><textarea id="nx-nai-keys-v5" rows="3" placeholder="한 줄에 키 하나. 비우면 기존 유지"></textarea>
+              <label class="row" style="border:0;padding:8px 0 0"><span class="row-text"><b>이 탭 키 모두 지우기</b></span><span class="sw"><input id="nx-nai-keys-v5-clear" type="checkbox"></span></label>
+            </label>
+            <label class="block" data-nx-nai-pane="v4"><span>NAI4 API 키</span><textarea id="nx-nai-keys-v4" rows="3" placeholder="한 줄에 키 하나. 비우면 기존 유지"></textarea>
+              <label class="row" style="border:0;padding:8px 0 0"><span class="row-text"><b>이 탭 키 모두 지우기</b></span><span class="sw"><input id="nx-nai-keys-v4-clear" type="checkbox"></span></label>
+            </label>
+            <input id="nx-nai-key" type="password" hidden style="display:none">
+            <label class="block"><span>요청 URL</span><input id="nx-nai-url" type="url" value="https://image.novelai.net/ai/generate-image"></label>
+            <div class="field-grid cols-3">
+              <label class="field"><span>Width</span><input id="nx-nai-w" type="number" value="832"></label>
+              <label class="field"><span>Height</span><input id="nx-nai-h" type="number" value="1216"></label>
+              <div class="field">
+                <span>Steps</span>
+                <input data-nx-nai-pane="v5" id="nx-nai-steps-v5" type="number" value="28">
+                <input data-nx-nai-pane="v4" id="nx-nai-steps-v4" type="number" value="28">
+              </div>
+            </div>
+            <div class="field-grid cols-2">
+              <div class="field">
+                <span>Sampler</span>
+                <select data-nx-nai-pane="v5" id="nx-nai-sampler-v5"><option value="k_euler_ancestral" selected>Euler Ancestral</option><option value="k_euler">Euler</option></select>
+                <select data-nx-nai-pane="v4" id="nx-nai-sampler-v4"><option value="k_euler_ancestral" selected>Euler Ancestral</option></select>
+              </div>
+              <label class="field"><span>Noise Schedule</span>
+                <select id="nx-nai-sched"><option>karras</option><option>native</option></select>
+              </label>
+            </div>
+            <div class="field-grid cols-2">
+              <label class="field"><span>CFG scale</span><input id="nx-nai-cfg" type="number" step="0.1" value="7"></label>
+              <label class="field"><span>CFG rescale</span><input id="nx-nai-rescale" type="number" step="0.01" value="0.36"></label>
+            </div>
+            <div class="field-grid cols-2">
+              <label class="field-sw"><span>Variety+</span><span class="sw"><input id="nx-nai-var" type="checkbox"></span></label>
+              <label class="field-sw"><span>Quality Tags</span><span class="sw"><input id="nx-nai-quality" type="checkbox" checked></span></label>
+              <label class="field-sw"><span>SDXL식 강조</span><span class="sw"><input id="nx-nai-sdxl" type="checkbox"></span></label>
+            </div>
+            <input type="hidden" id="nx-nai-sampler" value="k_euler_ancestral">
+            <input type="hidden" id="nx-nai-steps" value="28">
+            <input type="hidden" id="nx-nai-i2i" style="display:none">
+            <div class="fold" id="nx-nai-ref-fold" data-vibe="off">
+              <div class="fold-bar">
+                <button class="fold-head" type="button" id="nx-nai-ref-fold-btn" aria-expanded="false" aria-controls="nx-nai-ref-fold-body">
+                  <span class="chev" aria-hidden="true">▾</span>
+                  <span class="row-text"><b>참고 이미지 / Vibe</b><small id="nx-nai-ref-fold-hint">접힘 · vibe 끔</small></span>
+                </button>
+                <label class="field-sw" title="vibe 쓰기"><span>Vibe</span><span class="sw"><input id="nx-nai-vibe-on" type="checkbox"></span></label>
+              </div>
+              <div class="fold-body" id="nx-nai-ref-fold-body">
+                <div class="field-grid cols-2">
+                  <label class="field"><span>Reference Strength</span><input id="nx-nai-ref-strength" type="number" step="0.05" value="0.6"></label>
+                  <label class="field"><span>Reference Fidelity</span><input id="nx-nai-ref-fidelity" type="number" step="0.05" value="1"></label>
+                </div>
+                <div class="row"><span class="row-text"><b>Reference Type</b></span>
+                  <select class="ctrl" id="nx-nai-ref-type"><option value="character&style" selected>Character & Style</option><option value="character">Character</option><option value="style">Style</option></select>
+                </div>
+                <div class="actions">
+                  <button class="btn-ghost" type="button" id="nx-nai-ref-pick">이미지 불러오기</button>
+                  <button class="btn-ghost" type="button" id="nx-nai-ref-clear">제거</button>
+                  <span id="nx-nai-ref-status">없음</span>
+                  <input id="nx-nai-ref-file" type="file" accept="image/*" hidden>
+                  <input id="nx-nai-ref" type="hidden" value="none">
+                </div>
+                <div class="look" id="nx-nai-ref-preview" style="margin:8px 12px"></div>
+                <div class="field-grid cols-2" data-vibe-only>
+                  <label class="field"><span>Vibe Strength</span><input id="nx-nai-vibe-strength" type="number" step="0.05" value="0.6"></label>
+                  <label class="field"><span>Vibe IE</span><input id="nx-nai-vibe-ie" type="number" step="0.05" value="1"></label>
+                </div>
+                <div class="actions" data-vibe-only>
+                  <button class="btn-ghost" type="button" id="nx-nai-vibe-pick">이미지 불러오기</button>
+                  <button class="btn-ghost" type="button" id="nx-nai-vibe-clear">제거</button>
+                  <span id="nx-nai-vibe-status">없음</span>
+                  <input id="nx-nai-vibe-file" type="file" accept="image/*" hidden>
+                  <input id="nx-nai-vibe" type="hidden" value="none">
+                </div>
+                <div class="look" id="nx-nai-vibe-preview" data-vibe-only style="margin:8px 12px"></div>
+              </div>
+            </div>
+            <label class="block" data-nx-backend-pane="comfy"><span>ComfyUI URL</span><input id="nx-comfy-url" type="url" value="http://localhost:8188"></label>
+            <label class="block" data-nx-backend-pane="comfy"><span>Comfy workflow</span><textarea id="nx-comfy-workflow" rows="4"></textarea></label>
+            <div class="actions" data-nx-backend-pane="comfy">
+              <button class="btn-ghost" type="button" id="nx-comfy-wf-pick">JSON 파일 불러오기</button>
+              <input id="nx-comfy-wf-file" type="file" accept="application/json,.json" hidden>
+            </div>
+            <div class="row" data-nx-backend-pane="comfy"><span class="row-text"><b>Timeout (sec)</b></span><input class="ctrl" id="nx-backend-timeout" type="number" value="300"></div>
+            <div class="actions">
+              <button class="btn" type="button" id="nx-test-nai">연결 테스트</button>
+            </div>
+            <div class="block" id="nx-test-result-nai">아직 테스트하지 않았습니다.</div>
+          </div>
+        </div>
+        </div>
+        <div class="dash-right">
+        <div class="group">
+          <h3>태그 LLM</h3>
+          <div class="stack">
+            <div class="seg" style="margin:10px" id="nx-llm-role-tabs">
+              <button type="button" class="on" data-llm-role="main">메인 태깅</button>
+              <button type="button" data-llm-role="autotag">오토태그</button>
+              <button type="button" data-llm-role="asset_char">에셋</button>
+              <button type="button" data-llm-role="comic">만화생성</button>
+              <button type="button" data-llm-role="curator">FISHTTS</button>
+            </div>
+            <div class="row"><span class="row-text"><b>소스</b></span>
+              <select class="ctrl" id="nx-llm-source"><option value="custom" selected>직접 입력</option><option value="main">Risu 메인</option><option value="aux">Risu 보조</option></select>
+            </div>
+            <div class="row"><span class="row-text"><b>Provider</b></span>
+              <select class="ctrl" id="nx-llm-provider"><option value="openai">OpenAI</option><option value="openrouter" selected>OpenRouter</option></select>
+            </div>
+            <label class="block"><span>Model</span><input id="nx-llm-model" value="openai/gpt-oss-20b:nitro"></label>
+            <label class="block"><span>Endpoint</span><input id="nx-llm-endpoint" type="url" value="https://openrouter.ai/api/v1/chat/completions"></label>
+            <label class="block"><span>API key</span><input id="nx-llm-key" type="password"></label>
+            <label class="block"><span>Service Account JSON</span><textarea id="nx-llm-service-account" rows="3"></textarea></label>
+            <label class="row"><span class="row-text"><b>SA 지우기</b></span><span class="sw"><input id="nx-llm-clear-sa" type="checkbox"></span></label>
+            <label class="block"><span>Vertex region</span><input id="nx-llm-vertex-region" value="us-central1"></label>
+            <label class="block"><span>Anthropic version</span><input id="nx-llm-anthropic-version" value="2023-06-01"></label>
+            <div class="row"><span class="row-text"><b>Temperature</b></span><input class="ctrl" id="nx-llm-temp" type="number" step="0.1" value="0.4"></div>
+            <div class="row"><span class="row-text"><b>Max tokens</b></span><input class="ctrl" id="nx-llm-max" type="number" value="8000"></div>
+            <div class="row"><span class="row-text"><b>Reasoning</b></span>
+              <select class="ctrl" id="nx-llm-reasoning"><option value="default" selected>기본값</option><option value="none">none</option><option value="low">low</option><option value="high">high</option></select>
+            </div>
+            <div class="actions"><button class="btn" type="button" id="nx-test-llm">연결 테스트</button></div>
+            <div class="block" id="nx-test-result-llm">아직 테스트하지 않았습니다.</div>
+          </div>
+        </div>
+        </div>
+        </div>
+      </section>
+
+      <section class="pane" id="tts">
+        <div class="stack">
+          <div class="block">곧 음성 읽기 설정을 여기 둡니다.</div>
+        </div>
+      </section>
+
+      <section class="pane" id="prompts">
+        <div class="actions" style="padding-left:0">
+          <button class="btn-ghost" type="button" id="nx-prompts-reset-defaults">기본값</button>
+          <button class="btn-ghost" type="button" id="nx-prompts-export">보내기</button>
+          <button class="btn-ghost" type="button" id="nx-prompts-import">가져오기</button>
+        </div>
+        <div class="stack">
+          <label class="block"><span>author_note</span><textarea id="nx-prompt-author_note"></textarea></label>
+          <label class="block"><span>asset_author_note</span><textarea id="nx-prompt-asset_author_note"></textarea></label>
+          <label class="block"><span>global_author_note</span><textarea id="nx-prompt-global_author_note"></textarea></label>
+          <label class="block"><span>tagger</span><textarea id="nx-prompt-tagger"></textarea></label>
+          <label class="block"><span>format</span><textarea id="nx-prompt-format"></textarea></label>
+          <label class="block"><span>prefill</span><textarea id="nx-prompt-prefill"></textarea></label>
+          <label class="block"><span>prefill_user</span><textarea id="nx-prompt-prefill_user"></textarea></label>
+          <label class="block"><span>jailbreak</span><textarea id="nx-prompt-jailbreak"></textarea></label>
+          <label class="block"><span>preprocess</span><textarea id="nx-prompt-preprocess"></textarea></label>
+          <label class="block"><span>preset_1</span><textarea id="nx-prompt-preset_1"></textarea></label>
+          <label class="block"><span>lore_inject</span><textarea id="nx-prompt-lore_inject"></textarea></label>
+          <label class="block"><span>char_inject</span><textarea id="nx-prompt-char_inject"></textarea></label>
+          <label class="block"><span>appearance_inject</span><textarea id="nx-prompt-appearance_inject"></textarea></label>
+          <label class="block"><span>asset_tags_inject</span><textarea id="nx-prompt-asset_tags_inject"></textarea></label>
+          <label class="block"><span>char_looks</span><textarea id="nx-prompt-char_looks"></textarea></label>
+          <label class="block"><span>autotag</span><textarea id="nx-prompt-autotag"></textarea></label>
+          <label class="block"><span>command_reroll</span><textarea id="nx-prompt-command_reroll"></textarea></label>
+          <label class="block"><span>command_char_edit</span><textarea id="nx-prompt-command_char_edit"></textarea></label>
+          <label class="block"><span>lorefilter_scan</span><textarea id="nx-prompt-lorefilter_scan"></textarea></label>
+          <label class="block"><span>comic</span><textarea id="nx-prompt-comic"></textarea></label>
+        </div>
+      </section>
+
+      <section class="pane" id="explorer">
+        <div class="ex-page">
+          <div class="ex-top">
+            <div class="ex-filters">
+              <label class="field"><span>검색</span><input id="nx-explorer-q" type="text" placeholder="캐릭터/채팅"></label>
+              <label class="field"><span>정렬</span>
+                <select id="nx-explorer-sort"><option>최신</option><option>오래된</option></select>
+              </label>
+              <label class="field"><span>썸네일</span>
+                <select id="nx-explorer-thumb"><option>보통</option><option>크게</option></select>
+              </label>
+            </div>
+            <div class="actions" id="nx-explorer-selbar">
+              <button class="btn-ghost" type="button" id="nx-explorer-mobile-select">선택모드</button>
+              <button class="btn-ghost" type="button" id="nx-explorer-export-sel">선택ZIP</button>
+              <button class="btn-ghost" type="button" id="nx-explorer-save-one">저장</button>
+              <button class="btn-ghost" type="button" id="nx-explorer-favonly">☆</button>
+              <button class="btn-ghost" type="button" id="nx-explorer-delete-sel">삭제</button>
+              <button class="btn-ghost" type="button" id="nx-explorer-select-all">전체선택</button>
+              <button class="btn-ghost" type="button" id="nx-explorer-clear-sel">선택해제</button>
+            </div>
+          </div>
+          <div class="ex-mid">
+            <div class="ex" id="nx-explorer-grid"></div>
+          </div>
+        </div>
+        <div class="char-rail">
+          <button type="button" id="nx-ex-open" aria-expanded="false" aria-controls="nx-ex-pick">‹</button>
+        </div>
+        <div id="nx-explorer-folders" hidden></div>
+        <button type="button" id="nx-explorer-folders-toggle" hidden></button>
+      </section>
+
+      <section class="pane" id="changelog">
+        <div class="stack">
+          <div class="block"><b>선택해도 겹침을 안 붙임</b><p class="lead" style="margin:6px 0 0">태그/생성 중에만 스피너, 끝나면 박제.</p></div>
+          <div class="block"><b>말 끝 단추</b><p class="lead" style="margin:6px 0 0">누르는 느낌의 보라 단추.</p></div>
+        </div>
+      </section>
+
+      <section class="pane" id="debug">
+        <div class="seg" id="nx-debug-bar" style="margin-bottom:10px">
+          <button type="button" class="on" data-debug-panel="quota">할당량</button>
+          <button type="button" data-debug-panel="log">로그</button>
+          <button type="button" data-debug-panel="scroll">스크롤</button>
+          <button type="button" data-debug-panel="tagging">태깅</button>
+        </div>
+        <div data-debug-pane="quota">
+          <div class="row" style="border:0;padding:0 0 12px">
+            <span class="row-text"><b>NovelAI 할당량</b><small>구독 Anlas · Opus · V5</small></span>
+            <button class="btn-ghost" type="button" id="nx-nai-quota-refresh">새로고침</button>
+          </div>
+          <div id="nx-nai-quota-root" class="grid2">
+            <div class="stack">
+              <div class="block"><b>V5</b><small style="color:var(--muted)">…ab12 · Opus</small><div style="margin-top:8px;font-size:28px;font-weight:800">1240</div><small style="color:var(--muted)">Anlas</small></div>
+            </div>
+            <div class="stack">
+              <div class="block"><b>V4</b><small style="color:var(--muted)">…9c3e</small><div style="margin-top:8px;font-size:28px;font-weight:800">860</div><small style="color:var(--muted)">Anlas</small></div>
+            </div>
+          </div>
+        </div>
+        <div data-debug-pane="log" hidden>
+          <div class="actions" style="padding-left:0">
+            <button class="btn-ghost" type="button" id="nx-debug-refresh">새로고침</button>
+            <button class="btn-ghost" type="button" id="nx-debug-clear">로그 비우기</button>
+            <button class="btn-ghost" type="button" id="nx-debug-copy">로그 복사</button>
+            <button class="btn-ghost" type="button" id="nx-debug-ping">핑 로그</button>
+          </div>
+          <pre id="nx-debug-status" style="margin:0 0 12px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font:12px/1.45 Consolas,monospace;min-height:80px">runtime ready</pre>
+          <pre id="nx-debug-log" style="margin:0;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font:12px/1.45 Consolas,monospace;min-height:200px">ready</pre>
+        </div>
+        <div data-debug-pane="scroll" hidden>
+          <div class="stack">
+            <div class="block"><b>스크롤 파이프라인</b><p class="lead" style="margin:6px 0 0">채팅을 움직이면 여기만 모입니다. 지금은 초안이라 샘플만 둡니다.</p></div>
+          </div>
+        </div>
+        <div data-debug-pane="tagging" hidden>
+          <div class="actions" style="padding-left:0">
+            <button class="btn-ghost" type="button" id="nx-debug-asset-tags">선택 DOM → 로어/에셋 체크</button>
+            <button class="btn-ghost" type="button" id="nx-debug-asset-tags-copy">리포트 복사</button>
+          </div>
+          <pre id="nx-debug-asset-tags-out" style="margin:0;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font:12px/1.45 Consolas,monospace;min-height:200px">(아직 실행 안 함)</pre>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="preset-sheet-bg" id="nx-preset-sheet-bg"></div>
+  <div class="preset-sheet" id="nx-preset-sheet" aria-hidden="true">
+    <button class="dock-btn dock-up" type="button" id="nx-preset-sheet-close" style="border-radius:16px 16px 0 0">프리셋 수정 ▼</button>
+    <div class="preset-sheet-scroll">
+      <div id="nx-preset-edit-body">
+        <label class="block"><span>프리셋 이름</span><input id="nx-preset-name" type="text" value="기본"></label>
+        <label class="block"><span>Positive</span><textarea id="nx-custom-pos">best quality, amazing quality</textarea></label>
+        <label class="block"><span>Negative</span><textarea id="nx-custom-neg">lowres, worst quality</textarea></label>
+        <div class="field-grid cols-3">
+          <label class="field"><span>CFG scale</span><input id="nx-preset-cfg" type="number" step="0.1" placeholder="NAI 기본"></label>
+          <label class="field"><span>CFG rescale</span><input id="nx-preset-rescale" type="number" step="0.01" placeholder="NAI 기본"></label>
+          <label class="field"><span>Steps</span><input id="nx-preset-steps" type="number" min="1" max="28" placeholder="NAI 기본"></label>
+          <label class="field"><span>샘플러</span>
+            <select id="nx-preset-sampler"><option value="">NAI 기본</option><option value="k_euler_ancestral">Euler Ancestral</option></select>
+          </label>
+          <label class="field"><span>스케줄</span>
+            <select id="nx-preset-sched"><option value="">NAI 기본</option><option>karras</option><option>native</option></select>
+          </label>
+          <label class="field"><span>이 프리셋 모델</span>
+            <select id="nx-preset-family"><option value="v4" selected>NAI4 / 4.5</option><option value="v5">NAI5</option></select>
+          </label>
+        </div>
+        <div class="vibe-row">
+          <div>
+            <b style="display:block;margin-bottom:8px">Vibe Transfer</b>
+            <button class="btn-ghost" type="button" id="nx-preset-vibe-clear">제거</button>
+            <span class="lead" id="nx-preset-vibe-status" style="margin:0 0 0 8px">없음</span>
+            <button type="button" id="nx-preset-vibe-pick" hidden></button>
+          </div>
+          <div class="look" id="nx-preset-vibe-preview" title="이미지 불러오기"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="preset-sheet-bg" id="nx-char-sheet-bg"></div>
+  <div class="preset-sheet" id="nx-char-sheet" aria-hidden="true">
+    <button class="dock-btn dock-up" type="button" id="nx-char-sheet-close" style="border-radius:16px 16px 0 0"><span id="nx-char-edit-title">린</span> <span class="warn" id="nx-char-edit-empty">· 외형 없음</span> <span aria-hidden="true">▼</span></button>
+    <div class="preset-sheet-scroll">
+      <div id="nx-char-edit-body">
+        <div class="char-edit-head">
+          <label class="prio">우선 <input data-char-priority type="number" value="0"></label>
+          <button class="btn-ghost" type="button" id="nx-char-from-asset">에셋에서</button><button class="btn-ghost" type="button" data-char-autotag>오토태그</button>
+          <button class="btn-ghost" type="button" data-char-command>명령수정</button>
+          <button class="btn-ghost" type="button" data-char-delete>삭제</button>
+        </div>
+        <div class="field-grid cols-3" style="padding:10px 12px">
+          <label class="field"><span>이름</span><input id="nx-char-edit-name" data-char-name type="text" value="린"></label>
+          <label class="field"><span>원본</span><input data-char-original type="text" placeholder="(원작 캐릭터 태그)"></label>
+          <label class="field"><span>성별</span>
+            <select id="nx-char-edit-gender" data-char-gender>
+              <option value="">미정</option>
+              <option value="girl" selected>girl</option>
+              <option value="boy">boy</option>
+              <option value="other">other</option>
+            </select>
+          </label>
+        </div>
+        <div class="char-name-grid">
+          <span class="lab">성</span>
+          <input data-char-surname type="text" placeholder="한">
+          <input data-char-surname-variants type="text" placeholder="Han, HAN">
+          <span class="lab">이름</span>
+          <input data-char-given type="text" placeholder="진우">
+          <input data-char-given-variants type="text" placeholder="Jinwoo">
+        </div>
+        <label class="block"><span>트리거/별칭</span><input id="nx-char-edit-aliases" data-char-aliases type="text" placeholder="한진우, HAN JINWOO, 진우" value="rin"></label>
+        <div class="char-costume">
+          <input data-char-costume-name type="text" placeholder="이름 수정" value="default">
+          <div class="char-costume-pick">
+            <span>▾</span>
+            <select data-char-costume title="코스튬 선택">
+              <option value="__add__">＋ 코스튬 추가</option>
+              <option value="0" selected>default</option>
+            </select>
+          </div>
+          <input data-char-costume-note type="text" placeholder="언제 쓸지 · 예: 수영장">
+          <button class="btn-ghost" type="button" data-char-costume-delete>삭제</button>
+          <button class="btn-ghost" type="button" data-char-costume-slot-save>저장</button>
+          <button class="btn-ghost" type="button" data-char-costume-default>현재외형을Default로</button>
+        </div>
+        <label class="block"><span>외형 태그 (옷·무기 제외) <button class="btn-ghost" type="button" data-ce-clear-looks style="min-height:28px;padding:2px 8px;margin-left:8px">✕</button></span>
+          <textarea id="nx-char-edit-appearance" data-char-appearance rows="2"></textarea>
+        </label>
+        <div class="char-looks-row">
+          <label class="field"><span>머리</span><input id="nx-char-edit-hair" data-char-hair-color type="text" placeholder="black hair"></label>
+          <label class="field"><span>스타일</span><input data-char-hair-style type="text" placeholder="short hair, bangs…"></label>
+          <label class="field"><span>눈</span><input id="nx-char-edit-eye" data-char-eye-color type="text" placeholder="amber eyes"></label>
+          <label class="field"><span>키</span><input data-char-height type="text" placeholder="170"></label>
+          <label class="field"><span>나이</span><input data-char-age type="number" min="1" max="120" placeholder="24"></label>
+          <label class="field"><span>자지</span>
+            <select data-char-penis-size>
+              <option value="" selected>없음</option>
+              <option value="small penis">small penis</option>
+              <option value="penis">penis</option>
+              <option value="huge penis">huge penis</option>
+              <option value="gigantic penis">gigantic penis</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="char-wear-grid">
+          <div>
+            <div class="char-wear-head"><span>상의</span><label class="lock-sw">고정 <span class="sw"><input data-char-attire-locked type="checkbox" checked></span></label></div>
+            <textarea id="nx-char-edit-attire" data-char-attire rows="2" placeholder="shirt, jacket">school uniform</textarea>
+          </div>
+          <div>
+            <div class="char-wear-head"><span>하의</span><label class="lock-sw">고정 <span class="sw"><input data-char-bottoms-locked type="checkbox" checked></span></label></div>
+            <textarea id="nx-char-edit-bottoms" data-char-bottoms rows="2" placeholder="skirt, pants"></textarea>
+          </div>
+          <div>
+            <div class="char-wear-head"><span>무기·기타</span><label class="lock-sw">고정 <span class="sw"><input data-char-accessories-locked type="checkbox" checked></span></label></div>
+            <textarea id="nx-char-edit-accessories" data-char-accessories rows="2"></textarea>
+          </div>
+        </div>
+        <div class="char-ref-row">
+          <button class="btn-ghost" type="button" data-char-ref>Vibe Transfer 이미지</button>
+          <button class="btn-ghost" type="button" data-char-ref-clear>제거</button>
+          <button class="btn-ghost" type="button" data-char-ex-vibe>예제샷 vibe레퍼로</button>
+          <button class="btn-ghost" type="button" data-char-ref-gen>생성</button>
+          <div class="look" data-char-ref-preview title="Vibe Transfer"></div>
+          <span class="lead" data-char-ref-status style="margin:0">없음</span>
+          <button type="button" data-char-ref-refresh hidden></button>
+          <div data-char-ex-preview hidden></div>
+          <button type="button" data-char-ex-upload hidden></button>
+          <button type="button" data-char-ex-clear hidden></button>
+          <button type="button" data-char-ex-gen hidden></button>
+        </div>
+        <div class="block muted" data-autotag-status>오토태그: 버튼 클릭=대상 선택 · 더블클릭=파일 · 글상자에 그림 붙여넣기</div>
+      </div>
+    </div>
+  </div>
+  <div class="risu-pick-bg" id="nx-risu-pick-bg"></div>
+  <div class="risu-pick" id="nx-risu-pick" aria-hidden="true">
+    <div class="risu-pick-head">
+      <b id="nx-risu-current">현재 Risu 캐릭터</b>
+      <button class="icon-btn" type="button" id="nx-risu-pick-close">›</button>
+    </div>
+    <div class="risu-pick-tiles" id="nx-risu-pick-tiles"></div>
+  </div>
+  <div class="risu-pick-bg" id="nx-ex-pick-bg"></div>
+  <div class="risu-pick" id="nx-ex-pick" aria-hidden="true">
+    <div class="risu-pick-head">
+      <button class="dock-btn" type="button" id="nx-explorer-export-all">전체 ZIP</button>
+      <button class="dock-btn" type="button" id="nx-explorer-import">ZIP 불러오기</button>
+      <input id="nx-explorer-import-file" type="file" accept=".zip,application/zip" hidden>
+      <button class="icon-btn" type="button" id="nx-ex-pick-close">›</button>
+    </div>
+    <div class="ex-pick-actions">
+      <button class="dock-btn" type="button" id="nx-explorer-refresh">새로고침</button>
+      <button class="dock-btn" type="button" id="nx-explorer-delete-folder">폴더 삭제</button>
+      <button class="dock-btn" type="button" id="nx-explorer-export-folder">폴더 ZIP</button>
+    </div>
+    <div class="ex-pick-body">
+      <div class="risu-pick-tiles" id="nx-ex-pick-tiles"></div>
+      <div class="ex-pick-resize" id="nx-ex-resize" role="separator" aria-orientation="horizontal" aria-label="칸 높이"></div>
+      <div class="ex-pick-split">
+        <button class="dock-btn" type="button" id="nx-ex-view-all" disabled>이 캐릭터 전체보기</button>
+        <div class="ex-pick-hint" id="nx-ex-all-hint">타일에서 캐릭터를 고르세요.</div>
+        <div id="nx-ex-chats"></div>
+      </div>
+    </div>
+  </div>
+  <div class="pop-bg" id="nx-preset-import-bg"></div>
+  <div class="pop" id="nx-preset-import-pop" role="dialog" aria-labelledby="nx-preset-import-title" aria-modal="true">
+    <h3 id="nx-preset-import-title">붙여넣기 가져오기</h3>
+    <label class="block" style="border:0;padding:0">
+      <span>card.json 또는 프리셋 JSON 붙여넣기</span>
+      <textarea id="nx-preset-import-text" placeholder='{"presets":[...]}'></textarea>
+    </label>
+    <div class="pop-actions">
+      <button class="btn-ghost" type="button" id="nx-preset-import-cancel">취소</button>
+      <button class="btn" type="button" id="nx-preset-import-ok">불러오기</button>
+    </div>
+  </div>
+
+  <script>
+    const nav = document.getElementById("nav");
+    const live = document.getElementById("live");
+    function openTab(id) {
+      document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === id));
+      const tabBtn = nav.querySelector(`[data-tab="${id}"]`);
+      nav.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-current", b.dataset.tab === id ? "page" : "false"));
+      const line = document.getElementById("nx-version-line");
+      if (line && tabBtn) line.textContent = tabBtn.dataset.title || "";
+      document.body.classList.remove("nav-open");
+      document.querySelector(".main").scrollTop = 0;
+      document.getElementById("nx-preset-sheet")?.classList.remove("open");
+      document.getElementById("nx-preset-sheet-bg")?.classList.remove("on");
+      document.getElementById("nx-preset-import-pop")?.classList.remove("on");
+      document.getElementById("nx-preset-import-bg")?.classList.remove("on");
+      document.getElementById("nx-char-sheet")?.classList.remove("open");
+      document.getElementById("nx-char-sheet-bg")?.classList.remove("on");
+      document.getElementById("nx-risu-pick")?.classList.remove("open");
+      document.getElementById("nx-risu-pick-bg")?.classList.remove("on");
+      document.getElementById("nx-ex-pick")?.classList.remove("open");
+      document.getElementById("nx-ex-pick-bg")?.classList.remove("on");
+      const exOpen = document.getElementById("nx-ex-open");
+      if (exOpen) {
+        exOpen.setAttribute("aria-expanded", "false");
+        exOpen.textContent = "‹";
+      }
+      const charEdit = document.getElementById("nx-char-edit-btn");
+      if (charEdit) {
+        charEdit.setAttribute("aria-expanded", "false");
+        charEdit.textContent = "▲ 캐릭터 수정";
+      }
+      const editBtn = document.getElementById("nx-preset-edit-btn");
+      if (editBtn) {
+        editBtn.setAttribute("aria-expanded", "false");
+        editBtn.textContent = "▲ 프리셋 수정";
+      }
+    }
+    nav.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-tab]");
+      if (b) openTab(b.dataset.tab);
+    });
+    document.getElementById("menuBtn").onclick = () => document.body.classList.add("nav-open");
+    document.getElementById("drawerBg").onclick = () => document.body.classList.remove("nav-open");
+    const HELP_OFF = { title: "도움말", body: "설정에 마우스를 올리면 설명이 여기에 나타납니다." };
+    function setHeadHelp(tip) {
+      const box = document.getElementById("nx-head-help");
+      const t = document.getElementById("nx-head-help-title");
+      const b = document.getElementById("nx-head-help-body");
+      const r = tip && tip.title ? tip : HELP_OFF;
+      t.textContent = r.title;
+      b.textContent = r.body;
+      box.classList.toggle("is-active", !!(tip && tip.title && tip !== HELP_OFF));
+    }
+    document.getElementById("nx-help-toggle").onclick = () => {
+      const on = !document.body.classList.contains("help-on");
+      document.body.classList.toggle("help-on", on);
+      document.getElementById("nx-help-toggle").setAttribute("aria-pressed", on ? "true" : "false");
+      if (!on) {
+        document.querySelectorAll(".is-help-active").forEach((n) => n.classList.remove("is-help-active"));
+        setHeadHelp(null);
+      }
+    };
+    document.addEventListener("change", () => {
+      live.textContent = "저장됨";
+      setTimeout(() => { live.textContent = "바로 저장됨"; }, 900);
+    });
+    (function () {
+      const tiles = document.getElementById("nx-preset-chips");
+      const search = document.getElementById("nx-preset-search");
+      const empty = document.getElementById("nx-preset-empty");
+      const current = document.getElementById("nx-preset-current");
+      const sheetClose = document.getElementById("nx-preset-sheet-close");
+      const sel = document.getElementById("nx-preset-select");
+      const name = document.getElementById("nx-preset-name");
+      const pos = document.getElementById("nx-custom-pos");
+      const neg = document.getElementById("nx-custom-neg");
+      const fam = document.getElementById("nx-preset-family");
+      const sheet = document.getElementById("nx-preset-sheet");
+      const bg = document.getElementById("nx-preset-sheet-bg");
+      const editBtn = document.getElementById("nx-preset-edit-btn");
+      const samples = [
+        ["프리셋 1", "nai4", "best quality, amazing quality", "lowres, worst quality"],
+        ["프리셋 2", "nai5", "soft light, cinematic", "lowres"],
+        ["프리셋 3", "nai4", "smooth skin", "worst quality"],
+        ["프리셋 2-1", "nai5", "1girl, looking at viewer", "bad anatomy"],
+        ["프리셋 말랑", "nai4", "soft, pastel", "lowres"],
+        ["프리셋 깔", "nai5", "vivid colors", "worst quality"],
+        ["프리셋 쫀", "nai4", "detailed", "blurry"],
+        ["프리셋 리얼", "nai5", "photorealistic, nai5", "cartoon"],
+        ["비 오는 밤", "nai5", "rain, neon, night street", "daylight"],
+        ["교복", "nai4", "school uniform, indoor", "nude"],
+        ["수묵", "nai4", "ink wash, limited palette", "photo"],
+        ["필름", "nai5", "film grain, analog", "digital noise"],
+        ["호러", "nai5", "horror, dim lighting", "bright smile"],
+        ["로파이", "nai4", "lofi, cozy room", "sharp"],
+        ["고딕", "nai5", "gothic, cathedral", "modern"],
+        ["여름", "nai4", "summer, sunlight, sweat", "winter"],
+        ["겨울", "nai5", "winter coat, snow", "beach"],
+        ["카페", "nai4", "cafe, window light", "outdoor"],
+        ["무대", "nai5", "stage, spotlight", "classroom"],
+        ["수채", "nai4", "watercolor, bleeding edges", "hard line"],
+        ["애니메", "nai5", "anime screencap", "realistic"],
+        ["실사", "nai4", "photorealistic skin", "anime"],
+        ["네온", "nai5", "neon lights, cyberpunk", "pastel"],
+        ["숲", "nai4", "forest, moss, dappled light", "city"],
+        ["바다", "nai5", "ocean, horizon", "desert"],
+        ["도서관", "nai4", "library, books, quiet", "crowd"],
+        ["옥상", "nai5", "rooftop, cityscape", "basement"],
+        ["비오는 교실", "nai4", "classroom, rain on window", "festival"]
+      ];
+      tiles.innerHTML = "";
+      sel.innerHTML = "";
+      samples.forEach((row, i) => {
+        const [nm, family, p, n] = row;
+        const id = "preset_ex_" + i;
+        const t = document.createElement("button");
+        t.type = "button";
+        t.className = "preset-tile" + (i === 0 ? " on" : i === 1 ? " second" : "");
+        t.dataset.presetSelect = id;
+        t.dataset.name = nm;
+        t.dataset.family = family;
+        t.dataset.pos = p;
+        t.dataset.neg = n;
+        t.innerHTML = "<div class=\"look\"></div><b></b><small></small>";
+        t.querySelector("b").textContent = nm;
+        t.querySelector("small").textContent = family === "nai5" ? "NAI5" : "NAI4";
+        tiles.appendChild(t);
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = nm;
+        if (i === 0) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      function hay(el) {
+        return [el.dataset.name, el.dataset.family, el.dataset.pos, el.dataset.neg].join(" ").toLowerCase();
+      }
+      function filterTiles() {
+        const q = (search.value || "").trim().toLowerCase();
+        let n = 0;
+        tiles.querySelectorAll(".preset-tile").forEach((t) => {
+          const show = !q || hay(t).includes(q);
+          t.classList.toggle("hidden", !show);
+          if (show) n += 1;
+        });
+        empty.classList.toggle("show", n === 0);
+      }
+      function pick(tile) {
+        tiles.querySelectorAll(".preset-tile").forEach((t) => t.classList.toggle("on", t === tile));
+        current.textContent = tile.dataset.name || "프리셋";
+        if (sheetClose) sheetClose.textContent = (tile.dataset.name || "프리셋") + " 수정 ▼";
+        sel.value = tile.dataset.presetSelect;
+        name.value = tile.dataset.name || "";
+        pos.value = tile.dataset.pos || "";
+        neg.value = tile.dataset.neg || "";
+        fam.value = tile.dataset.family === "nai5" ? "v5" : "v4";
+      }
+      function setSheet(open) {
+        sheet.classList.toggle("open", open);
+        bg.classList.toggle("on", open);
+        sheet.setAttribute("aria-hidden", open ? "false" : "true");
+        editBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        editBtn.textContent = open ? "▼ 프리셋 수정" : "▲ 프리셋 수정";
+      }
+      tiles.addEventListener("click", (e) => {
+        const t = e.target.closest(".preset-tile");
+        if (!t) return;
+        if (t.classList.contains("on")) setSheet(true);
+        else pick(t);
+      });
+      search.addEventListener("input", filterTiles);
+      document.getElementById("nx-preset-second")?.addEventListener("click", () => {
+        const on = tiles.querySelector(".preset-tile.on");
+        if (!on) return;
+        tiles.querySelectorAll(".preset-tile").forEach((t) => t.classList.toggle("second", t === on));
+      });
+      editBtn.addEventListener("click", () => setSheet(!sheet.classList.contains("open")));
+      sheetClose.onclick = () => setSheet(false);
+      bg.onclick = () => setSheet(false);
+      document.getElementById("nx-preset-vibe-preview").onclick = () => {
+        document.getElementById("nx-preset-vibe-pick").click();
+      };
+      const pop = document.getElementById("nx-preset-import-pop");
+      const popBg = document.getElementById("nx-preset-import-bg");
+      const paste = document.getElementById("nx-preset-import-text");
+      function setImportPop(on) {
+        pop.classList.toggle("on", on);
+        popBg.classList.toggle("on", on);
+        if (on) setTimeout(() => paste.focus(), 0);
+      }
+      document.getElementById("nx-preset-import").onclick = () => setImportPop(true);
+      document.getElementById("nx-preset-import-cancel").onclick = () => setImportPop(false);
+      popBg.onclick = () => setImportPop(false);
+      document.getElementById("nx-preset-import-ok").onclick = () => {
+        live.textContent = paste.value.trim() ? "가져옴" : "비어 있음";
+        setTimeout(() => { live.textContent = "바로 저장됨"; }, 900);
+        setImportPop(false);
+      };
+    })();
+
+    (function () {
+      const sessionList = document.getElementById("nx-char-session-list");
+      const globalList = document.getElementById("nx-char-global-list");
+      const current = document.getElementById("nx-char-current");
+      const empty = document.getElementById("nx-char-empty");
+      const sheet = document.getElementById("nx-char-sheet");
+      const bg = document.getElementById("nx-char-sheet-bg");
+      const editBtn = document.getElementById("nx-char-edit-btn");
+      const name = document.getElementById("nx-char-edit-name");
+      const attire = document.getElementById("nx-char-edit-attire");
+      const pick = document.getElementById("nx-risu-pick");
+      const pickBg = document.getElementById("nx-risu-pick-bg");
+      const pickTiles = document.getElementById("nx-risu-pick-tiles");
+      const sessionChars = [
+        ["린", "교복"],
+        ["유저", "사복"]
+      ];
+      const globalChars = [
+        ["선생님", "정장"],
+        ["선배", "코트"]
+      ];
+      const risuChars = [
+        "The Old Garden",
+        "Studio R",
+        "Mesu Therapy M",
+        "!!! YASPARTY !!!",
+        "주석회사 v2",
+        "Mikora Choi",
+        "The Chronicles of the Ruined City",
+        "Everspring Village",
+        "Alternate Hunters v2",
+        "assistant"
+      ];
+      const railBtn = document.getElementById("nx-char-risu-open");
+      const risuNow = document.getElementById("nx-risu-current");
+      const scopeChar = document.getElementById("nx-scope-char");
+      function fillTiles(box, rows) {
+        box.innerHTML = "";
+        rows.forEach((row, i) => {
+          const t = document.createElement("button");
+          t.type = "button";
+          t.className = "preset-tile" + (i === 0 ? " on" : "");
+          t.innerHTML = "<div class=\"look\"></div><b></b><small></small>";
+          t.querySelector("b").textContent = row[0];
+          t.querySelector("small").textContent = row[1];
+          box.appendChild(t);
+        });
+      }
+      fillTiles(sessionList, sessionChars);
+      fillTiles(globalList, globalChars);
+      pickTiles.innerHTML = "";
+      ["현재 캐릭터 챗", "전역 로스터", ...risuChars].forEach((nm, i) => {
+        const t = document.createElement("button");
+        t.type = "button";
+        t.className = "preset-tile risu-tile" + (i === 0 ? " on" : "");
+        t.dataset.risuValue = i === 0 ? "live" : i === 1 ? "__global__" : String(i - 2);
+        t.setAttribute("aria-pressed", String(i === 0));
+        t.innerHTML = "<div class=\"look\"></div><b></b>";
+        t.querySelector("b").textContent = nm;
+        pickTiles.appendChild(t);
+        if (i === 0 && scopeChar) {
+          scopeChar.innerHTML = "";
+          const opt = document.createElement("option");
+          opt.value = nm;
+          opt.selected = true;
+          opt.textContent = nm;
+          scopeChar.appendChild(opt);
+        }
+      });
+      function visibleList() {
+        return sessionList.hidden ? globalList : sessionList;
+      }
+      function syncCurrent() {
+        const on = visibleList().querySelector(".preset-tile.on");
+        const nm = on ? on.querySelector("b").textContent : "";
+        current.textContent = nm || "없음";
+        const title = document.getElementById("nx-char-edit-title");
+        const emptyMark = document.getElementById("nx-char-edit-empty");
+        if (title) title.textContent = nm || "(이름 없음)";
+        if (name && on) name.value = nm;
+        if (attire && on) attire.value = on.querySelector("small").textContent;
+        const app = document.getElementById("nx-char-edit-appearance");
+        const noApp = !(app && app.value.trim());
+        if (emptyMark) emptyMark.hidden = !noApp;
+        empty.classList.toggle("show", !visibleList().querySelector(".preset-tile"));
+      }
+      function pickTile(tile) {
+        visibleList().querySelectorAll(".preset-tile").forEach((t) => t.classList.toggle("on", t === tile));
+        syncCurrent();
+      }
+      function onRosterTile(e) {
+        const t = e.target.closest(".preset-tile");
+        if (!t) return;
+        if (t.classList.contains("on")) setCharSheet(true);
+        else pickTile(t);
+      }
+      sessionList.addEventListener("click", onRosterTile);
+      globalList.addEventListener("click", onRosterTile);
+      function setCharSheet(open) {
+        sheet.classList.toggle("open", open);
+        bg.classList.toggle("on", open);
+        sheet.setAttribute("aria-hidden", open ? "false" : "true");
+        editBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        editBtn.textContent = open ? "▼ 캐릭터 수정" : "▲ 캐릭터 수정";
+      }
+      function setRisuPick(open) {
+        pick.classList.toggle("open", open);
+        pickBg.classList.toggle("on", open);
+        pick.setAttribute("aria-hidden", open ? "false" : "true");
+        railBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        railBtn.textContent = open ? "›" : "‹";
+      }
+      function setScope(scope) {
+        const session = scope === "session";
+        document.querySelectorAll("#nx-char-scope-bar [data-char-scope]").forEach((b) => {
+          b.classList.toggle("on", b.dataset.charScope === scope);
+        });
+        sessionList.hidden = !session;
+        globalList.hidden = session;
+        document.getElementById("nx-char-add-session").hidden = !session;
+        document.getElementById("nx-char-add-global").hidden = session;
+        const toGlobal = document.getElementById("nx-char-to-global");
+        if (toGlobal) toGlobal.hidden = !session;
+        document.getElementById("nx-export-session-chars").hidden = !session;
+        document.getElementById("nx-export-global-chars").hidden = session;
+        document.getElementById("nx-import-session-chars").hidden = !session;
+        document.getElementById("nx-import-global-chars").hidden = session;
+        const first = visibleList().querySelector(".preset-tile");
+        if (first) pickTile(first);
+        else syncCurrent();
+      }
+      document.getElementById("nx-char-scope-bar").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-char-scope]");
+        if (b) setScope(b.dataset.charScope);
+      });
+      editBtn.onclick = () => setCharSheet(!sheet.classList.contains("open"));
+      document.getElementById("nx-char-sheet-close").onclick = () => setCharSheet(false);
+      bg.onclick = () => setCharSheet(false);
+      railBtn.onclick = () => setRisuPick(!pick.classList.contains("open"));
+      document.getElementById("nx-risu-pick-close").onclick = () => setRisuPick(false);
+      pickBg.onclick = () => setRisuPick(false);
+      function addBlank() {
+        const box = visibleList();
+        const n = box.querySelectorAll(".preset-tile").length + 1;
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "preset-tile";
+        tile.innerHTML = "<div class=\"look\"></div><b></b><small></small>";
+        tile.querySelector("b").textContent = "새 캐릭터 " + n;
+        tile.querySelector("small").textContent = "참고컷";
+        box.appendChild(tile);
+        pickTile(tile);
+      }
+      document.getElementById("nx-char-del-all").onclick = () => {
+        const session = !sessionList.hidden;
+        const msg = session
+          ? "이 봇의 캐릭터를 모두 삭제할까요?"
+          : "정말로 글로벌 캐릭터 전체 삭제할거냐";
+        if (!confirm(msg)) return;
+        visibleList().innerHTML = "";
+        setCharSheet(false);
+        syncCurrent();
+      };
+      document.getElementById("nx-char-add-session").onclick = addBlank;
+      document.getElementById("nx-char-add-global").onclick = addBlank;
+      pickTiles.addEventListener("click", (e) => {
+        const t = e.target.closest(".preset-tile");
+        if (!t) return;
+        pickTiles.querySelectorAll(".preset-tile").forEach((el) => { el.classList.toggle("on", el === t); el.setAttribute("aria-pressed", String(el === t)); });
+        setScope(t.dataset.risuValue === "__global__" ? "global" : "session");
+        const nm = t.querySelector("b").textContent;
+        if (risuNow) risuNow.textContent = nm;
+        if (scopeChar && t.dataset.risuValue !== "__global__") {
+          scopeChar.innerHTML = "";
+          const opt = document.createElement("option");
+          opt.value = nm;
+          opt.selected = true;
+          opt.textContent = nm;
+          scopeChar.appendChild(opt);
+        }
+        setRisuPick(false);
+      });
+      document.getElementById("nx-char-dup").onclick = () => {
+        const on = visibleList().querySelector(".preset-tile.on");
+        if (!on) return;
+        const tile = on.cloneNode(true);
+        tile.querySelector("b").textContent += " 복사";
+        visibleList().appendChild(tile);
+        pickTile(tile);
+      };
+      document.getElementById("nx-char-del").onclick = () => {
+        const on = visibleList().querySelector(".preset-tile.on");
+        if (!on) return;
+        const next = on.nextElementSibling || on.previousElementSibling;
+        on.remove();
+        if (next) pickTile(next);
+        else syncCurrent();
+      };
+      document.getElementById("nx-char-look-act").onclick = () => {
+        document.getElementById("nx-char-look-file").click();
+      };
+      syncCurrent();
+    })();
+
+    (function () {
+      const grid = document.getElementById("nx-explorer-grid");
+      const pick = document.getElementById("nx-ex-pick");
+      const pickBg = document.getElementById("nx-ex-pick-bg");
+      const rail = document.getElementById("nx-ex-open");
+      const tiles = document.getElementById("nx-ex-pick-tiles");
+      const viewAll = document.getElementById("nx-ex-view-all");
+      const allHint = document.getElementById("nx-ex-all-hint");
+      const chats = document.getElementById("nx-ex-chats");
+      const folders = [
+        { name: "The Old Garden", chats: ["chat1", "chat2", "chat3"] },
+        { name: "린 / 기본", chats: ["chat1", "chat2"] },
+        { name: "Mesu Therapy M", chats: ["chat1", "chat2", "chat3", "chat4"] },
+        { name: "YASPARTY", chats: ["chat1"] },
+        { name: "주석회사 v2", chats: ["chat1", "chat2"] },
+      ];
+      grid.innerHTML = "";
+      for (let i = 0; i < 18; i += 1) {
+        const t = document.createElement("div");
+        t.className = "thumb";
+        grid.appendChild(t);
+      }
+      tiles.innerHTML = "";
+      const allTile = document.createElement("button");
+      allTile.type = "button";
+      allTile.className = "preset-tile ex-all on";
+      allTile.dataset.all = "1";
+      allTile.innerHTML = "<div class=\"look\"><i></i><i></i><i></i><i></i></div><b></b>";
+      allTile.querySelector("b").textContent = "모든 이미지 보기";
+      tiles.appendChild(allTile);
+      folders.forEach((row, i) => {
+        const t = document.createElement("button");
+        t.type = "button";
+        t.className = "preset-tile";
+        t.dataset.idx = String(i);
+        t.innerHTML = "<div class=\"look\"></div><b></b>";
+        t.querySelector("b").textContent = row.name;
+        tiles.appendChild(t);
+      });
+      function fillAllImages() {
+        viewAll.disabled = true;
+        viewAll.classList.remove("on");
+        allHint.textContent = "모든 이미지";
+        chats.innerHTML = "";
+        folders.forEach((row) => {
+          row.chats.forEach((nm) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "chat-pick";
+            b.textContent = row.name + " · " + nm;
+            chats.appendChild(b);
+          });
+        });
+      }
+      function fillChats(row) {
+        viewAll.disabled = !row;
+        viewAll.classList.remove("on");
+        allHint.textContent = row ? row.name + " 전체 컷" : "타일에서 캐릭터를 고르세요.";
+        chats.innerHTML = "";
+        if (!row) {
+          chats.innerHTML = "<div class=\"ex-pick-hint\">채팅이 여기 뜹니다.</div>";
+          return;
+        }
+        row.chats.forEach((nm) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "chat-pick";
+          b.textContent = nm;
+          chats.appendChild(b);
+        });
+      }
+      fillAllImages();
+      function setExPick(open) {
+        pick.classList.toggle("open", open);
+        pickBg.classList.toggle("on", open);
+        pick.setAttribute("aria-hidden", open ? "false" : "true");
+        rail.setAttribute("aria-expanded", open ? "true" : "false");
+        rail.textContent = open ? "›" : "‹";
+      }
+      rail.onclick = () => setExPick(!pick.classList.contains("open"));
+      document.getElementById("nx-ex-pick-close").onclick = () => setExPick(false);
+      pickBg.onclick = () => setExPick(false);
+      tiles.addEventListener("click", (e) => {
+        const t = e.target.closest(".preset-tile");
+        if (!t) return;
+        tiles.querySelectorAll(".preset-tile").forEach((el) => el.classList.toggle("on", el === t));
+        if (t.dataset.all) fillAllImages();
+        else fillChats(folders[Number(t.dataset.idx)]);
+      });
+      viewAll.onclick = () => {
+        if (viewAll.disabled) return;
+        viewAll.classList.add("on");
+        chats.querySelectorAll(".chat-pick").forEach((el) => el.classList.remove("on"));
+      };
+      chats.addEventListener("click", (e) => {
+        const b = e.target.closest(".chat-pick");
+        if (!b) return;
+        viewAll.classList.remove("on");
+        chats.querySelectorAll(".chat-pick").forEach((el) => el.classList.toggle("on", el === b));
+      });
+      document.getElementById("nx-explorer-import").onclick = () => {
+        document.getElementById("nx-explorer-import-file").click();
+      };
+      const body = pick.querySelector(".ex-pick-body");
+      const handle = document.getElementById("nx-ex-resize");
+      handle.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        handle.classList.add("drag");
+        handle.setPointerCapture(e.pointerId);
+        const box = body.getBoundingClientRect();
+        const move = (ev) => {
+          const y = ev.clientY - box.top;
+          const top = Math.max(88, Math.min(box.height - 104, y));
+          tiles.style.flex = "0 0 " + top + "px";
+          document.querySelector(".ex-pick-split").style.flex = "1 1 auto";
+        };
+        const up = () => {
+          handle.classList.remove("drag");
+          handle.releasePointerCapture(e.pointerId);
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", up);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+      });
+    })();
+
+    (function () {
+      const bar = document.getElementById("nx-debug-bar");
+      function showDebug(id) {
+        bar.querySelectorAll("[data-debug-panel]").forEach((b) => b.classList.toggle("on", b.dataset.debugPanel === id));
+        document.querySelectorAll("#debug [data-debug-pane]").forEach((p) => {
+          p.hidden = p.getAttribute("data-debug-pane") !== id;
+        });
+      }
+      bar.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-debug-panel]");
+        if (b) showDebug(b.dataset.debugPanel);
+      });
+    })();
+
+    const HELP = Object.assign({
+  "nx-power": {
+    "title": "Power ON",
+    "body": "플러그인 전체를 켜거나 끕니다. 끄면 이미지 생성과 표시가 멈춥니다."
+  },
+  "nx-floating-viewer": {
+    "title": "플로팅 뷰어",
+    "body": "채팅 위에 이미지 창을 항상 띄워 둡니다. 끌어서 옮기고 모서리를 잡아 크기를 바꿀 수 있습니다. 캐릭터·프롬프트 수정 창이 열리면 잠시 숨겨집니다."
+  },
+  "nx-overlay": {
+    "title": "채팅 왼쪽 줄 오버레이",
+    "body": "채팅 왼쪽 핀·스티키 이미지를 보여 줍니다. 꺼도 내부 동기화는 유지하고, 상시 이미지 0% + 핀을 화면 밖으로 치워 가려 둡니다(꺼서 통째로 뜯으면 렉이 나서). 메시지 클릭·말풍선 삽화는 그대로입니다."
+  },
+  "nx-inline-chat": {
+    "title": "이미지 채팅에",
+    "body": "선택 기준에서 설정한 탐색 숫자만큼 위·아래의 char 말풍선을 유지합니다. 유저·라이트보드(본문 30자 이하)는 건너뜁니다. 켜면 스티키 활성 이미지는 마우스에 가장 가까운 샷을 우선합니다. 길게 누르면 크게보기/태그·재생성·리롤 메뉴. 「모든 메시지 이미지 생성」이 켜지면 선택 옆도 역할 무관하되 라이트보드는 건너뜁니다. 나머지는 지워서 메모리를 막습니다. 배율(%)은 기본 100(말풍선 폭 약 78%·높이 상한 70vh)이며 25–200으로 조절합니다."
+  },
+  "nx-persist-chat": {
+    "title": "생성완료 시 채팅에 박제",
+    "body": "한 장 생성이 끝나면 그 줄에 Risu 에셋으로 넣습니다. 글을 고쳐도 남습니다. 태그를 누르면 박제한 그림만 빼고 다시 만듭니다. 선택 때는 스피너만 꽂고, 끝난 장은 인라인으로 다시 넣지 않습니다."
+  },
+  "nx-persist-fold": {
+    "title": "박제이미지 접혀있는게 기본",
+    "body": "켜면 박제 그림이 위쪽만 살짝 보인 채로 시작합니다. ▲로 펼칩니다. 이미 열린 채팅은 한 번 다시 그리면 적용됩니다."
+  },
+  "nx-scroll-hold": {
+    "title": "스크롤 붙잡기",
+    "body": "보고 있는 말풍선이 화면에서 같은 자리에 남도록 채팅 칸의 scrollTop만 보정합니다. 맨 아래 최신 말을 보고 있으면 Risu 자동 스크롤을 그대로 둡니다. 창 전체가 아니라 채팅 스크롤만 움직입니다."
+  },
+  "nx-inline-text-side": {
+    "title": "선택된글 위치",
+    "body": "줄에 맞는 문단 안에서 스피너·삽화를 글 앞 또는 글 뒤에 둡니다. 이미 꽂힌 프레임은 그대로이고, 새로 넣거나 새로고침할 때 적용됩니다."
+  },
+  "nx-inline-msg-actions": {
+    "title": "메시지 안에 생성 버튼",
+    "body": "사용안함 / 편의성(오류율 있음, DIV도 호스트로 씀) / 호환성(문단만 호스트). 둘 다 위 바는 본문 상자 맨 앞, 아래 바는 상자 맨 뒤. 헤더가 비면 채팅 카드 복구를 쓰세요. 태그=LLM 태그 재생성, 재생성=첫 생성 또는 전체 리롤, 중단=남은 생성 멈추기, 캐릭터=메시지에서 트리거된 캐릭터 태그 수정, 프리셋=설정 스타일 프리셋 탭."
+  },
+  "nx-inline-msg-fan": {
+    "title": "채팅안에 바로가기툴 추가",
+    "body": "메시지 위·아래에 바로가기 버튼 줄을 붙입니다. ⚛️=이 메시지 태그 생성, 🔃=메시지 안 이미지 전체 리롤, 👨‍👩‍👧‍👦=캐릭터 설정 탭 열기, 🟥=진행 중 생성 중지, 📚=스타일 프리셋 탭 열기, ✒️=작가 노트 열기, 🔢=생성 장수 조절."
+  },
+  "nx-inline-chat-scale": {
+    "title": "이미지 채팅 배율 (%)",
+    "body": "말풍선 안 삽화 크기입니다. 100%가 기본(폭 약 78%·높이 상한 70vh)이고, 50%면 약 절반, 150%면 더 크게 보입니다. 말풍선 폭을 넘지 않습니다."
+  },
+  "nx-inline-dom-radius": {
+    "title": "스피너 캐릭터 개수",
+    "body": "선택한 메시지 기준으로 위·아래에서 유지할 캐릭터 말풍선 수입니다. 기본 4, 범위 3–20입니다. 유저와 본문 30자 이하 메시지는 세지 않고 건너뜁니다. 사진은 위·아래 가장 가까운 캐릭터 1개씩입니다."
+  },
+  "nx-progress-toast": {
+    "title": "진행 토스트",
+    "body": "생성/리롤=보라. 인덱싱(민트)=지금 고른 메시지 이미지 준비만(갤러리 전체 워밍은 표시 안 함). 선택 알림은 별도 토스트. 칩·샷을 꽂기 직전에는 조각 불러오는 중 스피너가 같은 자리에 뜹니다."
+  },
+  "nx-toast-anchor": {
+    "title": "토스트 위치",
+    "body": "진행·선택·알림·조각 로딩 토스트가 붙는 화면 모서리입니다. 기본은 중상단입니다."
+  },
+  "nx-image-press": {
+    "title": "이미지 크게보기",
+    "body": "인라인·스티키 샷을 크게 봅니다. 사용안함 / 더블 탭(이미지 위 빠른 두 번) / 트리플 탭(빠른 세 번) / 꾸욱 누르기 / 꾸욱 누르기 + 더블탭. 탐색기·메시지 선택 길게 누르기는 그대로입니다."
+  },
+  "nx-nai4-fallback": {
+    "title": "할당량 끝나면 NAI4 폴백",
+    "body": "V5 샷이 할당량(402)으로 실패하면 그 샷만 V4.5와 NAI4 프리셋으로 다시 뽑습니다. V5 자연어·대사는 빼입니다."
+  },
+  "nx-nai5-speech": {
+    "title": "NAI5 대사삽입",
+    "body": "V5 샷에서 말한 캐릭터의 캡션 끝에 말풍선을 넣습니다. 여러 명이 말하면 각자 자기 대사만 가집니다. 프리셋의 spoken bubble 억제는 그 샷에서 빼입니다."
+  },
+  "nx-llm-anchor": {
+    "title": "LLM 읽기 위치 배치",
+    "body": "ON이면 AI가 장면 흐름에 맞춰 읽기 위치(y%)를 잡아 저장·표시합니다. OFF면 저장값은 그대로 두고, 화면에서만 메시지 높이를 장 수로 균등 분할해 보여 줍니다(예: 3장 → 0–33 / 33–66 / 66–100). 다시 ON하면 저장된 AI 위치로 돌아갑니다."
+  },
+  "nx-natural-base": {
+    "title": "자연어 base",
+    "body": "NovelAI base에 넣는 자연어 장면을 고릅니다. 안넣기 / 짧게 넣기(머리·나이·성별·행동) / 구도·자세히(구도·표정·옷·조명) / 태그 보완 자연어(태그가 못 담는 문장)."
+  },
+  "nx-person-tag-weight": {
+    "title": "사람 태그 강조",
+    "body": "메인 프롬프트 맨 앞 인원 태그(1girl, 1boy, solo…)에 NovelAI 강조(N::태그::)를 겁니다. 0=감싸지 않음, 1–5=가중치."
+  },
+  "nx-person-tag-solo": {
+    "title": "캐릭 1명일 때 solo",
+    "body": "샷 캐릭터가 1명이면 1girl/1boy 대신 solo를 맨 앞에 넣습니다. 사람 태그 강조 수치가 그대로 적용됩니다. 사람 태그 자동넣기가 「안 넣기」여도 이 토글이 켜져 있으면 solo만은 넣습니다."
+  },
+  "nx-no-humans": {
+    "title": "캐릭 없을 때 no humans",
+    "body": "샷에 캐릭터가 한 명도 없으면 NAI 프롬프트 맨 끝에 no humans를 붙입니다. 사람 태그 자동넣기 「안 넣기」와는 무관합니다."
+  },
+  "nx-v5-natural-lang": {
+    "title": "V5 자연어 태그",
+    "body": "V5로 뽑는 샷에만 씁니다. 언어만 고릅니다(English / 日本語). V4 샷은 왼쪽 자연어 base를 따릅니다."
+  },
+  "nx-nai-coords": {
+    "title": "NAI 위치 좌표 사용하기",
+    "body": "캐릭터가 2명 이상이고 전원에 0~1 좌표가 있을 때만 NovelAI에 좌표를 보냅니다. 한 명이라도 빠지면 켜지 않습니다. 혼자면 쓰지 않습니다."
+  },
+  "nx-nai5-first": {
+    "title": "LLM한테 NAI V4, V5 선택권주기",
+    "body": "켜면 샷마다 simple은 V4, dynamic은 V5로 나눕니다. LLM이 복잡도를 고른 대로 모델이 갈립니다. 꺼 두면 모델 탭에서 고른 모델로 전 샷을 뽑습니다."
+  },
+  "nx-nai5-only": {
+    "title": "무조건 NAI V5한테만 요청하기",
+    "body": "켜면 모든 샷을 V5로만 뽑습니다. 모델 탭에서 V4를 고르거나 왼쪽 선택권을 켜도 V5가 이깁니다."
+  },
+  "nx-comic-gen": {
+    "title": "만화 생성",
+    "body": "켜면 태거가 연속 대사·액션을 만화 페이지로 고를 수 있습니다. 끄면 지금과 같습니다."
+  },
+  "nx-comic-batch": {
+    "title": "만화 LLM",
+    "body": "메시지 1회는 만화 페이지를 한 JSON으로 따로 받습니다. 샷마다는 페이지마다 따로 부릅니다. 메인태거에 한번에 요청은 만화 샷 아래 comic_page를 메인 태거가 같이 냅니다. 빠지면 그때만 만화 LLM을 부릅니다."
+  },
+  "nx-comic-schedule": {
+    "title": "생성 순서",
+    "body": "겹쳐 생성은 삽화를 먼저 보내고 만화 LLM은 옆에서 돌립니다. 태거 전부 완료 후는 만화 태그가 끝난 뒤 번호 순으로만 보냅니다."
+  },
+  "nx-comic-ratio": {
+    "title": "만화 생성 비율",
+    "body": "이번 메시지에서 만화로 고를 수 있는 샷 비율입니다. 0이면 만화를 고르지 않습니다. 남는 만화 후보는 삽화가 됩니다."
+  },
+  "nx-comic-coords": {
+    "title": "위치",
+    "body": "LLM이 알아서: 페이지마다 position 또는 AI choice. Position: 좌표 필수, 하나라도 없으면 AI choice. AI choice: 좌표를 보내지 않습니다."
+  },
+  "nx-comic-aspect": {
+    "title": "만화 비율",
+    "body": "LLM이 알아서: 태거가 고른 portrait/square/landscape. 가로·세로·정사각은 만화 샷만 그 캔버스로 고정합니다. 스피너도 같은 비율입니다. 일반 삽화는 생성 옵션의 자동 비율을 따릅니다."
+  },
+  "nx-comic-steps": {
+    "title": "Steps",
+    "body": "비우면 모델 탭 V5 steps를 씁니다. 만화만 이 값을 씁니다."
+  },
+  "nx-comic-sampler": {
+    "title": "샘플러",
+    "body": "비우면 모델 탭 V5 샘플러를 씁니다."
+  },
+  "nx-comic-cfg": {
+    "title": "가이던스",
+    "body": "비우면 기존 CFG를 씁니다."
+  },
+  "nx-comic-rescale": {
+    "title": "리스케일",
+    "body": "비우면 기존 rescale을 씁니다."
+  },
+  "nx-comic-prompt-prefix": {
+    "title": "선행 프롬프트",
+    "body": "값이 있으면 사람 태그 다음·스타일/칸 레이아웃 앞에 붙습니다."
+  },
+  "nx-comic-prompt-suffix": {
+    "title": "후행 프롬프트",
+    "body": "값이 있으면 레이아웃 뒤·품질 태그 앞에 붙습니다."
+  },
+  "nx-comic-note": {
+    "title": "작가의 프롬프트",
+    "body": "만화 LLM에게 주는 톤·세계관입니다. 아티스트 스택을 적지 마세요."
+  },
+  "nx-inline-preview": {
+    "title": "채팅 왼쪽 줄 오버레이",
+    "body": "채팅 왼쪽 줄 오버레이와 같은 설정입니다."
+  },
+  "nx-hide-offscreen": {
+    "title": "화면 밖이면 이미지 숨김",
+    "body": "선택한 메시지가 화면에서 벗어나면 상시 미리보기 이미지만 숨깁니다. 스티키 핀은 그대로 둡니다."
+  },
+  "nx-scroll-track": {
+    "title": "스크롤로 메시지 추적",
+    "body": "채팅을 스크롤하다가 멈추면(짧게), 마우스 커서에 가장 가까운 메시지를 고릅니다. 스크롤 중에는 스티키만 가볍게 갱신하고, 이미지 없는 메시지로 넘어가도 이전 대표 이미지는 유지합니다."
+  },
+  "nx-click-track": {
+    "title": "메시지 클릭으로 선택",
+    "body": "메시지를 눌러 그 메시지의 이미지를 볼 수 있게 합니다. 아래 「메시지 선택 동작」에서 한 번/두 번 클릭을 고를 수 있습니다."
+  },
+  "nx-text-drag": {
+    "title": "글자 드래그 선택",
+    "body": "메시지 안 글자를 드래그해 고르면 그 메시지를 바로 선택합니다. 한 번/두 번 클릭 설정과 관계없이 동작합니다."
+  },
+  "nx-mobile-pin": {
+    "title": "모바일 모서리 고정",
+    "body": "상시 이미지를 화면 모서리(우상·우하·좌상·좌하)에 붙이고, 스티키 핀을 그 이미지 상단 중앙에 둡니다. 핀 X/Y % 위치는 이 모드에서 쓰지 않습니다. 제스처는 상시 이미지와 같습니다."
+  },
+  "nx-hover-preview": {
+    "title": "스티키 핀 호버 미리보기",
+    "body": "왼쪽 핀에 마우스를 올리면 미리보기 이미지가 뜹니다. 끄면 호버 미리보기를 쓰지 않습니다."
+  },
+  "nx-risu-settings-button": {
+    "title": "Risu 설정 바로가기",
+    "body": "RisuAI 설정 화면으로 바로 가는 버튼을 보여 줍니다."
+  },
+  "nx-debug-panel": {
+    "title": "디버그 패널",
+    "body": "채팅 왼쪽 아래에 로그 창을 띄웁니다. 문제 확인할 때만 켜고, 평소에는 꺼 두셔도 됩니다."
+  },
+  "nx-gen-all-roles": {
+    "title": "모든 메시지 이미지 생성",
+    "body": "켜면 유저/캐릭터 구분 없이 선택한 모든 메시지에 이미지를 생성합니다. 끄면 캐릭터(assistant) 메시지만 자동 생성합니다."
+  },
+  "nx-auto-gen-reply": {
+    "title": "응답 후 자동 생성",
+    "body": "주 채팅(model) afterRequest 후 0.1초 뒤 한 번 생성. [LBDATA START]~END 는 글자 수에서 제외하고, 나머지가 30자 이하면 클릭해도 생성하지 않습니다. 이미 생성 중이면 뒤는 스킵. 보조 모델·유저 말·이미 이미지·Power/토글 OFF는 스킵. 발동 수동/자동과 무관."
+  },
+  "nx-lore": {
+    "title": "Lorebook 주입",
+    "body": "이미지 태그를 만들 때 로어북에 적힌 설정을 참고합니다. 세계관·외형 메모가 반영되기 쉽습니다."
+  },
+  "nx-lore-extra": {
+    "title": "lb-xnai.lb.extra",
+    "body": "캐릭터 태그만: 트리거된 캐릭터 섹션만 넣습니다. 전체: 로어 통째로(커스텀 프롬프트 포함). 넣지 않음: 이 특수 로어를 무시합니다."
+  },
+  "nx-unified-priority": {
+    "title": "통합 챗 우선",
+    "body": "켜면 채팅 목록에서 통합 챗이 맨 위에 오고, 캐릭터만 바꿀 때 기본 선택도 통합 챗이 됩니다. 생성/재생성 태그는 모든 채팅 로스터를 합쳐서 읽습니다(저장은 현재 채팅에만)."
+  },
+  "nx-charinfo": {
+    "title": "CharInfo",
+    "body": "캐릭터 카드의 기본 정보를 태깅에 넣습니다. 외형·성격이 더 맞게 나오도록 돕습니다."
+  },
+  "nx-userinfo": {
+    "title": "UserInfo",
+    "body": "유저(페르소나) 정보를 태깅에 넣습니다. 주인공 외형이 있을 때 켜세요."
+  },
+  "nx-appearance": {
+    "title": "CharAppearance 누적",
+    "body": "한 번 잡힌 캐릭터 외형을 다음 생성에도 이어 씁니다. 옷·머리색이 장면마다 크게 바뀌는 걸 줄입니다."
+  },
+  "nx-asset-nai-tags": {
+    "title": "에셋 NAI 태그",
+    "body": "로어 트리거와 이름이 맞는 Risu 에셋 PNG/WebP의 NovelAI 메타 태그를 어떻게 태거에 넣을지 고릅니다. artist·year·품질·*background·straight-on은 제외.\n\n• 사용안함 — 에셋 태그를 쓰지 않습니다.\n• 그냥 옛날버전 (통째로 보내기) — 로어북·에셋 태그를 메인 태거 한 번에 넣습니다. LLM 1회. 컨텍스트가 길어져 토큰을 많이 씁니다.\n• LLM 따로 호출 — 메타가 있으면 그 태그로 룩을 먼저 채웁니다. 메타가 없으면 이미지를 오토태그 LLM에 보내고, 로어북은 참고로만 줍니다. 그다음 메인 태거."
+  },
+  "nx-focus-character": {
+    "title": "중점 캐릭터",
+    "body": "켜면 태거가 샷 JSON에 focus(1·char1 또는 [1,2]처럼 여러 명)를 넣을 수 있습니다. 중점이 아닌 캐릭터 캡션에 out of frame을 붙입니다. 여성/남성위주는 선택 힌트(수동 모드에서는 성별 필터)입니다."
+  },
+  "nx-focus-weight": {
+    "title": "중점강도",
+    "body": "중점 외 캐릭터에 붙는 out of frame 강조입니다. 0–5, 소수점 1자리(예: 2.5). 1 초과는 N::out of frame::, 0–1은 강조 없이 out of frame만 넣습니다. 기본 2."
+  },
+  "nx-focus-prompt": {
+    "title": "프롬프트 강도",
+    "body": "중점 focus를 태거에 어떻게 시킬지입니다.\n\n• 기본값 — 필요할 때만(애매하면 비움)\n• 좀더 강하게 넣기 — 쓸 수 있으면 자주 넣도록\n• 무조건 넣기 — 매 샷 focus 필수\n• 수동으로 넣기 — LLM에 묻지 않고, 여성/남성위주일 때 반대 성별 캐릭에 out of frame을 코드로 붙입니다(알아서 고르기와는 함께 쓰이지 않음)."
+  },
+  "nx-costume": {
+    "title": "코스튬",
+    "body": "켜면 메인 태거가 캐릭터별 코스튬 목록을 보고 샷마다 복장을 고릅니다(이름·번호). 꺼도 에셋으로 캐릭을 만들 때는 복장이 코스튬으로 나뉘어 저장됩니다. 샷에 고른 값이 없으면 이전 샷 옷, 없으면 로스터 현재 코스튬을 씁니다."
+  },
+  "nx-auto-aspect": {
+    "title": "자동 비율 조절",
+    "body": "켜면 샷마다 태거가 portrait/square/landscape를 고르고, 생성 크기를 832×1216 / 1024×1024 / 1216×832로 맞춥니다(NovelAI 기본 사이즈). ComfyUI는 워크플로 Empty Latent 등에 [[width]]/[[height]]를 넣어야 반영됩니다. 참조 그림은 LoadImage에 [[ref]]. 끄면 NAI Width/Height 설정을 씁니다."
+  },
+  "nx-llm-json-retry": {
+    "title": "JSON 오류 시 재시도",
+    "body": "메인 태거 응답이 JSON으로 파싱되지 않으면, 오류 내용을 붙여 LLM에 한 번 더 요청합니다. 재시도도 실패하면 작업이 오류로 끝납니다."
+  },
+  "nx-llm-reverse-bar": {
+    "title": "역바",
+    "body": "켜면 모든 LLM 호출 앞에 역할 고정 문(jailbreak)과, 이미 그 역할을 받아들인 것처럼 보이는 앞말(prefill / prefill_user)을 붙입니다. 문구는 프롬프트 탭에서 고칩니다."
+  },
+  "nx-llm-tag-cal": {
+    "title": "태칼",
+    "body": "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다."
+  },
+  "nx-stream-keywords": {
+    "title": "스트리밍 키워드",
+    "body": "토글과 Power가 켜져 있고, 칸에 3글자 이상 단어가 있을 때 AI 답이 나오는 동안 그 단어가 들어가면(대소문자 무시, 부분 일치) 최신 말풍선으로 한 번 생성합니다. 쉼표로 여러 개. 비우거나 토글 OFF면 꺼짐. 「응답 후 자동 생성」·발동과 별개입니다. 이미 생성 중이면 안 돕니다."
+  },
+  "nx-fixed-prompt-prefix": {
+    "title": "선행 고정 프롬프트",
+    "body": "값이 있으면 사람 태그 다음·스타일 프리셋/장면 앞에 항상 붙습니다. 프리셋이 바뀌어도 유지됩니다."
+  },
+  "nx-fixed-prompt-suffix": {
+    "title": "후행 고정 프롬프트",
+    "body": "값이 있으면 장면 뒤·NAI 품질 태그 앞에 항상 붙습니다. JSON으로 내보내/가져오기 할 수 있습니다."
+  },
+  "nx-execute": {
+    "title": "발동",
+    "body": "자동: 메시지를 골랐는데 이미지가 없으면 바로 생성합니다. 수동: 이미지가 없어도 「지금 생성」을 눌러야만 만듭니다. 응답 후 자동 생성·스트리밍 키워드는 이 칸과 별개입니다."
+  },
+  "nx-inline-pct": {
+    "title": "상시 이미지 크기",
+    "body": "상시·모바일 모서리 미리보기 크기입니다. 100%가 기준이고, 200%면 약 두 배로 보입니다. 0%면 상시 이미지를 숨깁니다(오버레이·핀은 유지)."
+  },
+  "nx-overlay-x": {
+    "title": "스티키 핀 가로 위치 (%)",
+    "body": "화면 왼쪽 기준 가로 퍼센트입니다(0=왼쪽, 100=오른쪽). 창 크기가 바뀌어도 같은 비율로 유지됩니다. 기본값 38."
+  },
+  "nx-overlay-y": {
+    "title": "스티키 핀 세로 위치 (%)",
+    "body": "화면 아래 기준 세로 퍼센트입니다(0=맨 아래, 100=맨 위). 창 크기가 바뀌어도 같은 비율로 유지됩니다. 기본값 80."
+  },
+  "nx-hover-anchor": {
+    "title": "호버 미리보기 기준",
+    "body": "미리보기를 화면의 정해진 자리에 둘지, 마우스 옆에 따라다니게 할지 정합니다. 마우스 기준은 위치를 가볍게만 갱신합니다."
+  },
+  "nx-minimize-mode": {
+    "title": "접힘 표시 방식",
+    "body": "플로팅 아이콘: 작은 🖼️, 클릭하면 펼침. 상단 툴바 한 줄: 창 자리에서 얇은 바. 재생성·태그 플로팅: 큰 세로 버튼(태그/재생성/중단/프리셋), 접으면 흐려지고 가만히 있으면 더 흐려짐. 한 번 더 접으면 여백+펼치기만. 길게 누르면 전체 뷰어."
+  },
+  "nx-select-gesture": {
+    "title": "메시지 선택 동작",
+    "body": "메시지를 고르는 입력 방식입니다. 한 번 클릭 / 두 번 클릭(같은 말풍선 짧게 두 번) / 우클릭 / 길게 누르기. 스크롤·글자 드래그는 이 설정과 무관합니다."
+  },
+  "nx-hover-corner": {
+    "title": "이미지 모서리",
+    "body": "모바일 모서리 고정이 켜져 있을 때 상시 이미지를 붙일 모서리(우상·우하·좌상·좌하)를 고릅니다. 스티키 핀은 그 이미지 상단 중앙에 따라갑니다."
+  },
+  "nx-char-ref-mode": {
+    "title": "캐릭터 참고이미지",
+    "body": "안함은 참고이미지를 보내지 않습니다. V4.5에서만 vibe 또는 image를 고르면 첨부됩니다. V5와 그 외 모델에는 보내지 않습니다."
+  },
+  "nx-char-ref-strength": {
+    "title": "참고 Strength",
+    "body": "캐릭터 참고이미지 영향 강도(0.01~1)."
+  },
+  "nx-char-ref-fidelity": {
+    "title": "참고 Fidelity",
+    "body": "vibe면 information_extracted, image면 Reference Fidelity(0.01~1)."
+  },
+  "nx-char-ref-image-type": {
+    "title": "참고 Image 종류",
+    "body": "image reference 모드일 때만 사용. character / character & style / style."
+  },
+  "nx-reset-windows": {
+    "title": "창위치 초기화",
+    "body": "뷰어·접힘 아이콘·핀이 화면 밖으로 나가 안 보일 때 기본 위치로 되돌립니다."
+  },
+  "nx-reset-settings": {
+    "title": "전체 초기화",
+    "body": "잘 모르면 임포트 팩을 적용합니다. API 키·창 위치·카드 프리셋은 유지하고, 프롬프트는 기본값 버튼을 누른 것과 같이 되돌립니다(작가 노트·에셋태그 노트 유지)."
+  },
+  "nx-reset-char-refs": {
+    "title": "레퍼런스 이미지 초기화",
+    "body": "모든 캐릭터 참고이미지 해시를 지우고, 기기 IDB와 Inlay 모듈 에셋을 삭제합니다. 설정은 유지됩니다."
+  },
+  "nx-migrate-legacy": {
+    "title": "2.4 데이터 이전",
+    "body": "2.4까지 쓰던 이미지 저장 방식을 2.5 방식으로 옮깁니다. 켤 때마다 하던 전체 점검이 사라져 부팅이 빨라지고, Risu 세이브파일도 가벼워집니다. 옮긴 뒤 옛 원본은 지워지므로 2.4로는 되돌릴 수 없습니다. 남은 장수가 있으면 버튼에 점이 붙습니다."
+  },
+  "nx-save-dash": {
+    "title": "대시보드 저장",
+    "body": "이 탭의 설정을 저장합니다. 대부분 항목은 바꾸면 자동으로도 저장됩니다."
+  },
+  "nx-run-now": {
+    "title": "지금 생성",
+    "body": "지금 선택된 메시지로 이미지를 바로 만듭니다. 수동일 때는 이미지가 없어도 이 버튼을 눌러야 생성됩니다."
+  },
+  "nx-open-viewer": {
+    "title": "뷰어 앞으로",
+    "body": "플로팅 뷰어를 열고 맨 앞으로 가져옵니다."
+  },
+  "nx-nai-sdxl": {
+    "title": "SDXL식 강조",
+    "body": "켜면 NAI로 보내기 직전에 N::태그::·{태그} 강조를 SDXL식 (태그:가중치)·((태그))로 바꿔서 보냅니다. 저장된 프롬프트와 카드는 그대로 둡니다. ComfyUI 전송은 항상 변환됩니다."
+  }
+}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-mode":{"title":"Mode","body":"삽화는 장면 그림, 에셋은 캐릭터/소품용입니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"Preprocessing","body":"토큰을 더 쓰는 전처리입니다. 필요할 때만 켜세요."}});
+    const HELP_ALIAS = {
+      "nx-stream-keywords-on": "nx-stream-keywords",
+      "nx-comic-gen-ratio": "nx-comic-ratio",
+      "nx-comic-author-note": "nx-comic-note",
+      "nx-comic-cfg-rescale": "nx-comic-rescale",
+      "nx-comic-llm-batch": "nx-comic-batch"
+    };
+    function helpKey(id) {
+      return HELP_ALIAS[id] || (HELP[id] ? id : "");
+    }
+    function resolveHelp(el) {
+      let n = el;
+      while (n && n !== document.body) {
+        const key = n.id ? helpKey(n.id) : "";
+        if (key) return { host: n.closest(".row, .block, .actions") || n, tip: HELP[key] };
+        n = n.parentElement;
+      }
+      const scoped = el?.closest?.(".row, .block, .actions");
+      const idEl = scoped?.querySelector("[id^=\"nx-\"]");
+      const k = idEl ? helpKey(idEl.id) : "";
+      return k ? { host: scoped, tip: HELP[k] } : null;
+    }
+    let helpId = "";
+    function paintHelp(target) {
+      if (!document.body.classList.contains("help-on")) return;
+      document.querySelectorAll(".is-help-active").forEach((n) => n.classList.remove("is-help-active"));
+      const hit = resolveHelp(target);
+      if (!hit) {
+        helpId = "";
+        setHeadHelp(null);
+        return;
+      }
+      helpId = hit.tip.title;
+      hit.host.classList.add("is-help-active");
+      setHeadHelp(hit.tip);
+    }
+    document.querySelector(".main").addEventListener("pointerover", (e) => {
+      if (!document.body.classList.contains("help-on")) return;
+      const hit = resolveHelp(e.target);
+      if (!hit || hit.tip.title === helpId) return;
+      paintHelp(e.target);
+    });
+    document.querySelector(".main").addEventListener("pointerout", (e) => {
+      if (!document.body.classList.contains("help-on")) return;
+      const next = resolveHelp(e.relatedTarget);
+      if (next) {
+        paintHelp(e.relatedTarget);
+        return;
+      }
+      helpId = "";
+      document.querySelectorAll(".is-help-active").forEach((n) => n.classList.remove("is-help-active"));
+      setHeadHelp(null);
+    });
+
+    document.querySelectorAll(".seg").forEach((bar) => {
+      bar.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b || !bar.contains(b)) return;
+        bar.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        if (bar.id === "nx-nai-family-bar") applyNaiFamily();
+        if (bar.id === "nx-img-backend-bar") applyImgBackend();
+      });
+    });
+    function applyNaiFamily() {
+      const fam = document.querySelector("#nx-nai-family-bar .on")?.dataset.naiFamily || "v4";
+      document.querySelectorAll("[data-nx-nai-pane]").forEach((el) => {
+        el.style.display = el.getAttribute("data-nx-nai-pane") === fam ? "" : "none";
+      });
+    }
+    function applyImgBackend() {
+      const bk = document.querySelector("#nx-img-backend-bar .on")?.dataset.backend || "nai";
+      document.getElementById("nx-img-backend").value = bk;
+      document.querySelectorAll("[data-nx-backend-pane]").forEach((el) => {
+        el.style.display = el.getAttribute("data-nx-backend-pane") === bk ? "" : "none";
+      });
+      document.getElementById("nx-nai-family-bar").style.display = bk === "nai" ? "" : "none";
+      document.querySelectorAll("[data-nx-nai-pane]").forEach((el) => {
+        if (bk !== "nai") el.style.display = "none";
+      });
+      if (bk === "nai") applyNaiFamily();
+    }
+    applyNaiFamily();
+    applyImgBackend();
+    (function () {
+      const fold = document.getElementById("nx-nai-ref-fold");
+      const btn = document.getElementById("nx-nai-ref-fold-btn");
+      const vibe = document.getElementById("nx-nai-vibe-on");
+      const hint = document.getElementById("nx-nai-ref-fold-hint");
+      function syncFold() {
+        const open = fold.classList.contains("open");
+        const on = !!vibe.checked;
+        fold.dataset.vibe = on ? "on" : "off";
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        hint.textContent = (open ? "펼침" : "접힘") + " · vibe " + (on ? "켬" : "끔");
+      }
+      btn.addEventListener("click", () => {
+        fold.classList.toggle("open");
+        syncFold();
+      });
+      vibe.addEventListener("change", syncFold);
+      syncFold();
+    })();
+    (() => {
+      const tabs = document.getElementById('nx-llm-role-tabs');
+      const stack = tabs.parentElement;
+      const template = [...stack.children].filter(el => el !== tabs).map(el => el.outerHTML).join('');
+      [...stack.children].filter(el => el !== tabs).forEach(el => el.remove());
+      for (const [role, prefix] of [['main','nx-llm'],['autotag','nx-llm-autotag'],['asset_char','nx-llm-asset'],['comic','nx-llm-comic'],['curator','nx-llm-curator']]) {
+        const panel = document.createElement('div');
+        panel.dataset.uxLlmRole = role;
+        panel.hidden = role !== 'main';
+        panel.innerHTML = role === 'curator' ? '<div class="block">FISHTTS 연결은 다음 업데이트에서 지원합니다.</div>' : template.replaceAll('nx-llm-', prefix + '-').replaceAll('nx-test-llm', 'nx-test-' + prefix.slice(3)).replaceAll('nx-test-result-llm', 'nx-test-result-' + prefix.slice(3));
+        stack.append(panel);
+      }
+      tabs.addEventListener('click', event => {
+        const button = event.target.closest('[data-llm-role]');
+        if (!button) return;
+        tabs.querySelectorAll('button').forEach(el => { el.classList.toggle('on', el === button); el.setAttribute('aria-pressed', String(el === button)); });
+        stack.querySelectorAll('[data-ux-llm-role]').forEach(panel => panel.hidden = panel.dataset.uxLlmRole !== button.dataset.llmRole);
+      });
+    })();
+  </script>
+</body>
+</html>
