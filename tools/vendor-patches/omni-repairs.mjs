@@ -298,10 +298,10 @@ export function repairOmniUi(source) {
     if(owned && typeof k.showContainer==="function")await k.showContainer("fullscreen");
     const root=document.createElement("div");
     root.style.cssText="position:fixed;inset:0;z-index:100000;background:#0009;display:grid;place-items:center;padding:16px";
-    const panel=document.createElement("div");panel.style.cssText="box-sizing:border-box;width:min(700px,100%);height:min(960px,95vh);min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#101620;color:#eee;border:1px solid #394358;border-radius:12px;color-scheme:dark";
+    const panel=document.createElement("div");panel.style.cssText="box-sizing:border-box;width:min(700px,100%);height:auto;max-height:min(960px,95vh);min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#101620;color:#eee;border:1px solid #394358;border-radius:12px;color-scheme:dark";
     panel.setAttribute("role","dialog");panel.setAttribute("aria-modal","true");panel.setAttribute("aria-label","세션 작가의 노트");
     const title=document.createElement("h3");title.textContent="세션 작가의 노트";title.style.cssText="flex:none;margin:0;padding:20px;border-bottom:1px solid #394358";panel.append(title);
-    const content=document.createElement("div");content.style.cssText="flex:1;min-height:0;overflow-y:auto;padding:20px;overscroll-behavior:contain";panel.append(content);
+    const content=document.createElement("div");content.style.cssText="flex:0 1 auto;min-height:0;overflow-y:auto;padding:20px;overscroll-behavior:contain";panel.append(content);
     const footer=document.createElement("div");footer.style.cssText="flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:12px 20px;border-top:1px solid #394358;background:#101620";
     const fields={},saved={};let pending=Promise.resolve();let timer;let closing=false;
     const WEAR_STATES=["clothed","torn","topless","bottomless","nude","completely"];
@@ -370,18 +370,20 @@ export function repairOmniUi(source) {
     };
     presetSave.onclick=()=>mutatePresets(false);presetDelete.onclick=()=>mutatePresets(true);
     group.append(select,name,presetSave,presetDelete);content.append(group);
+    const noteFields=document.createElement("div");noteFields.style.cssText="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px";content.append(noteFields);
     for(const [key,label] of [["prefix","선행"],["suffix","후행"],["location","장소"]]) {
-      const lab=document.createElement("label");lab.textContent=label;const input=document.createElement("textarea");input.value=value[key]||"";input.maxLength=key==="location"?800:8000;input.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:90px;resize:vertical;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:10px;margin:8px 0 16px";input.oninput=event=>{if(!event?.isComposing)schedule();};input.oncompositionend=schedule;input.onblur=save;fields[key]=input;saved[key]=input.value;lab.append(input);content.append(lab);
+      const lab=document.createElement("label");lab.style.minWidth="0";lab.textContent=label;const input=document.createElement("textarea");input.value=value[key]||"";input.maxLength=key==="location"?800:8000;input.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:90px;resize:vertical;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:10px;margin:8px 0 16px";input.oninput=event=>{if(!event?.isComposing)schedule();};input.oncompositionend=schedule;input.onblur=save;fields[key]=input;saved[key]=input.value;lab.append(input);noteFields.append(lab);
     }
     const wearTitle=document.createElement("div");wearTitle.textContent="옷 상태";wearTitle.style.cssText="margin:0 0 8px;font-size:13px;color:#9fb0c3";content.append(wearTitle);
     const wearSearch=document.createElement("input");wearSearch.placeholder="이름 검색";wearSearch.maxLength=200;wearSearch.setAttribute("aria-label","옷 상태 이름 검색");wearSearch.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:32px;background:#192230;color:#eee;border:1px solid #394358;border-radius:8px;padding:6px 10px;margin:0 0 8px";wearSearch.oninput=()=>{const q=wearSearch.value.trim().toLowerCase();for(const id of Object.keys(wearRows)){const r=wearRows[id];r.row.style.display=(!q||r.name.toLowerCase().indexOf(q)>=0)?"flex":"none";}};content.append(wearSearch);
-    const wearList=document.createElement("div");wearList.setAttribute("role","group");wearList.setAttribute("aria-label","옷 상태 목록");wearList.style.cssText="max-height:300px;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:1fr;gap:8px;margin:0 0 16px;padding:10px;background:#0b1119;border:1px solid #394358;border-radius:12px";content.append(wearList);
+    const wearList=document.createElement("div");wearList.setAttribute("role","group");wearList.setAttribute("aria-label","옷 상태 목록");wearList.style.cssText="max-height:300px;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 16px;padding:10px;background:#0b1119;border:1px solid #394358;border-radius:12px";content.append(wearList);
     const wearRows={};
     const addWearRow=(id,name,character)=>{
       if(!id)return;
       if(wearRows[id]){if(character)wearRows[id].setCostumes(character);return;}
-      const row=document.createElement("div");row.style.cssText="display:flex;align-items:center;gap:8px";
-      const lab=document.createElement("span");lab.textContent=name;lab.title=name;lab.style.cssText="flex:none;width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";row.append(lab);
+      const row=document.createElement("div");row.style.cssText="display:flex;flex-direction:column;min-width:0;gap:6px;padding:8px;border:1px solid #394358;border-radius:12px;background:#101620";
+      const heading=document.createElement("div");heading.style.cssText="display:flex;align-items:center;gap:8px;min-width:0;width:100%";
+      const lab=document.createElement("span");lab.textContent=name;lab.title=name;lab.style.cssText="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";heading.append(lab);
       const sel=document.createElement("select");sel.setAttribute("aria-label",name+" 옷 상태");sel.style.cssText="flex:1;min-width:0;min-height:36px;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:4px";
       for(const st of WEAR_STATES)sel.add(new Option(st,st));
       sel.value=wearEdit.map[id]?wearEdit.map[id].wear:"clothed";
@@ -390,21 +392,20 @@ export function repairOmniUi(source) {
         wearEdit.map[id]={name:name,wear:sel.value};
         schedule();
       };
-      const outfit=document.createElement("div");outfit.style.cssText="flex:1;min-width:0";
+      const outfit=document.createElement("div");outfit.style.cssText="width:100%;min-width:0";
       const choice=document.createElement("select");choice.setAttribute("aria-label",name+" 현재 코스튬");choice.style.cssText="box-sizing:border-box;width:100%;min-height:36px;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:4px";
-      const desc=document.createElement("div");desc.style.cssText="font-size:10px;line-height:1.4;color:#9fb0c3;margin-top:3px;overflow-wrap:anywhere";
-      outfit.append(choice,desc);
+      outfit.append(choice);
       const setCostumes=c=>{
         const catalog=c?.costumes?.length?c.costumes:[{name:"default",note:""}];
         const pick=costumeEdit.map[id]?.costume||catalog[c?.active_costume||0]?.name||catalog[0].name;
-        choice.replaceChildren();for(const item of catalog)choice.add(new Option(item.name,item.name));
+        choice.replaceChildren();for(const item of catalog)choice.add(new Option(item.name+(item.note?" · "+item.note:""),item.name));
         if(!catalog.some(item=>item.name===pick))choice.add(new Option(pick,pick));
         choice.value=pick;
-        const explain=()=>{desc.textContent=catalog.find(item=>item.name===choice.value)?.note||"";};explain();
+        const explain=()=>{const note=catalog.find(item=>item.name===choice.value)?.note;choice.title=choice.value+(note?" · "+note:"");};explain();
         choice.onchange=()=>{if(closing)return;costumeEdit.map[id]={name,scope:c?.scope||"",costume:choice.value};explain();schedule();};
       };
       setCostumes(character);
-      row.append(sel,outfit);wearList.append(row);wearRows[id]={row:row,select:sel,name:name,setCostumes};
+      heading.append(sel);row.append(heading,outfit);wearList.append(row);wearRows[id]={row:row,select:sel,name:name,setCostumes};
     };
     const initWear=(entries)=>{
       wearEdit.map={};

@@ -181,14 +181,14 @@ test('preset save/select/delete uses GET/PUT and never stores location', async (
 
 test('fixed dark dialog keeps status and close outside the scrolling body', async () => {
   const h = await harness();
-  const close = h.button('닫기'), footer = close.parentNode, content = h.prefix.parentNode.parentNode;
+  const close = h.button('닫기'), footer = close.parentNode, content = h.prefix.parentNode.parentNode.parentNode;
   assert.equal(css(h.root).position, 'fixed');
   const panel = css(h.panel);
-  assert.equal(panel.width, 'min(700px,100%)'); assert.equal(panel.height, 'min(960px,95vh)');
+  assert.equal(panel.width, 'min(700px,100%)'); assert.equal(panel.height, 'auto'); assert.equal(panel['max-height'], 'min(960px,95vh)');
   assert.equal(panel.display, 'flex'); assert.equal(panel['flex-direction'], 'column');
   assert.equal(panel.overflow, 'hidden'); assert.equal(panel.background, '#101620');
   assert.equal(css(content)['overflow-y'], 'auto'); assert.equal(css(content)['min-height'], '0');
-  assert.equal(css(content).flex, '1'); assert.equal(css(footer).flex, 'none');
+  assert.equal(css(content).flex, '0 1 auto'); assert.equal(css(footer).flex, 'none');
   assert.equal(footer.parentNode, h.panel); assert.equal(content.parentNode, h.panel);
   assert.equal(h.panel.children.at(-1), footer); assert.equal(h.status.parentNode, footer);
   assert.equal(descendants(content).includes(close), false);
@@ -198,7 +198,7 @@ test('fixed dark dialog keeps status and close outside the scrolling body', asyn
 for (const failure of ['reject', 'response']) {
   test('failed note save preserves editable input and retry on close: ' + failure, async () => {
     const h = await harness();
-    const close = h.button('닫기'), content = h.prefix.parentNode.parentNode;
+    const close = h.button('닫기'), content = h.prefix.parentNode.parentNode.parentNode;
     h.state.failure = failure;
     h.edit(h.prefix, 'unsaved draft');
     await h.tick(1000);
@@ -256,7 +256,7 @@ const wearSearch = h => {
 
 test('preset row sits above prefix/suffix/location fields', async () => {
   const h = await harness();
-  const content = h.prefix.parentNode.parentNode;
+  const content = h.prefix.parentNode.parentNode.parentNode;
   const first = content.children[0];
   assert.equal(first.tagName, 'div');
   assert.ok(descendants(first).includes(h.select), 'first row must be the preset group');
@@ -267,7 +267,7 @@ test('wear list shows roster names with selects, scrollable, clothed by default'
   assert.equal(css(h.wearBox)['max-height'], '300px');
   assert.equal(css(h.wearBox)['overflow-y'], 'auto');
   assert.equal(css(h.wearBox).display, 'grid');
-  assert.equal(css(h.wearBox)['grid-template-columns'], '1fr');
+  assert.equal(css(h.wearBox)['grid-template-columns'], 'repeat(2,minmax(0,1fr))');
   for (const name of ['Aria', 'Merk']) {
     const sel = wearSelect(h, name);
     assert.deepEqual(sel.children.map(opt => opt.value), ['clothed', 'torn', 'topless', 'bottomless', 'nude', 'completely']);
@@ -280,7 +280,7 @@ test('wear search filters rows by name', async () => {
   const search = wearSearch(h);
   search.value = 'ari'; search.oninput();
   const rows = descendants(h.wearBox).filter(node => node.tagName === 'span');
-  const display = name => rows.find(node => node.textContent === name).parentNode.style.display;
+  const display = name => rows.find(node => node.textContent === name).parentNode.parentNode.style.display;
   assert.notEqual(display('Aria'), 'none');
   assert.equal(display('Merk'), 'none');
   search.value = ''; search.oninput();
@@ -333,11 +333,11 @@ test('wear regression guard sends the wear map, not a missing field', async () =
 });
 
 
-test('costume sits beside wear, shows its note and saves only this session selection',async()=>{
+test('costume sits below name and wear, includes its note in options and saves only this session selection',async()=>{
   const h=await harness(popupSource,{roster:[{id:'c1',name:'Aria',scope:'__global__',active_costume:0,costumes:[{name:'default',note:'every day'},{name:'night',note:'after sunset'}]}],note:{costumes:[{id:'c1',name:'Aria',scope:'__global__',costume:'night'}]}});
   const choice=descendants(h.wearBox).find(n=>n.attributes['aria-label']==='Aria 현재 코스튬');
-  assert.equal(choice.value,'night');assert.ok(descendants(choice.parentNode).some(n=>n.textContent==='after sunset'));
-  assert.equal(choice.parentNode.parentNode,wearSelect(h,'Aria').parentNode);
+  assert.equal(choice.value,'night');assert.deepEqual(choice.children.map(n=>n.textContent),['default · every day','night · after sunset']);
+  assert.equal(choice.parentNode.parentNode,wearSelect(h,'Aria').parentNode.parentNode);
   choice.value='default';choice.onchange();await h.tick(1000);
   assert.deepEqual(h.puts(noteRoute).at(-1).body,{session_id:'actual-chat/7',costumes:{c1:{name:'Aria',scope:'__global__',costume:'default'}}});
   assert.equal(h.state.calls.filter(c=>c.method==='POST').length,0);
