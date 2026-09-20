@@ -9,6 +9,24 @@ import {
 const SPINNER = '[[@inrayspinner::job-old_0::832::1216]]';
 const BAKE = '[[@inray::old-card::inxshot_old-card.webp::832::1216]]';
 
+test('blank rows never change the tagger line addressed by a spinner', () => {
+  for (const gap of ['\n\n', '\n \n\n', '\r\n\r\n']) {
+    for (const tail of ['', '\n셋째 문장']) {
+      const raw = `첫 문장${gap}둘째 문장${tail}`;
+      assert.equal(insertSnippetAtStrippedLine(raw, 2, 'before', SPINNER),
+        `첫 문장${gap}${SPINNER}\n둘째 문장${tail}`);
+      assert.equal(insertSnippetAtStrippedLine(raw, 2, 'after', SPINNER),
+        `첫 문장${gap}둘째 문장\n${SPINNER}${tail}`);
+    }
+  }
+});
+
+test('leading blank and token rows preserve the raw insertion position', () => {
+  const raw = `\n${BAKE}\n\n첫 문장\n\n둘째 문장`;
+  assert.equal(insertSnippetAtStrippedLine(raw, 2, 'before', SPINNER),
+    `\n${BAKE}\n\n첫 문장\n\n${SPINNER}\n둘째 문장`);
+});
+
 test('context strips our tokens but keeps the prose line', () => {
   const out = filterTaggerContextMessages(
     [{ role: 'char', content: `맹약도 과분했다.${SPINNER}${BAKE}\n태양은 자비를 두지 않았다.` }],

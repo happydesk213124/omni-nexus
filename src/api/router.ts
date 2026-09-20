@@ -412,7 +412,7 @@ const WRITE_ROUTES: readonly Route[] = [
     // name and resolves them to roster names here. Unknown ids resolve to ''.
     match: exact('/v1/shots/resolve-cast'),
     handler: async ({ body }) =>
-      ok(await castIds.resolveCastNames(Array.isArray(body.ids) ? body.ids : [])),
+      ok(await (body.details === true ? castIds.resolveCastCharacters : castIds.resolveCastNames)(Array.isArray(body.ids) ? body.ids : [])),
   },
   {
     match: wrapped('/v1/cards/', '/tags'),

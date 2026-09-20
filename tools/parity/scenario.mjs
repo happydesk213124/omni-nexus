@@ -488,8 +488,10 @@ export async function runScenario(N, handles) {
     // Route returns a flat {id:name} map.
     const names = ids.length ? await post('/v1/shots/resolve-cast', { ids }) : {};
     const unknown = await post('/v1/shots/resolve-cast', { ids: ['zzzz'] });
+    const detail = await post('/v1/shots/resolve-cast', { ids, details: true });
     return {
       count: ids.length,
+      identities: detail?.characters || [],
       resolved: ids.map((id) => names?.[id] || ''),
       unknown_keys: Object.keys(unknown || {}),
     };

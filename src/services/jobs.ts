@@ -76,7 +76,7 @@ import { getConfig, jobEpochByKey, jobRunMeta, requestMessageRerollStop } from '
 import { mergeRosterFromTagged, rosterForSession } from './characters';
 import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
-import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, persistSessionWearStates } from './session-author-note';
+import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessionOutfitRevision, rosterWithSessionOutfits, persistSessionOutfits } from './session-author-note';
 import { parseWearState } from '../domain/character/wear-state';
 import { shotKeepsComicSlots } from '../domain/comic/page';
 import { fillComicPagesForShots } from './comic';
@@ -675,40 +675,13 @@ function shotAnchorPercent(shot: TaggedShot): number | null {
   return null;
 }
 
-/**
- * Final outfit per character from baked shots, id-keyed for the session note.
- * Later shots overwrite earlier ones, so the map holds each character's last
- * state of this generation. Roster-less names fall back to a `name:` key so a
- * brand-new LLM-invented name still carries into the next generation.
- */
-function collectFinalShotWear(
-  shots: Array<{ characters?: unknown }>,
-  roster: Parameters<typeof resolveCharacter>[1],
-): Array<{ id: string; name: string; wear: string }> {
-  const byId = new Map<string, { id: string; name: string; wear: string }>();
-  for (const shot of shots || []) {
-    const rawChars = (shot as { characters?: unknown })?.characters;
-    const chars = Array.isArray(rawChars) ? rawChars : [];
-    for (const ch of chars) {
-      if (!ch || typeof ch !== 'object') continue;
-      const nm = cleanText((ch as Record<string, unknown>).name, 200);
-      const wear = parseWearState((ch as Record<string, unknown>).wear_state);
-      if (!nm || !wear) continue;
-      const rec = resolveCharacter(nm, roster);
-      const rid = rec?.id ? String(rec.id) : '';
-      const id = rid || `name:${nm.toLowerCase()}`;
-      byId.set(id, { id, name: (rec?.name ? String(rec.name) : nm) || nm, wear });
-    }
-  }
-  return [...byId.values()];
-}
-
 async function runJob(jobId: string): Promise<void> {
   const row = await idbGet('jobs', jobId);
   if (!row) return;
   const request = JSON.parse(row.request_json ?? '{}') as JobRequest;
   const sessionId = String(row.session_id ?? '');
   const noteSessionId = chatNoteSessionId(request.session_id, request);
+  const outfitRevision = sessionOutfitRevision(noteSessionId);
   const llmController = new AbortController();
   jobLlmControllers.set(jobId, llmController);
   const llmOptions = { signal: llmController.signal };
@@ -1012,7 +985,7 @@ async function runJob(jobId: string): Promise<void> {
     shots = applyComicAspect(shots, card.comic_aspect);
 
     const allChars = shots.flatMap((shot) => shot.characters || []);
-    const roster = await mergeRosterFromTagged({
+    let roster = await mergeRosterFromTagged({
       sessionId,
       tagged,
       shotChars: allChars,
@@ -1020,6 +993,8 @@ async function runJob(jobId: string): Promise<void> {
       characterId,
       sourceSessionIds,
     });
+    roster = rosterWithSessionOutfits(roster, await getSessionAuthorNote(noteSessionId));
+    const successfulOutfitShots = new Map<number, TaggedShot>();
     dbg('job.roster', { roster: roster.length });
     const charMax = characterMaxLimit(card);
     for (const shot of shots) {
@@ -1052,7 +1027,7 @@ async function runJob(jobId: string): Promise<void> {
         ?? noteWearByName.get(String(name || '').toLowerCase());
     };
     applyWearContinuityToShots(shots, wearPrev);
-    await persistSessionWearStates(noteSessionId, collectFinalShotWear(shots, roster));
+
     applyCreatedCostumesToShots(
       shots,
       createdCostumeWearByName(collectCostumePairs({
@@ -1109,7 +1084,7 @@ async function runJob(jobId: string): Promise<void> {
           signal: llmController.signal,
         });
         applyWearContinuityToShots(shots, wearPrev);
-        await persistSessionWearStates(noteSessionId, collectFinalShotWear(shots, roster));
+
         sessionLocation = applyLocationContinuityToShots(shots, sessionLocation);
         await persistSessionLocation(noteSessionId, sessionLocation);
         for (const idx of assigned) ready.add(idx);
@@ -1513,6 +1488,8 @@ async function runJob(jobId: string): Promise<void> {
         if(durableSpinners) {
           completedSpinnerCards.set(idx,cardId);
         }
+        successfulOutfitShots.set(idx, shot);
+        if (isJobCurrent(jobId)) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
         dbg('job.shot.saved', { shot: idx, card_id: cardId });
         await setJob(
           jobId,

@@ -57,6 +57,7 @@ export function bindCharacterSheet(): void {
     for (const type of isField(element) ? ['input', 'change'] : ['click', 'dblclick']) {
       element.addEventListener(type, event => {
         event.stopImmediatePropagation();
+        if (event instanceof InputEvent && event.isComposing) return;
         const source = current?.querySelector<HTMLElement>(selector);
         if (!source) return;
         if (selector === '[data-char-delete]') { void removeCharacters(current ? [current] : []); return; }
@@ -69,6 +70,10 @@ export function bindCharacterSheet(): void {
         // Costume selection updates other fields synchronously in the vendor handler.
         if (type === 'change' || type === 'click') refresh();
       }, true);
+    }
+    if(isField(element)){
+      element.addEventListener('compositionend',()=>element.dispatchEvent(new Event('input',{bubbles:true})));
+      element.addEventListener('blur',()=>{void (globalThis as typeof globalThis & {__OMNI_FLUSH_CHARACTERS__?:()=>Promise<void>}).__OMNI_FLUSH_CHARACTERS__?.().catch(()=>{});});
     }
     if (element.matches('[data-char-costume-slot-save]')) element.hidden = true;
   }
@@ -255,7 +260,8 @@ export function bindCharacterSheet(): void {
 }
 
 /** Open the shared editor by stable identity, never by tile position. */
-export function openCharacterEditor(target: {id?: string; name?: string; scope?: string}): boolean {
+export function openCharacterEditor(target: {id?: string; name?: string; scope?: string; roster?: {id?: string; name?: string; scope?: string}}): boolean {
+  target = { ...target.roster, ...Object.fromEntries(Object.entries(target).filter(([, value]) => value != null && value !== '')) };
   const rows=[...document.querySelectorAll<HTMLElement>('.char-card[data-char-id]')];
   const scope=target.scope === '__global__' || target.scope === 'global' ? 'global' : 'session';
   const row=rows.find(row=>row.dataset.charId===target.id && row.dataset.charScope===scope)

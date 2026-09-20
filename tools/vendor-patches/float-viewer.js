@@ -112,11 +112,16 @@ async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
   nxFloatAsset = asset || null;
   // Older baked images can be outside the gallery's 120-card window. Their
   // stable id and owning message still support inspect/reroll actions.
-  if (!card) card = {id, session_id:nxFloatSession};
+  if (!card) {
+    const scope=await Z({useOverride:false});
+    if(token!==nxFloatSelecting || epoch!==nxFloatEpoch)return false;
+    const index=Number(/data-chat-index="(\d+)"/.exec(bubbleHtml)?.[1]);
+    card={id,session_id:nxFloatSession,character_id:scope.characterId,chat_id:scope.chatId,message_index:Number.isInteger(index)?index:undefined};
+  }
   nxFloatSelectedCard = card;
   const index = (t.gallery || []).findIndex(c => c.id === id);
   if (index >= 0) t.viewerIndex = index;
-  await nxFloatSetTarget(card, bubbleHtml, () => token === nxFloatSelecting && epoch === nxFloatEpoch);
+  // The reading message target is independent of the displayed image.
   if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
   if (domSrc) {
     ++nxFloatGen;
@@ -157,8 +162,9 @@ async function nxFloatClick(kind) {
       return;
     }
     if (kind === "tag" || kind === "regen" || kind === "char" || kind === "preset" || kind === "note") {
+      await nxFloatScan();
       if (!omniFooterTargets.get(nxFloatKey)) {
-        $e("이미지에 커서를 올린 뒤 눌러 주세요.");
+        $e("화면에 보이는 채팅 메시지가 없습니다.");
         return;
       }
       await omniFooterAction(kind, nxFloatKey);
@@ -170,7 +176,7 @@ async function nxFloatRerollOne() {
   if (!id) return;
   const before = nxFloatFind(id);
   const epoch = nxFloatEpoch, session = nxFloatSession;
-  const target = omniFooterTargets.get(nxFloatKey);
+  const target = before ? {characterId:before.character_id,chatId:before.chat_id,index:before.message_index} : null;
   try {
     const current = await Z({useOverride:false});
     if (current?.sessionId !== session) return;

@@ -617,3 +617,16 @@ test("shot override [base] expands token-wise over catalog wear", () => {
   assert.match(prompt, /ribbon/);
   assert.equal(prompt.includes("[base]"), false);
 });
+
+
+test('misfiled penis appearance follows exposure without losing unrelated weighted tags', () => {
+  const stored={name:'Aria',appearance:'boy, 1.2::blue eyes, large penis::, erect penis',gender:'boy',attire:'shirt'};
+  const original=structuredClone(stored);
+  for(const wear_state of ['clothed','torn','topless']) {
+    const caption=composeCharacterCaptionTags(stored,{name:'Aria',wear_state});
+    assert.doesNotMatch(caption,/penis/i);
+    assert.match(caption,/1.2::blue eyes::/);
+  }
+  for(const wear_state of ['bottomless','nude','completely'])assert.match(composeCharacterCaptionTags(stored,{name:'Aria',wear_state}),/large penis/);
+  assert.deepEqual(stored,original,'generation must not rewrite the saved appearance');
+});

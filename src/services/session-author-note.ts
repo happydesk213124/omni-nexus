@@ -5,6 +5,14 @@ import { cleanText, sessionIdHash } from '../core/util/text';
 import { joinSessionAuthorNote, parseSessionAuthorNote, parseSessionWear, formatSessionWearReference, sessionAuthorNoteSystemContent, type SessionWearEntry } from '../domain/tagging/session-note';
 import { parseWearState } from '../domain/character/wear-state';
 import { psGet, psSet } from '../storage/device-store';
+import { parseSessionCostumes, formatSessionCostumeReference } from '../domain/tagging/session-note';
+import { ensureCostumes, resolveCostumeWear } from '../domain/character/costume';
+import { resolveCharacter } from '../domain/character/roster';
+import type { CharacterRecord } from '../core/types';
+
+// Only explicit edits advance this revision. A running job must not undo them.
+const outfitRevisions = new Map<string, number>();
+export function sessionOutfitRevision(id: string): number { return outfitRevisions.get(id) || 0; }
 
 let noteUpdates: Promise<unknown> = Promise.resolve();
 function updateNote<T>(work: () => Promise<T>): Promise<T> {
@@ -81,7 +89,7 @@ export async function sessionAuthorNoteLlmContent(sessionId: unknown): Promise<s
     const rec = note as unknown as Record<string, unknown>;
     const sys = sessionAuthorNoteSystemContent(note);
     const ref = formatSessionWearReference(parseSessionWear(rec.wear));
-    return [sys, ref].filter(Boolean).join('\n\n');
+    return [sys, ref, formatSessionCostumeReference(parseSessionCostumes(rec.costumes))].filter(Boolean).join('\n\n');
   } catch {
     return '';
   }
@@ -104,6 +112,7 @@ async function setSessionAuthorNoteUnlocked(
     const entries = parseSessionWear(rec.wear);
     patch.wear = Object.fromEntries(entries.map((e) => [e.id, { name: e.name, wear: e.wear }]));
   }
+  if (rec.costumes != null) patch.costumes = Object.fromEntries(parseSessionCostumes(rec.costumes).map(e => [e.id, { name: e.name, scope: e.scope, costume: e.costume }]));
   if (rec.prefix == null && rec.suffix == null && rec.text != null) {
     patch.prefix = rec.text;
     patch.suffix = '';
@@ -113,10 +122,11 @@ async function setSessionAuthorNoteUnlocked(
   for (const key of Object.keys(patch)) {
     // wear is already a validated id→{name, wear} map, not text — cleanText
     // would stringify it into oblivion.
-    if (key === 'wear') continue;
+    if (key === 'wear' || key === 'costumes') continue;
     patch[key] = cleanText(patch[key], key === 'location' ? 800 : key === 'preset_id' ? 80 : 8000);
   }
   const next = parseSessionAuthorNote(await writeChatNote(id, patch));
+  if (rec.wear != null || rec.costumes != null) outfitRevisions.set(id, sessionOutfitRevision(id) + 1);
   const { prefix, suffix } = next;
   // Same omission as GET: no wear key when nothing is remembered.
   const { wear: _worn, ...rest } = next;
@@ -175,6 +185,43 @@ export function persistSessionWearStates(sessionId: unknown, entries: SessionWea
 }
 
 export type { SessionWearEntry };
+
+/** Session continuity is a temporary roster view, never a roster write. */
+export function rosterWithSessionOutfits(roster: CharacterRecord[], note: unknown): CharacterRecord[] {
+  const parsed = parseSessionAuthorNote(note);
+  return roster.map(row => {
+    const wear = parsed.wear.find(e => e.id === row.id);
+    const pick = parsed.costumes?.find(e => e.id === row.id && (!e.scope || e.scope === row.scope));
+    return { ...row, ...(wear ? { wear_state: wear.wear } : {}),
+      ...(pick ? { active_costume: resolveCostumeWear(row, pick.costume).index } : {}) };
+  });
+}
+
+/** Successful shots only, in narrative order; absent cast retain their state. */
+export function persistSessionOutfits(id: string, shots: Array<{characters?: unknown; comic_page?: unknown}>, roster: CharacterRecord[], revision: number): Promise<void> {
+  return updateNote(async () => {
+    if (sessionOutfitRevision(id) !== revision) return;
+    const old = parseSessionAuthorNote(await readChatNote(id));
+    const wear = Object.fromEntries(old.wear.map(e => [e.id, { name: e.name, wear: e.wear }]));
+    const costumes = Object.fromEntries((old.costumes || []).map(e => [e.id, { name: e.name, scope: e.scope, costume: e.costume }]));
+    for (const shot of shots) {
+      const page = shot.comic_page as { slots?: unknown } | undefined;
+      const chars = page && Array.isArray(page.slots) ? page.slots : Array.isArray(shot.characters) ? shot.characters : [];
+      for (const ch of chars) {
+        if (!ch || typeof ch !== 'object') continue;
+        const row = resolveCharacter(cleanText(ch.name, 200), roster);
+        if (!row) continue;
+        const state = parseWearState(ch.wear_state);
+        if (state) wear[row.id] = { name: row.name, wear: state };
+        const { costumes: catalog, active_costume } = ensureCostumes(row);
+        const picked = resolveCostumeWear(row, ch.costume, active_costume);
+        if (catalog[picked.index]) costumes[row.id] = { name: row.name, scope: row.scope || '', costume: catalog[picked.index]!.name };
+      }
+    }
+    if (sessionOutfitRevision(id) !== revision) return;
+    await writeChatNote(id, { wear, costumes });
+  });
+}
 
 export async function listSessionAuthorNotePresets(): Promise<ApiResult> {
   const items = asPresets(await psGet(SESSION_AUTHOR_NOTE_PRESETS_KEY));

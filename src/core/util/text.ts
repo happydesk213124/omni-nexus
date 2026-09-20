@@ -32,10 +32,10 @@ export function splitTagTokens(text: unknown): string[] {
   if (!raw) return [];
   const tokens: string[] = [];
   // Weighted group first; otherwise bare run until the next comma.
-  const re = /-?\d+(?:\.\d+)?::(?:(?!::).)*?::|[^,]+/g;
+  const re = /\s*(-?\d+(?:\.\d+)?::(?:(?!::).)*?::|[^,]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(raw)) !== null) {
-    const t = m[0]!.trim();
+    const t = m[1]!.trim();
     if (t) tokens.push(t);
   }
   return tokens;

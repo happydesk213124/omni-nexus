@@ -5,7 +5,7 @@ const NX_FLOAT_CSS = `
 [x-nx-float-counts] span{min-width:54px;text-align:center;font-variant-numeric:tabular-nums;}
 [x-nx-float] [x-nx-float-active="true"]{background:rgba(113,50,245,.55) !important;border-color:rgba(255,255,255,.35) !important;}
 [x-nx-float]{box-sizing:border-box;flex-direction:column;gap:10px;padding:10px;background:rgba(255,255,255,.08) !important;-webkit-backdrop-filter:blur(22px) saturate(1.6) !important;backdrop-filter:blur(22px) saturate(1.6) !important;border:1px solid rgba(255,255,255,.25) !important;border-radius:20px !important;box-shadow:0 20px 60px rgba(0,0,0,.55) !important;touch-action:none;user-select:none;-webkit-user-select:none;font:13px/1.45 system-ui,sans-serif;color:#e2e8f0;transition:background .45s ease,border-color .45s ease,box-shadow .45s ease;}
-[x-nx-float-head]{align-items:center;justify-content:flex-end;gap:8px;padding:2px;cursor:grab;background:transparent;transition:opacity .45s ease;}
+[x-nx-float-head]{align-items:center;justify-content:flex-end;gap:8px;padding:2px;min-height:44px;touch-action:none;cursor:grab;background:transparent;transition:opacity .45s ease;}
 [x-nx-float-head]:active{cursor:grabbing;}
 [x-nx-float-headbtns]{flex:none;display:flex;gap:4px;}
 [x-nx-float-headbtns="r"]{margin-left:auto;}
@@ -24,7 +24,7 @@ const NX_FLOAT_CSS = `
 [x-nx-float-bar] button:active{transform:scale(.92) !important;}
 [x-nx-float-resize]{position:absolute;right:0;bottom:0;width:44px;height:44px;cursor:nwse-resize;touch-action:none;border-bottom-right-radius:15px;}
 [x-nx-float-resize]::after{content:"";position:absolute;right:5px;bottom:5px;width:26px;height:26px;background:linear-gradient(to top-left,transparent 50%,rgba(255,255,255,.45) 50%);border-bottom-right-radius:10px;}
-[x-nx-float-foldgrip]{align-items:center;justify-content:center;flex:none;height:18px;cursor:grab;color:rgba(255,255,255,.5);font-size:11px;letter-spacing:3px;}
+[x-nx-float-foldgrip]{align-items:center;justify-content:center;flex:none;min-height:44px;touch-action:none;cursor:grab;color:rgba(255,255,255,.5);font-size:11px;letter-spacing:3px;}
 [x-nx-float-foldgrip]:active{cursor:grabbing;}
 [x-nx-float-foldgrid]{grid-template-columns:repeat(5,1fr);gap:6px;}
 [x-nx-float-foldgrid] button{border:1px solid rgba(255,255,255,.12) !important;background:rgba(255,255,255,.08) !important;width:100% !important;aspect-ratio:1/1 !important;padding:0 !important;font-size:22px !important;line-height:1 !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;display:flex !important;align-items:center !important;justify-content:center !important;touch-action:manipulation !important;}

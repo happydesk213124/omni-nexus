@@ -2154,7 +2154,8 @@ test('prompt tab autosaves like the other tabs', () => {
   assert.match(vite, /_promptAutosaveBusy/);
   assert.match(vite, /입력하면 잠시 뒤 자동 저장됩니다/);
   const bundle = read('dist', 'omninexus.js');
-  assert.match(bundle, /nxPromptAutosave/);
-  assert.match(bundle, /_promptAutosaveBusy/);
+  assert.doesNotMatch(bundle, /nxPromptAutosave/);
+  assert.match(bundle, /enqueue\("prompt:" \+ key/);
+  assert.match(bundle, /t.promptDrafts\[key\]=text/);
   assert.match(bundle, /입력하면 잠시 뒤 자동 저장됩니다/);
 });

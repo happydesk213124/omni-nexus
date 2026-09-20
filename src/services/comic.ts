@@ -18,7 +18,7 @@ import { resolveShotAspect } from '../domain/nai-meta/aspect.ts';
 import { callLlm } from './llm-call.ts';
 import { getConfig } from './context.ts';
 import { authorNoteSystemContent } from '../domain/tagging/session-note.ts';
-import { sessionAuthorNoteLlmContent } from './session-author-note.ts';
+import { getSessionAuthorNote, rosterWithSessionOutfits, sessionAuthorNoteLlmContent } from './session-author-note.ts';
 import { getPrompt } from './settings.ts';
 
 function rosterBlock(
@@ -78,7 +78,8 @@ export async function fillComicPagesForShots(args: {
   chatSessionId?: unknown;
   signal?: AbortSignal;
 }): Promise<Set<number>> {
-  const { shots, roster, assistantText } = args;
+  const { shots, assistantText } = args;
+  let roster=args.roster;
   const sessionId = args.chatSessionId ?? args.sessionId;
   const card = getConfig().card || {};
   const note = cleanText(card.comic_author_note, 8000);
@@ -91,6 +92,7 @@ export async function fillComicPagesForShots(args: {
     comicIdx.push(i);
   }
   if (!comicIdx.length) return already;
+  if (sessionId) roster=rosterWithSessionOutfits(roster,await getSessionAuthorNote(sessionId));
 
   const packOne = (i: number): string => {
     const shot = shots[i]!;

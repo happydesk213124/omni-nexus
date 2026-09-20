@@ -14,7 +14,7 @@ async function clickAt(page, selector) {
   await page.evaluate(()=>fixture.api.apply());
 }
 async function hoverAt(page, inside) {
-  await page.locator('body').dispatchEvent('mousemove',{clientX:inside?30:900,clientY:inside?30:650});
+  await page.locator('body').dispatchEvent('pointermove',{clientX:inside?30:900,clientY:inside?30:650});
   await page.waitForFunction(want=>fixture.api.hovered()===want,inside);
 }
 
@@ -36,6 +36,7 @@ async function setup(page, width = 1000) {
       async getBoundingClientRect() { return this.n.getBoundingClientRect().toJSON(); }
       async setAttribute(k,v) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); this.n.setAttribute(k,v); }
       async getAttribute(k) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); return this.n.getAttribute(k); }
+      async setStyle(k,v) { this.n.style[k]=v; }
       async setStyleAttribute(v) { this.n.style.cssText = v; }
       async setInnerHTML(v) { this.n.innerHTML = v; }
       async setTextContent(v) { this.n.textContent = v; }
@@ -44,7 +45,7 @@ async function setup(page, width = 1000) {
       async addEventListener(kind,fn,options) {
         // Risu apiV3/v3.svelte.ts: callbacks attach to document, even when
         // registered through an individual SafeElement, and omit the target.
-        const allowed=['click','dblclick','contextmenu','mousedown','mouseup','mousemove','mouseover','mouseleave','pointercancel','pointerdown','pointerenter','pointerleave','pointermove','pointerout','pointerover','pointerup','scroll','scrollend','keydown','keyup','keypress'];
+        const allowed=['click','dblclick','contextmenu','pointerdown','mouseup','pointermove','mouseover','mouseleave','pointercancel','pointerdown','pointerenter','pointerleave','pointermove','pointerout','pointerover','pointerup','scroll','scrollend','keydown','keyup','keypress'];
         if(!allowed.includes(kind))throw Error(`Event listener of type '${kind}' is not allowed for security reasons.`);
         const callback = e => fn({clientX:e.clientX,clientY:e.clientY,button:e.button,key:e.key});
         const id = ++serial; listeners.set(id,{node:document,kind,callback,options});
@@ -78,7 +79,7 @@ async function setup(page, width = 1000) {
       y:()=>{},$e:()=>{},withImageRerollToast:async(_text,fn)=>fn(),K:async()=>({card:cards[0]})};
     const api = new Function(...Object.keys(deps),runtime+`;return {ensure:nxFloatEnsure,apply:nxFloatApply,show:nxFloatShow,hide:nxFloatHide,scan:nxFloatScan,select:nxFloatShowCard,dispose:nxFloatDispose,
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
-      target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDragListeners.length};`)(...Object.values(deps));
+      target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove()};`)(...Object.values(deps));
     window.fixture = {api,t,calls,targets,listeners,scope:v=>{scope={...scope,...v};},wrap};
   },countRuntime+runtime);
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
@@ -92,7 +93,7 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     assert.equal(await page.locator('[x-nx-float]').count(),1,'concurrent boot mounts exactly one viewer');
     assert.equal(await page.evaluate(()=>[...fixture.listeners.values()].filter(v=>v.kind==='click').length),1,'exactly one document click handler');
     await page.locator('body').dispatchEvent('click',{clientX:900,clientY:650,button:0});
-    await page.locator('body').dispatchEvent('mousedown',{clientX:900,clientY:650,button:0});
+    await page.locator('body').dispatchEvent('pointerdown',{clientX:900,clientY:650,button:0});
     await page.evaluate(()=>fixture.api.apply());
     assert.deepEqual(await page.evaluate(()=>fixture.calls),[],'chat clicks cannot trigger floating controls');
     assert.equal(await page.evaluate(()=>fixture.api.dragCount()),0,'chat press cannot drag the viewer');
@@ -188,7 +189,7 @@ test('floating counts opens below viewer, edits saved min/max and works folded w
     await page.waitForFunction(()=>fixture.t.backendSettings.card.image_max===8);
     await page.clock.install();
     await page.clock.pauseAt(new Date(Date.now()+1000));
-    await page.locator('body').dispatchEvent('mousemove',{clientX:bounds.x+20,clientY:bounds.y+20});
+    await page.locator('body').dispatchEvent('pointermove',{clientX:bounds.x+20,clientY:bounds.y+20});
     await page.waitForFunction(()=>fixture.api.hovered());
     await page.clock.runFor(2500);
     assert.equal(await page.evaluate(()=>fixture.api.state().idle),false,'hovering popup keeps controls visible');
@@ -220,10 +221,10 @@ test('floating drag cleans up on settings hide and late pixels cannot cross chat
   try {
     const page=await browser.newPage(); await setup(page);
     const handle=await page.locator('[x-nx-float-resize]').boundingBox();
-    await page.locator('[x-nx-float-resize]').dispatchEvent('mousedown',{clientX:handle.x+20,clientY:handle.y+20,button:0});
-    await page.waitForFunction(()=>fixture.api.dragCount()===2);
-    await page.locator('body').dispatchEvent('mousemove',{clientX:handle.x+70,clientY:handle.y+50});
-    await page.evaluate(()=>fixture.api.apply());
+    await page.locator('[x-nx-float-resize]').dispatchEvent('pointerdown',{clientX:handle.x+20,clientY:handle.y+20,button:0});
+    await page.waitForFunction(()=>fixture.api.dragCount()===1);
+    await page.locator('body').dispatchEvent('pointermove',{clientX:handle.x+70,clientY:handle.y+50});
+    await page.evaluate(()=>fixture.api.finishMove());
     const resized=await page.locator('[x-nx-float]').boundingBox();
     assert.equal(resized.width,410);
     await page.evaluate(()=>{fixture.t.uiOpen=true;return fixture.api.hide();});
@@ -260,4 +261,40 @@ test('floating viewer fits narrow windows and preserves reroll across image repl
     assert.ok(image.height>100 && image.height<bounds.height,'image flexes between controls');
     await page.evaluate(()=>fixture.api.dispose());
   } finally {await browser.close();}
+});
+
+
+test('generation follows the central text-only message while the displayed image stays selected',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage();await setup(page);
+    const image=await page.evaluate(()=>fixture.api.state().id);
+    await page.evaluate(async()=>{
+      document.querySelector('.default-chat-screen').innerHTML='<div class="risu-chat" data-chat-index="9" data-chat-id="text-nine" style="height:680px">Only text here</div>';
+      await fixture.api.scan();
+    });
+    await clickAt(page,'[x-nx-float-bar] [x-nx-float-btn="tag"]');
+    const action=await page.evaluate(()=>fixture.calls.find(c=>c[0]==='tag'));
+    assert.equal(action[1].index,9);assert.equal(action[1].hostId,'text-nine');
+    assert.equal(await page.evaluate(()=>fixture.api.state().id),image);
+    await page.evaluate(()=>fixture.api.dispose());
+  }finally{await browser.close();}
+});
+
+test('mobile header drag updates immediately and stores geometry exactly once on release',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage();await setup(page);await clickAt(page,'[x-nx-float-btn="fold"]');
+    const grip=await page.locator('[x-nx-float-foldgrip]').boundingBox();assert.ok(grip&&grip.height>=44);
+    const x=grip.x+grip.width/2,y=grip.y+grip.height/2;
+    await page.locator('body').dispatchEvent('pointerdown',{clientX:x,clientY:y,button:0,pointerType:'touch'});
+    await page.waitForFunction(()=>fixture.api.dragCount()===1);
+    for(let i=1;i<=20;i++)await page.locator('body').dispatchEvent('pointermove',{clientX:x+i*4,clientY:y+i*3,pointerType:'touch'});
+    await page.evaluate(()=>fixture.api.finishMove());
+    assert.equal(await page.evaluate(()=>fixture.calls.filter(c=>c[0]==='geo').length),0);
+    const moving=await page.locator('[x-nx-float]').boundingBox();assert.ok(moving.x>60&&moving.y>50);
+    await page.locator('body').dispatchEvent('pointerup',{clientX:x+80,clientY:y+60,pointerType:'touch'});
+    await page.waitForFunction(()=>fixture.calls.filter(c=>c[0]==='geo').length===1);
+    await page.evaluate(()=>fixture.api.dispose());assert.equal(await page.evaluate(()=>fixture.listeners.size),0);
+  }finally{await browser.close();}
 });

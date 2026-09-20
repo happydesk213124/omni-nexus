@@ -759,6 +759,8 @@ const NEW_ONLY_STEPS = new Map([
     'shots.resolve_cast',
     (v) => (Number(v?.count) >= 1 && (v?.resolved || []).length === Number(v?.count)
       && (v?.resolved || []).every((n) => typeof n === 'string' && n.length > 0)
+      && (v?.identities || []).length === Number(v?.count)
+      && v.identities.every(row => row.id && row.scope && row.name && /^[0-9a-f]{4}$/.test(row.cast_id))
       && (v?.unknown_keys || []).length === 0
       ? null
       : `2.0 must resolve filename cast ids to roster names, got ${JSON.stringify(v)}`),
