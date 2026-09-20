@@ -4,7 +4,8 @@ export function installSearchClear(): void {
   if (document.getElementById('nx-search-clear-style')) return;
   const style = document.createElement('style');
   style.id = 'nx-search-clear-style';
-  style.textContent = `.nx-search-wrap{position:relative;display:flex;min-width:0;flex:1;align-items:center}.nx-search-wrap>input{width:100%;box-sizing:border-box;padding-right:40px!important}.nx-search-wrap>input::-webkit-search-cancel-button{display:none}.nx-search-clear{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;border-radius:12px;background:transparent;color:var(--muted,#686b82);cursor:pointer;padding:0;font:18px/1 sans-serif}.nx-search-clear[hidden]{display:none!important}`;
+  // Wrappers also sit in column flex dialogs; growing here steals the asset list height.
+  style.textContent = `.nx-search-wrap{position:relative;display:flex;min-width:0;width:100%;flex:0 0 auto;align-items:center}.nx-search-wrap>input{width:100%;box-sizing:border-box;padding-right:40px!important}.nx-search-wrap>input::-webkit-search-cancel-button{display:none}.nx-search-clear{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;border-radius:12px;background:transparent;color:var(--muted,#686b82);cursor:pointer;padding:0;font:18px/1 sans-serif}.nx-search-clear:disabled{opacity:.4;cursor:default}`;
   document.head.append(style);
   const bound = new WeakSet<HTMLInputElement>();
   const bind = (root: ParentNode) => {
@@ -17,7 +18,7 @@ export function installSearchClear(): void {
       const button = document.createElement('button'); button.type = 'button';
       button.className = 'nx-search-clear'; button.textContent = '×';
       button.setAttribute('aria-label', '검색어 지우기');
-      const update = () => { button.hidden = !input.value; };
+      const update = () => { button.disabled = !input.value; };
       button.addEventListener('click', event => {
         event.preventDefault(); event.stopPropagation();
         input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true }));

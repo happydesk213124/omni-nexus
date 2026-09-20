@@ -256,8 +256,9 @@ export async function runScenario(N, handles) {
   await rec('chars.create_shared_surname', () => post('/v1/characters', {
     session_id: 'sess_identity',
     characters: [
-      { id: 'jinwoo', name: 'HAN JINWOO', aliases: ['HAN', 'JINWOO', 'HAN JINWOO'], appearance: 'boy, black hair', attire: 'suit' },
-      { id: 'mina', name: 'HAN MINA', aliases: ['HAN', 'MINA', 'HAN MINA'], appearance: 'girl, brown hair', attire: 'dress' },
+      // Explicit UI fields: save matching no longer fills spelling fields via a folded display view.
+      { id: 'jinwoo', name: 'HAN JINWOO', surname: 'HAN', given_name: 'JINWOO', surname_variants: ['HAN'], given_name_variants: ['JINWOO'], aliases: ['HAN', 'JINWOO', 'HAN JINWOO'], appearance: 'boy, black hair', attire: 'suit' },
+      { id: 'mina', name: 'HAN MINA', surname: 'HAN', given_name: 'MINA', surname_variants: ['HAN'], given_name_variants: ['MINA'], aliases: ['HAN', 'MINA', 'HAN MINA'], appearance: 'girl, brown hair', attire: 'dress' },
     ],
   }));
   await rec('chars.get_identity', () => get('/v1/characters?session_id=sess_identity'));
@@ -1406,6 +1407,26 @@ export async function runScenario(N, handles) {
       otherKept: cleared?.llm_roles?.asset_char?.service_account_configured === true,
       clearFlagGone: !('clearServiceAccount' in (cleared?.llm || {})) && !('clearServiceAccount' in (cleared?.llm_roles?.autotag || {})),
     };
+  });
+  // Saving uses given-name spellings only; trigger aliases remain for text matching.
+  await rec('chars.given_name_save_contract', async () => {
+    const session_id = 'char_parity';
+    const previous = await get('/v1/characters?session_id=' + session_id);
+    const make = (id, given_name, given_name_variants) => ({ id, name: id, given_name, given_name_variants, surname: '김', aliases: ['shared'], appearance: 'blue eyes' });
+    try {
+      await post('/v1/characters', { session_id, characters: [
+        make('name-a', '', ['Yuna']), make('name-c', '', ['Yoona']),
+        make('name-b', '', ['YU NA, YOONA']),
+        make('trigger-a', '', []), make('trigger-b', '', []),
+      ] });
+      const result = await get('/v1/characters?session_id=' + session_id);
+      const rows = result.characters || [];
+      const merged = rows.filter(row => row.given_name_variants?.length);
+      const words = (merged[0]?.given_name_variants || []).map(x => x.toLowerCase().replace(/\s/g, '')).sort();
+      return { count: rows.length, merged: merged.length, words, triggersSeparate: rows.filter(row => row.id.startsWith('trigger-')).length === 2 };
+    } finally {
+      await post('/v1/characters', { session_id, characters: previous.characters || [] });
+    }
   });
   return transcript;
 }

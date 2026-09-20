@@ -1,5 +1,6 @@
 import { mergeSessionAndGlobalRoster } from '../domain/character/roster';
-import { readCharacterRoster } from '../storage/character-roster';
+import { readCharacterRoster, mutateCharacterRoster } from '../storage/character-roster';
+import { givenNameDuplicates, mergedGivenNames } from '../domain/character/save-identity';
 /**
  * Bot-owned character rosters. Storage resolves chat aliases to one disabled
  * character-lore entry; it never reads legacy plugin/global roster rows.
@@ -17,7 +18,6 @@ import {
   characterTriggers,
   foldCharacterUpsert,
   matchCharactersInText,
-  mergeCharactersByAlias,
   normalizeCharacterRecord,
   pickUnifiedWinners,
   resolveCharacter,
@@ -347,10 +347,14 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
   );
   let rec = normalizeCharacterRecord(raw);
   if (!rec) return null;
+  // Empty name fields stay empty even when legacy normalization can infer a
+  // given name from an uppercase display name.
+  const incomingNames = mergedGivenNames([raw as CharacterInput]);
+  rec.given_name = incomingNames.given_name || '';
+  rec.given_name_variants = incomingNames.given_name_variants || [];
   const scopeKey = cleanText(scope, 200) || GLOBAL_SCOPE;
   const existingList = await listCharacters(scopeKey);
   const selfId = cleanText(rec.id, 80);
-  const incoming = rec;
   const provided = {
     appearance: appearanceProvided,
     attire: attireProvided,
@@ -382,16 +386,19 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
   if (sameRow) {
     rec = foldCharacterUpsert(sameRow, rec, provided);
     if (!rec) return null;
+    rec.given_name = (givenProvided ? incomingNames.given_name : sameRow.given_name) || '';
+    rec.given_name_variants = (givenVariantsProvided ? incomingNames.given_name_variants : sameRow.given_name_variants) || [];
   }
-  const dup = existingList.find((c) => {
-    if (selfId && cleanText(c.id, 80) === selfId) return false;
-    if (rec && cleanText(c.id, 80) === cleanText(rec.id, 80)) return false;
-    return Boolean(resolveCharacter(incoming.name, [c]) || (incoming.aliases || []).some((a) => resolveCharacter(a, [c])));
-  });
-  if (dup) {
-    rec = foldCharacterUpsert(dup, rec, provided);
+  const duplicates = givenNameDuplicates(rec, existingList.filter(c => c.id !== selfId));
+  const dup = duplicates[0];
+  const nameFields = mergedGivenNames([rec, ...duplicates]);
+  for (const duplicate of duplicates) {
+    rec = foldCharacterUpsert(duplicate, rec, provided);
     if (!rec) return null;
   }
+  Object.assign(rec, nameFields);
+  // Retain the first existing duplicate's identity, as the single-match save did.
+  if (dup) rec.id = dup.id!;
 
   // Normalize costumes: seed from attire if missing; sync active slot from wear on save.
   {
@@ -421,7 +428,7 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
   const now = Date.now() / 1000;
   const gender = normalizeGender(rec.gender ?? rec.sex);
   const appearance = cleanText(rec.appearance || '', 4000);
-  await idbPut('characters', {
+  const saved: CharacterRecord = {
     scope: scopeKey,
     id: rec.id,
     name: rec.name,
@@ -463,7 +470,10 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
       ? sanitizeCastId((raw as Record<string, unknown>).cast_id)
       : sanitizeCastId(sameRow?.cast_id || dup?.cast_id || rec.cast_id),
     updated_at: now,
-  });
+  } as CharacterRecord;
+  const replacedIds = new Set([selfId, rec.id, ...duplicates.map(row => row.id)]);
+  // Write the survivor and remove absorbed rows in one verified roster save.
+  await mutateCharacterRoster(scopeKey, rows => [...rows.filter(row => !replacedIds.has(row.id)), saved]);
   rec.appearance = appearance;
   rec.gender = gender;
 
@@ -592,10 +602,15 @@ export async function replaceCharacters(
 ): Promise<CharacterRecord[]> {
   const scopeKey = cleanText(scope, 200) || GLOBAL_SCOPE;
   const prune = opts.prune === true;
-  const merged = mergeCharactersByAlias((characters || []) as CharacterInput[]);
+  const inputRows = (characters || []).filter((row): row is CharacterInput => Boolean(row && typeof row === 'object' && !Array.isArray(row)));
   const out: CharacterRecord[] = [];
-  for (const raw of merged) {
-    const rec = await upsertCharacter(scopeKey, raw);
+  for (const raw of characters || []) {
+    // The UI posts the whole list. A later row with the survivor's ID must not
+    // overwrite spellings already absorbed from earlier rows in that same list.
+    const group = raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? givenNameDuplicates(raw as CharacterInput, inputRows) : [];
+    const rec = await upsertCharacter(scopeKey, group.length > 1
+      ? { ...raw as CharacterInput, ...mergedGivenNames(group) } : raw);
     if (rec) out.push(rec);
   }
   if (prune) {
@@ -605,7 +620,8 @@ export async function replaceCharacters(
       if (oid && !keep.has(oid)) await deleteCharacter(scopeKey, oid);
     }
   }
-  return out;
+  const savedIds = new Set(out.map(row => row.id));
+  return (await listCharacters(scopeKey)).filter(row => savedIds.has(row.id));
 }
 
 // ── payloads ───────────────────────────────────────────────────────────────

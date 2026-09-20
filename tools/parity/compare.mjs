@@ -863,6 +863,8 @@ const NEW_ONLY_STEPS = new Map([
       : `command presets PUT must keep items[], got ${JSON.stringify(v)}`),
   ],
   ['roster.bot_lore_contract', v => v?.stored && v?.disabled && v?.isolated ? null : 'bot lore must own independent disabled rosters; legacy root merging is forbidden'],
+  // Intentional save change: aliases no longer merge rows; given-name chains do.
+  ['chars.given_name_save_contract', v => v?.count === 3 && v?.merged === 1 && v?.triggersSeparate === true && JSON.stringify(v?.words) === '["yoona","yuna"]' ? null : 'Given-name save grouping failed: ' + JSON.stringify(v)],
   [
     'char_cmd_presets.get',
     (v) => (v?.ok === true && v?.items?.[0]?.id === 'p1'

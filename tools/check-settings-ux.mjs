@@ -92,7 +92,9 @@ try {
     }
   }
   const assetPickerBundle = await build({entryPoints:['src/settings-ux/asset-picker.ts'],bundle:true,write:false,format:'iife',globalName:'AssetPicker'});
+  const searchClearBundle = await build({entryPoints:['src/settings-ux/search-clear.ts'],bundle:true,write:false,format:'iife',globalName:'SearchClear'});
   await page.addScriptTag({content:assetPickerBundle.outputFiles[0].text});
+  await page.addScriptTag({content:searchClearBundle.outputFiles[0].text});
   const vendorCss = (await readFile('vendor/inlay-nexus-ui.js','utf8')).match(/\.explorer-lightbox\{[\s\S]*?\.explorer-lightbox \.lb-bar \.ex-mobile-select.active\{[^}]*\}/)[0];
   for (const width of [320,1440]) {
     await page.setViewportSize({width,height:900});
@@ -104,9 +106,11 @@ try {
       tiles.innerHTML=Array.from({length:40},(_,i)=>`<button class="risu-tile"><img src="${src}"><span>Character ${i}</span></button>`).join('');
       const measure=(grid,columns)=>{const nodes=[...grid.children];const a=nodes[0].getBoundingClientRect(),b=nodes[columns].getBoundingClientRect();return {gap:b.top-a.bottom,square:Math.abs(a.width-a.height),scroll:grid.scrollHeight>grid.clientHeight};};
       const bots=measure(tiles,2);
+      SearchClear.installSearchClear();
       globalThis.risuai={getDatabase:async()=>({modules:[{id:'m',assets:Array.from({length:40},(_,i)=>['Asset '+i,'file/'+i])}],enabledModules:['m']}),readImage:async()=>src};
       await AssetPicker.pickCharacterAsset(document.createElement('div'));
       const dialog=document.querySelector('dialog');const assets=measure(dialog.firstElementChild.lastElementChild,3);
+      assets.headerHeight=dialog.firstElementChild.lastElementChild.getBoundingClientRect().top-dialog.getBoundingClientRect().top;
       dialog.close();dialog.remove();
       const lb=document.createElement('div');lb.id='nx-explorer-lightbox';lb.className='explorer-lightbox show';
       lb.innerHTML='<div class="lb-stage"><img></div><div class="lb-bar"><button>◀</button><span data-lb-meta>1/40</span><button>▶</button><button>즐겨찾기</button><button>수정</button><button>닫기</button></div>';
@@ -121,6 +125,7 @@ try {
       return {bots,assets,positions};
     },{chrome:pack.chrome,vendorCss});
     for(const grid of [result.bots,result.assets]) {assert.ok(grid.gap>=7,`picker rows overlap @${width}: ${JSON.stringify(grid)}`);assert.ok(grid.square<=1);assert.equal(grid.scroll,true);}
+    assert.ok(result.assets.headerHeight<220,`asset toolbar consumes the list @${width}: ${result.assets.headerHeight}`);
     assert.ok(result.positions.every(p=>p.top===result.positions[0].top && p.bottom<=900 && Math.abs(p.cx)<1 && Math.abs(p.cy)<1),`lightbox geometry changes @${width}`);
   }
   const full = await readFile('dist/omninexus.js', 'utf8');
@@ -171,6 +176,17 @@ try {
     && globalThis.renamePresetList===document.getElementById('nx-preset-chips')),true,'preset autosave must preserve mounted tiles');
   assert.equal(await page.evaluate(()=>globalThis.uxTestRuntime.t.backendSettings.card.presets.find(p=>p.id==='rename-probe')?.name),'Renamed immediately');
   await page.locator('#nx-preset-sheet-close').click();
+  for (const [tab,id] of [['style_presets','nx-preset-search'],['characters','nx-char-search'],['style_presets','nx-preset-search']]) {
+    await page.evaluate(async tab=>{const {t,paint}=globalThis.uxTestRuntime;t.uiTab=tab;await paint();},tab);
+    await page.locator('#'+id).fill('no matching entry');
+    const clear=page.locator('.nx-search-wrap').filter({has:page.locator('#'+id)}).getByRole('button',{name:'검색어 지우기'});
+    assert.equal(await clear.isVisible(),true,`${tab}: clear button visible after typing`);
+    await clear.click();
+    assert.equal(await page.locator('#'+id).inputValue(),'');
+    assert.equal(await clear.isVisible(),true,`${tab}: empty search keeps its clear button`);
+    assert.equal(await clear.isDisabled(),true);
+    assert.equal(await page.locator('#'+id).evaluate(el=>el===document.activeElement),true);
+  }
   await page.evaluate(async () => {
     const {t,paint}=globalThis.uxTestRuntime;
     await globalThis.__OMNI_SETTINGS_ACTIONS__.save({card:{...t.backendSettings.card, secondary_preset_id:'rename-probe'}});
