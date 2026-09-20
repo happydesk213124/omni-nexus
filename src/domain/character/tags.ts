@@ -745,8 +745,18 @@ export function composeCharacterCaptionTags(
   const nudeAcc = wearStateNeedsAnatomyAccessories(wearState)
     ? nudeAnatomyTagsFromAccessories(accessories)
     : '';
-  const storedAppearance = syncGenderIntoAppearance(stored?.appearance, explicitGender);
-  const shotAppearance = syncGenderIntoAppearance(shot?.appearance, explicitGender);
+  // Misfiled anatomy tags must follow the same exposure rule as penis_size.
+  // Keep the saved appearance intact so editing/importing never loses tags.
+  const exposed = ['bottomless', 'nude', 'completely'].includes(wearState);
+  const visibleAppearance = (value: unknown): string => splitTagTokens(value).flatMap(tag => {
+    if (exposed || !/penis/i.test(tag)) return [tag];
+    const group = /^(-?\d+(?:\.\d+)?)::([\s\S]*)::$/.exec(tag);
+    if (!group) return [];
+    const kept = visibleAppearance(group[2]);
+    return kept ? [`${group[1]}::${kept}::`] : [];
+  }).join(', ');
+  const storedAppearance = syncGenderIntoAppearance(visibleAppearance(stored?.appearance), explicitGender);
+  const shotAppearance = syncGenderIntoAppearance(visibleAppearance(shot?.appearance), explicitGender);
   const captionAppearance = hasLooks ? storedAppearance : shotAppearance;
   const hairColor = lookSlotMissingFromAppearance(
     normalizeHairColorSlot(stored?.hair_color, 120),

@@ -1,6 +1,5 @@
 import { risuHost } from '../core/host';
 import { parseRisuAssetRows, assetsFromEnabledModules } from '../domain/nai-meta/risu-asset-list';
-import { unifiedSessionIdForCharacter } from '../core/util/text';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 
 function imageBlob(data: unknown): Blob | null {
@@ -25,10 +24,11 @@ function blobDataUrl(blob: Blob): Promise<string> {
 
 export async function pickCharacterAsset(card: HTMLElement): Promise<void> {
   const host = risuHost();
-  const db = await host?.getDatabase?.(['characters', 'modules', 'enabledModules']);
+  // Capture the live Risu selection, independently of the edited roster scope.
+  const selection = host?.getCurrentCharacterIndex?.();
   const scope = card.dataset.charRefScope;
-  const character = db?.characters?.find(c => unifiedSessionIdForCharacter(String((c as unknown as {chaId: string}).chaId)) === scope) as unknown as Record<string, unknown> | undefined;
-  const assets = [...parseRisuAssetRows(character?.additionalAssets), ...assetsFromEnabledModules(db?.modules || [], [...(db?.enabledModules || []), ...(Array.isArray(character?.modules) ? character.modules.map(String) : [])])];
+  let character: Record<string, unknown> | undefined;
+  let assets: ReturnType<typeof parseRisuAssetRows> = [];
   const dialog = document.createElement('dialog');
   dialog.setAttribute('aria-label', '캐릭터 에셋 선택');
   dialog.style.cssText = 'box-sizing:border-box;width:min(600px,calc(100vw - 24px));height:min(1000px,90dvh);max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 24px);overflow:hidden;background:var(--surface,#171a29);color:var(--text,#eee);border:1px solid #5741d8;border-radius:12px;padding:16px';
@@ -151,5 +151,18 @@ export async function pickCharacterAsset(card: HTMLElement): Promise<void> {
   };
   search.oninput = render;
   dialog.onclose = () => { closed = true; generation++; queue = []; observer?.disconnect(); revoke(); dialog.remove(); };
-  document.body.append(dialog); dialog.showModal(); render();
+  document.body.append(dialog); dialog.showModal();
+  status.textContent = '에셋 불러오는 중…';
+  try {
+    const index = await selection;
+    const direct = typeof host?.getCharacterFromIndex === 'function';
+    const [current, db] = await Promise.all([
+      direct ? host?.getCharacterFromIndex?.(Number(index)) : Promise.resolve(undefined),
+      host?.getDatabase?.(direct ? ['modules', 'enabledModules'] : ['characters', 'modules', 'enabledModules']),
+    ]);
+    if (closed) return;
+    character = (direct ? current : db?.characters?.[Number(index)]) as Record<string, unknown> | undefined;
+    assets = [...parseRisuAssetRows(character?.additionalAssets), ...assetsFromEnabledModules(db?.modules || [], [...(db?.enabledModules || []), ...(Array.isArray(character?.modules) ? character.modules.map(String) : [])])];
+    render();
+  } catch (error) { if (!closed) status.textContent = '에셋 불러오기 실패: ' + String(error); }
 }

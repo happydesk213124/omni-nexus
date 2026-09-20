@@ -27,7 +27,7 @@ test('stop dispatch precedes all DOM and scope reads',async()=>{
 
 test('reroll hit query is restricted and completed result merges without gallery reload',()=>{
   const code=section('const rawAct = typeof e.querySelectorAll','y("info", "bake.refresh", cardId)');
-  assert.match(code,/:is\(\[x-inray-refresh\],\[data-inray-refresh\]\):active/);
+  assert.match(code,/:is\(\[x-inray-refresh\],\[data-inray-refresh\]\)/);
   assert.match(code,/gallery\.splice\(at,1,result.card\)/);
   assert.doesNotMatch(code,/await ce\(/);
 });

@@ -44,7 +44,7 @@ import { comicLlmWithMain, normalizeComicGenRatio } from '../domain/comic/params
 import { hostHas, risuHost } from '../core/host';
 import { mergeTaggerCharUserFields, pickSelectedPersona } from '../domain/tagging/char-user-info';
 import { authorNoteSystemContent } from '../domain/tagging/session-note';
-import { chatNoteSessionId, getSessionAuthorNote, sessionAuthorNoteLlmContent } from './session-author-note';
+import { chatNoteSessionId, getSessionAuthorNote, rosterWithSessionOutfits, sessionAuthorNoteLlmContent } from './session-author-note';
 import { formatPrevLocationLine } from '../domain/tagging/location';
 import { normalizeComicAspect } from '../domain/comic/aspect';
 import { numberMessageLinesForTagger, repairLazyShotLines } from '../domain/tagging/shot-line';
@@ -529,7 +529,7 @@ export async function buildTaggerMessages(
     : [];
   const unifiedSessionId = cleanText(request.unified_session_id || '', 200);
   const characterId = cleanText(request.character_id || '', 200);
-  const rosterEarly: CharacterRecord[] = card.lorebook || card.char_appearance !== false || assetMode !== 'off'
+  let rosterEarly: CharacterRecord[] = card.lorebook || card.char_appearance !== false || assetMode !== 'off'
     ? await loadTaggerRoster({
       sessionId,
       unifiedSessionId,
@@ -538,6 +538,8 @@ export async function buildTaggerMessages(
     })
     : [];
 
+  const outfitSessionId = chatNoteSessionId(sessionId, request);
+  if (outfitSessionId) rosterEarly = rosterWithSessionOutfits(rosterEarly, await getSessionAuthorNote(outfitSessionId));
   pushReferenceUser(messages, 'Lorebook', collectLorePayload(request, card, assistant, rosterEarly));
   pushReferenceUser(messages, 'Characters in this message', appearancePayload(card, assistant, sessionId, rosterEarly));
 

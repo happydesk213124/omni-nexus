@@ -4,6 +4,7 @@ import { bindModels } from './model-bindings';
  */
 
 import { bindCharacterSheet, openCharacterEditor } from './character-bindings';
+import { installSearchClear } from './search-clear';
 import { bindPresetSheet } from './preset-bindings';
 import { fillRisuTiles } from './risu-bindings';
 import { replaceMain } from './character-render';
@@ -318,6 +319,7 @@ export function replaceShell(): void {
 }
 
 export function afterPaint(): void {
+  installSearchClear();
   const shell = document.getElementById('nx-shell');
   if (!shell) return;
   document.documentElement.classList.add('nx-ux-on');
@@ -380,5 +382,6 @@ export function afterPaint(): void {
 }
 
 export function installSettingsUx(): void {
+  installSearchClear();
   Reflect.set(globalThis, '__INLAY_SETTINGS_UX__', { afterPaint, tabHtml, replaceShell, replaceMain, openCharacterEditor, previewHelp });
 }

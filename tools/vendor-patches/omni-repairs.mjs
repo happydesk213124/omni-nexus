@@ -1,3 +1,5 @@
+import { repairGestures } from './gesture-repairs.mjs';
+import { repairResponsiveness } from './responsiveness.mjs';
 import { rebuildMessageRuntime } from './runtime-rebuild.mjs';
 import { readFileSync } from 'node:fs';
 import { repairInspectFullscreen, repairAsyncInspect, repairInspectCloseNow, repairInspectGuardClose, repairInspectGuardCloseUp } from './inspect.mjs';
@@ -303,28 +305,30 @@ export function repairOmniUi(source) {
     const footer=document.createElement("div");footer.style.cssText="flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:12px 20px;border-top:1px solid #394358;background:#101620";
     const fields={},saved={};let pending=Promise.resolve();let timer;let closing=false;
     const WEAR_STATES=["clothed","torn","topless","bottomless","nude","completely"];
-    const wearEdit={map:{},baseline:""};
+    const wearEdit={map:{},baseline:""},costumeEdit={map:Object.fromEntries((value.costumes||[]).map(c=>[c.id,{name:c.name,scope:c.scope,costume:c.costume}])),baseline:""};
+    const costumeSnapshot=()=>JSON.stringify(Object.keys(costumeEdit.map).sort().map(k=>[k,costumeEdit.map[k]]));costumeEdit.baseline=costumeSnapshot();
     const wearSnapshot=()=>JSON.stringify(Object.keys(wearEdit.map).sort().map(k=>[k,wearEdit.map[k]]));
     const wearDirty=()=>wearSnapshot()!==wearEdit.baseline;
     const status=document.createElement("span");status.setAttribute("role","status");status.style.cssText="font-size:13px;overflow-wrap:anywhere";status.textContent="변경 시 자동 저장";
-    const dirty=()=>Object.keys(fields).filter(key=>fields[key].value!==saved[key]).concat(wearDirty()?["wear"]:[]);
+    const dirty=()=>Object.keys(fields).filter(key=>fields[key].value!==saved[key]).concat(wearDirty()?["wear"]:[],costumeSnapshot()!==costumeEdit.baseline?["costumes"]:[]);
     const save=()=> {
       clearTimeout(timer);
       pending=pending.catch(()=>false).then(async()=>{
         const keys=dirty();if(!keys.length)return true;
-        const body={session_id:sid};for(const key of keys)body[key]=key==="wear"?wearEdit.map:fields[key].value;
+        const wearSent=wearSnapshot(),costumeSent=costumeSnapshot();
+        const body={session_id:sid};for(const key of keys)body[key]=key==="wear"?JSON.parse(JSON.stringify(wearEdit.map)):key==="costumes"?JSON.parse(JSON.stringify(costumeEdit.map)):fields[key].value;
         status.textContent="저장 중…";
         try {
           const result=await K("/v1/session-author-note",{method:"PUT",body});
           if(result?.ok===false)throw new Error(result.error?.message || "저장 요청 실패");
           // Omitted fields, especially the generated location, belong to the latest backend state.
-          for(const key of keys){if(key==="wear"){wearEdit.baseline=wearSnapshot();}else{saved[key]=body[key];}}
+          for(const key of keys){if(key==="wear"){wearEdit.baseline=wearSent;}else if(key==="costumes"){costumeEdit.baseline=costumeSent;}else{saved[key]=body[key];}}
           status.textContent=dirty().length?"저장 대기 중…":"저장됨";return true;
         } catch(error) {status.textContent="저장 실패 · "+String(error?.message || error)+" · 닫기를 누르면 다시 시도합니다.";return false;}
       });
       return pending;
     };
-    const schedule=()=>{clearTimeout(timer);status.textContent=dirty().length?"저장 대기 중…":"변경 없음";timer=setTimeout(save,250);};
+    const schedule=()=>{clearTimeout(timer);status.textContent=dirty().length?"저장 대기 중…":"변경 없음";timer=setTimeout(save,1000);};
     let presets=[];let presetBusy=false;
     const group=document.createElement("div");group.style.cssText="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px";
     const select=document.createElement("select");select.setAttribute("aria-label","노트 프리셋");select.style.cssText="width:100%;min-height:36px";
@@ -367,26 +371,40 @@ export function repairOmniUi(source) {
     presetSave.onclick=()=>mutatePresets(false);presetDelete.onclick=()=>mutatePresets(true);
     group.append(select,name,presetSave,presetDelete);content.append(group);
     for(const [key,label] of [["prefix","선행"],["suffix","후행"],["location","장소"]]) {
-      const lab=document.createElement("label");lab.textContent=label;const input=document.createElement("textarea");input.value=value[key]||"";input.maxLength=key==="location"?800:8000;input.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:90px;resize:vertical;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:10px;margin:8px 0 16px";input.oninput=schedule;fields[key]=input;saved[key]=input.value;lab.append(input);content.append(lab);
+      const lab=document.createElement("label");lab.textContent=label;const input=document.createElement("textarea");input.value=value[key]||"";input.maxLength=key==="location"?800:8000;input.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:90px;resize:vertical;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:10px;margin:8px 0 16px";input.oninput=event=>{if(!event?.isComposing)schedule();};input.oncompositionend=schedule;input.onblur=save;fields[key]=input;saved[key]=input.value;lab.append(input);content.append(lab);
     }
     const wearTitle=document.createElement("div");wearTitle.textContent="옷 상태";wearTitle.style.cssText="margin:0 0 8px;font-size:13px;color:#9fb0c3";content.append(wearTitle);
     const wearSearch=document.createElement("input");wearSearch.placeholder="이름 검색";wearSearch.maxLength=200;wearSearch.setAttribute("aria-label","옷 상태 이름 검색");wearSearch.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:32px;background:#192230;color:#eee;border:1px solid #394358;border-radius:8px;padding:6px 10px;margin:0 0 8px";wearSearch.oninput=()=>{const q=wearSearch.value.trim().toLowerCase();for(const id of Object.keys(wearRows)){const r=wearRows[id];r.row.style.display=(!q||r.name.toLowerCase().indexOf(q)>=0)?"flex":"none";}};content.append(wearSearch);
-    const wearList=document.createElement("div");wearList.setAttribute("role","group");wearList.setAttribute("aria-label","옷 상태 목록");wearList.style.cssText="max-height:300px;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px;padding:10px;background:#0b1119;border:1px solid #394358;border-radius:12px";content.append(wearList);
+    const wearList=document.createElement("div");wearList.setAttribute("role","group");wearList.setAttribute("aria-label","옷 상태 목록");wearList.style.cssText="max-height:300px;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:1fr;gap:8px;margin:0 0 16px;padding:10px;background:#0b1119;border:1px solid #394358;border-radius:12px";content.append(wearList);
     const wearRows={};
-    const addWearRow=(id,name)=>{
-      if(!id||wearRows[id])return;
+    const addWearRow=(id,name,character)=>{
+      if(!id)return;
+      if(wearRows[id]){if(character)wearRows[id].setCostumes(character);return;}
       const row=document.createElement("div");row.style.cssText="display:flex;align-items:center;gap:8px";
       const lab=document.createElement("span");lab.textContent=name;lab.title=name;lab.style.cssText="flex:none;width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";row.append(lab);
-      const sel=document.createElement("select");sel.setAttribute("aria-label",name+" 옷 상태");sel.style.cssText="flex:1;min-width:0;min-height:30px;background:#192230;color:#eee;border:1px solid #394358;border-radius:8px;padding:4px";
+      const sel=document.createElement("select");sel.setAttribute("aria-label",name+" 옷 상태");sel.style.cssText="flex:1;min-width:0;min-height:36px;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:4px";
       for(const st of WEAR_STATES)sel.add(new Option(st,st));
       sel.value=wearEdit.map[id]?wearEdit.map[id].wear:"clothed";
       sel.onchange=()=>{
         if(closing)return;
-        if(sel.value==="clothed"){delete wearEdit.map[id];}
-        else{wearEdit.map[id]={name:name,wear:sel.value};}
+        wearEdit.map[id]={name:name,wear:sel.value};
         schedule();
       };
-      row.append(sel);wearList.append(row);wearRows[id]={row:row,select:sel,name:name};
+      const outfit=document.createElement("div");outfit.style.cssText="flex:1;min-width:0";
+      const choice=document.createElement("select");choice.setAttribute("aria-label",name+" 현재 코스튬");choice.style.cssText="box-sizing:border-box;width:100%;min-height:36px;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:4px";
+      const desc=document.createElement("div");desc.style.cssText="font-size:10px;line-height:1.4;color:#9fb0c3;margin-top:3px;overflow-wrap:anywhere";
+      outfit.append(choice,desc);
+      const setCostumes=c=>{
+        const catalog=c?.costumes?.length?c.costumes:[{name:"default",note:""}];
+        const pick=costumeEdit.map[id]?.costume||catalog[c?.active_costume||0]?.name||catalog[0].name;
+        choice.replaceChildren();for(const item of catalog)choice.add(new Option(item.name,item.name));
+        if(!catalog.some(item=>item.name===pick))choice.add(new Option(pick,pick));
+        choice.value=pick;
+        const explain=()=>{desc.textContent=catalog.find(item=>item.name===choice.value)?.note||"";};explain();
+        choice.onchange=()=>{if(closing)return;costumeEdit.map[id]={name,scope:c?.scope||"",costume:choice.value};explain();schedule();};
+      };
+      setCostumes(character);
+      row.append(sel,outfit);wearList.append(row);wearRows[id]={row:row,select:sel,name:name,setCostumes};
     };
     const initWear=(entries)=>{
       wearEdit.map={};
@@ -398,13 +416,14 @@ export function repairOmniUi(source) {
       for(const id of Object.keys(wearEdit.map))addWearRow(id,wearEdit.map[id].name);
     };
     initWear(value.wear);
+    for(const id of Object.keys(costumeEdit.map))addWearRow(id,costumeEdit.map[id].name);
     try{
       const roster=await K("/v1/characters?session_id="+encodeURIComponent(sid));
       const seen={};
       for(const list of [roster.characters,roster.global]){
         for(const c of list||[]){
           const cid=String(c&&(c.id||c.name)||"");if(!cid||seen[cid])continue;seen[cid]=1;
-          addWearRow(cid,String(c.name||cid));
+          addWearRow(cid,String(c.name||cid),c);
         }
       }
     }catch{status.textContent="로스터를 불러오지 못했습니다. 기억된 옷 상태만 편집할 수 있습니다.";}
@@ -510,5 +529,5 @@ export function repairOmniUi(source) {
   // Inspect sheet buttons follow the settings UI: 12px radius, Kraken purple primary.
   replace('border-radius:10px;padding:9px 14px;font:700 12px Segoe UI', 'border-radius:12px;padding:9px 14px;font:700 12px Segoe UI');
   replace('addInspectBtn(actRow, "재생성", "regen", `${actStyle};background:rgba(124,108,255,.92);color:#fff`)', 'addInspectBtn(actRow, "재생성", "regen", `${actStyle};background:#7132f5;color:#fff`)');
-  return repairInspectGuardCloseUp(repairInspectGuardClose(repairInspectCloseNow(repairAsyncInspect(repairInspectFullscreen(rebuildMessageRuntime(out))))));
+  return repairGestures(repairResponsiveness(repairInspectGuardCloseUp(repairInspectGuardClose(repairInspectCloseNow(repairAsyncInspect(repairInspectFullscreen(rebuildMessageRuntime(out))))))));
 }

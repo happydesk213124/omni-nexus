@@ -4591,14 +4591,17 @@ export function insertSnippetAtStrippedLine(
   const clamped = Math.max(1, Math.min(total, Math.floor(Number(strippedLine)) || total));
   const rawIndex = rawLineIndexForStrippedLine(raw, clamped);
   if (rawIndex == null) return raw;
+  // rawIndex includes blank/token-only rows. Do not feed it back into the
+  // content-line helpers, which would skip those rows a second time.
+  let start = 0;
+  for (let row = 1; row < rawIndex; row++) start = raw.indexOf('\n', start) + 1;
+  const newline = raw.indexOf('\n', start);
+  let end = newline < 0 ? raw.length : newline;
+  if (raw[end - 1] === '\r') end--;
   const textSide = normalizeInlineChatTextSide(side);
   if (textSide === 'before') {
-    const start = findPlainLineStartOffset(raw, rawIndex);
-    if (start == null) return raw;
     return raw.slice(0, start) + token + '\n' + raw.slice(start);
   }
-  const end = findPlainLineEndOffset(raw, rawIndex);
-  if (end == null) return raw;
   return raw.slice(0, end) + '\n' + token + raw.slice(end);
 }
 

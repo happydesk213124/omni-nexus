@@ -15,7 +15,7 @@ not mean the route is missing or the installed plugin is old.
 `GET /v1/shots/cast?card_id=...` supplies the asset name when SafeDOM cannot
 read it off the chat wrapper. Inspect opens the frozen loading sheet before
 awaiting even that lookup. `GET /v1/shots/asset?cast=0&name=...` skips roster
-reads; `POST /v1/shots/resolve-cast` resolves names independently. Each updates
+reads; `POST /v1/shots/resolve-cast` resolves names independently; `{ids, details:true}` returns `{characters:[{cast_id,id,scope,name}]}` so global cast chips retain their editor scope. Each updates
 the open sheet as it arrives. File base64 takes precedence over card thumbnails.
 The existing sheet/actions are reused, and up to five recent files (8 MiB of base64
 text each) can paint immediately on reopen while names refresh. Same-file reads in
@@ -549,7 +549,7 @@ prefers that over `content_hash`; hash and the Dice≥60% rebind remain fallback
 | `POST /v1/characters/ref` | `{character_id, scope, session_id?, image_b64}` or `{character_id, scope, copy_from, copy_from_scope?}` or `{character_id, scope, clear:true}` — bytes as-is |
 | `POST /v1/characters/ref/clear` | `{character_id, scope, session_id?}` |
 | `/v1/appearance/:sessionId` · `POST` | legacy alias |
-| `GET/PUT /v1/session-author-note` | `{session_id, prefix, suffix, preset_id, location, wear?, text}` — per-chat note (`text` is prefix+suffix; a legacy string body becomes `prefix`). `location` is the current session place tags (omit on PUT to keep). `wear` is the remembered outfit map (`{id: {name, wear}}`, id-keyed, written automatically after each generation; omit on PUT to keep; omitted from responses when empty). After `global_author_note` and the lane note (`author_note` / `asset_author_note` / comic tab). Session wins. |
+| `GET/PUT /v1/session-author-note` | `{session_id, prefix, suffix, preset_id, location, wear?, costumes?, text}` — per-chat note (`text` is prefix+suffix; a legacy string body becomes `prefix`). `location` is the current session place tags (omit on PUT to keep). `wear` is the remembered outfit map (`{id: {name, wear}}`, id-keyed, written from successfully saved shots in narrative order; omit on PUT to keep; omitted from responses when empty). `costumes` stores `{id:{name,scope,costume}}` in `omni.nexus.note`; responses return an entry array and omit it when empty. Current costumes belong to the actual chat, without changing roster defaults. Manual changes made during generation win over a late job result. After `global_author_note` and the lane note (`author_note` / `asset_author_note` / comic tab). Session wins. |
 | `GET/PUT /v1/session-author-note-presets` | `{items[{id,name,prefix,suffix}]}` |
 | `GET/PUT /v1/character-command-presets` | `{items[{id,name,cmd,cmd_post?}]}` — live list is `card.command_presets`; `onx_char_command_presets` still merges |
 | `POST /v1/characters/preview-shot` | style preset + form tags → `{preview_url,image_b64}` (no auto vibe/ref; no `1girl, smile,` look-plate tail) |

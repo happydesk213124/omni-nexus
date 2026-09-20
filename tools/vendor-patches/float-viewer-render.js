@@ -30,7 +30,7 @@ function nxFloatApply() {
   return nxFloatPainting;
 }
 async function nxFloatRender() {
-  if (!nxFloatRoot) return;
+  if (!nxFloatRoot || nxFloatDrag) return;
   const mode = nxFloatMode(), collapsed = !!nxFloatCollapsed;
   const hidden = nxFloatHidden || nxFloatBlocked();
   if (hidden) {

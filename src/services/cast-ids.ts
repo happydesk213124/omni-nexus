@@ -70,6 +70,15 @@ export async function resolveCastNames(ids: readonly unknown[]): Promise<Record<
   return out;
 }
 
+/** Identity travels with the name so a global cast never opens a session namesake. */
+export async function resolveCastCharacters(ids: readonly unknown[]): Promise<{ characters: Array<{cast_id: string; id: string; scope: string; name: string}> }> {
+  const want = new Set(ids.map(sanitizeCastId).filter(Boolean));
+  const rows = want.size ? await allCharacterRosters() : [];
+  return { characters: rows.filter(row => want.has(sanitizeCastId(row.cast_id))).map(row => ({
+    cast_id: sanitizeCastId(row.cast_id), id: String(row.id), scope: String(row.scope || GLOBAL_SCOPE), name: cleanText(row.name, 200),
+  })) };
+}
+
 /**
  * Card id → character asset name, falling back to the legacy gallery module.
  * The rendered img URL is Risu's file path and does not carry the cast.

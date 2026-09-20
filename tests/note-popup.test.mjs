@@ -59,6 +59,7 @@ async function harness(source = popupSource, opts = {}) {
     calls: [], scopes: [], shown: [], hidden: 0, failure: null,
   };
   if (opts.note) Object.assign(state.note, opts.note);
+  if (opts.roster) state.roster = opts.roster;
   let now = 0, nextTimer = 0;
   const timers = new Map();
   const bindings = {
@@ -139,8 +140,8 @@ async function verifyDirtySave(source = popupSource) {
   h.edit(h.prefix, 'draft');
   await h.tick(200);
   h.edit(h.prefix, 'final prefix');
-  await h.tick(249);
-  assert.equal(h.puts(noteRoute).length, 0, 'typing resets the 250ms debounce');
+  await h.tick(999);
+  assert.equal(h.puts(noteRoute).length, 0, 'typing resets the 1000ms debounce');
   await h.tick(1);
   assert.deepEqual(h.puts(noteRoute).map(call => call.body), [{ session_id: 'actual-chat/7', prefix: 'final prefix' }]);
   assert.equal(h.state.note.location, 'latest generated location');
@@ -173,7 +174,7 @@ test('preset save/select/delete uses GET/PUT and never stores location', async (
   assert.deepEqual(h.puts(presetRoute)[1].body.items, [added]);
   assert.equal(h.select.value, '');
   assert.equal(h.prefix.value, 'preset prefix', 'deleting a preset preserves the draft');
-  await h.tick(250);
+  await h.tick(1000);
   assert.ok(h.puts(noteRoute).length);
   for (const call of h.puts(noteRoute)) assert.equal(Object.hasOwn(call.body, 'location'), false);
 });
@@ -200,7 +201,7 @@ for (const failure of ['reject', 'response']) {
     const close = h.button('닫기'), content = h.prefix.parentNode.parentNode;
     h.state.failure = failure;
     h.edit(h.prefix, 'unsaved draft');
-    await h.tick(250);
+    await h.tick(1000);
     assert.match(h.status.textContent, /저장 실패/);
     await close.onclick();
     assert.equal(h.document.body.children[0], h.root);
@@ -213,7 +214,7 @@ for (const failure of ['reject', 'response']) {
     assert.equal(h.state.note.prefix, 'revised draft');
     assert.equal(h.document.body.children.length, 0); assert.equal(h.state.hidden, 1);
     const count = h.puts(noteRoute).length;
-    await h.tick(250);
+    await h.tick(1000);
     assert.equal(h.puts(noteRoute).length, count, 'close cancels the pending timer');
   });
 }
@@ -266,7 +267,7 @@ test('wear list shows roster names with selects, scrollable, clothed by default'
   assert.equal(css(h.wearBox)['max-height'], '300px');
   assert.equal(css(h.wearBox)['overflow-y'], 'auto');
   assert.equal(css(h.wearBox).display, 'grid');
-  assert.equal(css(h.wearBox)['grid-template-columns'], '1fr 1fr');
+  assert.equal(css(h.wearBox)['grid-template-columns'], '1fr');
   for (const name of ['Aria', 'Merk']) {
     const sel = wearSelect(h, name);
     assert.deepEqual(sel.children.map(opt => opt.value), ['clothed', 'torn', 'topless', 'bottomless', 'nude', 'completely']);
@@ -286,11 +287,11 @@ test('wear search filters rows by name', async () => {
   assert.notEqual(display('Merk'), 'none');
 });
 
-test('wear select saves the id-keyed map debounced; clothed clears it', async () => {
+test('wear select saves the id-keyed map debounced; clothed overrides an older session outfit', async () => {
   const h = await harness();
   setWear(h, 'Aria', 'nude');
-  await h.tick(249);
-  assert.equal(h.puts(noteRoute).length, 0, 'wear select joins the 250ms debounce');
+  await h.tick(999);
+  assert.equal(h.puts(noteRoute).length, 0, 'wear select joins the 1000ms debounce');
   await h.tick(1);
   assert.deepEqual(h.puts(noteRoute).map(call => call.body), [
     { session_id: 'actual-chat/7', wear: { c1: { name: 'Aria', wear: 'nude' } } },
@@ -298,8 +299,8 @@ test('wear select saves the id-keyed map debounced; clothed clears it', async ()
   assert.equal(h.status.textContent, '저장됨');
   assert.deepEqual(h.state.note.wear, { c1: { name: 'Aria', wear: 'nude' } });
   setWear(h, 'Aria', 'clothed');
-  await h.tick(250);
-  assert.deepEqual(h.puts(noteRoute).map(call => call.body).at(-1), { session_id: 'actual-chat/7', wear: {} });
+  await h.tick(1000);
+  assert.deepEqual(h.puts(noteRoute).map(call => call.body).at(-1), { session_id: 'actual-chat/7', wear: { c1: { name: 'Aria', wear: 'clothed' } } });
 });
 
 test('remembered wear preselects and stays editable when the roster fetch fails', async () => {
@@ -311,22 +312,33 @@ test('remembered wear preselects and stays editable when the roster fetch fails'
   assert.equal(wearSelect(h, 'Ghost').value, 'topless');
   assert.equal(descendants(h.wearBox).filter(node => node.tagName === 'span').length, 1);
   setWear(h, 'Ghost', 'bottomless');
-  await h.tick(250);
+  await h.tick(1000);
   assert.deepEqual(h.puts(noteRoute).map(call => call.body).at(-1), {
     session_id: 'actual-chat/7', wear: { c9: { name: 'Ghost', wear: 'bottomless' } },
   });
 });
 
 test('wear regression guard sends the wear map, not a missing field', async () => {
-  const needle = 'body[key]=key==="wear"?wearEdit.map:fields[key].value;';
+  const needle = 'body[key]=key==="wear"?JSON.parse(JSON.stringify(wearEdit.map)):key==="costumes"?JSON.parse(JSON.stringify(costumeEdit.map)):fields[key].value;';
   assert.ok(popupSource.includes(needle), 'wear must ride the live save body');
   const broken = popupSource.replace(needle, 'body[key]=fields[key].value;');
   await assert.rejects(async () => {
     const h = await harness(broken);
-    chip(h, 'Aria', 'nude').onclick();
-    await h.tick(250);
+    setWear(h, 'Aria', 'nude');
+    await h.tick(1000);
     assert.deepEqual(h.puts(noteRoute).map(call => call.body), [
       { session_id: 'actual-chat/7', wear: { c1: { name: 'Aria', wear: 'nude' } } },
     ]);
   });
+});
+
+
+test('costume sits beside wear, shows its note and saves only this session selection',async()=>{
+  const h=await harness(popupSource,{roster:[{id:'c1',name:'Aria',scope:'__global__',active_costume:0,costumes:[{name:'default',note:'every day'},{name:'night',note:'after sunset'}]}],note:{costumes:[{id:'c1',name:'Aria',scope:'__global__',costume:'night'}]}});
+  const choice=descendants(h.wearBox).find(n=>n.attributes['aria-label']==='Aria 현재 코스튬');
+  assert.equal(choice.value,'night');assert.ok(descendants(choice.parentNode).some(n=>n.textContent==='after sunset'));
+  assert.equal(choice.parentNode.parentNode,wearSelect(h,'Aria').parentNode);
+  choice.value='default';choice.onchange();await h.tick(1000);
+  assert.deepEqual(h.puts(noteRoute).at(-1).body,{session_id:'actual-chat/7',costumes:{c1:{name:'Aria',scope:'__global__',costume:'default'}}});
+  assert.equal(h.state.calls.filter(c=>c.method==='POST').length,0);
 });

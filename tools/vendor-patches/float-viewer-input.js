@@ -25,7 +25,7 @@ async function nxFloatBindInputs(h) {
   // resolve the hit by coordinates, never by the element used to register it.
   await nxFloatListen(h.body, 'click', async e => {
     const pos = nxFloatEvPos(e);
-    if (!pos || !await nxFloatHitSurface(pos.x,pos.y)) return;
+    if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
     const buttons = await nxUnwrapSafeNodes(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
     for (const button of buttons) {
       if (await hitEl(button,pos.x,pos.y)) {
@@ -34,14 +34,16 @@ async function nxFloatBindInputs(h) {
       }
     }
   });
-  await nxFloatListen(h.body, 'mousedown', async e => {
+  await nxFloatListen(h.body, 'pointerdown', async e => {
     const pos = nxFloatEvPos(e);
+    const pointer=nxFloatPointer={held:true,pos};
     if (!pos || nxFloatBlocked() || nxFloatHidden || !await hitEl(nxFloatRoot,pos.x,pos.y)) return;
     for (const [handle,kind] of [[nxFloatResize,'resize'],[nxFloatIcon,'bubble-move'],[nxFloatHead,'move'],[nxFloatFoldGrip,'move'],[nxFloatStage,'move']]) {
-      if (await hitEl(handle,pos.x,pos.y)) { await nxFloatMaybeDrag(e,kind); return; }
+      if (await hitEl(handle,pos.x,pos.y)) { await nxFloatMaybeDrag(e,kind,pointer); return; }
     }
   });
-  await nxFloatListen(h.body, 'mousemove', e => {
+  await nxFloatListen(h.body, 'pointermove', e => {
+    nxFloatMoveDrag(e);
     const pos = nxFloatEvPos(e);
     if (!pos || nxFloatBlocked() || nxFloatHidden) return;
     nxFloatHoverPos = pos;
@@ -59,6 +61,10 @@ async function nxFloatBindInputs(h) {
       }
     })().catch(() => {}).finally(() => { nxFloatHoverBusy = false; });
   }, {capture:true});
+  for (const kind of ['pointerup','pointercancel']) await nxFloatListen(h.body,kind,e=>{
+    if(nxFloatPointer)nxFloatPointer.held=false;
+    nxFloatMoveDrag(e);void nxFloatEndDrag(kind==='pointercancel');
+  },{capture:true});
   for (const kind of ['scroll', 'scrollend']) {
     await nxFloatListen(h.body, kind, () => nxFloatScheduleScan(), {capture:true});
   }
@@ -75,7 +81,9 @@ function nxFloatScheduleScan() {
 async function nxFloatUnbindInputs() {
   nxFloatHoverPos = null;
   clearTimeout(nxFloatScanTimer); nxFloatScanTimer = 0;
+  if(nxFloatPointer)nxFloatPointer.held=false;
   await nxFloatEndDrag(true);
+  nxFloatPointer=null;
   await nxFloatObserver?.disconnect(); nxFloatObserver = null;
   if (nxFloatDoc) {
     for (const node of await nxUnwrapSafeNodes(await nxFloatDoc.querySelectorAll('[x-nx-float-watch]'))) await node.remove();
@@ -106,11 +114,13 @@ async function nxFloatReadPosition() {
   const sr = await h.root.getBoundingClientRect(), vp = nxFloatViewport();
   const top = Math.max(0, sr.top), bottom = Math.min(vp.h, sr.bottom);
   const readingY = top + (bottom - top) * .5;
-  let best = null, distance = Infinity;
+  let best = null, distance = Infinity, readingBubble=null, readingDistance=Infinity;
   const bubbles = await nxUnwrapSafeNodes(await h.root.querySelectorAll('.risu-chat'));
   for (const bubble of bubbles) {
     const br = await bubble.getBoundingClientRect();
     if (br.bottom <= top || br.top >= bottom || br.height <= 0) continue;
+    const readingGap=Math.max(br.top-readingY,readingY-br.bottom,0);
+    if(readingGap<readingDistance){readingDistance=readingGap;readingBubble=bubble;}
     const nodes = await nxUnwrapSafeNodes(await bubble.querySelectorAll('[x-inlay-inline-shot],[data-inlay-inline-shot]'));
     for (const node of nodes) {
       const rect = await node.getBoundingClientRect();
@@ -124,6 +134,9 @@ async function nxFloatReadPosition() {
       best = {id, node, bubble, opening}; distance = gap;
     }
   }
+  if(epoch!==nxFloatEpoch || nxFloatBlocked())return;
+  if(readingBubble)await nxFloatSetTarget(null,await readingBubble.getOuterHTML(),()=>epoch===nxFloatEpoch);
+  else omniFooterTargets.delete(nxFloatKey);
   if (!best || epoch !== nxFloatEpoch || nxFloatBlocked()) return;
   const img = await best.node.querySelector('img');
   let src = '';

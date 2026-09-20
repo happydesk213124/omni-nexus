@@ -196,7 +196,7 @@ test('session wear persists id-keyed, drops clothed and bogus, omits empty wear 
 
 test('main, asset and comic taggers inject the actual chat note under unified scope', async () => {
   const unified = api.unifiedSessionIdForCharacter('char-a');
-  await api.setSessionAuthorNote(sid('one'), {prefix:'FIRST_CHAT_ONLY',location:'garden'});
+  await api.setSessionAuthorNote(sid('one'), {prefix:'FIRST_CHAT_ONLY',location:'garden',costumes:{a:{name:'Aria',scope:'__global__',costume:'night'}}});
   await api.setSessionAuthorNote(sid('two'), {prefix:'SECOND_CHAT_ONLY'});
   api.setConfig({card:{lorebook:false,asset_nai_tags:'off',comic_llm_batch:'batch'},nai:{},llm:{}});
   const request = {session_id:unified,unified_session_id:unified,character_id:'char-a',chat_id:'one',assistant_text:'A quiet garden.'};
@@ -206,8 +206,38 @@ test('main, asset and comic taggers inject the actual chat note under unified sc
     sessionId:unified,chatSessionId:api.chatNoteSessionId(unified,request)});
   for (const messages of [main,asset,globalThis.__noteTestMessages]) {
     assert.match(JSON.stringify(messages), /FIRST_CHAT_ONLY/);
+    assert.match(JSON.stringify(messages), /Aria: costume=night/);
     assert.doesNotMatch(JSON.stringify(messages), /SECOND_CHAT_ONLY/);
   }
   assert.match(JSON.stringify(main), /prev_location: garden/);
   delete globalThis.__noteTestMessages;
+});
+
+
+test('session costumes override defaults per chat and successful narrative order persists without roster writes', async () => {
+  const roster=[{id:'a',name:'Aria',scope:'__global__',wear_state:'clothed',active_costume:0,costumes:[{name:'default',attire:'coat'},{name:'night',attire:'dress'}]}, {id:'b',name:'Bo',scope:'__global__',costumes:[{name:'default'}]}];
+  await api.setSessionAuthorNote(sid('one'),{costumes:{a:{name:'Aria',scope:'__global__',costume:'night'}},wear:{a:{name:'Aria',wear:'nude'},b:{name:'Bo',wear:'topless'}}});
+  const note=await api.getSessionAuthorNote(sid('one'));
+  const view=api.rosterWithSessionOutfits(roster,note);
+  assert.equal(view[0].active_costume,1);assert.equal(view[0].wear_state,'nude');
+  assert.equal(roster[0].active_costume,0);assert.equal(roster[0].wear_state,'clothed');
+  assert.equal((await api.getSessionAuthorNote(sid('two'))).costumes,undefined);
+  assert.match(await api.sessionAuthorNoteLlmContent(sid('one')),/Aria: costume=night/);
+  const revision=api.sessionOutfitRevision(sid('one'));
+  await api.persistSessionOutfits(sid('one'),[
+    {characters:[{name:'Aria',wear_state:'nude',costume:'night'}]},
+    {characters:[{name:'Aria',wear_state:'clothed',costume:'default'}]},
+  ],roster,revision);
+  let next=await api.getSessionAuthorNote(sid('one'));
+  assert.equal(next.wear.find(e=>e.id==='a').wear,'clothed');assert.equal(next.wear.find(e=>e.id==='b').wear,'topless');
+  assert.equal(next.costumes.find(e=>e.id==='a').costume,'default');
+  await api.setSessionAuthorNote(sid('one'),{costumes:{a:{name:'Aria',scope:'__global__',costume:'night'}}});
+  await api.persistSessionOutfits(sid('one'),[{characters:[{name:'Aria',costume:'default'}]}],roster,revision);
+  next=await api.getSessionAuthorNote(sid('one'));assert.equal(next.costumes[0].costume,'night','late generation must not undo manual changes');
+});
+
+test('comic costume memory uses the final rendered slot', async () => {
+  const roster=[{id:'a',name:'Aria',scope:'__global__',costumes:[{name:'default'},{name:'night'}]}];
+  await api.persistSessionOutfits(sid('two'),[{characters:[{name:'Aria',costume:'default'}],comic_page:{slots:[{name:'Aria',costume:'default',wear_state:'clothed'},{name:'Aria',costume:'night',wear_state:'bottomless'}]}}],roster,api.sessionOutfitRevision(sid('two')));
+  const note=await api.getSessionAuthorNote(sid('two'));assert.equal(note.costumes[0].costume,'night');assert.equal(note.wear[0].wear,'bottomless');
 });

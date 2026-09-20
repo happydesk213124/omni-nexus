@@ -36,9 +36,7 @@ import {
   collectCostumePairs,
   ensureCostumes,
   mergeCostumeLists,
-  matchingCostumeIndex,
   promoteCostumeToDefault,
-  resolveCostumeIndex,
   syncActiveCostumeFromWear,
 } from '../domain/character/costume';
 import { sanitizeHash } from '../domain/character/char-ref-store';
@@ -888,14 +886,11 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     const writeScope = existing.scope === GLOBAL_SCOPE ? GLOBAL_SCOPE : (existing.scope || writeSessionId);
     const protectDefault = characterHasAppearance(existing);
     const merged = mergeCostumeLists(ensureCostumes(existing).costumes, incoming, { protectDefault });
-    const wearName = incoming[incoming.length - 1]?.name;
-    let wearIndex = wearName ? resolveCostumeIndex(merged, wearName) : -1;
-    if (wearIndex < 0 && incoming.length) wearIndex = matchingCostumeIndex(merged, incoming[incoming.length - 1]!);
     await upsertCharacter(writeScope, {
       id: existing.id,
       name: existing.name,
       costumes: merged,
-      active_costume: wearIndex >= 0 ? wearIndex : existing.active_costume,
+      active_costume: existing.active_costume,
     });
     roster = await readRoster();
   }
