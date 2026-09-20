@@ -49,6 +49,13 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   if (!pane || typeof vendorHtml !== 'string') return vendorHtml;
   const vendor = document.createElement('div');
   vendor.innerHTML = vendorHtml;
+  if (tab === 'changelog') {
+    // Release notes are maintained by the build, not the static preview.
+    vendor.querySelectorAll<HTMLElement>('.card').forEach(entry => {
+      entry.classList.replace('card', 'block');
+    });
+    return `<section class="pane active" id="changelog"><div class="stack">${vendor.innerHTML}</div></section>`;
+  }
   const out = document.createElement('div');
   out.innerHTML = pane;
   if (tab === 'models') {
