@@ -12,6 +12,14 @@ try {
   await page.setContent('<!doctype html><html><head></head><body></body></html>');
   await page.addScriptTag({ content: bundled.outputFiles[0].text });
   await page.addScriptTag({ content: cssModule.outputFiles[0].text });
+  const changelog = await page.evaluate(() => {
+    const html = '<div class="card"><strong>0.1.2</strong><ul><li>Latest release</li></ul></div><div class="card"><strong>0.1.1</strong><ul><li>Previous release</li></ul></div>';
+    document.body.innerHTML = SettingsTabs.tabHtml('changelog', html);
+    return { text: document.body.textContent, entries: document.querySelectorAll('#changelog .block').length };
+  });
+  assert.match(changelog.text, /0\.1\.2[\s\S]*Latest release[\s\S]*0\.1\.1[\s\S]*Previous release/, 'changelog must preserve current and previous release entries');
+  assert.equal(changelog.entries, 2);
+  assert.doesNotMatch(changelog.text, /선택해도 겹침을 안 붙임|말 끝 단추/);
   const values = await page.evaluate(() => {
     const vendor = '<div id="legacy-parent"><input id="nx-power" type="checkbox"><input id="nx-scroll-hold" type="checkbox" checked></div><textarea id="nx-preset-positive">custom &lt;tag&gt;</textarea>';
     document.body.innerHTML = SettingsTabs.tabHtml('dashboard', vendor);
