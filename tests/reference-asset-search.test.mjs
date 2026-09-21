@@ -6,7 +6,9 @@ const built=await build({stdin:{contents:`
 export * from './src/domain/nai-meta/reference-search';
 export {refSeedTargets,lookBytesForTarget} from './src/domain/character/char-ref-seed';
 export {collectReferenceCandidates,referenceLooksForTargets} from './src/services/reference-assets';
-`,loader:'ts',resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',plugins:process.env.BREAK_REFERENCE_RANK ? [{name:'break-rank',setup(builder){
+`,loader:'ts',resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',plugins:process.env.BREAK_REF_IDENTITY ? [{name:'break-identity',setup(builder){
+ builder.onLoad({filter:/reference-assets\.ts$/},async({path})=>({loader:'ts',contents:(await readFile(path,'utf8')).replace('rankedReferenceAssets(candidates, target.names)', "rankedReferenceAssets(candidates, [...target.names, 'Sora'])").replace('const siblings = [term];', "const siblings = [term, 'Sora'];")}));
+}}] : process.env.BREAK_REFERENCE_RANK ? [{name:'break-rank',setup(builder){
  builder.onLoad({filter:/reference-search\.ts$/},async({path})=>({loader:'ts',contents:(await readFile(path,'utf8')).replace("if (words.includes('default')) return 4;","if (words.includes('default')) return 0;")}));
 }}] : []});
 const api=await import('data:text/javascript;base64,'+Buffer.from(built.outputFiles[0].text).toString('base64'));
@@ -30,26 +32,24 @@ test('rank once across full name and aliases: exact, default, profile, normal/sm
  assert.ok(!result.includes('unrelated_default'));
 });
 
-test('captured lore-trigger candidates survive LLM names and bypass a second host search',async()=>{
+test('saved character search excludes other people sharing a lore entry',async()=>{
  const reads=[];
- const bot={chaId:'B',additionalAssets:[['marin_normal','normal'],['herin_default','default'],['other_default','wrong']],globalLore:[{key:'kimherin, herin, marin',comment:'김혜린'}],chats:[]};
+ const bot={chaId:'B',additionalAssets:[['stephanie_default','default'],['sora_default','wrong']],globalLore:[{key:'Stephanie, Sora',comment:'characters'}],chats:[]};
  globalThis.risuai={getCharacter:async()=>bot,getDatabase:async()=>({characters:[bot],modules:[],enabledModules:[]}),readImage:async key=>{reads.push(key);return new Uint8Array([key==='default'?2:1]);}};
- const captured=await api.collectReferenceCandidates(['kimherin'],'B');
- assert.equal(captured.length,2);assert.ok(captured.every(c=>c.terms.includes('marin')));
- // The open chat and asset catalogue can change while the LLM is responding.
- globalThis.risuai.getDatabase=async()=>{throw new Error('must use captured candidates');};
- const targets=api.refSeedTargets([{id:'h',scope:'B',name:'김혜린',surname:'김',given_name:'혜린'}]);
- const result=await api.referenceLooksForTargets(targets,'B',captured);
+ const targets=api.refSeedTargets([{id:'h',scope:'B',name:'Stephanie',aliases:['Steph']}]);
+ const result=await api.referenceLooksForTargets(targets,'B');
  assert.equal(result.length,1);assert.equal(result[0].targetId,'h');assert.equal(result[0].bytes[0],2);
  assert.deepEqual(reads,['default']);
 });
 
 test('missing preferred image tries the next ranked candidate without mixing characters',async()=>{
- globalThis.risuai={readImage:async key=>key==='missing'?null:new Uint8Array([5])};
+ const bot={chaId:'B',additionalAssets:[['Alice_default','missing'],['Alice_normal','normal'],['Bob','wrong']],chats:[]};
+ const reads=[];
+ globalThis.risuai={getCharacter:async()=>bot,getDatabase:async()=>({characters:[bot],modules:[]}),readImage:async key=>{reads.push(key);return key==='missing'?null:new Uint8Array([5]);}};
  const targets=[{id:'a',scope:'B',names:['Alice']}];
- const refs=[{name:'Alice_default',key:'missing',terms:['Alice']},{name:'Alice_normal',key:'normal',terms:['Alice']},{name:'Bob',key:'wrong',terms:['Bob']}];
- const result=await api.referenceLooksForTargets(targets,'B',refs);
+ const result=await api.referenceLooksForTargets(targets,'B');
  assert.equal(result.length,1);assert.equal(result[0].targetId,'a');
+ assert.deepEqual(reads,['missing','normal']);
 });
 
 test('selected character modules cannot include the currently open other chat modules',async()=>{

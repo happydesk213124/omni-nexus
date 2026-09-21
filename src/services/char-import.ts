@@ -1,15 +1,14 @@
 /**
  * Manual roster fill from personas / character-lore / CharInfo.
  * Lore picks reuse the job asset scan + char_looks prepass.
- * No NAI meta → one best-ranked asset via autotag, then lore body.
+ * Missing metadata hair/eye details → visual reference, respecting image routing.
  * Persona / CharInfo with NAI meta use the same looks messages + mergeRoster.
  */
 import { dbg } from '../core/debug';
 import { hostHas, risuHost } from '../core/host';
 import { GLOBAL_SCOPE } from '../core/constants';
 import type { ApiResult, JobRequest, LoreEntry } from '../core/types';
-import { asU8, bytesToBase64Async, u8ToArrayBuffer } from '../core/util/bytes';
-import { PRESET_LOOK_WEBP_QUALITY } from '../core/util/char-ref-size';
+import { asU8, bytesToBase64Async } from '../core/util/bytes';
 import { parseJsonLoose } from '../core/util/object';
 import { cleanText, parseAliasList } from '../core/util/text';
 import { resolveCharacter } from '../domain/character/roster';
@@ -45,11 +44,13 @@ import {
   upsertCharacter,
 } from './characters';
 import { fetchHostLorebookEntries, fetchCharacterLorebookEntries, getLorefilterPayload } from './lorefilter';
-import { seedCharRefsFromLooks, setCharRefImage } from './nai-assets';
+import { seedCharRefsFromLooks } from './nai-assets';
 import { buildCharacterLooksMessages } from './tagger';
 import { characterPrompt } from './character-prompt';
 import { runVisionAutotagLook } from './vision-autotag';
 import { characterSource } from './character-source';
+import { metadataHasHairAndEyes } from '../domain/nai-meta/look-completeness';
+import { characterImageInput } from './character-image-input';
 
 const META_PER = 8;
 const VISION_PER = 4;
@@ -245,33 +246,6 @@ async function saveLooks(
   });
 }
 
-/** Persona / CharInfo face → empty 참고이미지 (module webp @ 0.9, never overwrite). */
-async function seedImportFaceRefs(scope: string, rows: ResolvedRow[]): Promise<void> {
-  const faces = rows.filter((r) => (
-    (r.pick.kind === 'persona' || r.pick.kind === 'charinfo')
-    && r.name
-    && r.bytes?.byteLength
-  ));
-  if (!faces.length) return;
-  const list = await listCharacters(scope);
-  for (const r of faces) {
-    const hit = resolveCharacter(r.name, list)
-      || r.aliases.map((a) => resolveCharacter(a, list)).find(Boolean);
-    if (!hit) continue;
-    try {
-      await setCharRefImage(hit.scope || scope, hit.id, u8ToArrayBuffer(r.bytes!), {
-        overwrite: false,
-        quality: PRESET_LOOK_WEBP_QUALITY,
-      });
-    } catch (err) {
-      dbg('char_ref.seed.import.face.fail', {
-        name: r.name,
-        message: String((err as Error)?.message || err),
-      }, 'warn');
-    }
-  }
-}
-
 async function foldPickAliases(scope: string, rows: ResolvedRow[]): Promise<void> {
   const list = await listCharacters(scope);
   for (const r of rows) {
@@ -321,6 +295,12 @@ async function runPackedLooks(
     names,
     previews,
   );
+  const needsVisual = packed.groups.some(group =>
+    !metadataHasHairAndEyes([...group.common, ...group.assets.flatMap(asset => asset.unique)]));
+  if (needsVisual && !previews.length) {
+    messages.push(...await characterImageInput(rows.flatMap(row => row.bytes?.length
+      ? [{ name: row.name, trigger: row.name, bytes: row.bytes }] : []), getConfig().card.image_analysis_separate === true));
+  }
   const chars = stampIdentity(await parseLooks(messages, 'asset_char'), rows);
   if (!chars.length) return [];
   await saveLooks(
@@ -592,6 +572,10 @@ export async function analyzeAssetLook(
       packedAssetNames(packed),
       [],
     );
+    if (!metadataHasHairAndEyes(tags.plains)) {
+      messages.push(...await characterImageInput([{ name: cleanText(opts.assetName) || name, trigger: name, bytes }],
+        getConfig().card.image_analysis_separate === true));
+    }
     const looks=stampIdentity(await parseLooks(messages,'asset_char'),[row]);
     if(!looks.length)throw new Error('에셋 태거가 외형 정보를 반환하지 않았습니다.');
     return normalizeAnalyzedAssetLook(looks[0]!, 'metadata', packed.weightMap||new Map());
@@ -816,7 +800,6 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
 
   const leftover = await stillMissing(writeScope, characterId, work);
   const filled = work.length - leftover.length;
-  await seedImportFaceRefs(writeScope, resolved);
   await seedCharRefsFromLooks(await listCharacters(writeScope), characterId).catch((err) => {
     dbg('char_ref.seed.import.fail', { message: String((err as Error)?.message || err) }, 'warn');
   });

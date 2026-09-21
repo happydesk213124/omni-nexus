@@ -7,7 +7,7 @@ const source=readFileSync('src/services/nai-assets.ts','utf8');
 const start=source.indexOf('export async function seedCharRefsFromLooks('),end=source.indexOf('\nexport async function setCharRefImage(',start);
 assert.ok(start>=0&&end>start);
 let functionSource=source.slice(start,end).replace('export async','async');
-if(process.env.BREAK_REF_SOURCE) functionSource=functionSource.replace('referenceLooksForTargets(group, characterId, captured)', "referenceLooksForTargets(group, 'A', captured)");
+if(process.env.BREAK_REF_SOURCE) functionSource=functionSource.replace('referenceLooksForTargets(group, characterId)', "referenceLooksForTargets(group, 'A')");
 const {code}=await transform(functionSource+'\nreturn seedCharRefsFromLooks;', {loader:'ts'});
 const bundle=await build({stdin:{contents:`export {referenceLooksForTargets} from './src/services/reference-assets';export {characterSource} from './src/services/character-source';export {characterIdForRosterScope} from './src/storage/character-roster';export {refSeedTargets,lookBytesForTarget} from './src/domain/character/char-ref-seed';export {unifiedSessionIdForCharacter} from './src/core/util/text';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node'});
 const api=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
@@ -41,6 +41,9 @@ test('reference seeding searches selected bot with or without metadata and publi
 
 test('generation and import forward the initiating bot to automatic references',()=>{
  const chars=readFileSync('src/services/characters.ts','utf8'),imports=readFileSync('src/services/char-import.ts','utf8');
- assert.match(chars,/seedCharRefsFromLooks\(seededRoster, characterId, args.referenceCandidates\)/);
+ assert.match(chars,/seedCharRefsFromLooks\(seededRoster, characterId\)/);
+ assert.doesNotMatch(chars,/referenceCandidates/);
+ assert.doesNotMatch(readFileSync('src/services/generation.ts','utf8'),/seedCharRefsFromLooks/);
+ assert.doesNotMatch(imports,/seedImportFaceRefs/);
  assert.match(imports,/seedCharRefsFromLooks\(await listCharacters\(writeScope\), characterId\)/);
 });

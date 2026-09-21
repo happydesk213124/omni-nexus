@@ -15,6 +15,22 @@ const PNG_NO_META=(()=>{
   return new Uint8Array(Buffer.concat(parts));
 })();
 
+const PNG_COMPLETE_META=(()=>{
+ const bytes=Buffer.from(PNG_NAI_1X1),parts=[bytes.subarray(0,8)];
+ for(let offset=8;offset+12<=bytes.length;) {
+  const end=offset+12+bytes.readUInt32BE(offset),kind=bytes.toString('ascii',offset+4,offset+8);
+  const data=bytes.subarray(offset+8,end-4);
+  if(kind==='tEXt'&&data.toString().startsWith('Comment\0')) {
+   const next=Buffer.from(data.toString().replace('boy, black hair','boy, black hair, short hair, blue eyes, tsurime'));
+   const chunk=Buffer.alloc(next.length+12);chunk.writeUInt32BE(next.length);chunk.write(kind,4);next.copy(chunk,8);
+   let crc=0xffffffff;for(const byte of chunk.subarray(4,-4)){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+   chunk.writeUInt32BE((crc^0xffffffff)>>>0,chunk.length-4);parts.push(chunk);
+  } else parts.push(bytes.subarray(offset,end));
+  offset=end;
+ }
+ return new Uint8Array(Buffer.concat(parts));
+})();
+
 const bundle = await build({stdin:{contents:`
  export {getConfig,setConfig} from './src/services/context';
  export {openDb,idbPut,idbDelete} from './src/storage/stores';
@@ -25,12 +41,15 @@ const bundle = await build({stdin:{contents:`
  export {buildCharacterLooksMessages,buildTaggerMessages,collectGenerationAssets} from './src/services/tagger';
  export {getLastAssetWeightMap,setLastAssetWeightMap} from './src/services/asset-tags';
  export {characterSource} from './src/services/character-source';
- export {runImportFill} from './src/services/char-import';
+ export {runImportFill,analyzeAssetLook} from './src/services/char-import';
+ export {metadataHasHairAndEyes} from './src/domain/nai-meta/look-completeness';
  export {fetchCharacterLorebookEntries} from './src/services/lorefilter';
  export {collectTriggeredLoreKeys} from './src/domain/lore/assemble';
  export {joinTags} from './src/core/util/text';
  export {characterHasAppearance,syncGenderIntoAppearance,composeCharacterCaptionTags} from './src/domain/character/tags';
- `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node',define:{__PLUGIN_ID__:'"omni-nexus"'}});
+ `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node',define:{__PLUGIN_ID__:'"omni-nexus"'},plugins:process.env.BREAK_META_COMPLETENESS?[{name:'break-completeness',setup(builder){
+ builder.onLoad({filter:/look-completeness\.ts$/},()=>({loader:'ts',contents:'export function metadataHasHairAndEyes(){return true;}'}));
+ }}]:[]});
 let sequence=0;
 async function runtime() {
   const host=installHost({promptsDir:'prompts',seed:42});
@@ -75,7 +94,28 @@ test('image separation sends pixels only to autotag and returns text, independen
   }
 });
 
-test('inline main builder uses metadata as text and branches only missing-metadata images',async()=>{
+test('metadata coverage requires hair styling plus eye color and shape',async()=>{
+ const {api}=await runtime();
+ for(const tags of [[],['boy','black hair'],['short hair','blue eyes'],['bangs','tsurime']]) assert.equal(api.metadataHasHairAndEyes(tags),false);
+ assert.equal(api.metadataHasHairAndEyes(['short hair','blue eyes','tsurime']),true);
+ assert.equal(api.metadataHasHairAndEyes(['bald','eyeless']),true);
+});
+
+test('manual metadata analysis also supplies missing visual details using the chosen image route',async()=>{
+ for(const separate of [false,true]) {
+ const {api,host,config}=await runtime();
+  config.llm_roles.asset_char={...config.llm,model:'asset-test',follow_main:false};
+  config.card.image_analysis_separate=separate;api.setConfig(config);
+  const result=await api.analyzeAssetLook(PNG_NAI_1X1,{name:'Alice'});
+  assert.equal(result.ok,true);
+  assert.equal(host.llmRequests.length,separate?2:1);
+  const imageRequests=host.llmRequests.filter(request=>JSON.stringify(request).includes('image_url'));
+  assert.equal(imageRequests.length,1);
+  if(separate) assert.match(JSON.stringify(imageRequests[0]),/vision-only/);
+ }
+});
+
+test('inline main builder supplements incomplete metadata with images',async()=>{
   for (const metadata of [true,false]) for (const separate of [true,false]) {
     const {api,host,config}=await runtime();
     const png=metadata ? PNG_NAI_1X1 : PNG_1X1;
@@ -85,10 +125,25 @@ test('inline main builder uses metadata as text and branches only missing-metada
     config.card.asset_nai_tags='inline';config.card.image_analysis_separate=separate;api.setConfig(config);
     const messages=await api.buildTaggerMessages({session_id:'',assistant_text:'Alice',lore_trigger_keys:['Alice']});
     const hasPixels=messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='image_url'));
-    assert.equal(hasPixels,!metadata&&!separate);
-    assert.equal(host.llmRequests.length,!metadata&&separate?1:0);
+    assert.equal(hasPixels,!separate);
+    assert.equal(host.llmRequests.length,separate?1:0);
     if(metadata) assert.match(JSON.stringify(messages),/black hair/);
   }
+});
+
+test('complete metadata stays text-only in both modes and both image routing settings',async()=>{
+ for(const mode of ['inline','prepass']) for(const separate of [false,true]) {
+  const {api,host,config}=await runtime();
+  const bot={chaId:'bot',additionalAssets:[['Alice default','alice-asset']],chats:[]};
+  globalThis.risuai.getCharacter=async()=>bot;globalThis.risuai.readImage=async()=>PNG_COMPLETE_META;
+  config.card.asset_nai_tags=mode;config.card.image_analysis_separate=separate;api.setConfig(config);
+  const request={session_id:'',assistant_text:'Alice',lore_trigger_keys:['Alice']};
+  const collected=await api.collectGenerationAssets(request);
+  assert.match(collected.collected.block,/tsurime/);assert.equal(collected.images.length,0);
+  const messages=mode==='inline'?await api.buildTaggerMessages(request):await api.buildCharacterLooksMessages(request,collected.collected.block);
+  assert.ok(messages.every(message=>typeof message.content==='string'));
+  assert.equal(host.llmRequests.length,0);
+ }
 });
 
 test('failed image analysis propagates without a main-model retry or gender-only success',async()=>{
@@ -177,7 +232,7 @@ test('generation prepass and inline route new image-only people and metadata thr
   assert.ok(start>=0 && end>start);
   let body=source.slice(start,end);
   if(process.env.BREAK_IMAGE_ROUTING) body=body.replace('getConfig().card.image_analysis_separate === true','false');
-  const {code}=await transform(`return (async()=>{${body};return {skipAssetInject,referenceCandidates};})();`,{loader:'ts'});
+  const {code}=await transform(`return (async()=>{${body};return {skipAssetInject};})();`,{loader:'ts'});
   for(const mode of ['inline','prepass']) for(const separate of [false,true]) for(const material of ['text','image','metadata']) {
     const metadata=material==='metadata',hasAssets=material!=='text';
     const {api,host,config}=await runtime();
@@ -194,19 +249,14 @@ test('generation prepass and inline route new image-only people and metadata thr
       callLlm:async(role,messages)=>{calls.push({role,messages});return '{"new_characters":[{"name":"Alice","hair_style":"braid"}]}';},parseJsonLoose:JSON.parse,
       mergeRosterFromTagged:async args=>{saves.push(args);},characterHasAppearance:api.characterHasAppearance};
     const pipeline=await new Function(...Object.keys(scope),code)(...Object.values(scope));
-    let references=pipeline.referenceCandidates;
-    calls.push({role:'main',messages:await api.buildTaggerMessages(request,{skipAssetInject:pipeline.skipAssetInject,onAssetReferences:value=>{references=value;}})});
-    if(hasAssets) {
-      assert.deepEqual(references.map(ref=>ref.key),['alice-asset']);
-      if(mode==='prepass') assert.deepEqual(saves[0].referenceCandidates,references);
-    }
+    calls.push({role:'main',messages:await api.buildTaggerMessages(request,{skipAssetInject:pipeline.skipAssetInject})});
     assert.equal(calls.length,mode==='prepass'&&hasAssets?2:1,`${mode}/${separate}/${metadata}`);
-    assert.equal(host.llmRequests.length,hasAssets&&!metadata&&separate?1:0);
+    assert.equal(host.llmRequests.length,hasAssets&&separate?1:0);
     for(const call of calls) {
       const pixels=call.messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='image_url'));
-      assert.equal(pixels,hasAssets&&!metadata&&!separate&&call.role===(mode==='prepass'?'asset_char':'main'));
+      assert.equal(pixels,hasAssets&&!separate&&call.role===(mode==='prepass'?'asset_char':'main'));
     }
-    if(hasAssets&&!metadata&&separate) {
+    if(hasAssets&&separate) {
       assert.equal(host.llmRequests[0].model,'vision-only');
       assert.match(JSON.stringify(calls[0].messages),/Image analysis/);
     }
