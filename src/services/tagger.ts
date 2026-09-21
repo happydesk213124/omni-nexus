@@ -359,7 +359,7 @@ export async function buildCharacterLooksMessages(
   const userText =
     'Fill `new_characters` for incomplete / asset-matched people from the NovelAI asset block'
     + (incomplete.length ? ' and the Incomplete list' : '')
-    + '. COPY tags verbatim into appearance / attire / accessories. JSON only.';
+    + '. Classify explicit tags into the fields specified by the shared character rules, preserving their spelling and emphasis. Return one valid JSON object only.';
 
   if (usablePreviews.length) {
     const parts: LlmContentPart[] = [{ type: 'text', text: userText }];

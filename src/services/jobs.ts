@@ -815,7 +815,10 @@ async function runJob(jobId: string): Promise<void> {
           const lookRaw = await callLlm(resolveLlmRole(getConfig(), 'asset_char'), lookMessages, llmOptions);
           if (await cancelJobIfStale(jobId, 'superseded after char looks')) return;
           const lookTagged = parseJsonLoose(lookRaw) as TaggerResult;
-          const newChars = Array.isArray(lookTagged?.new_characters) ? lookTagged.new_characters : [];
+          if (!Array.isArray(lookTagged?.new_characters)) {
+            throw new Error('응답에 new_characters 배열이 없습니다.');
+          }
+          const newChars = lookTagged.new_characters;
           if (newChars.length) {
             await mergeRosterFromTagged({
               sessionId,
@@ -843,6 +846,10 @@ async function runJob(jobId: string): Promise<void> {
             { mode: assetMode, message: String((err as Error)?.message || err) },
             'warn',
           );
+          // A failed prepass must not silently turn into another paid main
+          // request with asset injection, hiding which response was broken.
+          if ((err as Error)?.name === 'AbortError') throw err;
+          throw new Error(`에셋 태거 실패 · ${String((err as Error)?.message || err)}`);
         }
       }
       try {
@@ -950,7 +957,7 @@ async function runJob(jobId: string): Promise<void> {
         raw_len: String(taggedRaw || '').length,
         retry: retryOn,
       }, 'warn');
-      if (!retryOn) throw parseErr;
+      if (!retryOn) throw new Error(`메인 태거 실패 · ${errMsg}`);
       if (await cancelJobIfStale(jobId, 'superseded before json retry')) return;
       dbg('job.tagger.json_retry', { err: errMsg.slice(0, 160), raw_len: String(taggedRaw || '').length }, 'warn');
       await setJob(jobId, 'tagging', {
@@ -973,8 +980,8 @@ async function runJob(jobId: string): Promise<void> {
       if (await cancelJobIfStale(jobId, 'superseded after json retry')) return;
       try {
         ({ tagged, shots } = readMainTagger(taggedRaw));
-      } catch {
-        throw new Error(TAGGER_JSON_RETRY_FAIL_MESSAGE);
+      } catch (retryErr) {
+        throw new Error(`메인 태거 · ${TAGGER_JSON_RETRY_FAIL_MESSAGE} · ${String((retryErr as Error)?.message || retryErr).slice(0, 400)}`);
       }
     }
     dbg('job.tagger.done', { shots: shots.length, raw_len: String(taggedRaw || '').length });

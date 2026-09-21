@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
+import {build} from 'esbuild';
 
 const full=await readFile('dist/omninexus.js','utf8');
+const taggerBundle = await build({stdin:{contents:`export {mergeRosterFromTagged} from './src/services/characters';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'iife',globalName:'taggerRegression',define:{__PLUGIN_ID__:'"omni-nexus"'}});
 assert.equal(full.split('  await Qa();').length,2);
 const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
 try {
@@ -33,7 +35,7 @@ try {
      if(url.startsWith('/v1/characters?'))await new Promise(resolve=>setTimeout(resolve,120));
      return actualK(url,options,...rest);
    };
-   globalThis.switchTest={t,paint:P,pending,complete(cid){const at=pending.findIndex(p=>p.cid===cid);if(at<0)throw Error('missing scan '+cid);const p=pending.splice(at,1)[0];p.resolve({ok:true,character_id:cid,selected:['t:'+cid],catalog:[{id:'t:'+cid,title:cid,keys:[cid],content:'Lore '+cid}],initialized:true});}};
+   globalThis.switchTest={t,paint:P,refresh:ce,pending,complete(cid){const at=pending.findIndex(p=>p.cid===cid);if(at<0)throw Error('missing scan '+cid);const p=pending.splice(at,1)[0];p.resolve({ok:true,character_id:cid,selected:['t:'+cid],catalog:[{id:'t:'+cid,title:cid,keys:[cid],content:'Lore '+cid}],initialized:true});}};
    ${process.argv.includes('--break-navigation') ? 'globalThis.__INLAY_SETTINGS_UX__.replaceMain=(main,html)=>{main.innerHTML=html;};' : ''}
    await P();
   `)});
@@ -150,7 +152,33 @@ try {
  await page.locator('#nx-char-sheet').evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));});
  const layout=await page.locator('.char-edit-head').evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));
  assert.ok(layout.scroll<=layout.width+1,JSON.stringify(layout));
+ // Feed a real new_characters merge into the built editor; opening must not
+ // replace the identity fields with empty values from the default costume.
+ await page.addScriptTag({content:taggerBundle.outputFiles[0].text});
+ await page.evaluate(async()=>{
+   await globalThis.__OMNI_FLUSH_CHARACTERS__();
+   const s=switchTest.t.lastScope;
+   const looks={appearance:'boy, pale skin',hair_color:'silver hair, white hair',hair_style:'short hair, messy hair, bangs',eye_color:'orange eyes, amber eyes'};
+   globalThis.expectedGeneratedLooks=looks;
+   await taggerRegression.mergeRosterFromTagged({sessionId:s.sessionId,characterId:s.characterId,tagged:{new_characters:[{name:'윤지호',given_name:'지호',gender:'boy',...looks,costumes:[{name:'default',attire:'white shirt',bottoms:'black pants'}]}]},shotChars:[]});
+   await switchTest.refresh(s.sessionId,true);await switchTest.paint();
+ });
+ if(process.argv.includes('--break-generated-looks')) await page.evaluate(()=>{
+   for(const el of document.querySelectorAll('.char-card [data-char-hair-color]'))el.value='';
+ });
+ const generatedTile=page.locator('[data-ux-character-tile]').filter({hasText:'윤지호'});
+ await generatedTile.click();
+ if(!await page.locator('#nx-char-edit-body').isVisible())await page.locator('#nx-char-edit-btn').click();
+ const expectedLooks=await page.evaluate(()=>expectedGeneratedLooks);
+ for(const [key,value] of Object.entries(expectedLooks))assert.equal(await page.locator('#nx-char-edit-body [data-char-'+key.replaceAll('_','-')+']').inputValue(),value,key);
+ await page.locator('#nx-char-edit-body [data-char-name]').fill('윤지호 확인');
+ await page.evaluate(async()=>{await globalThis.__OMNI_FLUSH_CHARACTERS__();});
+ const afterEdit=await page.evaluate(async()=>{
+   const data=await globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(switchTest.t.lastScope.sessionId),{method:'GET'});
+   return data.characters.find(c=>c.name==='윤지호 확인');
+ });
+ for(const [key,value] of Object.entries(expectedLooks))assert.equal(afterEdit[key],value,'after edit '+key);
  await page.screenshot({path:'.test-build/character-integration-mobile.png',fullPage:true});
  assert.deepEqual(errors,[]);
- console.log('Character integration: incremental adds, draft preservation, image/text paste, module assets and both options passed.');
+ console.log('Character integration: generated look persistence, incremental adds, draft preservation, image/text paste, module assets and both options passed.');
 } finally {await browser.close();}

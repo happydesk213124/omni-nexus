@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const bundle = await build({
-  stdin: { contents: `export {upsertCharacter,replaceCharacters,listCharacters} from './src/services/characters'; export {mutateCharacterRoster} from './src/storage/character-roster';`, resolveDir: process.cwd(), loader: 'ts' },
+  stdin: { contents: `export {upsertCharacter,replaceCharacters,listCharacters,mergeRosterFromTagged} from './src/services/characters'; export {mutateCharacterRoster} from './src/storage/character-roster';`, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, format: 'esm', platform: 'node', loader: { '.txt': 'text' },
   define: { __PLUGIN_ID__: '"omni-nexus"', __PLUGIN_VERSION__: '"test"' },
 });
@@ -18,6 +18,28 @@ beforeEach(() => {
   };
 });
 const row = (id, given_name, given_name_variants = []) => ({ id, name: id, given_name, given_name_variants, aliases: ['shared trigger'], surname: '김', appearance: 'blue eyes' });
+
+test('new tagger character preserves identity in the default costume used by the editor', async () => {
+  const looks = { appearance: 'boy, pale skin', hair_color: 'silver hair, white hair', hair_style: 'short hair, messy hair, bangs', eye_color: 'orange eyes, amber eyes' };
+  for (const costumes of [undefined, [{ name: 'default', attire: 'white shirt', bottoms: 'black pants' }], [{ name: 'uniform', attire: 'white shirt' }]]) {
+    await api.mutateCharacterRoster('a', () => []);
+    await api.mergeRosterFromTagged({ sessionId: 'a', characterId: 'a', tagged: { new_characters: [{ name: '윤지호', given_name: '지호', gender: 'boy', ...looks, attire: 'white shirt', costumes }] }, shotChars: [] });
+    const saved = (await api.listCharacters('a'))[0];
+    assert.ok(saved);
+    for (const [key, value] of Object.entries(looks)) {
+      assert.equal(saved[key], value, key);
+      assert.equal(saved.costumes[0][key], value, `editor default ${key}`);
+    }
+  }
+});
+
+test('reading legacy costumes inherits missing look slots but preserves explicit empty slots', async () => {
+  for (const explicitEmpty of [false, true]) {
+    await api.mutateCharacterRoster('a', () => [{ id: 'legacy', name: 'Legacy', hair_color: 'silver hair', appearance: 'boy', costumes: [{ name: 'default', attire: 'shirt', ...(explicitEmpty ? { hair_color: '' } : {}) }] }]);
+    const saved = (await api.listCharacters('a'))[0];
+    assert.equal(saved.costumes[0].hair_color, explicitEmpty ? '' : 'silver hair');
+  }
+});
 
 test('Korean or English names merge across surnames, commas, case and spaces', async () => {
   for (const pair of [
