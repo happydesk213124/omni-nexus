@@ -115,7 +115,7 @@ export async function bakeCardsIntoChatMessage(opts: {
 }): Promise<boolean> {
   const loaded = await loadTargetChat(opts.charIndex, opts.chatIndex);
   if (!loaded) return false;
-  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct);
+  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const messages = chatMessageList(loaded.chat);
   const idx = Math.floor(Number(opts.messageIndex));
   if (!Number.isFinite(idx) || idx < 0 || idx >= messages.length) return false;
@@ -251,7 +251,7 @@ export async function readStoredMessageBody(
 /** One durable placeholder per job/shot; completion never recomputes its paragraph. */
 export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;stripExisting?:boolean;shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
-  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded===true,getConfig().card?.inline_chat_scale_pct);
+  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
   const previousBody=messageBody(msg);
   const side=normalizeInlineChatTextSide(getConfig().card?.inline_chat_text_side);

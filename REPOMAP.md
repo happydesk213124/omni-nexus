@@ -166,6 +166,7 @@ On top of it we keep five logical row stores plus per-image blobs.
 |---|---|
 | `onx_native_settings` | the settings object |
 | `onx_nxstore_meta` | prompts, toggles, favourites, reference/vibe metadata |
+| `onx_nxcrefd_vibe_<hash>` | character reference encoded-feature cache (existing key retained); new writes leave small index rows in `onx_nxstore_meta`. Old inline caches remain readable without boot-time migration or cleanup. |
 | `onx_nxstore_cards` | generated image cards |
 | `onx_nxstore_characters` | roster rows, keyed `"<scope>\t<id>"` |
 | `onx_nxstore_jobs` | job rows (newest 3 + any still running; see `src/domain/jobs/retention.ts`) |

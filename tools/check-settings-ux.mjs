@@ -281,7 +281,7 @@ try {
   assert.equal(await page.locator('[data-ux-character-tile="a"] [data-character-label]').textContent(),'Alice edited');
   await page.evaluate(()=>globalThis.__OMNI_FLUSH_CHARACTERS__());
   assert.equal(await page.evaluate(()=>globalThis.renameCharacterTile===document.querySelector('[data-ux-character-tile="a"]')),true,'character autosave must preserve mounted tiles');
-  const characterUiBundle=await build({stdin:{contents:"export {applyCharacterToForm,readCharacterFromForm} from './src/char-command/form'; export {publishCharacterImage} from './src/core/character-ui-events'; export {connectCharacterImages} from './src/settings-ux/reference-progress';",resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'iife',globalName:'CharacterUi'});
+  const characterUiBundle=await build({stdin:{contents:"export {applyCharacterToForm,readCharacterFromForm} from './src/char-command/form'; export {publishCharacterImage} from './src/core/character-ui-events'; export {connectCharacterImages} from './src/settings-ux/reference-progress'; export {registerCharacterPreview} from './src/settings-ux/character-preview-index';",resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'iife',globalName:'CharacterUi'});
   await page.addScriptTag({content:characterUiBundle.outputFiles[0].text});
   const refresh=await page.evaluate(()=>{
     const card=document.querySelector('.char-card[data-char-id="a"]');
@@ -292,6 +292,9 @@ try {
     const selector=card.querySelector('[data-char-costume]');selector.value='0';selector.dispatchEvent(new Event('change',{bubbles:true}));
     selector.value='1';selector.dispatchEvent(new Event('change',{bubbles:true}));
     const roundtrip=CharacterUi.readCharacterFromForm(card,'char',record);
+    // This separately compiled helper has its own index, unlike the production
+    // bundle where bindCharacterSheet and image events share one module instance.
+    CharacterUi.registerCharacterPreview(card,document.querySelector('[data-ux-character-tile="a"]'));
     CharacterUi.connectCharacterImages();
     const uri='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"></svg>');
     const scope=card.dataset.charRefScope;

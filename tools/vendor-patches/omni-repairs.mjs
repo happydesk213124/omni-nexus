@@ -1,4 +1,5 @@
 import { repairGestures } from './gesture-repairs.mjs';
+import { repairSettingsSave } from './settings-save.mjs';
 import { repairResponsiveness } from './responsiveness.mjs';
 import { rebuildMessageRuntime } from './runtime-rebuild.mjs';
 import { readFileSync } from 'node:fs';
@@ -549,5 +550,5 @@ export function repairOmniUi(source) {
   };
 `;
   replace('  async function Tt(e, n) {', bind + '  async function Tt(e, n) {');
-  return out;
+  return repairSettingsSave(out);
 }

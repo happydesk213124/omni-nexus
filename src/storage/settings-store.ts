@@ -12,6 +12,20 @@ import { migrateSettings, stripEphemeralPreviewUrls } from '../config/schema';
 import { DEFAULT_CONFIG } from '../config/defaults';
 import { psGet, psSet } from './device-store';
 
+// This module is the sole writer of the settings row. Keep the last successful
+// value, not the optimistic config, so a failed write is always retryable.
+let persistedJson: string | undefined;
+
+function sameStoredValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+  const keys = Object.keys(a).filter(key => a[key] !== undefined);
+  return keys.length === Object.keys(b).filter(key => b[key] !== undefined).length
+    && keys.every(key => Object.prototype.hasOwnProperty.call(b, key) && sameStoredValue(a[key], b[key]));
+}
+
 function parseSettingsRaw(raw: unknown): unknown | null {
   if (raw == null || raw === '') return null;
   if (typeof raw === 'string') {
@@ -26,9 +40,11 @@ function parseSettingsRaw(raw: unknown): unknown | null {
 }
 
 export async function loadSettingsFromStorage(): Promise<Settings> {
+  persistedJson = undefined;
   try {
     const raw = await psGet(SETTINGS_KEY, LEGACY_SETTINGS_KEY);
     const parsed = parseSettingsRaw(raw);
+    persistedJson = JSON.stringify(parsed);
     if (!parsed) return deepcopy(DEFAULT_CONFIG);
     const migrated = migrateSettings(parsed);
     const config = deepMerge(DEFAULT_CONFIG, migrated) as Settings;
@@ -46,10 +62,12 @@ export async function saveSettingsToStorage(
 ): Promise<void> {
   const copy = deepcopy(config);
   stripEphemeralPreviewUrls(copy);
+  const serialized = JSON.stringify(copy);
   try {
-    const previous = parseSettingsRaw(await psGet(SETTINGS_KEY));
-    if (JSON.stringify(previous) !== JSON.stringify(copy)) await psSet(SETTINGS_KEY, copy);
+    if (persistedJson === undefined) persistedJson = JSON.stringify(parseSettingsRaw(await psGet(SETTINGS_KEY)));
+    if (persistedJson !== serialized) await psSet(SETTINGS_KEY, copy);
   } catch (err) {
+    persistedJson = undefined;
     const msg = String((err as Error)?.message || err);
     if (/setItem\s*Error/i.test(msg)) {
       throw new Error(
@@ -58,7 +76,12 @@ export async function saveSettingsToStorage(
     }
     throw err instanceof Error ? err : new Error(msg);
   }
-  if (opts.verify === false) return;
+  if (opts.verify === false) {
+    persistedJson = serialized;
+    return;
+  }
+  // A failed readback must not leave a cache entry claiming success.
+  persistedJson = undefined;
   const check = await psGet(SETTINGS_KEY);
   if (check == null) {
     throw new Error('설정 저장 실패: 세이브 저장소(pluginStorage)에 기록되지 않았습니다.');
@@ -71,4 +94,6 @@ export async function saveSettingsToStorage(
     || roles.some(id => (stored?.llm_roles?.[id]?.service_account_json || '') !== (copy.llm_roles?.[id]?.service_account_json || ''))) {
     throw new Error('설정 저장 실패: Service Account JSON 기록을 확인할 수 없습니다.');
   }
+  if (!sameStoredValue(stored, copy)) throw new Error('설정 저장 실패: 저장소에 변경 내용이 반영되지 않았습니다. 다시 저장해 주세요.');
+  persistedJson = JSON.stringify(stored);
 }

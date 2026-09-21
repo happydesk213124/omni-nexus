@@ -20,7 +20,7 @@ import { acknowledgePromptDefault, hasPromptDefaultRevision } from './prompt-rev
 import { DEFAULT_CONFIG, RESET_FACTORY_CONFIG } from '../config/defaults';
 import { promptText } from '../config/prompts';
 import { applySettingsResetKeeps, exportSettings, importSettings, splitSettingsDocPrompts } from '../config/schema';
-import { PROMPT_KEYS, PROMPT_PACK, VERSION } from '../core/constants';
+import { PROMPT_KEYS, PROMPT_PACK, RETIRED_PROMPT_KEYS, VERSION } from '../core/constants';
 import { getEventCount, getFocusStage, getLastError, getLastStage } from '../core/debug';
 import type { ApiResult, StylePreset } from '../core/types';
 import { deepcopy, deepMerge } from '../core/util/object';
@@ -30,10 +30,9 @@ import { naiHasAnyToken, normalizeTokenList, publicKeyRows } from '../domain/nai
 import { LLM_ROLE_IDS, normalizeLlmRolesSettings } from '../domain/llm/roles';
 import { comfyConfigured, imageBackendKind } from '../providers/comfy/client';
 import { llmConfigured } from '../providers/llm/transform';
-import { ensureInrayDisplayModule } from '../storage/inray-display-module';
-import { saveSettingsToStorage } from '../storage/settings-store';
+import { persistSettingsSnapshot } from './settings-persistence';
 import { idbGet, idbGetAll, idbPut, roomRows, storeSize, totalImageBytes } from '../storage/stores';
-import { configLock, getConfig, getPresetLookPreviewUrl, getPresetVibePreviewUrl, getRefPreviewUrl, getVibePreviewUrl, setConfig } from './context';
+import { getConfig, getPresetLookPreviewUrl, getPresetVibePreviewUrl, getRefPreviewUrl, getVibePreviewUrl, setConfig } from './context';
 
 /** Values that read as "the feature is switched off" in the settings UI. */
 const OFF_VALUES = ['', 'none', 'off', 'false', '0'];
@@ -90,7 +89,7 @@ export async function resetPrompt(key: string): Promise<ApiResult> {
 }
 
 /** Every prompt, in pack order first so the editor list is stable. */
-export async function listPrompts(): Promise<PromptRow[]> {
+export async function listPrompts(includeRetired = false): Promise<PromptRow[]> {
   const all = await idbGetAll('meta');
   const byKey = new Map<string, PromptRow>(
     all
@@ -109,12 +108,12 @@ export async function listPrompts(): Promise<PromptRow[]> {
     byKey.delete(key);
   }
   for (const row of byKey.values()) ordered.push(row);
-  return ordered;
+  return includeRetired ? ordered : ordered.filter(row => !RETIRED_PROMPT_KEYS.has(row.key));
 }
 
 /** Stable JSON for export: `{ version, prompts: { [key]: text } }` in pack order. */
 export async function exportPromptsPack(): Promise<{ version: string; prompts: Record<string, string> }> {
-  const rows = await listPrompts();
+  const rows = await listPrompts(true);
   const prompts: Record<string, string> = {};
   for (const row of rows) prompts[row.key] = row.text;
   return { version: VERSION, prompts };
@@ -192,21 +191,7 @@ function parsePromptsImport(raw: unknown): Record<string, string> {
 
 // ── persistence ────────────────────────────────────────────────────────────
 
-/**
- * Persists the current settings.
- *
- * The snapshot is taken before queuing, so each queued write stores the config
- * as it was when that write was requested. Ordering matters more than freshness
- * here: two callers mutating different sections must not have the second write
- * silently replay the first caller's view.
- */
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function persistSettingsSnapshot(verify: boolean): Promise<void> {
-  const snapshot = deepcopy(getConfig());
-  await configLock.run(() => saveSettingsToStorage(snapshot, { verify }));
-  void ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true).catch(() => undefined);
-}
 
 /**
  * Memory is already live via `setConfig`. The save-file write waits ~300ms so

@@ -12,6 +12,13 @@ export function rebuildMessageRuntime(source) {
     if(at<0||end<at)throw new Error('[runtime rebuild] function missing: '+start);
     out=out.slice(0,at)+value+'\n'+out.slice(end);
   };
+  once('  async function onScriptOutput(content) {', '  async function onScriptOutput(content) {\n    omniStreamHint();');
+  once('      if (text && text.length > 8) scheduleHashRelinkAfterReply("scriptOutput");', '      // Commit-time output notification owns message relinking.');
+  once('  async function onChatOutput(arg) {', '  async function onChatOutput(arg) {\n    omniStreamOutput();');
+  once('  function scheduleHashRelinkAfterReply(source) {', '  function scheduleHashRelinkAfterReply(source) {\n    if (omniStream.paused && source !== "chatOutput") return;');
+  once('  async function relinkSelectedMessageHash(source) {', '  async function relinkSelectedMessageHash(source) {\n    if (omniStream.paused) return;');
+  once('    if (typeof schedulePointerSelect == "function") schedulePointerSelect("reply");', '    // Selection refresh is coalesced with the final rebind below.');
+  once('      if (gen !== t._hashRelinkGen) return;\n      relinkSelectedMessageHash(source)', '      if (gen !== t._hashRelinkGen || omniStream.paused) return;\n      if (typeof schedulePointerSelect == "function") schedulePointerSelect("reply");\n      relinkSelectedMessageHash(source)');
   fn('  async function injectChatMsgActions(', '  async function injectChatMsgActions() { omniScheduleFooter(); }');
   fn('  function nxEnsureFanRemountWatch(', '  function nxEnsureFanRemountWatch() { omniScheduleFooter(); }');
   fn('  async function paintAllMsgFans(', '  async function paintAllMsgFans() { await omniMountFooters(); }');
@@ -80,6 +87,28 @@ export function rebuildMessageRuntime(source) {
   once(inspectHost, inspectHost+'\n'+inspect);
   once('      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;', '      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;\n      if (await nxFloatHitSurface(x, I)) return;');
   once('      await restoreFloatingViewerAfterRisuSettings();', '      await restoreFloatingViewerAfterRisuSettings();\n      await nxFloatEnsure();');
-  once('  const nxSpinnerPreviews=new Map();',read('message-runtime.js')+'\n'+read('scroll-runtime.js')+'\n'+['float-viewer-style.js','float-viewer.js','float-viewer-render.js','float-viewer-input.js','float-viewer-drag.js'].map(read).join('\n')+'\n  const nxSpinnerPreviews=new Map();');
+  once('  const nxSpinnerPreviews=new Map();',read('stream-runtime.js')+'\n'+read('message-runtime.js')+'\n'+read('scroll-runtime.js')+'\n'+['float-viewer-style.js','float-viewer.js','float-viewer-render.js','float-viewer-input.js','float-viewer-drag.js'].map(read).join('\n')+'\n  const nxSpinnerPreviews=new Map();');
+  once('    nxSpinnerPreviews.set(row.jobId+\'_\'+row.shot,{...row});', '    nxSpinnerPreviews.set(row.jobId+\'_\'+row.shot,{...row});\n    await omniMountFooters();\n    await omniStreamObservers();');
+  once('    for(const [key,row] of nxSpinnerPreviews) if(row.jobId===jobId) nxSpinnerPreviews.delete(key);', '    for(const [key,row] of nxSpinnerPreviews) if(row.jobId===jobId) nxSpinnerPreviews.delete(key);\n    await omniStreamObservers();');
+  fn('  async function onChatOutput(', read('reply-runtime.js'));
+  fn('  async function _t(', '');
+  once('      if (typeof k.addRisuReplacer != "function") throw new Error("addRisuReplacer unavailable");\n      await k.addRisuReplacer("afterRequest", _t), t.replacerReady = !0;', '      t.replacerReady = t._chatOutputReady;\n      if (!t._chatOutputReady) t.replacerError = "응답 완료 API 미지원";');
+  once(', await D("removeAfter", () => k.removeRisuReplacer?.("afterRequest", _t), null)', '');
+  const waitStart=out.indexOf('      const waitStream = source !== "streamKeywords";');
+  const waitEnd=out.indexOf('      try {\n        await le();',waitStart);
+  if(waitStart<0 || waitEnd<waitStart)throw new Error('[runtime rebuild] reply stream wait drift');
+  out=out.slice(0,waitStart)+out.slice(waitEnd);
+  once('      if (card.power === !1 || !card.auto_gen_on_reply) return content;\n      if (!text || text.length <= 8) return content;\n      t._scriptStreaming = !0;', '      t._scriptStreaming = !!text;');
+  out=out.replaceAll('afterRequest 활성','응답 완료 API 활성').replace('hook=${t.replacerReady ? "afterRequest"','hook=${t.replacerReady ? "chatOutput"');
+  assertCommittedReplyRuntime(out);
   return protectSavedFrames(out);
+}
+
+export function assertCommittedReplyRuntime(out) {
+  if (!out.includes('omniGenerateCommittedReply') || !out.includes('addRisuChatListener("output", onChatOutput)')) {
+    throw new Error('[build] missing committed-output auto-generation');
+  }
+  if (out.includes('addRisuReplacer("afterRequest", _t)') || out.includes('scheduleAutoGenOnReply("chatOutput"') || out.includes('while (await chatIsStreaming())')) {
+    throw new Error('[build] reply auto-generation must not poll streaming or use afterRequest');
+  }
 }

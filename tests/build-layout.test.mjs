@@ -2000,10 +2000,11 @@ test('from-image filter, look attach, and NAI badge are wired in source', () => 
 
 test('tagger costume how-to forbids copying name[index] into a new name', () => {
   const how = read('src', 'services', 'tagger.ts');
-  assert.match(how, /Never copy "default\[0\]" into a name field/);
-  assert.match(how, /characters\[\]\.costume MUST be a string/);
+  assert.match(how, /Never name a set default0\/maid1\/name\[index\]/);
+  assert.match(how, /characters\[\]\.costume is a string/);
+  assert.match(how, /withCostumes \? costumeHowTo\(\) : ''/);
   const tagger = read('prompts', 'tagger.txt');
-  assert.match(tagger, /wear = string only/);
+  assert.match(tagger, /Use costume.*only when their feature instructions are supplied/);
   assert.doesNotMatch(tagger, /pair the character with a wardrobe set/);
 });
 
@@ -2155,7 +2156,10 @@ test('prompt tab autosaves like the other tabs', () => {
   assert.match(vite, /입력하면 잠시 뒤 자동 저장됩니다/);
   const bundle = read('dist', 'omninexus.js');
   assert.doesNotMatch(bundle, /nxPromptAutosave/);
-  assert.match(bundle, /enqueue\("prompt:" \+ key/);
+  // Input and close share one coalescing writer, including its no-change guard.
+  assert.match(bundle, /omniQueuePromptSave\(key, text\);/);
+  assert.match(bundle, /omniEnqueueLiveWrite\("prompt:" \+ key/);
+  assert.match(bundle, /if \(text === String\(t\.prompts\?\.find/);
   assert.match(bundle, /t.promptDrafts\[key\]=text/);
   assert.match(bundle, /입력하면 잠시 뒤 자동 저장됩니다/);
 });

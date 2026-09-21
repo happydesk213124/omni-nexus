@@ -34,7 +34,7 @@ const PNG_COMPLETE_META=(()=>{
 const bundle = await build({stdin:{contents:`
  export {getConfig,setConfig} from './src/services/context';
  export {openDb,idbPut,idbDelete} from './src/storage/stores';
- export {seedPrompts,getPrompt,setPrompt,resetPrompt} from './src/services/settings';
+ export {seedPrompts,getPrompt,setPrompt,resetPrompt,listPrompts,exportPromptsPack} from './src/services/settings';
  export {pendingPromptDefaults} from './src/services/prompt-revisions';
  export {characterPrompt} from './src/services/character-prompt';
  export {characterImageInput} from './src/services/character-image-input';
@@ -99,6 +99,43 @@ test('metadata coverage requires hair styling plus eye color and shape',async()=
  for(const tags of [[],['boy','black hair'],['short hair','blue eyes'],['bangs','tsurime']]) assert.equal(api.metadataHasHairAndEyes(tags),false);
  assert.equal(api.metadataHasHairAndEyes(['short hair','blue eyes','tsurime']),true);
  assert.equal(api.metadataHasHairAndEyes(['bald','eyeless']),true);
+});
+
+test('retired editors are absent while stored edits remain readable and exportable',async()=>{
+  const {api}=await runtime();
+  const retired=['char_looks','autotag','asset_tags_inject','asset_author_note'];
+  for(const key of retired) await api.setPrompt(key,`CUSTOM ${key}`);
+  const visible=await api.listPrompts();
+  assert.ok(visible.length>0);
+  assert.ok(visible.some(row=>row.key==='tagger') && visible.some(row=>row.key==='character_common'));
+  assert.ok(visible.every(row=>!retired.includes(row.key)));
+  const exported=await api.exportPromptsPack();
+  for(const key of retired) {
+    assert.equal(await api.getPrompt(key),`CUSTOM ${key}`);
+    assert.equal(exported.prompts[key],`CUSTOM ${key}`);
+  }
+});
+
+test('compact scene rules retain required contracts and conditionally include feature schemas',async()=>{
+  const {api,config}=await runtime();
+  // The legacy parity host intentionally omits later feature prompt files.
+  await api.setPrompt('comic',readFileSync('prompts/comic.txt','utf8'));
+  config.card={...config.card,asset_nai_tags:'off',costume:false,nai_use_coords:false,nai5_speech:false,comic_gen:false};
+  api.setConfig(config);
+  const textOf=async()=> (await api.buildTaggerMessages({session_id:'',assistant_text:'Alice stands.\nBob waves.'}))
+    .filter(m=>m.role==='system').map(m=>m.content).join('\n');
+  const plain=await textOf();
+  for(const term of ['new_characters','hair_style','eye_color','source','target','mutual','wear_state','indoor','outdoor','y_percent','paragraph','line','aspect']) assert.ok(plain.includes(term),term);
+  assert.match(plain,/NOT line|NOT shot order/);
+  assert.doesNotMatch(plain,/## Costumes \(enabled\)|## Speech|center_x|comic_page/);
+  config.card={...config.card,costume:true,nai_use_coords:true,nai5_speech:true,comic_gen:true,comic_llm_batch:'with_main'};
+  api.setConfig(config);
+  const enabled=await textOf();
+  for(const term of ['## Costumes (enabled)','new_costumes','[base]','center_x','speech_lang','comic_page','cut_kind']) assert.ok(enabled.includes(term),term);
+  const core=['tagger','format','appearance_inject','character_common'].map(key=>readFileSync(`prompts/${key}.txt`,'utf8'));
+  // Previous shipped core was 15,124 characters; this guards real prompt growth,
+  // independently of any model tokenizer and without counting disabled files.
+  assert.ok(core.reduce((sum,text)=>sum+text.length,0)<15124*0.6);
 });
 
 test('manual metadata analysis also supplies missing visual details using the chosen image route',async()=>{

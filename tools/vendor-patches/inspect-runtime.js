@@ -56,10 +56,10 @@ showFullscreen = async (f) => {
     const spinner = await H(e, "div", { style: spinHide });
     await closeRow.appendChild(spinner);
     const specs = [
-      [chipRow, "수정", "base", `${chipStyle};background:rgba(124,108,255,.22);color:#ddd6fe;border:1px solid rgba(124,108,255,.45)`],
       [actRow, "태그", "retag", `${actStyle};background:rgba(15,118,110,.92);color:#fff`],
       [actRow, "재생성", "regen", `${actStyle};background:#7132f5;color:#fff`],
       [actRow, "리롤", "reroll", `${actStyle};background:rgba(51,65,85,.95);color:#e8eef8;border:1px solid rgba(255,255,255,.14)`],
+      [actRow, "수정", "base", `${actStyle};background:rgba(124,108,255,.22);color:#ddd6fe;border:1px solid rgba(124,108,255,.45)`],
       [closeRow, "닫기", "close", `${actStyle};background:rgba(255,255,255,.06);color:#cbd5e1;border:1px solid rgba(255,255,255,.1);min-width:88px`]
     ];
     const buttons = await Promise.all(specs.map(([, text, , style]) => H(e, "button", { text, style })));

@@ -25,6 +25,8 @@ import { allCharacterRosters, readCharacterRoster, mutateCharacterRoster } from 
 
 import {
   CARD_PACK_KEY,
+  charRefVibeDataKey,
+  isCharRefVibeKey,
   charRefDiskDataKey,
   charRefDiskImageKey,
   IMAGE_KEY,
@@ -388,6 +390,8 @@ function snapshotOf(store: StoreName): Record<string, unknown> {
 }
 
 function diskMetaOrJobRow(store: StoreName, v: unknown, row: Record<string, unknown>): unknown {
+  // New rows are already small index records; old inline caches are retained.
+  if (store === 'meta' && isCharRefVibeKey(row?.key)) return v;
   if (store === 'meta' && row?.key === 'vibe_transfer') {
     return {
       key: 'vibe_transfer',
@@ -813,6 +817,10 @@ export async function openDb(): Promise<boolean> {
       if (!obj) continue;
       for (const [k, rawRow] of Object.entries(obj)) {
         const v = (rawRow ?? {}) as Record<string, unknown>;
+        if (store === 'meta' && isCharRefVibeKey(k)) {
+          memStores.meta.set(k, v as MetaRow);
+          continue;
+        }
         const load=async()=>{
           const legacyWrites:Array<()=>Promise<void>>=[];
         if (store === 'meta' && (v.key === 'reference_image' || k === 'reference_image')) {
@@ -1088,6 +1096,14 @@ export async function idbGet<S extends StoreName>(store: S, key: unknown): Promi
     return row as RowOf<S>;
   }
   const row = (memStores[store] as Map<string, unknown>).get(k);
+  if (store === 'meta' && row && isCharRefVibeKey(k)) {
+    // Index rows stay small even after reads; large payloads never re-enter
+    // the snapshot through an in-memory hydration.
+    const legacy = row as MetaRow;
+    if (legacy.encoded) return legacy as RowOf<S>;
+    const data = parseStored(await psGet(charRefVibeDataKey(k)));
+    return (data ? { ...data, key: k } : legacy) as RowOf<S>;
+  }
   return (row == null ? undefined : row) as RowOf<S> | undefined;
 }
 
@@ -1131,6 +1147,14 @@ export async function idbPut(store: StoreName, value: Record<string, unknown>, o
   if(store==='meta'){await loadingMeta.get(k);deferredMeta.delete(k);}
   if (!k) throw new Error(`invalid ${store} key`);
   const persist = opts.persist !== false;
+
+  if (store === 'meta' && isCharRefVibeKey(k)) {
+    // Publish the index only after the payload is durable.
+    await psSet(charRefVibeDataKey(k), value);
+    memStores.meta.set(k, { key: k, has_encoded: Boolean(value.encoded) });
+    if (persist) schedulePersist('meta');
+    return k;
+  }
 
   if (store === 'images') {
     // The room must be in memory before the row is replaced, or the pack write
@@ -1430,6 +1454,10 @@ export async function idbGetAll<S extends StoreName>(store: S): Promise<Array<Ro
   await openDb();
   if (store === 'cards' || store === 'images') await ensureAllRooms();
   if(store==='meta')await Promise.all([...deferredMeta.keys()].map(hydrateDeferredMeta));
+  if (store === 'meta') {
+    const rows = await Promise.all([...memStores.meta.keys()].map(key => idbGet('meta', key)));
+    return rows.filter(row => row != null) as Array<RowOf<S>>;
+  }
   return [...(memStores[store] as Map<string, unknown>).values()] as Array<RowOf<S>>;
 }
 

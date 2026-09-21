@@ -66,7 +66,9 @@ async function nxFloatChangeCount(kind) {
 }
 async function nxFloatPaintCounts() {
   if (!nxFloatRoot) return;
-  for (const button of await nxUnwrapSafeNodes(await nxFloatRoot.querySelectorAll('[x-nx-float-btn="counts"]'))) {
+  const refs=omniDomScope();
+  try {
+  for (const button of await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn="counts"]'))) {
     await button.setAttribute('x-nx-float-active',nxFloatCountsOpen?'true':'false');
   }
   if (!nxFloatCounts) return;
@@ -74,13 +76,14 @@ async function nxFloatPaintCounts() {
     await nxFloatCounts.setStyleAttribute('display:none;');return;
   }
   const card=t.backendSettings?.card || {};
-  const range=await nxFloatCounts.querySelector('[x-omni-count-value]');
+  const range=refs.own(await nxFloatCounts.querySelector('[x-omni-count-value]'));
   await range.setTextContent(Number(card.image_min || 1)+'~'+Number(card.image_max || card.image_min || 1));
   const rect=await nxFloatRoot.getBoundingClientRect(),vp=nxFloatViewport();
   const width=Math.min(286,vp.w-16);
   const left=Math.max(8,Math.min(rect.left+(rect.width-width)/2,vp.w-width-8))-rect.left;
   const top=rect.bottom+70<=vp.h?rect.height+8:-66;
   await nxFloatCounts.setStyleAttribute(`position:absolute;left:${left}px;top:${top}px;width:${width}px;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px;box-sizing:border-box;z-index:5;opacity:${nxFloatIdle?(nxFloatCollapsed?'.1':'0'):'1'};pointer-events:${nxFloatIdle?'none':'auto'};`);
+  } finally {await refs.close();}
 }
 async function nxFloatHitSurface(x,y) {
   if (!nxFloatRoot || nxFloatHidden || nxFloatBlocked()) return false;

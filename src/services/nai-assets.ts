@@ -16,6 +16,7 @@ import { dbg } from '../core/debug';
 import type { ApiResult, MetaRow } from '../core/types';
 import { u8ToArrayBuffer } from '../core/util/bytes';
 import {
+  CHAR_REF_VIBE_PREFIX,
   GLOBAL_SCOPE,
   isCharRefMetaKey,
   isVibePresetMetaKey,
@@ -56,8 +57,6 @@ import {
   resetCharRefLibrary,
 } from './char-ref-module';
 import { saveConfig } from './settings';
-
-const CHAR_REF_VIBE_PREFIX = 'char_ref_vibe_';
 
 /** Both images are inlined into request payloads as base64, so they stay small. */
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;

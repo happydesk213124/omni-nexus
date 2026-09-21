@@ -55,7 +55,10 @@ test('frozen sheet exposes close during loading and reuses all nodes on reopen',
   await c.show(view);
   assert.match(c.fullscreen.html,/이미지 불러오는 중/);
   assert.match(c.fullscreen.style,/display:flex/);
-  assert.deepEqual(Array.from(c.inspectZones,z=>z.act),['base','retag','regen','reroll','close']);
+  assert.deepEqual(Array.from(c.inspectZones,z=>z.act),['retag','regen','reroll','base','close']);
+  const edit=c.inspectZones.find(z=>z.act==='base').el,reroll=c.inspectZones.find(z=>z.act==='reroll').el;
+  assert.equal(edit.style.split(';background:')[0],reroll.style.split(';background:')[0]);
+  assert.match(edit.style,/background:rgba\(124,108,255,.22\)/);
   view.image_url='data:image/png;base64,FILE';view._nxAssetLoading=false;
   await c.update(view);
   assert.match(c.fullscreen.html,/base64,FILE/);

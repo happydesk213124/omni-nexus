@@ -15,7 +15,7 @@ test('footer hit queries only the active control and a miss never reads messages
   const queries=[];
   const hit=new Function('nxUnwrapSafeNodes','hitEl',runtime.slice(a,b)+';return omniFooterHit;')(async a=>a,()=>{throw Error('unexpected rect');});
   assert.equal(await hit({querySelectorAll:async q=>{queries.push(q);return [];}},1,1),null);
-  assert.deepEqual(queries,['[x-omni-action]:is(:active,:focus-visible)']);
+  assert.deepEqual(queries,['[data-omni-action]:is(:active,:focus-visible),[x-omni-action]:is(:active,:focus-visible)']);
 });
 test('stop dispatch precedes all DOM and scope reads',async()=>{
   const runtime=readFileSync(new URL('../tools/vendor-patches/message-runtime.js',import.meta.url),'utf8');

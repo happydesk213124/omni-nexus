@@ -35,8 +35,8 @@ export async function checkSpinnerPreview(page, source, render) {
     const doc={querySelector:s=>{const n=document.querySelector(s);return n?wrap(n):null;}};
     const H=async(_doc,tag,{html})=>{const n=wrap(document.createElement(tag));n.setInnerHTML(html);return n;};
     const logs=[];
-    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,rows:nxSpinnerPreviews};')(
-      {hostDoc:doc},async()=>({characterId:'bot',chatId:'chat'}),H,()=>{},(...args)=>logs.push(args));
+    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y','omniMountFooters','omniStreamObservers',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,rows:nxSpinnerPreviews};')(
+      {hostDoc:doc},async()=>({characterId:'bot',chatId:'chat'}),H,()=>{},(...args)=>logs.push(args),async()=>{},async()=>{});
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=768;
     canvas.getContext('2d').fillRect(0,0,512,768);const url=canvas.toDataURL('image/png');
     const row=shot=>({jobId:'job',shot,cardId:'card-'+shot,characterId:'bot',chatId:'chat',messageIndex:2,url});

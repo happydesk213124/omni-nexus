@@ -436,8 +436,8 @@ test("nude levels keep attire and append gendered anatomy tags", () => {
   assert.match(nudeF, /dress, earrings/);
   assert.equal(nudeF.includes("0.5::"), false);
   assert.match(nudeF, /2::nsfw::/);
-  assert.match(nudeF, /nipples/);
-  assert.match(nudeF, /pussy/);
+  assert.match(nudeF, /2::nipples::/);
+  assert.match(nudeF, /2::pussy::/);
 
   const fullF = composeCharacterCaptionTags(female, { nude: "completely" });
   assert.equal(fullF.includes("dress"), false);

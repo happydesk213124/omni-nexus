@@ -33,6 +33,7 @@ The UI's fetch wrapper is `K(path, init, timeoutMs)`; it throws
 | `writeMetrics` | `() => Record<string,{calls,failures,totalMs}>` | Memory-only write counters, no payloads |
 | `hydrateSettingsPreviews` | `(tab: string) => Promise<boolean>` | Lazy generation/style preview hydration; never required by ready |
 | `ready` | `() => Promise<boolean>` | Awaited before every request |
+| `flushSettings` | `() => Promise<void>` | Drains the latest settings snapshot to storage and verifies it. Settings close runs this in the background; failure must remain visible and retryable. |
 | `fetch` | `(path, {method, body}, timeoutMs) => Promise<any>` | `body` is a **plain object**, not a JSON string. Resolves with the parsed response; throws on error with `.status`/`.data` |
 | `resolveImageUrl` | `(cardOrId) => string` | Synchronous cache hit, else `""` |
 | `ensureImageUrl` | `(id) => Promise<string>` | Loads and caches |
@@ -125,6 +126,8 @@ The UI guards writes with a `settingsWriteGen` counter and merges pending patche
 so out-of-order responses are discarded client-side. The backend just answers.
 
 ### Prompts
+The editor list excludes retired `char_looks`, `autotag`, `asset_tags_inject` and `asset_author_note`. Existing stored values remain available through per-key reads and full-pack export; they are not injected into generation requests.
+
 `/v1/prompts` → `{ prompts: [{key, text}] }` · `/v1/prompts/:key` ·
 `PUT /v1/prompts/:key` `{text}` · `POST /v1/prompts/:key/reset` ·
 `GET /v1/prompts/export` → `{ version, prompts: { [key]: text } }` ·

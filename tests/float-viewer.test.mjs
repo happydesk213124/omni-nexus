@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
 
+const streamSource=readFileSync(new URL('../tools/vendor-patches/stream-runtime.js',import.meta.url),'utf8');
+const streamHelpers=streamSource.slice(streamSource.indexOf('async function omniRelease'),streamSource.indexOf('function omniStreamArm'));
 const parts = ['style', '', 'render', 'input', 'drag'];
 const runtime = parts.map(part => readFileSync(new URL(`../tools/vendor-patches/float-viewer${part ? '-'+part : ''}.js`,import.meta.url),'utf8')).join('\n');
 const messageRuntime=readFileSync(new URL('../tools/vendor-patches/message-runtime.js',import.meta.url),'utf8');
-const countRuntime=messageRuntime.slice(messageRuntime.indexOf('async function omniChangeCount('),messageRuntime.indexOf('async function omniDisposeMessageRuntime('));
+const countRuntime=messageRuntime.slice(messageRuntime.indexOf('let omniCountWrites='),messageRuntime.indexOf('async function omniDisposeMessageRuntime('));
 async function clickAt(page, selector) {
   const rect = await page.locator(selector).boundingBox();
   assert.ok(rect, selector+' must be visible');
@@ -71,17 +73,18 @@ async function setup(page, width = 1000) {
     globalThis.__INLAY_NATIVE__ = {resolveImageUrl:c=>'data:image/png;base64,'+c.id,ensureImageUrl:async id=>'data:image/png;base64,'+id};
     t._nxInspectOpener = async (...args) => calls.push(['full',...args]);
     const k = {createMutationObserver:async fn=>{const observer=new MutationObserver(fn);return {observe:async(node,opts)=>observer.observe(node.n,opts),disconnect:async()=>observer.disconnect()};}};
-    const deps = {t,H,k,pe:async patch=>{await new Promise(r=>setTimeout(r,10));Object.assign(t.backendSettings.card,patch.card);calls.push(['save',patch]);},ue:async()=>doc,Z:async()=>scope,ce:async sid=>{t.gallery=sid==='s'?cards:[];t._galleryCache={sessionId:sid};},
+    const deps = {omniStream:{paused:false},omniPerf:{released:0,viewerPasses:0},omniReadScope:async()=>scope,t,H,k,pe:async patch=>{await new Promise(r=>setTimeout(r,10));Object.assign(t.backendSettings.card,patch.card);calls.push(['save',patch]);},ue:async()=>doc,Z:async()=>scope,ce:async sid=>{t.gallery=sid==='s'?cards:[];t._galleryCache={sessionId:sid};},
       Aa:async()=>({left:10,top:10,w:360,h:560}),loadViewerIconGeo:async()=>({left:10,top:10}),loadViewerMinimized:async()=>false,
       saveViewerMinimized:async v=>calls.push(['collapsed',v]),saveViewerIconGeo:async v=>v,qt:async v=>calls.push(['geo',v]),
       omniFooterTargets:targets,omniFooterAction:async(kind,key)=>calls.push([kind,targets.get(key)]),
       nxUnwrapSafeNodes:async v=>v,hitEl:async(el,x,y)=>{const r=await el.getBoundingClientRect();return r.width>0&&r.height>0&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;},
       y:()=>{},$e:()=>{},withImageRerollToast:async(_text,fn)=>fn(),K:async()=>({card:cards[0]})};
     const api = new Function(...Object.keys(deps),runtime+`;return {ensure:nxFloatEnsure,apply:nxFloatApply,show:nxFloatShow,hide:nxFloatHide,scan:nxFloatScan,select:nxFloatShowCard,dispose:nxFloatDispose,
+      pause:v=>{omniStream.paused=v;},passes:()=>omniPerf.viewerPasses,
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
       target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove()};`)(...Object.values(deps));
     window.fixture = {api,t,calls,targets,listeners,scope:v=>{scope={...scope,...v};},wrap};
-  },countRuntime+runtime);
+  },streamHelpers+countRuntime+runtime);
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
 }
 
@@ -91,6 +94,10 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     const page=await browser.newPage();
     await setup(page);
     assert.equal(await page.locator('[x-nx-float]').count(),1,'concurrent boot mounts exactly one viewer');
+    const beforePause=await page.evaluate(()=>fixture.api.passes());
+    await page.evaluate(async()=>{fixture.api.pause(true);for(let i=0;i<100;i++)await fixture.api.scan();});
+    assert.equal(await page.evaluate(()=>fixture.api.passes()),beforePause,'streaming blocks automatic scans');
+    await page.evaluate(()=>fixture.api.pause(false));
     assert.equal(await page.evaluate(()=>[...fixture.listeners.values()].filter(v=>v.kind==='click').length),1,'exactly one document click handler');
     await page.locator('body').dispatchEvent('click',{clientX:900,clientY:650,button:0});
     await page.locator('body').dispatchEvent('pointerdown',{clientX:900,clientY:650,button:0});
