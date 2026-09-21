@@ -1229,6 +1229,7 @@ async function runJob(jobId: string): Promise<void> {
             neg,
             captions,
             characters: meta.characters,
+            sourceCharacterId: characterId,
             token,
             model: route.model,
             preset: route.preset,

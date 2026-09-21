@@ -943,7 +943,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     sourceSessionIds,
   });
   const seededRoster = await readRoster();
-  await seedCharRefsFromLooks(seededRoster).catch((err) => {
+  await seedCharRefsFromLooks(seededRoster, characterId).catch((err) => {
     dbg('char_ref.seed.merge.fail', { message: String((err as Error)?.message || err) }, 'warn');
   });
   return readRoster();

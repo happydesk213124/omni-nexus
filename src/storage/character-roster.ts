@@ -40,6 +40,11 @@ async function target(scope:string):Promise<Target|null> {
   if(matches.length>1) throw new Error('Ambiguous character identity');
   return matches[0] || null;
 }
+/** Resolve bot ownership without consulting the currently open chat. */
+export async function characterIdForRosterScope(scope: string): Promise<string> {
+  return (await target(scope))?.id || '';
+}
+
 async function readEntryData(t: Target): Promise<{ char: Row; data: Row }> {
   const char = object(await risuHost()?.getCharacterFromIndex?.(t.index));
   if (!char || String(char.chaId || char.id) !== t.id) throw new Error('Character moved during roster access');

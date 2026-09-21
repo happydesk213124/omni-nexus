@@ -166,6 +166,7 @@ export type ImageRequest = Pick<GenerationPlan, 'main' | 'neg' | 'captions'> & {
    * explicit `vibe` selects vibe encoding, otherwise stored images use Precise Reference.
    */
   characters?: Array<{ id?: string; name?: string; scope?: string }>;
+  sourceCharacterId?: string;
   token?: string;
   model?: string;
   preset?: StylePreset | null;
@@ -584,7 +585,7 @@ export async function generateImage(
   const card = getConfig().card;
   const charRefMode = effectiveCharacterReferenceMode(routeModel, card.char_ref_mode);
   if (charRefMode !== 'off') {
-    await seedCharRefsFromLooks(Array.isArray(plan.characters) ? plan.characters : []).catch((err) => {
+    await seedCharRefsFromLooks(Array.isArray(plan.characters) ? plan.characters : [], plan.sourceCharacterId).catch((err) => {
       dbg('char_ref.seed.gen.fail', { message: String((err as Error)?.message || err) }, 'warn');
     });
   }

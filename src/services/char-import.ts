@@ -817,7 +817,7 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
   const leftover = await stillMissing(writeScope, characterId, work);
   const filled = work.length - leftover.length;
   await seedImportFaceRefs(writeScope, resolved);
-  await seedCharRefsFromLooks(await listCharacters(writeScope)).catch((err) => {
+  await seedCharRefsFromLooks(await listCharacters(writeScope), characterId).catch((err) => {
     dbg('char_ref.seed.import.fail', { message: String((err as Error)?.message || err) }, 'warn');
   });
 
