@@ -93,7 +93,7 @@ export async function fetchCharacterLorebookEntries(characterId: string): Promis
   if (!character) return [];
   const chats = Array.isArray(character.chats) ? character.chats as Record<string, unknown>[] : [];
   const chat = chats[Number(character.chatPage) || 0];
-  const enabled = new Set([...(db?.enabledModules || []), ...(Array.isArray(chat?.modules) ? chat.modules : [])]);
+  const enabled = new Set([...(db?.enabledModules || []), ...(Array.isArray(chat?.modules) ? chat.modules : []), ...(Array.isArray(character.modules) ? character.modules : [])]);
   const entries = [
     ...(Array.isArray(character.globalLore) ? character.globalLore : []),
     ...(Array.isArray(chat?.localLore) ? chat.localLore : []),

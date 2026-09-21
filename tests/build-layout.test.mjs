@@ -103,7 +103,7 @@ test('dashboard offers the 2.5 data migration in place of chat-card restore', ()
   assert.match(router, /\/v1\/chat\/restore-chrome/);
 });
 
-test('manual character save and read never rewrite the appearance bucket', () => {
+test('character reads preserve appearance and explicit saves synchronize the gender default', () => {
   const source = read('src', 'services', 'characters.ts');
   const readStart = source.indexOf('export async function listCharacters');
   const readEnd = source.indexOf('// ── per-character global toggles', readStart);
@@ -112,7 +112,7 @@ test('manual character save and read never rewrite the appearance bucket', () =>
   assert.ok(readStart >= 0 && readEnd > readStart, 'listCharacters section not found');
   assert.ok(writeStart >= 0 && writeEnd > writeStart, 'upsertCharacter section not found');
   assert.doesNotMatch(source.slice(readStart, readEnd), /syncGenderIntoAppearance/);
-  assert.doesNotMatch(source.slice(writeStart, writeEnd), /syncGenderIntoAppearance/);
+  assert.match(source.slice(writeStart, writeEnd), /syncGenderIntoAppearance\(rec\.appearance, gender\)/);
 });
 
 test('wear-state persistence only writes the note wear key, never roster looks', () => {

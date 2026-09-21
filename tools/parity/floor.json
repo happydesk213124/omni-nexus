@@ -177,7 +177,8 @@
     "overlay_x_pct": 38,
     "overlay_y_pct": 80,
     "overlay_pin_unit": "pct",
-    "overlay_pin_origin": "bl"
+    "overlay_pin_origin": "bl",
+    "image_analysis_separate": false
   },
   "llm": {
     "source": "custom",

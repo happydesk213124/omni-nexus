@@ -1423,6 +1423,11 @@
           <label class="block"><span>char_inject</span><textarea id="nx-prompt-char_inject"></textarea></label>
           <label class="block"><span>appearance_inject</span><textarea id="nx-prompt-appearance_inject"></textarea></label>
           <label class="block"><span>asset_tags_inject</span><textarea id="nx-prompt-asset_tags_inject"></textarea></label>
+          <div class="block" id="nx-prompt-character-common-block">
+            <span data-prompt-title>공통 캐릭터 프롬프트</span>
+            <textarea id="nx-prompt-character_common"></textarea>
+            <div class="row"><button class="btn-ghost" type="button" data-reset-prompt="character_common">기본값</button></div>
+          </div>
           <label class="block"><span>char_looks</span><textarea id="nx-prompt-char_looks"></textarea></label>
           <label class="block"><span>autotag</span><textarea id="nx-prompt-autotag"></textarea></label>
           <label class="block"><span>command_reroll</span><textarea id="nx-prompt-command_reroll"></textarea></label>
@@ -1558,7 +1563,7 @@
     <div class="preset-sheet-scroll">
       <div id="nx-char-edit-body">
         <div class="char-edit-head">
-          <label class="prio">우선 <input data-char-priority type="number" value="0"></label>
+          <label class="prio" hidden>우선 <input data-char-priority type="number" value="0"></label>
           <button class="btn-ghost" type="button" id="nx-char-from-asset">에셋에서</button><button class="btn-ghost" type="button" data-char-autotag>오토태그</button>
           <button class="btn-ghost" type="button" data-char-command>명령수정</button>
           <button class="btn-ghost" type="button" data-char-delete>삭제</button>

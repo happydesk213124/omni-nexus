@@ -31,13 +31,28 @@ export function splitTagTokens(text: unknown): string[] {
   const raw = cleanText(text);
   if (!raw) return [];
   const tokens: string[] = [];
-  // Weighted group first; otherwise bare run until the next comma.
-  const re = /\s*(-?\d+(?:\.\d+)?::(?:(?!::).)*?::|[^,]+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw)) !== null) {
-    const t = m[1]!.trim();
-    if (t) tokens.push(t);
+  // Commas inside emphasis groups are not boundaries between independent tags.
+  const closing: Record<string, string> = { '{': '}', '[': ']', '(': ')' };
+  const stack: string[] = [];
+  let weighted = false;
+  let start = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '\\') { i++; continue; }
+    if (weighted) {
+      if (raw.slice(i, i + 2) === '::') { weighted = false; i++; }
+      continue;
+    }
+    const weight = /^-?\d+(?:\.\d+)?::/.exec(raw.slice(i));
+    if (weight) { weighted = true; i += weight[0].length - 1; continue; }
+    const char = raw[i]!;
+    if (closing[char]) stack.push(closing[char]!);
+    else if (stack.at(-1) === char) stack.pop();
+    else if (char === ',' && !stack.length) {
+      const token = raw.slice(start, i).trim(); if (token) tokens.push(token);
+      start = i + 1;
+    }
   }
+  const last = raw.slice(start).trim(); if (last) tokens.push(last);
   return tokens;
 }
 

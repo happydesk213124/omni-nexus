@@ -1,3 +1,5 @@
+import { bindPromptUpdates } from './prompt-updates';
+import { bindCharacterOptions } from './character-options';
 import { bindModels } from './model-bindings';
 /**
  * Preview HTML is the settings window. Vendor values/handlers bind by #nx-* id.
@@ -329,7 +331,9 @@ export function afterPaint(): void {
   bindMenu();
   bindLiveFlash();
   syncModelWarning();
+  void bindPromptUpdates();
   const tab = activeTab();
+  if (tab === 'gen_options') bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
   if (line) line.textContent = TAB_LABELS[tab] || '설정';
   const main = document.getElementById('nx-main');

@@ -1,5 +1,5 @@
 import { risuHost } from '../core/host';
-import { parseRisuAssetRows, assetsFromEnabledModules } from '../domain/nai-meta/risu-asset-list';
+import { parseRisuAssetRows } from '../domain/nai-meta/risu-asset-list';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 
 function imageBlob(data: unknown): Blob | null {
@@ -22,10 +22,14 @@ function blobDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export async function pickCharacterAsset(card: HTMLElement): Promise<void> {
+export async function pickCharacterAsset(card: HTMLElement, source: 'character' | 'module' = 'character'): Promise<void> {
   const host = risuHost();
-  // Capture the live Risu selection, independently of the edited roster scope.
-  const selection = host?.getCurrentCharacterIndex?.();
+  const selected = document.querySelector<HTMLSelectElement>('#nx-scope-char')?.value || 'live';
+  const selection = selected === 'live' ? host?.getCurrentCharacterIndex?.() : Promise.resolve(Number(selected));
+  const current = () => card.isConnected
+    && (document.querySelector<HTMLSelectElement>('#nx-scope-char')?.value || 'live') === selected
+    && (!document.getElementById('nx-char-edit-body')?.dataset.selectedId
+      || document.getElementById('nx-char-edit-body')?.dataset.selectedId === card.dataset.charId);
   const scope = card.dataset.charRefScope;
   let character: Record<string, unknown> | undefined;
   let assets: ReturnType<typeof parseRisuAssetRows> = [];
@@ -49,7 +53,10 @@ export async function pickCharacterAsset(card: HTMLElement): Promise<void> {
   status.setAttribute('role', 'status'); status.style.cssText = 'flex-shrink:0';
   const list = document.createElement('div');
   list.style.cssText = 'flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;display:grid;grid-auto-rows:max-content;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;align-content:start';
-  frame.append(close, search, costumeLabel, status, list);
+  const moduleSelect = document.createElement('select');
+  moduleSelect.setAttribute('aria-label', '활성 모듈');
+  moduleSelect.hidden = source !== 'module';
+  frame.append(close, moduleSelect, search, costumeLabel, status, list);
   let closed = false;
   let generation = 0;
   let busy = false;
@@ -124,7 +131,7 @@ export async function pickCharacterAsset(card: HTMLElement): Promise<void> {
             },
           },180000);
           if (!result || !COSTUME_FIELDS.some(key => typeof result[key] === 'string' && result[key])) throw new Error('외형 분석 결과가 없습니다.');
-          if (closed || !card.isConnected) return;
+          if (closed || !current()) return;
           const select = card.querySelector<HTMLSelectElement>('[data-char-costume]');
           if (asCostume.checked) {
             if (!select) throw new Error('코스튬 선택 연결 없음');
@@ -150,19 +157,43 @@ export async function pickCharacterAsset(card: HTMLElement): Promise<void> {
     }
   };
   search.oninput = render;
-  dialog.onclose = () => { closed = true; generation++; queue = []; observer?.disconnect(); revoke(); dialog.remove(); };
+  const dispose = () => { if (closed) return; closed = true; generation++; queue = []; observer?.disconnect(); revoke(); dialog.remove(); };
+  dialog.onclose = dispose;
+  close.onclick = () => { dialog.close(); dispose(); };
   document.body.append(dialog); dialog.showModal();
   status.textContent = '에셋 불러오는 중…';
   try {
     const index = await selection;
     const direct = typeof host?.getCharacterFromIndex === 'function';
-    const [current, db] = await Promise.all([
+    const [selectedCharacter, db] = await Promise.all([
       direct ? host?.getCharacterFromIndex?.(Number(index)) : Promise.resolve(undefined),
       host?.getDatabase?.(direct ? ['modules', 'enabledModules'] : ['characters', 'modules', 'enabledModules']),
     ]);
     if (closed) return;
-    character = (direct ? current : db?.characters?.[Number(index)]) as Record<string, unknown> | undefined;
-    assets = [...parseRisuAssetRows(character?.additionalAssets), ...assetsFromEnabledModules(db?.modules || [], [...(db?.enabledModules || []), ...(Array.isArray(character?.modules) ? character.modules.map(String) : [])])];
+    character = (direct ? selectedCharacter : db?.characters?.[Number(index)]) as Record<string, unknown> | undefined;
+    if (!current()) { dialog.close(); return; }
+    if (source === 'module') {
+      const enabled = new Set([...(db?.enabledModules || []), ...(Array.isArray(character?.modules) ? character.modules.map(String) : [])]);
+      const chats = Array.isArray(character?.chats) ? character.chats as Record<string, unknown>[] : [];
+      const chat = chats[Number(character?.chatPage) || 0];
+      if (Array.isArray(chat?.modules)) for (const id of chat.modules) enabled.add(String(id));
+      const seen = new Set<string>();
+      const modules = (db?.modules || []).filter(mod => {
+        const id = String(mod.id || mod.namespace || '');
+        if (!id || seen.has(id) || (!enabled.has(id) && !enabled.has(String(mod.namespace || '')))) return false;
+        seen.add(id); return true;
+      });
+      moduleSelect.add(new Option('모듈을 선택하세요', ''));
+      modules.forEach((mod, i) => moduleSelect.add(new Option(String(mod.name || mod.id), String(i))));
+      moduleSelect.onchange = () => {
+        assets = moduleSelect.value === '' ? [] : parseRisuAssetRows(modules[Number(moduleSelect.value)]?.assets);
+        render();
+      };
+      if (!modules.length) status.textContent = '활성 모듈이 없습니다.';
+      else status.textContent = '모듈을 선택하세요.';
+      return;
+    }
+    assets = parseRisuAssetRows(character?.additionalAssets);
     render();
   } catch (error) { if (!closed) status.textContent = '에셋 불러오기 실패: ' + String(error); }
 }

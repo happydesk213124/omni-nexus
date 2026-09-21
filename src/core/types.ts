@@ -63,6 +63,7 @@ export interface StylePreset {
 
 /** Everything under `settings.card` — mostly UI behaviour plus prompt assembly. */
 export interface CardSettings {
+  image_analysis_separate?: boolean;
   power: boolean;
   execute: ExecuteMode;
   mode: CardMode;

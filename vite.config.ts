@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.1.3';
+const PLUGIN_VERSION = '0.1.4';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -953,6 +953,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.1.4</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>newchara·에셋·오토태그·로어북·페소의 외형 규칙을 공통 캐릭터 프롬프트로 통합했습니다. 기본값 업데이트는 빨간 점으로 안내합니다.</li>
+            <li>에셋태깅 메인태깅에 포함, 이미지는 분기해서 하기 옵션을 추가했습니다. 이미지 분기는 오토태그 모델을 사용합니다.</li>
+            <li>선택한 Risu 캐릭터의 에셋과 활성 모듈 에셋을 선택할 수 있고, 페소 외형에 lb-xnai 로어북을 반영합니다.</li>
+            <li>외형 입력칸 이미지 붙여넣기와 대기 표시, 새 캐릭터 즉시 추가 및 입력 보존을 개선했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.1.3</strong>
@@ -14619,7 +14628,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "Omni Nexus. 업데이트는 이 저장소 main에서 받습니다."
+    body: "공통 캐릭터 프롬프트 · 메인 태깅 통합 · 이미지 오토태그 분기 · 캐릭터탭 개선. 업데이트는 이 저장소 main에서 받습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
@@ -16216,7 +16225,7 @@ const PLUGIN_HEADER = `//@name ${PLUGIN_ID}
 const PROMPT_KEYS = [
   'author_note', 'asset_author_note', 'global_author_note', 'tagger', 'format', 'appearance_inject', 'lore_inject',
   'char_inject', 'preprocess', 'prefill', 'prefill_user', 'jailbreak', 'preset_1', 'autotag',
-  'asset_tags_inject', 'char_looks',
+  'asset_tags_inject', 'character_common', 'char_looks',
   'command_reroll', 'command_char_edit', 'lorefilter_scan', 'comic',
 ] as const;
 

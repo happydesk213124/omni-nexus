@@ -17,5 +17,6 @@
   "command_reroll": "Rewrite one card's prompts from a user instruction. Return ONE JSON object only with main/negative/characters[].prompt|uc as {add,remove} deltas. Do not rewrite full setup or prompts.",
   "command_char_edit": "Rewrite one roster character from a user instruction. Return ONE JSON object only with appearance/costumes/new_costumes as {add,remove} deltas. Do not rewrite full fields.",
   "lorefilter_scan": "Extract distinct RP character names from lorebook entry titles. Return JSON array of strings only.",
-  "comic": "Return one JSON object with pages[]. Each page has koma, aspect, coords, layout, and slots (people/text boxes, not panels). costume is a name or outfit tags. action is pose only. wear_state is clothed/torn/topless/bottomless/nude/completely; omit when unchanged. nude is half-undressed/draped or clothed-but-exposed (nipples/genitals); completely is fully undressed."
+  "comic": "Return one JSON object with pages[]. Each page has koma, aspect, coords, layout, and slots (people/text boxes, not panels). costume is a name or outfit tags. action is pose only. wear_state is clothed/torn/topless/bottomless/nude/completely; omit when unchanged. nude is half-undressed/draped or clothed-but-exposed (nipples/genitals); completely is fully undressed.",
+  "character_common": "Write character appearance from supplied references using the requested JSON shape."
 }

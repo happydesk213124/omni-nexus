@@ -129,8 +129,8 @@ if (N) {
     }],
   });
   const savedChar = savedChars?.characters?.find((row) => row.id === 'smoke-char');
-  check(savedChar?.appearance === 'silver hair, amber eyes',
-    `character save rewrote appearance: ${savedChar?.appearance}`);
+  check(savedChar?.appearance === 'girl, silver hair, amber eyes',
+    `character save did not preserve looks with its gender default: ${savedChar?.appearance}`);
   check(savedChar?.attire === 'white shirt', `character save lost attire: ${savedChar?.attire}`);
   check(savedChar?.accessories === 'holding staff',
     `character save lost accessories: ${savedChar?.accessories}`);
@@ -152,8 +152,8 @@ if (N) {
     },
   });
   const popupChar = popupSave?.characters?.find((row) => row.id === 'smoke-char');
-  check(popupChar?.appearance === 'violet hair, green eyes',
-    `popup save rewrote appearance: ${popupChar?.appearance}`);
+  check(popupChar?.appearance === 'boy, violet hair, green eyes',
+    `popup save did not preserve looks with its gender default: ${popupChar?.appearance}`);
   check(popupChar?.attire === 'black coat', `popup save lost attire: ${popupChar?.attire}`);
   check(popupChar?.accessories === 'sword', `popup save lost accessories: ${popupChar?.accessories}`);
   check(popupChar?.costumes?.[0]?.attire === 'black coat',
@@ -175,11 +175,11 @@ if (N) {
   const tagger = prompts?.prompts?.find((p) => p.key === 'tagger');
   check(!!tagger, '/v1/prompts did not return a tagger entry');
   const fallback = JSON.parse(fs.readFileSync(path.join(root, 'src/config/prompt-fallbacks.json'), 'utf8'));
-  const onDisk = fs.readFileSync(path.join(root, 'prompts/tagger.txt'), 'utf8');
+  const onDisk = fs.readFileSync(path.join(root, 'prompts/tagger.txt'), 'utf8').replace(/\r\n/g, '\n');
   check(tagger?.text !== fallback.tagger, 'the plugin served the fallback stub instead of prompts/tagger.txt');
   check(
     tagger?.text?.slice(0, 60) === onDisk.slice(0, 60),
-    'the served tagger does not begin with the text in prompts/tagger.txt',
+    'the served tagger does not begin with the text in prompts/tagger.txt: ' + JSON.stringify([tagger?.text?.slice(0,60),onDisk.slice(0,60)]),
   );
   // Whitespace collapsing only ever shortens, and never by much.
   const ratio = (tagger?.text?.length ?? 0) / onDisk.length;

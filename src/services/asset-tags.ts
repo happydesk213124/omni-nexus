@@ -1,3 +1,4 @@
+import { characterSource } from './character-source';
 /**
  * Collect NovelAI tags from Risu character additionalAssets and active module assets.
  */
@@ -390,6 +391,7 @@ export async function collectAssetNaiTags(
     roster?: CharacterInput[] | null;
     lorebook?: LoreEntry[] | null;
     message?: string;
+    characterId?: string;
   } = {},
 ): Promise<AssetTagCollectResult | null> {
   const preferFilledLooks = !!getConfig()?.card?.unified_chat_priority;
@@ -407,7 +409,7 @@ export async function collectAssetNaiTags(
 
   let character: unknown;
   try {
-    character = await risuHost()!.getCharacter!();
+    character = await characterSource(opts.characterId);
   } catch (err) {
     dbg('asset-tags.getCharacter.fail', { message: String((err as Error)?.message || err) }, 'warn');
     return null;
@@ -492,7 +494,7 @@ export async function loadLookAssetsFromTargets(
 /** Highest-ranked matching file per trigger, even when it has no NAI meta. */
 export async function collectBestLookAssets(
   triggerKeys: readonly unknown[],
-  opts: { roster?: CharacterInput[] | null } = {},
+  opts: { roster?: CharacterInput[] | null; characterId?: string } = {},
 ): Promise<BestLookAsset[]> {
   const preferFilledLooks = !!getConfig()?.card?.unified_chat_priority;
   const triggers = filterAssetTriggersForUnfilledLooks(triggerKeys, opts.roster, { preferFilledLooks });
@@ -501,7 +503,7 @@ export async function collectBestLookAssets(
 
   let character: unknown;
   try {
-    character = await risuHost()!.getCharacter!();
+    character = await characterSource(opts.characterId);
   } catch (err) {
     dbg('asset-tags.best_look.fail', { message: String((err as Error)?.message || err) }, 'warn');
     return [];
@@ -645,7 +647,7 @@ export async function probeAssetNaiTags(body: Record<string, unknown> = {}): Pro
 
   let character: unknown;
   try {
-    character = await risuHost()!.getCharacter!();
+    character = await characterSource(cid);
   } catch (err) {
     report.skip = 'getCharacter_fail';
     report.error = String((err as Error)?.message || err);
