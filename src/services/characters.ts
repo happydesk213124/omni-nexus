@@ -48,6 +48,7 @@ import { idbDelete, idbGetAll, idbPut } from '../storage/stores';
 import { getLastAssetWeightMap } from './asset-tags';
 import { getCharRefPreviewUrl, getConfig, getExamplePreviewUrl } from './context';
 import { seedCharRefsFromLooks } from './nai-assets';
+import type { ReferenceCandidate } from '../domain/nai-meta/reference-search';
 
 export interface ReplaceOptions {
   prune?: boolean;
@@ -69,6 +70,7 @@ export interface MergeRosterArgs {
   assetLooks?: boolean;
   /** Compact trigger/name → NAI identity tag; wins over LLM `original` when set. */
   originalHints?: Record<string, string>;
+  referenceCandidates?: readonly ReferenceCandidate[];
 }
 
 interface SessionEditCount {
@@ -943,7 +945,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     sourceSessionIds,
   });
   const seededRoster = await readRoster();
-  await seedCharRefsFromLooks(seededRoster, characterId).catch((err) => {
+  await seedCharRefsFromLooks(seededRoster, characterId, args.referenceCandidates).catch((err) => {
     dbg('char_ref.seed.merge.fail', { message: String((err as Error)?.message || err) }, 'warn');
   });
   return readRoster();

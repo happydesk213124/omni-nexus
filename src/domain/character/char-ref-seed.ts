@@ -3,8 +3,10 @@
  * I/O (module write / roster hash) stays in nai-assets.
  */
 import { GLOBAL_SCOPE, normalizeCharRefScope } from '../../core/constants.ts';
-import { cleanText, normalizeAlias, parseAliasList } from '../../core/util/text.ts';
+import { cleanText } from '../../core/util/text.ts';
 import { sanitizeHash } from './char-ref-store.ts';
+import { characterAssetTerms } from '../nai-meta/reference-search';
+import { compactAssetKey } from '../nai-meta/match';
 
 export interface RefSeedTarget {
   id: string;
@@ -28,10 +30,7 @@ export function refSeedTargets(characters: readonly unknown[]): RefSeedTarget[] 
     if (!id || sanitizeHash(rec.ref_hash)) continue;
     const key = `${scope}\0${id}`;
     if (seen.has(key)) continue;
-    const names = parseAliasList([
-      rec.name,
-      ...(Array.isArray(rec.aliases) ? rec.aliases : []),
-    ]).filter((name) => normalizeAlias(name).length >= 2);
+    const names = characterAssetTerms(rec);
     if (!names.length) continue;
     seen.add(key);
     out.push({ id, scope, names });
@@ -44,10 +43,10 @@ export function lookBytesForTarget(
   looks: readonly RefSeedLook[],
 ): Uint8Array | null {
   const keys = new Set(
-    target.names.map((name) => normalizeAlias(name)).filter((key) => key.length >= 2),
+    target.names.map((name) => compactAssetKey(name)).filter((key) => key.length >= 2),
   );
   for (const look of looks || []) {
-    const trigger = normalizeAlias(look.trigger);
+    const trigger = compactAssetKey(look.trigger);
     if (trigger.length >= 2 && keys.has(trigger) && look.bytes?.byteLength) return look.bytes;
   }
   return null;

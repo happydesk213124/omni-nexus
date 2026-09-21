@@ -22,7 +22,7 @@ test('prepass stops on malformed or wrong-shape JSON and identifies the asset ta
     let requests = 0, saves = 0;
     await assert.rejects(run(body, {
       assetMode: 'prepass', request: {}, jobId: 'j', sessionId: 'a', unifiedSessionId: '', characterId: 'a', sourceSessionIds: [],
-      skipAssetInject: false, llmOptions: {},
+      skipAssetInject: false, referenceCandidates: undefined, llmOptions: {},
       collectGenerationAssets: async () => ({ collected: { block: 'tags', packed: { groups: [] } }, images: [] }),
       characterImageInput: async () => [],
       setJob: async () => {}, cancelJobIfStale: async () => false,

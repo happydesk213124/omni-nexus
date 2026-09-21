@@ -1,6 +1,8 @@
 import { risuHost } from '../core/host';
 import { parseRisuAssetRows } from '../domain/nai-meta/risu-asset-list';
 import { COSTUME_FIELDS } from '../domain/character/costume';
+import { characterAssetTerms, rankedReferenceAssets } from '../domain/nai-meta/reference-search';
+import { parseAliasList } from '../core/util/text';
 
 function imageBlob(data: unknown): Blob | null {
   if (data instanceof Blob) return data;
@@ -24,9 +26,11 @@ function blobDataUrl(blob: Blob): Promise<string> {
 
 export async function pickCharacterAsset(card: HTMLElement, source: 'character' | 'module' = 'character'): Promise<void> {
   const host = risuHost();
+  const targetId = card.dataset.charId;
   const selected = document.querySelector<HTMLSelectElement>('#nx-scope-char')?.value || 'live';
   const selection = selected === 'live' ? host?.getCurrentCharacterIndex?.() : Promise.resolve(Number(selected));
   const current = () => card.isConnected
+    && card.dataset.charId === targetId
     && (document.querySelector<HTMLSelectElement>('#nx-scope-char')?.value || 'live') === selected
     && (!document.getElementById('nx-char-edit-body')?.dataset.selectedId
       || document.getElementById('nx-char-edit-body')?.dataset.selectedId === card.dataset.charId);
@@ -44,7 +48,10 @@ export async function pickCharacterAsset(card: HTMLElement, source: 'character' 
   close.style.cssText = 'align-self:flex-end;flex-shrink:0;border-radius:12px';
   const search = document.createElement('input');
   search.type = 'search'; search.placeholder = '에셋 검색'; search.setAttribute('aria-label', '에셋 검색');
-  search.value = card.querySelector<HTMLInputElement>('[data-char-aliases]')?.value || '';
+  const field = (name: string) => card.querySelector<HTMLInputElement>(`[data-char-${name}]`)?.value || '';
+  search.value = characterAssetTerms({ name: field('name'), aliases: parseAliasList(field('aliases')),
+    surname: field('surname'), given_name: field('given'),
+    surname_variants: parseAliasList(field('surname-variants')), given_name_variants: parseAliasList(field('given-variants')) }).join(', ');
   const costumeLabel = document.createElement('label');
   const asCostume = document.createElement('input'); asCostume.type = 'checkbox';
   costumeLabel.append(asCostume, ' 코스튬으로 추가');
@@ -84,7 +91,7 @@ export async function pickCharacterAsset(card: HTMLElement, source: 'character' 
     const version = ++generation;
     observer?.disconnect(); queue = []; revoke(); list.replaceChildren(); list.scrollTop = 0;
     const terms = search.value.toLocaleLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-    const filtered = assets.filter(asset => !terms.length || terms.some(term => asset.name.toLocaleLowerCase().includes(term)));
+    const filtered = rankedReferenceAssets(assets, terms);
     status.textContent = filtered.length ? `${filtered.length}개 에셋` : '일치하는 에셋이 없습니다.';
     for (const asset of filtered) {
       const button = document.createElement('button');
@@ -119,10 +126,11 @@ export async function pickCharacterAsset(card: HTMLElement, source: 'character' 
           const aliases=card.querySelector<HTMLInputElement>('[data-char-aliases]')?.value||'';
           const rosterName=card.querySelector<HTMLInputElement>('[data-char-name]')?.value||asset.name;
           const hostCharacterId=String(character?.chaId||character?.chid||'');
+          const imageB64 = await blobDataUrl(blob);
           const result=await native.fetch('/v1/characters/analyze-asset',{
             method:'POST',
             body:{
-              image_b64:await blobDataUrl(blob),
+              image_b64:imageB64,
               asset_name:asset.name,
               name:rosterName,
               aliases,
@@ -132,6 +140,12 @@ export async function pickCharacterAsset(card: HTMLElement, source: 'character' 
           },180000);
           if (!result || !COSTUME_FIELDS.some(key => typeof result[key] === 'string' && result[key])) throw new Error('외형 분석 결과가 없습니다.');
           if (closed || !current()) return;
+          if (targetId && scope) {
+            await native.fetch('/v1/characters/ref', { method: 'POST', body: {
+              character_id: targetId, scope, session_id: scope, image_b64: imageB64, overwrite: false,
+            } }, 60000);
+            if (closed || !current()) return;
+          }
           const select = card.querySelector<HTMLSelectElement>('[data-char-costume]');
           if (asCostume.checked) {
             if (!select) throw new Error('코스튬 선택 연결 없음');

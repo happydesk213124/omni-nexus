@@ -89,6 +89,7 @@ import {
 } from './lorefilter';
 import { collectTriggeredLoreKeys } from '../domain/lore/assemble';
 import { characterImageInput } from './character-image-input';
+import type { ReferenceCandidate } from '../domain/nai-meta/reference-search';
 
 import { deleteCard, rebindCardsHash } from './gallery';
 import { ACTIVE_JOB_STATES, busyReplyForRequest, jobKey } from './job-locks';
@@ -783,8 +784,10 @@ async function runJob(jobId: string): Promise<void> {
     // Asset references use one collector; only the receiving tagger differs by mode.
     const assetMode = normalizeAssetNaiTagsMode(getConfig().card?.asset_nai_tags);
     let skipAssetInject = false;
+    let referenceCandidates: ReferenceCandidate[] | undefined;
     if (assetMode === 'prepass') {
-      const { collected: assetCollected, images } = await collectGenerationAssets(request);
+      const { collected: assetCollected, images, references } = await collectGenerationAssets(request);
+      referenceCandidates = references;
       if (assetCollected?.block || images.length) {
         await setJob(jobId, 'tagging', {
           phase: 'tagging',
@@ -828,6 +831,7 @@ async function runJob(jobId: string): Promise<void> {
               sourceSessionIds,
               assetLooks: true,
               originalHints: assetCollected?.originalHints || {},
+              referenceCandidates,
             });
           }
           const filledLooks = newChars.filter((c) => characterHasAppearance(c)).length;
@@ -864,7 +868,8 @@ async function runJob(jobId: string): Promise<void> {
       debug_stage: 'job.tagging',
     });
 
-    const messages = await buildTaggerMessages(request, { skipAssetInject });
+    const messages = await buildTaggerMessages(request, { skipAssetInject,
+      onAssetReferences: candidates => { referenceCandidates = candidates; } });
     dbg('job.tagger.messages', { msgs: messages.length, skip_asset_inject: skipAssetInject });
     if (getConfig().card?.preprocessing) {
       const pre = stripCbs(await getPrompt('preprocess'));
@@ -949,6 +954,7 @@ async function runJob(jobId: string): Promise<void> {
       sessionId,
       tagged,
       shotChars: allChars,
+      referenceCandidates,
       unifiedSessionId,
       characterId,
       sourceSessionIds,

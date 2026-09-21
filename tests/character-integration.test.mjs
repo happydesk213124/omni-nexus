@@ -177,7 +177,7 @@ test('generation prepass and inline route new image-only people and metadata thr
   assert.ok(start>=0 && end>start);
   let body=source.slice(start,end);
   if(process.env.BREAK_IMAGE_ROUTING) body=body.replace('getConfig().card.image_analysis_separate === true','false');
-  const {code}=await transform(`return (async()=>{${body};return skipAssetInject;})();`,{loader:'ts'});
+  const {code}=await transform(`return (async()=>{${body};return {skipAssetInject,referenceCandidates};})();`,{loader:'ts'});
   for(const mode of ['inline','prepass']) for(const separate of [false,true]) for(const material of ['text','image','metadata']) {
     const metadata=material==='metadata',hasAssets=material!=='text';
     const {api,host,config}=await runtime();
@@ -186,15 +186,20 @@ test('generation prepass and inline route new image-only people and metadata thr
     globalThis.risuai.getCharacter=async()=>bot;
     globalThis.risuai.readImage=async()=>metadata?PNG_NAI_1X1:PNG_NO_META;
     const request={session_id:'',assistant_text:'Alice',lore_trigger_keys:['Alice']};
-    const calls=[];
-    const scope={assetMode:mode,request,jobId:'j',sessionId:'',unifiedSessionId:'',characterId:'',sourceSessionIds:[],skipAssetInject:false,llmOptions:{},
+    const calls=[],saves=[];
+    const scope={assetMode:mode,request,jobId:'j',sessionId:'',unifiedSessionId:'',characterId:'',sourceSessionIds:[],skipAssetInject:false,referenceCandidates:undefined,llmOptions:{},
       collectGenerationAssets:api.collectGenerationAssets,characterImageInput:api.characterImageInput,
       buildCharacterLooksMessages:api.buildCharacterLooksMessages,getConfig:api.getConfig,
       setJob:async()=>{},cancelJobIfStale:async()=>false,dbg:()=>{},resolveLlmRole:(_,role)=>role,
-      callLlm:async(role,messages)=>{calls.push({role,messages});return '{"new_characters":[]}';},parseJsonLoose:JSON.parse,
-      mergeRosterFromTagged:async()=>{},characterHasAppearance:api.characterHasAppearance};
-    const skipAssetInject=await new Function(...Object.keys(scope),code)(...Object.values(scope));
-    calls.push({role:'main',messages:await api.buildTaggerMessages(request,{skipAssetInject})});
+      callLlm:async(role,messages)=>{calls.push({role,messages});return '{"new_characters":[{"name":"Alice","hair_style":"braid"}]}';},parseJsonLoose:JSON.parse,
+      mergeRosterFromTagged:async args=>{saves.push(args);},characterHasAppearance:api.characterHasAppearance};
+    const pipeline=await new Function(...Object.keys(scope),code)(...Object.values(scope));
+    let references=pipeline.referenceCandidates;
+    calls.push({role:'main',messages:await api.buildTaggerMessages(request,{skipAssetInject:pipeline.skipAssetInject,onAssetReferences:value=>{references=value;}})});
+    if(hasAssets) {
+      assert.deepEqual(references.map(ref=>ref.key),['alice-asset']);
+      if(mode==='prepass') assert.deepEqual(saves[0].referenceCandidates,references);
+    }
     assert.equal(calls.length,mode==='prepass'&&hasAssets?2:1,`${mode}/${separate}/${metadata}`);
     assert.equal(host.llmRequests.length,hasAssets&&!metadata&&separate?1:0);
     for(const call of calls) {

@@ -52,6 +52,8 @@ import { numberMessageLinesForTagger, repairLazyShotLines } from '../domain/tagg
 import { characterImageInput } from './character-image-input';
 import { compactAssetKey } from '../domain/nai-meta/match';
 import { characterPrompt } from './character-prompt';
+import { collectReferenceCandidates } from './reference-assets';
+import type { ReferenceCandidate } from '../domain/nai-meta/reference-search';
 import { collectAssetNaiTags, collectBestLookAssets, setLastAssetWeightMap, type AssetLookPreview } from './asset-tags';
 import { loadTaggerRoster, rosterForSession } from './characters';
 import { cardFlagOn, taggerShouldUseV5Rules, normalizeV5NaturalLang } from '../domain/nai/routing';
@@ -112,6 +114,7 @@ export interface BuildTaggerOptions {
    * and wrote looks to the roster (lb-xnai sections then auto-trim via filledNames).
    */
   skipAssetInject?: boolean;
+  onAssetReferences?: (candidates: ReferenceCandidate[]) => void;
 }
 
 /** Lore + UI trigger keys used for asset name matching. */
@@ -167,7 +170,12 @@ export async function collectGenerationAssets(request: TaggerArgs) {
     request.character_id || '', request.source_session_ids || []);
   const missing = assetTriggerPoolForRequest(request).filter(key => !covered.has(compactAssetKey(key, 200)));
   const images = await collectBestLookAssets(missing, { roster, characterId: request.character_id });
-  return { collected, images };
+  const references = await collectReferenceCandidates(assetTriggerPoolForRequest(request), request.character_id || '', request.lorebook || [])
+    .catch(error => {
+      dbg('char_ref.candidates.fail', { message: String(error) }, 'warn');
+      return [];
+    });
+  return { collected, images, references };
 }
 
 function formatAppearanceInjectLine(
@@ -564,7 +572,8 @@ export async function buildTaggerMessages(
   pushReferenceUser(messages, 'Characters in this message', appearancePayload(card, assistant, sessionId, rosterEarly));
 
   if (!opts.skipAssetInject && assetMode !== 'off') {
-    const { collected, images } = await collectGenerationAssets(request);
+    const { collected, images, references } = await collectGenerationAssets(request);
+    opts.onAssetReferences?.(references);
     if (collected?.block) pushReferenceUser(messages, 'NovelAI asset tags', collected.block);
     if (assetMode === 'inline') {
       messages.push(...await characterImageInput(images, card.image_analysis_separate === true));

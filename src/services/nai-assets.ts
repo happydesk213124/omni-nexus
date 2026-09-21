@@ -25,9 +25,10 @@ import {
 } from '../core/constants';
 import { cleanText } from '../core/util/text';
 import { publishCharacterImage } from '../core/character-ui-events';
-import { lookBytesForTarget, refSeedTargets } from '../domain/character/char-ref-seed';
+import { refSeedTargets } from '../domain/character/char-ref-seed';
+import type { ReferenceCandidate } from '../domain/nai-meta/reference-search';
 import { sanitizeHash } from '../domain/character/char-ref-store';
-import { collectBestLookAssets } from './asset-tags';
+import { referenceLooksForTargets } from './reference-assets';
 import { vibeEncodeToken } from '../domain/nai/keys';
 import { modelToNaia, resolveModel, supportsVibeTransfer } from '../providers/nai/payload';
 import { encodeVibe } from '../providers/nai/vibe';
@@ -416,7 +417,7 @@ export async function getCharRefImageBytes(scope: unknown, characterId: string):
 }
 
 /** Fill empty ref slots from name-triggered Risu assets. Never overwrites a hash. */
-export async function seedCharRefsFromLooks(characters: readonly unknown[], sourceCharacterId = ''): Promise<number> {
+export async function seedCharRefsFromLooks(characters: readonly unknown[], sourceCharacterId = '', captured?: readonly ReferenceCandidate[]): Promise<number> {
   const targets = refSeedTargets(characters);
   if (!targets.length) return 0;
   // Capture the live source once, only for global rows without a caller-owned source.
@@ -435,11 +436,10 @@ export async function seedCharRefsFromLooks(characters: readonly unknown[], sour
   }
   let seeded = 0;
   for (const [characterId, group] of groups) {
-    const triggers = [...new Set(group.flatMap(row => row.names))];
     try {
-      const looks = await collectBestLookAssets(triggers, { characterId });
+      const looks = await referenceLooksForTargets(group, characterId, captured);
       for (const target of group) {
-        const bytes = lookBytesForTarget(target, looks);
+        const bytes = looks.find(look => look.targetId === target.id && look.scope === target.scope)?.bytes;
         if (!bytes?.byteLength) continue;
         try {
           const saved = await setCharRefImage(target.scope, target.id, u8ToArrayBuffer(bytes), {
