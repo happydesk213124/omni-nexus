@@ -67,3 +67,16 @@ test('shared roster lives in display module and rejects a lost write',async()=> 
  discard=false;modules[0].lorebook.push(structuredClone(e));
  await assert.rejects(()=>api.mutateCharacterRoster('__global__',()=>[]),/Duplicate/);
 });
+
+
+test('empty disabled roster placeholders initialize without erasing nonempty corrupt content',async()=>{
+  const entry={comment:'omni.nexus.data.global',key:'',alwaysActive:false,mode:'normal',content:'  '};
+  chars[0].globalLore.push(entry);
+  assert.deepEqual(await api.readCharacterRoster('bot-a'),[]);
+  await api.mutateCharacterRoster('bot-a',()=>[row]);
+  assert.equal((await api.readCharacterRoster('bot-a'))[0].name,'Alice');
+  chars[0].globalLore[1].content='{"roster":[';
+  const before=JSON.stringify(chars);
+  await assert.rejects(api.mutateCharacterRoster('bot-a',()=>[]),/캐릭터 저장 데이터 오류.*bot-a.*omni.nexus.data.global/);
+  assert.equal(JSON.stringify(chars),before);
+});

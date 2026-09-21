@@ -18,7 +18,7 @@ export async function hasPromptDefaultRevision(key: string): Promise<boolean> {
 /** A changed shipped revision remains visible until that prompt is reset. */
 export async function pendingPromptDefaults(): Promise<string[]> {
   const pending = await Promise.all(PROMPT_KEYS.map(async key => {
-    if (['char_looks', 'autotag', 'asset_tags_inject'].includes(key)) return '';
+    if (['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note'].includes(key)) return '';
     const row = await idbGet('meta', storageKey(key));
     return row?.text === promptRevision(key) ? '' : key;
   }));

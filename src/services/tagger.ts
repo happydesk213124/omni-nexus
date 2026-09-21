@@ -155,6 +155,21 @@ export async function collectAssetTagsForTagger(
   }
 }
 
+/** Both generation modes search the same references, including unregistered people. */
+export async function collectGenerationAssets(request: TaggerArgs) {
+  const collected = await collectAssetTagsForTagger(request, { withPreviews: false });
+  if (!collected?.block) setLastAssetWeightMap(new Map());
+  const covered = new Set<string>();
+  for (const group of collected?.packed.groups || []) {
+    for (const key of [group.trigger, ...group.lore_keys]) covered.add(compactAssetKey(key, 200));
+  }
+  const roster = await rosterForSession(request.session_id || '', request.unified_session_id || '',
+    request.character_id || '', request.source_session_ids || []);
+  const missing = assetTriggerPoolForRequest(request).filter(key => !covered.has(compactAssetKey(key, 200)));
+  const images = await collectBestLookAssets(missing, { roster, characterId: request.character_id });
+  return { collected, images };
+}
+
 function formatAppearanceInjectLine(
   c: Partial<CharacterRecord>,
   opts: { withCostumes?: boolean } = {},
@@ -300,7 +315,7 @@ function incompleteTargetsForLooks(
 /**
  * Looks-only pre-pass: asset tags (+ optional images).
  * No chat message, no filled-roster dump, no story lore, no lb-xnai pack.
- * global_author_note, then asset_author_note, then the session note (session wins).
+ * Shared global and session notes remain context; asset-only writing rules are retired.
  */
 export async function buildCharacterLooksMessages(
   request: TaggerArgs,
@@ -315,10 +330,9 @@ export async function buildCharacterLooksMessages(
   if (assetHowTo) {
     messages[0].content = `${messages[0].content}\n\n${assetHowTo}`;
   }
-  await pushAuthorNoteTurns(messages, chatNoteSessionId(sessionId, request), {
-    label: "Asset Author's Note",
-    text: await getPrompt('asset_author_note'),
-  });
+  // Legacy asset-only writing rules remain stored but are no longer injected.
+  // Shared chat/global context still applies; only the retired asset lane is omitted.
+  await pushAuthorNoteTurns(messages, chatNoteSessionId(sessionId, request));
 
   const assistant = cleanText(stripBakeTokens(request.assistant_text), 20000);
   const sourceSessionIds = Array.isArray(request.source_session_ids)
@@ -550,34 +564,9 @@ export async function buildTaggerMessages(
   pushReferenceUser(messages, 'Characters in this message', appearancePayload(card, assistant, sessionId, rosterEarly));
 
   if (!opts.skipAssetInject && assetMode !== 'off') {
-    const triggerPool = assetTriggerPoolForRequest(request);
-    const covered = new Set<string>();
-    try {
-      const collected = await collectAssetNaiTags(triggerPool, {
-        withPreviews: false,
-        characterId,
-        roster: rosterEarly,
-        lorebook: Array.isArray(request.lorebook) ? request.lorebook : null,
-        message: assistant,
-      });
-      if (collected?.block) {
-        for (const group of collected.packed.groups) for (const key of [group.trigger, ...group.lore_keys]) covered.add(compactAssetKey(key, 200));
-        pushReferenceUser(messages, 'NovelAI asset tags', collected.block);
-        dbg('asset-tags.inject', {
-          reason: `asset_nai_tags_${assetMode}`,
-          assets: collected.packed.groups.flatMap((g) => g.assets.map((a) => a.name)),
-        });
-      } else {
-        setLastAssetWeightMap(new Map());
-        dbg('asset-tags.inject.skip', { reason: assetMode, cause: 'collect_empty', triggers: triggerPool.length });
-      }
-    } catch (err) {
-      setLastAssetWeightMap(new Map());
-      dbg('asset-tags.inject.fail', { reason: assetMode, message: String((err as Error)?.message || err) }, 'warn');
-    }
+    const { collected, images } = await collectGenerationAssets(request);
+    if (collected?.block) pushReferenceUser(messages, 'NovelAI asset tags', collected.block);
     if (assetMode === 'inline') {
-      const missing = triggerPool.filter(key => !covered.has(compactAssetKey(key, 200)));
-      const images = await collectBestLookAssets(missing, { roster: rosterEarly, characterId });
       messages.push(...await characterImageInput(images, card.image_analysis_separate === true));
     }
   } else if (opts.skipAssetInject) {

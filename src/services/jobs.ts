@@ -69,11 +69,11 @@ import { pickNextReadyShot } from '../domain/comic/schedule';
 import { characterHasAppearance, characterMaxLimit, applyWearContinuityToShots, applyCostumeContinuityToShots, applyCreatedCostumesToShots, collectCostumePairs, createdCostumeWearByName, ensureCostumes } from '../domain/character/tags';
 import { slimCardCharacters } from '../domain/gallery/slim-cast';
 import { stripStoredCardMeta } from '../domain/gallery/strip-stored-meta';
-import { dedupeShotCharacters, matchCharactersInText, resolveCharacter } from '../domain/character/roster';
+import { dedupeShotCharacters, resolveCharacter } from '../domain/character/roster';
 import { publishImage, resolveImageUrl } from '../storage/image-urls';
 import { idbGet, idbPut, rememberSessionAlias } from '../storage/stores';
 import { getConfig, jobEpochByKey, jobRunMeta, requestMessageRerollStop } from './context';
-import { mergeRosterFromTagged, rosterForSession } from './characters';
+import { mergeRosterFromTagged } from './characters';
 import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
 import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessionOutfitRevision, rosterWithSessionOutfits, persistSessionOutfits } from './session-author-note';
@@ -81,15 +81,15 @@ import { parseWearState } from '../domain/character/wear-state';
 import { shotKeepsComicSlots } from '../domain/comic/page';
 import { fillComicPagesForShots } from './comic';
 import { buildComicGenerationForShot, buildGenerationForShot, buildImageLocation, cardMetaFromLocation, generateImage, isComicShot, readImageLocation } from './generation';
-import { buildCharacterLooksMessages, buildTaggerMessages, collectAssetTagsForTagger, flattenShots } from './tagger';
+import { buildCharacterLooksMessages, buildTaggerMessages, collectGenerationAssets, flattenShots } from './tagger';
 import {
   applyLorefilter,
   ensureLorefilter,
   fetchHostLorebookEntries,
 } from './lorefilter';
 import { collectTriggeredLoreKeys } from '../domain/lore/assemble';
-import { collectBestLookAssets } from './asset-tags';
-import { runVisionAutotagLook } from './vision-autotag';
+import { characterImageInput } from './character-image-input';
+
 import { deleteCard, rebindCardsHash } from './gallery';
 import { ACTIVE_JOB_STATES, busyReplyForRequest, jobKey } from './job-locks';
 import { getPrompt } from './settings';
@@ -780,14 +780,12 @@ async function runJob(jobId: string): Promise<void> {
       }
     }
 
-    // Asset NAI: off | inline (soup on main) | prepass (looks LLM; no-meta → autotag + lore ref).
+    // Asset references use one collector; only the receiving tagger differs by mode.
     const assetMode = normalizeAssetNaiTagsMode(getConfig().card?.asset_nai_tags);
     let skipAssetInject = false;
     if (assetMode === 'prepass') {
-      const assetCollected = await collectAssetTagsForTagger(request, {
-        withPreviews: false,
-      });
-      if (assetCollected?.block) {
+      const { collected: assetCollected, images } = await collectGenerationAssets(request);
+      if (assetCollected?.block || images.length) {
         await setJob(jobId, 'tagging', {
           phase: 'tagging',
           progress: 0.05,
@@ -798,19 +796,20 @@ async function runJob(jobId: string): Promise<void> {
         });
         if (await cancelJobIfStale(jobId, 'superseded before char looks')) return;
         try {
-          const lookAssetNames = assetCollected.packed.groups.flatMap((g) => g.assets.map((a) => a.name));
+          const lookAssetNames = (assetCollected?.packed.groups || []).flatMap((g) => g.assets.map((a) => a.name));
           const lookMessages = await buildCharacterLooksMessages(
             request,
-            assetCollected.block,
+            assetCollected?.block || '',
             lookAssetNames,
             [],
           );
+          lookMessages.push(...await characterImageInput(images, getConfig().card.image_analysis_separate === true));
           dbg('job.char_looks.messages', {
             mode: assetMode,
             msgs: lookMessages.length,
             assets: lookAssetNames,
-            groups: assetCollected.packed.groups.map((g) => g.trigger),
-            previews: (assetCollected.previews || []).map((p) => p.name),
+            groups: (assetCollected?.packed.groups || []).map((g) => g.trigger),
+            previews: (assetCollected?.previews || []).map((p) => p.name),
           });
           const lookRaw = await callLlm(resolveLlmRole(getConfig(), 'asset_char'), lookMessages, llmOptions);
           if (await cancelJobIfStale(jobId, 'superseded after char looks')) return;
@@ -828,7 +827,7 @@ async function runJob(jobId: string): Promise<void> {
               characterId,
               sourceSessionIds,
               assetLooks: true,
-              originalHints: assetCollected.originalHints || {},
+              originalHints: assetCollected?.originalHints || {},
             });
           }
           const filledLooks = newChars.filter((c) => characterHasAppearance(c)).length;
@@ -852,55 +851,8 @@ async function runJob(jobId: string): Promise<void> {
           throw new Error(`에셋 태거 실패 · ${String((err as Error)?.message || err)}`);
         }
       }
-      try {
-        const rosterNow = await rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
-        const hay = String(request.assistant_text || '');
-        const incomplete = matchCharactersInText(hay, rosterNow).filter((c) => !characterHasAppearance(c));
-        if (incomplete.length) {
-          const looks = await collectBestLookAssets(
-            incomplete.map((c) => c.name),
-            { roster: rosterNow, characterId },
-          );
-          const lorebook = Array.isArray(request.lorebook) ? request.lorebook : [];
-          const filled: Array<Record<string, unknown>> = [];
-          for (const asset of looks.slice(0, 5)) {
-            const loreRef = lorebook
-              .filter((e) => {
-                const keyBits = [e.key, e.keys, e.title].flatMap((v) => (Array.isArray(v) ? v : [v]));
-                const blob = keyBits.map((v) => String(v || '')).join(' ').toLowerCase();
-                return blob.includes(String(asset.trigger || '').toLowerCase());
-              })
-              .map((e) => String(e.content || e.comment || '').slice(0, 800))
-              .filter(Boolean)
-              .join('\n');
-            const look = await runVisionAutotagLook(asset.bytes, { loreRef });
-            filled.push({
-              name: asset.trigger,
-              ...look,
-            });
-          }
-          if (filled.length) {
-            await mergeRosterFromTagged({
-              sessionId,
-              tagged: { new_characters: filled, scenes: [] },
-              shotChars: [],
-              unifiedSessionId,
-              characterId,
-              sourceSessionIds,
-              assetLooks: true,
-            });
-            skipAssetInject = true;
-            dbg('job.char_looks.no_meta_autotag', { filled: filled.length });
-          }
-        }
-      } catch (noMetaErr) {
-        dbg(
-          'job.char_looks.no_meta_autotag.fail',
-          { message: String((noMetaErr as Error)?.message || noMetaErr) },
-          'warn',
-        );
-        throw noMetaErr;
-      }
+      // The prepass owns all asset references even when none were found.
+      skipAssetInject = true;
     }
 
     await setJob(jobId, 'tagging', {

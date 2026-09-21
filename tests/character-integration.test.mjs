@@ -1,8 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {build} from 'esbuild';
+import {build,transform} from 'esbuild';
 import {readFileSync} from 'node:fs';
 import {installHost, PNG_1X1, PNG_NAI_1X1} from '../tools/parity/host.mjs';
+
+// Remove metadata chunks from a valid PNG to exercise genuinely metadata-free images.
+const PNG_NO_META=(()=>{
+  const bytes=Buffer.from(PNG_NAI_1X1),parts=[bytes.subarray(0,8)];
+  for(let offset=8;offset+12<=bytes.length;) {
+    const end=offset+12+bytes.readUInt32BE(offset),kind=bytes.toString('ascii',offset+4,offset+8);
+    if(!['tEXt','zTXt','iTXt'].includes(kind)) parts.push(bytes.subarray(offset,end));
+    offset=end;
+  }
+  return new Uint8Array(Buffer.concat(parts));
+})();
 
 const bundle = await build({stdin:{contents:`
  export {getConfig,setConfig} from './src/services/context';
@@ -11,7 +22,8 @@ const bundle = await build({stdin:{contents:`
  export {pendingPromptDefaults} from './src/services/prompt-revisions';
  export {characterPrompt} from './src/services/character-prompt';
  export {characterImageInput} from './src/services/character-image-input';
- export {buildCharacterLooksMessages,buildTaggerMessages} from './src/services/tagger';
+ export {buildCharacterLooksMessages,buildTaggerMessages,collectGenerationAssets} from './src/services/tagger';
+ export {getLastAssetWeightMap,setLastAssetWeightMap} from './src/services/asset-tags';
  export {characterSource} from './src/services/character-source';
  export {runImportFill} from './src/services/char-import';
  export {fetchCharacterLorebookEntries} from './src/services/lorefilter';
@@ -155,4 +167,71 @@ test('gender-only remains incomplete; final caption deduplicates while preservin
   assert.match(common,/height and age: optional/);
   assert.match(common,/eye color and stable eye shape/);
   assert.match(common,/Never store expressions/);
+});
+
+
+test('generation prepass and inline route new image-only people and metadata through all four settings', async()=> {
+  const source=readFileSync('src/services/jobs.ts','utf8');
+  const start=source.indexOf("    if (assetMode === 'prepass') {");
+  const end=source.indexOf("\n    await setJob(jobId, 'tagging', {",start);
+  assert.ok(start>=0 && end>start);
+  let body=source.slice(start,end);
+  if(process.env.BREAK_IMAGE_ROUTING) body=body.replace('getConfig().card.image_analysis_separate === true','false');
+  const {code}=await transform(`return (async()=>{${body};return skipAssetInject;})();`,{loader:'ts'});
+  for(const mode of ['inline','prepass']) for(const separate of [false,true]) for(const material of ['text','image','metadata']) {
+    const metadata=material==='metadata',hasAssets=material!=='text';
+    const {api,host,config}=await runtime();
+    config.card.asset_nai_tags=mode;config.card.image_analysis_separate=separate;api.setConfig(config);
+    const bot={chaId:'bot',additionalAssets:hasAssets?[['Alice default','alice-asset']]:[],chats:[]};
+    globalThis.risuai.getCharacter=async()=>bot;
+    globalThis.risuai.readImage=async()=>metadata?PNG_NAI_1X1:PNG_NO_META;
+    const request={session_id:'',assistant_text:'Alice',lore_trigger_keys:['Alice']};
+    const calls=[];
+    const scope={assetMode:mode,request,jobId:'j',sessionId:'',unifiedSessionId:'',characterId:'',sourceSessionIds:[],skipAssetInject:false,llmOptions:{},
+      collectGenerationAssets:api.collectGenerationAssets,characterImageInput:api.characterImageInput,
+      buildCharacterLooksMessages:api.buildCharacterLooksMessages,getConfig:api.getConfig,
+      setJob:async()=>{},cancelJobIfStale:async()=>false,dbg:()=>{},resolveLlmRole:(_,role)=>role,
+      callLlm:async(role,messages)=>{calls.push({role,messages});return '{"new_characters":[]}';},parseJsonLoose:JSON.parse,
+      mergeRosterFromTagged:async()=>{},characterHasAppearance:api.characterHasAppearance};
+    const skipAssetInject=await new Function(...Object.keys(scope),code)(...Object.values(scope));
+    calls.push({role:'main',messages:await api.buildTaggerMessages(request,{skipAssetInject})});
+    assert.equal(calls.length,mode==='prepass'&&hasAssets?2:1,`${mode}/${separate}/${metadata}`);
+    assert.equal(host.llmRequests.length,hasAssets&&!metadata&&separate?1:0);
+    for(const call of calls) {
+      const pixels=call.messages.some(m=>Array.isArray(m.content)&&m.content.some(p=>p.type==='image_url'));
+      assert.equal(pixels,hasAssets&&!metadata&&!separate&&call.role===(mode==='prepass'?'asset_char':'main'));
+    }
+    if(hasAssets&&!metadata&&separate) {
+      assert.equal(host.llmRequests[0].model,'vision-only');
+      assert.match(JSON.stringify(calls[0].messages),/Image analysis/);
+    }
+    if(metadata) assert.match(JSON.stringify(calls[0].messages),/black hair/);
+  }
+});
+
+test('legacy asset writing overrides are preserved but not injected',async()=>{
+  const {api}=await runtime();
+  await api.setPrompt('asset_author_note','LEGACY INVENT ALL HAIR');
+  const messages=await api.buildCharacterLooksMessages({session_id:'',assistant_text:'Alice'},'tags');
+  assert.doesNotMatch(JSON.stringify(messages),/LEGACY INVENT ALL HAIR/);
+  assert.equal(await api.getPrompt('asset_author_note'),'LEGACY INVENT ALL HAIR');
+});
+
+
+test('malformed image JSON fails instead of becoming saved appearance text',async()=>{
+  const {api,host,config}=await runtime();
+  config.llm_roles.autotag={...config.llm_roles.autotag,provider:'anthropic',endpoint:'https://api.anthropic.com/v1/messages'};
+  api.setConfig(config);host.setLlmReply('{"hair_color":');
+  await assert.rejects(api.characterImageInput([{name:'Alice',trigger:'Alice',bytes:PNG_1X1}],true),/오토태그 응답 오류/);
+  assert.equal(host.llmRequests.length,1);
+});
+
+
+test('asset collection clears previous request weights when no references exist',async()=>{
+  const {api,config}=await runtime();config.card.asset_nai_tags='inline';api.setConfig(config);
+  globalThis.risuai.getCharacter=async()=>({additionalAssets:[]});
+  api.setLastAssetWeightMap(new Map([['blue hair','2::blue hair::']]));
+  const result=await api.collectGenerationAssets({session_id:'',assistant_text:'Alice',lore_trigger_keys:['Alice']});
+  assert.equal(result.collected,null);assert.equal(result.images.length,0);
+  assert.equal(api.getLastAssetWeightMap().size,0);
 });

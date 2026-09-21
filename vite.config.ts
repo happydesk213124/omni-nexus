@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.1.5';
+const PLUGIN_VERSION = '0.1.6';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -953,6 +953,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.1.6</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>에셋 통합·분리 생성의 이미지 검색과 모델 분기를 통일했습니다. 미등록 인물의 이미지도 분석합니다.</li>
+            <li>이미지 분기 OFF는 해당 태거, ON은 오토태그로 보냅니다. 메타데이터만 있으면 이미지 호출을 추가하지 않습니다.</li>
+            <li>기존 에셋 전용 외형 지시의 중복 주입을 제거하고, 잘못된 오토태그 JSON을 외형으로 저장하지 않습니다.</li>
+            <li>빈 비활성 캐릭터 저장 항목은 초기화할 수 있게 하고, 손상된 내용은 보존하며 대상 캐릭터를 오류에 표시합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.1.5</strong>
@@ -14635,7 +14644,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "신규 캐릭터 외형·머리·눈의 기본 코스튬 저장 수정. 에셋·메인 태거 실패 단계와 JSON 오류 상세 표시. 업데이트는 이 저장소 main에서 받습니다."
+    body: "캐릭터 공통 프롬프트 중복 정리. 에셋 통합·분리의 이미지 모델 분기와 신규 인물 분석 수정. 빈 저장 항목 처리 및 JSON 오류 안내 개선."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

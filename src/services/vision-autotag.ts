@@ -9,6 +9,7 @@ import { dbg } from '../core/debug';
 import type { BytesLike } from '../core/util/bytes';
 import { bytesToBase64Async } from '../core/util/bytes';
 import { prepareAutotagImage } from '../core/util/image';
+import { parseJsonLoose } from '../core/util/object';
 import { cleanText } from '../core/util/text';
 import { callLlm } from './llm-call';
 import { normalizeLlmSource, type LlmMessage } from '../providers/llm/transform';
@@ -57,7 +58,11 @@ export async function runVisionAutotagLook(
     dbg('vision-autotag.llm.fail', { message: String((err as Error)?.message || err) }, 'error');
     throw new Error(`오토태그 LLM 실패: ${String((err as Error)?.message || err).slice(0, 240)}`);
   }
-  const parsed = parseAutotagLookJson(raw);
+  let json: unknown;
+  try { json = parseJsonLoose(raw); }
+  catch (error) { throw new Error(`오토태그 응답 오류 · ${String((error as Error).message)}`); }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) throw new Error('오토태그 응답 오류 · 캐릭터 JSON 객체가 필요합니다.');
+  const parsed = parseAutotagLookJson(JSON.stringify(json));
   if (
     !characterHasAppearance(parsed)
     && !cleanText(parsed.attire)
