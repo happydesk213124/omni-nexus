@@ -1,4 +1,4 @@
-import { cleanText, parseAliasList } from '../../core/util/text';
+import { parseAliasList } from '../../core/util/text';
 import { migrateCharacter, type CharacterInput } from '../character/identity';
 import { characterTriggers } from '../character/roster';
 import { assetBasenameCompact, assetNameWords, compactAssetKey } from './match';
@@ -6,7 +6,7 @@ import { assetBasenameCompact, assetNameWords, compactAssetKey } from './match';
 export interface ReferenceCandidate {
   name: string;
   key: string;
-  /** Identity keys from the search that found this file, including sibling lore keys. */
+  /** Saved character search terms that matched this file. */
   terms: string[];
 }
 
@@ -43,24 +43,4 @@ export function rankedReferenceAssets<T extends { name: string }>(assets: readon
     referencePriority(b.name, terms) - referencePriority(a.name, terms)
     || assetBasenameCompact(a.name).length - assetBasenameCompact(b.name).length
     || a.name.localeCompare(b.name));
-}
-
-/** Expand only entries already identified by a name/key; never merge unrelated entries transitively. */
-export function referenceLoreTerms(terms: readonly string[], lore: readonly Record<string, unknown>[]): string[] {
-  const keys = new Set(terms.map(v => compactAssetKey(v)).filter(Boolean));
-  const extra: string[] = [];
-  for (const entry of lore) {
-    const siblings = parseAliasList([...parseAliasList(entry.key), ...parseAliasList(entry.keys)]);
-    const headings = [...siblings, cleanText(entry.title), cleanText(entry.comment)];
-    if (headings.some(value => keys.has(compactAssetKey(value)))) extra.push(...headings);
-  }
-  return parseAliasList([...terms, ...extra]);
-}
-
-export function referencesForNames(candidates: readonly ReferenceCandidate[], names: readonly string[]): ReferenceCandidate[] {
-  const keys = new Set(names.map(v => compactAssetKey(v)));
-  const eligible = candidates.filter(c => c.terms.some(term => keys.has(compactAssetKey(term))) || assetMatchesTerms(c.name, names));
-  const terms = parseAliasList([...names, ...eligible.flatMap(c => c.terms)]);
-  // Candidates may match via an alias associated with their original search.
-  return rankedReferenceAssets(eligible, terms);
 }

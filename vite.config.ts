@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.1.8';
+const PLUGIN_VERSION = '0.1.9';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -953,6 +953,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.1.9</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>자동 참고이미지는 캐릭터 등록 후 저장된 이름·별칭·이름 부분으로 검색합니다. 생성 중 후보 전달과 로어북의 다른 인물 키 혼입을 제거했습니다.</li>
+            <li>메타데이터에 머리 스타일·눈색·눈 형태가 부족하면 이미지를 함께 분석합니다. 이미지 분기 옵션과 기존 모델 설정을 따릅니다.</li>
+            <li>공통 캐릭터 프롬프트에 머리·눈 보충 지시를 강화했습니다. 프롬프트 탭의 공통 캐릭터 기본값을 적용하면 반영됩니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.1.8</strong>
@@ -14659,7 +14667,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "에셋 검색 후보를 참고이미지 등록까지 연결합니다. 공백·하이픈 일치와 후보 우선순위를 수정하고, 검색창에 이름 부분을 추가했습니다."
+    body: "참고이미지는 등록된 캐릭터의 이름·별칭으로 검색합니다. 메타데이터에 머리·눈 정보가 부족하면 이미지로 보충합니다. 공통 캐릭터 프롬프트 기본값도 갱신했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

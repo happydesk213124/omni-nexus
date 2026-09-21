@@ -86,7 +86,7 @@ import {
 import { imageLocation, putImageLocation } from '../storage/stores';
 import { findAssetMessage } from '../storage/asset-message';
 import { getConfig } from './context';
-import { ensureCharRefVibeEncoded, ensurePresetVibeEncoded, ensureVibeEncoded, getCharRefImageBytes, getReferenceImageBytes, seedCharRefsFromLooks } from './nai-assets';
+import { ensureCharRefVibeEncoded, ensurePresetVibeEncoded, ensureVibeEncoded, getCharRefImageBytes, getReferenceImageBytes } from './nai-assets';
 import { getPrompt } from './settings';
 
 /** NAI width/height: accept any positive size up to 5000 (no 832/1216 portrait ceiling). */
@@ -584,11 +584,6 @@ export async function generateImage(
   // Active style preset may override CFG; preset vibe image replaces NAI vibe when set.
   const card = getConfig().card;
   const charRefMode = effectiveCharacterReferenceMode(routeModel, card.char_ref_mode);
-  if (charRefMode !== 'off') {
-    await seedCharRefsFromLooks(Array.isArray(plan.characters) ? plan.characters : [], plan.sourceCharacterId).catch((err) => {
-      dbg('char_ref.seed.gen.fail', { message: String((err as Error)?.message || err) }, 'warn');
-    });
-  }
   const activePreset = (routePreset || pickPresetForFamily(card, routeFamily)) as StylePreset | null;
   const presetId = cleanText(activePreset?.id || card.active_preset_id, 120);
   const cfgParams = resolveGenerationCfgParams(
