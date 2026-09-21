@@ -344,9 +344,8 @@ async function runVisionBatch(scope: string, characterId: string, rows: Resolved
     const parts: LlmContentPart[] = [{
       type: 'text',
       text:
-        'Return ONE JSON object: {"new_characters":[{"name","gender","hair_color","hair_style","eye_color","height","age","penis_size","appearance","attire","bottoms","accessories","original","aliases","surname","given_name","surname_variants","given_name_variants","costumes"}]}.\n'
-        + 'Use the given names and lore_keys as aliases (exact spelling). original: only a known media Danbooru tag, else "".\n'
-        + 'Images are in the same order. COPY visual tags. JSON only.\n'
+        'Return {"new_characters":[...]} using the shared character rules. Use the supplied names and lore_keys as aliases.\n'
+        + 'Images are in the same order. Return JSON only.\n'
         + rows.map((r) => {
           const keys = parseAliasList([r.name, ...r.aliases]).join(', ');
           return `- ${r.name} (lore_keys: ${keys})${r.text ? `\n${cleanText(r.text, 800)}` : ''}`;

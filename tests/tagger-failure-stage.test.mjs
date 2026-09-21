@@ -23,10 +23,11 @@ test('prepass stops on malformed or wrong-shape JSON and identifies the asset ta
     await assert.rejects(run(body, {
       assetMode: 'prepass', request: {}, jobId: 'j', sessionId: 'a', unifiedSessionId: '', characterId: 'a', sourceSessionIds: [],
       skipAssetInject: false, llmOptions: {},
-      collectAssetTagsForTagger: async () => ({ block: 'tags', packed: { groups: [] } }),
+      collectGenerationAssets: async () => ({ collected: { block: 'tags', packed: { groups: [] } }, images: [] }),
+      characterImageInput: async () => [],
       setJob: async () => {}, cancelJobIfStale: async () => false,
       buildCharacterLooksMessages: async () => [], dbg: () => {},
-      resolveLlmRole: () => ({}), getConfig: () => ({}),
+      resolveLlmRole: () => ({}), getConfig: () => ({card:{}}),
       callLlm: async () => { requests++; return raw; }, parseJsonLoose,
       mergeRosterFromTagged: async () => { saves++; }, characterHasAppearance: () => true,
       rosterForSession: async () => [], matchCharactersInText: () => [],

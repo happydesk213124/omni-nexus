@@ -48,7 +48,15 @@ async function readEntryData(t: Target): Promise<{ char: Row; data: Row }> {
   if (entries.length > 1) throw new Error('Duplicate ' + CHARACTER_ROSTER_LORE);
   if (!entries.length) return { char, data: { version: 1, characterId: t.id, roster: [] } };
   const entry = object(entries[0])!;
-  const data = object(JSON.parse(String(entry.content)));
+  const content = String(entry.content ?? '').trim();
+  // An empty disabled placeholder contains no records to recover or overwrite.
+  // Nonempty corrupt content must remain untouched rather than becoming an empty roster.
+  if (!content && entry.key === '' && entry.alwaysActive === false && entry.mode === 'normal') {
+    return { char, data: { version: 1, characterId: t.id, roster: [] } };
+  }
+  let data: Row | null;
+  try { data = object(JSON.parse(content)); }
+  catch { throw new Error(`캐릭터 저장 데이터 오류 · ${String(char.name || t.id)} · ${CHARACTER_ROSTER_LORE} 내용이 올바른 JSON이 아닙니다. 원본은 보존했습니다.`); }
   if (entry.key !== '' || entry.alwaysActive !== false || entry.mode !== 'normal' || data?.version !== 1 || data.characterId !== t.id || !Array.isArray(data.roster)) throw new Error('Invalid ' + CHARACTER_ROSTER_LORE + '; refusing overwrite');
   return { char, data };
 }

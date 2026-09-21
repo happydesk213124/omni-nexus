@@ -1,6 +1,6 @@
 import { pendingPromptDefaults } from '../services/prompt-revisions';
 
-const retired = new Set(['autotag', 'char_looks', 'asset_tags_inject']);
+const retired = new Set(['autotag', 'char_looks', 'asset_tags_inject', 'asset_author_note']);
 const notice = '기본 프롬프트가 업데이트되었습니다. 기본값을 눌러 적용하세요.';
 let generation = 0;
 
