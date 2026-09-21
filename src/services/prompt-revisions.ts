@@ -1,4 +1,4 @@
-import { PROMPT_KEYS } from '../core/constants';
+import { PROMPT_KEYS, RETIRED_PROMPT_KEYS } from '../core/constants';
 import { hashCode } from '../core/util/text';
 import { promptText } from '../config/prompts';
 import { idbGet, idbPut } from '../storage/stores';
@@ -18,7 +18,7 @@ export async function hasPromptDefaultRevision(key: string): Promise<boolean> {
 /** A changed shipped revision remains visible until that prompt is reset. */
 export async function pendingPromptDefaults(): Promise<string[]> {
   const pending = await Promise.all(PROMPT_KEYS.map(async key => {
-    if (['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note'].includes(key)) return '';
+    if (RETIRED_PROMPT_KEYS.has(key)) return '';
     const row = await idbGet('meta', storageKey(key));
     return row?.text === promptRevision(key) ? '' : key;
   }));

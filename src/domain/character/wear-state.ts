@@ -99,7 +99,7 @@ export function wearTagsForWearState(
   }
   if (state === 'nude') {
     const tag = '2::nsfw::';
-    if (gender === 'f') return joinTags(base, tag, 'nipples', 'pussy');
+    if (gender === 'f') return joinTags(base, tag, '2::nipples::', '2::pussy::');
     if (gender === 'm') return joinTags(base, tag, malePenis);
     return joinTags(base, tag);
   }

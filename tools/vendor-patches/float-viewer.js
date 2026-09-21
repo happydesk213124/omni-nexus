@@ -40,7 +40,7 @@ async function nxFloatChat() {
   const root = await doc.querySelector(".default-chat-screen");
   if (!root) return null;
   const body = await doc.querySelector("body");
-  if (!body) return null;
+  if (!body) {await omniRelease(root);return null;}
   return { doc, root, body };
 }
 function nxFloatFind(id) {
@@ -52,10 +52,12 @@ function nxFloatBlocked() {
   return t.unloading || t.uiOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings || t.backendSettings?.card?.floating_viewer === false;
 }
 async function nxFloatSetTarget(card, bubbleHtml, valid = () => true) {
-  const scope = await Z({ useOverride: false }).catch(() => null);
+  const scope = await omniReadScope().catch(() => null);
   if (!valid() || scope?.sessionId !== nxFloatSession) return;
   const html = String(bubbleHtml || "");
   const chatIndex = Number(/data-chat-index="(\d+)"/.exec(html)?.[1] ?? NaN);
+  const previous=omniFooterTargets.get(nxFloatKey);
+  if(previous?.sessionId===scope.sessionId && previous.index===chatIndex && previous.hostId===String(/data-chat-id="([^\"]+)"/.exec(html)?.[1] || ""))return;
   const hostId = String(/data-chat-id="([^"]+)"/.exec(html)?.[1] || "");
   omniFooterTargets.set(nxFloatKey, {
     sessionId: card?.session_id || card?.sessionId || scope?.sessionId,
@@ -113,7 +115,7 @@ async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
   // Older baked images can be outside the gallery's 120-card window. Their
   // stable id and owning message still support inspect/reroll actions.
   if (!card) {
-    const scope=await Z({useOverride:false});
+    const scope=await omniReadScope();
     if(token!==nxFloatSelecting || epoch!==nxFloatEpoch)return false;
     const index=Number(/data-chat-index="(\d+)"/.exec(bubbleHtml)?.[1]);
     card={id,session_id:nxFloatSession,character_id:scope.characterId,chat_id:scope.chatId,message_index:Number.isInteger(index)?index:undefined};
@@ -232,6 +234,7 @@ async function nxFloatMount() {
   if (nxFloatBlocked()) { await nxFloatHide(); return false; }
   const h = await nxFloatChat();
   if (!h) { await nxFloatHide(); return false; }
+  try {
   // SafeDocument already wraps documentElement; its querySelector only searches descendants.
   const html = h.doc;
   const rect = await html.getBoundingClientRect();
@@ -241,7 +244,7 @@ async function nxFloatMount() {
   const viewport = {w: Math.max(240, vw || rect.width || chatRect.right), h: Math.max(240, vh || chatRect.bottom || rect.height)};
   if (viewport.w !== nxFloatViewportSize.w || viewport.h !== nxFloatViewportSize.h) nxFloatDirty = true;
   nxFloatViewportSize = viewport;
-  const scope = await Z({useOverride:false}).catch(() => null);
+  const scope = await omniReadScope().catch(() => null);
   if (!scope?.sessionId) { await nxFloatHide(); return false; }
   if (nxFloatSession !== scope.sessionId) {
     ++nxFloatEpoch; ++nxFloatGen; ++nxFloatSelecting;
@@ -254,7 +257,7 @@ async function nxFloatMount() {
   if (t._galleryCache?.sessionId !== scope.sessionId) await ce(scope.sessionId);
   if (nxFloatBlocked()) { await nxFloatHide(); return false; }
   // SafeElement wrappers do not preserve JS identity; use a DOM marker for remount detection.
-  if (nxFloatRoot && !await h.doc.querySelector('[x-nx-float]')) await nxFloatDispose(false);
+  if(nxFloatRoot){const mounted=await h.doc.querySelector('[x-nx-float]');try{if(!mounted)await nxFloatDispose(false);}finally{await omniRelease(mounted);}}
   if (!nxFloatRoot) {
     const mountEpoch = nxFloatEpoch;
     try { nxFloatGeo = await Aa(); } catch { nxFloatGeo = null; }
@@ -341,6 +344,7 @@ async function nxFloatMount() {
   }
   await nxFloatApply();
   return true;
+  } finally {if(h.root!==nxFloatWatchRoot)await omniRelease(h.root);if(h.body!==nxFloatChatRoot)await omniRelease(h.body);}
 }
 async function nxFloatSetCollapsed(next) {
   nxFloatCollapsed = !!next;
@@ -365,6 +369,8 @@ async function nxFloatDispose(resetSession = true) {
   nxFloatIdleTimer = 0; nxFloatIdle = false; nxFloatHovered = false;
   await nxFloatPainting.catch(() => {});
   try { await nxFloatRoot?.remove(); await nxFloatCss?.remove(); } catch {}
+  for(const ref of new Set([nxFloatCss,nxFloatRoot,nxFloatImage,nxFloatCounts,nxFloatHead,nxFloatStage,nxFloatBar,nxFloatFoldBtn,nxFloatResize,nxFloatFoldGrip,nxFloatFoldGrid,nxFloatIcon,nxFloatImgReroll]))await omniRelease(ref);
+  nxFloatReadingIndex=-1;nxFloatStructureDirty=true;
   nxFloatCss = null; nxFloatRoot = null; nxFloatImage = null;
   nxFloatCounts = null; nxFloatCountsOpen = false;
   nxFloatHead = null; nxFloatStage = null; nxFloatBar = null;
@@ -379,6 +385,7 @@ async function nxFloatDispose(resetSession = true) {
 globalThis.__nxFloatState = () => {
   try {
     return {
+      performance: {...omniPerf,streaming:omniStream.paused,scopePending:!!omniStream.pending},
       floating_viewer: t.backendSettings?.card?.floating_viewer,
       lastError: nxFloatLastError,
       uiOpen: !!t.uiOpen, unloading: !!t.unloading,

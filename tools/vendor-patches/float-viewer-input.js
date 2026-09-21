@@ -2,16 +2,21 @@
 // go through SafeElement methods; only the selected image's URL is inspected.
 let nxFloatInputs = [], nxFloatScanTimer = 0, nxFloatScanning = null;
 let nxFloatScanAgain = false;
-let nxFloatObserver = null, nxFloatDirty = true;
+let nxFloatObserver = null, nxFloatWatchRoot=null, nxFloatDirty = true;
+let nxFloatReadingIndex=-1, nxFloatStructureDirty=true;
 let nxFloatHoverPos = null, nxFloatHoverBusy = false;
 async function nxFloatWatchChat(h) {
-  if (await h.root.querySelector('[x-nx-float-watch]')) return;
+  const existing=await h.root.querySelector('[x-nx-float-watch]');
+  if(existing){await omniRelease(existing);return;}
   await nxFloatObserver?.disconnect();
+  await omniRelease(nxFloatObserver);await omniRelease(nxFloatWatchRoot);
   const marker = await H(h.doc, 'span', {style:'display:none;'});
   await marker.setAttribute('x-nx-float-watch', '1');
   await h.root.appendChild(marker);
-  nxFloatObserver = await k.createMutationObserver(() => nxFloatScheduleScan());
-  await nxFloatObserver.observe(h.root, {childList:true,subtree:true,attributes:true,attributeFilter:['src','data-inlay-inline-shot','x-inlay-inline-shot']});
+  await omniRelease(marker);
+  nxFloatWatchRoot=h.root;
+  nxFloatObserver = await k.createMutationObserver(records => {void omniRelease(records);nxFloatStructureDirty=true;nxFloatScheduleScan();});
+  if(!omniStream.paused)await nxFloatObserver.observe(h.root, {childList:true,subtree:true,attributes:true,attributeFilter:['src','data-inlay-inline-shot','x-inlay-inline-shot']});
   nxFloatDirty = true;
 }
 async function nxFloatListen(node, kind, fn, options = {}) {
@@ -26,13 +31,16 @@ async function nxFloatBindInputs(h) {
   await nxFloatListen(h.body, 'click', async e => {
     const pos = nxFloatEvPos(e);
     if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
-    const buttons = await nxUnwrapSafeNodes(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
+    const refs=omniDomScope();
+    try {
+    const buttons = await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
     for (const button of buttons) {
       if (await hitEl(button,pos.x,pos.y)) {
         await nxFloatClick(await button.getAttribute('x-nx-float-btn'));
         return;
       }
     }
+    } finally {await refs.close();}
   });
   await nxFloatListen(h.body, 'pointerdown', async e => {
     const pos = nxFloatEvPos(e);
@@ -72,11 +80,11 @@ async function nxFloatBindInputs(h) {
 }
 function nxFloatScheduleScan() {
   nxFloatDirty = true;
-  if (nxFloatScanTimer || nxFloatBlocked()) return;
+  if (nxFloatScanTimer || nxFloatBlocked() || omniStream.paused) return;
   nxFloatScanTimer = setTimeout(() => {
     nxFloatScanTimer = 0;
     void nxFloatScan().catch(e => nxFloatLog('scan', String(e)));
-  }, 120);
+  }, 150);
 }
 async function nxFloatUnbindInputs() {
   nxFloatHoverPos = null;
@@ -84,16 +92,20 @@ async function nxFloatUnbindInputs() {
   if(nxFloatPointer)nxFloatPointer.held=false;
   await nxFloatEndDrag(true);
   nxFloatPointer=null;
-  await nxFloatObserver?.disconnect(); nxFloatObserver = null;
+  await nxFloatObserver?.disconnect();await omniRelease(nxFloatObserver);nxFloatObserver = null;
+  await omniRelease(nxFloatWatchRoot);nxFloatWatchRoot=null;
   if (nxFloatDoc) {
-    for (const node of await nxUnwrapSafeNodes(await nxFloatDoc.querySelectorAll('[x-nx-float-watch]'))) await node.remove();
+    const refs=omniDomScope();
+    try {for (const node of await refs.all(await nxFloatDoc.querySelectorAll('[x-nx-float-watch]'))) await node.remove();}finally{await refs.close();}
   }
   for (const {node, kind, id, options} of nxFloatInputs.splice(0)) {
     try { await node.removeEventListener(kind, id, options); } catch {}
   }
+  await omniRelease(nxFloatChatRoot);
   nxFloatMoveListener = null; nxFloatChatRoot = null; nxFloatDoc = null;
 }
 async function nxFloatScan() {
+  if(omniStream.paused || t.unloading)return;
   if (nxFloatScanning) { nxFloatScanAgain = true; return nxFloatScanning; }
   nxFloatScanning = nxFloatReadPosition().finally(() => {
     nxFloatScanning = null;
@@ -106,22 +118,30 @@ function nxFloatHtmlAttr(html, name) {
   return (match?.[1] || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 async function nxFloatReadPosition() {
-  if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag) return;
+  if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag || omniStream.paused) return;
   nxFloatDirty = false;
+  const scope=await omniReadScope();
+  if(!scope || omniStream.paused || scope.sessionId!==nxFloatSession)return;
+  omniPerf.viewerPasses++;
   const epoch = nxFloatEpoch;
+  const refs=omniDomScope();
+  try {
   const h = await nxFloatChat();
   if (!h) return;
+  refs.own(h.root);refs.own(h.body);
   const sr = await h.root.getBoundingClientRect(), vp = nxFloatViewport();
   const top = Math.max(0, sr.top), bottom = Math.min(vp.h, sr.bottom);
   const readingY = top + (bottom - top) * .5;
   let best = null, distance = Infinity, readingBubble=null, readingDistance=Infinity;
-  const bubbles = await nxUnwrapSafeNodes(await h.root.querySelectorAll('.risu-chat'));
+  const scan=async selector=>{
+  const bubbles = await refs.all(await h.root.querySelectorAll(selector));
   for (const bubble of bubbles) {
+    if(omniStream.paused || epoch!==nxFloatEpoch)return;
     const br = await bubble.getBoundingClientRect();
     if (br.bottom <= top || br.top >= bottom || br.height <= 0) continue;
     const readingGap=Math.max(br.top-readingY,readingY-br.bottom,0);
     if(readingGap<readingDistance){readingDistance=readingGap;readingBubble=bubble;}
-    const nodes = await nxUnwrapSafeNodes(await bubble.querySelectorAll('[x-inlay-inline-shot],[data-inlay-inline-shot]'));
+    const nodes = await refs.all(await bubble.querySelectorAll('[x-inlay-inline-shot],[data-inlay-inline-shot]'));
     for (const node of nodes) {
       const rect = await node.getBoundingClientRect();
       if (!rect.height || rect.bottom <= top || rect.top >= bottom) continue;
@@ -134,11 +154,19 @@ async function nxFloatReadPosition() {
       best = {id, node, bubble, opening}; distance = gap;
     }
   }
-  if(epoch!==nxFloatEpoch || nxFloatBlocked())return;
-  if(readingBubble)await nxFloatSetTarget(null,await readingBubble.getOuterHTML(),()=>epoch===nxFloatEpoch);
+  };
+  if(!nxFloatStructureDirty && nxFloatReadingIndex>=0)await scan([nxFloatReadingIndex-1,nxFloatReadingIndex,nxFloatReadingIndex+1].filter(i=>i>=0).map(i=>'.risu-chat[data-chat-index="'+i+'"]').join(','));
+  if(nxFloatStructureDirty || readingDistance>0 || !best) {best=null;distance=Infinity;readingBubble=null;readingDistance=Infinity;await scan('.risu-chat');}
+  nxFloatStructureDirty=false;
+  if(epoch!==nxFloatEpoch || nxFloatBlocked() || omniStream.paused)return;
+  if(readingBubble){
+    const html=await readingBubble.getOuterHTML();
+    nxFloatReadingIndex=Number(/data-chat-index="(\d+)"/.exec(html)?.[1] ?? -1);
+    await nxFloatSetTarget(null,html,()=>epoch===nxFloatEpoch && !omniStream.paused);
+  }
   else omniFooterTargets.delete(nxFloatKey);
   if (!best || epoch !== nxFloatEpoch || nxFloatBlocked()) return;
-  const img = await best.node.querySelector('img');
+  const img = refs.own(await best.node.querySelector('img'));
   let src = '';
   if (img) {
     for (const key of ['currentSrc', 'src']) {
@@ -149,8 +177,9 @@ async function nxFloatReadPosition() {
   }
   if (!src) src = nxFloatHtmlAttr(best.opening, 'data-src') || nxFloatHtmlAttr(best.opening, 'x-src');
   if (!src) src = /url\(["']?([^"')]+)["']?\)/.exec(nxFloatHtmlAttr(best.opening, 'style'))?.[1] || '';
-  if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
+  if (epoch !== nxFloatEpoch || nxFloatBlocked() || omniStream.paused) return;
   if (best.id === nxFloatCardId && (!src || src === nxFloatLastDomSrc)) return;
   const asset = nxFloatHtmlAttr(best.opening, 'x-inray-asset') || nxFloatHtmlAttr(best.opening, 'data-inray-asset');
   await nxFloatSelect(best.id, await best.bubble.getOuterHTML(), asset, src);
+  } finally {await refs.close();}
 }

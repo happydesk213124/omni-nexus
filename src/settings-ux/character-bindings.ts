@@ -6,6 +6,7 @@ import { pickCharacterAsset } from './asset-picker';
 import { bindCostumeEditor } from './costume-editor';
 import { connectCharacterImages, paintReferenceProgress, syncCharacterTilePreviews } from './reference-progress';
 import { listCharacters, upsertCharacter, deleteCharacter } from '../services/characters';
+import { resetCharacterPreviewIndex, registerCharacterPreview, unregisterCharacterPreview, characterCardForTile } from './character-preview-index';
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const isField = (element: Element): element is Field => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
 let selectedId = '';
@@ -17,6 +18,7 @@ export function bindCharacterSheet(): void {
   const bar = document.getElementById('nx-char-scope-bar');
   if (!sheet || !bar || sheet.dataset.nxBound) return;
   sheet.dataset.nxBound = '1';
+  resetCharacterPreviewIndex();
   bindCharacterPaste();
   // oe(scope) treats EVERY data-char-scope node as a record, including navigation buttons.
   bar.querySelectorAll<HTMLElement>('[data-char-scope]').forEach(button => {
@@ -132,7 +134,7 @@ export function bindCharacterSheet(): void {
     const observer = new MutationObserver(() => { if (current === card) refresh(); });
     const status = card.querySelector('[data-autotag-status]');
     if (status) observer.observe(status, {childList:true,characterData:true,subtree:true});
-    const changed=()=>{if(current===card)refresh(); paintName(); syncCharacterTilePreviews();};
+    const changed=()=>{if(current===card)refresh(); paintName(); syncCharacterTilePreviews(card);};
     card.addEventListener('omni-autotag',changed);
     card.addEventListener('omni-character-refresh',changed);
     card.hidden = true;
@@ -165,6 +167,7 @@ export function bindCharacterSheet(): void {
       if (again && !document.getElementById('nx-char-sheet')?.classList.contains('open')) document.getElementById('nx-char-edit-btn')?.click();
     });
     card.before(tile);
+    registerCharacterPreview(card, tile);
   };
   cards.forEach(registerCard);
   syncCharacterTilePreviews();
@@ -275,6 +278,7 @@ export function bindCharacterSheet(): void {
     try {
       await flushing;
       await mutateCharacterRoster(target, rows => rows.filter(row => !ids.includes(row.id)));
+      targets.forEach(unregisterCharacterPreview);
       bridge.__OMNI_FINISH_CHARACTER_DELETE__?.(target,ids);
     } catch (error) {
       bridge.__OMNI_RESTORE_CHARACTER_CACHE__?.(scope, removed || [], target);
@@ -306,8 +310,8 @@ export function bindCharacterSheet(): void {
     const query=(event.target as HTMLInputElement).value.trim().toLocaleLowerCase();
     let visible = 0;
     for(const tile of document.querySelectorAll<HTMLElement>('[data-ux-character-tile]')) {
-      const card=cards.find(c=>c.dataset.charId===tile.dataset.uxCharacterTile && c.dataset.charScope===tile.dataset.uxCharacterScope);
-      const text=[...(card?.querySelectorAll('input,textarea')||[])].filter(isField).map(f=>f.value).join(' ').toLocaleLowerCase();
+      const card=characterCardForTile(tile);
+      const text=query ? [...(card?.querySelectorAll('input,textarea')||[])].filter(isField).map(f=>f.value).join(' ').toLocaleLowerCase() : '';
       tile.hidden=!text.includes(query);
       if (!tile.hidden && tile.dataset.uxCharacterScope === selectedScope) visible++;
     }

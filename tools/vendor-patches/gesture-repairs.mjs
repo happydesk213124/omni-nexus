@@ -44,9 +44,9 @@ export function repairGestures(source) {
   once('if (mobilePress === F) F.long = !0;', 'if (mobilePress === F && !physical.cancelled && physical.held.size && physical===nxPhysical) F.long = !0;');
   once('          if (mobilePress !== F) return;\n          F.long = !0;', '          if (mobilePress !== F || physical.cancelled || !physical.held.size || physical!==nxPhysical) return;\n          F.long = !0;');
   // The button can cease to be :active before the host responds to the query.
-  once(`  const nodes=await nxUnwrapSafeNodes(await doc.querySelectorAll('[x-omni-action]:is(:active,:focus-visible)'));`, `  const footers=await nxUnwrapSafeNodes(await doc.querySelectorAll('[x-omni-footer]'));
+  once(`  const nodes=await nxUnwrapSafeNodes(await doc.querySelectorAll('[data-omni-action]:is(:active,:focus-visible),[x-omni-action]:is(:active,:focus-visible)'));`, `  const footers=await nxUnwrapSafeNodes(await doc.querySelectorAll('[data-omni-footer]'));
   const nodes=[];
-  for(const footer of footers)if(await hitEl(footer,x,y))nodes.push(...await nxUnwrapSafeNodes(await footer.querySelectorAll('[x-omni-action]')));`);
+  for(const footer of footers)if(await hitEl(footer,x,y))nodes.push(...await nxUnwrapSafeNodes(await footer.querySelectorAll('[data-omni-action],[x-omni-action]')));`);
   for(const name of ['fs','refresh'])once(`:is([x-inray-${name}],[data-inray-${name}]):active`,`:is([x-inray-${name}],[data-inray-${name}])`);
   once('inspectGuardUntil = Date.now() + 400;', 'inspectGuardUntil = 0;');
   // Freshly generated images need not already belong to the settings gallery cache.

@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.1.9';
+const PLUGIN_VERSION = '0.2.0';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -953,6 +953,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.0</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>캐릭터 참고이미지와 모듈·캐릭터 에셋 연결을 정리했습니다. 기존 참고이미지는 유지하면서 새 저장 경로를 사용합니다.</li>
+            <li>캐릭터가 많은 목록에서 썸네일을 ID 인덱스로 바로 찾고, 변경된 캐릭터만 갱신하도록 개선해 탭 진입과 이미지 갱신 지연을 줄였습니다.</li>
+            <li>태거·출력 형식·캐릭터·만화 프롬프트의 중복 지시를 줄여 LLM 요청 토큰을 절약했습니다. 사용하지 않는 프롬프트 편집 항목은 목록에서 숨겼습니다.</li>
+            <li>전체화면 이미지의 수정 버튼을 리롤 오른쪽으로 옮기고, 리롤과 같은 크기로 맞췄습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.1.9</strong>
@@ -6858,19 +6867,23 @@ const VENDOR_SETTINGS_CLOSE_STICKY_NEEDLE = `    document.getElementById("nx-clo
       }
     }),`;
 const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-close")?.addEventListener("click", async () => {
-      // Save while DOM is still mounted (same as 저장), then hide + restore viewer.
-      try { await xa({ silent: !0 }); } catch (err) {
-        y("warn", "settings.close.save", err?.message || err);
-      }
+      if (!t.uiOpen) return;
+      omniCaptureSettingsSave();
+      const closeEpoch = t._settingsCloseEpoch = (t._settingsCloseEpoch || 0) + 1;
       t.uiOpen = !1, t._debugTabTimer && (clearInterval(t._debugTabTimer), t._debugTabTimer = null), t._hostReaper && (clearInterval(t._hostReaper), t._hostReaper = null), t._settingsWatch && (clearInterval(t._settingsWatch), t._settingsWatch = null);
       if (t.overlayUi) t.overlayUi._stickyEditorOpen = !1;
-      typeof k.hideContainer == "function" && await k.hideContainer();
+      const hiding = typeof k.hideContainer == "function" ? k.hideContainer() : Promise.resolve();
+      // Hiding is dispatched before any asynchronous save or host DOM work.
+      setTimeout(() => { void xa({ silent: !0, captured: !0 }); }, 0);
+      await hiding;
+      if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
       invalidateOverlayLayoutCache();
       Promise.resolve().then(async () => {
         let stayInRisu = !!t._viewerHiddenForRisuSettings;
         if (!stayInRisu) {
           try { stayInRisu = await isRisuSettingsOpen(); } catch { stayInRisu = !1; }
         }
+        if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
         if (stayInRisu) {
           // Back to Risu settings/plugins — do not bring the floating viewer over that UI.
           // Inlay settings are closed: drop modal hide flag or Risu-close restore stays blocked.
@@ -6885,6 +6898,7 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
         } catch {
         }
         try { await restoreFloatingViewerAfterModal(); } catch {}
+        if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
         try { await blockHostChrome(!1); } catch {}
         // it() refetches gallery + remounts overlay shell. Float viewer syncs itself.
         if (!t.overlayUi?.root) {
@@ -14073,7 +14087,7 @@ const VENDOR_AFTER_REPLY_FN_PATCH =
 const VENDOR_AFTER_REQUEST_HELP_NEEDLE =
   `"nx-auto-gen-reply": { title: "응답 후 자동 생성", body: "AI 답변이 끝나면 메시지를 클릭하지 않아도 이미지를 만듭니다. 이미 이미지가 있으면 건너뜁니다(덮어쓰지 않음). Power OFF이거나 발동이 수동일 때는 동작하지 않습니다." },`;
 const VENDOR_AFTER_REQUEST_HELP_PATCH =
-  `"nx-auto-gen-reply": { title: "응답 후 자동 생성", body: "주 채팅(model) 응답이 끝나면(0.5초 안정 확인 후) 한 번 생성. afterRequest가 없어도 채팅 출력 종료 때 받아서 생성. [LBDATA START]~END 는 글자 수에서 제외하고, 나머지가 30자 이하면 클릭해도 생성하지 않습니다. 이미 생성 중이면 뒤는 스킵. 보조 모델·유저 말·이미 이미지·Power/토글 OFF는 스킵. 발동 수동/자동과 무관." },`;
+  `"nx-auto-gen-reply": { title: "응답 후 자동 생성", body: "Risu 응답 완료 알림을 받으면 해당 메시지로 한 번 생성합니다. 스트리밍 여부를 반복 확인하거나 화면이 멎기를 기다리지 않습니다. 응답 완료 API가 없는 버전에서는 사용할 수 없습니다. [LBDATA START]~END 는 글자 수에서 제외하고, 나머지가 30자 이하면 클릭해도 생성하지 않습니다. 이미 생성 중이면 뒤는 스킵. 보조 모델·유저 말·이미 이미지·Power/토글 OFF는 스킵. 발동 수동/자동과 무관." },`;
 
 const VENDOR_EXECUTE_HELP_NEEDLE =
   `"nx-execute": { title: "발동", body: "자동: 메시지를 골랐는데 이미지가 없으면 바로 생성합니다. 수동: 이미지가 없어도 「지금 생성」을 눌러야만 만듭니다. 응답 후 자동 생성 토글은 별도이며, 발동이 수동일 때는 응답 후 생성도 막힙니다." },`;
@@ -17925,21 +17939,6 @@ const loadVendorUi = (): string => {
     }
     if (out.includes('scriptOutput.miss5') || out.includes('_scriptMissTimer')) {
       throw new Error('[build] legacy 1s×5 DOM miss path must be removed');
-    }
-    if (!out.includes('auxiliary modelType=') || !out.includes('click DOM#')) {
-      throw new Error('[build] missing modelType gate or click-select auto-gen path');
-    }
-    if (!out.includes('scheduleAutoGenOnReply("chatOutput"')) {
-      throw new Error('[build] missing chatOutput stream-end fallback schedule');
-    }
-    if (!out.includes('isSelectedCharRole(role)')) {
-      throw new Error('[build] chatOutput fallback must gate on char role');
-    }
-    if (!out.includes('still streaming')) {
-      throw new Error('[build] missing isStreaming wait on afterRequest path');
-    }
-    if (!out.includes('afterReply.schedule') || !out.includes('delay=${AFTER_GEN_DELAY_MS}ms')) {
-      throw new Error('[build] missing single 0.5s afterRequest auto-gen delay');
     }
     if (out.includes('afterReply.poll') || out.includes('POLL_MAX')) {
       throw new Error('[build] 0.3s×3 poll must stay removed');

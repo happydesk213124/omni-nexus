@@ -1,7 +1,8 @@
+import { messageControlsTrigger, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
 import { measureWrite } from '../core/write-metrics';
 /**
  * Ensures the Inray display-modify module exists and is enabled.
- * Regex only — gallery bytes stay on ⚛️Omni Nexus 갤러리.
+ * Display controls and regex — gallery bytes stay on ⚛️Omni Nexus 갤러리.
  */
 import { dbg } from '../core/debug';
 import { hostHas, risuHost } from '../core/host';
@@ -26,6 +27,7 @@ type ModuleRow = {
   lorebook?: unknown[];
   regex?: unknown[];
   assets?: unknown[];
+  trigger?: unknown[];
 };
 
 function readModules(db: { modules?: unknown }): ModuleRow[] {
@@ -47,14 +49,14 @@ function scriptComment(row: unknown): string {
 
 let displayTail:Promise<unknown>=Promise.resolve();
 const displayPending=new Map<string,Promise<boolean>>();
-export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100): Promise<boolean> {
-  const key=JSON.stringify([folded,scalePct]);
+export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: { enabled: boolean; userchat: boolean }): Promise<boolean> {
+  const key=JSON.stringify([folded,scalePct,controls]);
   const existing=displayPending.get(key);if(existing)return existing;
-  const pending=displayTail.then(()=>updateInrayDisplayModule(folded,scalePct));
+  const pending=displayTail.then(()=>updateInrayDisplayModule(folded,scalePct,controls));
   displayPending.set(key,pending);displayTail=pending.catch(()=>false);
   void pending.finally(()=>displayPending.delete(key));return pending;
 }
-async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100): Promise<boolean> {
+async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: { enabled: boolean; userchat: boolean }): Promise<boolean> {
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return false;
   const host = risuHost();
   if (!host?.getDatabase || !host.setDatabase) return false;
@@ -128,6 +130,13 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100)
     const paired = [pair,...(modules[idx]!.regex || []).filter(row=>scriptComment(row)!==pair.comment)];
     if(JSON.stringify(paired)!==JSON.stringify(modules[idx]!.regex)) {
       modules[idx]={...modules[idx],regex:paired};changed=true;
+    }
+    const triggers = [...(modules[idx]!.trigger || [])];
+    const controlIndex = triggers.findIndex(row => scriptComment(row) === MESSAGE_CONTROLS_COMMENT);
+    const control = controls ? messageControlsTrigger(controls.enabled, controls.userchat) : controlIndex < 0 ? messageControlsTrigger(false, false) : triggers[controlIndex];
+    if (controlIndex < 0 || JSON.stringify(triggers[controlIndex]) !== JSON.stringify(control)) {
+      if (controlIndex < 0) triggers.push(control); else triggers[controlIndex] = control;
+      modules[idx] = {...modules[idx], trigger: triggers}; changed = true;
     }
     const enabled = asShotAssetRows(db.enabledModules).map((row) => cleanText(row, 200)).filter(Boolean);
     if (!enabled.includes(INRAY_DISPLAY_MODULE_ID) && !enabled.includes(INRAY_DISPLAY_MODULE_NS)) {

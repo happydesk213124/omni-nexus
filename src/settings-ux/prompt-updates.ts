@@ -1,6 +1,6 @@
 import { pendingPromptDefaults } from '../services/prompt-revisions';
+import { RETIRED_PROMPT_KEYS } from '../core/constants';
 
-const retired = new Set(['autotag', 'char_looks', 'asset_tags_inject', 'asset_author_note']);
 const notice = '기본 프롬프트가 업데이트되었습니다. 기본값을 눌러 적용하세요.';
 let generation = 0;
 
@@ -23,7 +23,7 @@ export async function bindPromptUpdates(): Promise<void> {
   for (const button of document.querySelectorAll<HTMLElement>('[data-reset-prompt]')) {
     const key = button.dataset.resetPrompt || '';
     const section = button.closest('details,.prompt-card,.group,.card') || button.parentElement?.parentElement;
-    if (retired.has(key)) {
+    if (RETIRED_PROMPT_KEYS.has(key)) {
       if (section instanceof HTMLElement) section.hidden = true;
       continue;
     }

@@ -8,13 +8,13 @@
 
 declare const __PLUGIN_VERSION__: string;
 
-export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.1.9';
+export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.0';
 
 /**
  * Identifies the installed pack. Existing edits are preserved; default revisions
  * are acknowledged only after an explicit reset.
  */
-export const PROMPT_PACK = '2026-09-21-v36-shared-character-rules';
+export const PROMPT_PACK = '2026-09-22-v37-compact-prompts';
 
 export const PROMPT_KEYS = [
   'author_note', 'asset_author_note', 'global_author_note', 'tagger', 'format', 'prefill', 'prefill_user', 'jailbreak', 'preprocess',
@@ -24,6 +24,10 @@ export const PROMPT_KEYS = [
 ] as const;
 
 export type PromptKey = (typeof PROMPT_KEYS)[number];
+/** Retain stored edits/export compatibility, but do not offer unused editors. */
+export const RETIRED_PROMPT_KEYS: ReadonlySet<string> = new Set([
+  'char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note',
+]);
 
 export const GLOBAL_SCOPE = '__global__';
 
@@ -31,6 +35,11 @@ export const GLOBAL_SCOPE = '__global__';
 // Image pixels stay in the shot module, not these rows.
 export const SETTINGS_KEY = 'onx_native_settings';
 export const STORE_KEY = (name: string): string => `onx_nxstore_${name}`;
+export const CHAR_REF_VIBE_PREFIX = 'char_ref_vibe_';
+export const isCharRefVibeKey = (key: unknown): boolean =>
+  typeof key === 'string' && key.startsWith(CHAR_REF_VIBE_PREFIX);
+export const charRefVibeDataKey = (key: string): string =>
+  charRefDiskDataKey(key);
 /**
  * One character-chat's cards and image address book.
  *

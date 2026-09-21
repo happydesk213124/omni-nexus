@@ -1,5 +1,8 @@
+import { resetCharacterPreviewIndex } from './character-preview-index';
+
 /** Keep navigation mounted while the vendor replaces the selected bot's form. */
 export function replaceMain(main: HTMLElement, html: string, tab: string): void {
+  resetCharacterPreviewIndex();
   if (tab !== 'characters' || main.dataset.nxUxTab !== 'characters') {
     main.innerHTML = html;
     return;

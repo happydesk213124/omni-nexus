@@ -441,12 +441,9 @@ function appearancePayload(
 function costumeHowTo(): string {
   return [
     '## Costumes (enabled)',
-    'Catalog lines are display only: default[0] means name "default", index 0. Never copy "default[0]" into a name field.',
-    'Wear an EXISTING catalog outfit: characters[].costume MUST be a string — the bare name ("default"), the index (0), or "default[0]". Not an object. Same clothes as a catalog row = existing. Do not register again.',
-    'Register ONLY a truly new outfit that is not in the catalog. New name = short id with no digits glued on (maid, swimsuit). Never default0 / maid1 / name[index].',
-    'new_costumes: [{ "name": "<exact char name>", "costumes": [{ "name", "note", "attire", "accessories" }] }]. Then wear with the string name.',
-    'Omit / empty costume only when this shot keeps the same set as the previous shot.',
-    'attire = detailed clothes (colors, top/bottom/skirt/dress…). accessories = weapons/held props for that set.',
+    'characters[].costume is a string: existing bare name, numeric index string, or catalog name[index]. Omit/empty only to keep the previous set. Reuse matching catalog clothes; never register them again.',
+    'New outfit/transformation: new_costumes=[{name:"exact character name",costumes:[{name:"bare variant id",note:"what the outfit is, not when/where",...lookFields}]}]; wear it via characters[].costume. Never name a set default0/maid1/name[index].',
+    'lookFields: appearance, hair_color, hair_style, eye_color, height, age, penis_size, attire, bottoms, accessories. Apply shared character rules; unchanged variant fields use [base]. Identity/name/aliases/original/gender stay common; never overwrite default.',
   ].join('\n');
 }
 
@@ -475,8 +472,8 @@ export async function buildTaggerMessages(
   const imageMax = Math.max(imageMin, Number(card.image_max ?? 3) || 3);
   const placement = [
     // Always ask for y_percent so values are saved. Toggle only affects display (equal bands vs LLM %).
-    'Every shot MUST include `y_percent` (0–100): reading position top→bottom. Spread across the full range in order (shot0 < shot1 < …); ~even gaps. E.g. 2→~25/~75; 3→~20/~50/~80; 4→~15/~40/~65/~90. Forbidden: all under 40, duplicates, or gaps under ~15 unless 1 shot.',
-    'LINE: message lines are labeled `L1|…`, `L2|…`. Set each shot `line` to that L number (illustration sits immediately before that line). Pick the L# whose text matches the shot moment. `paragraph` = shot order (0,1,2…). `line` is NOT shot order. INVALID: emitting line=1,2,3… just because you have 1st/2nd/3rd shots.',
+    'Every shot MUST include `y_percent` (0–100), increasing with roughly even gaps across the full message. No duplicates, all-under-40 clustering or gaps under ~15 unless one shot.',
+    'LINE: `line` is the matching message L#; image goes immediately before it. `paragraph` is 0-based shot order, NOT line. Example: third shot matching L7 uses paragraph:2,line:7; never assign line=1,2,3 by shot order.',
     imageMin === imageMax
       ? `SHOT COUNT: produce exactly ${imageMax} shot(s) in scenes[].shots (across all scenes).`
       : `SHOT COUNT: produce between ${imageMin} and ${imageMax} shots in scenes[].shots (across all scenes). Prefer the count that fits the message; never fewer than ${imageMin} or more than ${imageMax}.`,
@@ -487,7 +484,7 @@ export async function buildTaggerMessages(
       charMax,
       normalizeFocusPromptMode(card.focus_prompt),
     ),
-    'ASPECT (required on every shot, including comic): set `aspect` to exactly one of `portrait` (832×1216 vertical), `square` (1024×1024), or `landscape` (1216×832 horizontal). Pick from the scene framing — tall full-body / standing → portrait; equal crop / face close-up square → square; wide group / side-by-side / scenic → landscape. Comic shots use this same canvas; the comic layout pass must copy it. Omit or unknown → portrait.',
+    'ASPECT: required on every shot, including comic. portrait (832×1216): tall/standing; square (1024×1024): equal crop/face; landscape (1216×832): wide groups/scenery. Comic layout copies it. Missing/unknown defaults to portrait.',
   ].filter(Boolean).join('\n');
 
   const withMain = comicGenOn(card) && comicLlmWithMain(card.comic_llm_batch);
@@ -641,12 +638,8 @@ function comicKindHowTo(ratioPct: unknown, comicAspect?: unknown, withMain = fal
     'Ignore `<img>`, `┣ observation/insight/foreshadow ┫`, `<RP-Guide>`, `<AOS>`, HTML comments, and Upcoming lines — they are not scenes.',
     withMain
       ? [
-        'Comic shots still list `characters[].name` for who appears (this list follows CHARACTER CAP).',
-        'When kind is comic, also emit `comic_page` on THAT shot. Do not put koma/layout/slots on the shot root.',
-        '`comic_page` is the same object as the comic layout JSON: `location` (place tags then indoor or outdoor last; omit if unchanged vs prev_location), `coords` (`position` or `ai_choice`), and `cuts` (1–6; max 6 character entries total across cuts).',
-        'Each cut: `cut_kind` (`normal` people in a place, base = place+camera+light with no weight; `background` scenery only, base = `2::no humans::, place`, characters MUST be []; `closeup` zoom, base = `2::close-up::, woman|man, part, state` in English; `cross_section` inside view, base = `2::cross-section::, inside` in English; `upperbody` waist-up, base = `2::upperbody::, place/camera`, upper body only, never lower body), `base` (comma tags, no periods), `characters` (cut appearances — the same person in two cuts is two entries; entries ignore CHARACTER CAP).',
-        'Each character entry: name, action (pose/expression; bare kind tag for closeup/cross_section/upperbody cuts, never `N:: ::`; never clothes), source/target/mutual (body-contact verbs: doer→source, receiver→target with the SAME verb on both, shared→mutual on both, never passive), costume (omit for closeup/cross_section), wear_state (`clothed`|`torn`|`topless`|`bottomless`|`nude`|`completely`, omit when unchanged — same rule as shot characters; omit for closeup/cross_section), bubble (`speech`|`thought`|`narration`), text, center_x, center_y.',
-        '`nude` = half-undressed/draped, or clothed but nipples/genitals exposed. `completely` = fully undressed, nothing worn.',
+        'Comic shot characters[].name follows CHARACTER CAP. Put its page in THAT shot\'s comic_page, not root pages/koma/layout/slots.',
+        'Apply the supplied Comic layout rules to comic_page (including locked aspect, location, coords, cuts). Cut entries ignore CHARACTER CAP but keep the page-wide maximum of 6.',
       ].join(' ')
       : 'Comic shots still list `characters[].name` for who appears. Do not write panel layout here.',
     aspectLock,
@@ -700,7 +693,7 @@ function v5NaturalHowTo(lang: 'en' | 'ja'): string {
     'For V5-bound shots (complexity empty or dynamic):',
     '- Main `natural` = POSITIONS ONLY. No acts, no gaze, no hands. Who stands where (left/right/front/behind, lying, standing, above).',
     '- Put gaze, pose, hands, face, and acts in characters[].action as one comma-separated string. Do not emit gaze/pose/left_hand keys.',
-    '- Body contact lives outside action (solo verbs only there): the doer entry holds characters[].source, the receiver entry holds characters[].target — never both keys in one entry — with the SAME active verb in both. Shared acts go in characters[].mutual on both entries. Never passive voice (`being X` is wrong). No contact: omit all three.',
+    '- Apply the shared source/target/mutual contact rules; action contains solo acts only.',
     '- Never use Korean display names or romanized names in tags. Identify others as one fused chunk: hair color + girl/boy + original tag with NO comma between them.',
     '- Wrong: `looking at makima, red hair` / `facing him` / `on his hips`.',
     "- Right: `looking at red hair girl's makima` / `facing black hair boy's monkey d. luffy` / `sitting on black hair boy's monkey d. luffy's hips`.",

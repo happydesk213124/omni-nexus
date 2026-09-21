@@ -414,10 +414,13 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
   const page = (shot.comic_page || {}) as Partial<ComicPage>;
   const slots = takeComicGenerationSlots(Array.isArray(shot.characters) ? shot.characters : []);
   const n = Math.max(1, slots.length);
-  // Comic never carries person-count tags: one image holds several panels, so a
-  // global count is wrong by construction (the same person in two cuts flattens
-  // to two entries). Person-count mode (incl. solo) applies to illustration only.
-  const person = '';
+  // Count identities once across panels, while preserving every caption slot.
+  const cast = dedupeShotCharacters(slots, roster, 6);
+  const personMode = normalizePersonTagMode(card.person_tag_mode, card.auto_person_tags);
+  const person = emphasizePersonTags(
+    personCountTagsForShot(cast, roster, personMode, null, card.person_tag_solo),
+    card.person_tag_weight,
+  );
   const [filePos, fileNeg] = extractPreset(await getPrompt('preset_1'));
   const route = args.route || resolveShotRoute(card, nai, { ...shot, kind: 'comic' });
   const active = route.preset as (StylePreset & Record<string, unknown>) | null;

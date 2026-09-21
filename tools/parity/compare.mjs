@@ -693,15 +693,15 @@ const NEW_ONLY_STEPS = new Map([
   ],
   [
     // Comic cuts: per-cut base/kind tags reach NAI main, interaction keys land
-    // as source#/target# on captions, person-count tags are never emitted
-    // (one image holds several panels). 1.x never knew cut_kind, so only
+    // as source#/target# on captions, person-count tags count each identity once
+    // across repeated panels. 1.x never knew cut_kind, so only
     // the new side is asserted here.
     'comic.cuts_once',
     (v) => (v?.cards === 1 && v?.sent >= 1 && v?.koma3 === true && v?.layout === true
       && v?.closeup === true && v?.xray === true && v?.sourceTag === true
       && v?.targetTag === true && v?.person === true && v?.speech === true
       ? null
-      : `comic cuts (once) must generate 1 card with 3koma, cut layout, kind tags, #-tags, no person tags, speech, got ${JSON.stringify(v)}`),
+      : `comic cuts (once) must generate 1 card with 3koma, cut layout, kind tags, #-tags, deduplicated person tags, speech, got ${JSON.stringify(v)}`),
   ],
   [
     // Same contract via the main tagger (comic_page nested on the shot).
@@ -710,7 +710,7 @@ const NEW_ONLY_STEPS = new Map([
       && v?.closeup === true && v?.xray === true && v?.sourceTag === true
       && v?.targetTag === true && v?.person === true && v?.speech === true
       ? null
-      : `comic cuts (with_main) must generate 1 card with 3koma, cut layout, kind tags, #-tags, no person tags, speech, got ${JSON.stringify(v)}`),
+      : `comic cuts (with_main) must generate 1 card with 3koma, cut layout, kind tags, #-tags, deduplicated person tags, speech, got ${JSON.stringify(v)}`),
   ],
   [
     // Settings EXPORT embeds the prompts pack as a top-level {key:text} map;

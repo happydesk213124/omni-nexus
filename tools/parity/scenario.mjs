@@ -236,16 +236,21 @@ export async function runScenario(N, handles) {
   // ── prompts ─────────────────────────────────────────────────────────────
   const promptList = await rec('prompts.list', async () => {
     const result = await get('/v1/prompts');
+    const retired = ['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note'];
     // This new editable prompt has no legacy counterpart. Assert its actual
     // contract before comparing the shared prompt catalog.
     if (N.VERSION !== '1.3.0') {
+      if (result.prompts.some(p => retired.includes(p.key))) throw new Error('retired prompt still editable');
+      if (!result.prompts.some(p => p.key === 'tagger') || !result.prompts.some(p => p.key === 'format')) throw new Error('active prompt missing');
       const common = result.prompts.find(p => p.key === 'character_common');
       if (!common || !common.text.includes('hair_style') || !common.text.includes('eye_color')) throw new Error('missing shared character prompt');
       await put('/v1/prompts/character_common', {text:'PARITY SHARED CHARACTER RULES'});
       if ((await get('/v1/prompts/character_common')).text !== 'PARITY SHARED CHARACTER RULES') throw new Error('common prompt edit lost');
       await post('/v1/prompts/character_common/reset', {});
     }
-    return {...result, prompts: result.prompts.filter(p => p.key !== 'character_common')};
+    // The active catalog intentionally drops retired editors; their absence on
+    // the new side is asserted above before comparing the remaining catalog.
+    return {...result, prompts: result.prompts.filter(p => p.key !== 'character_common' && !retired.includes(p.key))};
   });
   await rec('prompts.get_tagger', () => get('/v1/prompts/tagger'));
   await rec('prompts.put_tagger', () => put('/v1/prompts/tagger', { text: 'PARITY TAGGER OVERRIDE' }));
@@ -1230,8 +1235,8 @@ export async function runScenario(N, handles) {
       xray: wire.includes('2::cross-section::'),
       sourceTag: wire.includes('source#grab'),
       targetTag: wire.includes('target#grab'),
-      // Comic never emits person-count tags (one image, several panels).
-      person: !/\b\d+\+?(?:girls?|boys?|people|person)\b/i.test(wire) && !wire.includes('::solo::') && !/(^|,\s*)solo\b/i.test(wire),
+      // Repeated depictions of each character must count once across the page.
+      person: /\b1girl, 1boy\b/.test(wire) && !/\b[2-6]\+?(?:girls?|boys?)\b/.test(wire),
       speech: wire.includes('korean text'),
     };
   };
@@ -1251,7 +1256,7 @@ export async function runScenario(N, handles) {
     recent_messages: [{ role: 'user', content: '그래서?' }],
   });
   await rec('comic.cuts_once', async () => {
-    await put('/v1/settings', { card: { comic_gen: 'on', comic_llm_batch: 'once', comic_gen_ratio: 100, comic_max_pages: 2 } });
+    await put('/v1/settings', { card: { comic_gen: 'on', comic_llm_batch: 'once', comic_gen_ratio: 100, comic_max_pages: 2, person_tag_mode: 'gender', person_tag_solo: false } });
     handles.setLlmReply?.(JSON.stringify({
       new_characters: COMIC_NEW_CHARACTERS,
       scenes: [{ place: 'hallway', shots: [comicShot()] }],

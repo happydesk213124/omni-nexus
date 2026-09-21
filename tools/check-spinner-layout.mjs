@@ -40,20 +40,19 @@ try {
  console.log('Spinner preview slot and spinner-free baked layout: 320px and PC, portrait/landscape/square passed.');
  const source=readFileSync('dist/omninexus.js','utf8');
  await checkSpinnerPreview(page,source,render);
- const runtime=readFileSync('tools/vendor-patches/message-runtime.js','utf8');
+ const controlsBundle=await build({entryPoints:['src/domain/message-controls.ts'],bundle:true,write:false,format:'esm'});
+ const {messageControlsTrigger}=await import('data:text/javascript;base64,'+Buffer.from(controlsBundle.outputFiles[0].text).toString('base64'));
+ const lua=messageControlsTrigger(true,false).effect[0].code;
+ const buttons=lua.match(/<button[\s\S]*?<\/button>(?=<\/div>)/)[0];
+ const css=lua.match(/<style>(.*?)<\/style>/s)[1];
+ const bar=edge=>'<div data-omni-footer="0:14:0" data-omni-edge="'+edge+'">'+buttons+'</div>';
  for(const width of [320,1440,3440]) {
    await page.setViewportSize({width,height:900});
-   await page.setContent('<div class="default-chat-screen"><div class="risu-chat" data-chat-index="0"><div class="chattext"><p>Reading anchor</p></div></div></div>');
-   const result=await page.evaluate(async runtime=>{
-     const t={hostDoc:document,backendSettings:{card:{}}};
-     const make=new Function('t','k','H','Z','nxMsgFan','nxUnwrapSafeNodes','nxSpinnerPreviews','y',runtime+';return {mount:omniMountFooters,close:()=>{t.unloading=true;omniFooterObserver.disconnect();}};');
-     const api=make(t,{createMutationObserver:async cb=>new MutationObserver(cb)},async(_d,tag,o={})=>{const n=document.createElement(tag);if(o.className)n.className=o.className;if(o.html)n.innerHTML=o.html;if(o.text)n.textContent=o.text;return n;},async()=>({characterId:'c',chatId:'chat',chat:{message:[{data:'Reading anchor',role:'char'}]}}),()=>true,async a=>Array.from(a),new Map(),()=>{});
-     HTMLElement.prototype.getOuterHTML=function(){return this.outerHTML;};
-     await api.mount();await api.mount();
-     const footer=document.querySelector('[x-omni-edge="bottom"]'),rect=footer.getBoundingClientRect();
-     const result={start:document.querySelector('.chattext').firstElementChild.matches('[x-omni-edge="top"]'),count:document.querySelectorAll('[x-omni-footer]').length,end:document.querySelector('.chattext').lastElementChild===footer,right:rect.right,width:innerWidth,position:getComputedStyle(footer).position};
-     api.close();return result;
-   },runtime);
+   await page.setContent('<style>'+css+'</style><div class="default-chat-screen"><div class="risu-chat" data-chat-index="0"><div class="chattext">'+bar('top')+'<p>Reading anchor</p>'+bar('bottom')+'</div></div></div>');
+   const result=await page.evaluate(()=>{
+     const footer=document.querySelector('[data-omni-edge="bottom"]'),rect=footer.getBoundingClientRect();
+     return {start:document.querySelector('.chattext').firstElementChild.matches('[data-omni-edge="top"]'),count:document.querySelectorAll('[data-omni-footer]').length,end:document.querySelector('.chattext').lastElementChild===footer,right:rect.right,width:innerWidth,position:getComputedStyle(footer).position};
+   });
    assert.equal(result.count,2);assert.equal(result.start,true);assert.equal(result.end,true);assert.equal(result.position,'relative');assert.ok(result.right<=result.width);
  }
  console.log('Message actions: chattext top and bottom, no horizontal overflow at 320/1440/3440px.');

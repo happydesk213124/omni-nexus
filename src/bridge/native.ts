@@ -37,7 +37,7 @@ import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { migrateAppearanceToCharacters, migrateCharacterIdentity } from '../services/characters';
 import { hydratePresetVibePreviews } from '../services/nai-assets';
 import { hydratePresetLookPreviews } from '../services/preset-look';
-import { seedPrompts } from '../services/settings';
+import { saveConfig, seedPrompts } from '../services/settings';
 import { closeTagStudio, openTagStudio } from '../tag-studio/mount';
 import {
   bindCharacterExampleShot,
@@ -64,8 +64,8 @@ async function boot(): Promise<void> {
   dbg('boot.storage', { message: store.kind });
 
   setConfig(await loadSettingsFromStorage());
-  if (getConfig().card?.persist_chat_images) {
-    void ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct).catch((err: unknown) => {
+  if (getConfig().card?.persist_chat_images || getConfig().card?.inline_msg_fan) {
+    void ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true }).catch((err: unknown) => {
       dbg('boot.inray-display', { message: String((err as Error)?.message || err) }, 'warn');
     });
   }
@@ -197,6 +197,7 @@ export function installNativeBridge(): void {
     writeMetrics,
     ready,
     hydrateSettingsPreviews,
+    flushSettings: async () => { await ready(); await saveConfig({ flush: true }); },
     fetch,
     resolveImageUrl,
     refPreviewUrl: getRefPreviewUrl,
