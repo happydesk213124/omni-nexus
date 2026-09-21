@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.1.4';
+const PLUGIN_VERSION = '0.1.5';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -953,6 +953,13 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.1.5</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>신규 캐릭터의 머리색·머리 스타일·눈·외형이 빈 기본 코스튬 값 때문에 캐릭터탭에서 사라지던 문제를 수정했습니다.</li>
+            <li>에셋 태거 실패 후 메인 태거로 넘어가던 동작을 중단하고, 실패 단계와 JSON 재시도 응답의 오류 내용을 표시합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.1.4</strong>
@@ -14628,7 +14635,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "공통 캐릭터 프롬프트 · 메인 태깅 통합 · 이미지 오토태그 분기 · 캐릭터탭 개선. 업데이트는 이 저장소 main에서 받습니다."
+    body: "신규 캐릭터 외형·머리·눈의 기본 코스튬 저장 수정. 에셋·메인 태거 실패 단계와 JSON 오류 상세 표시. 업데이트는 이 저장소 main에서 받습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

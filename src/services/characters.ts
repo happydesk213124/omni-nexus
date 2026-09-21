@@ -125,13 +125,7 @@ export async function listCharacters(scope: string): Promise<CharacterRecord[]> 
       const inferred = inferGenderFromExactTags(appearance, attire, accessories);
       if (inferred) gender = inferred;
     }
-    const ensured = ensureCostumes({
-      attire,
-      bottoms,
-      accessories,
-      costumes: Array.isArray(row.costumes) ? row.costumes : undefined,
-      active_costume: row.active_costume,
-    });
+    const ensured = ensureCostumes(row);
     const rec: CharacterRecord = {
       id: row.id,
       name: row.name,
@@ -858,7 +852,10 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
       continue;
     }
     const costumes = mergeCostumeLists(
-      null,
+      // Seed the editor's default from the new identity before normalizing
+      // costumes. An empty seed makes missing look slots explicitly empty,
+      // so the editor later clears the correctly saved top-level fields.
+      ensureCostumes({ ...rec, appearance: syncGenderIntoAppearance(newApp, rec.gender), costumes: [], active_costume: 0 }).costumes,
       Array.isArray(raw.costumes) && raw.costumes.length
         ? raw.costumes
         : [{ name: 'default', attire: newAttire, bottoms: newBottoms, accessories: newAccessories }],
