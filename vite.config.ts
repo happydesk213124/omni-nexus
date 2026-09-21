@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.1.6';
+const PLUGIN_VERSION = '0.1.7';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -953,6 +953,13 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.1.7</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>에셋 분석 후 참고이미지 등록이 현재 채팅 대신 분석을 시작한 Risu 캐릭터의 에셋을 검색하도록 수정했습니다.</li>
+            <li>메타데이터 유무와 관계없이 빈 참고이미지를 등록하고, 성공하면 캐릭터 카드에 갱신을 알립니다. 기존 이미지는 덮어쓰지 않습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.1.6</strong>
@@ -14644,7 +14651,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "캐릭터 공통 프롬프트 중복 정리. 에셋 통합·분리의 이미지 모델 분기와 신규 인물 분석 수정. 빈 저장 항목 처리 및 JSON 오류 안내 개선."
+    body: "참고이미지 자동 등록의 Risu 캐릭터 출처를 수정했습니다. 메타데이터 유무와 관계없이 선택한 캐릭터의 에셋을 사용하고, 등록 후 카드를 갱신합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

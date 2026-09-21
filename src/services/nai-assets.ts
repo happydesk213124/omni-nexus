@@ -32,7 +32,8 @@ import { vibeEncodeToken } from '../domain/nai/keys';
 import { modelToNaia, resolveModel, supportsVibeTransfer } from '../providers/nai/payload';
 import { encodeVibe } from '../providers/nai/vibe';
 import { pngToDataUrl } from '../storage/image-urls';
-import { rosterOwnerScopesForSession } from '../storage/character-roster';
+import { characterSource } from './character-source';
+import { characterIdForRosterScope, rosterOwnerScopesForSession } from '../storage/character-roster';
 import { idbDelete, idbGet, idbGetAll, idbPut } from '../storage/stores';
 import {
   clearAllCharRefPreviewUrls,
@@ -415,35 +416,49 @@ export async function getCharRefImageBytes(scope: unknown, characterId: string):
 }
 
 /** Fill empty ref slots from name-triggered Risu assets. Never overwrites a hash. */
-export async function seedCharRefsFromLooks(characters: readonly unknown[]): Promise<number> {
+export async function seedCharRefsFromLooks(characters: readonly unknown[], sourceCharacterId = ''): Promise<number> {
   const targets = refSeedTargets(characters);
   if (!targets.length) return 0;
-  const triggers = [...new Set(targets.flatMap((row) => row.names))];
-  let looks: Awaited<ReturnType<typeof collectBestLookAssets>> = [];
-  try {
-    looks = await collectBestLookAssets(triggers);
-  } catch (err) {
-    dbg('char_ref.seed.looks.fail', { message: String((err as Error)?.message || err) }, 'warn');
-    return 0;
-  }
-  if (!looks.length) return 0;
-  let seeded = 0;
+  // Capture the live source once, only for global rows without a caller-owned source.
+  const current = !sourceCharacterId && targets.some(t => t.scope === GLOBAL_SCOPE)
+    ? await characterSource() : null;
+  const globalSource = String(current?.chaId || current?.id || '');
+  const groups = new Map<string, typeof targets>();
+  const owners = new Map<string, string>();
   for (const target of targets) {
-    const bytes = lookBytesForTarget(target, looks);
-    if (!bytes?.byteLength) continue;
+    if (!owners.has(target.scope)) owners.set(target.scope, sourceCharacterId ||
+      (target.scope === GLOBAL_SCOPE ? globalSource : await characterIdForRosterScope(target.scope)));
+    const owner = owners.get(target.scope)!;
+    if (!owner) continue;
+    const group = groups.get(owner) || [];
+    group.push(target); groups.set(owner, group);
+  }
+  let seeded = 0;
+  for (const [characterId, group] of groups) {
+    const triggers = [...new Set(group.flatMap(row => row.names))];
     try {
-      const saved = await setCharRefImage(target.scope, target.id, u8ToArrayBuffer(bytes), {
-        overwrite: false,
-      }) as { ok?: unknown; skipped?: unknown };
-      if (saved?.ok && !saved.skipped) seeded += 1;
+      const looks = await collectBestLookAssets(triggers, { characterId });
+      for (const target of group) {
+        const bytes = lookBytesForTarget(target, looks);
+        if (!bytes?.byteLength) continue;
+        try {
+          const saved = await setCharRefImage(target.scope, target.id, u8ToArrayBuffer(bytes), {
+            overwrite: false,
+          }) as { ok?: unknown; skipped?: unknown; preview_url?: string; ref_hash?: string };
+          if (saved?.ok && !saved.skipped) {
+            seeded += 1;
+            publishCharacterImage({ scope: target.scope, id: target.id, kind: 'ref',
+              url: saved.preview_url || '', hash: saved.ref_hash, configured: true });
+          }
+        } catch (err) {
+          dbg('char_ref.seed.put.fail', { character_id: target.id, message: String((err as Error)?.message || err) }, 'warn');
+        }
+      }
     } catch (err) {
-      dbg('char_ref.seed.put.fail', {
-        character_id: target.id,
-        message: String((err as Error)?.message || err),
-      }, 'warn');
+      dbg('char_ref.seed.looks.fail', { character_id: characterId, message: String((err as Error)?.message || err) }, 'warn');
     }
   }
-  if (seeded) dbg('char_ref.seed', { seeded, targets: targets.length, looks: looks.length });
+  if (seeded) dbg('char_ref.seed', { seeded, targets: targets.length });
   return seeded;
 }
 
@@ -583,7 +598,8 @@ export async function hydrateCharRefs(opts: {
     storedScope === GLOBAL_SCOPE ? storedScope : (sessionId || storedScope);
   // Empty-slot seeding must not block the tab paint. The single-ref route and
   // explicit import-fill still seed on demand; hydrate only backfills.
-  void seedCharRefsFromLooks(rows.filter(matches).map((row) => ({ ...row, scope: effScopeOf(normalizeCharRefScope(row.scope)) }))).catch((err) => {
+  const sourceCharacterId = await characterIdForRosterScope(sessionId || wantScope);
+  void seedCharRefsFromLooks(rows.filter(matches).map((row) => ({ ...row, scope: effScopeOf(normalizeCharRefScope(row.scope)) })), sourceCharacterId).catch((err) => {
     dbg('char_ref.seed.hydrate.fail', { message: String((err as Error)?.message || err) }, 'warn');
   });
   const session: CharRefHydrateRow[] = [];
