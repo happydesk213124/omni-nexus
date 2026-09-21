@@ -174,7 +174,7 @@ function chatModulesFromCharacter(character: unknown): unknown {
   return chat && typeof chat === 'object' ? chat : null;
 }
 
-async function listSearchableAssets(character: unknown): Promise<AssetPoolInfo> {
+export async function listSearchableAssets(character: unknown): Promise<AssetPoolInfo> {
   const charRec = character && typeof character === 'object' ? (character as Record<string, unknown>) : null;
   const charAssets = parseRisuAssetRows(charRec?.additionalAssets ?? charRec?.additional_assets);
 
@@ -192,7 +192,7 @@ async function listSearchableAssets(character: unknown): Promise<AssetPoolInfo> 
         'selectedPersona',
       ]);
       if (db) {
-        const chat = (await tryCurrentChat()) || chatModulesFromCharacter(character);
+        const chat = charRec ? chatModulesFromCharacter(character) : await tryCurrentChat();
         const chatRec = chat && typeof chat === 'object' ? (chat as Record<string, unknown>) : null;
         const embedded = personaEmbeddedModule(db);
         const embeddedRec =

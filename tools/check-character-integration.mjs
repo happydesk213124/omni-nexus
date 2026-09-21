@@ -94,10 +94,15 @@ try {
  });
  assert.equal(textPaste,false);
  await page.locator('#nx-char-from-module').click();
+ await page.locator('dialog input[type="search"]').fill('');
  await page.locator('dialog select').selectOption('0');
  assert.match(await page.locator('dialog').textContent(),/Module asset/);
  await page.getByRole('button',{name:'닫기',exact:true}).last().click();
+ await page.evaluate(()=>{const input=document.querySelector('#nx-char-edit-body [data-char-given]');globalThis.savedGiven=input.value;input.value='지호';input.dispatchEvent(new Event('input',{bubbles:true}));});
  await page.locator('#nx-char-from-asset').click();
+ assert.match(await page.locator('dialog input[type="search"]').inputValue(),/지호/);
+ await page.evaluate(()=>{const input=document.querySelector('#nx-char-edit-body [data-char-given]');input.value=globalThis.savedGiven;input.dispatchEvent(new Event('input',{bubbles:true}));});
+ await page.locator('dialog input[type="search"]').fill('');
  assert.match(await page.locator('dialog').textContent(),/Asset 0/);
  assert.doesNotMatch(await page.locator('dialog').textContent(),/Module asset/);
  // Completing A's analysis after selecting B must not mutate the visible card.
@@ -117,6 +122,21 @@ try {
  assert.equal(await page.locator('#nx-char-edit-body [data-char-appearance]').inputValue(),await page.evaluate(()=>assetRace.before));
  await page.evaluate(()=>{document.getElementById('nx-scope-char').value=assetRace.selected;globalThis.__INLAY_NATIVE__.fetch=assetRace.fetch;});
  await page.getByRole('button',{name:'닫기',exact:true}).last().click();
+ // Selecting an asset registers those exact image bytes into the empty ref slot.
+ await page.evaluate(()=>{
+   const original=globalThis.__INLAY_NATIVE__.fetch;globalThis.assetRefTest={original,calls:[]};
+   globalThis.__INLAY_NATIVE__.fetch=(path,options,...rest)=>{
+     if(path==='/v1/characters/analyze-asset'){assetRefTest.analysis=options.body;return Promise.resolve({appearance:'girl',hair_style:'braid',source:'metadata'});}
+     if(path==='/v1/characters/ref'){assetRefTest.calls.push(options.body);return Promise.resolve({ok:true,configured:true});}
+     return original(path,options,...rest);
+   };
+ });
+ await page.locator('#nx-char-from-asset').click();
+ await page.locator('dialog input[type="search"]').fill('');
+ await page.locator('dialog button[title="Asset 0"]').click();
+ await page.waitForFunction(()=>!document.querySelector('dialog'));
+ assert.deepEqual(await page.evaluate(()=>assetRefTest.calls.map(c=>({overwrite:c.overwrite,sameImage:c.image_b64===assetRefTest.analysis.image_b64}))),[{overwrite:false,sameImage:true}]);
+ await page.evaluate(()=>{globalThis.__INLAY_NATIVE__.fetch=assetRefTest.original;});
  await page.evaluate(async()=>{switchTest.t.uiTab='gen_options';await switchTest.paint();});
  await page.locator('#nx-asset-tags-enabled').check();
  await page.locator('#nx-asset-tags-inline').check();
