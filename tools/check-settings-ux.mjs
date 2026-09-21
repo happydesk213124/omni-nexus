@@ -107,8 +107,9 @@ try {
       const measure=(grid,columns)=>{const nodes=[...grid.children];const a=nodes[0].getBoundingClientRect(),b=nodes[columns].getBoundingClientRect();return {gap:b.top-a.bottom,square:Math.abs(a.width-a.height),scroll:grid.scrollHeight>grid.clientHeight};};
       const bots=measure(tiles,2);
       SearchClear.installSearchClear();
-      globalThis.risuai={getDatabase:async()=>({modules:[{id:'m',assets:Array.from({length:40},(_,i)=>['Asset '+i,'file/'+i])}],enabledModules:['m']}),readImage:async()=>src};
-      await AssetPicker.pickCharacterAsset(document.createElement('div'));
+      globalThis.risuai={getCurrentCharacterIndex:async()=>0,getDatabase:async()=>({characters:[{chaId:'bot',additionalAssets:Array.from({length:40},(_,i)=>['Asset '+i,'file/'+i])}],modules:[],enabledModules:[]}),readImage:async()=>src};
+      const card=document.createElement('div');document.body.append(card);
+      await AssetPicker.pickCharacterAsset(card);
       const dialog=document.querySelector('dialog');const assets=measure(dialog.firstElementChild.lastElementChild,3);
       assets.headerHeight=dialog.firstElementChild.lastElementChild.getBoundingClientRect().top-dialog.getBoundingClientRect().top;
       dialog.close();dialog.remove();
@@ -359,7 +360,7 @@ try {
   const countBeforeDelete = await page.locator('#nx-char-session-list .preset-tile').count();
   assert.ok(countBeforeDelete >= 2);
   await page.locator('#nx-char-session-list .preset-tile').first().click();
-  if (!await page.locator('#nx-char-edit-name').isVisible()) await page.locator('#nx-char-edit-btn').click();
+  if (!await page.locator('#nx-char-sheet').evaluate(el=>el.classList.contains('open'))) await page.locator('#nx-char-edit-btn').click();
   const editedName = await page.locator('#nx-char-edit-name').inputValue();
   assert.ok((await page.locator('#nx-char-sheet-close').textContent()).includes(editedName));
   assert.equal(await page.locator('.char-edit-head #nx-char-edit-title').count(),0,'no duplicate editor heading');

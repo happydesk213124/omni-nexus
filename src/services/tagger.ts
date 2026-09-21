@@ -1,3 +1,4 @@
+import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 /**
  * The tagging request: prose in, a scene/shot plan out.
  *
@@ -48,7 +49,10 @@ import { chatNoteSessionId, getSessionAuthorNote, rosterWithSessionOutfits, sess
 import { formatPrevLocationLine } from '../domain/tagging/location';
 import { normalizeComicAspect } from '../domain/comic/aspect';
 import { numberMessageLinesForTagger, repairLazyShotLines } from '../domain/tagging/shot-line';
-import { collectAssetNaiTags, setLastAssetWeightMap, type AssetLookPreview } from './asset-tags';
+import { characterImageInput } from './character-image-input';
+import { compactAssetKey } from '../domain/nai-meta/match';
+import { characterPrompt } from './character-prompt';
+import { collectAssetNaiTags, collectBestLookAssets, setLastAssetWeightMap, type AssetLookPreview } from './asset-tags';
 import { loadTaggerRoster, rosterForSession } from './characters';
 import { cardFlagOn, taggerShouldUseV5Rules, normalizeV5NaturalLang } from '../domain/nai/routing';
 import { getConfig } from './context';
@@ -139,6 +143,7 @@ export async function collectAssetTagsForTagger(
     );
     return await collectAssetNaiTags(assetTriggerPoolForRequest(request), {
       withPreviews: opts.withPreviews === true,
+      characterId: cleanText(request.character_id, 200),
       roster,
       lorebook: Array.isArray(request.lorebook) ? request.lorebook : null,
       message: cleanText(stripBakeTokens(request.assistant_text), 20000),
@@ -304,9 +309,9 @@ export async function buildCharacterLooksMessages(
   previews: AssetLookPreview[] = [],
 ): Promise<LlmMessage[]> {
   const sessionId = cleanText(request.session_id, 200);
-  const looks = stripCbs(await getPrompt('char_looks'));
+  const looks = await characterPrompt('batch');
   const messages: LlmMessage[] = [{ role: 'system', content: looks.trim() }];
-  const assetHowTo = stripCbs(await getPrompt('asset_tags_inject')).replace(/\{asset_tags_block\}/g, '').trim();
+  const assetHowTo = 'Use the supplied asset references to complete matching characters.';
   if (assetHowTo) {
     messages[0].content = `${messages[0].content}\n\n${assetHowTo}`;
   }
@@ -437,7 +442,7 @@ export async function buildTaggerMessages(
   await hydrateTaggerCharUser(request);
   const card = deepMerge(getConfig().card, (request.card as Record<string, unknown>) || {});
   const sessionId = cleanText(request.session_id, 200);
-  const tagger = stripCbs(await getPrompt('tagger'));
+  const tagger = scenePromptWithoutLegacyLooks(stripCbs(await getPrompt('tagger')));
   const fmt = stripCbs(await getPrompt('format'));
   const loreHow = stripCbs(await getPrompt('lore_inject')).trim();
   const appearanceHow = stripCbs(await getPrompt('appearance_inject')).trim();
@@ -445,7 +450,7 @@ export async function buildTaggerMessages(
   const assetMode = normalizeAssetNaiTagsMode(card.asset_nai_tags);
   const includeAssetHow = !opts.skipAssetInject && assetMode !== 'off';
   const assetHow = includeAssetHow
-    ? stripCbs(await getPrompt('asset_tags_inject')).replace(/\{asset_tags_block\}/g, '').trim()
+    ? 'Use supplied asset tags as references for new_characters.'
     : '';
 
   const naturalMode = normalizeNaturalBaseMode(card.natural_base);
@@ -477,6 +482,7 @@ export async function buildTaggerMessages(
       `${tagger}\n\n${fmt}`.trim(),
       loreHow,
       appearanceHow,
+      await characterPrompt('scene'),
       withCostumes ? costumeHowTo() : '',
       taggerShouldUseV5Rules(card, getConfig().nai)
         ? v5NaturalHowTo(normalizeV5NaturalLang(card.v5_natural_lang))
@@ -545,14 +551,17 @@ export async function buildTaggerMessages(
 
   if (!opts.skipAssetInject && assetMode !== 'off') {
     const triggerPool = assetTriggerPoolForRequest(request);
+    const covered = new Set<string>();
     try {
       const collected = await collectAssetNaiTags(triggerPool, {
         withPreviews: false,
+        characterId,
         roster: rosterEarly,
         lorebook: Array.isArray(request.lorebook) ? request.lorebook : null,
         message: assistant,
       });
       if (collected?.block) {
+        for (const group of collected.packed.groups) for (const key of [group.trigger, ...group.lore_keys]) covered.add(compactAssetKey(key, 200));
         pushReferenceUser(messages, 'NovelAI asset tags', collected.block);
         dbg('asset-tags.inject', {
           reason: `asset_nai_tags_${assetMode}`,
@@ -565,6 +574,11 @@ export async function buildTaggerMessages(
     } catch (err) {
       setLastAssetWeightMap(new Map());
       dbg('asset-tags.inject.fail', { reason: assetMode, message: String((err as Error)?.message || err) }, 'warn');
+    }
+    if (assetMode === 'inline') {
+      const missing = triggerPool.filter(key => !covered.has(compactAssetKey(key, 200)));
+      const images = await collectBestLookAssets(missing, { roster: rosterEarly, characterId });
+      messages.push(...await characterImageInput(images, card.image_analysis_separate === true));
     }
   } else if (opts.skipAssetInject) {
     dbg('asset-tags.inject.skip', { reason: 'prepass_done' });

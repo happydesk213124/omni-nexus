@@ -121,6 +121,14 @@ export async function runScenario(N, handles) {
     };
   });
   await post('/v1/settings/import', { json: RESET_FLOOR_JSON });
+  await rec('settings.image_analysis_separate', async () => {
+    const initial = (await get('/v1/settings')).settings.card.image_analysis_separate;
+    await put('/v1/settings', {card:{image_analysis_separate:true}});
+    const enabled = (await get('/v1/settings')).settings.card.image_analysis_separate;
+    await put('/v1/settings', {card:{image_analysis_separate:false}});
+    if (initial !== false || enabled !== true) throw new Error('image analysis separation roundtrip failed');
+    return {initial, enabled};
+  });
   // llm_configured reflects the boot pack, so these run post-sync.
   await rec('health', () => get('/v1/health'));
   await rec('healthz', () => get('/healthz'));
@@ -226,7 +234,19 @@ export async function runScenario(N, handles) {
   });
 
   // ── prompts ─────────────────────────────────────────────────────────────
-  const promptList = await rec('prompts.list', () => get('/v1/prompts'));
+  const promptList = await rec('prompts.list', async () => {
+    const result = await get('/v1/prompts');
+    // This new editable prompt has no legacy counterpart. Assert its actual
+    // contract before comparing the shared prompt catalog.
+    if (N.VERSION !== '1.3.0') {
+      const common = result.prompts.find(p => p.key === 'character_common');
+      if (!common || !common.text.includes('hair_style') || !common.text.includes('eye_color')) throw new Error('missing shared character prompt');
+      await put('/v1/prompts/character_common', {text:'PARITY SHARED CHARACTER RULES'});
+      if ((await get('/v1/prompts/character_common')).text !== 'PARITY SHARED CHARACTER RULES') throw new Error('common prompt edit lost');
+      await post('/v1/prompts/character_common/reset', {});
+    }
+    return {...result, prompts: result.prompts.filter(p => p.key !== 'character_common')};
+  });
   await rec('prompts.get_tagger', () => get('/v1/prompts/tagger'));
   await rec('prompts.put_tagger', () => put('/v1/prompts/tagger', { text: 'PARITY TAGGER OVERRIDE' }));
   await rec('prompts.get_tagger_after_put', () => get('/v1/prompts/tagger'));

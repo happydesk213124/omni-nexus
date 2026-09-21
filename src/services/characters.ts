@@ -1,3 +1,4 @@
+import { syncGenderIntoAppearance } from '../domain/character/tags';
 import { mergeSessionAndGlobalRoster } from '../domain/character/roster';
 import { readCharacterRoster, mutateCharacterRoster } from '../storage/character-roster';
 import { givenNameDuplicates, mergedGivenNames } from '../domain/character/save-identity';
@@ -427,7 +428,7 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
 
   const now = Date.now() / 1000;
   const gender = normalizeGender(rec.gender ?? rec.sex);
-  const appearance = cleanText(rec.appearance || '', 4000);
+  const appearance = syncGenderIntoAppearance(rec.appearance, gender);
   const saved: CharacterRecord = {
     scope: scopeKey,
     id: rec.id,

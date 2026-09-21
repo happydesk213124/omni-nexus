@@ -22,7 +22,6 @@ import { clearDebug, debugSnapshot } from '../core/debug';
 import { base64ToBytes, u8ToArrayBuffer } from '../core/util/bytes';
 import { cleanText } from '../core/util/text';
 import { GLOBAL_SCOPE, normalizeCharRefScope } from '../core/constants';
-import { promptText } from '../config/prompts';
 import { getConfig, getPresetVibePreviewUrl } from '../services/context';
 import * as cards from '../services/cards';
 import * as characters from '../services/characters';
@@ -310,7 +309,7 @@ const WRITE_ROUTES: readonly Route[] = [
   },
   {
     match: wrapped('/v1/prompts/', '/reset'),
-    handler: async ({ param }) => ok(await settings.setPrompt(param, promptText(param))),
+    handler: async ({ param }) => ok(await settings.resetPrompt(param)),
   },
   {
     match: under('/v1/prompts/'),

@@ -160,16 +160,18 @@ test('asset picker constrains exterior and lazily loads only intersecting thumbn
     Blob, Uint8Array, ArrayBuffer, Event, atob,
     URL: { createObjectURL: () => 'blob:thumbnail', revokeObjectURL: url => revoked.push(url) },
     IntersectionObserver: Observer,
-    document: { body, createElement: tag => new Element(tag) },
+    document: { body, createElement: tag => new Element(tag), querySelector: () => null, getElementById: () => null },
     risuai: {
-      getDatabase: async () => ({ modules: [{ id: 'm', assets: [['Alice', 'a'], ['Bob', 'b']] }], enabledModules: ['m'] }),
+      getCurrentCharacterIndex: async () => 0,
+      getDatabase: async () => ({ characters: [{additionalAssets: [['Alice', 'a'], ['Bob', 'b']]}], modules: [], enabledModules: [] }),
       readImage: async key => { reads.push(key); return new Uint8Array([1, 2, 3]); },
     },
   };
   const subject = await load('src/settings-ux/asset-picker.ts', context);
   await subject.pickCharacterAsset(new Element());
   const dialog = body.children[0];
-  const [close, search, costume, status, list] = dialog.children[0].children;
+  const [close, modules, search, costume, status, list] = dialog.children[0].children;
+  assert.equal(modules.hidden, true);
   assert.equal(costume.children[0].type, 'checkbox');
   assert.match(dialog.style.cssText, /height:min\(1000px,90dvh\)/);
   assert.match(dialog.style.cssText, /overflow:hidden/);

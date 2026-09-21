@@ -753,3 +753,12 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
   and reverse append order, not creation timestamps. Optional legacy recipe and
   placement fields are empty until an explicit image action reads the file.
 - Folder deletion and ZIP inventory use the same asset identity/classification.
+
+
+### Character tagging controls (0.1.4)
+
+- `card.asset_nai_tags`: existing `off` / `prepass` / `inline`. The generation pane exposes enable and include-in-main toggles over this same value.
+- `card.image_analysis_separate`: boolean, default false. Image-bearing character analysis uses the autotag role when enabled; metadata-only inputs remain text. Inline generation receives textual image analysis in this mode.
+- `character_common` is the editable shared appearance prompt. Legacy `char_looks`, `autotag`, and `asset_tags_inject` records remain exportable but are no longer injected.
+- Shipped defaults preserve existing prompt edits. Per-key applied revisions live in internal `prompt:__applied__:*` meta rows; reading does not acknowledge updates.
+- Character asset selection follows the settings picker. Module selection lists active global/selected-character modules separately. New rows append without replacing the editor or roster DOM, and their writes share the live-edit queue.

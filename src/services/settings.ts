@@ -16,10 +16,11 @@
  *    the previous secrets forward rather than accepting new ones.
  */
 
+import { acknowledgePromptDefault, hasPromptDefaultRevision } from './prompt-revisions';
 import { DEFAULT_CONFIG, RESET_FACTORY_CONFIG } from '../config/defaults';
 import { promptText } from '../config/prompts';
 import { applySettingsResetKeeps, exportSettings, importSettings, splitSettingsDocPrompts } from '../config/schema';
-import { FORCE_PROMPT_KEYS, PROMPT_KEYS, PROMPT_PACK, VERSION } from '../core/constants';
+import { PROMPT_KEYS, PROMPT_PACK, VERSION } from '../core/constants';
 import { getEventCount, getFocusStage, getLastError, getLastStage } from '../core/debug';
 import type { ApiResult, StylePreset } from '../core/types';
 import { deepcopy, deepMerge } from '../core/util/object';
@@ -45,22 +46,22 @@ export interface PromptRow {
   updated_at: number;
 }
 
-/**
- * Installs the shipped prompt pack.
- *
- * A user edit normally wins forever, but when the pack identifier changes the
- * prompts in `FORCE_PROMPT_KEYS` are overwritten anyway: those encode the
- * response format the tagger parser expects, so a stale edit does not degrade
- * output, it breaks generation entirely.
- */
+/** Install missing defaults; existing edits require an explicit default reset. */
 export async function seedPrompts(): Promise<void> {
   const pack = await idbGet('meta', 'prompt:__pack__');
   const force = !pack || pack.text !== PROMPT_PACK;
   const now = Date.now() / 1000;
   for (const key of PROMPT_KEYS) {
     const existing = await idbGet('meta', `prompt:${key}`);
-    if (existing && !(force && FORCE_PROMPT_KEYS.includes(key))) continue;
-    await idbPut('meta', { key: `prompt:${key}`, text: promptText(key), updated_at: now });
+    if (!existing) {
+      await idbPut('meta', { key: `prompt:${key}`, text: promptText(key), updated_at: now });
+    }
+    // Revision tracking did not exist before this pack. Treat legacy prompts as
+    // the installed baseline; only the newly introduced shared prompt needs an
+    // explicit reset on an upgraded install.
+    if (!pack || key !== 'character_common') {
+      if (!await hasPromptDefaultRevision(key)) await acknowledgePromptDefault(key);
+    }
   }
   if (force) await idbPut('meta', { key: 'prompt:__pack__', text: PROMPT_PACK, updated_at: now });
 }
@@ -73,10 +74,19 @@ export async function getPrompt(key: string): Promise<string> {
 
 export async function setPrompt(key: string, text: string): Promise<ApiResult> {
   const existing=await idbGet('meta',`prompt:${key}`);
-  if(existing?.text===text)return {ok:true,key,updated_at:existing.updated_at};
+  if(existing?.text===text) {
+    return {ok:true,key,updated_at:existing.updated_at};
+  }
   const now = Date.now() / 1000;
   await idbPut('meta', { key: `prompt:${key}`, text, updated_at: now });
   return { ok: true, key, updated_at: now };
+}
+
+/** An ordinary save must not acknowledge an update on an untouched prompt. */
+export async function resetPrompt(key: string): Promise<ApiResult> {
+  const result = await setPrompt(key, promptText(key));
+  await acknowledgePromptDefault(key);
+  return result;
 }
 
 /** Every prompt, in pack order first so the editor list is stable. */
@@ -135,6 +145,7 @@ export async function resetPromptsToDefaults(opts?: { keep_author_note?: boolean
   for (const key of PROMPT_KEYS) {
     if (keepAuthor && (key === 'author_note' || key === 'asset_author_note' || key === 'global_author_note')) continue;
     await idbPut('meta', { key: `prompt:${key}`, text: promptText(key), updated_at: now });
+    await acknowledgePromptDefault(key);
     updated += 1;
   }
   return { ok: true, updated, keep_author_note: keepAuthor, prompts: await listPrompts() };

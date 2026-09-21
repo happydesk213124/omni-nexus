@@ -207,6 +207,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   else card.lore_extra = 'tags';
   // asset_nai_tags: off | inline | prepass (legacy bool / prepass_vision → prepass)
   card.asset_nai_tags = normalizeAssetNaiTagsMode(card.asset_nai_tags);
+  card.image_analysis_separate = card.image_analysis_separate === true;
   card.auto_aspect = card.auto_aspect === true || card.auto_aspect === 'true' || card.auto_aspect === 1 || card.auto_aspect === '1';
   card.llm_json_retry =
     card.llm_json_retry === true

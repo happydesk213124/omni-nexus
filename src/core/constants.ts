@@ -8,28 +8,22 @@
 
 declare const __PLUGIN_VERSION__: string;
 
-export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.1.3';
+export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.1.4';
 
 /**
- * Bumping this re-seeds the prompt pack over user edits for FORCE_PROMPT_KEYS.
- * Only bump it when a prompt change is mandatory for correctness.
+ * Identifies the installed pack. Existing edits are preserved; default revisions
+ * are acknowledged only after an explicit reset.
  */
-export const PROMPT_PACK = '2026-09-19-v35-base-token-teach';
+export const PROMPT_PACK = '2026-09-21-v36-shared-character-rules';
 
 export const PROMPT_KEYS = [
   'author_note', 'asset_author_note', 'global_author_note', 'tagger', 'format', 'prefill', 'prefill_user', 'jailbreak', 'preprocess',
-  'preset_1', 'lore_inject', 'char_inject', 'appearance_inject', 'asset_tags_inject', 'char_looks', 'autotag',
+  'preset_1', 'lore_inject', 'char_inject', 'appearance_inject', 'asset_tags_inject', 'character_common', 'char_looks', 'autotag',
   'command_reroll', 'command_char_edit', 'lorefilter_scan',
   'comic',
 ] as const;
 
 export type PromptKey = (typeof PROMPT_KEYS)[number];
-
-/** Prompts that must track the shipped pack even if the user edited them. */
-export const FORCE_PROMPT_KEYS: readonly PromptKey[] = [
-  'tagger', 'format', 'appearance_inject', 'lore_inject', 'asset_tags_inject', 'char_looks', 'autotag',
-  'command_reroll', 'command_char_edit', 'comic',
-];
 
 export const GLOBAL_SCOPE = '__global__';
 

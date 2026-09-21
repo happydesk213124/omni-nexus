@@ -852,7 +852,7 @@ async function runJob(jobId: string): Promise<void> {
         if (incomplete.length) {
           const looks = await collectBestLookAssets(
             incomplete.map((c) => c.name),
-            { roster: rosterNow },
+            { roster: rosterNow, characterId },
           );
           const lorebook = Array.isArray(request.lorebook) ? request.lorebook : [];
           const filled: Array<Record<string, unknown>> = [];
@@ -892,6 +892,7 @@ async function runJob(jobId: string): Promise<void> {
           { message: String((noMetaErr as Error)?.message || noMetaErr) },
           'warn',
         );
+        throw noMetaErr;
       }
     }
 

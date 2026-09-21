@@ -11,11 +11,11 @@ import type { ApiResult, JobRequest, LoreEntry } from '../core/types';
 import { asU8, bytesToBase64Async, u8ToArrayBuffer } from '../core/util/bytes';
 import { PRESET_LOOK_WEBP_QUALITY } from '../core/util/char-ref-size';
 import { parseJsonLoose } from '../core/util/object';
-import { cleanText, parseAliasList, stripCbs } from '../core/util/text';
+import { cleanText, parseAliasList } from '../core/util/text';
 import { resolveCharacter } from '../domain/character/roster';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 import { characterHasAppearance } from '../domain/character/tags';
-import { formatLoreExtraAuthorNote, isCharacterImageExtraLore, loreExtraInstructionBody } from '../domain/lore/extra';
+import { formatLoreExtraAuthorNote, isCharacterImageExtraLore, loreExtraInstructionBody, trimCharacterImageTagLore } from '../domain/lore/extra';
 import { resolveLlmRole } from '../domain/llm/roles';
 import {
   formatAssetTagsInjectBlock,
@@ -44,11 +44,12 @@ import {
   rosterForSession,
   upsertCharacter,
 } from './characters';
-import { fetchHostLorebookEntries, getLorefilterPayload } from './lorefilter';
+import { fetchHostLorebookEntries, fetchCharacterLorebookEntries, getLorefilterPayload } from './lorefilter';
 import { seedCharRefsFromLooks, setCharRefImage } from './nai-assets';
-import { getPrompt } from './settings';
 import { buildCharacterLooksMessages } from './tagger';
+import { characterPrompt } from './character-prompt';
 import { runVisionAutotagLook } from './vision-autotag';
+import { characterSource } from './character-source';
 
 const META_PER = 8;
 const VISION_PER = 4;
@@ -182,7 +183,9 @@ async function parseLooks(
   messages: LlmMessage[],
   role: 'asset_char' | 'autotag' = 'asset_char',
 ): Promise<Record<string, unknown>[]> {
-  const raw = await callLlm(resolveLlmRole(getConfig(), role), messages);
+  const images = messages.some(m => Array.isArray(m.content) && m.content.some(p => typeof p !== 'string' && p.type === 'image_url'));
+  const selectedRole = images && getConfig().card.image_analysis_separate === true ? 'autotag' : role;
+  const raw = await callLlm(resolveLlmRole(getConfig(), selectedRole), messages);
   const parsed = parseJsonLoose(raw) as { new_characters?: unknown };
   const list = Array.isArray(parsed?.new_characters) ? parsed.new_characters : [];
   if (list.length) return list.filter((x) => x && typeof x === 'object') as Record<string, unknown>[];
@@ -332,16 +335,12 @@ async function runPackedLooks(
 }
 
 async function looksSystem(): Promise<string> {
-  const looks = stripCbs(await getPrompt('char_looks')).trim();
-  const how = stripCbs(await getPrompt('asset_tags_inject')).replace(/\{asset_tags_block\}/g, '').trim();
-  return [looks, how].filter(Boolean).join('\n\n');
+  return characterPrompt('batch');
 }
 
-async function runVisionBatch(scope: string, characterId: string, rows: ResolvedRow[]): Promise<ResolvedRow[]> {
+async function runVisionBatch(scope: string, characterId: string, rows: ResolvedRow[]): Promise<void> {
   try {
-    const sys = (stripCbs(await getPrompt('autotag')).trim()
-      || 'Tag character reference images into Danbooru-style English prompts. JSON only.')
-      + '\nThis request batches named references: return new_characters containing one identity per person and complete appearance costumes. This overrides the single-image flat-object output shape only. Keep upper clothing in attire, lower clothing in bottoms. Preserve default; new transformations belong in costumes.';
+    const sys = await characterPrompt('batch');
     const parts: LlmContentPart[] = [{
       type: 'text',
       text:
@@ -364,13 +363,12 @@ async function runVisionBatch(scope: string, characterId: string, rows: Resolved
       await parseLooks([{ role: 'system', content: sys }, { role: 'user', content: parts }], 'autotag'),
       rows,
     );
-    if (!chars.length) return rows;
+    if (!chars.length) throw new Error('이미지 분석 결과에 캐릭터 외형이 없습니다.');
     await saveLooks(scope, characterId, chars, originalHintsFrom(rows));
     await foldPickAliases(scope, rows);
-    return [];
   } catch (err) {
     dbg('char-import.vision.fail', { message: String((err as Error)?.message || err) }, 'warn');
-    return rows;
+    throw err;
   }
 }
 
@@ -384,11 +382,13 @@ async function runTextBatch(
     const sys = await looksSystem();
     const messages: LlmMessage[] = [{ role: 'system', content: sys }];
     if (xnai) {
-      const hostLore = await fetchHostLorebookEntries();
+      const hostLore = await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries());
       const extra = hostLore.find((e) => isCharacterImageExtraLore(e));
       const raw = cleanText(extra?.content || String(extra?.data || ''), 50000);
       const names = rows.flatMap((r) => [r.name, ...r.aliases]);
-      const note = formatLoreExtraAuthorNote(loreExtraInstructionBody(raw, names));
+      const note = formatLoreExtraAuthorNote(rows.some(row => row.pick.kind === 'persona')
+        ? trimCharacterImageTagLore(raw, [], names)
+        : loreExtraInstructionBody(raw, names));
       if (note) messages.push({ role: 'system', content: note });
     }
     const body = rows.map((r) => {
@@ -468,15 +468,6 @@ async function personasFromHost(): Promise<Array<Record<string, unknown>>> {
   }
 }
 
-async function currentCharacter(): Promise<Record<string, unknown> | null> {
-  if (!hostHas('getCharacter')) return null;
-  try {
-    const c = await risuHost()!.getCharacter!();
-    return c && typeof c === 'object' ? (c as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function listImportPicker(kind: string, characterId: string): Promise<ApiResult> {
   const mode = cleanText(kind, 40).toLowerCase() || 'session';
@@ -522,7 +513,7 @@ export async function listImportPicker(kind: string, characterId: string): Promi
       has_image: false,
     };
   });
-  const ch = await currentCharacter();
+  const ch = await characterSource(characterId);
   const desc = cleanText(ch?.description || ch?.desc, 12000);
   const charName = cleanText(ch?.name, 200) || 'CharInfo';
   const charinfo = {
@@ -595,7 +586,7 @@ export async function analyzeAssetLook(
       originalHint:originalTagFromPlains(tags.plains,name),
     };
     const packed=packedFromMetaRows([row]);
-    const lorebook=await fetchHostLorebookEntries().catch(()=>[]);
+    const lorebook=await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries()).catch(()=>[]);
     const messages=await buildCharacterLooksMessages(
       looksRequest({sessionId,characterId,names:[name],lorebook,triggerKeys:[name,...aliases]}),
       formatAssetTagsInjectBlock(packed),
@@ -606,7 +597,7 @@ export async function analyzeAssetLook(
     if(!looks.length)throw new Error('에셋 태거가 외형 정보를 반환하지 않았습니다.');
     return normalizeAnalyzedAssetLook(looks[0]!, 'metadata', packed.weightMap||new Map());
   }
-  const lorebook=await fetchHostLorebookEntries().catch(()=>[]);
+  const lorebook=await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries()).catch(()=>[]);
   const needles=parseAliasList([name,...aliases]).map(v=>v.toLocaleLowerCase());
   const loreRef=lorebook.filter(entry=>{
     const head=[entry.comment,...parseAliasList(entry.keys),...parseAliasList(entry.key)].join(' ').toLocaleLowerCase();
@@ -618,7 +609,7 @@ export async function analyzeAssetLook(
 
 async function resolvePicks(picks: ImportPick[], characterId: string): Promise<ResolvedRow[]> {
   const personas = await personasFromHost();
-  const ch = await currentCharacter();
+  const ch = await characterSource(characterId);
   const cid = cleanText(characterId, 200) || cleanText(String(ch?.chaId || ch?.chid || ''), 200);
   const lfRaw = cid ? await getLorefilterPayload({ character_id: cid }) : null;
   const lf = (lfRaw || {}) as Record<string, unknown>;
@@ -639,7 +630,7 @@ async function resolvePicks(picks: ImportPick[], characterId: string): Promise<R
       out.push({
         pick,
         name,
-        aliases: [],
+        aliases: parseAliasList(p.aliases),
         text,
         bytes,
         plains: tags.plains,
@@ -695,6 +686,7 @@ async function runLoreAssetLooksChunk(
   const roster = await rosterForSession(sessionId, '', characterId, []);
   const collected = await collectAssetNaiTags(triggerKeys, {
     withPreviews: false,
+    characterId,
     roster,
     lorebook,
     message: triggerKeys.join('\n'),
@@ -726,7 +718,7 @@ async function runLoreAssetLooks(
   parallel: boolean,
 ): Promise<void> {
   if (!rows.length) return;
-  const hostLore = await fetchHostLorebookEntries();
+  const hostLore = await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries());
   const lorebook: LoreEntry[] = hostLore.length
     ? hostLore
     : rows.map((r) => ({
@@ -777,12 +769,21 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
   if (loreNeedImg.length) {
     const triggerKeys = parseAliasList(loreNeedImg.flatMap((r) => [r.name, ...r.aliases]));
     const rosterAfter = await rosterForSession(writeScope, '', characterId, []);
-    const looks = await collectBestLookAssets(triggerKeys, { roster: rosterAfter });
+    const looks = await collectBestLookAssets(triggerKeys, { roster: rosterAfter, characterId });
     assignLookBytes(loreNeedImg, looks);
   }
 
-  let visionToText = 0;
-  const hostLore = own.length || lore.length ? await fetchHostLorebookEntries() : [];
+  const hostLore = own.length || lore.length ? await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries()) : [];
+
+  for (const row of own) {
+    const names = [row.name, ...row.aliases];
+    const refs = hostLore.filter(isCharacterImageExtraLore)
+      .map(entry => trimCharacterImageTagLore(entry.content || entry.data, [], names)).filter(Boolean);
+    if (refs.length) {
+      row.text = refs.join('\n\n') + '\n\n' + row.text;
+      await runTextBatch(writeScope, characterId, [row]);
+    }
+  }
 
   const meta = (await stillMissing(writeScope, characterId, own)).filter((r) => r.plains.length);
   const metaChunks = chunk(meta, META_PER);
@@ -797,13 +798,10 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
 
   const vision = (await stillMissing(writeScope, characterId, [...own, ...lore]))
     .filter((r) => !r.plains.length && r.bytes?.length);
-  const visFail: ResolvedRow[] = [];
   const visChunks = chunk(vision, VISION_PER);
   await mapPool(visChunks, parallel, async (rows) => {
-    const leftover = await runVisionBatch(writeScope, characterId, rows);
-    visFail.push(...leftover);
+    await runVisionBatch(writeScope, characterId, rows);
   });
-  visionToText = visFail.length;
 
   const seen = new Set<string>();
   const textRows = (await stillMissing(writeScope, characterId, work)).filter((r) => {
@@ -829,7 +827,7 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
     picks: picks.length,
     filled,
     failed: leftover.length,
-    vision_to_text: visionToText,
+    vision_to_text: 0,
     parallel,
     xnai,
   });
@@ -838,9 +836,7 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
     filled,
     failed: leftover.map((r) => r.name),
     skipped: resolved.length - work.length,
-    vision_to_text: visionToText,
-    message: visionToText
-      ? `비전 실패 → 설명으로 ${visionToText}명`
-      : '',
+    vision_to_text: 0,
+    message: '',
   };
 }

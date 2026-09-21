@@ -12,6 +12,9 @@ export function repairOmniUi(source) {
     out = out.split(needle).join(patch);
   };
   replace('        R && (R.innerHTML = u);', '        if (R) globalThis.__INLAY_SETTINGS_UX__.replaceMain(R, u, t.uiTab);');
+  replace('  async function Tt(e, n) {', `  globalThis.__OMNI_AUTOTAG_CARD__ = Tt;
+  globalThis.__OMNI_RENDER_CHARACTER_CARD__ = (row, scope) => wt([row], scope, "");
+  async function Tt(e, n) {`);
   const loreRuntime = ['character-lore-render.js', 'character-lore.js'].map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
   replace('  async function P() {', loreRuntime + '\n  async function P() {');
   replace('], t._charsDirty = !0, await P();', `], t._charsDirty = !0;
@@ -70,6 +73,7 @@ export function repairOmniUi(source) {
   out = out.slice(0,deleteBody) + '        await globalThis.__OMNI_FLUSH_CHARACTERS__?.();\n' + out.slice(deleteBody);
 
   replace('    globalThis.__OMNI_FLUSH_CHARACTERS__ = flush;', `    globalThis.__OMNI_FLUSH_CHARACTERS__ = flush;
+    globalThis.__OMNI_QUEUE_CHARACTER_WRITE__ = work => (live.writes = live.writes.catch(()=>{}).then(work));
     globalThis.__OMNI_CHARACTER_SCOPE__ = () => t.lastScope?.sessionId || "";
     const scopeCache = t._omniRosterCache || (t._omniRosterCache = new Map());
     const deletedByScope = t._omniDeletedIds || (t._omniDeletedIds = new Map());
@@ -530,5 +534,20 @@ export function repairOmniUi(source) {
   // Inspect sheet buttons follow the settings UI: 12px radius, Kraken purple primary.
   replace('border-radius:10px;padding:9px 14px;font:700 12px Segoe UI', 'border-radius:12px;padding:9px 14px;font:700 12px Segoe UI');
   replace('addInspectBtn(actRow, "재생성", "regen", `${actStyle};background:rgba(124,108,255,.92);color:#fff`)', 'addInspectBtn(actRow, "재생성", "regen", `${actStyle};background:#7132f5;color:#fff`)');
-  return repairGestures(repairResponsiveness(repairInspectGuardCloseUp(repairInspectGuardClose(repairInspectCloseNow(repairAsyncInspect(repairInspectFullscreen(rebuildMessageRuntime(out))))))));
+  out = repairGestures(repairResponsiveness(repairInspectGuardCloseUp(repairInspectGuardClose(repairInspectCloseNow(repairAsyncInspect(repairInspectFullscreen(rebuildMessageRuntime(out))))))));
+  const autoStart = out.indexOf('    tt(), document.querySelectorAll("[data-char-autotag]")');
+  const autoEnd = out.indexOf('    }), t._autotagPasteBound', autoStart);
+  const refStart = out.indexOf('    })), (() => {', autoEnd);
+  const refEnd = out.indexOf('    })();', refStart);
+  if (autoStart < 0 || autoEnd < autoStart || refStart < autoEnd || refEnd < refStart) throw new Error('[omni repair] incremental character bindings drift');
+  const auto = out.slice(autoStart, autoEnd).replace('    tt(), ', '') + '    });';
+  const refs = out.slice(refStart + '    })), '.length, refEnd + '    })();'.length);
+  const bind = `
+  globalThis.__OMNI_BIND_NEW_CHARACTER_CARD__ = root => {
+    ${auto.replaceAll('document.querySelectorAll(', 'root.querySelectorAll(')}
+    ${refs.replaceAll('document.querySelectorAll(', 'root.querySelectorAll(')}
+  };
+`;
+  replace('  async function Tt(e, n) {', bind + '  async function Tt(e, n) {');
+  return out;
 }

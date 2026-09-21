@@ -3,23 +3,18 @@
  * One short system prompt + one user message (text + single image). Never mix
  * chat/lore/asset soup into the multimodal payload (that path fails often).
  */
+import { characterPrompt } from './character-prompt';
+import { characterHasAppearance, syncGenderIntoAppearance } from '../domain/character/tags';
 import { dbg } from '../core/debug';
 import type { BytesLike } from '../core/util/bytes';
 import { bytesToBase64Async } from '../core/util/bytes';
 import { prepareAutotagImage } from '../core/util/image';
-import { cleanText, stripCbs } from '../core/util/text';
+import { cleanText } from '../core/util/text';
 import { callLlm } from './llm-call';
 import { normalizeLlmSource, type LlmMessage } from '../providers/llm/transform';
 import { resolveLlmRole } from '../domain/llm/roles';
 import { parseAutotagLookJson, type AutotagLook } from '../ui-contract/viewer-core';
 import { getConfig } from './context';
-import { getPrompt } from './settings';
-
-const FALLBACK_AUTOTAG = [
-  'Tag ONE character reference image into Danbooru-style English prompts.',
-  'Return ONE JSON object only with gender, hair_color, hair_style, eye_color, height, age, penis_size, appearance, attire, bottoms, accessories (plus name/aliases/original when known).',
-  'gender is girl, boy, or other (animals/creatures). appearance = leftovers not already in hair/eye slots. attire = upper clothing + jewelry. bottoms = lower clothing. accessories = weapons/bags/held props.',
-].join('\n');
 
 /** Autotag-shaped vision call for one image. Throws on empty/failed looks. */
 export async function runVisionAutotagLook(
@@ -33,7 +28,7 @@ export async function runVisionAutotagLook(
   const filename = prepared.filename || 'image.png';
   const b64 = await bytesToBase64Async(u8);
   const dataUrl = `data:${mime};base64,${b64}`;
-  const prompt = stripCbs(await getPrompt('autotag')) || FALLBACK_AUTOTAG;
+  const prompt = await characterPrompt('single');
   const llm = resolveLlmRole(getConfig(), 'autotag');
   dbg('vision-autotag.start', {
     message: `llm-vision ${filename} ${u8.length}B`,
@@ -64,14 +59,17 @@ export async function runVisionAutotagLook(
   }
   const parsed = parseAutotagLookJson(raw);
   if (
-    !cleanText(parsed.appearance)
+    !characterHasAppearance(parsed)
     && !cleanText(parsed.attire)
+    && !cleanText(parsed.bottoms)
     && !cleanText(parsed.accessories)
     && !cleanText(parsed.hair_color)
     && !cleanText(parsed.hair_style)
+    && !cleanText(parsed.eye_color)
   ) {
-    throw new Error('LLM이 외형/의상/악세사리 태그를 반환하지 않았습니다. 비전(이미지) 지원 모델인지 확인하세요.');
+    throw new Error('이미지 분석 결과에 외형·의상 태그가 없습니다. 모델 응답을 확인하세요.');
   }
+  parsed.appearance = syncGenderIntoAppearance(parsed.appearance, parsed.gender);
   dbg('vision-autotag.done', {
     message: `gender=${parsed.gender || '-'} app=${parsed.appearance.length} attire=${parsed.attire.length} acc=${parsed.accessories.length}`,
   });
