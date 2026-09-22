@@ -21,8 +21,11 @@ test('stop dispatch precedes all DOM and scope reads',async()=>{
   const runtime=readFileSync(new URL('../tools/vendor-patches/message-runtime.js',import.meta.url),'utf8');
   const a=runtime.indexOf('async function omniFooterAction'),b=runtime.indexOf('async function omniToggleCounts',a);
   let calls=0;
-  const run=new Function('optimisticStopJobs',runtime.slice(a,b)+';return omniFooterAction;')(async()=>{calls++;});
+  const state={};
+  const run=new Function('optimisticStopJobs','t',runtime.slice(a,b)+';return omniFooterAction;')(async()=>{calls++;},state);
   await run('stop',99);assert.equal(calls,1);
+  state._nxHostInspectOpen=true;
+  await run('stop',99);assert.equal(calls,1,'fullscreen must block underlying chat controls');
 });
 
 test('reroll hit query is restricted and completed result merges without gallery reload',()=>{

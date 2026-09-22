@@ -273,11 +273,11 @@ const GET_ROUTES: readonly Route[] = [
     handler: async ({ query }) => ok(await castIds.shotCastIds(q(query, 'card_id'))),
   },
   {
-    // Asset file name (data-inray-asset) → base64 pixels + resolved cast
+    // Asset file name (data-inray-asset) → image URL + resolved cast
     // names. One round trip for the ⛶ handler: the name on the div is the
     // only key that survives a reload, because Risu owns the files.
     match: exact('/v1/shots/asset'),
-    handler: async ({ query }) => ok(await castIds.shotAssetByName(q(query, 'name'), q(query, 'cast') !== '0')),
+    handler: async ({ query }) => ok(await castIds.shotAssetByName(q(query, 'name'), q(query, 'cast') !== '0', q(query, 'display') === 'blob' ? 'blob' : 'data')),
   },
 ];
 

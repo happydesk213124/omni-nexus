@@ -45,7 +45,7 @@ async function nxFloatBindInputs(h) {
   await nxFloatListen(h.body, 'pointerdown', async e => {
     const pos = nxFloatEvPos(e);
     const pointer=nxFloatPointer={held:true,pos};
-    if (!pos || nxFloatBlocked() || nxFloatHidden || !await hitEl(nxFloatRoot,pos.x,pos.y)) return;
+    if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden || !await hitEl(nxFloatRoot,pos.x,pos.y)) return;
     for (const [handle,kind] of [[nxFloatResize,'resize'],[nxFloatIcon,'bubble-move'],[nxFloatHead,'move'],[nxFloatFoldGrip,'move'],[nxFloatStage,'move']]) {
       if (await hitEl(handle,pos.x,pos.y)) { await nxFloatMaybeDrag(e,kind,pointer); return; }
     }
@@ -53,7 +53,7 @@ async function nxFloatBindInputs(h) {
   await nxFloatListen(h.body, 'pointermove', e => {
     nxFloatMoveDrag(e);
     const pos = nxFloatEvPos(e);
-    if (!pos || nxFloatBlocked() || nxFloatHidden) return;
+    if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden) return;
     nxFloatHoverPos = pos;
     if (nxFloatHoverBusy) return;
     nxFloatHoverBusy = true;

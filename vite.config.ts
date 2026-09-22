@@ -5434,19 +5434,12 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
         }
         return assetName;
       };
-      const nxOpenAssetInspect = async (card, assetName) => {
+      const nxOpenAssetInspect = async (card, assetName, sourceNode) => {
         const epoch = t._inspectEpoch = (Number(t._inspectEpoch) || 0) + 1;
-        // Recent files, newest first: reopening any of them skips the network
-        // and paints instantly. Each entry capped at 8 MiB of base64 text.
-        const jar = Array.isArray(t._inspectLastAssets) ? t._inspectLastAssets
-          : (t._inspectLastAsset ? [t._inspectLastAsset] : []);
-        const warm = jar.find(entry => entry?.cardId === card?.id
-          && (typeof assetName !== "string" || !assetName || entry.name === assetName)) || null;
         const view = Object.assign({}, card, {
-          image_url: warm?.image_url || "", characters: warm?.characters || [],
-          _nxAssetLoading: !warm, _nxCastLoading: !warm, _nxInspectError: ""
+          image_url: "", characters: [], _nxImage: null,
+          _nxAssetLoading: true, _nxCastLoading: true, _nxInspectError: ""
         });
-        // Showing the frozen shell must not depend on filename, file or roster I/O.
         const painted = showStickyInspect(view);
         const current = () => epoch === t._inspectEpoch && !t.uiOpen;
         const paint = async () => { await painted; if (current()) await updateStickyInspect(view); };
@@ -5454,12 +5447,24 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
           if (!current()) return;
           y("error", "shots.asset.inspect.fail", String(err?.message || err));
           if (kind === "image") {
-            view._nxAssetLoading = !1;
-            view._nxInspectError = "이미지 파일을 불러오지 못했습니다.";
-          } else { view._nxCastLoading = !1; view._nxCastError = "캐릭터 이름을 불러오지 못했습니다."; }
+            view._nxAssetLoading = false;
+            view._nxInspectError = "화면에서 이미지를 찾지 못했습니다.";
+          } else {
+            view._nxCastLoading = false;
+            view._nxCastError = "캐릭터 이름을 불러오지 못했습니다.";
+          }
           await paint();
         };
-        t._inspectLoad = (async () => {
+        const pixels = (async () => {
+          const image = await nxCloneInspectImage(card, typeof assetName === "string" ? assetName : "", sourceNode);
+          if (!current()) { await nxDropInspectImage(image); return; }
+          view._nxImage = image; view._nxAssetLoading = false;
+          try { await paint(); }
+          finally {
+            if (nxInspectMirroredImage !== image) await nxDropInspectImage(image);
+          }
+        })().catch(err => report(err, "image"));
+        const cast = (async () => {
           assetName = await assetName;
           if (!current()) return;
           if (!assetName && card?.id) {
@@ -5467,51 +5472,20 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
             assetName = String(found?.name || "");
           }
           if (!current()) return;
-          if (!assetName) throw new Error("이미지 파일명을 찾을 수 없습니다.");
-          const segment = String(assetName).split(".").find(part => part.startsWith("c") && part.slice(1).split("-").every(id => /^[0-9a-f]{4}$/i.test(id)));
+          const segment = String(assetName || "").split(".").find(part => part.startsWith("c") && part.slice(1).split("-").every(id => /^[0-9a-f]{4}$/i.test(id)));
           const ids = segment ? segment.slice(1).toLowerCase().split("-") : [];
-          const hit = jar.find(entry => entry?.name === assetName) || null;
-          if (!hit) { view.image_url = ""; view.characters = []; view._nxAssetLoading = !0; }
-          const remember = () => {
-            // Recent files, newest first, capped at five entries of 8 MiB of
-            // base64 text each; never pin a gallery.
-            if (current() && view.image_url && view.image_url.length <= 8 * 1024 * 1024) {
-              const entry = { cardId: card.id, name: assetName, image_url: view.image_url, characters: view.characters };
-              t._inspectLastAsset = entry;
-              const next = [entry, ...jar.filter(item => item?.name !== assetName)];
-              t._inspectLastAssets = next.slice(0, 5);
-            }
-          };
-          const pixels = (async () => {
-            let image = hit;
-            if (!image) {
-              let read = t._inspectAssetRead;
-              if (!read || read.name !== assetName) {
-                read = { name: assetName, promise: K("/v1/shots/asset?cast=0&name=" + encodeURIComponent(assetName), {}, 1.5e4) };
-                t._inspectAssetRead = read;
-                const clear = () => { if (t._inspectAssetRead === read) t._inspectAssetRead = null; };
-                read.promise.then(clear, clear);
-              }
-              image = await read.promise;
-            }
-            if (!current()) return;
-            if (!String(image?.image_url || "").startsWith("data:image/")) throw new Error("asset_read_failed");
-            view.image_url = image.image_url; view._nxAssetLoading = !1;
-            remember(); await paint();
-          })().catch(err => report(err, "image"));
-          const cast = (async () => {
-            const names = ids.length ? await K("/v1/shots/resolve-cast", { method: "POST", body: { ids } }, 1.5e4) : {};
-            if (!current()) return;
-            view.characters = ids.map(id => ({ name: String(names[id] || ""), cast_id: id }));
-            view._nxCastLoading = !1; remember(); await paint();
-          })().catch(err => report(err, "cast"));
-          await Promise.all([pixels, cast]);
-        })().catch(err => { if (current()) view._nxCastLoading = !1; return report(err, "image"); }).catch(err => {
+          const names = ids.length ? await K("/v1/shots/resolve-cast", { method: "POST", body: { ids } }, 1.5e4) : {};
+          if (!current()) return;
+          view.characters = ids.map(id => ({ name: String(names[id] || ""), cast_id: id }));
+          view._nxCastLoading = false;
+          await paint();
+        })().catch(err => report(err, "cast"));
+        t._inspectLoad = Promise.all([pixels, cast]).catch(err => {
           if (current()) y("error", "shots.asset.inspect.paint.fail", String(err?.message || err));
         });
         return painted;
       };
-      // Bridge for the floating viewer (separate closure scope): ⛶ reuses this opener.
+      // Shared by chat controls and the floating viewer, without opening settings.
       t._nxInspectOpener = nxOpenAssetInspect;
       const nxFireTap = async (card, node) => {
         const need = nxTapNeed();
@@ -5551,7 +5525,7 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
           tapAsset = nxAssetNameOf(node);
         } catch {
         }
-        await nxOpenAssetInspect(card, tapAsset);
+        await nxOpenAssetInspect(card, tapAsset, node);
         pointerGesture = { x, y: I, movement: 0, marker: !0, forClick: !1, forText: !1 };
         return !0;
       };
@@ -5570,7 +5544,7 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
               holdAsset = nxAssetNameOf(F.thumb);
             } catch {
             }
-            await nxOpenAssetInspect(F.card, holdAsset);
+            await nxOpenAssetInspect(F.card, holdAsset, F.thumb);
           })().catch(() => {
           });
         }, PRESS_MS);
@@ -5638,12 +5612,8 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
             // Falling through would let the inline-shot block below open
             // the shot div behind the button as the wrong card (R2).
             if (!card) return;
-            // Fullscreen = frozen sticky inspect (base64 image as before).
-            // Chips + pixels come from the div's data-inray-asset file name
-            // via GET /v1/shots/asset in ONE round trip. Risu owns the files
-            // so the name is the only key that survives a reload; live DOM
-            // keeps data-* (x-* is stripped), so read data-inray-asset.
-            // The gallery row is never touched: inspect works on a copy.
+            // Mirror the image beside this control. The file name is used
+            // only for cast identity; no pixels are read through the backend.
             try {
               if (typeof f.preventDefault == "function") try {
                 await f.preventDefault();
@@ -5653,15 +5623,14 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
             }
             cancelMobilePress();
             // Same shared opener as triple-tap / hold (nxOpenAssetInspect):
-            // file name off the host div → one shots/asset trip → file
-            // pixels + cast chips on a copy. Inspect never touches the row.
+            // Pass the hit node so the mirror preserves the exact host image.
             try {
               let fsAsset = "";
               try {
-                fsAsset = nxAssetNameOf(node);
+                fsAsset = await nxAssetNameOf(node);
               } catch {
               }
-              await nxOpenAssetInspect(card, fsAsset);
+              await nxOpenAssetInspect(card, fsAsset, node);
             } catch {
             }
             pointerGesture = { x, y: I, movement: 0, marker: !0, forClick: !1, forText: !1 };
@@ -5807,7 +5776,7 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
             t._stickyPinTap = null;
             if (mobilePress) cancelMobilePress();
             try { t._inspectEpoch = (Number(t._inspectEpoch) || 0) + 1; } catch {}
-            showStickyInspect(card).catch(() => {});
+            nxOpenAssetInspect(card, "").catch(() => {});
             mobilePress = {
               x, y: I, card, source: "sticky-pin", pointerId: f.pointerId,
               long: !1, timer: null, openedInspect: !0
@@ -17366,10 +17335,10 @@ const loadVendorUi = (): string => {
     }
     assertOnce(out, 'VC.imagePressTapHits({', 'image tap-streak helper landed');
     assertOnce(out, 'const nxAssetNameOf = async (node) => {', 'by-name file reader defined');
-    assertOnce(out, 'const nxOpenAssetInspect = async (card, assetName) => {', 'shared by-name inspect opener defined');
+    assertOnce(out, 'const nxOpenAssetInspect = async (card, assetName, sourceNode) => {', 'shared by-name inspect opener defined');
     assertOnce(out, 'if (await nxFireTap(card, node)) return;', 'triple-tap opens by-name inspect');
-    assertOnce(out, 'await nxOpenAssetInspect(F.card, holdAsset);', 'hold opens by-name inspect');
-    assertOnce(out, 'await nxOpenAssetInspect(card, fsAsset);', '⛶ opens by-name inspect');
+    assertOnce(out, 'await nxOpenAssetInspect(F.card, holdAsset, F.thumb);', 'hold opens by-name inspect');
+    assertOnce(out, 'await nxOpenAssetInspect(card, fsAsset, node);', '⛶ opens by-name inspect');
     if ((out.match(/nxFireTap\(/g) || []).length !== 1) {
       throw new Error('[build] tap-streak inspect is inline-shot only — not the sticky image');
     }
@@ -17458,8 +17427,8 @@ const loadVendorUi = (): string => {
     if (!out.includes('nxActivateStickyByCardId(card.id)')) {
       throw new Error('[build] inline longpress missing nxActivateStickyByCardId');
     }
-    if (!out.includes('[x-inray-fs],[data-inray-fs]') || !out.includes('/v1/shots/asset') || !out.includes('data-inray-asset')) {
-      throw new Error('[build] baked Inray fullscreen must open sticky inspect with by-name asset (shots/asset) and filename-cast chips');
+    if (!out.includes('[x-inray-fs],[data-inray-fs]') || !out.includes('await nxCloneInspectImage(card,') || !out.includes('data-inray-asset')) {
+      throw new Error('[build] baked Inray fullscreen must mirror the host image and retain filename-cast chips');
     }
     if (!out.includes('[x-inray-refresh],[data-inray-refresh]') || !out.includes('bake.refresh')) {
       throw new Error('[build] baked overlay must restamp via refresh, not tag/regen');
@@ -17995,6 +17964,7 @@ const loadVendorUi = (): string => {
       throw new Error('[build] float viewer collapse select must offer bubble');
     }
     const final = repairOmniUi(out);
+    if (!final.includes('await image.cloneNode(false)')) throw new Error('[build] fullscreen must mirror the host image through cloneNode');
     if (!final.includes('async function nxFloatEnsure') || !final.includes('async function nxFloatShowCard')) {
       throw new Error('[build] float viewer runtime missing from bundle');
     }

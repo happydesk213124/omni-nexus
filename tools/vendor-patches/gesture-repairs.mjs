@@ -54,6 +54,6 @@ export function repairGestures(source) {
   if(out.split(card).length!==3)throw Error('[gestures] inline card drift');
   out=out.split(card).join(card.slice(0,-1)+' || (cardId && !cardId.startsWith("pending_") ? {id:cardId} : null);');
   once('            if (await nxFireTap(card, node)) return;', '            if(physical.cancelled || physical!==nxPhysical)return;\n            if (await nxFireTap(card, node)) return;');
-  once('              await nxOpenAssetInspect(card, fsAsset);', '              if(physical.cancelled || physical!==nxPhysical)return;\n              await nxOpenAssetInspect(card, fsAsset);');
+  once('              await nxOpenAssetInspect(card, fsAsset, node);', '              if(physical.cancelled || physical!==nxPhysical)return;\n              await nxOpenAssetInspect(card, fsAsset, node);');
   return out;
 }

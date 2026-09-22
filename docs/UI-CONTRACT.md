@@ -56,10 +56,14 @@ The UI's fetch wrapper is `K(path, init, timeoutMs)`; it throws
 | `openCharacterCommandEdit` | `(opts) => void` | Additive. Character-form LLM 명령수정 overlay |
 | `openImagePeek` | `(src) => void` | Additive. Centered image overlay; does not close parent modals |
 
-> **Image URLs must be `data:image/...`.** The UI passes them through DOMPurify,
-> which strips `blob:`. SafeElement `setAttribute` only allows `x-*` names, so
-> `setAttribute('src', blobUrl)` throws and cannot recover. Returning a `blob:`
-> URL renders the broken-image icon on every surface.
+> **Host HTML image URLs must be `data:image/...`.** SafeDOM sanitizes `img.src`.
+> The fullscreen inspector instead clones the existing host `img` through
+> `SafeElement.cloneNode(false)`, preserving Risu's resolved source without
+> reading image files, encoding base64, or creating Blob URLs. Both the image
+> and controls live in the host document; settings' iframe is never opened.
+> Close removes/releases only the clone. A missing host image shows an error.
+> Cast names resolve separately into a reserved two-row, 72px chip area.
+> The image-file route remains available to other callers.
 >
 > **Listing rows carry no `image_url`.** `/v1/gallery`, `/v1/gallery/explore`
 > and job-result cards omit the key (2.5.33). The UI resolves a display URL from
