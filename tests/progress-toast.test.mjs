@@ -20,7 +20,9 @@ function legacyFixture() {
   const vendor = readFileSync(new URL('../vendor/inlay-nexus-ui.js', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
   const start = vendor.indexOf('  async function withImageRerollToast('), end = vendor.indexOf('  async function dismissProgressToast()', start);
   assert.ok(start >= 0 && end > start);
-  return vendor.slice(start, end) + toast + '\n k.onUnload(async () => {});';
+  return vendor.slice(start, end) + toast + '\n k.onUnload(async () => {});'
+    + '\n' + readFileSync(new URL('../tools/vendor-patches/message-runtime.js', import.meta.url), 'utf8')
+    + '\n' + readFileSync(new URL('../tools/vendor-patches/float-viewer.js', import.meta.url), 'utf8');
 }
 function harness() {
   let now = 1000, sequence = 0;
@@ -62,7 +64,7 @@ function harness() {
     },
     nxToastPos: options => `position:fixed;display:${options.visible ? 'block' : 'none'};pointer-events:${options.pointerEvents ? 'auto' : 'none'};`,
   });
-  const api = vm.runInContext(runtime + ';({sync:syncProgressToast,dispose:nxDisposeProgressToast,state:nxProgress})', context);
+  const api = vm.runInContext(runtime + ';({sync:syncProgressToast,dispose:nxDisposeProgressToast,state:nxProgress,prepare:nxWithScenePreparation})', context);
   return { t, timers, writes, elements, context, ...api,
     async advance(ms) {
       now += ms;
@@ -72,6 +74,83 @@ function harness() {
   };
 }
 const job = (extra = {}) => ({ jobId: 'job1', state: 'generating', shot_count: 4, shot_done: 1, shot_index: 1, ...extra });
+
+test('tag click paints preparation immediately while work is pending, then hands off without hiding', async () => {
+  const h = harness();
+  let finish;
+  const pending = h.prepare(() => new Promise(resolve => { finish = resolve; }));
+  assert.equal(typeof finish, 'function', 'the request starts without waiting for SafeDOM');
+  await h.sync();
+  assert.equal(h.t._progressToastShown, true, 'no 450ms delay on a user click');
+  assert.equal(h.state.nodes.title.text, '장면 정리 중');
+  const root = h.state.nodes.root;
+  h.writes.length = 0;
+  h.t.jobProgress = job({ state: 'queued' });
+  await h.sync();
+  finish(); await pending; await h.sync();
+  assert.equal(h.t._progressToastShown, true);
+  assert.equal(h.state.nodes.root, root);
+  assert.equal(h.state.nodes.title.text, '장면 정리 중');
+  h.t.jobProgress = job({ state: 'tagging' });
+  await h.sync();
+  assert.equal(h.state.nodes.title.text, '장면 분석 중');
+  assert.equal(h.state.nodes.root, root);
+  assert.equal(h.writes.some(([type, css]) => type === 'style' && css.includes('position:fixed;display:none')), false);
+});
+
+test('nested preparation shares one run and stale or failed starts leave no toast or timer', async () => {
+  for (const fail of [false, true]) {
+    const h = harness();
+    h.t.jobProgress = job({ state: 'done' });
+    let finish;
+    const pending = h.prepare(() => h.prepare(() => new Promise((resolve, reject) => {
+      finish = () => fail ? reject(new Error('start failed')) : resolve();
+    })));
+    const observed = pending.catch(error => error);
+    await h.sync();
+    assert.equal(h.state.run.key, 'prepare:1');
+    finish(); await observed; await h.sync();
+    assert.equal(h.t.jobProgress, null);
+    assert.equal(h.t._progressToastShown, false);
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('preparation respects disabled toasts and never replaces an existing active job', async () => {
+  const h = harness();
+  h.t.backendSettings.card.progress_toast = false;
+  let finish;
+  const pending = h.prepare(() => new Promise(resolve => { finish = resolve; }));
+  await h.sync();
+  assert.equal(h.writes.length, 0);
+  finish(); await pending; await h.sync();
+  h.t.backendSettings.card.progress_toast = true;
+  h.t.jobProgress = job();
+  await h.sync(); await h.advance(450);
+  const active = h.t.jobProgress;
+  await h.prepare(async () => {});
+  await h.sync();
+  assert.equal(h.t.jobProgress, active);
+  assert.equal(h.state.nodes.title.text, '이미지 생성 중');
+});
+
+test('shipped tag entry wrappers begin preparation before viewport or message reads', async () => {
+  const patched = repairProgressToast(legacyFixture());
+  for (const [name, args] of [['nxFloatClick', 'kind'], ['omniFooterAction', 'kind,key']]) {
+    const a = patched.indexOf(`async function ${name}(${args}) {`);
+    const b = patched.indexOf(`async function ${name}Prepared(${args}) {`, a);
+    assert.ok(a >= 0 && b > a);
+    const h = harness();
+    let finish;
+    h.context[`${name}Prepared`] = () => new Promise(resolve => { finish = resolve; });
+    const run = vm.runInContext(patched.slice(a, b) + ';' + name, h.context);
+    const pending = run('tag', 1);
+    await h.sync();
+    assert.equal(h.state.nodes.title.text, '장면 정리 중');
+    finish(); await pending; await h.sync();
+    assert.throws(() => repairProgressToast(legacyFixture().replace(`async function ${name}(${args}) {`, 'missing() {')), /drift/);
+  }
+});
 
 test('progress details use real counts, ignore fabricated percent, and distinguish useful stages', () => {
   const view = progressToastView(job({ progress: 88 }), 15000);
