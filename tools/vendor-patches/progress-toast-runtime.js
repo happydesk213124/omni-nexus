@@ -1,4 +1,27 @@
   const nxProgress = { nodes: null, cache: {}, run: null, timer: null, pending: null, dirty: false, disposed: false };
+  let nxScenePreparation = null, nxScenePreparationSequence = 0;
+  async function nxWithScenePreparation(work) {
+    if (nxProgress.disposed || t.unloading || t._nxHostInspectOpen) return work();
+    const previous = t.jobProgress;
+    // Keep an existing generation's actual progress visible on duplicate clicks.
+    if (!nxScenePreparation && previous && ['queued', 'tagging', 'generating', 'running'].includes(previous.state)) return work();
+    const preparation = nxScenePreparation || (nxScenePreparation = {
+      previous, users: 0, job: { state: 'preparing', toastRun: 'prepare:' + (++nxScenePreparationSequence) },
+    });
+    preparation.users++;
+    // Start painting before scope/lore reads, without making the request wait
+    // for SafeDOM. Nested floating-viewer/footer dispatch shares one toast.
+    void syncProgressToast().catch(error => Pe('progress prepare', error));
+    try { return await work(); }
+    finally {
+      if (--preparation.users === 0 && nxScenePreparation === preparation) {
+        nxScenePreparation = null;
+        // A rejected/stale click must not resurrect the previous completion.
+        if (t.jobProgress === preparation.previous) t.jobProgress = null;
+        void syncProgressToast().catch(error => Pe('progress prepare end', error));
+      }
+    }
+  }
   function nxProgressWake(ms) {
     if (nxProgress.timer) clearTimeout(nxProgress.timer);
     nxProgress.timer = null;
@@ -93,13 +116,15 @@
       return;
     }
     const now = Date.now();
-    const job = t.jobProgress;
+    const job = nxScenePreparation && t.jobProgress === nxScenePreparation.previous ? nxScenePreparation.job : t.jobProgress;
     let run = nxProgress.run;
     if (job) {
       const key = String(job.toastRun || job.jobId || job.kind || 'job');
       const view = globalThis.__INLAY_VIEWER_CORE__.progressToastView(job);
       if (!run || run.key !== key || (run.terminal && !view.terminal)) {
-        run = nxProgress.run = { key, started: now, terminal: false, until: 0, shown: false, expired: false, job };
+        const handoff = run?.job?.state === 'preparing' && !view.terminal;
+        run = nxProgress.run = { key, started: handoff ? run.started : now, terminal: false, until: 0,
+          shown: handoff ? run.shown : false, immediate: job.state === 'preparing' || handoff, expired: false, job };
       }
       if (!run.terminal) run.job = { ...job };
       if (view.terminal && !run.terminal) {
@@ -117,7 +142,7 @@
       await nxProgressVisible(false);
       return;
     }
-    if (!run.terminal && now - run.started < 450) {
+    if (!run.terminal && !run.immediate && now - run.started < 450) {
       await nxProgressVisible(false);
       nxProgressWake(450 - (now - run.started));
       return;

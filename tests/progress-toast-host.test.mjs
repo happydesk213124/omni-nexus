@@ -47,12 +47,17 @@ test('toast renders through restricted SafeElement and DOMPurify on mobile and d
         globalThis.__INLAY_VIEWER_CORE__ = ViewerCore;
         let now = 1000, timerId = 0;
         const timers = new Map();
-        const api = new Function('t', 'ue', 'Ee', 'Pe', 'Date', 'setTimeout', 'clearTimeout', helpers + runtime + ';return {sync:syncProgressToast,dispose:nxDisposeProgressToast};')(
+        const api = new Function('t', 'ue', 'Ee', 'Pe', 'Date', 'setTimeout', 'clearTimeout', helpers + runtime + ';return {sync:syncProgressToast,dispose:nxDisposeProgressToast,prepare:nxWithScenePreparation};')(
           t, async () => doc, async () => new SafeElement(document.body), (_label, error) => { throw error; }, { now: () => now },
           (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; }, id => timers.delete(id),
         );
+        let finish;
+        const preparation = api.prepare(() => new Promise(resolve => { finish = resolve; }));
+        await api.sync();
+        const preparingRoot = document.querySelector('[x-omni-progress-toast]');
+        const immediate = !!preparingRoot && getComputedStyle(preparingRoot).display !== 'none' && preparingRoot.textContent.includes('장면 정리 중');
         t.jobProgress = { jobId: 'first', state: 'generating', shot_count: 4, shot_done: 1, shot_index: 1 };
-        await api.sync(); now += 450; await api.sync();
+        await api.sync(); finish(); await preparation; await api.sync();
         const root = document.querySelector('[x-omni-progress-toast]');
         const rect = root.getBoundingClientRect();
         const live = root.querySelector('[role="status"][aria-live="polite"][aria-atomic="true"]');
@@ -70,7 +75,7 @@ test('toast renders through restricted SafeElement and DOMPurify on mobile and d
         now += 6000; await api.sync();
         const hidden = getComputedStyle(root).display === 'none' && timers.size === 0;
         await api.dispose();
-        return { initial, unchanged, safeError, retained, hidden, removed: !root.isConnected, htmlWrites: writes.html, attrs: writes.attrs };
+        return { initial, immediate, unchanged, safeError, retained, hidden, removed: !root.isConnected, htmlWrites: writes.html, attrs: writes.attrs };
       }, { runtime, helpers });
       assert.match(result.initial.text, /이미지 생성 중/);
       assert.match(result.initial.text, /2 \/ 4장 · 1장 완료/);
@@ -78,7 +83,7 @@ test('toast renders through restricted SafeElement and DOMPurify on mobile and d
       assert.ok(result.initial.left >= 0 && result.initial.right <= width);
       assert.notEqual(result.initial.display, 'none');
       for (const key of ['live', 'passesInput']) assert.equal(result.initial[key], true, key);
-      for (const key of ['unchanged', 'safeError', 'retained', 'hidden', 'removed']) assert.equal(result[key], true, key);
+      for (const key of ['immediate', 'unchanged', 'safeError', 'retained', 'hidden', 'removed']) assert.equal(result[key], true, key);
       assert.equal(result.htmlWrites, 1);
       assert.deepEqual(result.attrs, ['x-omni-progress-toast']);
       await page.close();

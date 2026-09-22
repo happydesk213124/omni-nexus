@@ -30,5 +30,13 @@ export function repairProgressToast(source) {
     out = out.slice(0, batchStart) + batch.replace('shot_done: i\n', 'shot_done: cards.length\n').replace('shot_done: i + 1\n', 'shot_done: cards.length\n') + out.slice(batchEnd);
   } else throw new Error('[progress toast] reroll batch drift');
   replace('k.onUnload(async () => {', 'k.onUnload(async () => {\n      await nxDisposeProgressToast();');
+  // Wrap the user actions before they read the message or scan the viewport.
+  // The inner functions retain their existing validation and failure handling.
+  for (const [name, args] of [['omniFooterAction', 'kind,key'], ['nxFloatClick', 'kind']]) {
+    replace(`async function ${name}(${args}) {`, `async function ${name}(${args}) {
+  return kind === 'tag' ? nxWithScenePreparation(() => ${name}Prepared(${args})) : ${name}Prepared(${args});
+}
+async function ${name}Prepared(${args}) {`);
+  }
   return out;
 }
