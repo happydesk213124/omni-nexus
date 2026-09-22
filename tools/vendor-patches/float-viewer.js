@@ -147,7 +147,7 @@ async function nxFloatShowLatest() {
   return card ? nxFloatSelect(card.id) : false;
 }
 async function nxFloatClick(kind) {
-  if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden) return;
+  if (!nxFloatRoot || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden) return;
   nxFloatNudgeIdle();
   try {
     if (kind === 'counts') { await nxFloatToggleCounts(); return; }
@@ -160,7 +160,7 @@ async function nxFloatClick(kind) {
       const card = nxFloatFind(nxFloatCardId);
       if (!card) return;
       const open = t._nxInspectOpener;
-      if (typeof open == "function") await open(card, nxFloatAsset || undefined);
+      if (typeof open == "function") await open(card, nxFloatAsset || undefined, nxFloatImage);
       return;
     }
     if (kind === "tag" || kind === "regen" || kind === "char" || kind === "preset" || kind === "note") {

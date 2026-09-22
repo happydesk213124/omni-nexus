@@ -92,11 +92,11 @@ export async function shotCastIds(cardId: unknown): Promise<{ ids: string[]; nam
 
 /**
  * Fullscreen path, user's design: asset NAME (from the chat div's
- * data-inray-asset) → file bytes → displayable data URL, plus cast names in
+ * data-inray-asset) → file bytes → display URL, plus cast names in
  * the same round trip. Name lookup survives reloads because the pixels live
  * on Risu's side; our memory bytes do not.
  */
-export async function shotAssetByName(name: unknown, includeCast = true): Promise<{ image_url: string; ids: string[]; names: Record<string, string>; warning?: string }> {
+export async function shotAssetByName(name: unknown, includeCast = true, delivery: 'data' | 'blob' = 'data'): Promise<{ image_url: string; image_bytes?: number; ids: string[]; names: Record<string, string>; warning?: string }> {
   const want = cleanText(name, 400);
   if (!want) throw makeFetchError(400, errorBody('asset_name_required', 'asset_name_required'));
   const row = await findInspectAsset(want);
@@ -104,14 +104,19 @@ export async function shotAssetByName(name: unknown, includeCast = true): Promis
   const ids = castFromShotAssetName(row.name);
   const bytes = await readShotAssetBytes(row.path);
   if (!bytes) throw makeFetchError(422, errorBody('asset_read_failed: ' + want, 'asset_read_failed'));
-  const image_url = await bytesToDataUrlAsync(bytes, sniffImageMime(bytes));
-  if (!includeCast) return { image_url, ids, names: {} };
+  // Blob ownership transfers to the inspector; it revokes discarded URLs.
+  // Keep the default data URL contract for other callers.
+  const image_url = delivery === 'blob'
+    ? URL.createObjectURL(new Blob([bytes], { type: sniffImageMime(bytes) }))
+    : await bytesToDataUrlAsync(bytes, sniffImageMime(bytes));
+  const image = delivery === 'blob' ? { image_url, image_bytes: bytes.byteLength } : { image_url };
+  if (!includeCast) return { ...image, ids, names: {} };
   try {
-    return { image_url, ids, names: await resolveCastNames(ids) };
+    return { ...image, ids, names: await resolveCastNames(ids) };
   } catch (error) {
     // An unrelated corrupt roster must not discard successfully read pixels.
     const warning = 'cast_resolve_failed: ' + String((error as Error)?.message || error);
     dbg('shots.asset.cast.fail', { message: warning }, 'warn');
-    return { image_url, ids, names: {}, warning };
+    return { ...image, ids, names: {}, warning };
   }
 }

@@ -7,6 +7,9 @@ import { repairInspectFullscreen } from '../tools/vendor-patches/inspect.mjs';
 
 const config = await readFile('vite.config.ts', 'utf8');
 function opener(context) {
+  context.nxCloneInspectImage ||= async card => ({cardId:card.id});
+  context.nxDropInspectImage = async () => {};
+  context.nxInspectMirroredImage = null;
   const start = config.indexOf('      const nxOpenAssetInspect = async');
   const end = config.indexOf('      const nxFireTap = async', start);
   assert.ok(start > 0 && end > start);
@@ -23,12 +26,12 @@ test('inspect fills resolved names without querying chip DOM', async () => {
   await opener(c)(card,'inxshot_card.c9396-1234.webp');
   await c.t._inspectLoad;
   assert.deepEqual(painted.characters.map(row=>row.name), ['First','Second']);
-  assert.equal(painted.image_url,'data:image/webp;base64,FILE');
+  assert.equal(painted._nxImage.cardId,'card');
   assert.equal(card.characters[0].name,'Old');
 });
 test('a missing file replaces loading with an explicit error in the open inspect', async () => {
   let opened=0,last; const errors=[];
-  const c={t:{},K:async()=>{throw new Error('asset_not_found');},showStickyInspect:async()=>opened++,updateStickyInspect:async view=>{last={...view};},y:(...args)=>errors.push(args)};
+  const c={t:{},nxCloneInspectImage:async()=>{throw new Error('image_not_found');},K:async()=>{throw new Error('asset_not_found');},showStickyInspect:async()=>opened++,updateStickyInspect:async view=>{last={...view};},y:(...args)=>errors.push(args)};
   await opener(c)({id:'card'},'inxshot_missing.webp');
   await c.t._inspectLoad;
   assert.equal(opened,1); assert.ok(errors.length); assert.ok(last._nxInspectError);assert.equal(last._nxAssetLoading,false);
@@ -75,6 +78,25 @@ test('fullscreen button cancels the event, never the SafeDOM document', async ()
 
 const bundle = await build({stdin:{contents:"export {shotAssetByName} from './src/services/cast-ids'; export {invalidateShotListing} from './src/storage/shot-character';",resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node'});
 const api = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+test('Blob inspect returns original bytes without calling the base64 encoder', async () => {
+  const name = 'inxshot_blob.webp';
+  const bytes = Uint8Array.from({length: 64}, (_, i) => i);
+  globalThis.risuai = {getDatabase: async () => ({characters: [], modules: [{id:'inlay-gallery',assets:[[name,'blob/path','webp']]}]}), readImage: async () => bytes};
+  api.invalidateShotListing();
+  const original = globalThis.btoa;
+  globalThis.btoa = () => { throw new Error('base64 encoding forbidden'); };
+  let result;
+  try {
+    result = await api.shotAssetByName(name, false, 'blob');
+    assert.match(result.image_url, /^blob:/);
+    assert.equal(result.image_bytes, bytes.byteLength);
+    const response = await fetch(result.image_url);
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), bytes);
+  } finally {
+    globalThis.btoa = original;
+    if (result) URL.revokeObjectURL(result.image_url);
+  }
+});
 test('file lookup reads character and legacy module assets; misses are explicit', async () => {
   const name='inxshot_old.c9396-1234.webp';
   const bytes=new Uint8Array(64);
@@ -109,15 +131,12 @@ test('character asset wins over legacy; unreadable pixels fail and roster errors
   assert.match(partial.image_url,/^data:image\//);assert.match(partial.warning,/cast_resolve_failed/);
 });
 
-test('missing DOM name resolves through card id; late opens cannot replace newer inspect', async () => {
-  const reads=[],painted=[];
-  const c={t:{},K:async url=>{if(url.startsWith('/v1/shots/cast?'))return {name:'inxshot_fallback.webp'};
-    return new Promise(resolve=>reads.push({url,resolve}));},showStickyInspect:async()=>{},updateStickyInspect:async view=>{if(view.image_url)painted.push(view.id);},y:()=>{}};
-  const open=opener(c);
-  const old=open({id:'old'},''); const oldLoad=c.t._inspectLoad;await new Promise(resolve=>setImmediate(resolve));
-  const fresh=open({id:'new'},'inxshot_new.webp');await new Promise(resolve=>setImmediate(resolve));
-  reads[1].resolve({image_url:'data:image/webp;base64,NEW',ids:[],names:{}});await fresh;await c.t._inspectLoad;
-  assert.match(reads[0].url,/inxshot_fallback/);
-  reads[0].resolve({image_url:'data:image/webp;base64,OLD',ids:[],names:{}});await old;await oldLoad;
-  assert.deepEqual(painted,['new']);
+test('missing DOM name resolves through card id without reading pixel files', async () => {
+  const calls=[],painted=[];
+  const c={t:{},K:async url=>{calls.push(url);if(url.startsWith('/v1/shots/cast?'))return {name:'inxshot_fallback.c9396.webp'};return {'9396':'Alice'};},
+    showStickyInspect:async()=>{},updateStickyInspect:async view=>painted.push({...view}),y:()=>{}};
+  await opener(c)({id:'fallback'},'');await c.t._inspectLoad;
+  assert.equal(painted.at(-1)._nxImage.cardId,'fallback');
+  assert.equal(painted.at(-1).characters[0].name,'Alice');
+  assert.deepEqual(calls,['/v1/shots/cast?card_id=fallback','/v1/shots/resolve-cast']);
 });

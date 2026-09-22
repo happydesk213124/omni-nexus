@@ -24,6 +24,7 @@ async function omniInitModuleControls() {
   omniFooterDoc=doc;t.hostDoc=doc;omniFooterRoot=await doc.querySelector('body');
   if(!omniFooterRoot)return;
   omniFooterKeyListener=await omniFooterRoot.addEventListener('keydown',async event=>{
+    if(t._nxHostInspectOpen)return;
     if(event.repeat || (event.key!=='Enter' && event.key!==' '))return;
     const button=await doc.querySelector('[data-omni-action]:focus,[x-omni-action]:focus');if(!button)return;
     try {const hit=await omniBindModuleButton(button);if(hit)await omniFooterAction(hit.kind,hit.index);} finally {await omniRelease(button);}
@@ -77,6 +78,7 @@ async function omniFooterHit(doc,x,y) {
   return null;
 }
 async function omniFooterAction(kind,key) {
+  if(t._nxHostInspectOpen)return;
   if(kind==='stop') {await optimisticStopJobs();return;}
   const target=omniFooterTargets.get(Number(key));if(!target)return;
   const doc=t.hostDoc || omniFooterDoc;

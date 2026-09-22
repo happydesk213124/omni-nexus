@@ -86,7 +86,7 @@ async function nxFloatPaintCounts() {
   } finally {await refs.close();}
 }
 async function nxFloatHitSurface(x,y) {
-  if (!nxFloatRoot || nxFloatHidden || nxFloatBlocked()) return false;
+  if (!nxFloatRoot || t._nxHostInspectOpen || nxFloatHidden || nxFloatBlocked()) return false;
   return await hitEl(nxFloatRoot,x,y) || !!(nxFloatCountsOpen && nxFloatCounts && await hitEl(nxFloatCounts,x,y));
 }
 async function nxFloatPaintChrome() {

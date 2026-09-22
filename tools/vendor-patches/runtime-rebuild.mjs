@@ -77,7 +77,7 @@ export function rebuildMessageRuntime(source) {
   once('    const pin = await savePinPercent(pinXPctDefault, pinYPctDefault);', '    nxFloatGeo = {...se}; nxFloatIconGeo = {...iconSe}; await nxFloatApply();\n    const pin = await savePinPercent(pinXPctDefault, pinYPctDefault);');
   // The inspector used to be published only inside a chat pointerdown. A
   // freshly loaded floating viewer must be able to open it before any chat tap.
-  const inspectStart = out.indexOf('      const nxOpenAssetInspect = async (card, assetName) => {');
+  const inspectStart = out.indexOf('      const nxOpenAssetInspect = async (card, assetName, sourceNode) => {');
   const inspectEndText = '      t._nxInspectOpener = nxOpenAssetInspect;';
   const inspectEnd = out.indexOf(inspectEndText, inspectStart) + inspectEndText.length;
   if (inspectStart < 0 || inspectEnd < inspectStart) throw new Error('[runtime rebuild] inspect opener drift');
@@ -85,7 +85,8 @@ export function rebuildMessageRuntime(source) {
   once(inspect, '');
   const inspectHost = '    let pointerGesture = null, mobilePress = null, pinClick = null, actionCard = null, inspectOpen = !1, inspectGuardUntil = 0, pendingSheetHit = null, inspectZones = [], inspectSheetEl = null;';
   once(inspectHost, inspectHost+'\n'+inspect);
-  once('      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;', '      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;\n      if (await nxFloatHitSurface(x, I)) return;');
+  once('      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;', '      if (t._nxHostInspectOpen || t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;\n      if (await nxFloatHitSurface(x, I)) return;');
+  once('    }, onPointerUp = async (f) => {', '    }, onPointerUp = async (f) => {\n      if (t._nxHostInspectOpen) { cancelMobilePress(); pinClick = null; pointerGesture = null; pendingSheetHit = null; t._msgChipPress = null; return; }');
   once('      await restoreFloatingViewerAfterRisuSettings();', '      await restoreFloatingViewerAfterRisuSettings();\n      await nxFloatEnsure();');
   once('  const nxSpinnerPreviews=new Map();',read('stream-runtime.js')+'\n'+read('message-runtime.js')+'\n'+read('scroll-runtime.js')+'\n'+['float-viewer-style.js','float-viewer.js','float-viewer-render.js','float-viewer-input.js','float-viewer-drag.js'].map(read).join('\n')+'\n  const nxSpinnerPreviews=new Map();');
   once('    nxSpinnerPreviews.set(row.jobId+\'_\'+row.shot,{...row});', '    nxSpinnerPreviews.set(row.jobId+\'_\'+row.shot,{...row});\n    await omniMountFooters();\n    await omniStreamObservers();');

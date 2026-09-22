@@ -15,7 +15,7 @@ export function repairAsyncInspect(source) {
   if (start < 0 || end < start || createHash('sha256').update(source.slice(start, end)).digest('hex') !== '9d1945a09d41e8a92c0ad665604d6d1a746fec4a93938ac0b6d54a73df2557f8') {
     throw new Error('[inspect repair] frozen sheet drift');
   }
-  const runtime = readFileSync(new URL('./inspect-runtime.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('./inspect-surface.js', import.meta.url), 'utf8') + '\n' + readFileSync(new URL('./inspect-runtime.js', import.meta.url), 'utf8');
   let out = source.slice(0, start) + runtime + '\n    ' + source.slice(end);
   const state = '    const PRESS_MS = 420;';
   if (out.split(state).length !== 2) throw new Error('[inspect repair] sheet state drift');
@@ -23,7 +23,7 @@ export function repairAsyncInspect(source) {
   // statement (showFullscreen = ..., ..., findActHit = ...), so names added
   // to the runtime file are const declarators there — do NOT also declare
   // them in the injected let below (duplicate declaration breaks the build).
-  return out.replace(state, '    let nxInspectShell = null, nxInspectBuild = null, nxInspectImageHtml = "", nxInspectPaint = Promise.resolve();\n' + state);
+  return out.replace(state, '    const nxInspectDroppedImages = new WeakSet();\n    let nxInspectSurface = null, nxInspectSurfaceBuild = null, nxInspectShell = null, nxInspectBuild = null, nxInspectImageHtml = "", nxInspectMirroredImage = null, nxInspectPaint = Promise.resolve();\n' + state);
 }
 
 /** Close must not wait for host hides: fire-and-forget so the tap returns now. */

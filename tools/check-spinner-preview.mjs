@@ -17,12 +17,13 @@ export async function checkSpinnerPreview(page, source, render) {
     const sanitize=html=>DOMPurify.sanitize(html);
     const check=(value,message)=>{if(!value)throw new Error(message);};
     const seen=new WeakMap();
-    let appendGate=null;
+    let appendGate=null,queries=0,markupReads=0,releases=0;
     class SafeElement {
       #node;
       constructor(node){this.#node=node;}
       querySelector(selector){const n=this.#node.querySelector(selector);return n instanceof HTMLElement?wrap(n):null;}
-      getOuterHTML(){return this.#node.outerHTML;}
+      getOuterHTML(){markupReads++;return this.#node.outerHTML;}
+      release(){releases++;}
       getParent(){return this.#node.parentElement?wrap(this.#node.parentElement):null;}
       getAttribute(name){if(!name.startsWith('x-'))throw new Error('unsupported attribute read');return this.#node.getAttribute(name);}
       setAttribute(name,value){if(!name.startsWith('x-'))throw new Error('unsupported attribute write');this.#node.setAttribute(name,value);}
@@ -32,11 +33,12 @@ export async function checkSpinnerPreview(page, source, render) {
       remove(){this.#node.remove();}
     }
     const wrap=n=>{if(!seen.has(n))seen.set(n,new SafeElement(n));return seen.get(n);};
-    const doc={querySelector:s=>{const n=document.querySelector(s);return n?wrap(n):null;}};
+    const doc={querySelector:s=>{queries++;const n=document.querySelector(s);return n?wrap(n):null;},querySelectorAll:s=>{queries++;return [...document.querySelectorAll(s)].map(wrap);}};
+    const ownScope=()=>{const refs=new Set();return {own:n=>{if(n)refs.add(n);return n;},all:async nodes=>{for(const n of nodes)refs.add(n);return nodes;},close:async()=>{for(const n of refs)n.release();}};};
     const H=async(_doc,tag,{html})=>{const n=wrap(document.createElement(tag));n.setInnerHTML(html);return n;};
     const logs=[];
-    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y','omniMountFooters','omniStreamObservers',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,rows:nxSpinnerPreviews};')(
-      {hostDoc:doc},async()=>({characterId:'bot',chatId:'chat'}),H,()=>{},(...args)=>logs.push(args),async()=>{},async()=>{});
+    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y','omniMountFooters','omniStreamObservers','omniDomScope',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,rows:nxSpinnerPreviews,schedule:nxScheduleSpinnerPreviews,dispose:nxDisposeSpinnerPreviews};')(
+      {hostDoc:doc},async()=>{throw Error('Preview must not load the full character/chat');},H,()=>{},(...args)=>logs.push(args),async()=>{},async()=>{},ownScope);
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=768;
     canvas.getContext('2d').fillRect(0,0,512,768);const url=canvas.toDataURL('image/png');
     const row=shot=>({jobId:'job',shot,cardId:'card-'+shot,characterId:'bot',chatId:'chat',messageIndex:2,url});
@@ -61,10 +63,16 @@ export async function checkSpinnerPreview(page, source, render) {
       const r=img.getBoundingClientRect(),c=img.parentElement.parentElement.getBoundingClientRect();
       check(r.width<=c.width+1&&r.height<=c.height+1,'image must fit inside its slot');
     }
+    queries=0;markupReads=0;const releasedBefore=releases;
     await api.paint();check(count()===4,'repaint must not duplicate images');
+    check(queries===1&&markupReads===0,'unchanged previews need one filtered query and no markup reads');
+    for(let i=0;i<100;i++)api.schedule();
+    await new Promise(resolve=>setTimeout(resolve,160));
+    check(queries===2&&markupReads===0,'100 mutation callbacks must coalesce into one additional query');
     mount(pending.replaceAll('data-inray-spinner=','x-inray-spinner='));
     await api.paint();check(count()===4,'dedicated class and shot identity must paint without the fallback marker');
     mount(pending);await api.paint();check(count()===4,'new message DOM must regain all previews');
+    check(releases>releasedBefore,'temporary host references must be released after painting');
     check(document.querySelectorAll('[data-inray-spinner]').length===4,'painting must retain spinners');
 
     mount(pending);api=make();let release;appendGate=new Promise(resolve=>{release=resolve;});
@@ -77,6 +85,9 @@ export async function checkSpinnerPreview(page, source, render) {
     await api.paint();
     check(count()===0&&api.rows.size===0,'final message DOM must never regain base64 previews');
     await api.accept(row(0));check(count()===0&&api.rows.size===0,'late completion must not reopen a closed job');
+    const beforeIdle=queries;api.schedule();api.dispose();
+    await new Promise(resolve=>setTimeout(resolve,160));
+    check(queries===beforeIdle,'idle/disposed previews must not poll');
     check(!JSON.stringify(logs).includes(url),'diagnostics must not contain image bytes');
     return {passed:true};
   },{code,pending,completed:render('[[@inrayspinner::job_0::512::768]][[@inray::card-0::inxshot_card-0.webp::512::768]]')});

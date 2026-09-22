@@ -1,4 +1,5 @@
 import { chatImageSizeStyle } from '../domain/inray-display';
+export { progressToastView, progressToastStyles } from './progress-toast';
 /**
  * Chat-overlay geometry and matching logic.
  *

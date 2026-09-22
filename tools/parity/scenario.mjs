@@ -543,7 +543,18 @@ export async function runScenario(N, handles) {
       : {};
     const names = got?.names && typeof got.names === 'object' ? got.names : {};
     const pixels = castRec?.name ? await get(`/v1/shots/asset?cast=0&name=${encodeURIComponent(castRec.name)}`) : {};
+    const blob = castRec?.name ? await get(`/v1/shots/asset?cast=0&display=blob&name=${encodeURIComponent(castRec.name)}`) : {};
+    let blobPixels = false;
+    if (blob?.image_url?.startsWith('blob:')) {
+      try {
+        const bytes = new Uint8Array(await (await fetch(blob.image_url)).arrayBuffer());
+        const expected = new Uint8Array(await (await fetch(pixels.image_url)).arrayBuffer());
+        blobPixels = bytes.length > 0 && bytes.length === blob.image_bytes && bytes.length === expected.length && bytes.every((value, i) => value === expected[i]);
+      } finally { URL.revokeObjectURL(blob.image_url); }
+      if (!blobPixels) throw new Error('Blob fullscreen must preserve every original image byte');
+    }
     return {
+      blob_pixels: blobPixels,
       has_image: typeof got?.image_url === 'string' && got.image_url.startsWith('data:'),
       names: Object.keys(names).length,
       pixels_only: pixels?.image_url === got?.image_url && Object.keys(pixels?.names || {}).length === 0,

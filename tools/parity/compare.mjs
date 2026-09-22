@@ -779,7 +779,7 @@ const NEW_ONLY_STEPS = new Map([
     // The ⛶ fullscreen path: div file name → base64 pixels + cast names in
     // one round trip. Risu owns the files, so the name is the reload-proof key.
     'shots.asset',
-    (v) => (v?.has_image === true && Number(v?.names) >= 1 && v?.pixels_only === true && v?.ordered_ids === true
+      (v) => (v?.has_image === true && v?.blob_pixels === true && Number(v?.names) >= 1 && v?.pixels_only === true && v?.ordered_ids === true
       ? null
       : `2.0 must serve shot pixels + cast names by file name, got ${JSON.stringify(v)}`),
   ],

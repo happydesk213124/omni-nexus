@@ -35,19 +35,55 @@ function sheet() {
     async setTextContent(value) {this.text=value;}
     async appendChild(child) {this.children.push(child);}
   }
-  const fullscreen=new Element('fullscreen'),actionMenu=new Element('menu');
+  const fullscreen=new Element('fullscreen'),actionMenu=new Element('menu'),root=new Element('root');
   const c={t:{},inspectOpen:false,actionCard:null,pendingSheetHit:null,inspectGuardUntil:0,inspectZones:[],inspectSheetEl:null,
-    nxInspectShell:null,nxInspectBuild:null,nxInspectImageHtml:'',nxInspectPaint:Promise.resolve(),
-    fullscreen,actionMenu,hidePressFill:async()=>{},Ie:()=> 'data:image/png;base64,CACHED',h:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),w:value=>String(value),
+    nxInspectShell:null,nxInspectBuild:null,nxInspectImageHtml:'',nxInspectMirroredImage:null,nxDropInspectImage:async image=>{if(image)image.removed=true;},nxInspectPaint:Promise.resolve(),URL,
+    fullscreen,actionMenu,k:{showContainer:async()=>{},hideContainer:async()=>{}},hidePressFill:async()=>{},Ie:()=> 'data:image/png;base64,CACHED',h:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),w:value=>String(value),
     e:{createElement:async tag=>{const node=new Element(tag);nodes.push(node);return node;}},
     hideActionMenu:async()=>{c.actionCard=null;c.inspectZones=[];c.inspectSheetEl=null;await actionMenu.setStyleAttribute('display:none');},
     hideFullscreen:async()=>fullscreen.setStyleAttribute('display:none')};
+  c.nxEnsureInspectSurface=()=>({root,fullscreen,actionMenu,doc:c.e});
   const hStart=vendor.indexOf('  async function H(e, n, o = {}) {'),hEnd=vendor.indexOf('  async function rt(',hStart);
   runInNewContext(vendor.slice(hStart,hEnd)+'const '+runtime+'end = null; this.show=showStickyInspect;this.update=updateStickyInspect;',c);
   const a=config.indexOf('const VENDOR_HIDE_INSPECT_BIND_PATCH ='),b=config.indexOf('hideInspect = async () => {',a),end=config.indexOf('\n    };',b);
   runInNewContext('const '+config.slice(b,end)+'};this.close=hideInspect;',c);
   return {c,nodes,writes};
 }
+
+function mirrorInspector(K, clone) {
+  const {c}=sheet();
+  c.K=K;c.y=()=>{};c.nxCloneInspectImage=clone;
+  const start=config.indexOf('      const nxOpenAssetInspect = async');
+  const end=config.indexOf('      const nxFireTap = async',start);
+  runInNewContext(config.slice(start,end)+'this.open=nxOpenAssetInspect;',c);
+  return c;
+}
+
+test('mirror survives cast repaint and releases on close without reading pixels',async()=>{
+  const image={};
+  const c=mirrorInspector(async()=>{throw Error('no file reads');},async()=>image);
+  await c.open({id:'a'},'inxshot_a.webp');await c.t._inspectLoad;
+  assert.equal(c.fullscreen.children[0],image);assert.equal(image.removed,undefined);
+  await c.close();assert.equal(image.removed,true);assert.equal(c.fullscreen.html,'');
+});
+
+test('closing before a clone resolves releases it without a late paint',async()=>{
+  let resolve;
+  const c=mirrorInspector(async()=>({}),()=>new Promise(done=>{resolve=done;}));
+  await c.open({id:'a'},'inxshot_a.webp');await tick();
+  await c.close();const image={};resolve(image);await c.t._inspectLoad;
+  assert.equal(image.removed,true);assert.equal(c.fullscreen.children.length,0);
+});
+
+test('late mirror cannot replace the next image',async()=>{
+  let resolve;
+  const old={},fresh={};
+  const c=mirrorInspector(async()=>({}),card=>card.id==='old'?new Promise(done=>{resolve=done;}):Promise.resolve(fresh));
+  await c.open({id:'old'},'inxshot_old.webp');const first=c.t._inspectLoad;
+  await c.open({id:'new'},'inxshot_new.webp');await c.t._inspectLoad;
+  resolve(old);await first;
+  assert.equal(old.removed,true);assert.equal(c.fullscreen.children[0],fresh);
+});
 
 test('frozen sheet exposes close during loading and reuses all nodes on reopen',async()=>{
   const {c,nodes}=sheet();
@@ -124,7 +160,7 @@ test('cast resolve hides the spinner and keeps errors on the status row',async()
   const spinner=nodes.find(n=>n.tag==='div'&&/nxInspectSpin/.test(n.style||''));
   view.characters=[{name:'Alice',cast_id:'9396'}];view._nxCastLoading=false;
   await c.update(view);
-  assert.match(spinner.style,/display:none/,'spinner hidden after resolve');
+  assert.match(spinner.style,/visibility:hidden/,'spinner hides without changing close-row geometry');
   view._nxCastError='캐릭터 이름을 불러오지 못했습니다.';
   await c.update(view);
   const status=nodes.find(n=>n.tag==='div'&&('text' in n));
