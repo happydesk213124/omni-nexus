@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.1';
+const PLUGIN_VERSION = '0.2.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -956,8 +956,11 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
-          <strong>0.2.1</strong>
+          <strong>0.2.2</strong>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>진행 토스트를 Risu SafeElement 방식에 맞춰 표시하고, 버튼을 누르면 장면 정리부터 바로 안내합니다. 검은 반투명 배경과 흰 글씨로 밝은 화면에서도 읽기 쉽습니다.</li>
+            <li>생성 이미지는 WebP 품질 90으로 한 번만 변환해 미리보기와 저장에 함께 사용하며, 화면 표시와 저장을 병행합니다.</li>
+            <li>이미지 미리보기 갱신을 묶어 반복 화면 조회를 줄이고, 생성 중인 이미지는 한 장씩 바로 표시합니다.</li>
             <li>샷 태그 수정에서 만화도 일반 삽화처럼 캐릭터를 고르고 외형·코스튬을 적용하도록 통일했습니다.</li>
             <li>캐릭터 탭의 실수로 누르는 ×를 없애고, 현재 캐릭터 칸만 지우는 삭제 버튼과 정돈된 탭 순서를 적용했습니다.</li>
             <li>만화 생성옵션에 자연어 보충 설명을 추가했습니다. 켜면 각 컷의 태그 뒤에 구도·인물 위치·행동·표정·조명을 자세히 설명합니다.</li>
