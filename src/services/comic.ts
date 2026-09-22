@@ -20,6 +20,7 @@ import { getConfig } from './context.ts';
 import { authorNoteSystemContent } from '../domain/tagging/session-note.ts';
 import { getSessionAuthorNote, rosterWithSessionOutfits, sessionAuthorNoteLlmContent } from './session-author-note.ts';
 import { getPrompt } from './settings.ts';
+import { comicNaturalInstruction } from '../domain/comic/natural.ts';
 
 function rosterBlock(
   names: string[],
@@ -55,7 +56,7 @@ async function callComicLlm(user: string, extraNote: string, sessionId: unknown,
   const note = cleanText(extraNote, 8000);
   const sessMsg = await sessionAuthorNoteLlmContent(sessionId);
   const messages = [
-    { role: 'system' as const, content: sys },
+    { role: 'system' as const, content: `${sys}\n\n${comicNaturalInstruction(getConfig().card.comic_natural_supplement === true)}` },
     ...(globalNote ? [{ role: 'system' as const, content: globalNote }] : []),
     ...(note
       ? [{

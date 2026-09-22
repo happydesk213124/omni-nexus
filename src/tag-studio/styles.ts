@@ -129,9 +129,8 @@ export function tagStudioCss(): string {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #nx-tag-studio .tab.on { background: var(--panel); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
-#nx-tag-studio .tab .x { color: #7c8095; font-size: 14px; line-height: 1; padding: 0 1px; flex: 0 0 auto; }
-#nx-tag-studio .tab .x:hover { color: #ff9db1; }
-#nx-tag-studio .tabrow .pick { flex: 0 0 86px; min-width: 86px; padding: 3px 6px; }
+#nx-tag-studio #tabDelete:disabled { opacity: .4; cursor: default; }
+#nx-tag-studio .tabrow .pick { flex: 0 0 120px; min-width: 120px; padding: 3px 6px; }
 #nx-tag-studio .tabrow .pick select { height: 26px; padding: 0 6px; font-size: 12px; }
 #nx-tag-studio .tabadd {
   width: 34px; border: 0; border-left: 1px solid var(--line);

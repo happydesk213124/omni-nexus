@@ -72,6 +72,7 @@ export interface ComicCutCharacter {
 export interface ComicCut {
   cut_kind: ComicCutKind;
   base: string;
+  natural?: string;
   characters: ComicCutCharacter[];
 }
 
@@ -151,15 +152,18 @@ function readCut(raw: unknown): ComicCut | null {
     }
   }
   if (!base && !characters.length) return null;
-  return { cut_kind, base, characters };
+  const natural = cleanText(row.natural, 2000);
+  return { cut_kind, base, ...(natural ? { natural } : {}), characters };
 }
 
-function synthesizeLayout(cuts: readonly ComicCut[]): string {
+export function synthesizeLayout(cuts: readonly ComicCut[], withNatural = false): string {
   const parts: string[] = [];
   for (let i = 0; i < cuts.length; i += 1) {
     const cut = cuts[i]!;
     const label = CUT_LABELS[cut.cut_kind] || 'scene';
-    parts.push(cut.base ? `cut ${i + 1} (${label}): ${cut.base}` : `cut ${i + 1} (${label})`);
+    const description = withNatural ? cleanText(cut.natural, 2000) : '';
+    const base = cut.base ? `cut ${i + 1} (${label}): ${cut.base}` : `cut ${i + 1} (${label})`;
+    parts.push(description ? `${base}. ${description}` : base);
   }
   return parts.length ? `${parts.join('. ')}.` : '';
 }

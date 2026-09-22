@@ -368,6 +368,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     ? true
     : flagOn(card.nai_use_coords, true);
   card.comic_gen = comicGenOn(card) ? 'on' : 'off';
+  card.comic_natural_supplement = flagOn(card.comic_natural_supplement, false);
   card.comic_author_note = String(card.comic_author_note ?? '').trim().slice(0, 8000);
   card.comic_llm_batch = normalizeComicLlmBatch(card.comic_llm_batch);
   card.comic_schedule = normalizeComicSchedule(card.comic_schedule);

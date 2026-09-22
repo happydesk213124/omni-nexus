@@ -58,6 +58,10 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   }
   const out = document.createElement('div');
   out.innerHTML = pane;
+  if (tab === 'comic_gen') {
+    const anchor = out.querySelector('#nx-comic-llm-batch')?.closest('label, .row');
+    anchor?.insertAdjacentHTML('afterend', '<label class="row"><span class="row-text"><b>자연어 보충 설명</b></span><span class="sw"><input id="nx-comic-natural-supplement" type="checkbox"></span></label>');
+  }
   if (tab === 'models') {
     const bar = out.querySelector('#nx-llm-role-tabs');
     const stack = bar?.parentElement;

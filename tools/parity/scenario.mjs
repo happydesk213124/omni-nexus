@@ -95,6 +95,7 @@ export async function runScenario(N, handles) {
 
   // ── boot ────────────────────────────────────────────────────────────────
   await rec('ready', () => N.ready());
+  const supportsComicNatural = typeof (await get('/v1/settings'))?.settings?.card?.comic_natural_supplement === 'boolean';
   // Shape, not value: a 2.0 is expected to report a different version than 1.3.
   // `tools/audit.mjs` asserts the exact string in the built bundle.
   await rec('bridge.VERSION', () => (/^\d+\.\d+\.\d+$/.test(String(N.VERSION)) ? 'semver' : `bad:${N.VERSION}`));
@@ -1290,6 +1291,36 @@ export async function runScenario(N, handles) {
   });
 
   // ── character delete cascade ──────────────────────────────────────────
+  await rec('comic.natural_supplement', async () => {
+    // The legacy backend retains unknown settings but cannot generate this new field.
+    // Exercise persistence on both; assert the complete NAI wire on the new backend.
+    for (const batch of ['once', 'per_shot', 'with_main']) {
+      for (const enabled of [true, false]) {
+        await put('/v1/settings', { card: { comic_gen: 'on', comic_llm_batch: batch, comic_gen_ratio: 100, comic_natural_supplement: enabled } });
+        if ((await get('/v1/settings')).settings.card.comic_natural_supplement !== enabled) throw new Error('comic natural setting did not persist');
+        if (!supportsComicNatural) continue;
+        const cuts = COMIC_CUTS.map((cut, i) => ({ ...cut, natural: `Exact panel description number ${i + 1}.` }));
+        const page = { shot_index: 0, aspect: 'portrait', coords: 'ai_choice', cuts };
+        handles.setLlmReply?.(JSON.stringify({
+          scenes: [{ place: 'hallway', shots: [comicShot(batch === 'with_main' ? { comic_page: page } : {})] }],
+          pages: [page],
+        }));
+        const before = handles.naiRequests.filter((r) => r.kind === 'generate').length;
+        const job = await comicJob(`natural_${batch}_${enabled}`);
+        const result = await waitForJob(job?.job_id);
+        const sent = handles.naiRequests.filter((r) => r.kind === 'generate').slice(before);
+        if (result?.state !== 'done' || !sent.length) throw new Error('comic natural generation failed');
+        const wire = JSON.stringify(sent.at(-1).body);
+        for (let i = 1; i <= cuts.length; i++) {
+          if (wire.includes(`Exact panel description number ${i}.`) !== enabled) throw new Error(`comic natural wire mismatch: ${batch}/${enabled}/${i}`);
+        }
+      }
+    }
+    handles.setLlmReply?.(DEFAULT_LLM_REPLY);
+    await put('/v1/settings', { card: { comic_gen: 'off', comic_llm_batch: 'once', comic_gen_ratio: 50, comic_natural_supplement: false } });
+    return { persistence: true, batches: ['once', 'per_shot', 'with_main'] };
+  });
+
   await rec('chars.delete_cascade', () => post('/v1/characters', {
     session_id: 'sess_chat_a',
     root_session_ids: ['sess_chat_a', 'sess_chat_b'],

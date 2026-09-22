@@ -216,6 +216,7 @@
     "nai_use_coords": true,
     "comic_gen": "on",
     "comic_author_note": "",
+    "comic_natural_supplement": false,
     "comic_llm_batch": "with_main",
     "comic_schedule": "overlap",
     "comic_max_pages": 2,
