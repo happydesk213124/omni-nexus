@@ -44,31 +44,25 @@
     const styles = globalThis.__INLAY_VIEWER_CORE__.progressToastStyles;
     const root = await H(doc, 'div', { style: nxToastPos({ visible: false, pointerEvents: false }) });
     try {
-      await root.setAttribute('id', 'inlay-nx-progress-toast');
-      await root.setAttribute('role', 'status');
-      await root.setAttribute('aria-live', 'polite');
-      await root.setAttribute('aria-atomic', 'true');
-      const card = await H(doc, 'div', { style: styles.card });
-      const header = await H(doc, 'div', { style: styles.header });
-      const icon = await H(doc, 'span', { style: 'flex:none;font:600 12px Arial;width:14px;text-align:center;' });
-      await icon.setAttribute('aria-hidden', 'true');
-      const title = await H(doc, 'span', { style: styles.title });
-      const clock = await H(doc, 'span', { style: styles.clock });
-      await clock.setAttribute('aria-hidden', 'true');
-      const detail = await H(doc, 'div', { style: styles.detail });
-      const rail = await H(doc, 'div', { style: styles.rail });
-      await rail.setAttribute('aria-hidden', 'true');
-      const fill = await H(doc, 'span');
-      await header.appendChild(icon);
-      await header.appendChild(title);
-      await header.appendChild(clock);
-      await card.appendChild(header);
-      await card.appendChild(detail);
-      await rail.appendChild(fill);
-      await card.appendChild(rail);
-      await root.appendChild(card);
+      // SafeElement.setAttribute only accepts x-* names. Standard accessibility
+      // attributes belong in the sanitized, static shell; updates stay text-only.
+      await root.setAttribute('x-omni-progress-toast', 'true');
+      await root.setInnerHTML(`<div role="status" aria-live="polite" aria-atomic="true" style="${styles.card}">
+        <div style="${styles.header}">
+          <span data-omni-progress="icon" aria-hidden="true" style="flex:none;font:600 12px Arial;width:14px;text-align:center;"></span>
+          <span data-omni-progress="title" style="${styles.title}"></span>
+          <span data-omni-progress="clock" aria-hidden="true" style="${styles.clock}"></span>
+        </div>
+        <div data-omni-progress="detail" style="${styles.detail}"></div>
+        <div data-omni-progress="rail" aria-hidden="true" style="${styles.rail}"><span data-omni-progress="fill"></span></div>
+      </div>`);
+      const nodes = { root };
+      for (const key of ['icon', 'title', 'clock', 'detail', 'rail', 'fill']) {
+        nodes[key] = await root.querySelector(`[data-omni-progress="${key}"]`);
+        if (!nodes[key]) throw new Error('Progress toast shell missing: ' + key);
+      }
       await body.appendChild(root);
-      nxProgress.nodes = { root, icon, title, clock, detail, rail, fill };
+      nxProgress.nodes = nodes;
       t._progressToastRoot = root;
       return nxProgress.nodes;
     } catch (error) {

@@ -27,12 +27,22 @@ function harness() {
   const timers = new Map(), writes = [], elements = [];
   class Element {
     constructor(tag) { this.tag = tag; this.children = []; elements.push(this); }
-    async setAttribute(key, value) { this[key] = value; writes.push(['attr', key, value]); }
+    async setAttribute(key, value) {
+      if (!key.startsWith('x-')) throw new Error(`SafeElement forbids attribute: ${key}`);
+      this[key] = value; writes.push(['attr', key, value]);
+    }
     async setStyleAttribute(value) { this.style = value; writes.push(['style', value]); }
     async setTextContent(value) { this.text = value; writes.push(['text', value]); }
     async appendChild(node) { this.children.push(node); writes.push(['append']); }
     async remove() { writes.push(['remove']); }
-    async setInnerHTML() { throw Error('Whole-toast HTML replacement is forbidden'); }
+    async setInnerHTML(html) {
+      assert.equal(this.html, undefined, 'Only the initial static shell may use HTML');
+      this.html = html;
+      this.parts = new Map([...html.matchAll(/<(span|div) data-omni-progress="([^"]+)"/g)]
+        .map(([, tag, key]) => [key, new Element(tag)]));
+      writes.push(['html', html]);
+    }
+    async querySelector(selector) { return this.parts?.get(selector.match(/data-omni-progress="([^"]+)"/)?.[1]) ?? null; }
     async getBoundingClientRect() { throw Error('Toast must not measure layout'); }
   }
   const body = new Element('body');
