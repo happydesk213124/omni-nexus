@@ -74,16 +74,14 @@
     const nodes = await nxProgressMount();
     if (!nodes || nxProgress.disposed) return;
     const styles = globalThis.__INLAY_VIEWER_CORE__.progressToastStyles;
-    const color = { busy: '#7132f5', success: '#026b3f', error: '#b42318', muted: '#686b82' }[view.tone];
     const icon = { busy: '•', success: '✓', error: '!', muted: '–' }[view.tone];
     await nxProgressField('title', view.title, value => nodes.title.setTextContent(value));
     await nxProgressField('detail', view.detail, value => nodes.detail.setTextContent(value));
     await nxProgressField('clock', view.clock, value => nodes.clock.setTextContent(value));
     await nxProgressField('icon', icon, value => nodes.icon.setTextContent(value));
-    await nxProgressField('color', color, value => nodes.title.setStyleAttribute(styles.title + 'color:' + value));
     await nxProgressField('detailStyle', view.detail ? styles.detail : 'display:none;', value => nodes.detail.setStyleAttribute(value));
     await nxProgressField('rail', view.showRail ? styles.rail : 'display:none;', value => nodes.rail.setStyleAttribute(value));
-    const fillStyle = styles.fill + `background:${color};opacity:${view.measured ? 1 : .3};transform:scaleX(${view.measured ? view.ratio : .24});`;
+    const fillStyle = styles.fill + `background:#fff;opacity:${view.measured ? 1 : .3};transform:scaleX(${view.measured ? view.ratio : .24});`;
     await nxProgressField('fill', fillStyle, value => nodes.fill.setStyleAttribute(value));
     await nxProgressVisible(true);
   }
