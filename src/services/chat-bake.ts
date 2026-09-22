@@ -1,3 +1,4 @@
+import { insertAtAnalysisLine, analysisBody } from '../domain/prompt/message-body';
 import { measureWrite } from '../core/write-metrics';
 /**
  * Write / strip `[[@inray::cardId::inxshot_…]]` on one Risu chat message.
@@ -92,6 +93,8 @@ async function writeChat(
       const messages = chatMessageList(fresh);
       const target = messages[opts.messageIndex];
       if (!target || messageBody(target) !== opts.previousBody) throw new Error('Message changed during bake');
+      const original = chatMessageList(chat)[opts.messageIndex];
+      if (String(original?.chatId || original?.id || '') !== String(target.chatId || target.id || '')) throw new Error('Message identity changed during bake');
       setMessageBody(target, messageBody(chatMessageList(chat)[opts.messageIndex]));
       if (Array.isArray(fresh.message)) fresh.message = messages;
       else fresh.messages = messages;
@@ -112,6 +115,9 @@ export async function bakeCardsIntoChatMessage(opts: {
   chatIndex: number;
   messageIndex: number;
   cards: BakeCardRow[];
+  analysisLines?: boolean;
+  hostMessageId?: string;
+  expectedPrefix?: string;
 }): Promise<boolean> {
   const loaded = await loadTargetChat(opts.charIndex, opts.chatIndex);
   if (!loaded) return false;
@@ -120,6 +126,8 @@ export async function bakeCardsIntoChatMessage(opts: {
   const idx = Math.floor(Number(opts.messageIndex));
   if (!Number.isFinite(idx) || idx < 0 || idx >= messages.length) return false;
   const msg = messages[idx]!;
+  if (opts.hostMessageId && String(msg.chatId || msg.id || '') !== opts.hostMessageId) return false;
+  if (opts.expectedPrefix && !analysisBody(messageBody(msg)).startsWith(opts.expectedPrefix)) return false;
   const side = normalizeInlineChatTextSide(getConfig().card?.inline_chat_text_side);
   const placements: Array<{ line: number; cardId: string; assetName: string; dimensions?: BakeDimensions }> = [];
   for (const card of opts.cards) {
@@ -133,7 +141,10 @@ export async function bakeCardsIntoChatMessage(opts: {
     placements.push({ line, cardId, assetName, dimensions: await dimensionsForCard(cardId, card, true) });
   }
   const previousBody = messageBody(msg);
-  let next = applyBakeTokensToBody(previousBody, placements, side);
+  let next = opts.analysisLines ? stripBakeTokens(previousBody) : applyBakeTokensToBody(previousBody, placements, side);
+  if (opts.analysisLines) for (const row of placements.slice().sort((a,b)=>b.line-a.line)) {
+    next = insertAtAnalysisLine(next, row.line, side, bakeTokenForCard(row.cardId,row.assetName,row.dimensions));
+  }
   for (const row of placements) {
     if (row.dimensions) next = replaceBakeTokenCard(next, row.cardId, row.cardId, row.assetName, row.dimensions);
   }
@@ -219,8 +230,15 @@ export function jobChatTarget(request: {
   char_index?: unknown;
   chat_index?: unknown;
   message_index?: unknown;
-}): { charIndex: number; chatIndex: number; messageIndex: number } {
+  analysis_lines?: boolean;
+  host_message_id?: string;
+  defer_attachment?: boolean;
+  assistant_text?: string;
+}): { charIndex: number; chatIndex: number; messageIndex: number; analysisLines?: boolean; hostMessageId?: string; expectedPrefix?: string } {
   return {
+    analysisLines: request.analysis_lines === true,
+    hostMessageId: request.host_message_id,
+    expectedPrefix: request.defer_attachment ? request.assistant_text : undefined,
     charIndex: toInt(request.char_index, -1),
     chatIndex: toInt(request.chat_index, -1),
     messageIndex: toInt(request.message_index, -1),
@@ -253,6 +271,8 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
+  if (opts.hostMessageId && String(msg.chatId || msg.id || '') !== opts.hostMessageId) throw new Error('Message identity changed');
+  if (opts.expectedPrefix && !analysisBody(messageBody(msg)).startsWith(opts.expectedPrefix)) throw new Error('Message body changed');
   const previousBody=messageBody(msg);
   const side=normalizeInlineChatTextSide(getConfig().card?.inline_chat_text_side);
   const groups=new Map<number,string[]>();
@@ -267,12 +287,14 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   }
   const lines=chatBodyLineCount(stripBakeTokens(next));
   for(const shot of opts.shots.slice(Math.min(reused,opts.shots.length))) {
-    const line=Math.max(1,Math.min(lines,Math.floor(Number(shot.line)||lines)));
+    const requested=Math.floor(Number(shot.line)||lines);
+    const line=opts.analysisLines ? requested : Math.max(1,Math.min(lines,requested));
     const list=groups.get(line)||[];list.push(spinnerToken(opts.jobId,shot.shot_index,shot.width,shot.height));groups.set(line,list);
   }
   // Lines above are stripped-basis (same as the tagger's L-numbers); map back
   // to raw lines on insert so token-only rows cannot shift the slot.
-  for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0])) next=insertSnippetAtStrippedLine(next,line,side,tokens.join(''));
+  for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0])) next=opts.analysisLines
+    ? insertAtAnalysisLine(next,line,side,tokens.join('')) : insertSnippetAtStrippedLine(next,line,side,tokens.join(''));
   setMessageBody(msg,next);
   await writeChat(loaded.host,opts.charIndex,opts.chatIndex,loaded.chat,{messageIndex:opts.messageIndex,previousBody});return true;
 }
@@ -280,6 +302,8 @@ export async function finishJobSpinner(opts: ReturnType<typeof jobChatTarget> & 
   const asset=await imageAssetRef(opts.cardId);if(!asset?.path)throw new Error('Shot asset missing');
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
+  if (opts.hostMessageId && String(msg.chatId || msg.id || '') !== opts.hostMessageId) throw new Error('Message identity changed');
+  if (opts.expectedPrefix && !analysisBody(messageBody(msg)).startsWith(opts.expectedPrefix)) throw new Error('Message body changed');
   const previousBody=messageBody(msg);
   const token=bakeTokenForCard(opts.cardId,asset.name, await dimensionsForCard(opts.cardId, opts) || spinnerDimensions(previousBody,opts.jobId,opts.shot));
   if(!token)throw new Error('Invalid shot asset');
@@ -297,6 +321,8 @@ export async function finishJobSpinners(opts: ReturnType<typeof jobChatTarget> &
   }
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
+  if (opts.hostMessageId && String(msg.chatId || msg.id || '') !== opts.hostMessageId) throw new Error('Message identity changed');
+  if (opts.expectedPrefix && !analysisBody(messageBody(msg)).startsWith(opts.expectedPrefix)) throw new Error('Message body changed');
   const previousBody=messageBody(msg);
   let next=previousBody;
   for(const replacement of replacements) {

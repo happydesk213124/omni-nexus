@@ -127,10 +127,18 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-llm-tag-cal', 'llm_tag_cal', false],
     ['nx-preprocess', 'preprocessing', false],
     ['nx-stream-keywords-on', 'stream_keywords_enabled', false],
+    ['nx-omni-helper', 'omni_helper_prompt', false],
   ] as const) {
     out.querySelector<HTMLInputElement>('#' + id)?.toggleAttribute('checked', card[key] == null ? defaultOn : Boolean(card[key]));
   }
   const keywords = out.querySelector('#nx-stream-keywords');
+  for (const id of ['nx-inline-chat', 'nx-persist-chat']) {
+    const input = out.querySelector<HTMLInputElement>('#' + id);
+    if (input) { input.setAttribute('checked', ''); input.setAttribute('disabled', ''); }
+  }
+  for (const key of ['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note']) {
+    vendor.querySelector('#nx-prompt-' + key)?.remove();
+  }
   if (card && keywords) keywords.textContent = String(card.stream_keywords || '');
   const chipRow = vendor.querySelector('.preset-chip-row');
   const tiles = out.querySelector('#nx-preset-chips');

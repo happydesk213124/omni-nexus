@@ -1,3 +1,4 @@
+import { withoutLegacyPercentPrompt } from '../domain/prompt/message-body';
 /**
  * Settings, the prompt store, and the health payload.
  *
@@ -52,6 +53,10 @@ export async function seedPrompts(): Promise<void> {
   const now = Date.now() / 1000;
   for (const key of PROMPT_KEYS) {
     const existing = await idbGet('meta', `prompt:${key}`);
+    if (existing?.text && ['format', 'tagger'].includes(key)) {
+      const text = withoutLegacyPercentPrompt(String(existing.text));
+      if (text !== existing.text) await idbPut('meta', {...existing, text, updated_at: now});
+    }
     if (!existing) {
       await idbPut('meta', { key: `prompt:${key}`, text: promptText(key), updated_at: now });
     }
@@ -547,6 +552,10 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Ap
     if ('fixed_prompt_suffix' in card) {
       merged.fixed_prompt_suffix = String(card.fixed_prompt_suffix ?? '').trim().slice(0, 8000);
     }
+    merged.inline_chat_images = true;
+    merged.persist_chat_images = true;
+    merged.llm_anchor_percent = false;
+    merged.omni_helper_prompt = merged.omni_helper_prompt === true;
     cfg.card = merged;
     cfg.card.character_max = characterMaxLimit(cfg.card);
     // Old viewer modes retired with the galleryUi window (same mapping as

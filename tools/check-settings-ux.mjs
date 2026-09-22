@@ -39,6 +39,18 @@ try {
   assert.equal(values.name, 'saved name');
   assert.equal(values.loreParent,'nx-lorefilter-slot');
   assert.equal(values.loreRescan,1);
+  const streamingControls = await page.evaluate(() => {
+    document.body.innerHTML = SettingsTabs.tabHtml('dashboard', '<input id="nx-inline-chat" type="checkbox"><input id="nx-persist-chat" type="checkbox">');
+    const required = ['nx-inline-chat','nx-persist-chat'].map(id=>{const el=document.getElementById(id);return el.checked && el.disabled;});
+    document.body.innerHTML = SettingsTabs.tabHtml('gen_options', '', {card:{omni_helper_prompt:true}});
+    const helper=document.getElementById('nx-omni-helper'), keywords=document.getElementById('nx-stream-keywords-on');
+    const helperOn=helper.checked, above=!!(helper.compareDocumentPosition(keywords)&Node.DOCUMENT_POSITION_FOLLOWING);
+    document.body.innerHTML = SettingsTabs.tabHtml('gen_options', '', {card:{}});
+    const helperOff=!document.getElementById('nx-omni-helper').checked;
+    document.body.innerHTML = SettingsTabs.tabHtml('prompts', '<textarea id="nx-prompt-char_looks"></textarea>');
+    return {required,helperOn,above,helperOff,retired:document.querySelectorAll('#nx-prompt-char_looks,#nx-prompt-autotag,#nx-prompt-asset_tags_inject,#nx-prompt-asset_author_note').length,reset:document.querySelectorAll('[data-reset-prompt="character_common"]').length};
+  });
+  assert.deepEqual(streamingControls,{required:[true,true],helperOn:true,above:true,helperOff:true,retired:0,reset:0});
 
   await mkdir('.test-build/settings-ux', { recursive: true });
   for (const width of [320, 375, 425, 768, 1440, 3440]) {

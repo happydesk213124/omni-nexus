@@ -442,6 +442,13 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // Retired positioning is an intentional contract, not normalization: retain
+  // each difference in the report and reject any value other than disabled/null.
+  // The scenario separately attempts to re-enable it and asserts L-number output.
+  if (/\.value\.(?:settings|json)\.card\.llm_anchor_percent$/.test(at)) return a === true && b === false;
+  if (/\.value\.(?:settings|json)\.card\.omni_helper_prompt$/.test(at)) return a === undefined && b === false;
+  if (/^(?:job\.(?:wait|wait_busy_duplicate|wait_for_folder)|speech\.job_wait)\.value\.result\.cards\[0\]\.y_percent$/.test(at)
+    || /^(?:gallery\.list\.value\.items\[0\]|images\.json\.value|cards\.(?:tags|reroll)\.value\.card)\.y_percent$/.test(at)) return typeof a === 'number' && b === null;
   if(/^gallery\.(list|explore)\.value\.items\[0\]\.png_bytes$/.test(at))return Number(b)>Number(a)&&Number(a)>0;
   if(at==='images.json.value.content_hash')return b==='';
   // Cast ids ride the image location (memory-only) so the fullscreen overlay
@@ -614,6 +621,9 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  ['settings.stream_contract', v => v?.defaultOff === true && v.helperToggle === true && v.mandatoryOn === true && v.percentDisabled === true ? null : 'streaming settings contract failed'],
+  ['job.commit_output_unknown', v => v?.ok === false && v.error?.code === 'not_pending' ? null : 'unknown stream attached'],
+  ['job.line_placement_contract', v => v?.line === 1 && v.percent === null && v.count === 1 ? null : 'L-number placement contract failed'],
   // Intentional fix: 1.x requires a nonempty SA form for deletion and lacks role
   // credentials. Keep the difference visible and assert the corrected API contract.
   ['settings.vertex_credentials', v => v?.saved === true && v.redacted === true && v.cleared === true

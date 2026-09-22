@@ -600,15 +600,8 @@ export function canRetargetJobSaveHash(
   return prefixMatchRatio(meta?.sourcePreview || '', text) >= HASH_REBIND_THRESHOLD;
 }
 
-/** Prefer saved y%/anchor%; missing → +Infinity so they sort after placed shots. */
-function cardYPercent(card: GalleryCard | null | undefined): number {
-  const raw = card?.y_percent ?? card?.anchor_percent ?? card?.read_percent;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
-}
-
 function selectedOrder(left: GalleryCard | null | undefined, right: GalleryCard | null | undefined): number {
-  return cardYPercent(left) - cardYPercent(right)
+  return finiteNumber(left?.line, Number.MAX_SAFE_INTEGER) - finiteNumber(right?.line, Number.MAX_SAFE_INTEGER)
     || finiteNumber(left?.paragraph) - finiteNumber(right?.paragraph)
     || finiteNumber(left?.shot_index) - finiteNumber(right?.shot_index)
     || finiteNumber(right?.created_at) - finiteNumber(left?.created_at);
@@ -3373,19 +3366,15 @@ export function evenAnchorPercent(index: number, count: number): number {
 }
 
 /**
- * Prefer card y_percent / anchor_percent; else even band starts.
- * Pass `{ forceEven: true }` when LLM placement is OFF so saved y% is ignored.
+ * Retained for the frozen viewer ABI. Placement no longer reads legacy percents.
  */
 export function resolveCardAnchorPercent(
-  card: GalleryCard | null | undefined,
+  _card: GalleryCard | null | undefined,
   index = 0,
   count = 1,
-  opts: { forceEven?: boolean } | null = null,
+  _opts: { forceEven?: boolean } | null = null,
 ): number {
-  if (opts && opts.forceEven) return evenAnchorPercent(index, count);
-  const raw = card?.y_percent ?? card?.anchor_percent ?? card?.read_percent;
-  const n = Number(raw);
-  if (Number.isFinite(n)) return clampPercent(n);
+
   return evenAnchorPercent(index, count);
 }
 

@@ -102,7 +102,26 @@ export function rebuildMessageRuntime(source) {
   once('      if (card.power === !1 || !card.auto_gen_on_reply) return content;\n      if (!text || text.length <= 8) return content;\n      t._scriptStreaming = !0;', '      t._scriptStreaming = !!text;');
   out=out.replaceAll('afterRequest 활성','응답 완료 API 활성').replace('hook=${t.replacerReady ? "afterRequest"','hook=${t.replacerReady ? "chatOutput"');
   assertCommittedReplyRuntime(out);
-  return protectSavedFrames(out);
+  for (const name of ['stopStreamKeywordTick', 'parsedStreamKeywords', 'tickStreamKeywords', 'ensureStreamKeywordTick']) fn('  function '+name+'(', '');
+  for (const name of ['runAutoGenFromDom', 'scheduleAutoGenOnReply']) fn('  async function '+name+'(', '');
+  fn('  async function onScriptOutput(', read('stream-keyword-runtime.js'));
+  once('            <label class="toggle-row" data-nx-help-id="nx-llm-anchor"><input type="checkbox" id="nx-llm-anchor" ${i.llm_anchor_percent ? "checked" : ""}><span>LLM 읽기 위치 배치</span></label>', '');
+  once('llm_anchor_percent: ee("nx-llm-anchor"),', 'llm_anchor_percent: false,');
+  return protectSavedFrames(retirePercentPlacement(out));
+}
+
+export function retirePercentPlacement(out) {
+  // Legacy files remain importable; none of the frozen viewer fallbacks may
+  // recover percent positioning or its inspector chip from old metadata.
+  for (const [expression, count] of [
+    ['c?.y_percent ?? c?.anchor_percent ?? c?.read_percent', 2],
+    ['e?.y_percent ?? e?.anchor_percent ?? e?.read_percent', 2],
+    ['Q.y_percent ?? Q.anchor_percent ?? Q.read_percent', 1],
+  ]) {
+    if (out.split(expression).length !== count + 1) throw new Error('[runtime rebuild] percent placement drift: ' + expression);
+    out = out.replaceAll(expression, 'undefined');
+  }
+  return out;
 }
 
 export function assertCommittedReplyRuntime(out) {

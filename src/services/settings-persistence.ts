@@ -1,6 +1,7 @@
 import type { Settings } from '../core/types';
 import { deepcopy } from '../core/util/object';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { ensureOmniHelperModule } from '../storage/omni-helper-module';
 import { saveSettingsToStorage } from '../storage/settings-store';
 import { configLock, getConfig } from './context';
 
@@ -9,12 +10,20 @@ type Pending = { snapshot: Settings; verify: boolean; waiting: Waiting[] };
 let pending: Pending | null = null;
 let running = false;
 let displayKey: string | undefined;
+let helperEnabled: boolean | undefined;
 
 function syncDisplay(snapshot: Settings): void {
   const card = snapshot.card;
   const folded = card?.persist_chat_images_folded === true;
   const scale = card?.inline_chat_scale_pct;
   const controls = { enabled: card?.inline_msg_fan === true, userchat: card?.userchat === true };
+  const helper = card.omni_helper_prompt === true;
+  if (helper !== helperEnabled) {
+    helperEnabled = helper;
+    void ensureOmniHelperModule(helper).then(ok => {
+      if (!ok && helperEnabled === helper) helperEnabled = undefined;
+    }, () => { if (helperEnabled === helper) helperEnabled = undefined; });
+  }
   const key = JSON.stringify([folded, scale, controls]);
   if (key === displayKey) return;
   displayKey = key;

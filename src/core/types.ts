@@ -246,6 +246,7 @@ export interface CardSettings {
   image_press_inspect?: 'off' | 'hold' | 'two' | 'three' | 'both';
   auto_gen_on_reply: boolean;
   /** Master switch for stream-keyword gen. Independent of execute / auto_gen_on_reply. */
+  omni_helper_prompt: boolean;
   stream_keywords_enabled: boolean;
   /** Comma-separated stream needles (≥3 chars). Empty = off even if the toggle is on. */
   stream_keywords: string;
@@ -548,6 +549,9 @@ export type StoreName = 'meta' | 'cards' | 'characters' | 'jobs' | 'images';
 export type JobState = 'queued' | 'tagging' | 'generating' | 'done' | 'cancelled' | 'error';
 
 export interface JobRequest {
+  stream_id?: string;
+  defer_attachment?: boolean;
+  analysis_lines?: boolean;
   session_id: string;
   character_id?: string;
   character_name?: string;

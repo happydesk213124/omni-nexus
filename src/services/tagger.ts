@@ -1,3 +1,4 @@
+import { analysisBody } from '../domain/prompt/message-body';
 import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 import { comicNaturalInstruction } from '../domain/comic/natural';
 /**
@@ -15,9 +16,6 @@ import { comicNaturalInstruction } from '../domain/comic/natural';
  *  - The lorebook injection wraps the `lb-xnai.lb.extra` pack in explicit
  *    START/END markers. Without them models treat the ordinary matched lore that
  *    follows as image-tag ground truth and copy lore prose into appearance tags.
- *  - The `y_percent` instruction is emitted unconditionally even when the
- *    display toggle is off, because the value is persisted either way; the
- *    toggle only chooses between equal bands and the model's percentages.
  */
 
 import { dbg } from '../core/debug';
@@ -49,7 +47,7 @@ import { authorNoteSystemContent } from '../domain/tagging/session-note';
 import { chatNoteSessionId, getSessionAuthorNote, rosterWithSessionOutfits, sessionAuthorNoteLlmContent } from './session-author-note';
 import { formatPrevLocationLine } from '../domain/tagging/location';
 import { normalizeComicAspect } from '../domain/comic/aspect';
-import { numberMessageLinesForTagger, repairLazyShotLines } from '../domain/tagging/shot-line';
+import { numberMessageLinesForTagger, normalizeShotLines } from '../domain/tagging/shot-line';
 import { characterImageInput } from './character-image-input';
 import { metadataHasHairAndEyes } from '../domain/nai-meta/look-completeness';
 import { compactAssetKey } from '../domain/nai-meta/match';
@@ -118,7 +116,7 @@ export interface BuildTaggerOptions {
 
 /** Lore + UI trigger keys used for asset name matching. */
 export function assetTriggerPoolForRequest(request: TaggerArgs): string[] {
-  const assistant = cleanText(stripBakeTokens(request.assistant_text), 20000);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
   return [
     ...(Array.isArray(request.lore_trigger_keys) ? request.lore_trigger_keys : []),
     ...collectTriggeredLoreKeys(request.lorebook || [], assistant),
@@ -148,7 +146,7 @@ export async function collectAssetTagsForTagger(
       characterId: cleanText(request.character_id, 200),
       roster,
       lorebook: Array.isArray(request.lorebook) ? request.lorebook : null,
-      message: cleanText(stripBakeTokens(request.assistant_text), 20000),
+      message: cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000),
     });
   } catch (err) {
     setLastAssetWeightMap(new Map());
@@ -337,7 +335,7 @@ export async function buildCharacterLooksMessages(
   // Shared chat/global context still applies; only the retired asset lane is omitted.
   await pushAuthorNoteTurns(messages, chatNoteSessionId(sessionId, request));
 
-  const assistant = cleanText(stripBakeTokens(request.assistant_text), 20000);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
   const sourceSessionIds = Array.isArray(request.source_session_ids)
     ? request.source_session_ids.map((s) => cleanText(s, 200)).filter(Boolean)
     : [];
@@ -472,8 +470,6 @@ export async function buildTaggerMessages(
   const imageMin = Math.max(1, Number(card.image_min ?? 1) || 1);
   const imageMax = Math.max(imageMin, Number(card.image_max ?? 3) || 3);
   const placement = [
-    // Always ask for y_percent so values are saved. Toggle only affects display (equal bands vs LLM %).
-    'Every shot MUST include `y_percent` (0–100), increasing with roughly even gaps across the full message. No duplicates, all-under-40 clustering or gaps under ~15 unless one shot.',
     'LINE: `line` is the matching message L#; image goes immediately before it. `paragraph` is 0-based shot order, NOT line. Example: third shot matching L7 uses paragraph:2,line:7; never assign line=1,2,3 by shot order.',
     imageMin === imageMax
       ? `SHOT COUNT: produce exactly ${imageMax} shot(s) in scenes[].shots (across all scenes).`
@@ -544,7 +540,7 @@ export async function buildTaggerMessages(
     });
   }
 
-  const assistant = cleanText(stripBakeTokens(request.assistant_text), 20000);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
   const sourceSessionIds = Array.isArray(request.source_session_ids)
     ? request.source_session_ids.map((s) => cleanText(s, 200)).filter(Boolean)
     : [];
@@ -611,8 +607,8 @@ export function flattenShots(tagged: unknown, messageText?: unknown): TaggedShot
       shots.push(item);
     }
   }
-  // Models often emit line=1,2,3 as shot order; remap from y_percent when that pattern appears.
-  const repaired = repairLazyShotLines(shots, messageText ?? '');
+  // L numbers refer only to the analysis body.
+  const repaired = normalizeShotLines(shots, messageText ?? '');
   applyComicKindGuard(repaired, comicGenOn(getConfig().card));
   if (comicLlmWithMain(getConfig().card?.comic_llm_batch)) attachInlineComicPages(repaired);
   return repaired;

@@ -20,7 +20,7 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
     const calls = [];
     const meta = {key:'message',epoch:1,publishedIds:['a','b'],cancelRequested:mode.includes('stop'),userStop:mode.includes('stop')};
     const scope = {
-      durableSpinners:true, completedSpinnerCards:new Map([[1,'b'],[0,'a']]),jobId:'old',request:{},
+      deferred:undefined,durableSpinners:true, completedSpinnerCards:new Map([[1,'b'],[0,'a']]),jobId:'old',request:{},
       jobRunMeta:new Map([['old',meta]]),
       jobEpochByKey:new Map([['message',{jobId:mode.includes('superseded')?'new':'old',epoch:mode.includes('superseded')?2:1}]]),
       enqueueBakeWrite: async work => work(), jobChatTarget: () => ({}),
@@ -47,7 +47,7 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
     try {
       await compile(`return (async () => {${body}})();`, {
         finishCompletedSpinners:async()=>{calls.push('bake');if(fails)throw Error('write failed');},
-        dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
+        closeStreamJob:()=>{},dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
         clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],
       });
       assert.deepEqual(calls,['bake','end-scroll']);
@@ -56,7 +56,7 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
 });
 
 test('tagging precedes scroll capture and atomic spinner replacement', async () => {
-  const start = source.indexOf('    if(persistChatImagesOn()) {');
+  const start = source.indexOf('    let attachment:');
   const end = source.indexOf('    async function enqueueJobSpinners()', start);
   assert.ok(start >= 0 && end > start);
   const calls=[];
@@ -64,7 +64,7 @@ test('tagging precedes scroll capture and atomic spinner replacement', async () 
   globalThis.__OMNI_BEGIN_SCROLL__=async()=>calls.push('begin-scroll');
   try {
     await compile(`return (async () => {let durableSpinners=false;${source.slice(start,end)}})();`, {
-      jobId:'job',request:{force:true},persistChatImagesOn:()=>true,
+      jobId:'job',request:{force:true},deferred:undefined,isJobCurrent:()=>true,finishCompletedSpinners:async()=>{},persistChatImagesOn:()=>true,
       enqueueJobSpinners:async()=>{calls.push('replace');return true;},jobChatTarget:()=>({}),dbg:()=>{},
     });
     assert.deepEqual(calls,['replace']);
@@ -80,7 +80,7 @@ test('stop accepts live chat identity and unified scope without stopping a sibli
     const metas = new Map(['one','two'].map(chatId=>[chatId,{sessionId:'unified',characterId:'char',chatId}]));
     const controllers = new Map(['one','two'].map(id=>[id,new AbortController()]));
     const stop = await compile(`${body}\nreturn requestJobStop;`, {
-      requestMessageRerollStop:()=>{},cleanText:v=>v,jobRunMeta:metas,jobLlmControllers:controllers,
+      cancelStreamJob:()=>{},requestMessageRerollStop:()=>{},cleanText:v=>v,jobRunMeta:metas,jobLlmControllers:controllers,
       chatNoteSessionId:(_sid,extra)=>`live-${extra.chatId}`,
       idbGet:async()=>({state:'generating'}),ACTIVE_JOB_STATES:['generating'],toInt:(_v,fallback)=>fallback,
       setJob:async()=>{},dbg:()=>{},

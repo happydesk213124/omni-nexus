@@ -34,7 +34,9 @@ export function repairProgressToast(source) {
   // The inner functions retain their existing validation and failure handling.
   for (const [name, args] of [['omniFooterAction', 'kind,key'], ['nxFloatClick', 'kind']]) {
     replace(`async function ${name}(${args}) {`, `async function ${name}(${args}) {
-  return kind === 'tag' ? nxWithScenePreparation(() => ${name}Prepared(${args})) : ${name}Prepared(${args});
+  return ['tag', 'regen', 'single'].includes(kind)
+    ? nxWithScenePreparation(() => ${name}Prepared(${args}), kind === 'tag' ? 'scene' : 'reroll')
+    : ${name}Prepared(${args});
 }
 async function ${name}Prepared(${args}) {`);
   }

@@ -1,3 +1,4 @@
+import { analysisBody } from './prompt/message-body';
 /**
  * Permanent chat-image tokens. Stored as `[[@inray::cardId::inxshot_…::width::height]]` (legacy omits size).
  * Display (center / hover fullscreen) is a Risu editdisplay module, not this
@@ -94,7 +95,7 @@ export function filterTaggerContextMessages(
   for (const msg of recent || []) {
     const rec = (msg && typeof msg === 'object' ? msg : {}) as Record<string, unknown>;
     const role = cleanText(rec.role, 40) || 'char';
-    const body = cleanText(stripBakeTokens(rec.content ?? rec.data), 12000);
+    const body = cleanText(analysisBody(stripBakeTokens(rec.content ?? rec.data)), 12000);
     if (!body) continue;
     // The current message ships L-numbered below; never send it twice.
     if (body === current) continue;

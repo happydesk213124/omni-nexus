@@ -3,7 +3,7 @@
   "asset_author_note": "",
   "global_author_note": "",
   "tagger": "Tag the chat message into Danbooru-style English image prompts. Output ONE JSON object only.",
-  "format": "{\"scenes\":[{\"place\":\"...\",\"shots\":[{\"paragraph\":0,\"y_percent\":50,\"line\":7,\"aspect\":\"portrait|square|landscape\",\"camera\":\"...\",\"situation\":\"...\",\"characters\":[{\"name\":\"...\",\"action\":\"...\"}]}]}],\"new_characters\":[]}",
+  "format": "{\"scenes\":[{\"place\":\"...\",\"shots\":[{\"paragraph\":0,\"line\":7,\"aspect\":\"portrait|square|landscape\",\"camera\":\"...\",\"situation\":\"...\",\"characters\":[{\"name\":\"...\",\"action\":\"...\"}]}]}],\"new_characters\":[]}",
   "appearance_inject": "Registered: {registered_block}\nIncomplete: {incomplete_block}\nDetected: {detected_block}",
   "asset_tags_inject": "NovelAI asset tags for new_characters:\n{asset_tags_block}\nSORT verbatim Danbooru tags into appearance/attire/accessories. Use lore_keys for name/aliases. Never paraphrase or invent outfit names.",
   "char_looks": "Fill new_characters by COPYING asset/lore Danbooru tags. Use lore_keys for name/aliases (Korean preferred). No prose paraphrase. JSON only.",

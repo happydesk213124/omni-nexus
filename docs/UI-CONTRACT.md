@@ -772,3 +772,12 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 - `character_common` is the editable shared appearance prompt. Legacy `char_looks`, `autotag`, and `asset_tags_inject` records remain exportable but are no longer injected.
 - Shipped defaults preserve existing prompt edits. Per-key applied revisions live in internal `prompt:__applied__:*` meta rows; reading does not acknowledge updates.
 - Character asset selection follows the settings picker. Module selection lists active global/selected-character modules separately. New rows append without replacing the editor or roster DOM, and their writes share the live-edit queue.
+
+### Streaming image generation
+
+- `tools/vendor-patches/stream-keyword-runtime.js` consumes cumulative `output` script callbacks. It checks the latest changed text once per second, stops at the first signal, and sends only the preceding body. Reasoning tags and image markers are excluded by `src/domain/prompt/message-body.ts`.
+- `[[imgstart]]` works independently of the manual keyword toggle. `card.omni_helper_prompt` defaults off and controls the `⚛️ omni 보조 프롬` module, whose display regex hides the marker. Module writes share `src/storage/module-write.ts` with existing display and image modules.
+- Deferred jobs generate before response completion. `/v1/jobs/commit-output` validates the stream ID and exact character/chat/message identity before allowing spinners, images, or speech. Aborted or changed messages keep paid assets without attaching them. The committed-output listener starts ordinary auto-generation only when no streaming job owns the reply.
+- The tagger uses `L1`, `L2` body lines; insertion maps these to original source offsets even when reasoning occupies earlier rows. `y_percent` no longer controls generation or placement. Legacy fields remain readable for saved-data compatibility.
+- `inline_chat_images` and `persist_chat_images` are required, checked and disabled in the menu. Retired prompt editors and the individual `character_common` reset button are absent; prompt update notices and the shared reset remain.
+- Help asks users to disable **Stream Gemini Thoughts** so reasoning remains tagged, and avoid PocketRisu's **strong** streaming optimization when early generation is wanted. The plugin does not change those host settings.

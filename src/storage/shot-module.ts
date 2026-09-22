@@ -1,3 +1,4 @@
+import { serializeModuleWrite } from './module-write';
 /**
  * Gallery pixels in a dedicated Risu module.
  *
@@ -106,6 +107,7 @@ export async function refreshGalleryAssetLookup(): Promise<boolean> {
   }
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return false;
   await ensureDbAccess();
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['enabledModules']);
   if (!db) return false;
   const { off, on } = bounceEnabledModuleIds(db.enabledModules);
@@ -119,6 +121,7 @@ export async function refreshGalleryAssetLookup(): Promise<boolean> {
     dbg('shot.module.asset-refresh.fail', { message: String((err as Error)?.message || err) }, 'warn');
     return false;
   }
+  });
 }
 
 async function ensureDbAccess(): Promise<void> {
@@ -315,6 +318,7 @@ export async function putShotAssetsBatch(
 
   // Read the DB only after the bytes are in, so a long batch cannot commit a
   // module array that went stale while we were writing assets.
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['modules', 'enabledModules']);
   if (!db) return [];
   const modules = readModules(db);
@@ -339,6 +343,7 @@ export async function putShotAssetsBatch(
   await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
   pendingShotTuples.clear();
   return saved;
+  });
 }
 
 export type ShotAssetRow = { id: string; session: string; path: string; name: string };
@@ -373,6 +378,7 @@ export async function dropShotAsset(id: string): Promise<boolean> {
   await ensureDbAccess();
   const host = hostOrNull();
   if (!host) return false;
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['modules', 'enabledModules']);
   const modules = readModules(db);
   const idx = findModuleIndex(modules);
@@ -394,4 +400,5 @@ export async function dropShotAsset(id: string): Promise<boolean> {
     enabledModules: asShotAssetRows(db?.enabledModules).map((row) => cleanText(row, 200)).filter(Boolean) as string[],
   });
   return true;
+  });
 }

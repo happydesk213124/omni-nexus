@@ -24,11 +24,13 @@ import * as llmRoles from '../domain/llm/roles';
 import * as llmForm from '../ui-contract/llm-form';
 import * as embeddingProviders from '../providers/embedding/client';
 import * as viewerCore from '../ui-contract/viewer-core';
+import * as messageBody from '../domain/prompt/message-body';
 import * as streamKeywords from '../domain/prompt/stream-keywords';
 
 export function installUiContractGlobals(): void {
   Reflect.set(globalThis, '__INLAY_VIEWER_CORE__', { ...viewerCore });
   Reflect.set(globalThis, '__INLAY_STREAM_KW__', {
+    ...messageBody,
     parseStreamKeywords: streamKeywords.parseStreamKeywords,
     haystackHasStreamKeyword: streamKeywords.haystackHasStreamKeyword,
   });
