@@ -56,14 +56,14 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
     showRail: !terminal || success, announcement: [title, detail].filter(Boolean).join(' · ') };
 }
 
-// Opaque surfaces keep text readable over both bright images and dark chat themes.
+// High background opacity preserves white-text contrast over bright images.
 // No blur, continuous animation, layout reads, or CSS injection in the host.
 export const progressToastStyles = {
-  card: 'box-sizing:border-box;width:100%;padding:10px 12px;border-radius:12px;background:#fff;color:#101114;border:1px solid #dedee5;box-shadow:0 4px 16px rgba(16,24,40,.10);font-family:IBM Plex Sans,Helvetica Neue,Helvetica,Arial,Noto Sans KR,sans-serif;user-select:none;',
+  card: 'box-sizing:border-box;width:100%;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.86);color:#fff;border:1px solid rgba(255,255,255,.16);box-shadow:0 4px 16px rgba(0,0,0,.24);font-family:IBM Plex Sans,Helvetica Neue,Helvetica,Arial,Noto Sans KR,sans-serif;user-select:none;',
   header: 'display:flex;align-items:center;gap:8px;min-height:18px;',
-  title: 'flex:1;min-width:0;font-size:12px;font-weight:600;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-  clock: 'flex:none;color:#686b82;font-size:11px;line-height:18px;font-variant-numeric:tabular-nums;',
-  detail: 'margin-top:3px;color:#686b82;font-size:11px;line-height:16px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;',
-  rail: 'margin-top:8px;height:3px;overflow:hidden;border-radius:2px;background:#eeeaf8;',
+  title: 'flex:1;min-width:0;color:#fff;font-size:12px;font-weight:600;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+  clock: 'flex:none;color:#fff;font-size:11px;line-height:18px;font-variant-numeric:tabular-nums;',
+  detail: 'margin-top:3px;color:#fff;font-size:11px;line-height:16px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;',
+  rail: 'margin-top:8px;height:3px;overflow:hidden;border-radius:2px;background:rgba(255,255,255,.18);',
   fill: 'display:block;height:100%;width:100%;transform-origin:left;border-radius:2px;',
 };
