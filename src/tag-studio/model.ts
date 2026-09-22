@@ -204,19 +204,6 @@ export function assemble(state: StudioState, _roster: CharacterInput[]): Assembl
   const quality = qualityTail(state);
   const main = joinOrRaw(personTag(state), state.main.presetPrompt, state.main.post, quality);
   const chars = charList(state).map((c) => {
-    if (state.comic) {
-      const prompt = joinOrRaw(c.tags, c.post);
-      if (!prompt) return null;
-      return {
-        no: c.i + 1,
-        name: '',
-        prompt,
-        uc: c.uc,
-        center_x: c.x,
-        center_y: c.y,
-        slim: { ...c.slim, center_x: c.x, center_y: c.y },
-      };
-    }
     const prompt = joinOrRaw(c.tags, c.costumeTags, c.post);
     if (!prompt && !String(c.uc || '').trim()) return null;
     return {
@@ -245,15 +232,13 @@ export function assembleOverrides(state: StudioState, roster: CharacterInput[]):
     main_prompt: a.main,
     negative_prompt: a.neg,
     characters: a.chars.map((c) => ({
-      name: state.comic ? '' : c.name,
+      name: c.name,
       prompt: c.prompt,
       uc: c.uc,
       center_x: state.coordMode === 'ai' ? undefined : c.center_x,
       center_y: state.coordMode === 'ai' ? undefined : c.center_y,
-      ...(state.comic ? {} : {
-        costume: c.slim.costume || undefined,
-        action: c.slim.action || undefined,
-      }),
+      costume: c.slim.costume || undefined,
+      action: c.slim.action || undefined,
     })),
     seed: state.gen.seedLock && state.gen.seed > 0 ? state.gen.seed : undefined,
     ...(state.gen.model ? { model: state.gen.model } : {}),
@@ -345,7 +330,7 @@ export function hydrateFromNai(args: {
     const ch = asRecord(raw);
     const caption = verbatimPrompt(ch.prompt, 4000);
     const uc = verbatimPrompt(ch.uc, 2000);
-    const rawName = state.comic ? '' : cleanText(ch.name, 200);
+    const rawName = cleanText(ch.name, 200);
     if (!caption && !uc && !rawName) return;
     const id = nextId('c');
     const slot = CHAR_SLOTS[slotNo] || [0.5, 0.5];
@@ -357,9 +342,7 @@ export function hydrateFromNai(args: {
     const costumes = Array.isArray(stored?.costumes) ? stored.costumes : [];
     const cos = costumes.find((c) => cleanText(c.name, 200) === cleanText(costumePick, 200))
       || costumes[0];
-    const peeledChar = state.comic
-      ? { tags: caption, costumeTags: '', post: '' }
-      : stored
+    const peeledChar = stored
         ? peelStudioCharFields({
           slim: ch,
           caption: ch.prompt,
@@ -386,7 +369,7 @@ export function hydrateFromNai(args: {
     state.tabs.push({
       id,
       kind: 'char',
-      label: state.comic ? `C${slotNo}` : `C${slotNo}${name ? ` ${name}` : ''}`,
+      label: `C${slotNo}${name ? ` ${name}` : ''}`,
     });
   });
   state.selChar = state.tabs.find((t) => t.kind === 'char')?.id || '';
@@ -409,9 +392,6 @@ export function hydrateFromNai(args: {
   if (placed) {
     state.coordMode = 'manual';
     state.coordVisible = true;
-  }
-  if (!state.comic && !rawChars.length) {
-    /* illustration with no slots stays on main */
   }
 }
 

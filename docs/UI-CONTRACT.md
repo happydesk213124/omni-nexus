@@ -1,6 +1,9 @@
 # UI CONTRACT
 
 Everything the frozen UI (`vendor/inlay-nexus-ui.js`) requires from the backend.
+The asserted comic-options patch adds `nx-comic-natural-supplement`, bound to
+`card.comic_natural_supplement` (boolean, default false). When enabled, every
+comic cut's `natural` description follows its base tags in the generated layout.
 The UI cannot be rebuilt, so this contract is **fixed**. `npm run parity` enforces it.
 
 The asserted inspect patch uses `GET /v1/shots/asset?name=...` to read file

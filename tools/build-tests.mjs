@@ -117,6 +117,7 @@ const MODULES = {
   'comic-coords': 'src/domain/comic/coords.ts',
   'comic-costume': 'src/domain/comic/costume.ts',
   'comic-page': 'src/domain/comic/page.ts',
+  'comic-natural': 'src/domain/comic/natural.ts',
   'comic-tags': 'src/domain/comic/tags.ts',
   'comic-caption': 'src/domain/comic/caption.ts',
   'comic-params': 'src/domain/comic/params.ts',

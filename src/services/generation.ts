@@ -49,7 +49,7 @@ import { resolveComicUseCoords } from '../domain/comic/coords';
 import { normalizeShotKind } from '../domain/comic/kind';
 import { resolveComicNaiParams } from '../domain/comic/params';
 import { stripComicKomaFromUc, stripComicPageStyleTags, stripComicStyleWords } from '../domain/comic/tags';
-import { takeComicGenerationSlots, type ComicPage } from '../domain/comic/page';
+import { synthesizeLayout, takeComicGenerationSlots, type ComicPage } from '../domain/comic/page';
 import { shouldUseNaiCoords, readNaiCoord, type CoordPair } from '../domain/nai/coords';
 import {
   captionWithSpeech,
@@ -436,7 +436,9 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
   stylePos = stripSpokenBubbleSuppression(stylePos);
   styleNeg = stripComicKomaFromUc(styleNeg);
   const koma = Math.max(1, Math.min(6, Math.floor(Number(page.koma) || slots.length || 1)));
-  const layout = stripComicStyleWords(page.layout || '');
+  const layout = stripComicStyleWords(card.comic_natural_supplement === true && page.cuts?.length
+    ? synthesizeLayout(page.cuts, true)
+    : page.layout || '', card.comic_natural_supplement === true ? 24000 : 4000);
   const comicLead = stripComicPageStyleTags(card.comic_prompt_prefix);
   const comicTrail = stripComicPageStyleTags(card.comic_prompt_suffix);
   const lead = cleanText(card.fixed_prompt_prefix, 8000);
@@ -453,7 +455,7 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
   // them anyway so a disobedient base cannot sneak a global count in.
   body = stripPersonCountTags(body);
   body = joinTags(lead, comicLead, body, comicTrail, trail);
-  body = stripComicPageStyleTags(body);
+  body = stripComicPageStyleTags(body, card.comic_natural_supplement === true ? 40000 : 8000);
   let main = person ? (body ? `${person}, ${body}` : person) : body;
   const naiaModel = modelToNaia(route.model || nai.model || 'nai-diffusion-5-full');
   if (nai.apply_quality_tags !== false) main += QUALITY_TAGS[naiaModel] || '';

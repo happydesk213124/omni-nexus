@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.0';
+const PLUGIN_VERSION = '0.2.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -408,6 +408,7 @@ const VENDOR_NATURAL_BASE_CT_PATCH =
       nai5_speech: document.getElementById("nx-nai5-speech") ? ee("nx-nai5-speech") : !!e.nai5_speech,
       auto_aspect: document.getElementById("nx-auto-aspect") ? ee("nx-auto-aspect") : !!e.auto_aspect,
       comic_gen: document.getElementById("nx-comic-gen") ? (N("nx-comic-gen") === "on" ? "on" : "off") : (e.comic_gen === "on" || e.comic_gen === !0 ? "on" : "off"),
+      comic_natural_supplement: document.getElementById("nx-comic-natural-supplement") ? ee("nx-comic-natural-supplement") : e.comic_natural_supplement === !0,
       comic_llm_batch: document.getElementById("nx-comic-llm-batch") ? (N("nx-comic-llm-batch") === "per_shot" ? "per_shot" : N("nx-comic-llm-batch") === "with_main" ? "with_main" : "once") : (e.comic_llm_batch === "per_shot" ? "per_shot" : e.comic_llm_batch === "with_main" ? "with_main" : "once"),
       comic_schedule: document.getElementById("nx-comic-schedule") ? (N("nx-comic-schedule") === "wait_taggers" ? "wait_taggers" : "overlap") : (e.comic_schedule === "wait_taggers" ? "wait_taggers" : "overlap"),
       comic_max_pages: e.comic_max_pages ?? 2,
@@ -953,6 +954,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.1</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>샷 태그 수정에서 만화도 일반 삽화처럼 캐릭터를 고르고 외형·코스튬을 적용하도록 통일했습니다.</li>
+            <li>캐릭터 탭의 실수로 누르는 ×를 없애고, 현재 캐릭터 칸만 지우는 삭제 버튼과 정돈된 탭 순서를 적용했습니다.</li>
+            <li>만화 생성옵션에 자연어 보충 설명을 추가했습니다. 켜면 각 컷의 태그 뒤에 구도·인물 위치·행동·표정·조명을 자세히 설명합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.2.0</strong>
@@ -2888,6 +2897,7 @@ const VENDOR_CARD_TAB_SPLIT_CLOSE_PATCH = `            <input id="nx-preset-file
                 <option value="with_main" \${comicBatch === "with_main" ? "selected" : ""}>메인태거에 한번에 요청</option>
               </select>
             </label>
+            <label class="toggle-row"><input type="checkbox" id="nx-comic-natural-supplement" \${i.comic_natural_supplement === !0 ? "checked" : ""}><span>자연어 보충 설명</span></label>
             <label data-nx-help-id="nx-comic-schedule"><span>생성 순서</span>
               <select id="nx-comic-schedule">
                 <option value="overlap" \${comicSched === "overlap" ? "selected" : ""}>겹쳐 생성</option>

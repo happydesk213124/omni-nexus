@@ -14,6 +14,7 @@
     "notes": "PNG/settings live on this device (not save-file). Folder explorer reads card+location metadata."
   },
   "card": {
+    "comic_natural_supplement": false,
     "power": true,
     "execute": "auto",
     "mode": "illustration",

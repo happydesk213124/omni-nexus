@@ -162,6 +162,15 @@ try {
     assert.deepEqual(live.duplicates, [], `${tab}: duplicate mounted ids`);
     assert.ok(live.pane, `${tab}: preview pane missing`);
     assert.equal(live.shadow,'none');
+    if (tab === 'comic_gen') {
+      const toggle = page.locator('#nx-comic-natural-supplement');
+      assert.equal(await toggle.isVisible(), true, 'comic natural toggle must be visible');
+      for (const enabled of [true, false]) {
+        await toggle.setChecked(enabled);
+        await page.evaluate(() => globalThis.uxTestRuntime.flush());
+        assert.equal(await page.evaluate(() => globalThis.uxTestRuntime.t.backendSettings.card.comic_natural_supplement), enabled);
+      }
+    }
   }
   await page.evaluate(async () => {
     await globalThis.__OMNI_SETTINGS_ACTIONS__.save({card:{presets:[{id:'rename-probe',name:'Before rename',positive:'probe',negative:''}],active_preset_id:'rename-probe'}});

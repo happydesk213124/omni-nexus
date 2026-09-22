@@ -144,12 +144,13 @@ const SHELL = `
       <div class="tabs">
         <div class="tabrow" id="tabrow1">
           <div class="tabscroll" id="tabsBar"></div>
+          <button class="tab" id="tabDelete" type="button" title="현재 캐릭터 칸 삭제" disabled>삭제</button>
           <div class="pick" id="charPickWrap">
             <select id="charPick"></select>
           </div>
           <button class="tabadd" id="tabAdd" type="button" title="캐릭터 칸 추가">+</button>
+          <div class="tabscroll" id="charTabsBar"></div>
         </div>
-        <div class="tabrow" id="tabrow2" hidden></div>
       </div>
       <div class="body" id="panel"><p class="hint">불러오는 중…</p></div>
     </aside>
@@ -390,10 +391,6 @@ export async function openTagStudio(card: unknown): Promise<void> {
     for (const t of state.tabs) {
       if (t.kind !== 'char') continue;
       i += 1;
-      if (state.comic) {
-        t.label = `C${i}`;
-        continue;
-      }
       const ch = state.chars[t.id];
       const stored = rosterById(ch?.rosterId || '') || (ch?.charName ? resolveCharacter(ch.charName, roster) : null);
       const name = stored?.name || ch?.charName || '';
@@ -750,14 +747,6 @@ export async function openTagStudio(card: unknown): Promise<void> {
         </div>
         <p class="hint">${state.coordVisible ? '그림 위 C1~C6를 끌어서 옮겨도 됩니다.' : '점·격자는 숨겼습니다. 숫자는 그대로 생성에 넣습니다.'}</p>`;
 
-    if (state.comic) {
-      return [
-        sec('ap', `<span class="name">${esc(tab?.label || 'C')}</span>`,
-          `<textarea class="t big" data-c="tags" data-tab="${esc(tabId)}" placeholder="캡션 태그">${esc(c.tags)}</textarea>`),
-        sec('xy', `<span class="name">좌표</span>`, coordBody),
-      ].join('');
-    }
-
     return [
       optionBar({
         nameAttr: `data-c="charName" data-tab="${esc(tabId)}"`,
@@ -806,25 +795,20 @@ export async function openTagStudio(card: unknown): Promise<void> {
   function tabBtn(t: StudioTab): string {
     const on = state.active === t.id ? 'on' : '';
     const lab = `<span class="lab">${esc(t.label)}</span>`;
-    if (t.kind !== 'char') {
-      return `<button class="tab ${on}" data-tab="${esc(t.id)}" type="button" title="${esc(t.label)}">${lab}</button>`;
-    }
-    return `<button class="tab ${on}" data-tab="${esc(t.id)}" type="button" title="${esc(t.label)}">${lab}<span class="x" data-del="${esc(t.id)}">×</span></button>`;
+    return `<button class="tab ${on}" data-tab="${esc(t.id)}" type="button" title="${esc(t.label)}">${lab}</button>`;
   }
 
   function renderTabs(): void {
     const bar = $('#tabsBar');
-    const row2 = $('#tabrow2') as HTMLElement | null;
-    const pickWrap = $('#charPickWrap') as HTMLElement | null;
+    const charBar = $('#charTabsBar');
+    const remove = $('#tabDelete') as HTMLButtonElement | null;
     const pick = $('#charPick') as HTMLSelectElement | null;
-    if (!bar || !row2) return;
+    if (!bar || !charBar) return;
     const mains = state.tabs.filter((t) => t.kind !== 'char');
     const chars = state.tabs.filter((t) => t.kind === 'char');
-    bar.innerHTML = [...mains, ...chars.slice(0, 3)].map(tabBtn).join('');
-    const overflow = chars.slice(3);
-    row2.innerHTML = overflow.map(tabBtn).join('');
-    row2.hidden = overflow.length === 0;
-    if (pickWrap) pickWrap.hidden = state.comic;
+    bar.innerHTML = mains.map(tabBtn).join('');
+    charBar.innerHTML = chars.map(tabBtn).join('');
+    if (remove) remove.disabled = !chars.some((t) => t.id === state.active);
     if (pick) {
       const pairs: Array<[string, string]> = [['', '캐릭터 고르기'], ...roster
         .filter((r) => cleanText(r.id, 80) || cleanText(r.name, 200))
@@ -1421,10 +1405,6 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const row = asRecord(rows[i]);
       const prompt = cleanText(row.prompt, 4000);
       if ('uc' in row) ch.uc = cleanText(row.uc, 2000);
-      if (state.comic) {
-        if (prompt) ch.tags = prompt;
-        return;
-      }
       if (row.name) ch.charName = cleanText(row.name, 200);
       const stored = ch.charName ? resolveCharacter(ch.charName, roster) : null;
       const look = joinTags(stored?.appearance, ch.tags, ch.costumeTags);
@@ -1604,7 +1584,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       costumeName: firstCos?.name || '',
       costumeTags: firstCos?.attire || '',
       costumeNote: firstCos?.note || '',
-      tags: state.comic ? '' : cleanText(r?.appearance, 4000),
+      tags: cleanText(r?.appearance, 4000),
       post: '',
       uc: '',
       x: slot[0],
@@ -1814,10 +1794,11 @@ export async function openTagStudio(card: unknown): Promise<void> {
         act(a.dataset.act);
         return;
       }
-      const del = t.closest('[data-del]');
-      if (del instanceof HTMLElement) {
+      const del = t.closest('#tabDelete');
+      if (del instanceof HTMLButtonElement) {
         e.stopPropagation();
-        const id = del.dataset.del || '';
+        const id = state.active;
+        if (!state.tabs.some((tab) => tab.id === id && tab.kind === 'char')) return;
         state.tabs = state.tabs.filter((tab) => tab.id !== id);
         delete state.chars[id];
         if (state.active === id) state.active = 'main';

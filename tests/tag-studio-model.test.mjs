@@ -110,7 +110,8 @@ describe('hydrateFromNai', () => {
     assert.equal(assembleOverrides(state, []).characters.length, 0);
   });
 
-  it('keeps unmatched main and C captions verbatim', () => {
+  for (const kind of ['illustration', 'comic']) {
+  it(`keeps unmatched main and C captions verbatim (${kind})`, () => {
     const state = emptyState();
     const main = '0.5::artist:lunch \\(shin new\\) ::,  anime coloring,  close-up';
     const girl = 'android, tall, 175cm,  jet black hair';
@@ -123,7 +124,7 @@ describe('hydrateFromNai', () => {
       },
       settings: { card: { presets: [{ id: 'other', positive: 'best quality, very aesthetic' }] } },
       rosterPayload: { characters: [], global: [] },
-      card: { kind: 'illustration' },
+      card: { kind },
     });
     assert.equal(state.main.presetId, '');
     assert.equal(state.main.presetPrompt, '');
@@ -139,7 +140,7 @@ describe('hydrateFromNai', () => {
     assert.equal(ov.characters[0].prompt, girl);
   });
 
-  it('fills C from the image caption, not the live roster dump', () => {
+  it(`fills C from the image caption, not the live roster dump (${kind})`, () => {
     const state = emptyState();
     hydrateFromNai({
       state,
@@ -165,7 +166,7 @@ describe('hydrateFromNai', () => {
         }],
         global: [],
       },
-      card: { kind: 'illustration' },
+      card: { kind },
     });
     const id = Object.keys(state.chars)[0];
     const c = state.chars[id];
@@ -183,7 +184,11 @@ describe('hydrateFromNai', () => {
     assert.match(String(ov.characters[0].prompt), /bob cut/);
     assert.ok(!String(ov.characters[0].prompt).includes('extra roster only'));
     assert.ok(!String(ov.characters[0].prompt).includes('long silver hair'));
+    assert.equal(ov.characters[0].name, '보민');
+    assert.equal(ov.characters[0].costume, 'default');
+    assert.match(ov.characters[0].prompt, /school uniform/);
   });
+  }
 });
 
 describe('hasPlacedCoords', () => {

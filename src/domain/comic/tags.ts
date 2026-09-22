@@ -20,9 +20,9 @@ function tokenKey(token: string): string {
   return token.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function filterTokens(text: unknown, banned: Set<string>): string {
+function filterTokens(text: unknown, banned: Set<string>, maxLength = 8000): string {
   const kept: string[] = [];
-  for (const token of splitTagTokens(cleanText(text, 8000))) {
+  for (const token of splitTagTokens(cleanText(text, maxLength))) {
     const t = token.trim();
     if (!t) continue;
     if (banned.has(tokenKey(t))) continue;
@@ -31,8 +31,8 @@ function filterTokens(text: unknown, banned: Set<string>): string {
   return joinTags(...kept);
 }
 
-export function stripComicPageStyleTags(positive: unknown): string {
-  return filterTokens(positive, BANNED_POS);
+export function stripComicPageStyleTags(positive: unknown, maxLength = 8000): string {
+  return filterTokens(positive, BANNED_POS, maxLength);
 }
 
 export function stripComicKomaFromUc(negative: unknown): string {
@@ -40,8 +40,8 @@ export function stripComicKomaFromUc(negative: unknown): string {
 }
 
 /** Drop banned words even inside a layout sentence (not just comma tags). */
-export function stripComicStyleWords(text: unknown): string {
-  return cleanText(text, 4000)
+export function stripComicStyleWords(text: unknown, maxLength = 4000): string {
+  return cleanText(text, maxLength)
     .replace(/\b(comic|manga|hatching)\b/gi, '')
     .replace(/\bthick\s+outlines?\b/gi, '')
     .replace(/\s{2,}/g, ' ')
