@@ -1,3 +1,4 @@
+import { serializeModuleWrite } from '../storage/module-write';
 /**
  * Risu module that holds compressed character reference images.
  * The roster stores only a hash; the module asset tuple owns the exact path
@@ -116,6 +117,7 @@ export async function ensureCharRefModule(): Promise<ModuleRow> {
   }
   await ensureDbAccess();
   const host = hostOrThrow();
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['modules', 'enabledModules']);
   if (!db) throw new Error('Risu 데이터베이스를 열 수 없습니다');
   const modules = readModules(db);
@@ -159,6 +161,7 @@ export async function ensureCharRefModule(): Promise<ModuleRow> {
   }
   rebuildIndex(parseCharRefModuleAssets(mod.assets));
   return mod;
+  });
 }
 
 /**
@@ -172,6 +175,7 @@ export async function clearCharRefHideIcon(): Promise<{ cleared: boolean; blocke
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return { cleared: false, blockedBy: [] };
   await ensureDbAccess();
   const host = hostOrThrow();
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['modules', 'enabledModules']);
   const modules = readModules(db);
   const enabled = asUnknownArray(db?.enabledModules).map((id) => cleanText(id, 200)).filter(Boolean);
@@ -195,6 +199,7 @@ export async function clearCharRefHideIcon(): Promise<{ cleared: boolean; blocke
     .filter(Boolean);
   if (cleared || blockedBy.length) dbg('char_ref.module.hide_icon', { cleared, blockedBy });
   return { cleared, blockedBy };
+  });
 }
 
 function copyBytes(buf: BytesLike): Uint8Array {
@@ -286,6 +291,7 @@ export async function putCharRefAsset(
   await ensureDbAccess();
   const host = hostOrThrow();
   if (typeof host.saveAsset !== 'function') throw new Error('saveAsset을 쓸 수 없습니다');
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['modules', 'enabledModules']);
   if (!db) throw new Error('Risu 데이터베이스를 열 수 없습니다');
   const modules = readModules(db);
@@ -309,7 +315,7 @@ export async function putCharRefAsset(
   const ext = storeExtFromBytes(stored);
   const name = charRefAssetName(hash, ext);
   const payload = copyBytes(stored);
-  const path = normalizeAssetPath(cleanText(await host.saveAsset(payload), 800));
+  const path = normalizeAssetPath(cleanText(await host.saveAsset!(payload), 800));
   if (!path) throw new Error('모듈 에셋 저장에 실패했습니다');
   const readBack = await readAssetBytes(path);
   if (!readBack || readBack.byteLength < MIN_IMAGE_BYTES) {
@@ -359,6 +365,7 @@ export async function putCharRefAsset(
   rebuildIndex(assets);
   dbg('char_ref.module.put', { hash: hash.slice(0, 12), bytes: stored.byteLength, ext, path });
   return { hash, bytes: stored, path };
+  });
 }
 
 export async function getCharRefAssetBytes(hash: unknown): Promise<ArrayBuffer | null> {
@@ -378,6 +385,7 @@ export async function clearAllCharRefModuleAssets(): Promise<number> {
   await ensureDbAccess();
   const host = hostOrThrow();
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return 0;
+  return serializeModuleWrite(async () => {
   const db = await host.getDatabase!(['modules', 'enabledModules']);
   const modules = readModules(db);
   const idx = findModuleIndex(modules);
@@ -400,6 +408,7 @@ export async function clearAllCharRefModuleAssets(): Promise<number> {
   });
   assetIndex = new Map();
   return removed;
+  });
 }
 
 export async function resetCharRefLibrary(): Promise<ApiResult> {

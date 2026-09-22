@@ -201,14 +201,14 @@ test("new 100 percent thumbnail equals the legacy 600 percent dimensions", () =>
   assert.deepEqual(scaleInlineThumbnail(50), { width: 264, height: 360, percent: 50 });
 });
 
-test("gallery puts selected-message cards first by y% then newest remaining", () => {
+test("gallery puts selected-message cards first by line then newest remaining", () => {
   const cards = [
-    { id: "a", content_hash: "h1", message_index: 1, paragraph: 0, shot_index: 0, created_at: 1, y_percent: 80 },
+    { id: "a", content_hash: "h1", message_index: 1, paragraph: 0, shot_index: 0, created_at: 1, line: 1, y_percent: 80 },
     { id: "b", content_hash: "h2", message_index: 2, paragraph: 0, shot_index: 0, created_at: 3, y_percent: 10 },
-    { id: "c", content_hash: "h1", message_index: 1, paragraph: 1, shot_index: 0, created_at: 2, y_percent: 20 },
+    { id: "c", content_hash: "h1", message_index: 1, paragraph: 1, shot_index: 0, created_at: 2, line: 3, y_percent: 20 },
   ];
   const out = galleryForMessage(cards, { hash: "h1", chatIndex: 1 }, 8);
-  assert.deepEqual(out.map((c) => c.id), ["c", "a", "b"]);
+  assert.deepEqual(out.map((c) => c.id), ["a", "c", "b"]);
 });
 
 test("gallery keeps all selected shots even when rest cap is 8", () => {
@@ -2280,8 +2280,8 @@ test("evenAnchorPercent uses equal band starts (0..100 split by count)", () => {
   assert.ok(Math.abs(evenAnchorPercent(2, 3) - 200 / 3) < 1e-9);
 });
 
-test("resolveCardAnchorPercent prefers y_percent unless forceEven", () => {
-  assert.equal(resolveCardAnchorPercent({ y_percent: 40 }, 0, 2, { forceEven: false }), 40);
+test("resolveCardAnchorPercent ignores retired percent values", () => {
+  assert.equal(resolveCardAnchorPercent({ y_percent: 40 }, 0, 2, { forceEven: false }), 0);
   assert.equal(resolveCardAnchorPercent({ y_percent: 40 }, 1, 2, { forceEven: true }), 50);
 });
 

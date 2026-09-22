@@ -158,6 +158,8 @@ export function tagStudioCss(): string {
 
 #nx-tag-studio .k { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
 #nx-tag-studio .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#nx-tag-studio .costume-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#nx-tag-studio .costume-fields .k, #nx-tag-studio .costume-fields textarea { min-width: 0; }
 #nx-tag-studio .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 #nx-tag-studio .inline { display: flex; align-items: center; gap: 6px; }
 #nx-tag-studio .hint { color: var(--muted); font-size: 11px; }

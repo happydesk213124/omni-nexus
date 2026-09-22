@@ -23,7 +23,7 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
   const current = Math.min(total, Math.max(done + 1, count(job.shot_index) + 1));
   let title = '작업 준비 중';
   let detail = '';
-  if (state === 'preparing' || state === 'queued') title = '장면 정리 중';
+  if (state === 'preparing' || state === 'queued') title = reroll ? '이미지 재생성 준비 중' : '장면 정리 중';
   else if (state === 'tagging') {
     title = /재시도/.test(message) ? '장면 분석 다시 시도 중'
       : /캐릭터.*룩|외형/.test(message) ? '캐릭터 외형 확인 중'

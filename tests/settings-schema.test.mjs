@@ -9,12 +9,12 @@ import {
   applySettingsResetKeeps,
 } from "../.test-build/settings-schema.mjs";
 
-test("inline chat overlay and persist-bake default on", () => {
+test("inline chat overlay and persist-bake cannot be disabled", () => {
   const card = migrateSettings({ card: {} }).card;
   assert.equal(card.inline_chat_images, true);
   assert.equal(card.persist_chat_images, true);
-  assert.equal(migrateSettings({ card: { persist_chat_images: false } }).card.persist_chat_images, false);
-  assert.equal(migrateSettings({ card: { inline_chat_images: false } }).card.inline_chat_images, false);
+  assert.equal(migrateSettings({ card: { persist_chat_images: false } }).card.persist_chat_images, true);
+  assert.equal(migrateSettings({ card: { inline_chat_images: false } }).card.inline_chat_images, true);
 });
 
 test("scroll_hold defaults off and accepts truthy flags", () => {

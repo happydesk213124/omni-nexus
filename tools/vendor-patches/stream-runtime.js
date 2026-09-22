@@ -52,6 +52,7 @@ function omniSetStreaming(paused) {
     omniStreamArm();
   } else {
     clearTimeout(omniStream.timer);omniStream.timer=0;
+    if(changed && typeof omniKeywordStreamEnded==='function')omniKeywordStreamEnded();
     if(changed && !t.unloading) {
       omniScheduleFooter();nxFloatScheduleScan();
       // Hosts without the commit listener still need the final hash rebind.
@@ -91,6 +92,7 @@ async function omniReadScope(force=false) {
       omniFooterTargets.delete(nxFloatKey);
     }
     omniStream.scope=scope;omniStream.at=Date.now();
+    if(typeof omniKeywordScope==='function')omniKeywordScope(scope);
     omniSetStreaming(scope.chat?.isStreaming===true || scope.chat?.is_streaming===true);
     return scope;
   })();
@@ -113,6 +115,7 @@ function omniStreamOutput() {
   })().catch(()=>{omniStreamArm();});
 }
 function omniStreamDispose() {
+  if(typeof omniCancelKeywordRun==='function')omniCancelKeywordRun();
   omniStream.epoch++;clearTimeout(omniStream.timer);omniStream.timer=0;
   clearTimeout(omniFooterTimer);omniFooterTimer=0;
   omniStream.scope=null;omniStream.at=0;

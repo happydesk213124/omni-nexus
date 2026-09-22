@@ -125,13 +125,14 @@ test('compact scene rules retain required contracts and conditionally include fe
   const textOf=async()=> (await api.buildTaggerMessages({session_id:'',assistant_text:'Alice stands.\nBob waves.'}))
     .filter(m=>m.role==='system').map(m=>m.content).join('\n');
   const plain=await textOf();
-  for(const term of ['new_characters','hair_style','eye_color','source','target','mutual','wear_state','indoor','outdoor','y_percent','paragraph','line','aspect']) assert.ok(plain.includes(term),term);
+  for(const term of ['new_characters','hair_style','eye_color','source','target','mutual','wear_state','indoor','outdoor','paragraph','line','aspect']) assert.ok(plain.includes(term),term);
   assert.match(plain,/NOT line|NOT shot order/);
   assert.doesNotMatch(plain,/## Costumes \(enabled\)|## Speech|center_x|comic_page/);
   config.card={...config.card,costume:true,nai_use_coords:true,nai5_speech:true,comic_gen:true,comic_llm_batch:'with_main'};
   api.setConfig(config);
   const enabled=await textOf();
   for(const term of ['## Costumes (enabled)','new_costumes','[base]','center_x','speech_lang','comic_page','cut_kind']) assert.ok(enabled.includes(term),term);
+  assert.doesNotMatch(readFileSync('prompts/format.txt','utf8'), /y_percent/);
   const core=['tagger','format','appearance_inject','character_common'].map(key=>readFileSync(`prompts/${key}.txt`,'utf8'));
   // Previous shipped core was 15,124 characters; this guards real prompt growth,
   // independently of any model tokenizer and without counting disabled files.

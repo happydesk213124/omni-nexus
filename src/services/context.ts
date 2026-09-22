@@ -80,6 +80,7 @@ export interface JobRunMeta {
 export const jobEpochByKey = new Map<string, JobEpoch>();
 
 export const jobRunMeta = new Map<string, JobRunMeta>();
+export const jobLlmControllers = new Map<string, AbortController>();
 
 /** Message-level reroll lock. Distinct from jobs: no epoch, no shots. */
 export const messageBusyKeys = new Set<string>();

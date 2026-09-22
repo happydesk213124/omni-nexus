@@ -1,3 +1,4 @@
+import { serializeModuleWrite } from './module-write';
 import { messageControlsTrigger, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
 import { measureWrite } from '../core/write-metrics';
 /**
@@ -60,6 +61,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return false;
   const host = risuHost();
   if (!host?.getDatabase || !host.setDatabase) return false;
+  return serializeModuleWrite(async () => {
   try {
     if (typeof host.requestPluginPermission === 'function') {
       try {
@@ -68,7 +70,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
         /* older hosts */
       }
     }
-    const db = await host.getDatabase(['modules', 'enabledModules']);
+    const db = await host.getDatabase!(['modules', 'enabledModules']);
     if (!db) return false;
     const modules = readModules(db);
     const wanted = inrayDisplayRegexScript(folded, scalePct);
@@ -150,4 +152,5 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
     dbg('inray-display.ensure.fail', { message: String((err as Error)?.message || err) }, 'warn');
     return false;
   }
+  });
 }

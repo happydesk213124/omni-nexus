@@ -271,10 +271,10 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     card.tts_rate = Number.isFinite(rate) ? Math.max(0.5, Math.min(2, rate)) : 1;
   }
   card.tts_voice = String(card.tts_voice ?? '').trim().slice(0, 200);
-  if (card.inline_chat_images == null) card.inline_chat_images = true;
-  else card.inline_chat_images = card.inline_chat_images === true || card.inline_chat_images === 'true' || card.inline_chat_images === 1 || card.inline_chat_images === '1';
-  if (card.persist_chat_images == null) card.persist_chat_images = true;
-  else card.persist_chat_images = card.persist_chat_images === true || card.persist_chat_images === 'true' || card.persist_chat_images === 1 || card.persist_chat_images === '1';
+  card.inline_chat_images = true;
+  card.persist_chat_images = true;
+  card.llm_anchor_percent = false;
+  card.omni_helper_prompt = card.omni_helper_prompt === true;
   if (card.persist_chat_images_folded == null) card.persist_chat_images_folded = false;
   else card.persist_chat_images_folded = card.persist_chat_images_folded === true || card.persist_chat_images_folded === 'true' || card.persist_chat_images_folded === 1 || card.persist_chat_images_folded === '1';
   if (card.scroll_hold == null) card.scroll_hold = false;

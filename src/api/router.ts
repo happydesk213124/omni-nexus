@@ -320,6 +320,10 @@ const WRITE_ROUTES: readonly Route[] = [
     handler: async ({ body }) => ({ status: 202, data: await jobs.createJob(body) }),
   },
   {
+    match: exact('/v1/jobs/commit-output'),
+    handler: async ({ body }) => ok(await jobs.commitStreamOutput(body)),
+  },
+  {
     match: exact('/v1/jobs/retarget-hash'),
     handler: async ({ body }) =>
       ok(

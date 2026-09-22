@@ -134,20 +134,29 @@ test('preparation respects disabled toasts and never replaces an existing active
   assert.equal(h.state.nodes.title.text, '이미지 생성 중');
 });
 
-test('shipped tag entry wrappers begin preparation before viewport or message reads', async () => {
+test('shipped tag and reroll entry wrappers begin preparation before viewport or message reads', async () => {
   const patched = repairProgressToast(legacyFixture());
   for (const [name, args] of [['nxFloatClick', 'kind'], ['omniFooterAction', 'kind,key']]) {
     const a = patched.indexOf(`async function ${name}(${args}) {`);
     const b = patched.indexOf(`async function ${name}Prepared(${args}) {`, a);
     assert.ok(a >= 0 && b > a);
-    const h = harness();
-    let finish;
-    h.context[`${name}Prepared`] = () => new Promise(resolve => { finish = resolve; });
-    const run = vm.runInContext(patched.slice(a, b) + ';' + name, h.context);
-    const pending = run('tag', 1);
-    await h.sync();
-    assert.equal(h.state.nodes.title.text, '장면 정리 중');
-    finish(); await pending; await h.sync();
+    for (const kind of ['tag', 'regen', ...(name === 'nxFloatClick' ? ['single'] : [])]) {
+      const h = harness();
+      let finish;
+      h.context[`${name}Prepared`] = () => new Promise(resolve => { finish = resolve; });
+      const run = vm.runInContext(patched.slice(a, b) + ';' + name, h.context);
+      const pending = run(kind, 1);
+      await h.sync();
+      assert.equal(h.t._progressToastShown, true, `${name}:${kind} must show before reads finish`);
+      assert.equal(h.state.nodes.title.text, kind === 'tag' ? '장면 정리 중' : '이미지 재생성 준비 중');
+      if (kind !== 'tag') {
+        h.t.jobProgress = job({ jobId: 'reroll', kind: 'reroll' });
+        await h.sync();
+        assert.equal(h.t._progressToastShown, true);
+        assert.equal(h.state.nodes.title.text, '이미지 재생성 중');
+      }
+      finish(); await pending; await h.sync();
+    }
     assert.throws(() => repairProgressToast(legacyFixture().replace(`async function ${name}(${args}) {`, 'missing() {')), /drift/);
   }
 });

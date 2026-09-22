@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.2';
+const PLUGIN_VERSION = '0.2.3';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -630,6 +630,7 @@ const VENDOR_ASSET_NAI_SAVE_PATCH =
       llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!(t.backendSettings?.card?.llm_json_retry),
       llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? ee("nx-llm-reverse-bar") : !!(t.backendSettings?.card?.llm_reverse_bar),
       llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!(t.backendSettings?.card?.llm_tag_cal),
+      omni_helper_prompt: ee("nx-omni-helper"),
       stream_keywords_enabled: ee("nx-stream-keywords-on"),
       stream_keywords: w(N("nx-stream-keywords") || "", 4000),
 `;
@@ -664,6 +665,7 @@ const VENDOR_ASSET_NAI_CT_PATCH =
       llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!e.llm_json_retry,
       llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? ee("nx-llm-reverse-bar") : !!e.llm_reverse_bar,
       llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!e.llm_tag_cal,
+      omni_helper_prompt: document.getElementById("nx-omni-helper") ? ee("nx-omni-helper") : !!e.omni_helper_prompt,
       stream_keywords_enabled: document.getElementById("nx-stream-keywords-on") ? ee("nx-stream-keywords-on") : !!e.stream_keywords_enabled,
       stream_keywords: document.getElementById("nx-stream-keywords") ? w(N("nx-stream-keywords") || "", 4000) : w(e.stream_keywords || "", 4000),
       asset_nai_tags: document.getElementById("nx-asset-nai-tags") ? N("nx-asset-nai-tags") || "off" : e.asset_nai_tags || "off",
@@ -956,8 +958,10 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
-          <strong>0.2.2</strong>
+          <strong>0.2.3</strong>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>전체화면 버튼·꾹 누르기·트리플탭에서 창을 연 입력이 닫기 입력으로 겹치지 않도록 고쳤습니다. 다음 클릭부터 배경 닫기와 닫기 버튼이 작동합니다.</li>
+            <li>전체화면 이미지는 새 변환 없이 호스트 화면의 이미지를 복제해 표시하고, 로딩 중에도 컨트롤 위치가 흔들리지 않도록 정리했습니다.</li>
             <li>진행 토스트를 Risu SafeElement 방식에 맞춰 표시하고, 버튼을 누르면 장면 정리부터 바로 안내합니다. 검은 반투명 배경과 흰 글씨로 밝은 화면에서도 읽기 쉽습니다.</li>
             <li>생성 이미지는 WebP 품질 90으로 한 번만 변환해 미리보기와 저장에 함께 사용하며, 화면 표시와 저장을 병행합니다.</li>
             <li>이미지 미리보기 갱신을 묶어 반복 화면 조회를 줄이고, 생성 중인 이미지는 한 장씩 바로 표시합니다.</li>

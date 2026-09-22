@@ -1,7 +1,7 @@
 import { cleanText, joinTags } from '../core/util/text.ts';
 import { resolveCharacter } from '../domain/character/roster.ts';
 import type { CharacterInput } from '../domain/character/identity.ts';
-import { peelMain, peelStudioCharFields } from './peel.ts';
+import { peelMain, peelStudioCharFields, splitStudioCostume } from './peel.ts';
 import {
   CHAR_SLOTS,
   assemble,
@@ -110,8 +110,10 @@ function costumesOf(row: CharacterInput | null | undefined): CostumeRow[] {
     if (!c || typeof c !== 'object') continue;
     const rec = c as unknown as Record<string, unknown>;
     out.push({
+      ...rec,
       name: cleanText(rec.name, 200),
       attire: cleanText(rec.attire, 4000),
+      bottoms: cleanText(rec.bottoms, 4000),
       note: cleanText(rec.note, 400),
       accessories: cleanText(rec.accessories, 4000),
     });
@@ -784,7 +786,10 @@ export async function openTagStudio(card: unknown): Promise<void> {
           notePlaceholder: '언제 쓸지 · 예: 수영장',
           extra: `<button class="btn sm" data-act="costumeDefault" type="button">기본값으로</button>`,
         })}
-        <textarea class="t" data-c="costumeTags" data-tab="${esc(tabId)}" placeholder="school uniform, blue tie …">${esc(c.costumeTags || costume.attire || '')}</textarea>
+        <div class="g2 costume-fields">
+          <label class="k">상의<textarea class="t" data-c="costumeTags" data-tab="${esc(tabId)}" placeholder="school uniform, blue tie …">${esc(c.costumeTags)}</textarea></label>
+          <label class="k">하의<textarea class="t" data-c="costumeBottoms" data-tab="${esc(tabId)}" placeholder="pleated skirt, jeans …">${esc(c.costumeBottoms)}</textarea></label>
+        </div>
         <label class="chk"><input type="checkbox" data-c="lock" data-tab="${esc(tabId)}" ${c.lock ? 'checked' : ''}/> 룩 고정</label>`,
       ),
       sec('xy', `<span class="name">좌표</span>`, coordBody),
@@ -1229,11 +1234,12 @@ export async function openTagStudio(card: unknown): Promise<void> {
     const list = costumesOf(stored);
     let slot = list.find((x) => x.name === c.costume);
     if (!slot || !c.costume) {
-      slot = { name, attire: c.costumeTags || '', note: c.costumeNote || '', accessories: '' };
+      slot = { name, attire: c.costumeTags || '', bottoms: c.costumeBottoms || '', note: c.costumeNote || '', accessories: '' };
       list.push(slot);
     } else {
       slot.name = name;
       slot.attire = c.costumeTags || '';
+      slot.bottoms = c.costumeBottoms || '';
       slot.note = c.costumeNote || '';
     }
     c.costume = name;
@@ -1265,6 +1271,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
     c.costume = next?.name || '';
     c.costumeName = next?.name || '';
     c.costumeTags = next?.attire || '';
+    c.costumeBottoms = next?.bottoms || '';
     c.costumeNote = next?.note || '';
     try {
       await persistCharacter({
@@ -1301,6 +1308,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         name: stored.name,
         costumes: list,
         attire: slot.attire,
+        bottoms: slot.bottoms,
         accessories: slot.accessories,
         promote_costume_default: true,
       });
@@ -1344,6 +1352,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         c.costume = '';
         c.costumeName = '';
         c.costumeTags = '';
+        c.costumeBottoms = '';
         c.costumeNote = '';
         relabel();
         renderAll();
@@ -1356,6 +1365,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       c.costume = first?.name || '';
       c.costumeName = c.costume;
       c.costumeTags = first?.attire || '';
+      c.costumeBottoms = first?.bottoms || '';
       c.costumeNote = first?.note || '';
       c.tags = cleanText(r?.appearance, 4000);
       relabel();
@@ -1370,6 +1380,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         c.costume = '';
         c.costumeName = '';
         c.costumeTags = '';
+        c.costumeBottoms = '';
         c.costumeNote = '';
         renderPanel();
         return;
@@ -1378,6 +1389,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       c.costume = value;
       c.costumeName = value;
       c.costumeTags = slot?.attire || '';
+      c.costumeBottoms = slot?.bottoms || '';
       c.costumeNote = slot?.note || '';
       renderPanel();
       renderPeek();
@@ -1407,15 +1419,15 @@ export async function openTagStudio(card: unknown): Promise<void> {
       if ('uc' in row) ch.uc = cleanText(row.uc, 2000);
       if (row.name) ch.charName = cleanText(row.name, 200);
       const stored = ch.charName ? resolveCharacter(ch.charName, roster) : null;
-      const look = joinTags(stored?.appearance, ch.tags, ch.costumeTags);
+      const look = joinTags(stored?.appearance, ch.tags, ch.costumeTags, ch.costumeBottoms);
       const peeled = peelStudioCharFields({
         slim: null,
-        caption: prompt || joinTags(ch.tags, ch.costumeTags, ch.post),
+        caption: prompt || joinTags(ch.tags, ch.costumeTags, ch.costumeBottoms, ch.post),
         lookTags: look,
-        costumeAttire: ch.costumeTags,
+        costumeAttire: joinTags(ch.costumeTags, ch.costumeBottoms),
       });
       ch.tags = peeled.tags;
-      ch.costumeTags = peeled.costumeTags;
+      Object.assign(ch, splitStudioCostume(peeled.costumeTags, ch.costumeBottoms));
       ch.post = peeled.post;
     });
     relabel();
@@ -1583,6 +1595,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       costume: firstCos?.name || '',
       costumeName: firstCos?.name || '',
       costumeTags: firstCos?.attire || '',
+      costumeBottoms: firstCos?.bottoms || '',
       costumeNote: firstCos?.note || '',
       tags: cleanText(r?.appearance, 4000),
       post: '',
@@ -1759,7 +1772,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         renderPeek();
         return;
       }
-      if (k === 'charName' || k === 'costumeName' || k === 'costumeTags' || k === 'costumeNote') {
+      if (k === 'charName' || k === 'costumeName' || k === 'costumeTags' || k === 'costumeBottoms' || k === 'costumeNote') {
         c[k] = el.value;
         renderPeek();
         return;

@@ -5,7 +5,7 @@ export function repairGestures(source) {
     if(out.split(needle).length!==2)throw Error('[gestures] drift: '+needle.slice(0,100));
     out=out.replace(needle,()=>value);
   };
-  once('    let pointerGesture = null, mobilePress = null,', '    let nxPhysical=null,nxPointerWork=Promise.resolve();\n    let pointerGesture = null, mobilePress = null,');
+  once('    let pointerGesture = null, mobilePress = null,', '    let nxPhysical=null,nxInspectOpeningPointer=null,nxPointerWork=Promise.resolve();\n    let pointerGesture = null, mobilePress = null,');
   once('    }, p = async (f) => {', `    }, p = f => {
       if(!nxPhysical || !nxPhysical.held.size) {
         if(nxPhysical)nxPhysical.cancelled=true;
@@ -48,7 +48,13 @@ export function repairGestures(source) {
   const nodes=[];
   for(const footer of footers)if(await hitEl(footer,x,y))nodes.push(...await nxUnwrapSafeNodes(await footer.querySelectorAll('[data-omni-action],[x-omni-action]')));`);
   for(const name of ['fs','refresh'])once(`:is([x-inray-${name}],[data-inray-${name}]):active`,`:is([x-inray-${name}],[data-inray-${name}])`);
-  once('inspectGuardUntil = Date.now() + 400;', 'inspectGuardUntil = 0;');
+  // The opener runs on pointerdown (or its hold timer), but SafeDOM forwards
+  // the following click to the newly opened surface too. Remember the whole
+  // physical gesture: a timeout fails on slow release, and swallowing the
+  // next click blindly would eat a real click when the opener was cancelled.
+  once('inspectGuardUntil = Date.now() + 400;', 'inspectGuardUntil = 0; nxInspectOpeningPointer = nxPhysical;');
+  once('      const gen = t._inspectGen, card = actionCard;', `      if (nxPhysical && nxPhysical === nxInspectOpeningPointer) return;
+      const gen = t._inspectGen, card = actionCard;`);
   // Freshly generated images need not already belong to the settings gallery cache.
   const card='const card = (t.gallery || []).find((c) => String(c?.id || "") === String(cardId || ""));';
   if(out.split(card).length!==3)throw Error('[gestures] inline card drift');

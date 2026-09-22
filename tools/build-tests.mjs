@@ -21,6 +21,8 @@ const outdir = path.join(root, '.test-build');
 
 /** 1.x module name → where that logic lives in 2.0. */
 const MODULES = {
+  'message-body': 'src/domain/prompt/message-body.ts',
+  'stream-services': ['src/services/jobs.ts','src/services/stream-jobs.ts','src/services/context.ts','src/storage/stores.ts','src/services/settings.ts','src/services/chat-bake.ts','src/storage/omni-helper-module.ts','src/storage/inray-display-module.ts','src/storage/shot-module.ts'],
   'character-placeholders': 'src/domain/prompt/character-placeholders.ts',
   'viewer-core': 'src/ui-contract/viewer-core.ts',
   'inline-chat': 'src/domain/inline-chat.ts',

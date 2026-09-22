@@ -20,16 +20,14 @@ export async function bindPromptUpdates(): Promise<void> {
   if (own !== generation) return;
   const promptsTab = document.querySelector('#nx-tabs [data-nx-tab="prompts"]');
   if (promptsTab) dot(promptsTab, pending.size > 0);
-  for (const button of document.querySelectorAll<HTMLElement>('[data-reset-prompt]')) {
-    const key = button.dataset.resetPrompt || '';
-    const section = button.closest('details,.prompt-card,.group,.card') || button.parentElement?.parentElement;
+  for (const editor of document.querySelectorAll<HTMLTextAreaElement>('textarea[id^="nx-prompt-"]')) {
+    const key = editor.id.slice('nx-prompt-'.length);
+    const section = editor.closest('.block,details,.prompt-card,.group,.card') || editor.parentElement;
     if (RETIRED_PROMPT_KEYS.has(key)) {
       if (section instanceof HTMLElement) section.hidden = true;
       continue;
     }
-    dot(button, pending.has(key));
-    const heading = section?.querySelector('summary,h3,h4,strong,[data-prompt-title]');
-    if (key === 'character_common' && heading) heading.childNodes[0]!.textContent = '공통 캐릭터 프롬프트';
+    const heading = section?.querySelector('summary,h3,h4,strong,[data-prompt-title],span');
     if (heading) dot(heading, pending.has(key));
     if (section && pending.has(key) && !section.querySelector('.nx-prompt-update-notice')) {
       const hint = document.createElement('p'); hint.className = 'nx-prompt-update-notice'; hint.textContent = notice; section.append(hint);

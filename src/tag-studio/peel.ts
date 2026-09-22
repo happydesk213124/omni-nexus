@@ -190,6 +190,18 @@ export function splitLookAndCostume(lookBlob: unknown, costumeAttire: unknown): 
   };
 }
 
+/** Keep every caption token; saved bottoms also identify nonstandard garment tags. */
+export function splitStudioCostume(tags: unknown, bottoms: unknown): { costumeTags: string; costumeBottoms: string } {
+  const lowerKeys = new Set(splitTagTokens(bottoms).map(t => t.toLowerCase()));
+  const upper: string[] = [], lower: string[] = [];
+  for (const tag of splitTagTokens(tags)) {
+    const isLower = lowerKeys.has(tag.toLowerCase())
+      || /\b(?:skirt|pants|panties|shorts|jeans|trousers|leggings|pantyhose|stockings|thighhighs|socks|hakama)\b/i.test(tag.replaceAll('_', ' '));
+    (isLower ? lower : upper).push(tag);
+  }
+  return { costumeTags: upper.join(', '), costumeBottoms: lower.join(', ') };
+}
+
 /**
  * First fill only: split a baked NAI char caption into 외형 / 코스튬 / 후행.
  * Roster look+attire are peel keys, not field values.

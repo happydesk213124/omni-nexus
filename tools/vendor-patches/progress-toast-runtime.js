@@ -1,12 +1,12 @@
   const nxProgress = { nodes: null, cache: {}, run: null, timer: null, pending: null, dirty: false, disposed: false };
   let nxScenePreparation = null, nxScenePreparationSequence = 0;
-  async function nxWithScenePreparation(work) {
+  async function nxWithScenePreparation(work, kind = 'scene') {
     if (nxProgress.disposed || t.unloading || t._nxHostInspectOpen) return work();
     const previous = t.jobProgress;
     // Keep an existing generation's actual progress visible on duplicate clicks.
     if (!nxScenePreparation && previous && ['queued', 'tagging', 'generating', 'running'].includes(previous.state)) return work();
     const preparation = nxScenePreparation || (nxScenePreparation = {
-      previous, users: 0, job: { state: 'preparing', toastRun: 'prepare:' + (++nxScenePreparationSequence) },
+      previous, users: 0, job: { state: 'preparing', kind, toastRun: 'prepare:' + (++nxScenePreparationSequence) },
     });
     preparation.users++;
     // Start painting before scope/lore reads, without making the request wait

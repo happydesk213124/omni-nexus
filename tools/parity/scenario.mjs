@@ -122,6 +122,20 @@ export async function runScenario(N, handles) {
     };
   });
   await post('/v1/settings/import', { json: RESET_FLOOR_JSON });
+  await rec('settings.stream_contract', async () => {
+    const initial = (await get('/v1/settings')).settings.card;
+    if (!('omni_helper_prompt' in initial)) return {unsupported:true};
+    if (initial.omni_helper_prompt !== false) throw new Error('Helper must start disabled');
+    const enabled = (await put('/v1/settings', {card:{omni_helper_prompt:true,inline_chat_images:false,persist_chat_images:false,llm_anchor_percent:true}})).settings.card;
+    if (enabled.omni_helper_prompt !== true || enabled.inline_chat_images !== true || enabled.persist_chat_images !== true || enabled.llm_anchor_percent !== false) throw new Error('Streaming settings invariants failed');
+    await put('/v1/settings', {card:{omni_helper_prompt:false}});
+    return {defaultOff:true,helperToggle:true,mandatoryOn:true,percentDisabled:true};
+  });
+  await rec('job.commit_output_unknown', async () => {
+    const result = await post('/v1/jobs/commit-output', {job_id:'missing',stream_id:'missing'});
+    if (result.ok !== false || result.error?.code !== 'not_pending') throw new Error('Unknown stream must not attach');
+    return result;
+  });
   await rec('settings.image_analysis_separate', async () => {
     const initial = (await get('/v1/settings')).settings.card.image_analysis_separate;
     await put('/v1/settings', {card:{image_analysis_separate:true}});
@@ -416,6 +430,11 @@ export async function runScenario(N, handles) {
   }));
   generationGate.release();
   const jobResult = await rec('job.wait', () => waitForJob(job?.job_id));
+  await rec('job.line_placement_contract', () => {
+    const cards = jobResult?.result?.cards;
+    if (!cards?.length || cards.some(c=>c.y_percent !== null || c.line !== 1)) throw new Error('Generated shots must use L1 and no percent');
+    return {line:1,percent:null,count:cards.length};
+  });
   await rec('job.card_count', () => (jobResult?.result?.cards ?? []).length);
   // 2.0: default person_tag_weight=3 wraps cast count as N::1boy:: (1.x was plain).
   await rec('job.person_tag_emphasis', () => {

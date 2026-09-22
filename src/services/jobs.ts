@@ -1,3 +1,6 @@
+import { analysisBody } from '../domain/prompt/message-body';
+import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage } from './stream-jobs';
+export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
 import { writeJobSpinners, finishJobSpinners, stripBakedImagesFromChatMessage } from './chat-bake';
 /**
@@ -72,7 +75,7 @@ import { stripStoredCardMeta } from '../domain/gallery/strip-stored-meta';
 import { dedupeShotCharacters, resolveCharacter } from '../domain/character/roster';
 import { publishImage, resolveImageUrl } from '../storage/image-urls';
 import { idbGet, idbPut, rememberSessionAlias } from '../storage/stores';
-import { getConfig, jobEpochByKey, jobRunMeta, requestMessageRerollStop } from './context';
+import { getConfig, jobEpochByKey, jobRunMeta, jobLlmControllers, requestMessageRerollStop } from './context';
 import { mergeRosterFromTagged } from './characters';
 import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
@@ -112,7 +115,6 @@ export { canRetargetJobSaveHash, jobMatchesMessageIdentity };
 /** Progress heartbeat period while waiting on NovelAI. */
 const HEARTBEAT_MS = 5000;
 
-const jobLlmControllers = new Map<string, AbortController>();
 let bakeWriteChain: Promise<void> = Promise.resolve();
 function enqueueBakeWrite<T>(work: () => Promise<T>): Promise<T> {
   const next = bakeWriteChain.then(work, work);
@@ -133,6 +135,7 @@ async function resolveJobContentHash(
   const fallback = cleanText(requestHash || '', 128);
   const meta = jobRunMeta.get(jobId);
   const saveHash = cleanText(meta?.saveContentHash || '', 128);
+  if (streamJob(jobId)?.committed) return {contentHash:saveHash || fallback, assistantPreview:cleanText(meta?.saveAssistantPreview || '', ASSISTANT_PREVIEW_LIMIT)};
   if (saveHash && fallback && saveHash !== fallback) {
     return {
       contentHash: saveHash,
@@ -421,6 +424,7 @@ export async function requestJobStop(args: { session_id?: string } = {}): Promis
     const row = await idbGet('jobs', jobId);
     const state = String(row?.state || '');
     if (!ACTIVE_JOB_STATES.includes(state)) continue;
+    cancelStreamJob(jobId);
     meta.cancelRequested = true;
     meta.userStop = true;
     jobLlmControllers.get(jobId)?.abort();
@@ -531,7 +535,10 @@ async function setJob(
   const row = await idbGet('jobs', jobId);
   if (!row) return;
   const next: Record<string, unknown> = { ...(row as unknown as Record<string, unknown>), state };
-  const stored = slimResultForStorage(result);
+  const stored = slimResultForStorage(result) as Record<string, unknown> | null;
+  if (stored && streamJob(jobId) && !streamJob(jobId)!.committed) {
+    delete stored.pending_inline; delete stored.pending_message_index;
+  }
   next.result_json = stored != null ? JSON.stringify(stored) : null;
   next.error = error;
   next.updated_at = Date.now() / 1000;
@@ -583,7 +590,13 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
     }
   }
   const payload: JobRequest = { ...request, session_id: sessionId, unified_session_id: sessionId };
+  if (payload.defer_attachment) payload.force = false;
+  if (payload.defer_attachment && (!payload.stream_id || !payload.host_message_id || !payload.character_id || !payload.chat_id)) return {ok:false,error:{code:'bad_request',message:'선행 생성 대상 ID가 필요합니다.'}};
+  const occupied = streamOwnsMessage(payload);
+  if (occupied) return {ok:false,busy:true,job_id:occupied};
   const busy = await busyReplyForRequest(payload, sessionId);
+  const streamOwner = streamOwnsMessage(payload);
+  if (streamOwner) return {ok:false,busy:true,job_id:streamOwner};
   if (busy) {
     dbg('job.busy', { message: busy.error.message || 'busy', key: jobKey(payload, sessionId), focus: true }, 'warn');
     return busy;
@@ -591,6 +604,7 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
   const jobId = uuid();
   const now = Date.now() / 1000;
   beginJobEpoch(jobId, payload, sessionId);
+  registerStreamJob(jobId, payload);
   // Baked tokens own placement. Retagging must not scan/unlink gallery assets.
   await idbPut('jobs', {
     id: jobId,
@@ -661,24 +675,12 @@ export async function getJob(jobId: string): Promise<ApiResult> {
 
 // ── the run loop ───────────────────────────────────────────────────────────
 
-/** Reads the LLM's vertical anchor for a shot, if it gave one. */
-function shotAnchorPercent(shot: TaggedShot): number | null {
-  for (const key of ['y_percent', 'anchor_percent', 'read_percent'] as const) {
-    const raw = (shot as unknown as Record<string, unknown>)[key];
-    if (raw == null) continue;
-    try {
-      return Math.max(0, Math.min(100, Number(raw)));
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
 async function runJob(jobId: string): Promise<void> {
   const row = await idbGet('jobs', jobId);
   if (!row) return;
-  const request = JSON.parse(row.request_json ?? '{}') as JobRequest;
+  const deferred = streamJob(jobId);
+  const request = deferred?.request ?? JSON.parse(row.request_json ?? '{}') as JobRequest;
+  request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
   const noteSessionId = chatNoteSessionId(request.session_id, request);
   const outfitRevision = sessionOutfitRevision(noteSessionId);
@@ -698,9 +700,11 @@ async function runJob(jobId: string): Promise<void> {
   let pendingShotSave: Promise<void> = Promise.resolve();
   let shotSaveFailed: unknown = null;
   let durableSpinners = false;
+  let streamCardsRebound = false;
   const completedSpinnerCards = new Map<number,string>();
   const bakedSpinnerShots = new Set<number>();
   async function finishCompletedSpinners(): Promise<boolean> {
+    if (deferred && (!deferred.committed || deferred.cancelled)) return false;
     if (!durableSpinners || !completedSpinnerCards.size) return false;
     return enqueueBakeWrite(async () => {
       const meta = jobRunMeta.get(jobId);
@@ -728,8 +732,8 @@ async function runJob(jobId: string): Promise<void> {
     // and spinner placement address the same lines. Only when no stored
     // message is reachable (unified view, out-of-range index) does the
     // request text stand in — there is no stored original there at all.
-    const storedBody = await readStoredMessageBody(request.char_index, request.chat_index, request.message_index);
-    request.assistant_text = stripBakeTokens(storedBody ?? request.assistant_text);
+    const storedBody = deferred ? null : await readStoredMessageBody(request.char_index, request.chat_index, request.message_index);
+    request.assistant_text = analysisBody(stripBakeTokens(storedBody ?? request.assistant_text));
     if (await cancelJobIfStale(jobId, 'superseded before tagging')) return;
     await setJob(jobId, 'tagging', {
       phase: 'tagging',
@@ -1008,7 +1012,7 @@ async function runJob(jobId: string): Promise<void> {
       sessionLocation = cleanText((await getSessionAuthorNote(noteSessionId) as { location?: unknown }).location, 800);
     } catch { /* no session note yet */ }
     sessionLocation = applyLocationContinuityToShots(shots, sessionLocation);
-    await persistSessionLocation(noteSessionId, sessionLocation);
+    if (!deferred || deferred.committed) await persistSessionLocation(noteSessionId, sessionLocation);
 
     const ready = new Set<number>();
     const done = new Set<number>();
@@ -1046,7 +1050,7 @@ async function runJob(jobId: string): Promise<void> {
         applyWearContinuityToShots(shots, wearPrev);
 
         sessionLocation = applyLocationContinuityToShots(shots, sessionLocation);
-        await persistSessionLocation(noteSessionId, sessionLocation);
+        if (!deferred || deferred.committed) await persistSessionLocation(noteSessionId, sessionLocation);
         for (const idx of assigned) ready.add(idx);
         dbg('job.comic.done', { assigned: assigned.size, comics: shots.filter((s) => isComicShot(s)).length });
       } catch (err) {
@@ -1086,11 +1090,19 @@ async function runJob(jobId: string): Promise<void> {
         ...(isComicShot(shot) ? { kind: 'comic' as const } : {}),
       });
     });
-    if(persistChatImagesOn()) {
-      // Tagging does not change layout. Begin holding only for the atomic token swap.
-      durableSpinners=await enqueueJobSpinners();
-    }
-    async function enqueueJobSpinners() { return writeJobSpinners({...jobChatTarget(request),jobId,stripExisting:Boolean(request.force),shots:pendingInline}); }
+    let attachment: Promise<void> = Promise.resolve();
+    const attach = () => attachment = attachment.catch(() => {}).then(async () => {
+      if (deferred?.cancelled || !isJobCurrent(jobId)) return;
+      if (!durableSpinners) durableSpinners = await enqueueJobSpinners();
+      await finishCompletedSpinners();
+      if (deferred?.committed) {
+        await persistSessionLocation(noteSessionId, sessionLocation);
+        await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,shot])=>shot), roster, outfitRevision);
+      }
+    });
+    if (deferred) deferred.attach = attach;
+    if (!deferred || deferred.committed) await attach();
+    async function enqueueJobSpinners() { return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,stripExisting:Boolean(request.force),shots:pendingInline})); }
     await setJob(
       jobId,
       'generating',
@@ -1107,7 +1119,7 @@ async function runJob(jobId: string): Promise<void> {
     );
 
     const cards: Array<Record<string, unknown> | undefined> = new Array(shots.length);
-    const wantAnchor = Boolean(card.llm_anchor_percent);
+
     // After unzip, reveal (publish + spinner→image) starts immediately and in
     // parallel across shots — do not serialize behind an earlier shot's idb.
     // Next NAI still overlaps those reveals. Drain before done/cancel/discard.
@@ -1140,14 +1152,7 @@ async function runJob(jobId: string): Promise<void> {
       const cardId = uuid();
       const now = Date.now() / 1000;
       // Resolve hash at reveal time (below) so mid-job retarget/sibling rebind is fresh.
-      // The LLM's anchor is always stored when present; the setting only affects
-      // how it is used at display time.
-      let yPercent = shotAnchorPercent(shot);
-      // With anchoring on but no LLM value, fall back to an equal band start so
-      // the sticky-pin logic still has a threshold to compare against.
-      if (yPercent == null && wantAnchor) {
-        yPercent = Math.round((idx / Math.max(1, shots.length)) * 10000) / 100;
-      }
+      const yPercent = null;
 
       dbg('job.shot.prepare', {
         shot: idx,
@@ -1446,11 +1451,10 @@ async function runJob(jobId: string): Promise<void> {
           meta_json: JSON.stringify(stripStoredCardMeta(cardMeta)),
           created_at: now,
         });
-        if(durableSpinners) {
-          completedSpinnerCards.set(idx,cardId);
-        }
+        completedSpinnerCards.set(idx,cardId);
+        if (deferred?.committed && durableSpinners) await finishCompletedSpinners();
         successfulOutfitShots.set(idx, shot);
-        if (isJobCurrent(jobId)) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
+        if (isJobCurrent(jobId) && (!deferred || deferred.committed)) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
         dbg('job.shot.saved', { shot: idx, card_id: cardId });
         await setJob(
           jobId,
@@ -1523,6 +1527,18 @@ async function runJob(jobId: string): Promise<void> {
       message: `이미지 ${shots.length}/${shots.length} 완료`,
       // Done = no spinners. Leaving pending_inline here kept circles on finished bubbles.
     };
+    if (deferred && !deferred.committed && !deferred.cancelled) {
+      await setJob(jobId, 'generating', {...result, phase:'waiting_output', message:'응답 완료 대기…'});
+      await deferred.ready;
+    }
+    if (await cancelJobIfStale(jobId)) return;
+    if (deferred?.committed) {
+      await deferred.attach?.();
+      await rebindCardsHash({session_id:sessionId,card_ids:finalCards.map(c=>String(c.id)),to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
+      for (const card of finalCards) { card.content_hash = request.content_hash; card.message_index = request.message_index; }
+      result.message_index = request.message_index ?? -1;
+      streamCardsRebound = true;
+    }
     // Last shot needs one generating poll tick, same as shots 1..N-1, before
     // done. 2.5.8 skips painting on done on purpose.
     if (!durableSpinners) await waitForLastGeneratingPoll(jobId);
@@ -1571,12 +1587,20 @@ async function runJob(jobId: string): Promise<void> {
   } finally {
     llmController.abort();
     jobLlmControllers.delete(jobId);
+    // A later shot may fail after earlier paid shots finished. Their attachment
+    // still belongs to the committed output, even when the job is already error.
+    if (deferred && !deferred.committed && !deferred.cancelled && completedSpinnerCards.size) await deferred.ready;
+    if (deferred?.committed && !deferred.cancelled) {
+      await deferred.attach?.().catch(err => dbg('job.partial.attach.fail', {message:String(err)}, 'warn'));
+      if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
+    }
     await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
     // Unfinished frames remain retryable; successful frames are permanent.
     const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");
     if(typeof endScroll==="function") try {await endScroll(jobId);} catch(error) {dbg("scroll.end.fail",{message:String(error)},"warn");}
     const clearPreview=Reflect.get(globalThis,"__OMNI_CLEAR_SPINNER_PREVIEW__");
     if(typeof clearPreview==='function') await clearPreview(jobId);
+    closeStreamJob(jobId);
     setJobContext(prevCtx);
   }
 }

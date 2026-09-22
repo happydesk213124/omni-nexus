@@ -911,6 +911,8 @@
       }
       #nx-lorefilter-slot { padding:0 8px 8px; }
     }
+      .row:has(input:disabled) { opacity: .6; cursor: default; }
+    .sw:has(input:disabled) { filter: grayscale(1); cursor: default; }
   </style>
 </head>
 <body>
@@ -990,8 +992,8 @@
         <div class="group">
           <h3>채팅 그림</h3>
           <div class="stack">
-            <label class="row"><span class="row-text"><b>이미지 채팅에</b><small>생성 중에만 스피너·겹침</small></span><span class="sw"><input id="nx-inline-chat" type="checkbox" checked></span></label>
-            <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked></span></label>
+            <label class="row"><span class="row-text"><b>이미지 채팅에</b><small>생성 중에만 스피너·겹침</small></span><span class="sw"><input id="nx-inline-chat" type="checkbox" checked disabled></span></label>
+            <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked disabled></span></label>
             <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>채팅안에 바로가기툴 추가</b></span><span class="sw"><input id="nx-inline-msg-fan" type="checkbox"></span></label>
             <div class="row"><span class="row-text"><b>선택된글 위치</b></span>
@@ -1094,6 +1096,7 @@
             <label class="row"><span class="row-text"><b>역바</b></span><span class="sw"><input id="nx-llm-reverse-bar" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>태칼</b></span><span class="sw"><input id="nx-llm-tag-cal" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>Preprocessing</b></span><span class="sw"><input id="nx-preprocess" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-omni-helper"><span class="row-text"><b>⚛️ omni 보조 프롬</b></span><span class="sw"><input id="nx-omni-helper" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>스트리밍 키워드</b></span><span class="sw"><input id="nx-stream-keywords-on" type="checkbox"></span></label>
             <label class="block"><span>키워드</span><textarea id="nx-stream-keywords" placeholder="future plan, RP-Guide"></textarea></label>
           </div>
@@ -1410,7 +1413,6 @@
         </div>
         <div class="stack">
           <label class="block"><span>author_note</span><textarea id="nx-prompt-author_note"></textarea></label>
-          <label class="block"><span>asset_author_note</span><textarea id="nx-prompt-asset_author_note"></textarea></label>
           <label class="block"><span>global_author_note</span><textarea id="nx-prompt-global_author_note"></textarea></label>
           <label class="block"><span>tagger</span><textarea id="nx-prompt-tagger"></textarea></label>
           <label class="block"><span>format</span><textarea id="nx-prompt-format"></textarea></label>
@@ -1422,14 +1424,10 @@
           <label class="block"><span>lore_inject</span><textarea id="nx-prompt-lore_inject"></textarea></label>
           <label class="block"><span>char_inject</span><textarea id="nx-prompt-char_inject"></textarea></label>
           <label class="block"><span>appearance_inject</span><textarea id="nx-prompt-appearance_inject"></textarea></label>
-          <label class="block"><span>asset_tags_inject</span><textarea id="nx-prompt-asset_tags_inject"></textarea></label>
           <div class="block" id="nx-prompt-character-common-block">
             <span data-prompt-title>공통 캐릭터 프롬프트</span>
             <textarea id="nx-prompt-character_common"></textarea>
-            <div class="row"><button class="btn-ghost" type="button" data-reset-prompt="character_common">기본값</button></div>
           </div>
-          <label class="block"><span>char_looks</span><textarea id="nx-prompt-char_looks"></textarea></label>
-          <label class="block"><span>autotag</span><textarea id="nx-prompt-autotag"></textarea></label>
           <label class="block"><span>command_reroll</span><textarea id="nx-prompt-command_reroll"></textarea></label>
           <label class="block"><span>command_char_edit</span><textarea id="nx-prompt-command_char_edit"></textarea></label>
           <label class="block"><span>lorefilter_scan</span><textarea id="nx-prompt-lorefilter_scan"></textarea></label>
@@ -2311,10 +2309,6 @@
     "title": "NAI5 대사삽입",
     "body": "V5 샷에서 말한 캐릭터의 캡션 끝에 말풍선을 넣습니다. 여러 명이 말하면 각자 자기 대사만 가집니다. 프리셋의 spoken bubble 억제는 그 샷에서 빼입니다."
   },
-  "nx-llm-anchor": {
-    "title": "LLM 읽기 위치 배치",
-    "body": "ON이면 AI가 장면 흐름에 맞춰 읽기 위치(y%)를 잡아 저장·표시합니다. OFF면 저장값은 그대로 두고, 화면에서만 메시지 높이를 장 수로 균등 분할해 보여 줍니다(예: 3장 → 0–33 / 33–66 / 66–100). 다시 ON하면 저장된 AI 위치로 돌아갑니다."
-  },
   "nx-natural-base": {
     "title": "자연어 base",
     "body": "NovelAI base에 넣는 자연어 장면을 고릅니다. 안넣기 / 짧게 넣기(머리·나이·성별·행동) / 구도·자세히(구도·표정·옷·조명) / 태그 보완 자연어(태그가 못 담는 문장)."
@@ -2503,9 +2497,10 @@
     "title": "태칼",
     "body": "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다."
   },
+  "nx-omni-helper": {"title":"⚛️ omni 보조 프롬","body":"같은 이름의 Risu 모듈을 켜거나 끕니다. 이야기·대사 뒤, 상태창 등 부가 내용 전에 [[imgstart]]를 출력하도록 요청합니다. 표식은 화면에서 숨기며, 감지 시 그 앞까지 이미지 생성을 시작합니다. Gemini 생각 스트리밍과 PocketRisu 최적화 안내는 스트리밍 키워드 도움말을 확인하세요."},
   "nx-stream-keywords": {
     "title": "스트리밍 키워드",
-    "body": "토글과 Power가 켜져 있고, 칸에 3글자 이상 단어가 있을 때 AI 답이 나오는 동안 그 단어가 들어가면(대소문자 무시, 부분 일치) 최신 말풍선으로 한 번 생성합니다. 쉼표로 여러 개. 비우거나 토글 OFF면 꺼짐. 「응답 후 자동 생성」·발동과 별개입니다. 이미 생성 중이면 안 돕니다."
+    "body": "누적 본문을 새 글이 들어온 경우에만 1초 간격으로 확인합니다. 키워드를 발견하면 그 앞까지 분석·생성하고, 응답 완료 후 스피너와 이미지를 붙입니다. 키워드는 쉼표로 구분한 3글자 이상이며 대소문자를 구분하지 않습니다. [[imgstart]]는 키워드 설정과 별도로 감지합니다. 생각·추론 태그 안은 제외합니다.\n\nRisu의 Stream Gemini Thoughts(생각 스트리밍)를 꺼 주세요. 모델의 추론이나 본문 스트리밍을 끄는 설정이 아닙니다. PocketRisu의 스트리밍 최적화가 강함이면 중간 출력이 전달되지 않으므로 조기 생성을 쓰려면 다른 단계를 선택하세요."
   },
   "nx-fixed-prompt-prefix": {
     "title": "선행 고정 프롬프트",

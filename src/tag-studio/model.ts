@@ -4,7 +4,8 @@ import type { CharacterInput } from '../domain/character/identity.ts';
 import { QUALITY_TAGS } from '../config/defaults.ts';
 import { GLOBAL_SCOPE } from '../core/constants.ts';
 import { cleanText, joinTags } from '../core/util/text.ts';
-import { peelMain, peelStudioCharFields } from './peel.ts';
+import { peelMain, peelStudioCharFields, splitStudioCostume } from './peel.ts';
+import { resolveCostumeWear } from '../domain/character/costume.ts';
 
 export const CHAR_SLOTS: Array<[number, number]> = [
   [0.3, 0.5], [0.7, 0.5], [0.5, 0.28], [0.22, 0.78], [0.78, 0.78], [0.5, 0.55],
@@ -16,6 +17,7 @@ export interface StudioChar {
   costume: string;
   costumeName: string;
   costumeTags: string;
+  costumeBottoms: string;
   costumeNote: string;
   tags: string;
   post: string;
@@ -204,7 +206,7 @@ export function assemble(state: StudioState, _roster: CharacterInput[]): Assembl
   const quality = qualityTail(state);
   const main = joinOrRaw(personTag(state), state.main.presetPrompt, state.main.post, quality);
   const chars = charList(state).map((c) => {
-    const prompt = joinOrRaw(c.tags, c.costumeTags, c.post);
+    const prompt = joinOrRaw(c.tags, c.costumeTags, c.costumeBottoms, c.post);
     if (!prompt && !String(c.uc || '').trim()) return null;
     return {
       no: c.i + 1,
@@ -342,12 +344,13 @@ export function hydrateFromNai(args: {
     const costumes = Array.isArray(stored?.costumes) ? stored.costumes : [];
     const cos = costumes.find((c) => cleanText(c.name, 200) === cleanText(costumePick, 200))
       || costumes[0];
+    const wear = resolveCostumeWear(stored, costumePick);
     const peeledChar = stored
         ? peelStudioCharFields({
           slim: ch,
           caption: ch.prompt,
           lookTags: look,
-          costumeAttire: cos?.attire,
+          costumeAttire: joinTags(wear.attire, wear.bottoms),
         })
         : { tags: '', costumeTags: '', post: caption };
     state.chars[id] = {
@@ -355,7 +358,7 @@ export function hydrateFromNai(args: {
       charName: name,
       costume: cleanText(cos?.name || costumePick, 200),
       costumeName: cleanText(cos?.name || costumePick, 200),
-      costumeTags: peeledChar.costumeTags,
+      ...splitStudioCostume(peeledChar.costumeTags, wear.bottoms),
       costumeNote: cleanText(cos?.note, 400),
       tags: peeledChar.tags,
       post: peeledChar.post,

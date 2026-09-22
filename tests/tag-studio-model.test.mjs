@@ -222,3 +222,31 @@ describe('mergeStudioRosterPayloads', () => {
     assert.equal(merged.global[0].id, 'g1');
   });
 });
+
+
+describe('studio costume upper and lower fields', () => {
+  it('splits caption garments, includes edited bottoms, and respects clearing both fields', () => {
+    const state = emptyState();
+    hydrateFromNai({
+      state,
+      nai: { characters: [{ name: 'Hana', costume: 'default', action: 'smile',
+        prompt: 'black hair, hoodie, blue jeans, custom lower garment, smile' }] },
+      settings: { card: {} },
+      rosterPayload: { characters: [{ id: 'hana', name: 'Hana', appearance: 'black hair',
+        costumes: [{ name: 'default', attire: 'hoodie', bottoms: 'blue jeans, custom lower garment, unused roster garment' }] }], global: [] },
+      card: {},
+    });
+    const c = Object.values(state.chars)[0];
+    assert.equal(c.costumeTags, 'hoodie');
+    assert.equal(c.costumeBottoms, 'blue jeans, custom lower garment');
+    assert.equal(c.post, 'smile');
+    c.costumeBottoms = 'pleated skirt';
+    let prompt = assembleOverrides(state, []).characters[0].prompt;
+    assert.match(prompt, /hoodie, pleated skirt/);
+    assert.doesNotMatch(prompt, /jeans|custom lower garment|unused roster garment/);
+    c.costumeTags = '';
+    c.costumeBottoms = '';
+    prompt = assembleOverrides(state, []).characters[0].prompt;
+    assert.equal(prompt, 'black hair, smile');
+  });
+});

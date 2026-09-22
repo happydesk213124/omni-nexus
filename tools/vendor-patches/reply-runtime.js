@@ -14,6 +14,7 @@ async function onChatOutput(arg) {
   scheduleHashRelinkAfterReply('chatOutput');
   const card=t.backendSettings?.card || {};
   const text=String(msg.data ?? msg.content ?? '');
+  if (typeof omniCommitStreamReply === 'function' && omniCommitStreamReply(arg,msg,text)) return;
   if(t.unloading || card.power===false || !card.auto_gen_on_reply || messageBodyChars(text)<=30)return;
   const characterId=String(arg.char?.chaId || arg.char?.id || arg.char?.name || `char_${arg.characterIndex}`);
   const chatId=String(arg.chat?.id || arg.chat?.chatId || `chat_${arg.chatIndex}`);
