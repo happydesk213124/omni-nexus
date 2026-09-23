@@ -69,7 +69,7 @@ test('tagging precedes scroll capture and atomic spinner replacement', async () 
     });
     assert.deepEqual(calls,['replace']);
     assert.ok(source.indexOf("await setJob(jobId, 'tagging'")<start);
-    assert.doesNotMatch(source,/await stripBakedImagesFromChatMessage/);
+    assert.doesNotMatch(source,/\bstripBakedImagesFromChatMessage\s*\(/);
   } finally {globalThis.__OMNI_BEGIN_SCROLL__=old;}
 });
 

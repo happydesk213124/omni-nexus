@@ -40,7 +40,7 @@ export function rebuildMessageRuntime(source) {
   once('const l = t.selectedMessage, m = ye(n), selectedMatches', 'const l = t.selectedMessage, m = ye(n), selectedMatches');
   once('p = selectedMatches && l?.chatIndex != null && Number(l.chatIndex) >= 0 ? Number(l.chatIndex) : da(e.chat);', 'p = Number.isInteger(e.actionMessageIndex) ? e.actionMessageIndex : selectedMatches && l?.chatIndex != null && Number(l.chatIndex) >= 0 ? Number(l.chatIndex) : da(e.chat);');
   once('message_role: w(t.selectedMessage?.role || "char", 40),','message_role: w(e.actionMessageRole || t.selectedMessage?.role || "char", 40),');
-  once('host_message_id: w(t.selectedMessage?.hostMessageId || t.selectedMessage?.host_message_id || "", 160),','host_message_id: w(e.actionMessageId || t.selectedMessage?.hostMessageId || t.selectedMessage?.host_message_id || "", 160),');
+  once('host_message_id: w(t.selectedMessage?.hostMessageId || t.selectedMessage?.host_message_id || "", 160),','host_message_id: w(omniJobMessageId(e), 160),');
   once('k.onUnload(async () => {','k.onUnload(async () => {\n      await omniDisposeMessageRuntime();');
   // UI retry no longer runs the gallery/linker work repeatedly.
   fn('  async function it() {',`  async function it() {

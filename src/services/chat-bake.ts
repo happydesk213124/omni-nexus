@@ -267,7 +267,7 @@ export async function readStoredMessageBody(
 }
 
 /** One durable placeholder per job/shot; completion never recomputes its paragraph. */
-export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;stripExisting?:boolean;shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
+export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
@@ -276,17 +276,11 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   const previousBody=messageBody(msg);
   const side=normalizeInlineChatTextSide(getConfig().card?.inline_chat_text_side);
   const groups=new Map<number,string[]>();
-  let next=opts.stripExisting ? stripBakedReferences(previousBody) : previousBody;
-  let reused=0;
-  if (opts.stripExisting) {
-    // Preserve existing slot positions; only excess frames disappear.
-    next=next.replace(/\[\[@inrayspinner::[^\]]+\]\]/g, () => {
-      const shot=opts.shots[reused++];
-      return shot ? spinnerToken(opts.jobId,shot.shot_index,shot.width,shot.height) : '';
-    });
-  }
-  const lines=chatBodyLineCount(stripBakeTokens(next));
-  for(const shot of opts.shots.slice(Math.min(reused,opts.shots.length))) {
+  // All generation modes replace old marks atomically, using the same clean
+  // prose as tagging so previous slot positions cannot override the new shots.
+  let next=stripBakeTokens(previousBody);
+  const lines=chatBodyLineCount(next);
+  for(const shot of opts.shots) {
     const requested=Math.floor(Number(shot.line)||lines);
     const line=opts.analysisLines ? requested : Math.max(1,Math.min(lines,requested));
     const list=groups.get(line)||[];list.push(spinnerToken(opts.jobId,shot.shot_index,shot.width,shot.height));groups.set(line,list);
