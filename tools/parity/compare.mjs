@@ -1134,12 +1134,12 @@ for (const name of oldSteps.keys()) {
         .filter((i) => i >= 0);
       const oath = lines.findIndex((l) => l.includes('맹약도'));
       const sun = lines.findIndex((l) => l.includes('태양은'));
-      if (!(oldIdx === 0 && fresh.length === 1 && oath >= 0 && sun >= 0 && fresh[0] > oath && fresh[0] < sun)) {
+      if (!(oldIdx === -1 && newStep.value?.has_previous_marks === false && fresh.length === 1 && oath >= 0 && sun >= 0 && fresh[0] > oath && fresh[0] < sun)) {
         findings.push({
           at: name,
           old: '(1.x slots at the raw line)',
           new: JSON.stringify(lines).slice(0, 240),
-          note: 'spinner slot must sit on the stripped-basis line with the old bake row preserved',
+          note: 'new spinner slot must replace all previous image/spinner marks and sit on the stripped-basis line',
         });
       }
     }

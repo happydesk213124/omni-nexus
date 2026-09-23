@@ -3,6 +3,14 @@ const omniFooterTargets = new Map();
 let omniFooterSerial = 0, omniFooterPainting = null, omniFooterObserver = null, omniFooterChanges=0;
 let omniFooterTimer=0;
 let omniFooterDoc = null, omniFooterRoot = null, omniFooterQueued = false, omniFooterKeyListener=null;
+function omniMessageId(row) {
+  return String(row?.chatId || row?.id || '');
+}
+function omniJobMessageId(scope) {
+  // An explicit target must never inherit a previously selected message's ID.
+  if(Number.isInteger(scope.actionMessageIndex))return String(scope.actionMessageId || '');
+  return String(scope.actionMessageId || t.selectedMessage?.hostMessageId || t.selectedMessage?.host_message_id || '');
+}
 // Initialization only; message HTML is owned by the display module.
 function omniScheduleFooter() {
   if (t.unloading || omniFooterQueued) return;
@@ -61,7 +69,7 @@ async function omniBindModuleButton(node) {
         if(!old)await footer.setAttribute('x-omni-footer',String(key));
         // A target is allocated on interaction, not for every displayed message.
         for(const [id,target] of omniFooterTargets)if(!target._floatPin && id!==key)omniFooterTargets.delete(id);
-        omniFooterTargets.set(key,{sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,charIndex:scope.charIndex,chatIndex:scope.chatIndex,index,hostId:row.id,token});
+        omniFooterTargets.set(key,{sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,charIndex:scope.charIndex,chatIndex:scope.chatIndex,index,hostId:omniMessageId(row),token});
         return {kind,index:key,node};
       }
       footer=await footer.getParent();
@@ -98,11 +106,11 @@ async function omniFooterAction(kind,key) {
     if(kind==='char'||kind==='preset') {await openSettingsTab(kind==='char'?'characters':'style_presets');return;}
     if(kind==='note') {await openOmniNote(target);return;}
     const row=(scope.chat?.message || scope.chat?.messages || [])[target.index];
-    if(!row || (target.hostId && row.id && String(row.id)!==target.hostId))throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
+    if(!row || (target.hostId && omniMessageId(row)!==target.hostId))throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
     const text=String(row.data ?? row.saying ?? '');
     if(kind==='tag') {
       y('info','footer.dispatch','tag ms='+Math.round(performance.now()-start));
-      await Be({...scope,actionMessageIndex:target.index,actionMessageRole:row.role,actionMessageId:row.id},text,true);return;
+      await Be({...scope,actionMessageIndex:target.index,actionMessageRole:row.role,actionMessageId:omniMessageId(row)},text,true);return;
     }
     if(kind==='regen') {
       const ids=[...new Set([...text.matchAll(/\[\[@inray::([^:\]]+)::[^\]]+\]\]/g)].map(m=>m[1]))];

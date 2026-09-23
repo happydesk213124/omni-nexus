@@ -2,7 +2,7 @@ import { analysisBody } from '../domain/prompt/message-body';
 import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage } from './stream-jobs';
 export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
-import { writeJobSpinners, finishJobSpinners, stripBakedImagesFromChatMessage } from './chat-bake';
+import { writeJobSpinners, finishJobSpinners } from './chat-bake';
 /**
  * The generation job engine.
  *
@@ -882,18 +882,11 @@ async function runJob(jobId: string): Promise<void> {
         });
       }
     }
-    // Start the paid request first and strip only after it resolves. The strip
-    // remounts the chat (height drop); running it in parallel left an empty
-    // slot for the whole tagger wait, fighting bottom autoscroll. The tagger
-    // input was already built above, so deferring the message-only cleanup
-    // changes no tagger behaviour.
+    // Keep existing images until their replacement slots are ready. Cleanup
+    // shares the spinner write so the host never renders a cleared-only message.
     const tagRequest = callLlm(resolveLlmRole(getConfig(), 'main'), messages, llmOptions);
     const taggedRaw0 = await tagRequest;
     if (await cancelJobIfStale(jobId, 'superseded after tagging')) return;
-    if (request.force && persistChatImagesOn()) {
-      await enqueueBakeWrite(() => stripBakedImagesFromChatMessage(jobChatTarget(request)));
-      if (await cancelJobIfStale(jobId, 'superseded after strip')) return;
-    }
     let taggedRaw = taggedRaw0;
     const readMainTagger = (raw: string): { tagged: TaggerResult; shots: TaggedShot[] } => {
       const tagged = parseJsonLoose(raw) as TaggerResult;
@@ -1102,7 +1095,7 @@ async function runJob(jobId: string): Promise<void> {
     });
     if (deferred) deferred.attach = attach;
     if (!deferred || deferred.committed) await attach();
-    async function enqueueJobSpinners() { return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,stripExisting:Boolean(request.force),shots:pendingInline})); }
+    async function enqueueJobSpinners() { return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline})); }
     await setJob(
       jobId,
       'generating',

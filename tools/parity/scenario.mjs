@@ -778,13 +778,14 @@ export async function runScenario(N, handles) {
   // stored original (P1+P2+P3) ────────────────────────────────────────────
   // Context tokens are stripped, the current message is excluded by
   // construction, the tagger reads the stored message, and spinner slots map
-  // back to raw lines. 1.x numbers the request text and keeps
+  // back to raw lines. New slots atomically replace old image/spinner marks,
+  // including automatic generation (force is omitted below). 1.x numbers the request text and keeps
   // tokens/duplicates, so `job.stored_source_tagger_input` /
   // `job.stored_source_chat` are INTENTIONAL_DIFF steps with sharp new-side
   // checks in compare.mjs. Cards are deleted at the end so later absolute
   // folder/item assertions never see this session.
   const STORED_BODY = [
-    '[[@inray::old-card::inxshot_old-card.webp::832::1216]]',
+    '[[@inrayspinner::old-job_0::832::1216]][[@inray::old-card::inxshot_old-card.webp::832::1216]][[@inrayspinner::abandoned_1::832::1216]]',
     '맹약도 과분했다.',
     '태양은 자비를 두지 않았다.',
     '망치가 불꽃을 튀겼다.',
@@ -862,7 +863,8 @@ export async function runScenario(N, handles) {
   await rec('job.stored_source_chat', async () => {
     const db = await globalThis.risuai.getDatabase();
     const chat = db.characters[storedIdx.char_index].chats[storedIdx.chat_index];
-    return { body: String(chat.message[1]?.data ?? '') };
+    const body = String(chat.message[1]?.data ?? '');
+    return { body, has_previous_marks: /old-card|old-job_0|abandoned_1/.test(body) };
   });
   handles.setLlmReply?.(DEFAULT_LLM_REPLY);
   await rec('job.stored_source_restore', () => put('/v1/settings', { card: { include_max: 0 } }));

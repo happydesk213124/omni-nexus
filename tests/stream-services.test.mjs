@@ -22,6 +22,48 @@ async function fixture() {
   return {api,host,request,chat,wait,commit};
 }
 
+for (const mode of ['manual','automatic','stream']) test(`${mode} replaces old image and spinner tokens in the single write that inserts new slots`,{timeout:12000},async()=>{
+  const f=await fixture(),chat=await f.chat();
+  const oldPair='[[@inrayspinner::old_0::512::768]][[@inray::old-card::inxshot_old-card.webp::512::768]]';
+  const abandoned='[[@inrayspinner::abandoned_1::768::512]]';
+  chat.message[0].data=oldPair+'\n'+chat.message[0].data+'\n'+abandoned;
+  chat.message.push({role:'char',chatId:'other',data:'Other message '+oldPair});
+  await risuai.setChatToIndex(0,0,chat);
+  const original=chat.message[0].data,writes=[],write=risuai.setChatToIndex;
+  let previousMessages=JSON.stringify(chat.message);
+  risuai.setChatToIndex=async(...args)=>{
+    // Session lore persistence can share this API without changing any message.
+    const messages=JSON.stringify(args[2].message);
+    if(messages!==previousMessages)writes.push(structuredClone(args[2]));
+    previousMessages=messages;
+    return write(...args);
+  };
+  const gate=f.host.pauseGeneration();
+  const request={...f.request,force:mode==='manual',defer_attachment:mode==='stream'};
+  const created=await f.api.createJob(request);
+  try {
+    assert.equal(created.accepted,true);
+    await gate.started;
+    if(mode==='stream') {
+      assert.equal(writes.length,0,'deferred work must leave old images until commit');
+      assert.equal((await f.chat()).message[0].data,original);
+      assert.equal((await f.commit(created.job_id)).ok,true);
+    }
+    assert.equal(writes.length,1,'no separate clear-only message write');
+    const inserted=writes[0].message[0].data;
+    assert.doesNotMatch(inserted,/old_0|old-card|abandoned_1|\[\[@inray::/);
+    assert.equal((inserted.match(/\[\[@inrayspinner::/g)||[]).length,1);
+    assert.ok(inserted.includes(`[[@inrayspinner::${created.job_id}_0::`));
+    assert.ok(inserted.indexOf('[[@inrayspinner')>inserted.indexOf('First narrative'));
+    assert.ok(inserted.indexOf('[[@inrayspinner')<inserted.indexOf('Second dialogue'));
+    assert.ok(inserted.includes('<Thoughts>\nSECRET [[imgstart]]\n</Thoughts>'));
+    assert.equal(writes[0].message[1].data,chat.message[1].data);
+  } finally {
+    gate.release();
+    await f.wait(created.job_id,j=>j.state==='done');
+  }
+});
+
 test('paid images finish in background with no chat writes until exact committed output; body L2 maps past thoughts', {timeout:12000},async()=>{
   const f=await fixture(),writes=[],tts=[];
   const write=risuai.setChatToIndex;risuai.setChatToIndex=async(...args)=>{writes.push(structuredClone(args[2]));return write(...args);};
