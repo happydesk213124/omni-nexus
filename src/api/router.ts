@@ -328,6 +328,7 @@ const WRITE_ROUTES: readonly Route[] = [
     handler: async ({ body }) =>
       ok(
         await jobs.retargetJobSaveHash({
+          host_message_id: String(body.host_message_id || body.hostMessageId || ''),
           session_id: String(body.session_id || body.sessionId || ''),
           character_id: String(body.character_id || body.characterId || ''),
           chat_id: String(body.chat_id || body.chatId || ''),

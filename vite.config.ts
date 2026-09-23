@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.5';
+const PLUGIN_VERSION = '0.2.6';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -956,6 +956,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.6</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>응답 후 자동생성에서 현재 캐릭터·채팅·메시지를 직접 확인해 불필요한 전체 상태 조회를 줄였습니다.</li>
+            <li>생성 완료 후 저장 해시를 연결할 때 메시지 고유 ID를 사용해, 답변이 수정되어도 다른 메시지에 잘못 연결되지 않도록 했습니다.</li>
+            <li>완료된 생성의 시작 문장 복사본 보관을 없애 메모리 사용을 줄였습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.2.5</strong>
@@ -14180,6 +14188,7 @@ const VENDOR_REBIND_RETARGET_PATCH =
         const ret = await K("/v1/jobs/retarget-hash", {
           method: "POST",
           body: {
+            host_message_id: message.hostMessageId || message.host_message_id || "",
             session_id: sid,
             character_id: message.characterId || sc.characterId || "",
             chat_id: message.chatId || sc.chatId || "",

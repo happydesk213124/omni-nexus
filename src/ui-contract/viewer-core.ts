@@ -528,8 +528,9 @@ export function findHashRebindCandidates<T extends GalleryCard = GalleryCard>(
   return dedupeShotSlots(out.map((row) => row.card));
 }
 
-/** Running-job save-hash retarget: same identity + Dice/prefix ≥ threshold. */
+/** Running-job save-hash retarget; prose matching is for legacy ID-less jobs. */
 export interface JobSaveHashIdentity {
+  hostMessageId?: string;
   toHash?: string;
   text?: string;
   sessionId?: string;
@@ -540,6 +541,7 @@ export interface JobSaveHashIdentity {
 }
 
 export interface JobSaveHashMeta {
+  hostMessageId?: string;
   cancelRequested?: boolean;
   saveContentHash?: string;
   sourcePreview?: string;
@@ -597,6 +599,7 @@ export function canRetargetJobSaveHash(
   const text = String(identity.text || '');
   if (!toHash || !text) return false;
   if (toHash === String(meta?.saveContentHash || '').trim()) return false;
+  if (meta?.hostMessageId) return meta.hostMessageId === identity.hostMessageId;
   return prefixMatchRatio(meta?.sourcePreview || '', text) >= HASH_REBIND_THRESHOLD;
 }
 

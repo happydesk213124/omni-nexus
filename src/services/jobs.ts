@@ -211,6 +211,7 @@ export async function retargetJobSaveHash(args: {
   to_hash?: string;
   assistant_text?: string;
   assistant_preview?: string;
+  host_message_id?: string;
 } = {}): Promise<ApiResult> {
   const toHash = cleanText(args.to_hash || '', 128);
   const text = cleanText(args.assistant_preview || args.assistant_text || '', ASSISTANT_PREVIEW_LIMIT);
@@ -222,6 +223,7 @@ export async function retargetJobSaveHash(args: {
     chatId: cleanText(args.chat_id || '', 200),
     messageIndex: toInt(args.message_index, -1),
     role: args.role || '',
+    hostMessageId: cleanText(args.host_message_id || '', 160),
   };
   if (!toHash || !text || !identity.characterId || identity.messageIndex < 0) {
     return { ok: false, error: { code: 'bad_request', message: 'to_hash, text, character_id, message_index required' }, retargeted: false };
@@ -333,7 +335,10 @@ function beginJobEpoch(jobId: string, request: IncomingRequest, sessionId: strin
   // silently replacing work the user is already waiting on.
   jobEpochByKey.set(key, { epoch, jobId });
   resetLastGeneratingPoll(jobId);
-  const preview = cleanText(request.assistant_text || '', ASSISTANT_PREVIEW_LIMIT);
+  const hostMessageId = cleanText(request.host_message_id || '', 160);
+  // ID-bearing requests never need a second copy of the starting prose for
+  // fuzzy matching. The request itself still supplies the tagger's input.
+  const preview = hostMessageId ? '' : cleanText(request.assistant_text || '', ASSISTANT_PREVIEW_LIMIT);
   const hash = cleanText(request.content_hash || '', 128);
   jobRunMeta.set(jobId, {
     key,
@@ -343,6 +348,7 @@ function beginJobEpoch(jobId: string, request: IncomingRequest, sessionId: strin
     saveContentHash: hash,
     saveAssistantPreview: preview,
     sourcePreview: preview,
+    hostMessageId,
     sessionId,
     characterId: cleanText(request.character_id || '', 200),
     chatId: cleanText(request.chat_id || '', 200),

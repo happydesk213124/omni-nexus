@@ -30,13 +30,27 @@ async function onChatOutput(arg) {
 }
 async function omniGenerateCommittedReply(arg,msg,text,characterId,chatId) {
   if(!(await ve()).enabled)return;
-  const scope=await Z({useOverride:false});
-  // A late event must never generate from whichever chat the user opened next.
-  if(scope.characterId!==characterId || scope.chatId!==chatId)return;
-  const index=arg.messageIndex,row=scope.chat?.message?.[index];
+  // Output already carries the character. Avoid the general scope reader,
+  // which reloads it and can refresh session settings/gallery as a side effect.
+  const [charIndex,chatIndex]=await Promise.all([
+    D('getCurrentCharacterIndex',()=>k.getCurrentCharacterIndex?.(),-1),
+    D('getCurrentChatIndex',()=>k.getCurrentChatIndex?.(),-1)
+  ]);
+  if(Number(charIndex)!==arg.characterIndex || Number(chatIndex)!==arg.chatIndex)return;
+  // Keep the fresh row check: a message may be edited/replaced while awaiting
+  // the host. Reuse this chat for recent-message context as well.
+  const chat=await D('getChatFromIndex',()=>k.getChatFromIndex?.(arg.characterIndex,arg.chatIndex),null);
+  if(!chat || String(chat.id || chat.chatId || `chat_${arg.chatIndex}`)!==chatId)return;
+  const index=arg.messageIndex,row=chat.message?.[index];
   if(!row || String(row.data ?? row.content ?? '')!==text)return;
   const id=msg.chatId || msg.id;
   if(id && String(row.chatId || row.id || '')!==String(id))return;
+  const scope={charIndex:arg.characterIndex,chatIndex:arg.chatIndex,characterId,chatId,
+    sessionId:`risu_${ye(`${characterId}|${chatId}`)}`,
+    unifiedSessionId:`risu_${ye(`${characterId}|__unified__`)}`,
+    character:arg.char,chat,characterName:w(arg.char?.name || arg.char?.charName || '',200),
+    chatName:w(chat.name || chat.chatName || chat.title || `Chat ${arg.chatIndex}`,200),
+    liveChar:true,liveChat:true,unified:false};
   const card=t.backendSettings?.card || {};
   if(t.unloading || card.power===false || !card.auto_gen_on_reply || t.jobsInFlight?.size)return;
   const busy=await K('/v1/jobs/busy-message',{method:'POST',body:{session_id:scope.sessionId,character_id:characterId,chat_id:chatId,message_index:index,role:msg.role}});

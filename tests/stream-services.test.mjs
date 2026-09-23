@@ -46,6 +46,13 @@ test('stream metadata survives paid image waiting and is released only after com
   const f=await fixture(),created=await f.api.createJob(f.request);
   await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
   assert.ok(f.api.jobRunMeta.has(created.job_id));
+  const meta=f.api.jobRunMeta.get(created.job_id);
+  assert.equal(meta.hostMessageId,'m');
+  assert.equal(meta.sourcePreview,'','stable IDs do not retain prose for fuzzy matching');
+  assert.equal(meta.saveAssistantPreview,'','save preview is only populated when retargeted/committed');
+  const retarget={session_id:'session',character_id:'c',chat_id:'chat',message_index:0,role:'char',to_hash:'retargeted',assistant_text:'A completely different final paragraph.'};
+  assert.equal((await f.api.retargetJobSaveHash({...retarget,host_message_id:'other'})).retargeted,false);
+  assert.equal((await f.api.retargetJobSaveHash({...retarget,host_message_id:'m'})).retargeted,true);
   assert.ok(f.api.streamJob(created.job_id));
   assert.equal((await f.commit(created.job_id)).ok,true);
   await f.wait(created.job_id,j=>j.state==='done');
