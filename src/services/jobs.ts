@@ -280,12 +280,21 @@ function resetLastGeneratingPoll(jobId: string): void {
   lastGeneratingWaiters.delete(jobId);
 }
 
+function releaseJobRuntime(jobId: string): void {
+  const meta = jobRunMeta.get(jobId);
+  // A replacement may already own this message while the old run finishes.
+  if (meta && jobEpochByKey.get(meta.key)?.jobId === jobId) jobEpochByKey.delete(meta.key);
+  jobRunMeta.delete(jobId);
+  resetLastGeneratingPoll(jobId);
+  closeStreamJob(jobId);
+}
+
 function noteLastGeneratingPoll(
   jobId: string,
   state: string,
   result: Record<string, unknown> | null,
 ): void {
-  if (state !== 'generating' || !result) return;
+  if (state !== 'generating' || !result || !jobRunMeta.has(jobId)) return;
   const shotDone = Number(result.shot_done);
   const shotCount = Number(result.shot_count);
   if (!(shotCount > 0) || shotDone !== shotCount) return;
@@ -606,16 +615,21 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
   beginJobEpoch(jobId, payload, sessionId);
   registerStreamJob(jobId, payload);
   // Baked tokens own placement. Retagging must not scan/unlink gallery assets.
-  await idbPut('jobs', {
-    id: jobId,
-    session_id: sessionId,
-    state: 'queued',
-    request_json: JSON.stringify(payload),
-    result_json: null,
-    error: null,
-    created_at: now,
-    updated_at: now,
-  });
+  try {
+    await idbPut('jobs', {
+      id: jobId,
+      session_id: sessionId,
+      state: 'queued',
+      request_json: JSON.stringify(payload),
+      result_json: null,
+      error: null,
+      created_at: now,
+      updated_at: now,
+    });
+  } catch (error) {
+    releaseJobRuntime(jobId);
+    throw error;
+  }
   // Intentionally not awaited: the UI polls `getJob`, so createJob returns as
   // soon as the job is durable.
   runJob(jobId).catch(async (err: unknown) => {
@@ -625,7 +639,7 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
     } catch {
       /* the job row is already gone */
     }
-  });
+  }).finally(() => releaseJobRuntime(jobId));
   return { ok: true, accepted: true, job_id: jobId, session_id: sessionId, job_state: 'queued' };
 }
 
@@ -1580,20 +1594,23 @@ async function runJob(jobId: string): Promise<void> {
   } finally {
     llmController.abort();
     jobLlmControllers.delete(jobId);
-    // A later shot may fail after earlier paid shots finished. Their attachment
-    // still belongs to the committed output, even when the job is already error.
-    if (deferred && !deferred.committed && !deferred.cancelled && completedSpinnerCards.size) await deferred.ready;
-    if (deferred?.committed && !deferred.cancelled) {
-      await deferred.attach?.().catch(err => dbg('job.partial.attach.fail', {message:String(err)}, 'warn'));
-      if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
+    try {
+      // A later shot may fail after earlier paid shots finished. Their attachment
+      // still belongs to the committed output, even when the job is already error.
+      if (deferred && !deferred.committed && !deferred.cancelled && completedSpinnerCards.size) await deferred.ready;
+      if (deferred?.committed && !deferred.cancelled) {
+        await deferred.attach?.().catch(err => dbg('job.partial.attach.fail', {message:String(err)}, 'warn'));
+        if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
+      }
+      await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
+      // Unfinished frames remain retryable; successful frames are permanent.
+      const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");
+      if(typeof endScroll==="function") try {await endScroll(jobId);} catch(error) {dbg("scroll.end.fail",{message:String(error)},"warn");}
+      const clearPreview=Reflect.get(globalThis,"__OMNI_CLEAR_SPINNER_PREVIEW__");
+      if(typeof clearPreview==='function') await clearPreview(jobId);
+    } finally {
+      closeStreamJob(jobId);
+      setJobContext(prevCtx);
     }
-    await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
-    // Unfinished frames remain retryable; successful frames are permanent.
-    const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");
-    if(typeof endScroll==="function") try {await endScroll(jobId);} catch(error) {dbg("scroll.end.fail",{message:String(error)},"warn");}
-    const clearPreview=Reflect.get(globalThis,"__OMNI_CLEAR_SPINNER_PREVIEW__");
-    if(typeof clearPreview==='function') await clearPreview(jobId);
-    closeStreamJob(jobId);
-    setJobContext(prevCtx);
   }
 }

@@ -1,4 +1,5 @@
 import { risuHost } from '../core/host';
+import { RailImageCache, type RailImage } from '../storage/rail-image-cache';
 
 /** Use the vendor scope selector: it flushes edits and selects the bot-owned lorebook. */
 export async function selectRisuScope(select: HTMLSelectElement, value: string): Promise<boolean> {
@@ -16,38 +17,37 @@ export async function selectRisuScope(select: HTMLSelectElement, value: string):
   return true;
 }
 
-const cleanups = new WeakMap<HTMLElement, () => void>();
+let releaseRail: (() => void) | null = null;
 
 type RailRow = { value: string; label: string; path?: string };
 /**
- * Tile descriptors + thumbnail URLs outlive P() re-renders. Reopening the
+ * Tile descriptors + bounded image bytes outlive P() re-renders. Reopening the
  * rail rebuilds synchronously from cache: no loading flash, no re-download.
  * Descriptors refresh from the host when older than the TTL.
  */
 let railRows: RailRow[] | null = null;
 let railRowsAt = 0;
 const RAIL_ROWS_TTL_MS = 30_000;
-const railImageUrls = new Map<string, string>();
+const railImages = new RailImageCache();
 let pendingSelection: { value: string; generation: number } | null = null;
 let switchGeneration = 0;
 let liveIndex = '';
 
-async function readRailImage(
-  host: { readImage?: (path: string) => Promise<unknown> },
-  path: string,
-): Promise<string> {
-  const hit = railImageUrls.get(path);
-  if (hit) return hit;
-  const bytes: unknown = await host.readImage!(path);
-  const blob = bytes instanceof Blob ? bytes : bytes instanceof Uint8Array
-    ? new Blob([new Uint8Array(bytes)]) : bytes instanceof ArrayBuffer ? new Blob([bytes]) : null;
-  const src = blob ? URL.createObjectURL(blob) : typeof bytes === 'string' && bytes.startsWith('data:image/') ? bytes : '';
-  if (src) railImageUrls.set(path, src);
-  return src;
-}
-
-function paintRailImage(button: HTMLButtonElement, src: string): void {
+function paintRailImage(button: HTMLButtonElement, source: RailImage, releases: Set<() => void>): void {
   const image = document.createElement('img');
+  const src = typeof source === 'string' ? source : URL.createObjectURL(source);
+  if (typeof source !== 'string') {
+    // The element keeps decoded pixels after load; the reusable cache owns bytes.
+    const release = () => {
+      image.removeEventListener('load', release);
+      image.removeEventListener('error', release);
+      URL.revokeObjectURL(src);
+      releases.delete(release);
+    };
+    releases.add(release);
+    image.addEventListener('load', release);
+    image.addEventListener('error', release);
+  }
   image.src = src; image.alt = ''; image.loading = 'lazy';
   button.prepend(image);
 }
@@ -58,15 +58,19 @@ async function mountRailTiles(
   select: HTMLSelectElement | null,
   rows: RailRow[],
 ): Promise<void> {
+  if (!box.isConnected) return;
+  releaseRail?.();
   let disposed = false;
   const observers: IntersectionObserver[] = [];
+  const releases = new Set<() => void>();
   const paint = () => paintSelection(box, document.getElementById('nx-char-scope-bar'), document.querySelector('#nx-scope-char'), liveIndex);
-  cleanups.set(box, () => {
+  releaseRail = () => {
     disposed = true;
     observers.forEach(observer => observer.disconnect());
     select?.removeEventListener('change', paint);
     bar?.removeEventListener('omni-roster-scope', paint);
-  });
+    for (const release of releases) release();
+  };
   try {
     // Build synchronously first so a fresh box never shows an empty flash;
     // the live index lands a tick later and only retouches selection marks.
@@ -125,16 +129,16 @@ async function mountRailTiles(
       box.append(button);
       if (!row.path) continue;
       const path = row.path;
-      const cached = railImageUrls.get(path);
-      if (cached) { paintRailImage(button, cached); continue; }
+      const cached = railImages.get(path);
+      if (cached) { paintRailImage(button, cached, releases); continue; }
       if (!host?.readImage || typeof IntersectionObserver === 'undefined') continue;
       const observer = new IntersectionObserver(entries => {
         if (!entries.some(entry => entry.isIntersecting)) return;
         observer.disconnect();
         void (async () => {
-          const src = await readRailImage(host, path);
-          if (!src || disposed || !button.isConnected) return;
-          paintRailImage(button, src);
+          const image = await railImages.read(host, path);
+          if (!image || disposed || !button.isConnected) return;
+          paintRailImage(button, image, releases);
         })().catch(() => { /* Missing images must not disable scope selection. */ });
       }, { root: box });
       observers.push(observer);
@@ -199,7 +203,7 @@ export async function fillRisuTiles(box: HTMLElement | null): Promise<void> {
     await mountRailTiles(box, bar, select, railRows);
     return;
   }
-  cleanups.get(box)?.();
+  releaseRail?.(); releaseRail = null;
   box.textContent = '불러오는 중…';
   try {
     const host = risuHost();

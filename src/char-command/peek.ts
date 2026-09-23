@@ -1,8 +1,11 @@
 /** Centered image overlay. Does not close parent modals. */
 
 let active: HTMLElement | null = null;
+let releaseKey: (() => void) | null = null;
 
 export function closeImagePeek(): void {
+  releaseKey?.();
+  releaseKey = null;
   active?.remove();
   active = null;
 }
@@ -26,10 +29,10 @@ export function openImagePeek(src: string): void {
       ev.preventDefault();
       ev.stopPropagation();
       close();
-      document.removeEventListener('keydown', onKey, true);
     }
   };
   document.addEventListener('keydown', onKey, true);
+  releaseKey = () => document.removeEventListener('keydown', onKey, true);
   veil.appendChild(img);
   document.body.appendChild(veil);
   active = veil;

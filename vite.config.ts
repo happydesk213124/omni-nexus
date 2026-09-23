@@ -46,7 +46,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.4';
+const PLUGIN_VERSION = '0.2.5';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -958,8 +958,10 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
-          <strong>0.2.4</strong>
+          <strong>0.2.5</strong>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>생성 작업이 끝나면 메모리의 작업 정보와 대기 연결을 정리해 반복 생성에 따라 누적되지 않도록 했습니다.</li>
+            <li>이미지 크게보기를 마우스로 닫아도 키보드 이벤트가 남지 않도록 정리하고, 캐릭터 선택 이미지 캐시에 16MB·128개 제한을 적용했습니다.</li>
             <li>수동 생성과 응답 후 자동생성에서 기존 이미지·스피너를 새 스피너를 붙이는 한 번의 메시지 수정으로 함께 정리합니다.</li>
             <li>수동 메시지 버튼의 대상을 메시지 고유 ID(chatId 우선)로 저장·확인·전달해 다른 메시지의 ID가 섞이지 않도록 고쳤습니다.</li>
           </ul>
