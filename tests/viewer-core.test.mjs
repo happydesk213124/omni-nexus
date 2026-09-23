@@ -2572,7 +2572,7 @@ test("findHashRebindCandidates accepts same host message id without Dice", () =>
   );
 });
 
-test("canRetargetJobSaveHash requires identity + Dice>=60% and skips already-retargeted", () => {
+test("legacy ID-less retarget requires identity + Dice>=60% and skips already-retargeted", () => {
   const body = "나는천재입니다진짜천재라고요이문장은충분히길어야합니다추가텍스트그리고더길게완성본";
   const preview = body.slice(0, Math.floor(body.length * 0.75));
   const meta = {
@@ -2602,6 +2602,16 @@ test("canRetargetJobSaveHash requires identity + Dice>=60% and skips already-ret
     canRetargetJobSaveHash(meta, { ...identity, text: "완전히다른이야기완전다른이야기완전다른이야기완전다른" }),
     false,
   );
+});
+
+test('ID-bearing retarget uses exact message identity without reading starting prose', () => {
+  const meta={characterId:'c',chatId:'chat',messageIndex:1,messageRole:'char',hostMessageId:'m',saveContentHash:'old',
+    get sourcePreview(){throw Error('must not inspect starting prose');}};
+  const target={characterId:'c',chatId:'chat',messageIndex:1,role:'char',hostMessageId:'m',toHash:'new',text:'Completely rewritten final output'};
+  assert.equal(canRetargetJobSaveHash(meta,target),true);
+  for(const changed of [{hostMessageId:'other'},{hostMessageId:''},{characterId:'other'},{chatId:'other'},{messageIndex:2},{role:'user'},{toHash:'old'}]) {
+    assert.equal(canRetargetJobSaveHash(meta,{...target,...changed}),false);
+  }
 });
 
 test("gallery match requires both hash and a compatible stored message index", () => {

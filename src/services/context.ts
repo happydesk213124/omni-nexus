@@ -63,7 +63,9 @@ export interface JobRunMeta {
    */
   saveContentHash: string;
   saveAssistantPreview: string;
-  /** Assistant text captured at job start — soft-match gate for retarget. */
+  /** Stable host identity; legacy requests without it use sourcePreview. */
+  hostMessageId?: string;
+  /** Legacy-only soft-match gate. Empty when the host supplies message identity. */
   sourcePreview: string;
   sessionId: string;
   characterId: string;
