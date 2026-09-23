@@ -22,6 +22,67 @@ async function fixture() {
   return {api,host,request,chat,wait,commit};
 }
 
+async function assertRuntimeReleased(f, id) {
+  for(let i=0;i<100 && f.api.jobRunMeta.has(id);i++) await sleep();
+  assert.equal(f.api.jobRunMeta.has(id),false,'finished job must release its body and runtime metadata');
+  assert.equal([...f.api.jobEpochByKey.values()].some(row=>row.jobId===id),false);
+  assert.equal(f.api.jobLlmControllers.has(id),false);
+  assert.equal(f.api.streamJob(id),undefined);
+}
+
+test('failed jobs do not accumulate runtime metadata across repeated generations',async()=>{
+  const f=await fixture();
+  f.host.setLlmReply(JSON.stringify({new_characters:[{name:'New',appearance:'black hair'}],scenes:[{shots:[{line:1,characters:['New'],composition:'garden'}]}]}));
+  for(let i=0;i<5;i++) {
+    const created=await f.api.createJob({session_id:'missing-owner',force:true,assistant_text:body,content_hash:'failure-'+i});
+    assert.equal(created.accepted,true);
+    await f.wait(created.job_id,j=>j.state==='error');
+    await assertRuntimeReleased(f,created.job_id);
+  }
+  assert.equal(f.api.jobRunMeta.size,0);assert.equal(f.api.jobEpochByKey.size,0);
+});
+
+test('stream metadata survives paid image waiting and is released only after committed attachment',async()=>{
+  const f=await fixture(),created=await f.api.createJob(f.request);
+  await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
+  assert.ok(f.api.jobRunMeta.has(created.job_id));
+  assert.ok(f.api.streamJob(created.job_id));
+  assert.equal((await f.commit(created.job_id)).ok,true);
+  await f.wait(created.job_id,j=>j.state==='done');
+  await assertRuntimeReleased(f,created.job_id);
+  assert.match((await f.chat()).message[0].data,/@inray::/);
+});
+
+test('cancelled paid work releases runtime metadata after preserving its image',async()=>{
+  const f=await fixture(),gate=f.host.pauseGeneration();
+  const created=await f.api.createJob(f.request);await gate.started;
+  await f.commit(created.job_id,{cancel:true});
+  assert.ok(f.api.jobRunMeta.has(created.job_id),'in-flight paid request still needs its metadata');
+  gate.release();await f.wait(created.job_id,j=>j.state==='cancelled');
+  await assertRuntimeReleased(f,created.job_id);
+  assert.ok(f.api.storeSize('images')>0);assert.doesNotMatch((await f.chat()).message[0].data,/@inray/);
+});
+
+test('cleanup failure still releases old metadata without deleting a replacement owner',{timeout:12000},async()=>{
+  const f=await fixture();let entered,release;
+  const started=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+  globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__=async id=>{
+    if((await f.api.getJob(id)).state==='done') {entered();await gate;throw Error('preview cleanup failed');}
+  };
+  try {
+    const created=await f.api.createJob(f.request);
+    await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
+    await f.commit(created.job_id);await started;
+    const old=f.api.jobRunMeta.get(created.job_id);
+    assert.ok(old,'postprocessing still owns the old metadata');
+    const replacement={jobId:'newer-job',epoch:old.epoch+1};
+    f.api.jobEpochByKey.set(old.key,replacement);
+    release();await assertRuntimeReleased(f,created.job_id);
+    assert.deepEqual(f.api.jobEpochByKey.get(old.key),replacement);
+    assert.match((await f.chat()).message[0].data,/@inray::/);
+  } finally {release();delete globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__;}
+});
+
 for (const mode of ['manual','automatic','stream']) test(`${mode} replaces old image and spinner tokens in the single write that inserts new slots`,{timeout:12000},async()=>{
   const f=await fixture(),chat=await f.chat();
   const oldPair='[[@inrayspinner::old_0::512::768]][[@inray::old-card::inxshot_old-card.webp::512::768]]';

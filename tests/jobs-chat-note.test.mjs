@@ -39,7 +39,7 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
 }
 
 test('error/stop finalizer bakes completed shots before spinner cleanup and scroll release', async () => {
-  const body = between("    await finishCompletedSpinners().catch", '\n    setJobContext(prevCtx);');
+  const body = between('    try {\n      // A later shot may fail', '\n  }\n}');
   for (const fails of [false,true]) {
     const calls=[];
     const old = globalThis.__OMNI_END_SCROLL__;
@@ -47,10 +47,11 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
     try {
       await compile(`return (async () => {${body}})();`, {
         finishCompletedSpinners:async()=>{calls.push('bake');if(fails)throw Error('write failed');},
-        closeStreamJob:()=>{},dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
+        closeStreamJob:()=>calls.push('close-stream'),setJobContext:()=>calls.push('restore-context'),prevCtx:'',deferred:undefined,
+        dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
         clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],
       });
-      assert.deepEqual(calls,['bake','end-scroll']);
+      assert.deepEqual(calls,['bake','end-scroll','close-stream','restore-context']);
     } finally {globalThis.__OMNI_END_SCROLL__=old;}
   }
 });
