@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { protectSavedFrames } from './protect-saved-frames.mjs';
+import { repairHostListeners } from './host-listeners.mjs';
 const read = name => readFileSync(new URL(name,import.meta.url),'utf8');
 export function rebuildMessageRuntime(source) {
-  let out=source;
+  let out=repairHostListeners(source);
   const once=(needle,value)=>{
     if(out.split(needle).length!==2)throw new Error('[runtime rebuild] drift: '+needle.slice(0,90));
     out=out.replace(needle,()=>value);
