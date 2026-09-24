@@ -8,7 +8,7 @@
 
 declare const __PLUGIN_VERSION__: string;
 
-export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.9';
+export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.10';
 
 /**
  * Identifies the installed pack. Existing edits are preserved; default revisions

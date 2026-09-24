@@ -50,9 +50,9 @@ export function comicCutHidesLooks(kind: unknown): boolean {
 const CUT_LABELS: Record<ComicCutKind, string> = {
   normal: 'scene',
   background: 'scenery',
-  closeup: 'close-up',
-  cross_section: 'cross-section',
-  upperbody: 'upperbody',
+  closeup: 'close-up scene',
+  cross_section: 'cross-section scene',
+  upperbody: 'upperbody scene',
 };
 
 export interface ComicCutCharacter {
@@ -98,7 +98,7 @@ export interface ComicPage {
   aspect: string;
   coords: 'position' | 'ai_choice' | '';
   cuts: ComicCut[];
-  /** Synthesised from cut bases (`cut 1 - scene - …`) — the main prompt's panel order. */
+  /** Synthesised from cut bases (`cut 1 is scene. …`) — the main prompt's panel order. */
   layout: string;
   /** Cut characters flattened in cut order (max 6). */
   slots: ComicSlot[];
@@ -162,8 +162,9 @@ export function synthesizeLayout(cuts: readonly ComicCut[], withNatural = false)
     const cut = cuts[i]!;
     const label = CUT_LABELS[cut.cut_kind] || 'scene';
     const description = withNatural ? cleanText(cut.natural, 2000) : '';
-    const base = cut.base ? `cut ${i + 1} - ${label} - ${cut.base}` : `cut ${i + 1} - ${label}`;
-    parts.push(description ? `${base}. ${description}` : base);
+    const heading = `cut ${i + 1} is ${label}`;
+    const body = [cut.base, description].filter(Boolean).join('. ');
+    parts.push(body ? `${heading}. ${body}` : heading);
   }
   return parts.length ? `${parts.join('. ')}.` : '';
 }
