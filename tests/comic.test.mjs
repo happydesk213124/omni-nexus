@@ -232,9 +232,9 @@ test("parseComicPages reads cuts: koma=cuts.length, aliases, background strays d
 
 test("parseComicPages synthesises layout from cut bases", () => {
   const pages = parseComicPages({ pages: [CUT_PAGE] });
-  assert.match(pages[0].layout, /cut 1 \(scene\): wooden hallway/);
-  assert.match(pages[0].layout, /cut 2 \(close-up\): 2::close-up::, woman, eyes, teary/);
-  assert.match(pages[0].layout, /cut 3 \(scenery\): 2::no humans::, empty hallway, dusk/);
+  assert.match(pages[0].layout, /cut 1 - scene - wooden hallway/);
+  assert.match(pages[0].layout, /cut 2 - close-up - 2::close-up::, woman, eyes, teary/);
+  assert.match(pages[0].layout, /cut 3 - scenery - 2::no humans::, empty hallway, dusk/);
 });
 
 test("parseComicPages caps cuts at 6 and slots at 6", () => {

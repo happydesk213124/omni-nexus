@@ -1291,7 +1291,7 @@ export async function runScenario(N, handles) {
       cards: jobResult?.result?.cards?.length ?? -1,
       sent: sent.length,
       koma3: wire.includes('3::3koma::'),
-      layout: wire.includes('cut 1 (scene):') && wire.includes('cut 2 (close-up):'),
+      layout: wire.includes('cut 1 - scene -') && wire.includes('cut 2 - close-up -'),
       closeup: wire.includes('2::close-up::'),
       xray: wire.includes('2::cross-section::'),
       sourceTag: wire.includes('source#grab'),

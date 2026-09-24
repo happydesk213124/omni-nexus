@@ -98,7 +98,7 @@ export interface ComicPage {
   aspect: string;
   coords: 'position' | 'ai_choice' | '';
   cuts: ComicCut[];
-  /** Synthesised from cut bases (`cut 1 (scene): …`) — the main prompt's panel order. */
+  /** Synthesised from cut bases (`cut 1 - scene - …`) — the main prompt's panel order. */
   layout: string;
   /** Cut characters flattened in cut order (max 6). */
   slots: ComicSlot[];
@@ -162,7 +162,7 @@ export function synthesizeLayout(cuts: readonly ComicCut[], withNatural = false)
     const cut = cuts[i]!;
     const label = CUT_LABELS[cut.cut_kind] || 'scene';
     const description = withNatural ? cleanText(cut.natural, 2000) : '';
-    const base = cut.base ? `cut ${i + 1} (${label}): ${cut.base}` : `cut ${i + 1} (${label})`;
+    const base = cut.base ? `cut ${i + 1} - ${label} - ${cut.base}` : `cut ${i + 1} - ${label}`;
     parts.push(description ? `${base}. ${description}` : base);
   }
   return parts.length ? `${parts.join('. ')}.` : '';
