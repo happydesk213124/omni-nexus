@@ -26,17 +26,21 @@ async function omniCaptureKeywordTarget() {
 function omniNewKeywordRun(target) {
   const run = {target, text:'', checked:'', timer:0, fired:false, cancelled:false, committed:false,
     streamId:'stream_'+Date.now()+'_'+Math.random().toString(36).slice(2), task:null, jobId:'', expiry:0};
-  run.target=Promise.resolve(target).catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
+  if(target!==undefined)run.target=Promise.resolve(target).catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   return run;
 }
 function onScriptOutput(content) {
-  omniStreamHint();
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
   let run = omniKeywordRun;
-  if (run?.expiry) {omniCancelKeywordRun(run);run=null;}
-  if (!run) omniKeywordRun = run = omniNewKeywordRun(omniCaptureKeywordTarget());
+  const text=String(content || '');
+  // A replaced response cannot inherit an abandoned run. Chunk activity owns
+  // idle cleanup only; this timer never infers successful completion.
+  if (run?.fired && run.text && !text.startsWith(run.text)) {omniCancelKeywordRun(run);run=null;}
+  if (!run) omniKeywordRun = run = omniNewKeywordRun();
+  run.text=text;
+  clearTimeout(run.expiry);
+  run.expiry=setTimeout(()=>omniCancelKeywordRun(run),30000);
   if (run.fired || run.cancelled) return content;
-  run.text = String(content || '');
   if (!run.timer && run.text !== run.checked) run.timer = setTimeout(() => {
     run.timer = 0;
     if (run !== omniKeywordRun || run.cancelled || run.fired || run.text === run.checked) return;
@@ -51,10 +55,12 @@ function onScriptOutput(content) {
 function omniKeywordScope(scope) {
   const run=omniKeywordRun, target=run?.identity;
   if(!target || run.committing)return;
-  const msg=scope.chat?.message?.[target.index];
-  if(scope.characterId!==target.scope.characterId || scope.chatId!==target.scope.chatId || String(msg?.chatId || msg?.id || '')!==target.id)omniCancelKeywordRun(run);
+  // Viewer scopes cache identity only; their message rows may predate this reply.
+  // Exact message identity is checked again by the committed-output path.
+  if(scope.characterId!==target.scope.characterId || scope.chatId!==target.scope.chatId)omniCancelKeywordRun(run);
 }
 async function omniStartKeywordJob(run, text) {
+  if(!run.target)run.target=omniCaptureKeywordTarget().catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   const target = await run.target;
   if (!target || run.cancelled || t.unloading || !(await ve()).enabled || t.backendSettings?.card?.power === false) return null;
   const {scope,index,id,role} = target, card = t.backendSettings.card, char = scope.character || {};
@@ -79,12 +85,6 @@ function omniCancelKeywordRun(run = omniKeywordRun) {
   run.cancelled = true; clearTimeout(run.timer); clearTimeout(run.expiry);
   if (run.payload) void K('/v1/jobs/commit-output',{method:'POST',body:{...run.payload,cancel:true}}).catch(()=>{});
   if (omniKeywordRun === run) omniKeywordRun = null;
-}
-function omniKeywordStreamEnded() {
-  const run = omniKeywordRun;
-  if (!run || run.committed || run.expiry) return;
-  // Aborted streams have no output event. Give host output triggers time to finish.
-  run.expiry = setTimeout(()=>omniCancelKeywordRun(run),30000);
 }
 function omniCommitStreamReply(arg, msg, text) {
   const characterId=String(arg.char?.chaId || arg.char?.id || ''), chatId=String(arg.chat?.id || arg.chat?.chatId || '');

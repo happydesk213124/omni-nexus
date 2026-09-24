@@ -42,7 +42,8 @@ import {
   setJobContext,
 } from '../core/debug';
 import type { ApiResult, JobRequest, JobState, TaggedShot, TaggerResult } from '../core/types';
-import { cleanText, stripCbs, toInt, uuid, writeSessionId } from '../core/util/text';
+import { cleanText, toInt, uuid, writeSessionId } from '../core/util/text';
+import { preprocessPrompt } from '../domain/tagging/preprocess';
 import { parseJsonLoose, TAGGER_JSON_RETRY_FAIL_MESSAGE } from '../core/util/object';
 import {
   forceFinishNaiBody,
@@ -723,6 +724,34 @@ async function runJob(jobId: string): Promise<void> {
   let streamCardsRebound = false;
   const completedSpinnerCards = new Map<number,string>();
   const bakedSpinnerShots = new Set<number>();
+  const requestMainTagger = async (messages: Parameters<typeof callLlm>[1]): Promise<string | null> => {
+    const invoke = () => callLlm(resolveLlmRole(getConfig(), 'main'), messages, llmOptions);
+    const retryEnabled = () => getConfig().card?.llm_json_retry === true;
+    const isAbort = (error: unknown) => (error as { name?: unknown })?.name === 'AbortError';
+    const runOnce = async (): Promise<string> => {
+      const text = await invoke();
+      if (!cleanText(text)) throw new Error('메인 태거가 빈 응답을 반환했습니다.');
+      return text;
+    };
+    try {
+      return await runOnce();
+    } catch (firstError) {
+      if (isAbort(firstError) || !retryEnabled()) throw firstError;
+      if (await cancelJobIfStale(jobId, 'superseded after tagger request error')) return null;
+      const detail = String((firstError as Error)?.message || firstError).slice(0, 800);
+      dbg('job.tagger.request_fail', { err: detail.slice(0, 160), retry: true }, 'warn');
+      await setJob(jobId, 'tagging', {
+        phase: 'tagging', progress: 0.28, message: '태거 요청 오류 → 재시도 중…',
+        shot_count: 0, shot_done: 0, debug_stage: 'job.tagger_request_retry',
+      });
+      try {
+        return await runOnce();
+      } catch (retryError) {
+        if (isAbort(retryError)) throw retryError;
+        throw new Error(`메인 태거 요청 재시도 실패 · ${String((retryError as Error)?.message || retryError).slice(0, 400)} (첫 오류: ${detail.slice(0, 240)})`);
+      }
+    }
+  };
   async function finishCompletedSpinners(): Promise<boolean> {
     if (deferred && (!deferred.committed || deferred.cancelled)) return false;
     if (!durableSpinners || !completedSpinnerCards.size) return false;
@@ -891,21 +920,23 @@ async function runJob(jobId: string): Promise<void> {
     const messages = await buildTaggerMessages(request, { skipAssetInject });
     dbg('job.tagger.messages', { msgs: messages.length, skip_asset_inject: skipAssetInject });
     if (getConfig().card?.preprocessing) {
-      const pre = stripCbs(await getPrompt('preprocess'));
+      const card = getConfig().card;
+      const pre = preprocessPrompt(await getPrompt('preprocess'), card.image_min, card.image_max);
       if (pre) {
         const preMessages = [{ role: 'system', content: pre }, messages[messages.length - 1]];
-        const summary = await callLlm(resolveLlmRole(getConfig(), 'main'), preMessages, llmOptions);
+        const summary = await requestMainTagger(preMessages);
+        if (summary === null) return;
         if (await cancelJobIfStale(jobId, 'superseded during preprocess')) return;
         messages.splice(messages.length - 1, 0, {
           role: 'system',
-          content: `## Preprocess Summary\n${summary}`,
+          content: `## Preprocess reference\nThis draft may contain mistakes. Verify it against the original message below. Keep the original L line numbers; follow the tagging rules and author's notes when they conflict with this draft.\n${summary}`,
         });
       }
     }
     // Keep existing images until their replacement slots are ready. Cleanup
     // shares the spinner write so the host never renders a cleared-only message.
-    const tagRequest = callLlm(resolveLlmRole(getConfig(), 'main'), messages, llmOptions);
-    const taggedRaw0 = await tagRequest;
+    const taggedRaw0 = await requestMainTagger(messages);
+    if (taggedRaw0 === null) return;
     if (await cancelJobIfStale(jobId, 'superseded after tagging')) return;
     let taggedRaw = taggedRaw0;
     const readMainTagger = (raw: string): { tagged: TaggerResult; shots: TaggedShot[] } => {

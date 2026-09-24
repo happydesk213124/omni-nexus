@@ -1,6 +1,7 @@
 /** Settings migration + export/import. Pure: no storage, no I/O. */
 
-import type { FocusCharacterMode, FocusPromptMode } from '../core/types.ts';
+import type { FocusCharacterMode, FocusPromptMode, ReverseBarMode } from '../core/types.ts';
+import { cleanText } from '../core/util/text.ts';
 import { parseStreamKeywords } from '../domain/prompt/stream-keywords.ts';
 import { normalizeLlmRolesSettings } from '../domain/llm/roles.ts';
 import { naiStepsForFamily, normalizeNaiSampler, optionalNaiSampler } from '../domain/nai/samplers.ts';
@@ -15,7 +16,7 @@ import { normalizeImagePressInspect, normalizeToastAnchor } from '../domain/toas
 /** NovelAI base natural-language mode (replaces the old boolean toggle). */
 export type NaturalBaseMode = 'off' | 'short' | 'detailed' | 'supplement';
 
-export type { FocusCharacterMode, FocusPromptMode };
+export type { FocusCharacterMode, FocusPromptMode, ReverseBarMode };
 
 const FOCUS_CHARACTER_MODES = new Set<FocusCharacterMode>(['off', 'female', 'male', 'auto']);
 const FOCUS_PROMPT_MODES = new Set<FocusPromptMode>(['default', 'strong', 'always', 'manual']);
@@ -51,6 +52,22 @@ export function normalizeFocusCharacterMode(value: unknown): FocusCharacterMode 
 
 /** How matched Risu asset NAI tags are fed to the tagger. */
 export type AssetNaiTagsMode = 'off' | 'inline' | 'prepass';
+
+/** Role-swap option bar (replaces the old boolean toggle). Missing/unknown → `off`. */
+const REVERSE_BAR_MODES = new Set<ReverseBarMode>(['off', 'memo', 'authority']);
+
+/**
+ * Normalize `card.llm_reverse_bar` from the legacy boolean toggle.
+ * Legacy `true` (role-lock trick on) → `authority`, preserving behaviour;
+ * `false`/missing/unknown → `off`.
+ */
+export function normalizeReverseBarMode(value: unknown): ReverseBarMode {
+  if (value === true || value === 'true' || value === 1 || value === '1' || value === 'on') return 'authority';
+  if (typeof value === 'string' && REVERSE_BAR_MODES.has(value.toLowerCase().trim() as ReverseBarMode)) {
+    return value.toLowerCase().trim() as ReverseBarMode;
+  }
+  return 'off';
+}
 
 const NATURAL_BASE_MODES = new Set<NaturalBaseMode>(['off', 'short', 'detailed', 'supplement']);
 const ASSET_NAI_TAGS_MODES = new Set<AssetNaiTagsMode>(['off', 'inline', 'prepass']);
@@ -215,12 +232,13 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     || card.llm_json_retry === 1
     || card.llm_json_retry === '1'
     || card.llm_json_retry === 'on';
-  card.llm_reverse_bar =
-    card.llm_reverse_bar === true
-    || card.llm_reverse_bar === 'true'
-    || card.llm_reverse_bar === 1
-    || card.llm_reverse_bar === '1'
-    || card.llm_reverse_bar === 'on';
+  // llm_reverse_bar: legacy boolean toggle → "off" | "memo" | "authority"
+  // (`true` meant the full role-lock trick, which is now `authority`).
+  card.llm_reverse_bar = normalizeReverseBarMode(card.llm_reverse_bar);
+  // Client Comments inputs (4.5.1 direction / focus): free text, trimmed,
+  // capped like the author notes. Empty → the central block is skipped.
+  card.client_direction = cleanText(card.client_direction, 8000);
+  card.client_focus = cleanText(card.client_focus, 8000);
   card.llm_tag_cal =
     card.llm_tag_cal === true
     || card.llm_tag_cal === 'true'
@@ -297,6 +315,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   }
   if (card.progress_toast == null) card.progress_toast = false;
   else card.progress_toast = card.progress_toast === true || card.progress_toast === 'true' || card.progress_toast === 1 || card.progress_toast === '1';
+  card.image_done_sound = card.image_done_sound === true || card.image_done_sound === 'true' || card.image_done_sound === 1 || card.image_done_sound === '1';
   card.toast_anchor = normalizeToastAnchor(card.toast_anchor);
   card.image_press_inspect = normalizeImagePressInspect(card.image_press_inspect);
   {

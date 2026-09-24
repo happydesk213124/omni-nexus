@@ -6,6 +6,16 @@ The asserted comic-options patch adds `nx-comic-natural-supplement`, bound to
 comic cut's `natural` description follows its base tags in the generated layout.
 The UI cannot be rebuilt, so this contract is **fixed**. `npm run parity` enforces it.
 
+Settings layout is owned by `docs/settings-ux-preview.html`, extracted into
+`src/settings-ux/preview-panes.json`. New visible controls belong there (including
+the dashboard's `nx-image-done-sound`), not in the frozen settings form.
+The final build pass `tools/vendor-patches/settings-state-markup.mjs` removes the
+old settings shell/navigation and redundant form layout after the existing
+asserted vendor patches. It preserves state-bearing elements, select options,
+dynamic lists, delegated actions and help associations for `tabHtml()`; IDs and
+expressions are checked during the build. Shared dynamic renderers, overlays,
+release notes and their CSS remain functional dependencies, not dead HTML.
+
 The asserted inspect patch uses `GET /v1/shots/asset?name=...` to read file
 base64 plus `{ids, names}`. `ids` preserves filename cast order; `names` maps
 cast ids to current roster names. Character assets take precedence over the
@@ -133,7 +143,7 @@ The UI guards writes with a `settingsWriteGen` counter and merges pending patche
 so out-of-order responses are discarded client-side. The backend just answers.
 
 ### Prompts
-The editor list excludes retired `char_looks`, `autotag`, `asset_tags_inject` and `asset_author_note`. Existing stored values remain available through per-key reads and full-pack export; they are not injected into generation requests.
+The editor list excludes retired `char_looks`, `autotag` and `asset_tags_inject`. Existing stored values remain available through per-key reads and full-pack export; they are not injected into generation requests.
 
 `/v1/prompts` → `{ prompts: [{key, text}] }` · `/v1/prompts/:key` ·
 `PUT /v1/prompts/:key` `{text}` · `POST /v1/prompts/:key/reset` ·
@@ -230,7 +240,9 @@ spinners still are. Message `content_hash` (`ye`) hashes `proseForHash`
 
 Dashboard also has `card.toast_anchor` (`tl` | `bl` | `tr` | `br` | `tc`,
 default `tc`) for progress / selection / host / attach toasts, and
-`card.inline_chat_text_side` (`before` | `after`, default `before`) puts the
+`card.image_done_sound` (default `false`) plays a short sound once per completed
+image-generation job. Enabling it primes Web Audio against browser autoplay
+rules. `card.inline_chat_text_side` (`before` | `after`, default `before`) puts the
 inline spinner/photo before the matched line text or after it. Already-mounted
 frames stay put; the next inject or refresh uses the new side.
 `card.inline_chat_dom_radius` is unused for neighbour stamping. Selecting a
@@ -361,7 +373,7 @@ natural_base in one auto-fit row (asserted vendor patch).
 `card.person_tag_solo` (boolean, default `false`): when the shot has exactly one
 character, put `solo` instead of `1girl`/`1boy` (still emphasized by weight).
 Also applies when `person_tag_mode` is `off`. UI replaces the unused Preprocessing
-checkbox (asserted vendor patch); `card.preprocessing` remains a silent dummy.
+checkbox (asserted vendor patch). `card.preprocessing` is controlled in the dashboard as 전처리(저능력 모델용). It runs one extra main-model request for factual L-numbered scene notes before final tagging; numeric image limits are resolved before CBS cleanup, including legacy saved templates. The original message is retained and the draft is subordinate to tagging rules and author notes.
 
 `card.costume` (boolean, default `false`): when on, the main tagger receives each
 character's `costumes[]` catalog (name[index], note, short attire). A character
@@ -426,12 +438,16 @@ person-count tags and before NAI quality tags. Card settings → 생성 옵션 s
 2-column pair of textareas, a dedicated save button, plus JSON export/import
 (`{ fixed_prompt_prefix, fixed_prompt_suffix }`).
 
-`card.llm_reverse_bar` and `card.llm_tag_cal` (booleans, default `false`) sit
-next to JSON retry. Reverse-bar prepends `jailbreak` / `prefill` /
-`prefill_user` pack prompts (already-accepted role turns) to every LLM call.
-Tag-cal appends a mid-tag `%%` instruction and strips `%` then restores
-`wfsn`→`nsfw` on the reply. The LLM connection probe uses `plain: true` and
-skips both.
+`card.llm_reverse_bar` (`"off"` | `"memo"` | `"authority"` — shipped packs
+default `"authority"`, a missing key migrates to `"off"`; legacy `true`
+migrates to `"authority"`) and `card.llm_tag_cal` (boolean,
+default `false`) sit next to JSON retry. Reverse-bar is an option bar mirroring
+the 4.5.1 jb toggle: `memo` applies the Freya set (`memo_jailbreak` /
+`memo_prefill` / `memo_prefill_user` — the method used through 4.4.0);
+`authority` applies the fake supervisor-approval set (`jailbreak` / `prefill` /
+`prefill_user`, no prefill_user turns — reintroduced from illustration 3).
+Legacy `client_direction` and `client_focus` values are ignored. Tag-cal appends a mid-tag
+`%%` instruction and strips `%` then restores `wfsn`→`nsfw` on the reply.
 
 `card.stream_keywords_enabled` (boolean, default `false`) is the dashboard
 toggle for mid-stream keyword gen. `card.stream_keywords` is still the needle
@@ -493,7 +509,7 @@ job pipeline never read them, and generation only passes through a shot's own
 `characters[].prompt` (generation / image metadata); live roster rebuild is only
 a fallback when that prompt is empty.
 
-Keys: `author_note` (main tagger), `asset_author_note`, `global_author_note` (main + asset looks + comic LLM),
+Keys: `author_note` (메인 태거 작가의 노트; main tagger), `asset_author_note` (에셋 태거 작가의 노트; separate asset looks requests only), `global_author_note` (main + asset looks + comic LLM),
 `tagger, format, prefill, prefill_user, jailbreak, preprocess, preset_1, lore_inject,
 char_inject, appearance_inject, asset_tags_inject, autotag`.
 

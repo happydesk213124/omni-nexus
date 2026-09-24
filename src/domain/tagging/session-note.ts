@@ -95,6 +95,40 @@ export function authorNoteSystemContent(label: string, body: unknown): string {
   ].join('\n');
 }
 
+/**
+ * Client Comments block, verbatim logic of the 4.5.1 module
+ * (`lb-xnai.lb.whole.nl` / `lb-xnai.lb.whole.tag`): the direction text and the
+ * focus line wrapped in `<instruction>` plus "precedes all previous
+ * instructions". Both empty → '' (the module renders "(None specified)",
+ * which is inert, so the central path injects nothing).
+ */
+export function formatClientComments(direction: unknown, focus: unknown): string {
+  const dir = cleanText(direction, 8000);
+  const foc = cleanText(focus, 8000);
+  if (!dir && !foc) return '';
+  const focusLine = foc
+    ? `I want to focus on the character(s): "${foc}". Include at least one eligible focused character in every Scene. Apply the featured-character eligibility rules to a focused character. Keep other visible participants when the selected event requires them, but do not create a Scene centered only on other characters.`
+    : '';
+  if (dir) {
+    return [
+      'The Client has specified what they want:',
+      '',
+      '<instruction>',
+      focusLine ? `${focusLine}\n\n${dir}` : dir,
+      '</instruction>',
+      '',
+      'The above instruction precedes all previous instructions.',
+    ].join('\n');
+  }
+  return [
+    '<instruction>',
+    focusLine,
+    '</instruction>',
+    '',
+    'The above instruction precedes all previous instructions.',
+  ].join('\n');
+}
+
 export function joinSessionAuthorNote(prefix: unknown, suffix: unknown): string {
   return [cleanText(prefix, 8000), cleanText(suffix, 8000)].filter(Boolean).join('\n');
 }

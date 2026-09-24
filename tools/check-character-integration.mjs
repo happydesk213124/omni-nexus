@@ -142,11 +142,12 @@ try {
  await page.waitForFunction(()=>switchTest.t.backendSettings.card.omni_helper_prompt===true);
  await page.locator('#nx-omni-helper').uncheck();
  await page.waitForFunction(()=>switchTest.t.backendSettings.card.omni_helper_prompt===false);
+ await page.evaluate(async()=>{switchTest.t.uiTab='dashboard';await switchTest.paint();});
  await page.locator('#nx-asset-tags-enabled').check();
  await page.locator('#nx-asset-tags-inline').check();
  await page.locator('#nx-image-analysis-separate').check();
  await page.waitForFunction(()=>switchTest.t.backendSettings.card.image_analysis_separate===true);
- assert.equal(await page.locator('#nx-asset-nai-tags').inputValue(),'inline');
+ await page.waitForFunction(()=>switchTest.t.backendSettings.card.asset_nai_tags==='inline');
  await page.evaluate(async()=>{switchTest.t.uiTab='prompts';await switchTest.paint();});
  await page.waitForSelector('#nx-prompt-character_common');
  await page.locator('#nx-prompt-character_common').fill('MY EDITED COMMON RULE');

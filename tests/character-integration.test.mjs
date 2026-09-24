@@ -103,7 +103,7 @@ test('metadata coverage requires hair styling plus eye color and shape',async()=
 
 test('retired editors are absent while stored edits remain readable and exportable',async()=>{
   const {api}=await runtime();
-  const retired=['char_looks','autotag','asset_tags_inject','asset_author_note'];
+  const retired=['char_looks','autotag','asset_tags_inject'];
   for(const key of retired) await api.setPrompt(key,`CUSTOM ${key}`);
   const visible=await api.listPrompts();
   assert.ok(visible.length>0);
@@ -302,12 +302,20 @@ test('generation prepass and inline route new image-only people and metadata thr
   }
 });
 
-test('legacy asset writing overrides are preserved but not injected',async()=>{
+test('asset author note is editable and injected only into the separate asset lane',async()=>{
   const {api}=await runtime();
-  await api.setPrompt('asset_author_note','LEGACY INVENT ALL HAIR');
+  await api.setPrompt('global_author_note','SHARED NOTE');
+  await api.setPrompt('author_note','MAIN NOTE');
+  await api.setPrompt('asset_author_note','ASSET NOTE');
+  assert.ok((await api.listPrompts()).some(row=>row.key==='asset_author_note' && row.text==='ASSET NOTE'));
   const messages=await api.buildCharacterLooksMessages({session_id:'',assistant_text:'Alice'},'tags');
-  assert.doesNotMatch(JSON.stringify(messages),/LEGACY INVENT ALL HAIR/);
-  assert.equal(await api.getPrompt('asset_author_note'),'LEGACY INVENT ALL HAIR');
+  const asset=JSON.stringify(messages);
+  assert.equal(asset.split('ASSET NOTE').length-1,1);
+  assert.ok(asset.indexOf('SHARED NOTE')<asset.indexOf('ASSET NOTE'));
+  assert.doesNotMatch(asset,/MAIN NOTE/);
+  const main=JSON.stringify(await api.buildTaggerMessages({session_id:'',assistant_text:'Alice'}));
+  assert.match(main,/MAIN NOTE/);assert.match(main,/SHARED NOTE/);assert.doesNotMatch(main,/ASSET NOTE/);
+  assert.equal((await api.exportPromptsPack()).prompts.asset_author_note,'ASSET NOTE');
 });
 
 

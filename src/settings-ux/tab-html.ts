@@ -92,6 +92,12 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     if (prefixes.some(prefix => node.id.startsWith(prefix))) out.appendChild(node);
   }
   const used = new Set<string>();
+  // Retired duplicate Client Comments inputs; session author notes are the
+  // supported per-chat guidance field.
+  for (const id of ['nx-client-direction', 'nx-client-focus']) {
+    vendor.querySelector('#' + id)?.closest('label')?.remove();
+    out.querySelector('#' + id)?.closest('label')?.remove();
+  }
   out.querySelectorAll('[id]').forEach((dst) => {
     const id = dst.id;
     if (!id) return;
@@ -123,7 +129,6 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   if (card) for (const [id, key, defaultOn] of [
     ['nx-appearance', 'char_appearance', true],
     ['nx-llm-json-retry', 'llm_json_retry', false],
-    ['nx-llm-reverse-bar', 'llm_reverse_bar', false],
     ['nx-llm-tag-cal', 'llm_tag_cal', false],
     ['nx-preprocess', 'preprocessing', false],
     ['nx-stream-keywords-on', 'stream_keywords_enabled', false],
@@ -131,15 +136,31 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   ] as const) {
     out.querySelector<HTMLInputElement>('#' + id)?.toggleAttribute('checked', card[key] == null ? defaultOn : Boolean(card[key]));
   }
+  // Role-swap is an option bar (off/memo/authority), not a checkbox. When the
+  // vendor dashboard has no matching node, fall back to the stored mode.
+  if (card) {
+    const reverseBar = out.querySelector<HTMLSelectElement>('#nx-llm-reverse-bar');
+    if (reverseBar && !vendor.querySelector('#nx-llm-reverse-bar')) {
+      const stored = card.llm_reverse_bar;
+      const mode = stored === 'memo' || stored === 'authority'
+        ? stored
+        : (stored === true || stored === 'true' || stored === 'on' ? 'authority' : 'off');
+      reverseBar.value = mode;
+      for (const option of reverseBar.options) option.toggleAttribute('selected', option.value === mode);
+    }
+  }
   const keywords = out.querySelector('#nx-stream-keywords');
   for (const id of ['nx-inline-chat', 'nx-persist-chat']) {
     const input = out.querySelector<HTMLInputElement>('#' + id);
     if (input) { input.setAttribute('checked', ''); input.setAttribute('disabled', ''); }
   }
-  for (const key of ['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note']) {
+  for (const key of ['char_looks', 'autotag', 'asset_tags_inject']) {
     vendor.querySelector('#nx-prompt-' + key)?.remove();
   }
   if (card && keywords) keywords.textContent = String(card.stream_keywords || '');
+  if (tab === 'dashboard' && card) {
+    out.querySelector<HTMLInputElement>('#nx-image-done-sound')?.toggleAttribute('checked', card.image_done_sound === true);
+  }
   const chipRow = vendor.querySelector('.preset-chip-row');
   const tiles = out.querySelector('#nx-preset-chips');
   if (chipRow && tiles && !tiles.childElementCount) {

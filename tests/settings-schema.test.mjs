@@ -300,11 +300,32 @@ test("comic_aspect migrates to llm|landscape|portrait|square", () => {
   assert.equal(migrateSettings({ card: { comic_aspect: "nope" } }).card.comic_aspect, "llm");
 });
 
-test("llm reverse-bar and tag-cal default off and accept on aliases", () => {
-  assert.equal(migrateSettings({ card: {} }).card.llm_reverse_bar, false);
+test("llm reverse-bar migrates boolean toggle to off|memo|authority", () => {
+  assert.equal(migrateSettings({ card: {} }).card.llm_reverse_bar, "off");
+  assert.equal(migrateSettings({ card: { llm_reverse_bar: true } }).card.llm_reverse_bar, "authority");
+  assert.equal(migrateSettings({ card: { llm_reverse_bar: "on" } }).card.llm_reverse_bar, "authority");
+  assert.equal(migrateSettings({ card: { llm_reverse_bar: 1 } }).card.llm_reverse_bar, "authority");
+  assert.equal(migrateSettings({ card: { llm_reverse_bar: "memo" } }).card.llm_reverse_bar, "memo");
+  assert.equal(migrateSettings({ card: { llm_reverse_bar: "authority" } }).card.llm_reverse_bar, "authority");
+  assert.equal(migrateSettings({ card: { llm_reverse_bar: "nope" } }).card.llm_reverse_bar, "off");
   assert.equal(migrateSettings({ card: {} }).card.llm_tag_cal, false);
-  assert.equal(migrateSettings({ card: { llm_reverse_bar: "on" } }).card.llm_reverse_bar, true);
   assert.equal(migrateSettings({ card: { llm_tag_cal: 1 } }).card.llm_tag_cal, true);
+});
+
+test("client direction/focus default empty and trim to text", () => {
+  const empty = migrateSettings({ card: {} }).card;
+  assert.equal(empty.client_direction, "");
+  assert.equal(empty.client_focus, "");
+  const filled = migrateSettings({ card: { client_direction: "  밤  ", client_focus: 42 } }).card;
+  assert.equal(filled.client_direction, "밤");
+  assert.equal(filled.client_focus, "42");
+});
+
+test("image completion sound defaults off and normalizes persisted booleans", () => {
+  assert.equal(migrateSettings({ card: {} }).card.image_done_sound, false);
+  assert.equal(migrateSettings({ card: { image_done_sound: true } }).card.image_done_sound, true);
+  assert.equal(migrateSettings({ card: { image_done_sound: "true" } }).card.image_done_sound, true);
+  assert.equal(migrateSettings({ card: { image_done_sound: "false" } }).card.image_done_sound, false);
 });
 
 test("overlay_markers is retired: left-line overlay stays off", () => {

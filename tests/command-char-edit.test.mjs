@@ -108,7 +108,7 @@ test("parseSessionAuthorNote migrates a string to prefix", () => {
 test("session note is wired into main tagger, looks, and comic LLM", () => {
   assert.match(src("tagger.ts"), /sessionAuthorNoteLlmContent/);
   assert.match(src("tagger.ts"), /getPrompt\('author_note'\)/);
-  assert.doesNotMatch(src("tagger.ts"), /getPrompt\('asset_author_note'\)/);
+  assert.match(src("tagger.ts"), /getPrompt\('asset_author_note'\)/);
   assert.match(src("tagger.ts"), /getPrompt\('global_author_note'\)/);
   assert.match(src("comic.ts"), /sessionAuthorNoteLlmContent/);
   assert.match(src("comic.ts"), /getPrompt\('global_author_note'\)/);

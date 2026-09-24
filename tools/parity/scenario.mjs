@@ -184,6 +184,30 @@ export async function runScenario(N, handles) {
     const s = await get('/v1/settings');
     return { natural_base: s?.settings?.card?.natural_base };
   });
+  // Role-swap is an option bar now (off|memo|authority); legacy boolean true
+  // still migrates to "authority" (compare drops this 2.0-only key vs 1.x).
+  await rec('settings.reverse_bar_alias', () => post('/v1/settings/update', { card: { llm_reverse_bar: true } }));
+  await rec('settings.reverse_bar_after_bool', async () => {
+    const s = await get('/v1/settings');
+    return { llm_reverse_bar: s?.settings?.card?.llm_reverse_bar };
+  });
+  await rec('settings.reverse_bar_set_memo', () => post('/v1/settings/update', { card: { llm_reverse_bar: 'memo' } }));
+  await rec('settings.reverse_bar_after_memo', async () => {
+    const s = await get('/v1/settings');
+    return { llm_reverse_bar: s?.settings?.card?.llm_reverse_bar };
+  });
+  // Client Comments inputs (4.5.1 direction / focus): stored verbatim,
+  // trimmed; the central block renders them in the module's template.
+  await rec('settings.client_comments_set', () => post('/v1/settings/update', { card: { client_direction: '밤, 비', client_focus: '엘로디아' } }));
+  await rec('settings.client_comments_after', async () => {
+    const s = await get('/v1/settings');
+    return {
+      client_direction: s?.settings?.card?.client_direction,
+      client_focus: s?.settings?.card?.client_focus,
+    };
+  });
+  await rec('settings.client_comments_clear', () => post('/v1/settings/update', { card: { client_direction: '', client_focus: '' } }));
+  await rec('settings.reverse_bar_restore_off', () => post('/v1/settings/update', { card: { llm_reverse_bar: 'off' } }));
   // Old viewer minimize modes died with the viewer: stored icon keeps its
   // parked spot as bubble, toolbar/actions collapse to buttons. The final
   // restore leaves buttons stored so later steps compare clean.
@@ -210,9 +234,12 @@ export async function runScenario(N, handles) {
       inline_msg_actions: card.inline_msg_actions === true,
       inline_chat_dom_radius: Number(card.inline_chat_dom_radius ?? 4),
       progress_toast: card.progress_toast === true,
+      image_done_sound: card.image_done_sound === true,
       viewer_minimize_mode: String(card.viewer_minimize_mode || 'buttons'),
       llm_json_retry: card.llm_json_retry === true,
-      llm_reverse_bar: card.llm_reverse_bar === true,
+      llm_reverse_bar: String(card.llm_reverse_bar || 'off'),
+      client_direction: String(card.client_direction || ''),
+      client_focus: String(card.client_focus || ''),
       llm_tag_cal: card.llm_tag_cal === true,
       nai5_first: card.nai5_first === true,
       nai5_only: card.nai5_only === true,
@@ -251,11 +278,12 @@ export async function runScenario(N, handles) {
   // ── prompts ─────────────────────────────────────────────────────────────
   const promptList = await rec('prompts.list', async () => {
     const result = await get('/v1/prompts');
-    const retired = ['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note'];
+    const retired = ['char_looks', 'autotag', 'asset_tags_inject'];
     // This new editable prompt has no legacy counterpart. Assert its actual
     // contract before comparing the shared prompt catalog.
     if (N.VERSION !== '1.3.0') {
       if (result.prompts.some(p => retired.includes(p.key))) throw new Error('retired prompt still editable');
+      if (!result.prompts.some(p => p.key === 'asset_author_note')) throw new Error('asset author note editor missing');
       if (!result.prompts.some(p => p.key === 'tagger') || !result.prompts.some(p => p.key === 'format')) throw new Error('active prompt missing');
       const common = result.prompts.find(p => p.key === 'character_common');
       if (!common || !common.text.includes('hair_style') || !common.text.includes('eye_color')) throw new Error('missing shared character prompt');

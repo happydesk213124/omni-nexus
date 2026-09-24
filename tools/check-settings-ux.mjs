@@ -48,9 +48,9 @@ try {
     document.body.innerHTML = SettingsTabs.tabHtml('gen_options', '', {card:{}});
     const helperOff=!document.getElementById('nx-omni-helper').checked;
     document.body.innerHTML = SettingsTabs.tabHtml('prompts', '<textarea id="nx-prompt-char_looks"></textarea>');
-    return {required,helperOn,above,helperOff,retired:document.querySelectorAll('#nx-prompt-char_looks,#nx-prompt-autotag,#nx-prompt-asset_tags_inject,#nx-prompt-asset_author_note').length,reset:document.querySelectorAll('[data-reset-prompt="character_common"]').length};
+    return {required,helperOn,above,helperOff,asset:document.querySelector('#nx-prompt-asset_author_note')?.closest('.block')?.textContent.includes('에셋 태거 작가의 노트'),preprocessReset:document.querySelectorAll('[data-reset-prompt="preprocess"]').length,retired:document.querySelectorAll('#nx-prompt-char_looks,#nx-prompt-autotag,#nx-prompt-asset_tags_inject').length,reset:document.querySelectorAll('[data-reset-prompt="character_common"]').length};
   });
-  assert.deepEqual(streamingControls,{required:[true,true],helperOn:true,above:true,helperOff:true,retired:0,reset:0});
+  assert.deepEqual(streamingControls,{required:[true,true],helperOn:true,above:true,helperOff:true,asset:true,preprocessReset:1,retired:0,reset:0});
 
   await mkdir('.test-build/settings-ux', { recursive: true });
   for (const width of [320, 375, 425, 768, 1440, 3440]) {
@@ -232,11 +232,31 @@ try {
   assert.equal(await page.locator('#nx-scroll-hold').isChecked(), !previous, 'real checkbox persists through tab remount');
   for (const checked of [true,false]) {
     await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();});
-    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-reverse-bar','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on']) await page.locator('#'+id).setChecked(checked);
+    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on']) await page.locator('#'+id).setChecked(checked);
     await page.evaluate(()=>globalThis.uxTestRuntime.flush());
     await page.evaluate(async()=>{const {t,paint}=globalThis.uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
-    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-reverse-bar','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on']) assert.equal(await page.locator('#'+id).isChecked(),checked,`${id}: moved habit restores persisted value`);
+    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on']) assert.equal(await page.locator('#'+id).isChecked(),checked,`${id}: moved habit restores persisted value`);
   }
+  // Role-swap is an option bar (off/memo/authority), not a checkbox.
+  for (const mode of ['memo','authority','off']) {
+    await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();});
+    await page.locator('#nx-llm-reverse-bar').selectOption(mode);
+    await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+    await page.waitForFunction(expected => globalThis.uxTestRuntime.t.backendSettings.card.llm_reverse_bar === expected, mode);
+    await page.evaluate(async()=>{const {t,paint}=globalThis.uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
+    assert.equal(await page.locator('#nx-llm-reverse-bar').inputValue(),mode,`nx-llm-reverse-bar: option bar restores persisted value`);
+  }
+  await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();});
+  assert.equal(await page.locator('#nx-client-direction').count(), 0, 'removed direction field stays absent');
+  assert.equal(await page.locator('#nx-client-focus').count(), 0, 'removed focus field stays absent');
+  await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='dashboard';await paint();});
+  assert.equal(await page.locator('#nx-image-done-sound').count(), 1, 'dashboard exposes image completion sound');
+  assert.equal(await page.locator('[data-nx-help-id="nx-image-done-sound"]').isVisible(), true, 'completion sound control is in the active dashboard');
+  await page.locator('[data-nx-help-id="nx-image-done-sound"]').click();
+  await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+  await page.waitForFunction(() => globalThis.uxTestRuntime.t.backendSettings.card.image_done_sound === true);
+  await page.locator('[data-nx-help-id="nx-image-done-sound"]').click();
+  await page.evaluate(()=>globalThis.uxTestRuntime.flush());
   for(const nai of [{},{api_keys_v4_configured:1},{api_keys_v5_configured:1},{comfy_workflow_json:'{}'}]) {
     await page.evaluate(async nai=>{const {t,paint}=globalThis.uxTestRuntime;t.backendSettings.nai=nai;await paint();},nai);
     assert.equal(await page.locator('#nx-tabs [data-nx-tab="models"] .alarm').isVisible(),Object.keys(nai).length===0,'any image backend removes preview warning dot');

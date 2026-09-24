@@ -174,7 +174,10 @@ if (N) {
   const prompts = await get('/v1/prompts');
   const tagger = prompts?.prompts?.find((p) => p.key === 'tagger');
   check(!!tagger, '/v1/prompts did not return a tagger entry');
-  for (const key of ['char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note']) {
+  check(prompts.prompts.some(p => p.key === 'asset_author_note'), 'asset author note editor missing');
+  const preprocess = prompts.prompts.find(p => p.key === 'preprocess');
+  check(preprocess?.text === fs.readFileSync(path.join(root, 'prompts/preprocess.txt'), 'utf8').replace(/\r\n/g, '\n').trim(), 'updated preprocess prompt did not reach the bundle');
+  for (const key of ['char_looks', 'autotag', 'asset_tags_inject']) {
     check(!prompts.prompts.some(p => p.key === key), `retired prompt editor still returned: ${key}`);
   }
   const fallback = JSON.parse(fs.readFileSync(path.join(root, 'src/config/prompt-fallbacks.json'), 'utf8'));

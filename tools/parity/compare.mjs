@@ -191,6 +191,7 @@ const normalize = (root) => {
         )].sort().map((v) => walk(v, key));
       }
       // New 2.0-only prompts have no 1.x equivalent; comparing list length/order fails.
+      // memo_* are the Freya role-lock set backing the memo option-bar level.
       if (
         key === 'prompts'
         && node.length > 0
@@ -199,7 +200,7 @@ const normalize = (root) => {
         return node
           .filter((p) => {
             const k = String(p.key);
-            if (k === 'asset_tags_inject' || k === 'char_looks' || k === 'command_reroll' || k === 'command_char_edit' || k === 'lorefilter_scan' || k === 'asset_author_note' || k === 'global_author_note' || k === 'comic' || k === 'jailbreak' || k === 'prefill_user') return false;
+            if (k === 'asset_tags_inject' || k === 'char_looks' || k === 'command_reroll' || k === 'command_char_edit' || k === 'lorefilter_scan' || k === 'asset_author_note' || k === 'global_author_note' || k === 'comic' || k === 'jailbreak' || k === 'prefill_user' || k === 'memo_jailbreak' || k === 'memo_prefill' || k === 'memo_prefill_user') return false;
             return true;
           })
           .map((v) => walk(v, key));
@@ -213,7 +214,7 @@ const normalize = (root) => {
         && node.includes('format')
       ) {
         return node
-          .filter((k) => k !== 'asset_tags_inject' && k !== 'char_looks' && k !== 'command_reroll' && k !== 'command_char_edit' && k !== 'lorefilter_scan' && k !== 'asset_author_note' && k !== 'global_author_note' && k !== 'comic' && k !== 'jailbreak' && k !== 'prefill_user')
+          .filter((k) => k !== 'asset_tags_inject' && k !== 'char_looks' && k !== 'command_reroll' && k !== 'command_char_edit' && k !== 'lorefilter_scan' && k !== 'asset_author_note' && k !== 'global_author_note' && k !== 'comic' && k !== 'jailbreak' && k !== 'prefill_user' && k !== 'memo_jailbreak' && k !== 'memo_prefill' && k !== 'memo_prefill_user')
           .map((v) => walk(v, key));
       }
       return node.map((v) => walk(v, key));
@@ -298,6 +299,8 @@ const normalize = (root) => {
           || k === 'no_humans_when_no_char'
           || k === 'llm_json_retry'
           || k === 'llm_reverse_bar'
+          || k === 'client_direction'
+          || k === 'client_focus'
           || k === 'llm_tag_cal'
           || k === 'focus_character'
           || k === 'focus_weight'
@@ -320,7 +323,8 @@ const normalize = (root) => {
         // Defaults false; UI/schema + unit tests assert behaviour.
         // 2.0 inline chat on/off + text-side (before/after the line) — no 1.x fields.
         // scroll_hold is 2.0-only (keep bubble put after inject); no 1.x field.
-        if (k === 'inline_chat_images' || k === 'inline_chat_text_side' || k === 'inline_msg_actions' || k === 'inline_msg_fan' || k === 'progress_toast' || k === 'toast_anchor' || k === 'image_press_inspect' || k === 'scroll_hold' || k === 'persist_chat_images' || k === 'persist_chat_images_folded') continue;
+        // One-shot completion sound is a 2.0-only dashboard preference; 1.x has no matching field.
+        if (k === 'inline_chat_images' || k === 'inline_chat_text_side' || k === 'inline_msg_actions' || k === 'inline_msg_fan' || k === 'progress_toast' || k === 'toast_anchor' || k === 'image_done_sound' || k === 'image_press_inspect' || k === 'scroll_hold' || k === 'persist_chat_images' || k === 'persist_chat_images_folded') continue;
         // Omni Nexus keeps JSON in save-file pluginStorage. 1.x labeled the same
         // rows as device IndexedDB. The label is not behaviour we can compare.
         if (k === 'database_path' || k === 'images_dir' || k === 'storage_api' || k === 'storage_scope' || k === 'storage') continue;

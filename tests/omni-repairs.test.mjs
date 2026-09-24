@@ -42,9 +42,9 @@ test('legacy network wrappers do not start a second scroll manager',async()=>{
 });
 
 test('legacy model alarm stays disabled because preview owns the readiness dot',()=> {
- assert.match(source,/const alarm = "";/);
  assert.match(source,/const naiMiss0 = false;/);
- assert.doesNotMatch(source,/const alarm = d === "models" && !naiOk/);
+ assert.match(source,/classList\.toggle\("nx-tab-alarm", naiMiss0\)/);
+ assert.doesNotMatch(source,/const naiMiss0 = !naiOk0/);
 });
 
 

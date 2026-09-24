@@ -12,13 +12,9 @@ export function rebuildMessageRuntime(source) {
     if(at<0||end<at)throw new Error('[runtime rebuild] function missing: '+start);
     out=out.slice(0,at)+value+'\n'+out.slice(end);
   };
-  once('  async function onScriptOutput(content) {', '  async function onScriptOutput(content) {\n    omniStreamHint();');
   once('      if (text && text.length > 8) scheduleHashRelinkAfterReply("scriptOutput");', '      // Commit-time output notification owns message relinking.');
-  once('  async function onChatOutput(arg) {', '  async function onChatOutput(arg) {\n    omniStreamOutput();');
-  once('  function scheduleHashRelinkAfterReply(source) {', '  function scheduleHashRelinkAfterReply(source) {\n    if (omniStream.paused && source !== "chatOutput") return;');
-  once('  async function relinkSelectedMessageHash(source) {', '  async function relinkSelectedMessageHash(source) {\n    if (omniStream.paused) return;');
   once('    if (typeof schedulePointerSelect == "function") schedulePointerSelect("reply");', '    // Selection refresh is coalesced with the final rebind below.');
-  once('      if (gen !== t._hashRelinkGen) return;\n      relinkSelectedMessageHash(source)', '      if (gen !== t._hashRelinkGen || omniStream.paused) return;\n      if (typeof schedulePointerSelect == "function") schedulePointerSelect("reply");\n      relinkSelectedMessageHash(source)');
+  once('      if (gen !== t._hashRelinkGen) return;\n      relinkSelectedMessageHash(source)', '      if (gen !== t._hashRelinkGen) return;\n      if (typeof schedulePointerSelect == "function") schedulePointerSelect("reply");\n      relinkSelectedMessageHash(source)');
   fn('  async function injectChatMsgActions(', '  async function injectChatMsgActions() { omniScheduleFooter(); }');
   fn('  function nxEnsureFanRemountWatch(', '  function nxEnsureFanRemountWatch() { omniScheduleFooter(); }');
   fn('  async function paintAllMsgFans(', '  async function paintAllMsgFans() { await omniMountFooters(); }');
@@ -94,6 +90,7 @@ export function rebuildMessageRuntime(source) {
   once('    for(const [key,row] of nxSpinnerPreviews) if(row.jobId===jobId) nxSpinnerPreviews.delete(key);', '    for(const [key,row] of nxSpinnerPreviews) if(row.jobId===jobId) nxSpinnerPreviews.delete(key);\n    await omniStreamObservers();');
   fn('  async function onChatOutput(', read('reply-runtime.js'));
   fn('  async function _t(', '');
+  fn('  async function chatIsStreaming(', '');
   once('      if (typeof k.addRisuReplacer != "function") throw new Error("addRisuReplacer unavailable");\n      await k.addRisuReplacer("afterRequest", _t), t.replacerReady = !0;', '      t.replacerReady = t._chatOutputReady;\n      if (!t._chatOutputReady) t.replacerError = "응답 완료 API 미지원";');
   once(', await D("removeAfter", () => k.removeRisuReplacer?.("afterRequest", _t), null)', '');
   const waitStart=out.indexOf('      const waitStream = source !== "streamKeywords";');
