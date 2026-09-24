@@ -16,7 +16,7 @@ async function nxFloatWatchChat(h) {
   await omniRelease(marker);
   nxFloatWatchRoot=h.root;
   nxFloatObserver = await k.createMutationObserver(records => {void omniRelease(records);nxFloatStructureDirty=true;nxFloatScheduleScan();});
-  if(!omniStream.paused)await nxFloatObserver.observe(h.root, {childList:true,subtree:true,attributes:true,attributeFilter:['src','data-inlay-inline-shot','x-inlay-inline-shot']});
+  await nxFloatObserver.observe(h.root, {childList:true,subtree:true,attributes:true,attributeFilter:['src','data-inlay-inline-shot','x-inlay-inline-shot']});
   nxFloatDirty = true;
 }
 async function nxFloatListen(node, kind, fn, options = {}) {
@@ -80,7 +80,7 @@ async function nxFloatBindInputs(h) {
 }
 function nxFloatScheduleScan() {
   nxFloatDirty = true;
-  if (nxFloatScanTimer || nxFloatBlocked() || omniStream.paused) return;
+  if (nxFloatScanTimer || nxFloatBlocked()) return;
   nxFloatScanTimer = setTimeout(() => {
     nxFloatScanTimer = 0;
     void nxFloatScan().catch(e => nxFloatLog('scan', String(e)));
@@ -105,7 +105,7 @@ async function nxFloatUnbindInputs() {
   nxFloatMoveListener = null; nxFloatChatRoot = null; nxFloatDoc = null;
 }
 async function nxFloatScan() {
-  if(omniStream.paused || t.unloading)return;
+  if(t.unloading)return;
   if (nxFloatScanning) { nxFloatScanAgain = true; return nxFloatScanning; }
   nxFloatScanning = nxFloatReadPosition().finally(() => {
     nxFloatScanning = null;
@@ -118,10 +118,10 @@ function nxFloatHtmlAttr(html, name) {
   return (match?.[1] || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 async function nxFloatReadPosition() {
-  if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag || omniStream.paused) return;
+  if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag) return;
   nxFloatDirty = false;
   const scope=await omniReadScope();
-  if(!scope || omniStream.paused || scope.sessionId!==nxFloatSession)return;
+  if(!scope || scope.sessionId!==nxFloatSession)return;
   omniPerf.viewerPasses++;
   const epoch = nxFloatEpoch;
   const refs=omniDomScope();
@@ -136,7 +136,7 @@ async function nxFloatReadPosition() {
   const scan=async selector=>{
   const bubbles = await refs.all(await h.root.querySelectorAll(selector));
   for (const bubble of bubbles) {
-    if(omniStream.paused || epoch!==nxFloatEpoch)return;
+    if(epoch!==nxFloatEpoch)return;
     const br = await bubble.getBoundingClientRect();
     if (br.bottom <= top || br.top >= bottom || br.height <= 0) continue;
     const readingGap=Math.max(br.top-readingY,readingY-br.bottom,0);
@@ -158,11 +158,11 @@ async function nxFloatReadPosition() {
   if(!nxFloatStructureDirty && nxFloatReadingIndex>=0)await scan([nxFloatReadingIndex-1,nxFloatReadingIndex,nxFloatReadingIndex+1].filter(i=>i>=0).map(i=>'.risu-chat[data-chat-index="'+i+'"]').join(','));
   if(nxFloatStructureDirty || readingDistance>0 || !best) {best=null;distance=Infinity;readingBubble=null;readingDistance=Infinity;await scan('.risu-chat');}
   nxFloatStructureDirty=false;
-  if(epoch!==nxFloatEpoch || nxFloatBlocked() || omniStream.paused)return;
+  if(epoch!==nxFloatEpoch || nxFloatBlocked())return;
   if(readingBubble){
     const html=await readingBubble.getOuterHTML();
     nxFloatReadingIndex=Number(/data-chat-index="(\d+)"/.exec(html)?.[1] ?? -1);
-    await nxFloatSetTarget(null,html,()=>epoch===nxFloatEpoch && !omniStream.paused);
+    await nxFloatSetTarget(null,html,()=>epoch===nxFloatEpoch);
   }
   else omniFooterTargets.delete(nxFloatKey);
   if (!best || epoch !== nxFloatEpoch || nxFloatBlocked()) return;
@@ -177,7 +177,7 @@ async function nxFloatReadPosition() {
   }
   if (!src) src = nxFloatHtmlAttr(best.opening, 'data-src') || nxFloatHtmlAttr(best.opening, 'x-src');
   if (!src) src = /url\(["']?([^"')]+)["']?\)/.exec(nxFloatHtmlAttr(best.opening, 'style'))?.[1] || '';
-  if (epoch !== nxFloatEpoch || nxFloatBlocked() || omniStream.paused) return;
+  if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
   if (best.id === nxFloatCardId && (!src || src === nxFloatLastDomSrc)) return;
   const asset = nxFloatHtmlAttr(best.opening, 'x-inray-asset') || nxFloatHtmlAttr(best.opening, 'data-inray-asset');
   await nxFloatSelect(best.id, await best.bubble.getOuterHTML(), asset, src);

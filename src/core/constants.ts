@@ -8,7 +8,7 @@
 
 declare const __PLUGIN_VERSION__: string;
 
-export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.6';
+export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.7';
 
 /**
  * Identifies the installed pack. Existing edits are preserved; default revisions
@@ -18,6 +18,7 @@ export const PROMPT_PACK = '2026-09-22-v37-compact-prompts';
 
 export const PROMPT_KEYS = [
   'author_note', 'asset_author_note', 'global_author_note', 'tagger', 'format', 'prefill', 'prefill_user', 'jailbreak', 'preprocess',
+  'memo_jailbreak', 'memo_prefill', 'memo_prefill_user',
   'preset_1', 'lore_inject', 'char_inject', 'appearance_inject', 'asset_tags_inject', 'character_common', 'char_looks', 'autotag',
   'command_reroll', 'command_char_edit', 'lorefilter_scan',
   'comic',
@@ -26,7 +27,7 @@ export const PROMPT_KEYS = [
 export type PromptKey = (typeof PROMPT_KEYS)[number];
 /** Retain stored edits/export compatibility, but do not offer unused editors. */
 export const RETIRED_PROMPT_KEYS: ReadonlySet<string> = new Set([
-  'char_looks', 'autotag', 'asset_tags_inject', 'asset_author_note',
+  'char_looks', 'autotag', 'asset_tags_inject',
 ]);
 
 export const GLOBAL_SCOPE = '__global__';

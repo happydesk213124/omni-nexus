@@ -166,30 +166,49 @@ export async function encodeWebpQuality(
   if (!src.length) return null;
   if (isWebpBytes(src)) return preserveMetadata ? preserveMetadata(u8ToArrayBuffer(src)) : u8ToArrayBuffer(src);
   const mime = sniffImageMime(src);
+  let image: DecodedImage | null = null;
+  let drawn: DrawnCanvas | null = null;
+  const releaseCanvas = () => {
+    if (!drawn) return;
+    drawn.canvas.width = 0;
+    drawn.canvas.height = 0;
+    drawn = null;
+  };
   try {
-    const image = await decodeImage(src, mime, true);
+    image = await decodeImage(src, mime, true);
     if (!image) return null;
-    if (!(image.width > 0 && image.height > 0)) {
-      image.close();
-      return null;
-    }
+    if (!(image.width > 0 && image.height > 0)) return null;
 
-    const drawn = drawToCanvas(image, image.width, image.height, true);
-    if (!drawn) {
-      image.close();
-      return null;
-    }
+    drawn = drawToCanvas(image, image.width, image.height, true);
+    if (!drawn) return null;
+    // drawImage has copied the pixels; encoding only needs the canvas now.
+    image.close();
+    image = null;
 
     let encoded: ArrayBuffer | null;
     if (drawn.kind === 'offscreen') {
       const outBlob = await drawn.canvas.convertToBlob({ type: 'image/webp', quality });
-      image.close();
       if (!outBlob || !outBlob.size) return null;
       encoded = await outBlob.arrayBuffer();
     } else {
-      encoded = dataUrlToArrayBuffer(drawn.canvas.toDataURL('image/webp', quality));
-      image.close();
+      const canvas = drawn.canvas;
+      encoded = null;
+      try {
+        const blob = await new Promise<Blob | null>(resolve => {
+          if (typeof canvas.toBlob !== 'function') return resolve(null);
+          canvas.toBlob(resolve, 'image/webp', quality);
+        });
+        if (blob?.size) {
+          const bytes = await blob.arrayBuffer();
+          if (isWebpBytes(asU8(bytes))) encoded = bytes;
+        }
+      } catch {
+        // Some plugin hosts reject toBlob or return PNG for a WebP request.
+      }
+      if (!encoded) encoded = dataUrlToArrayBuffer(canvas.toDataURL('image/webp', quality));
     }
+    // Drop full-resolution canvas storage before metadata and preview work.
+    releaseCanvas();
 
     if (!encoded) return null;
     const out = asU8(encoded);
@@ -200,6 +219,9 @@ export async function encodeWebpQuality(
   } catch (err) {
     dbg('image.webp.encode.fail', { message: String((err as Error)?.message || err) }, 'warn');
     return null;
+  } finally {
+    image?.close();
+    releaseCanvas();
   }
 }
 

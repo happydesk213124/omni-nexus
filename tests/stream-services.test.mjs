@@ -30,6 +30,54 @@ async function assertRuntimeReleased(f, id) {
   assert.equal(f.api.streamJob(id),undefined);
 }
 
+test('preprocessing resolves legacy limits and preserves original input for final tagging',async()=>{
+  const f=await fixture();
+  Object.assign(f.api.getConfig().card,{preprocessing:true,image_min:2,image_max:4});
+  await f.api.setPrompt('preprocess','Select {{getglobalvar::toggle_Card.Image.Min}}–{{getglobalvar::toggle_Card.Image.Max}} moments. SAVED CUSTOM RULE');
+  const created=await f.api.createJob(f.request);
+  await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
+  assert.equal(f.host.llmRequests.length,2);
+  const [pre,main]=f.host.llmRequests.map(r=>r.messages);
+  assert.match(pre[0].content,/Select 2–4 moments/);
+  assert.match(pre[0].content,/SAVED CUSTOM RULE/);
+  assert.doesNotMatch(pre[0].content,/\{\{|getglobalvar/);
+  assert.match(pre.at(-1).content,/L1\|First narrative/);
+  assert.equal(main.at(-1).content,pre.at(-1).content);
+  assert.match(main.at(-2).content,/Preprocess reference/);
+  assert.match(main.at(-2).content,/Verify it against the original/);
+  assert.equal(await f.api.getPrompt('preprocess'),'Select {{getglobalvar::toggle_Card.Image.Min}}–{{getglobalvar::toggle_Card.Image.Max}} moments. SAVED CUSTOM RULE');
+  await f.commit(created.job_id);await f.wait(created.job_id,j=>j.state==='done');
+  await assertRuntimeReleased(f,created.job_id);
+});
+
+test('tagger retries one HTTP 429 or empty-choice response and then succeeds',async()=>{
+  for(const failure of ['rate-limit','empty-choice']) {
+    const f=await fixture(),nativeFetch=risuai.nativeFetch;
+    Object.assign(f.api.getConfig().card,{preprocessing:false,llm_json_retry:true});
+    let failed=false,taggerCalls=0;
+    risuai.nativeFetch=async(url,options)=>{
+      if(String(url).includes('completions')) {
+        taggerCalls++;
+        if(!failed) {
+          failed=true;
+          return failure==='rate-limit'
+            ? {status:429,json:async()=>({error:{message:'rate limit'}})}
+            : {status:200,json:async()=>({choices:[]})};
+        }
+      }
+      return nativeFetch(url,options);
+    };
+    try {
+      const created=await f.api.createJob(f.request);
+      await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
+      assert.equal(taggerCalls,2,failure);
+      assert.ok(f.host.llmRequests.length>=1);
+      await f.commit(created.job_id);await f.wait(created.job_id,j=>j.state==='done');
+      await assertRuntimeReleased(f,created.job_id);
+    } finally { risuai.nativeFetch=nativeFetch; }
+  }
+});
+
 test('failed jobs do not accumulate runtime metadata across repeated generations',async()=>{
   const f=await fixture();
   f.host.setLlmReply(JSON.stringify({new_characters:[{name:'New',appearance:'black hair'}],scenes:[{shots:[{line:1,characters:['New'],composition:'garden'}]}]}));

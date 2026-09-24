@@ -31,6 +31,17 @@ type ModuleRow = {
   trigger?: unknown[];
 };
 
+const displayMarkerLoreComment = 'omni-display-marker-instructions';
+const displayMarkerLoreContent = 'Image and spinner markers beginning with [[@inray:: or [[@inrayspinner:: are inserted into the chat by the user or the Omni Nexus module. Do not generate, repeat, or imitate these markers in your replies, even when they appear in earlier messages.';
+
+function displayMarkerLore(): Record<string, unknown> {
+  return {
+    key: '', secondkey: '', comment: displayMarkerLoreComment,
+    content: displayMarkerLoreContent, mode: 'normal', insertorder: 100,
+    alwaysActive: true, selective: false,
+  };
+}
+
 function readModules(db: { modules?: unknown }): ModuleRow[] {
   return asShotAssetRows(db.modules).filter((row) => row && typeof row === 'object') as ModuleRow[];
 }
@@ -120,6 +131,18 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
           regex,
         };
       }
+    }
+    const lorebook = Array.isArray(modules[idx]!.lorebook) ? [...modules[idx]!.lorebook!] : [];
+    const loreIndex = lorebook.findIndex((row) => scriptComment(row) === displayMarkerLoreComment);
+    const loreEntry = displayMarkerLore();
+    if (loreIndex < 0) {
+      lorebook.push(loreEntry);
+      modules[idx] = { ...modules[idx], lorebook };
+      changed = true;
+    } else if (JSON.stringify(lorebook[loreIndex]) !== JSON.stringify(loreEntry)) {
+      lorebook[loreIndex] = loreEntry;
+      modules[idx] = { ...modules[idx], lorebook };
+      changed = true;
     }
     const spinner=spinnerDisplayRegexScript(scalePct);
     const regex=[...(modules[idx]!.regex || [])];

@@ -1,4 +1,5 @@
 import { repairOmniUi } from './tools/vendor-patches/omni-repairs.mjs';
+import { compactSettingsMarkup } from './tools/vendor-patches/settings-state-markup.mjs';
 /**
  * Build pipeline for Inlay Nexus 2.0.
  *
@@ -46,7 +47,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.6';
+const PLUGIN_VERSION = '0.2.7';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -146,18 +147,19 @@ const VENDOR_PROMPT_TAB_HTML_NEEDLE = `    } else if (t.uiTab === "prompts") {
 const VENDOR_PROMPT_TAB_HTML_PATCH = `    } else if (t.uiTab === "prompts") {
       const promptMeta = {
         author_note: {
-          title: "author_note(작가의 노트)",
+          title: "메인 태거 작가의 노트",
           hint: "비워두면 무시됩니다. 메인 태거만. 전역·세션 노트와 같이 들어가고, 세션이 이깁니다.",
         },
         asset_author_note: {
-          title: "asset_author_note(에셋태거 작가의노트)",
-          hint: "비워두면 무시됩니다. 에셋태그(외형 수집) LLM만.",
+          title: "에셋 태거 작가의 노트",
+          hint: "별도 에셋 태거의 외형·복장 추출 지침입니다. 메인태깅에 포함할 때는 적용되지 않습니다. 비워두면 무시됩니다.",
         },
         global_author_note: {
-          title: "global_author_note(전역 작가의노트)",
+          title: "전역 작가의 노트",
           hint: "비워두면 무시됩니다. 메인 태거·에셋태거·만화 LLM에 같이 들어갑니다. 세션 노트가 이깁니다.",
         },
       };
+      promptMeta.preprocess = { title: "전처리(저능력 모델용)", hint: "Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요." };
       const promptCards = (t.prompts || []).map((d) => {
         const meta = promptMeta[d.key] || null;
         const title = meta?.title || d.key;
@@ -165,7 +167,7 @@ const VENDOR_PROMPT_TAB_HTML_PATCH = `    } else if (t.uiTab === "prompts") {
         const notePh = d.key === "author_note" || d.key === "asset_author_note" || d.key === "global_author_note";
         return \`
           <div class="card">
-            <strong>\${h(title)}</strong>\${!title.startsWith(d.key) ? \`<div class="muted" style="font-size:11px;margin-top:2px">\${h(d.key)}</div>\` : ""}
+            <strong>\${h(title)}</strong>\${!notePh && d.key !== "preprocess" && !title.startsWith(d.key) ? \`<div class="muted" style="font-size:11px;margin-top:2px">\${h(d.key)}</div>\` : ""}
             \${hint}
             <textarea id="nx-prompt-\${h(d.key)}" placeholder="\${notePh ? "예: 항상 실내 조명, 캐릭터는 교복 유지…" : ""}">\${h(t.promptDrafts[d.key] ?? d.text ?? "")}</textarea>
             <div class="row" style="flex-wrap:wrap;gap:8px">
@@ -531,8 +533,7 @@ const VENDOR_PERSON_TAG_WEIGHT_CT_PATCH =
 `;
 
 /**
- * Preprocessing checkbox is unused spaghetti — hide UI, keep card.preprocessing
- * as a silent dummy. Slot becomes person_tag_solo (1 char → solo tag).
+ * Preprocessing lives in the dashboard habit controls; the old card slot is hidden.
  */
 const VENDOR_PERSON_TAG_SOLO_HTML_NEEDLE =
   `<label class="check wide"><input id="nx-preprocess" type="checkbox" \${i.preprocessing ? "checked" : ""}> Preprocessing (토큰 추가 소모)</label>
@@ -543,7 +544,7 @@ const VENDOR_PERSON_TAG_SOLO_CT_NEEDLE =
   `      preprocessing: document.getElementById("nx-preprocess") ? ee("nx-preprocess") : !!e.preprocessing,
 `;
 const VENDOR_PERSON_TAG_SOLO_CT_PATCH =
-  `      preprocessing: !!e.preprocessing,
+  `      preprocessing: document.getElementById("nx-preprocess") ? ee("nx-preprocess") : !!e.preprocessing,
       person_tag_solo: document.getElementById("nx-person-tag-solo") ? ee("nx-person-tag-solo") : !!e.person_tag_solo,
       no_humans_when_no_char: document.getElementById("nx-no-humans") ? ee("nx-no-humans") : !!e.no_humans_when_no_char,
 `;
@@ -609,8 +610,12 @@ const VENDOR_ASSET_NAI_HTML_NEEDLE =
 
 const VENDOR_ASSET_NAI_HTML_PATCH =
   `            <label class="toggle-row" data-nx-help-id="nx-appearance"><input type="checkbox" id="nx-appearance" \${i.char_appearance !== !1 ? "checked" : ""}><span>CharAppearance 누적</span></label>
-            <label class="toggle-row" data-nx-help-id="nx-llm-json-retry"><input type="checkbox" id="nx-llm-json-retry" \${i.llm_json_retry ? "checked" : ""}><span>JSON 오류 시 재시도</span></label>
-            <label class="toggle-row" data-nx-help-id="nx-llm-reverse-bar"><input type="checkbox" id="nx-llm-reverse-bar" \${i.llm_reverse_bar ? "checked" : ""}><span>역바 (역할 고정)</span></label>
+            <label class="toggle-row" data-nx-help-id="nx-llm-json-retry"><input type="checkbox" id="nx-llm-json-retry" \${i.llm_json_retry ? "checked" : ""}><span>태거 오류 시 재시도</span></label>
+            <label data-nx-help-id="nx-llm-reverse-bar"><span>역바 (역할 고정)</span><select id="nx-llm-reverse-bar">
+              <option value="off" \${i.llm_reverse_bar === !1 || i.llm_reverse_bar === "off" || !i.llm_reverse_bar ? "selected" : ""}>안함</option>
+              <option value="memo" \${i.llm_reverse_bar === "memo" ? "selected" : ""}>비망록</option>
+              <option value="authority" \${i.llm_reverse_bar === "authority" || i.llm_reverse_bar === !0 ? "selected" : ""}>권위</option>
+            </select></label>
             <label class="toggle-row" data-nx-help-id="nx-llm-tag-cal"><input type="checkbox" id="nx-llm-tag-cal" \${i.llm_tag_cal ? "checked" : ""}><span>태칼 (태그 끼워넣기)</span></label>
           </div>
           <label class="toggle-row" data-nx-help-id="nx-stream-keywords" style="margin-top:12px;grid-column:1/-1"><input type="checkbox" id="nx-stream-keywords-on" \${i.stream_keywords_enabled ? "checked" : ""}><span>스트리밍 키워드</span></label>
@@ -628,7 +633,7 @@ const VENDOR_ASSET_NAI_SAVE_NEEDLE =
 const VENDOR_ASSET_NAI_SAVE_PATCH =
   `      char_appearance: ee("nx-appearance"),
       llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!(t.backendSettings?.card?.llm_json_retry),
-      llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? ee("nx-llm-reverse-bar") : !!(t.backendSettings?.card?.llm_reverse_bar),
+      llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? N("nx-llm-reverse-bar") || "off" : (t.backendSettings?.card?.llm_reverse_bar ?? "off"),
       llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!(t.backendSettings?.card?.llm_tag_cal),
       omni_helper_prompt: ee("nx-omni-helper"),
       stream_keywords_enabled: ee("nx-stream-keywords-on"),
@@ -663,7 +668,7 @@ const VENDOR_ASSET_NAI_CT_PATCH =
   `      natural_base: document.getElementById("nx-natural-base") ? N("nx-natural-base") || "short" : e.natural_base || "short",
       char_appearance: document.getElementById("nx-appearance") ? ee("nx-appearance") : e.char_appearance !== !1,
       llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!e.llm_json_retry,
-      llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? ee("nx-llm-reverse-bar") : !!e.llm_reverse_bar,
+      llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? N("nx-llm-reverse-bar") || "off" : e.llm_reverse_bar || "off",
       llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!e.llm_tag_cal,
       omni_helper_prompt: document.getElementById("nx-omni-helper") ? ee("nx-omni-helper") : !!e.omni_helper_prompt,
       stream_keywords_enabled: document.getElementById("nx-stream-keywords-on") ? ee("nx-stream-keywords-on") : !!e.stream_keywords_enabled,
@@ -682,8 +687,8 @@ const VENDOR_ASSET_NAI_HELP_PATCH =
     "nx-asset-nai-tags": { title: "에셋 NAI 태그", body: "로어 트리거와 이름이 맞는 Risu 에셋 PNG/WebP의 NovelAI 메타 태그를 어떻게 태거에 넣을지 고릅니다. artist·year·품질·*background·straight-on은 제외.\\n\\n• 사용안함 — 에셋 태그를 쓰지 않습니다.\\n• 그냥 옛날버전 (통째로 보내기) — 로어북·에셋 태그를 메인 태거 한 번에 넣습니다. LLM 1회. 컨텍스트가 길어져 토큰을 많이 씁니다.\\n• LLM 따로 호출 — 메타가 있으면 그 태그로 룩을 먼저 채웁니다. 메타가 없으면 이미지를 오토태그 LLM에 보내고, 로어북은 참고로만 줍니다. 그다음 메인 태거." },
     "nx-costume": { title: "코스튬", body: "켜면 메인 태거가 캐릭터별 코스튬 목록을 보고 샷마다 복장을 고릅니다(이름·번호). 꺼도 에셋으로 캐릭을 만들 때는 복장이 코스튬으로 나뉘어 저장됩니다. 샷에 고른 값이 없으면 이전 샷 옷, 없으면 로스터 현재 코스튬을 씁니다." },
     "nx-auto-aspect": { title: "자동 비율 조절", body: "켜면 샷마다 태거가 portrait/square/landscape를 고르고, 생성 크기를 832×1216 / 1024×1024 / 1216×832로 맞춥니다(NovelAI 기본 사이즈). ComfyUI는 워크플로 Empty Latent 등에 [[width]]/[[height]]를 넣어야 반영됩니다. 참조 그림은 LoadImage에 [[ref]]. 끄면 NAI Width/Height 설정을 씁니다." },
-    "nx-llm-json-retry": { title: "JSON 오류 시 재시도", body: "메인 태거 응답이 JSON으로 파싱되지 않으면, 오류 내용을 붙여 LLM에 한 번 더 요청합니다. 재시도도 실패하면 작업이 오류로 끝납니다." },
-    "nx-llm-reverse-bar": { title: "역바", body: "켜면 모든 LLM 호출 앞에 역할 고정 문(jailbreak)과, 이미 그 역할을 받아들인 것처럼 보이는 앞말(prefill / prefill_user)을 붙입니다. 문구는 프롬프트 탭에서 고칩니다." },
+    "nx-llm-json-retry": { title: "태거 오류 시 재시도", body: "메인 태거·전처리의 HTTP 오류(429 포함), 빈 응답, JSON 파싱 오류가 나면 각각 한 번 다시 요청합니다. 중단·교체된 작업은 재시도하지 않습니다. 재시도도 실패하면 작업이 오류로 끝납니다." },
+    "nx-llm-reverse-bar": { title: "역바", body: "안함=끄기. 비망록=Freya 역할 고정. 권위=가짜 슈퍼바이저 승인 방식(요정 역할 + 승인 앞말). 문구는 프롬프트 탭에서 고칩니다." },
     "nx-llm-tag-cal": { title: "태칼", body: "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다." },
     "nx-stream-keywords": { title: "스트리밍 키워드", body: "토글과 Power가 켜져 있고, 칸에 3글자 이상 단어가 있을 때 AI 답이 나오는 동안 그 단어가 들어가면(대소문자 무시, 부분 일치) 최신 말풍선으로 한 번 생성합니다. 쉼표로 여러 개. 비우거나 토글 OFF면 꺼짐. 「응답 후 자동 생성」·발동과 별개입니다. 이미 생성 중이면 안 돕니다." },
     "nx-fixed-prompt-prefix": { title: "선행 고정 프롬프트", body: "값이 있으면 사람 태그 다음·스타일 프리셋/장면 앞에 항상 붙습니다. 프리셋이 바뀌어도 유지됩니다." },
@@ -956,6 +961,12 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.7</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>스트리밍 생성과 이미지 표시를 개선하고, 설정·캐릭터 관리의 안정성을 높였습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.2.6</strong>
@@ -9268,6 +9279,7 @@ const VENDOR_INLINE_HELP_PATCH =
     "nx-inline-chat-scale": { title: "이미지 채팅 배율 (%)", body: "말풍선 안 삽화 크기입니다. 100%가 기본(폭 약 78%·높이 상한 70vh)이고, 50%면 약 절반, 150%면 더 크게 보입니다. 말풍선 폭을 넘지 않습니다." },
     "nx-inline-dom-radius": { title: "스피너 캐릭터 개수", body: "선택한 메시지 기준으로 위·아래에서 유지할 캐릭터 말풍선 수입니다. 기본 4, 범위 3–20입니다. 유저와 본문 30자 이하 메시지는 세지 않고 건너뜁니다. 사진은 위·아래 가장 가까운 캐릭터 1개씩입니다." },
     "nx-progress-toast": { title: "진행 토스트", body: "생성/리롤=보라. 인덱싱(민트)=지금 고른 메시지 이미지 준비만(갤러리 전체 워밍은 표시 안 함). 선택 알림은 별도 토스트. 칩·샷을 꽂기 직전에는 조각 불러오는 중 스피너가 같은 자리에 뜹니다." },
+    "nx-image-done-sound": { title: "이미지 생성 완료 알림음", body: "이미지 생성이 끝나면 짧은 알림음을 한 번 재생합니다." },
     "nx-toast-anchor": { title: "토스트 위치", body: "진행·선택·알림·조각 로딩 토스트가 붙는 화면 모서리입니다. 기본은 중상단입니다." },
     "nx-image-press": { title: "이미지 크게보기", body: "인라인·스티키 샷을 크게 봅니다. 사용안함 / 더블 탭(이미지 위 빠른 두 번) / 트리플 탭(빠른 세 번) / 꾸욱 누르기 / 꾸욱 누르기 + 더블탭. 탐색기·메시지 선택 길게 누르기는 그대로입니다." },
     "nx-nai4-fallback": { title: "할당량 끝나면 NAI4 폴백", body: "V5 샷이 할당량(402)으로 실패하면 그 샷만 V4.5와 NAI4 프리셋으로 다시 뽑습니다. V5 자연어·대사는 빼입니다." },
@@ -9339,6 +9351,7 @@ const VENDOR_INLINE_SAVE_PATCH =
       inline_chat_scale_pct: Math.max(25, Math.min(200, Math.round(Ne(N("nx-inline-chat-scale"), 100)) || 100)),
       inline_chat_dom_radius: Math.max(3, Math.min(20, Math.round(Ne(N("nx-inline-dom-radius"), 4)) || 4)),
       progress_toast: ee("nx-progress-toast"),
+      image_done_sound: document.getElementById("nx-image-done-sound") ? ee("nx-image-done-sound") : !!t.backendSettings?.card?.image_done_sound,
       toast_anchor: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeToastAnchor == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeToastAnchor(N("nx-toast-anchor")) : String(N("nx-toast-anchor") || "tc")),
       image_press_inspect: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeImagePressInspect == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeImagePressInspect(N("nx-image-press")) : String(N("nx-image-press") || "hold")),
       nai4_fallback: ee("nx-nai4-fallback"),`;
@@ -9581,7 +9594,7 @@ const VENDOR_DT_FN_PATCH =
       const next = {
         char_appearance: document.getElementById("nx-appearance") ? ee("nx-appearance") : t.backendSettings?.card?.char_appearance !== !1,
         llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!t.backendSettings?.card?.llm_json_retry,
-        llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? ee("nx-llm-reverse-bar") : !!t.backendSettings?.card?.llm_reverse_bar,
+      llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? N("nx-llm-reverse-bar") || "off" : (t.backendSettings?.card?.llm_reverse_bar ?? "off"),
         llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!t.backendSettings?.card?.llm_tag_cal,
         preprocessing: document.getElementById("nx-preprocess") ? ee("nx-preprocess") : !!t.backendSettings?.card?.preprocessing,
         stream_keywords_enabled: document.getElementById("nx-stream-keywords-on") ? ee("nx-stream-keywords-on") : !!t.backendSettings?.card?.stream_keywords_enabled,
@@ -9593,7 +9606,7 @@ const VENDOR_DT_FN_PATCH =
     };
     shell.addEventListener("change", event => {
       const id = String(event.target?.id || "");
-      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords)$/.test(id)) saveHabitCard();
+      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|image-done-sound)$/.test(id)) saveHabitCard();
     });
   }
   async function nxScrollHoldScroller() {
@@ -13241,6 +13254,7 @@ const VENDOR_INLINE_PENDING_UI_PATCH =
           t._inlinePendingMsgIndex = rawPmi != null && Number.isInteger(pmi) && pmi >= 0 ? pmi : -1;
           t._inlinePendingSessionId = String(e || "");
         }
+        if ((a.state === "done" || a.state === "generating" && Number(r.shot_count || 0) > 0 && Number(r.shot_done ?? 0) >= Number(r.shot_count)) && typeof nxPlayImageDoneSoundOnce == "function") nxPlayImageDoneSoundOnce(n);
         if (t.uiOpen) {`;
 
 /** Settings/other shell: same last-shot toast flip as chat (no bubble attach). */
@@ -13819,7 +13833,7 @@ const VENDOR_AFTER_REPLY_FN_PATCH =
       return;
     }
     t._afterGenAllowManual = !0;
-    const AFTER_GEN_DELAY_MS = 0;
+    const AFTER_GEN_DELAY_MS = 500;
     if (t._afterGenTimer) {
       clearTimeout(t._afterGenTimer);
       t._afterGenTimer = null;
@@ -15129,6 +15143,56 @@ const VENDOR_PROGRESS_TOAST_FN_PATCH = `  async function dismissProgressToast() 
       });
     }, ms);
   }
+  function nxPlayImageDoneSoundOnce(jobId) {
+    if (t.backendSettings?.card?.image_done_sound !== true) return;
+    const id = String(jobId || "");
+    if (!id) return;
+    const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (typeof AudioContextCtor !== "function") return;
+    const seen = t._imageDoneSoundJobs instanceof Set ? t._imageDoneSoundJobs : (t._imageDoneSoundJobs = new Set());
+    if (seen.has(id)) return;
+    seen.add(id);
+    if (seen.size > 32) seen.delete(seen.values().next().value);
+    try {
+      let ctx = t._imageDoneAudioContext;
+      if (!ctx || ctx.state === "closed") ctx = t._imageDoneAudioContext = new AudioContextCtor();
+      const play = () => {
+        const now = ctx.currentTime;
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, now);
+        oscillator.frequency.setValueAtTime(1174.66, now + 0.11);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.43);
+      };
+      if (ctx.state === "suspended") ctx.resume().then(play).catch(() => {});
+      else play();
+    } catch {
+    }
+  }
+  function nxPrepareImageDoneAudio() {
+    const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (typeof AudioContextCtor !== "function") return;
+    try {
+      let ctx = t._imageDoneAudioContext;
+      if (!ctx || ctx.state === "closed") ctx = t._imageDoneAudioContext = new AudioContextCtor();
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    } catch {
+    }
+  }
+  if (!t._imageDoneSoundUnlockBound && typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    t._imageDoneSoundUnlockBound = !0;
+    document.addEventListener("change", (event) => {
+      const input = event.target;
+      if (input?.id === "nx-image-done-sound" && input.checked) nxPrepareImageDoneAudio();
+    }, true);
+  }
   function attachToastStyle(visible) {
     return nxToastPos({ visible: !!visible, pointerEvents: !1, zIndex: 99998 });
   }
@@ -16281,7 +16345,7 @@ const PLUGIN_HEADER = `//@name ${PLUGIN_ID}
  */
 const PROMPT_KEYS = [
   'author_note', 'asset_author_note', 'global_author_note', 'tagger', 'format', 'appearance_inject', 'lore_inject',
-  'char_inject', 'preprocess', 'prefill', 'prefill_user', 'jailbreak', 'preset_1', 'autotag',
+  'char_inject', 'preprocess', 'prefill', 'prefill_user', 'jailbreak', 'memo_jailbreak', 'memo_prefill', 'memo_prefill_user', 'preset_1', 'autotag',
   'asset_tags_inject', 'character_common', 'char_looks',
   'command_reroll', 'command_char_edit', 'lorefilter_scan', 'comic',
 ] as const;
@@ -17311,6 +17375,8 @@ const loadVendorUi = (): string => {
       throw new Error('[build] sticky image must not fire tap-inspect');
     }
     assertOnce(out, 'async function nxHostToast', 'nxHostToast landed');
+    assertOnce(out, 'function nxPlayImageDoneSoundOnce(jobId)', 'completion sound de-duplication landed');
+    assertOnce(out, 'nxPlayImageDoneSoundOnce(n)', 'job completion poll triggers sound');
     assertOnce(out, 'async function showSelectionToast', 'selection toast landed');
     assertOnce(out, 'async function showAttachToast()', 'attach spinner toast landed');
     assertOnce(out, 'function nxToastAnchor()', 'toast anchor helper landed');
@@ -17996,7 +18062,7 @@ const loadVendorUi = (): string => {
     if (final.includes('await lt()')) {
       throw new Error('[build] old viewer lt() must never be called');
     }
-    return final;
+    return compactSettingsMarkup(final);
   })();
 };
 

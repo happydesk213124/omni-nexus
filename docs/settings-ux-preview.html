@@ -976,6 +976,7 @@
           <h3>알림 · 기타</h3>
           <div class="stack">
             <label class="row"><span class="row-text"><b>진행 토스트</b></span><span class="sw"><input id="nx-progress-toast" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-image-done-sound"><span class="row-text"><b>이미지 생성 완료 알림음</b></span><span class="sw"><input id="nx-image-done-sound" type="checkbox"></span></label>
             <div class="row"><span class="row-text"><b>토스트 위치</b></span>
               <select class="ctrl" id="nx-toast-anchor"><option value="tl">좌상단</option><option value="bl">좌하단</option><option value="tr">우상단</option><option value="br">우하단</option><option value="tc" selected>중상단</option></select>
             </div>
@@ -989,6 +990,7 @@
         </div>
         </div>
         <div class="dash-right">
+        <div class="group" id="nx-asset-tag-controls"></div>
         <div class="group">
           <h3>채팅 그림</h3>
           <div class="stack">
@@ -1074,7 +1076,7 @@
             <div class="row"><span class="row-text"><b>lb-xnai.lb.extra</b></span>
               <select class="ctrl" id="nx-lore-extra"><option value="tags" selected>캐릭터 태그만</option><option value="full">전체</option><option value="off">넣지 않음</option></select>
             </div>
-            <div class="row"><span class="row-text"><b>에셋 NAI 태그</b></span>
+            <div class="row" hidden><span class="row-text"><b>에셋 NAI 태그</b></span>
               <select class="ctrl" id="nx-asset-nai-tags"><option value="off" selected>사용안함</option><option value="inline">통째로 보내기</option><option value="prepass">LLM 따로 호출</option></select>
             </div>
             <div class="row"><span class="row-text"><b>중점 캐릭터</b></span>
@@ -1092,10 +1094,12 @@
           <h3>LLM 버릇</h3>
           <div class="stack">
             <label class="row"><span class="row-text"><b>CharAppearance 누적</b></span><span class="sw"><input id="nx-appearance" type="checkbox" checked></span></label>
-            <label class="row"><span class="row-text"><b>JSON 오류 시 재시도</b></span><span class="sw"><input id="nx-llm-json-retry" type="checkbox"></span></label>
-            <label class="row"><span class="row-text"><b>역바</b></span><span class="sw"><input id="nx-llm-reverse-bar" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>태거 오류 시 재시도</b></span><span class="sw"><input id="nx-llm-json-retry" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>역바</b></span><select class="ctrl" id="nx-llm-reverse-bar"><option value="off">안함</option><option value="memo">비망록</option><option value="authority">권위</option></select></label>
+            <label class="block"><span>비망록 내용</span><textarea id="nx-client-direction" placeholder="예: 이번 장면은 밤, 비 오는 거리"></textarea></label>
+            <label class="row"><span class="row-text"><b>포커스 캐릭터</b></span><input class="ctrl" id="nx-client-focus" placeholder="예: 엘로디아"></label>
             <label class="row"><span class="row-text"><b>태칼</b></span><span class="sw"><input id="nx-llm-tag-cal" type="checkbox"></span></label>
-            <label class="row"><span class="row-text"><b>Preprocessing</b></span><span class="sw"><input id="nx-preprocess" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>전처리(저능력 모델용)</b></span><span class="sw"><input id="nx-preprocess" type="checkbox"></span></label>
             <label class="row" data-nx-help-id="nx-omni-helper"><span class="row-text"><b>⚛️ omni 보조 프롬</b></span><span class="sw"><input id="nx-omni-helper" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>스트리밍 키워드</b></span><span class="sw"><input id="nx-stream-keywords-on" type="checkbox"></span></label>
             <label class="block"><span>키워드</span><textarea id="nx-stream-keywords" placeholder="future plan, RP-Guide"></textarea></label>
@@ -1406,20 +1410,22 @@
       </section>
 
       <section class="pane" id="prompts">
+        <p class="muted">입력하면 잠시 뒤 자동 저장됩니다.</p>
         <div class="actions" style="padding-left:0">
           <button class="btn-ghost" type="button" id="nx-prompts-reset-defaults">기본값</button>
           <button class="btn-ghost" type="button" id="nx-prompts-export">보내기</button>
           <button class="btn-ghost" type="button" id="nx-prompts-import">가져오기</button>
         </div>
         <div class="stack">
-          <label class="block"><span>author_note</span><textarea id="nx-prompt-author_note"></textarea></label>
-          <label class="block"><span>global_author_note</span><textarea id="nx-prompt-global_author_note"></textarea></label>
+          <label class="block"><span>메인 태거 작가의 노트</span><p class="muted">메인 태거의 장면 선택·이미지 태그 작성 지침입니다.</p><textarea id="nx-prompt-author_note"></textarea></label>
+          <label class="block"><span>에셋 태거 작가의 노트</span><p class="muted">별도 에셋 태거의 외형·복장 추출 지침입니다. 메인태깅에 포함할 때는 적용되지 않습니다.</p><textarea id="nx-prompt-asset_author_note"></textarea></label>
+          <label class="block"><span>전역 작가의 노트</span><p class="muted">메인 태거·에셋 태거·만화 LLM에 공통으로 전달합니다.</p><textarea id="nx-prompt-global_author_note"></textarea></label>
           <label class="block"><span>tagger</span><textarea id="nx-prompt-tagger"></textarea></label>
           <label class="block"><span>format</span><textarea id="nx-prompt-format"></textarea></label>
           <label class="block"><span>prefill</span><textarea id="nx-prompt-prefill"></textarea></label>
           <label class="block"><span>prefill_user</span><textarea id="nx-prompt-prefill_user"></textarea></label>
           <label class="block"><span>jailbreak</span><textarea id="nx-prompt-jailbreak"></textarea></label>
-          <label class="block"><span>preprocess</span><textarea id="nx-prompt-preprocess"></textarea></label>
+          <div class="block"><label data-prompt-title for="nx-prompt-preprocess">전처리(저능력 모델용)</label><textarea id="nx-prompt-preprocess"></textarea><button class="btn-ghost" type="button" data-reset-prompt="preprocess">기본값</button></div>
           <label class="block"><span>preset_1</span><textarea id="nx-prompt-preset_1"></textarea></label>
           <label class="block"><span>lore_inject</span><textarea id="nx-prompt-lore_inject"></textarea></label>
           <label class="block"><span>char_inject</span><textarea id="nx-prompt-char_inject"></textarea></label>
@@ -2293,6 +2299,10 @@
     "title": "진행 토스트",
     "body": "생성/리롤=보라. 인덱싱(민트)=지금 고른 메시지 이미지 준비만(갤러리 전체 워밍은 표시 안 함). 선택 알림은 별도 토스트. 칩·샷을 꽂기 직전에는 조각 불러오는 중 스피너가 같은 자리에 뜹니다."
   },
+  "nx-image-done-sound": {
+    "title": "이미지 생성 완료 알림음",
+    "body": "이미지 생성이 끝나면 짧은 알림음을 한 번 재생합니다."
+  },
   "nx-toast-anchor": {
     "title": "토스트 위치",
     "body": "진행·선택·알림·조각 로딩 토스트가 붙는 화면 모서리입니다. 기본은 중상단입니다."
@@ -2465,6 +2475,10 @@
     "title": "에셋 NAI 태그",
     "body": "로어 트리거와 이름이 맞는 Risu 에셋 PNG/WebP의 NovelAI 메타 태그를 어떻게 태거에 넣을지 고릅니다. artist·year·품질·*background·straight-on은 제외.\n\n• 사용안함 — 에셋 태그를 쓰지 않습니다.\n• 그냥 옛날버전 (통째로 보내기) — 로어북·에셋 태그를 메인 태거 한 번에 넣습니다. LLM 1회. 컨텍스트가 길어져 토큰을 많이 씁니다.\n• LLM 따로 호출 — 메타가 있으면 그 태그로 룩을 먼저 채웁니다. 메타가 없으면 이미지를 오토태그 LLM에 보내고, 로어북은 참고로만 줍니다. 그다음 메인 태거."
   },
+  "nx-image-analysis-separate": {
+    "title": "이미지는 분기해서 하기",
+    "body": "이미지 분석은 오토태그 모델로 보냅니다. 생성 중 이미지 분석이 필요하면 호출이 추가됩니다."
+  },
   "nx-focus-character": {
     "title": "중점 캐릭터",
     "body": "켜면 태거가 샷 JSON에 focus(1·char1 또는 [1,2]처럼 여러 명)를 넣을 수 있습니다. 중점이 아닌 캐릭터 캡션에 out of frame을 붙입니다. 여성/남성위주는 선택 힌트(수동 모드에서는 성별 필터)입니다."
@@ -2486,12 +2500,20 @@
     "body": "켜면 샷마다 태거가 portrait/square/landscape를 고르고, 생성 크기를 832×1216 / 1024×1024 / 1216×832로 맞춥니다(NovelAI 기본 사이즈). ComfyUI는 워크플로 Empty Latent 등에 [[width]]/[[height]]를 넣어야 반영됩니다. 참조 그림은 LoadImage에 [[ref]]. 끄면 NAI Width/Height 설정을 씁니다."
   },
   "nx-llm-json-retry": {
-    "title": "JSON 오류 시 재시도",
-    "body": "메인 태거 응답이 JSON으로 파싱되지 않으면, 오류 내용을 붙여 LLM에 한 번 더 요청합니다. 재시도도 실패하면 작업이 오류로 끝납니다."
+    "title": "태거 오류 시 재시도",
+    "body": "메인 태거·전처리의 HTTP 오류(429 포함), 빈 응답, JSON 파싱 오류가 나면 각각 한 번 다시 요청합니다. 중단·교체된 작업은 재시도하지 않습니다. 재시도도 실패하면 작업이 오류로 끝납니다."
   },
   "nx-llm-reverse-bar": {
     "title": "역바",
-    "body": "켜면 모든 LLM 호출 앞에 역할 고정 문(jailbreak)과, 이미 그 역할을 받아들인 것처럼 보이는 앞말(prefill / prefill_user)을 붙입니다. 문구는 프롬프트 탭에서 고칩니다."
+    "body": "안함=끄기. 비망록=Freya 방식(4.4.0까지: Freya 역할 + Freya 생각 앞말 + Freya 앞말). 권위=가짜 슈퍼바이저 승인 방식(삽화 3 재도입: 요정 역할 + 승인 앞말). 적은 말(비망록 내용·포커스)은 켜져 있을 때 4.5.1 Client Comments 형식으로 같이 들어감. 문구는 프롬프트 탭에서 고침."
+  },
+  "nx-client-direction": {
+    "title": "비망록 내용",
+    "body": "하고 싶은 말을 적는 칸(4.5.1 direction). 비망록/권위일 때 태거에 그대로 전달됨. 비우면 direction 없이 focus만 들어감."
+  },
+  "nx-client-focus": {
+    "title": "포커스 캐릭터",
+    "body": "매 장면에 꼭 넣을 캐릭터(4.5.1 focus). 비망록/권위일 때 「매 Scene에 포함」 문장과 함께 전달됨."
   },
   "nx-llm-tag-cal": {
     "title": "태칼",
@@ -2590,7 +2612,7 @@
     "title": "SDXL식 강조",
     "body": "켜면 NAI로 보내기 직전에 N::태그::·{태그} 강조를 SDXL식 (태그:가중치)·((태그))로 바꿔서 보냅니다. 저장된 프롬프트와 카드는 그대로 둡니다. ComfyUI 전송은 항상 변환됩니다."
   }
-}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-mode":{"title":"Mode","body":"삽화는 장면 그림, 에셋은 캐릭터/소품용입니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"Preprocessing","body":"토큰을 더 쓰는 전처리입니다. 필요할 때만 켜세요."}});
+}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-mode":{"title":"Mode","body":"삽화는 장면 그림, 에셋은 캐릭터/소품용입니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"전처리(저능력 모델용)","body":"Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요."}});
     const HELP_ALIAS = {
       "nx-stream-keywords-on": "nx-stream-keywords",
       "nx-comic-gen-ratio": "nx-comic-ratio",

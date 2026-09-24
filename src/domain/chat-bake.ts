@@ -116,9 +116,15 @@ export function replaceBakeTokenCard(
   const token = bakeTokenForCard(nextCardId, nextAssetName, dimensions);
   if (!prev || !token) return String(text ?? '');
   const escaped = prev.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return String(text ?? '').replace(new RegExp(`\\[\\[@inray::${escaped}::[^\\]]+\\]\\]`, 'g'), match => {
+  return String(text ?? '').replace(new RegExp(`(\\[\\[@inrayspinner::[a-zA-Z0-9_-]+::[0-9]+::[0-9]+\\]\\]\\s*)?\\[\\[@inray::${escaped}::[^\\]]+\\]\\]`, 'g'), (match, frame: string | undefined) => {
     const previous = match.match(/::([0-9]+)::([0-9]+)\]\]$/);
-    return bakeTokenForCard(nextCardId, nextAssetName, dimensions || (previous ? bakeDimensions(previous[1], previous[2]) : undefined));
+    // The paired display rule takes its geometry from the reserved frame.
+    // Update it only when the replacement image has a known size.
+    const size = bakeDimensions(dimensions?.width, dimensions?.height);
+    const nextFrame = size && frame
+      ? frame.replace(/::[0-9]+::[0-9]+\]\]/, `::${size.width}::${size.height}]]`)
+      : frame || '';
+    return nextFrame + bakeTokenForCard(nextCardId, nextAssetName, dimensions || (previous ? bakeDimensions(previous[1], previous[2]) : undefined));
   });
 }
 

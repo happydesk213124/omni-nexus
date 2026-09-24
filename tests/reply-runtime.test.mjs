@@ -61,3 +61,8 @@ test('completion-only build guard fails when legacy polling or registration is r
  }
  assert.throws(()=>assertCommittedReplyRuntime(''),/missing/);
 });
+
+test('reply auto-generation waits 500ms after completion before requesting a job',()=>{
+ const vite=readFileSync('vite.config.ts','utf8');
+ assert.match(vite,/const AFTER_GEN_DELAY_MS = 500;/);
+});

@@ -277,6 +277,8 @@ async function pushAuthorNoteTurns(
   sessionId: unknown,
   lane?: { label: string; text: unknown },
 ): Promise<void> {
+  // Shared and lane author notes stay here so the main tagger and looks
+  // pre-pass receive them in every mode.
   const globalNote = authorNoteSystemContent("Global Author's Note", await getPrompt('global_author_note'));
   if (globalNote) messages.push({ role: 'system', content: globalNote });
   if (lane) {
@@ -316,7 +318,7 @@ function incompleteTargetsForLooks(
 /**
  * Looks-only pre-pass: asset tags (+ optional images).
  * No chat message, no filled-roster dump, no story lore, no lb-xnai pack.
- * Shared global and session notes remain context; asset-only writing rules are retired.
+ * Global, asset and session notes guide appearance extraction in that order.
  */
 export async function buildCharacterLooksMessages(
   request: TaggerArgs,
@@ -331,9 +333,10 @@ export async function buildCharacterLooksMessages(
   if (assetHowTo) {
     messages[0].content = `${messages[0].content}\n\n${assetHowTo}`;
   }
-  // Legacy asset-only writing rules remain stored but are no longer injected.
-  // Shared chat/global context still applies; only the retired asset lane is omitted.
-  await pushAuthorNoteTurns(messages, chatNoteSessionId(sessionId, request));
+  await pushAuthorNoteTurns(messages, chatNoteSessionId(sessionId, request), {
+    label: "Asset Author's Note",
+    text: await getPrompt('asset_author_note'),
+  });
 
   const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
   const sourceSessionIds = Array.isArray(request.source_session_ids)

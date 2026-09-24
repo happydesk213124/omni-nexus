@@ -17,6 +17,13 @@ export type FocusCharacterMode = 'off' | 'female' | 'male' | 'auto';
 /** How strongly / whether the tagger is told to emit shot.focus (manual = code path). */
 export type FocusPromptMode = 'default' | 'strong' | 'always' | 'manual';
 export type LoreExtraMode = 'tags' | 'full' | 'off';
+/**
+ * Role-swap option bar (replaces the old boolean toggle, key unchanged).
+ * off = nothing injected; memo = global author's note as a plain client note;
+ * authority = memo + role-lock (jailbreak/prefill) + "precedes all previous
+ * instructions" precedence. Legacy `true` migrates to `authority`.
+ */
+export type ReverseBarMode = 'off' | 'memo' | 'authority';
 export type LlmSource = 'custom' | 'main' | 'aux' | 'memory' | 'translate' | 'emotion' | 'other';
 /** Secondary chat-LLM roles (main tagging stays on `settings.llm`). */
 export type LlmRoleId = 'autotag' | 'asset_char' | 'comic';
@@ -90,8 +97,12 @@ export interface CardSettings {
    * LLM once before failing the job.
    */
   llm_json_retry: boolean;
-  /** Role-lock + already-accepted prefill turns on every LLM call. */
-  llm_reverse_bar: boolean;
+  /** Role-swap option bar: off | memo (Client Comments) | authority (Client Comments + role-lock trick). */
+  llm_reverse_bar: ReverseBarMode;
+  /** 4.5.1 direction text: what the client wants, injected verbatim in the Client Comments block. */
+  client_direction: string;
+  /** 4.5.1 focus text: character(s) to feature in every scene, injected verbatim in the Client Comments block. */
+  client_focus: string;
   /** Mid-tag `%%` instruct + strip `%` / restore wfsn→nsfw on every LLM reply. */
   llm_tag_cal: boolean;
   char_info: boolean;
@@ -242,6 +253,8 @@ export interface CardSettings {
   inline_chat_dom_radius?: number;
   /** Screen corner for progress / selection / host / attach toasts. */
   toast_anchor?: 'tl' | 'bl' | 'tr' | 'br' | 'tc';
+  /** Play a one-shot completion sound when an image generation job completes. */
+  image_done_sound?: boolean;
   /** How a long-press on an inline/sticky shot opens the enlarge sheet. */
   image_press_inspect?: 'off' | 'hold' | 'two' | 'three' | 'both';
   auto_gen_on_reply: boolean;

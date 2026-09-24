@@ -280,6 +280,11 @@ function bindMenu(): void {
   document.getElementById('nx-tabs')?.addEventListener('click', event => {
     if ((event.target as Element).closest('[data-nx-tab]')) document.documentElement.classList.remove('nx-nav-open');
   });
+  document.getElementById('nx-tabs')?.addEventListener('click', event => {
+    if ((event.target as Element).closest('[data-nx-tab="curation"]')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+    }
+  }, true);
   document.getElementById('drawerBg')?.addEventListener('click', () => document.documentElement.classList.remove('nx-nav-open'));
 }
 
@@ -291,11 +296,12 @@ export function replaceShell(): void {
   const contents = document.createDocumentFragment();
   const oldMain = document.getElementById('nx-main');
   if (oldMain) contents.append(...oldMain.childNodes);
-  const tab = document.querySelector('#nx-tabs [data-nx-tab].active')?.getAttribute('data-nx-tab') || 'dashboard';
+  const tab = shell.dataset.initialTab || document.querySelector('#nx-tabs [data-nx-tab].active')?.getAttribute('data-nx-tab') || 'dashboard';
   document.documentElement.classList.add('nx-ux-on');
   ensureCss();
   shell.className = 'wrap nx-ux nx-ux-app';
   shell.dataset.nxUxApp = '1';
+  delete shell.dataset.initialTab;
   // Explorer overlays live outside the replaceable settings shell.
   for (const id of ['nx-explorer-lightbox', 'nx-explorer-ctx', 'nx-explorer-tip']) {
     const overlay = shell.querySelector('#' + id);
@@ -317,6 +323,15 @@ export function replaceShell(): void {
     const on = btn.getAttribute('data-nx-tab') === tab;
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-current', on ? 'page' : 'false');
+    if (btn.getAttribute('data-nx-tab') === 'curation') {
+      btn.setAttribute('aria-disabled', 'true');
+      btn.setAttribute('tabindex', '-1');
+      btn.setAttribute('title', '다음 업데이트에서 지원합니다');
+      btn.classList.add('nx-tab-disabled');
+      if (btn instanceof HTMLButtonElement) btn.disabled = true;
+      (btn as HTMLElement).style.opacity = '0.45';
+      (btn as HTMLElement).style.cursor = 'not-allowed';
+    }
   });
 }
 
@@ -333,7 +348,7 @@ export function afterPaint(): void {
   syncModelWarning();
   void bindPromptUpdates();
   const tab = activeTab();
-  if (tab === 'gen_options') bindCharacterOptions();
+  bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
   if (line) line.textContent = TAB_LABELS[tab] || '설정';
   const main = document.getElementById('nx-main');

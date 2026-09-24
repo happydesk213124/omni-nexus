@@ -8,7 +8,7 @@ function fixture(code=source) {
   const scope=()=>({charIndex:ci,chatIndex:0,sessionId:'s'+ci,chatId:'chat'+ci,chat:{id:'chat'+ci,isStreaming:paused}});
   const t={lastScope:scope()};
   const deps={t,k:{getCurrentCharacterIndex:async()=>ci,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>{reads++;return scope().chat;}},
-    Z:async()=>scope(),Date:{now:()=>now},setTimeout:(fn,ms)=>{timers.set(++serial,{fn,ms});return serial;},clearTimeout:id=>timers.delete(id),
+    Z:async()=>{reads++;return scope();},Date:{now:()=>now},setTimeout:(fn,ms)=>{timers.set(++serial,{fn,ms});return serial;},clearTimeout:id=>timers.delete(id),
     nxUnwrapSafeNodes:async raw=>raw.rows,
     omniScheduleFooter:()=>events.push('footer'),nxFloatScheduleScan:()=>events.push('viewer'),
   };
@@ -18,30 +18,31 @@ function fixture(code=source) {
     let nxFloatReadingIndex=-1,nxFloatStructureDirty=true;
     const omniFooterTargets=new Map(),nxFloatKey=-1,nxSpinnerPreviews=new Map();
     ${code}
-    return {read:omniReadScope,hint:omniStreamHint,output:omniStreamOutput,dispose:omniStreamDispose,
-      state:omniStream,dom:omniDomScope,observers:omniStreamObservers,
+    return {read:omniReadScope,output:omniStreamOutput,dispose:omniStreamDispose,
+      state:omniScope,dom:omniDomScope,observers:omniStreamObservers,
       preview:()=>nxSpinnerPreviews.set('p',{}),
       installObservers:o=>{omniFooterObserver=o;omniFooterRoot={};nxFloatObserver=o;nxFloatWatchRoot={};}};
   `)(...Object.values(deps));
   return {api,t,events,timers,reads:()=>reads,setPaused:v=>paused=v,setChar:v=>ci=v,
     tick:async()=>{now+=1000;const tasks=[...timers.values()];timers.clear();for(const task of tasks)task.fn();await new Promise(r=>setImmediate(r));}};
 }
-test('stream chunks share one snapshot and one recovery timer; cancel resumes without output event',async()=>{
+test('UI lookups reuse chat identity and never arm background polling, even during streaming',async()=>{
   const f=fixture();
   await Promise.all(Array.from({length:100},()=>f.api.read()));
-  assert.equal(f.reads(),1);
-  for(let i=0;i<1000;i++)f.api.hint();
-  assert.equal(f.reads(),1);assert.equal(f.timers.size,1);assert.equal(f.api.state.paused,true);
-  f.setPaused(false);await f.tick();
-  assert.equal(f.reads(),2);assert.equal(f.api.state.paused,false);assert.equal(f.timers.size,0);
-  assert.deepEqual(f.events,['footer','viewer']);
+  assert.equal(f.reads(),0);assert.equal(f.timers.size,0);
+  for(let i=0;i<10;i++){await f.tick();await f.api.read();}
+  assert.equal(f.reads(),0);assert.equal(f.timers.size,0);
+  f.api.output();await f.tick();
+  assert.equal(f.reads(),0);assert.deepEqual(f.events,['footer','viewer']);
 });
-test('completion in a different chat cannot resume an actively streaming visible chat',async()=>{
-  const f=fixture();await f.api.read();f.api.output();await new Promise(r=>setImmediate(r));
-  assert.equal(f.api.state.paused,true);assert.deepEqual(f.events,[]);
-  f.setChar(1);f.setPaused(false);await f.tick();
-  assert.equal(f.api.state.scope.sessionId,'s1');assert.equal(f.api.state.paused,false);
+
+test('a UI event loads a newly selected chat once, without a recurring timer',async()=>{
+  const f=fixture();await f.api.read();f.setChar(1);await f.tick();
+  await Promise.all(Array.from({length:10},()=>f.api.read()));
+  assert.equal(f.reads(),1);assert.equal(f.api.state.scope.sessionId,'s1');
+  assert.equal(f.timers.size,0);
 });
+
 test('unload rejects a late scope result and clears recovery timers',async()=>{
   const f=fixture();const pending=f.api.read();f.t.unloading=true;f.api.dispose();await pending;
   assert.equal(f.api.state.scope,null);assert.equal(f.timers.size,0);assert.deepEqual(f.events,[]);
@@ -56,21 +57,22 @@ test('DOM ownership releases arrays and temporaries, preserving an explicitly re
   }
   assert.equal(released.length,300);assert.equal(released.includes('root'),false);
 });
-test('stream disconnects scanning but preserves the existing preview repaint observer',async()=>{
+test('preview observer updates never disconnect viewer observation',async()=>{
   const f=fixture(),calls=[];
   f.api.installObservers({observe:async()=>calls.push('observe'),disconnect:async()=>calls.push('disconnect')});
-  await f.api.read();await new Promise(r=>setImmediate(r));
-  assert.deepEqual(calls,['disconnect','disconnect']);
+  await f.api.observers();assert.deepEqual(calls,['disconnect']);
   calls.length=0;f.api.preview();await f.api.observers();
-  assert.deepEqual(calls,['observe','disconnect']);
+  assert.deepEqual(calls,['observe']);
 });
+
 test('ownership regression guard detects a deliberately removed release',async()=>{
   const f=fixture(source.replace('await omniRelease(ref);','void ref;'));
   let released=0;const refs=f.api.dom();refs.own({release:async()=>released++});await refs.close();
   assert.throws(()=>assert.equal(released,1),assert.AssertionError);
 });
 test('single-flight regression guard detects deliberately overlapping reads',async()=>{
-  const f=fixture(source.replace('if(omniStream.pending)return omniStream.pending;',''));
+  const f=fixture(source.replace('if(omniScope.pending)return omniScope.pending;',''));
+  f.setChar(1);
   await Promise.all(Array.from({length:10},()=>f.api.read()));
   assert.throws(()=>assert.equal(f.reads(),1),assert.AssertionError);
 });

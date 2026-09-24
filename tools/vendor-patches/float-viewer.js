@@ -385,7 +385,7 @@ async function nxFloatDispose(resetSession = true) {
 globalThis.__nxFloatState = () => {
   try {
     return {
-      performance: {...omniPerf,streaming:omniStream.paused,scopePending:!!omniStream.pending},
+      performance: {...omniPerf,scopePending:!!omniScope.pending},
       floating_viewer: t.backendSettings?.card?.floating_viewer,
       lastError: nxFloatLastError,
       uiOpen: !!t.uiOpen, unloading: !!t.unloading,

@@ -170,6 +170,7 @@ test('progress details use real counts, ignore fabricated percent, and distingui
   for (const [message, expected] of [
     ['에셋 캐릭터 룩 태깅 중…', '캐릭터 외형 확인 중'],
     ['태거 JSON 오류 → 재시도 중…', '장면 분석 다시 시도 중'],
+    ['태거 요청 오류 → 재시도 중…', '장면 분석 다시 시도 중'],
     ['만화 레이아웃 중…', '만화 구성 중'],
   ]) assert.equal(progressToastView(job({ state: 'tagging', message })).title, expected);
   assert.equal(progressToastView(job({ message: '이미지 반영 중 2/4… [job.persist]' })).title, '이미지 반영 중');

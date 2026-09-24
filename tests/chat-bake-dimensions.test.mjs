@@ -56,6 +56,23 @@ function pngHeader(width,height){
  const view=new DataView(bytes.buffer);view.setUint32(16,width);view.setUint32(20,height);
  return bytes.buffer;
 }
+
+for (const [fromW,fromH] of [[832,1216],[1216,832],[1024,1024]]) {
+ for (const [width,height] of [[832,1216],[1216,832],[1024,1024]]) {
+  for (const nextId of ['a','replacement']) {
+  test(`studio save ${nextId} synchronizes reserved frame ${fromW}x${fromH} to ${width}x${height}`,async()=>{
+   const state=fixture();
+   const sibling='[[@inrayspinner::job_1::832::1216]][[@inray::b::inxshot_b.webp::832::1216]]';
+   state.chat.message[0].data=`text [[@inrayspinner::job_0::${fromW}::${fromH}]]\n[[@inray::a::inxshot_a.webp::${fromW}::${fromH}]]\n${sibling}`;
+   state.cards[nextId]={meta_json:JSON.stringify({width,height})};
+   state.assets[nextId]={path:nextId,name:`inxshot_${nextId}.webp`};
+   await api.rewriteBakedCardInChatMessage({...target,prevCardId:'a',nextCardId:nextId});
+   assert.equal(state.chat.message[0].data,`text [[@inrayspinner::job_0::${width}::${height}]]\n[[@inray::${nextId}::inxshot_${nextId}.webp::${width}::${height}]]\n${sibling}`);
+   assert.equal(state.pixelReads,0);
+  });
+  }
+ }
+}
 test('explicit bake recovers intrinsic dimensions from reloaded asset headers',async()=>{
  const state=fixture();
  state.chat.message[0].data='first\nsecond';

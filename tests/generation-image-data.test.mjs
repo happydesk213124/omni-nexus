@@ -62,6 +62,56 @@ test('wrapper encodes at 0.9 and attaches metadata after canvas alpha is lost', 
   } finally { globalThis.createImageBitmap = prevBitmap; globalThis.OffscreenCanvas = prevCanvas; }
 });
 
+
+for (const mode of ["blob", "empty", "wrong-format", "throw", "missing", "both-fail"]) {
+  test("DOM WebP encoding releases pixels and preserves metadata: " + mode, async () => {
+    const previous = { document: globalThis.document, bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+    let closed = 0, blobCalls = 0, dataCalls = 0;
+    const canvas = { width: 0, height: 0,
+      getContext() { return { drawImage() { assert.equal(closed, 0); } }; },
+      toBlob(callback, type, quality) {
+        blobCalls++; assert.equal(closed, 1); assert.equal(type, "image/webp"); assert.equal(quality, 0.9);
+        if (mode === "throw" || mode === "both-fail") throw Error("host refused Blob");
+        callback(mode === "empty" ? null : new Blob([mode === "wrong-format" ? png : webp], { type: "image/webp" }));
+      },
+      toDataURL(type, quality) {
+        dataCalls++; assert.equal(closed, 1); assert.equal(type, "image/webp"); assert.equal(quality, 0.9);
+        if (mode === "blob" || mode === "both-fail") throw Error("unexpected Base64");
+        return "data:image/webp;base64," + webp.toString("base64");
+      }
+    };
+    if (mode === "missing") delete canvas.toBlob;
+    globalThis.OffscreenCanvas = undefined;
+    globalThis.createImageBitmap = async () => ({ width: 1024, height: 1536, close() { closed++; } });
+    globalThis.document = { createElement() { return canvas; } };
+    try {
+      const result = await api.encodeGenerationWebp(png, metadata);
+      assert.deepEqual(api.readGenerationImageData(result), metadata);
+      assert.equal(Buffer.from(result).subarray(0, 4).toString(), mode === "both-fail" ? png.subarray(0, 4).toString() : "RIFF");
+      assert.equal(blobCalls, mode === "missing" ? 0 : 1);
+      assert.equal(dataCalls, mode === "blob" ? 0 : 1);
+      assert.equal(closed, 1);
+      assert.equal(canvas.width, 0); assert.equal(canvas.height, 0);
+    } finally {
+      globalThis.document = previous.document; globalThis.createImageBitmap = previous.bitmap; globalThis.OffscreenCanvas = previous.canvas;
+    }
+  });
+}
+
+test("Offscreen encoding failure still releases bitmap and canvas", async () => {
+  const previous = { bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+  let closed = 0, canvas;
+  globalThis.createImageBitmap = async () => ({ width: 1024, height: 1536, close() { closed++; } });
+  globalThis.OffscreenCanvas = class {
+    constructor(w, h) { this.width = w; this.height = h; canvas = this; }
+    getContext() { return { drawImage() {} }; }
+    async convertToBlob() { assert.equal(closed, 1); throw Error("encode rejected"); }
+  };
+  try {
+    assert.deepEqual(api.readGenerationImageData(await api.encodeGenerationWebp(png, metadata)), metadata);
+    assert.equal(closed, 1); assert.equal(canvas.width, 0); assert.equal(canvas.height, 0);
+  } finally { globalThis.createImageBitmap = previous.bitmap; globalThis.OffscreenCanvas = previous.canvas; }
+});
 test('strict replay preserves explicit flags and rejects missing recipe values', () => {
   const request = { prompt: 'scene', negative_prompt: '', width: 832, height: 1216,
     steps: 28, cfg_scale: 5, cfg_rescale: 0, sampler: 'k_euler', scheduler: 'native',
