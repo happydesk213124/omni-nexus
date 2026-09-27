@@ -67,7 +67,8 @@ async function harness(source = popupSource, opts = {}) {
     Option: class extends Element {
       constructor(text, value) { super('option'); this.textContent = text; this.value = value; }
     },
-    Z: async options => { state.scopes.push(options); return { sessionId: state.sessionId }; },
+    Z: async options => { state.scopes.push(options); return { sessionId: state.sessionId, characterId: 'bot', unifiedSessionId: 'unified' }; },
+    rootChatSessionIds: () => ['sibling'],
     t: { uiOpen: false },
     k: { showContainer: async mode => state.shown.push(mode), hideContainer: async () => { state.hidden++; } },
     setTimeout: (callback, delay) => { const id = ++nextTimer; timers.set(id, { callback, at: now + delay }); return id; },
@@ -75,6 +76,10 @@ async function harness(source = popupSource, opts = {}) {
     K: async (url, options = {}) => {
       const method = options.method || 'GET';
       state.calls.push({ url, method, body: structuredClone(options.body) });
+      if (url === '/v1/characters/triggered') {
+        if(opts.triggerFail) throw new Error('offline');
+        return {ok:true,characters:opts.triggered || []};
+      }
       if (method === 'PUT' && state.failure) {
         if (state.failure === 'reject') throw new Error('offline');
         return { ok: false };
@@ -99,7 +104,7 @@ async function harness(source = popupSource, opts = {}) {
     },
   };
   const open = new Function(...Object.keys(bindings), source + ';return openOmniNote;')(...Object.values(bindings));
-  await open({});
+  await open(opts.message || {});
   const nodes = descendants(document.body);
   const button = text => {
     const node = nodes.find(node => node.tagName === 'button' && node.textContent === text);
@@ -249,7 +254,7 @@ const wearSelect = (h, name) => {
 };
 const setWear = (h, name, st) => { const sel = wearSelect(h, name); sel.value = st; sel.onchange(); };
 const wearSearch = h => {
-  const input = descendants(h.panel).find(node => node.tagName === 'input' && node.placeholder === '이름 검색');
+  const input = descendants(h.panel).find(node => node.tagName === 'input' && node.attributes['aria-label'] === '옷 상태 이름 검색');
   assert.ok(input, 'wear name search must be mounted');
   return input;
 };
@@ -285,6 +290,38 @@ test('wear search filters rows by name', async () => {
   assert.equal(display('Merk'), 'none');
   search.value = ''; search.oninput();
   assert.notEqual(display('Merk'), 'none');
+});
+
+test('note opens with triggered names from the clicked message and supports comma OR search', async () => {
+  const h=await harness(popupSource,{message:{text:'Aria and alias-of-Luna',sessionId:'actual-chat/7'},triggered:[{id:'c1',name:'Aria'},{id:'c3',name:'Luna'},{id:'c1',name:'Aria'}]});
+  const search=wearSearch(h);
+  assert.equal(search.value,'Aria, Luna');
+  assert.deepEqual(h.state.calls.find(c=>c.url==='/v1/characters/triggered').body,{message:'Aria and alias-of-Luna',session_id:'actual-chat/7',character_id:'bot',unified_session_id:'unified',source_session_ids:['sibling']});
+  const visible=()=>descendants(h.wearBox).filter(n=>n.tagName==='span'&&n.parentNode.parentNode.style.display!=='none').map(n=>n.textContent);
+  assert.deepEqual(visible(),['Aria','Luna']);
+  search.value=' MER, , ari，';search.oninput();assert.deepEqual(visible(),['Aria','Merk']);
+  search.value='';search.oninput();assert.deepEqual(visible(),['Aria','Merk','Luna']);
+  await h.tick(1500);assert.equal(h.puts(noteRoute).length,0,'filtering never changes saved outfits');
+});
+
+test('no trigger match or failed lookup keeps all note rows available',async()=>{
+  for(const triggerFail of [false,true]) {
+    const h=await harness(popupSource,{message:{text:'No named characters'},triggerFail});
+    assert.equal(wearSearch(h).value,'');
+    assert.equal(descendants(h.wearBox).filter(n=>n.tagName==='span'&&n.parentNode.parentNode.style.display!=='none').length,2);
+    if(triggerFail)assert.match(h.status.textContent,/이름을 직접 검색/);
+  }
+});
+
+test('comma-search regression guard detects accidental AND matching',async()=>{
+  const needle='terms.some(q=>r.name.toLowerCase().includes(q))';
+  assert.ok(popupSource.includes(needle));
+  const check=async source=>{
+    const h=await harness(source);const search=wearSearch(h);search.value='Aria, Merk';search.oninput();
+    assert.equal(descendants(h.wearBox).filter(n=>n.tagName==='span'&&n.parentNode.parentNode.style.display!=='none').length,2);
+  };
+  await check(popupSource);
+  await assert.rejects(check(popupSource.replace(needle,'terms.every(q=>r.name.toLowerCase().includes(q))')),assert.AssertionError);
 });
 
 test('wear select saves the id-keyed map debounced; clothed overrides an older session outfit', async () => {

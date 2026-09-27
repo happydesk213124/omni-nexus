@@ -104,10 +104,10 @@ async function omniFooterAction(kind,key) {
     if(/^(min|max)-(up|down)$/.test(kind)) {await omniChangeCount(kind);return;}
     const scope=current;
     if(kind==='char'||kind==='preset') {await openSettingsTab(kind==='char'?'characters':'style_presets');return;}
-    if(kind==='note') {await openOmniNote(target);return;}
     const row=(scope.chat?.message || scope.chat?.messages || [])[target.index];
     if(!row || (target.hostId && omniMessageId(row)!==target.hostId))throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
     const text=String(row.data ?? row.saying ?? '');
+    if(kind==='note') {await openOmniNote({...target,text});return;}
     if(kind==='tag') {
       y('info','footer.dispatch','tag ms='+Math.round(performance.now()-start));
       await Be({...scope,actionMessageIndex:target.index,actionMessageRole:row.role,actionMessageId:omniMessageId(row)},text,true);return;

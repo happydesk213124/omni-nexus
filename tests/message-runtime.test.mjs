@@ -40,12 +40,13 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
       async removeEventListener(k,f){document.removeEventListener(k,f);}
     }
     const doc=new Safe(document),t={hostDoc:doc,backendSettings:{card:{image_min:1,image_max:4}}};
-    const calls=[],writes=[],errors=[];let observers=0;
+    const calls=[],writes=[],errors=[],notes=[];let observers=0;
     const scope={characterId:'c',chatId:'chat',sessionId:'s',chat:{message:[{id:'m',data:'본문 😀',role:'char'}]}};
     const deps={t,k:{createMutationObserver:async()=>({observe:async()=>observers++,disconnect:async()=>{}})},
       H:async(_,tag,opts={})=>{const n=document.createElement(tag);n.textContent=opts.text||'';return new Safe(n);},
       Z:async()=>scope,nxMsgFan:()=>true,nxUnwrapSafeNodes:async a=>a,nxSpinnerPreviews:new Map(),
       omniRelease:async()=>{},omniStream:{paused:false},y:()=>{},Be:async(...a)=>calls.push(a),$e:e=>errors.push(e),
+      openOmniNote:async msg=>notes.push(msg),
       pe:async patch=>{await new Promise(r=>setTimeout(r,2));Object.assign(t.backendSettings.card,patch.card);writes.push(patch);},
     };
     const api=new Function(...Object.keys(deps),runtime+';return {mount:omniMountFooters,bind:omniBindModuleButton,run:omniFooterAction,token:omniMessageToken,count:omniChangeCount};')(...Object.values(deps));
@@ -54,6 +55,7 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
     const first=document.querySelector('[data-omni-footer]'),bounds=first.getBoundingClientRect();
     const invoke=async q=>{const hit=await api.bind(new Safe(first.querySelector(q)));if(hit)await api.run(hit.kind,hit.index);return hit;};
     const tag=await invoke('[data-omni-action="tag"]');
+    await invoke('[data-omni-action="note"]');
     await invoke('[data-omni-action="counts"]');const panel=first.querySelector('[x-omni-counts]');
     await invoke('[data-omni-action="counts"]');const hidden=panel.style.display==='none';
     await invoke('[data-omni-action="counts"]');const reused=panel===first.querySelector('[x-omni-counts]');
@@ -61,14 +63,15 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
     await Promise.all([api.count('max-up'),api.count('max-up')]);
     await api.count('min-down');await api.count('min-down');
     const range=panel.querySelector('[x-omni-count-value]').textContent;
-    scope.chat.message[0].data='edited';await api.run('tag',tag.index);
+    scope.chat.message[0].data='edited';await api.run('tag',tag.index);await api.run('note',tag.index);
     const stale=await api.bind(new Safe(first.querySelector('[data-omni-action="tag"]')));
     render();await api.mount();const after=document.querySelectorAll('[data-omni-footer]').length;
     const noPanel=!document.querySelector('[x-omni-counts]');
-    return {right:bounds.right,width:innerWidth,calls:calls.length,hidden,reused,range,writes:writes.length,after,noPanel,stale:stale===null,observers,errors};
+    return {right:bounds.right,width:innerWidth,calls:calls.length,hidden,reused,range,writes:writes.length,after,noPanel,stale:stale===null,observers,errors,notes};
    },{runtime,buttons,css});
    assert.ok(result.right<=result.width);
    assert.equal(result.calls,1);assert.equal(result.hidden,true);assert.equal(result.reused,true);
+   assert.equal(result.notes.length,1);assert.equal(result.notes[0].text,'본문 😀');assert.equal(result.notes[0].sessionId,'s');
    assert.equal(result.range,'1~6');assert.equal(result.writes,4);assert.equal(result.after,2);
    assert.equal(result.noPanel,true);assert.equal(result.stale,true);assert.equal(result.observers,0);assert.deepEqual(result.errors,[]);
    await page.close();

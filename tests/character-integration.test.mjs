@@ -194,6 +194,54 @@ test('failed image analysis propagates without a main-model retry or gender-only
   assert.equal(host.llmRequests[0].model,'vision-only');
 });
 
+test('optional reference analysis retains successful images and omits raw provider errors',async()=>{
+  const {api,config}=await runtime();
+  config.llm_roles.autotag={...config.llm_roles.autotag,source:'main'};api.setConfig(config);
+  let calls=0;
+  globalThis.risuai.runLLMModel=async()=>{
+    calls++;
+    if(calls===1) throw new Error('PRIVATE PROVIDER ERROR');
+    return {success:true,content:calls===2?'{"hair_color":':'{"hair_color":"blue hair","hair_style":"braid"}'};
+  };
+  const assets=['Alice','Bob','Carol'].map(name=>({name,trigger:name,bytes:PNG_1X1}));
+  const messages=await api.characterImageInput(assets,true,{continueOnAnalysisFailure:true});
+  assert.equal(calls,3);assert.equal(messages.length,3);
+  for(let i=0;i<2;i++) {
+    assert.match(messages[i].content,new RegExp(`Character reference: ${assets[i].name}`));
+    assert.match(messages[i].content,/Image analysis unavailable/);
+    assert.match(messages[i].content,/do not infer appearance/);
+  }
+  assert.match(messages[2].content,/Image analysis \(reference\).*blue hair/);
+  assert.doesNotMatch(JSON.stringify(messages),/PRIVATE PROVIDER ERROR|image_url/);
+});
+
+test('manual image autotag still reports provider failures',async()=>{
+  const {api,config}=await runtime();
+  config.llm_roles.autotag={...config.llm_roles.autotag,source:'main'};api.setConfig(config);
+  globalThis.risuai.runLLMModel=async()=>{throw new Error('image input unsupported');};
+  await assert.rejects(api.analyzeAssetLook(PNG_NO_META,{name:'Alice'}),/image input unsupported/);
+});
+
+test('optional reference analysis propagates cancellation before and during the model call',async()=>{
+  for(const phase of ['before','during','provider']) {
+    const {api,config}=await runtime();
+    config.llm_roles.autotag={...config.llm_roles.autotag,source:'main'};api.setConfig(config);
+    const controller=new AbortController();let calls=0;
+    if(phase==='before') controller.abort();
+    globalThis.risuai.runLLMModel=async()=>{
+      calls++;
+      if(phase==='provider') throw Object.assign(new Error('Aborted'),{name:'AbortError'});
+      controller.abort();
+      return {success:true,content:'{"hair_color":"blue hair"}'};
+    };
+    await assert.rejects(api.characterImageInput([
+      {name:'Alice',trigger:'Alice',bytes:PNG_1X1},
+      {name:'Bob',trigger:'Bob',bytes:PNG_1X1},
+    ],true,{continueOnAnalysisFailure:true,signal:controller.signal}),{name:'AbortError'});
+    assert.equal(calls,phase==='before'?0:1);
+  }
+});
+
 test('default update preserves edits, survives viewing and clears only after applying default',async()=>{
   const {api}=await runtime();
   await api.setPrompt('character_common','MY CUSTOM RULE');
@@ -263,7 +311,7 @@ test('gender-only remains incomplete; final caption deduplicates while preservin
 });
 
 
-test('generation prepass and inline route new image-only people and metadata through all four settings', async()=> {
+test('generation prepass and inline preserve references even when separate image analysis fails', async()=> {
   const source=readFileSync('src/services/jobs.ts','utf8');
   const start=source.indexOf("    if (assetMode === 'prepass') {");
   const end=source.indexOf("\n    await setJob(jobId, 'tagging', {",start);
@@ -271,10 +319,15 @@ test('generation prepass and inline route new image-only people and metadata thr
   let body=source.slice(start,end);
   if(process.env.BREAK_IMAGE_ROUTING) body=body.replace('getConfig().card.image_analysis_separate === true','false');
   const {code}=await transform(`return (async()=>{${body};return {skipAssetInject};})();`,{loader:'ts'});
-  for(const mode of ['inline','prepass']) for(const separate of [false,true]) for(const material of ['text','image','metadata']) {
+  for(const mode of ['inline','prepass']) for(const separate of [false,true]) for(const material of ['text','image','metadata']) for(const failed of [false,true]) {
     const metadata=material==='metadata',hasAssets=material!=='text';
     const {api,host,config}=await runtime();
-    config.card.asset_nai_tags=mode;config.card.image_analysis_separate=separate;api.setConfig(config);
+    config.card.asset_nai_tags=mode;config.card.image_analysis_separate=separate;
+    if(failed) {
+      config.llm_roles.autotag={...config.llm_roles.autotag,provider:'anthropic',endpoint:'https://api.anthropic.com/v1/messages'};
+      host.setLlmReply('{"gender":"girl"}');
+    }
+    api.setConfig(config);
     const bot={chaId:'bot',additionalAssets:hasAssets?[['Alice default','alice-asset']]:[],chats:[]};
     globalThis.risuai.getCharacter=async()=>bot;
     globalThis.risuai.readImage=async()=>metadata?PNG_NAI_1X1:PNG_NO_META;
@@ -297,6 +350,11 @@ test('generation prepass and inline route new image-only people and metadata thr
     if(hasAssets&&separate) {
       assert.equal(host.llmRequests[0].model,'vision-only');
       assert.match(JSON.stringify(calls[0].messages),/Image analysis/);
+      if(failed) {
+        assert.match(JSON.stringify(calls[0].messages),/Image analysis unavailable/);
+        assert.match(JSON.stringify(calls[0].messages),/provided text and metadata/);
+        assert.doesNotMatch(JSON.stringify(calls[0].messages),/Image analysis \(reference\)/);
+      }
     }
     if(metadata) assert.match(JSON.stringify(calls[0].messages),/black hair/);
   }

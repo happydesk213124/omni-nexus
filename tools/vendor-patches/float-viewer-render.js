@@ -13,6 +13,12 @@ function nxFloatRootCss(state) {
   const idle = state.idle
     ? "background:transparent !important;border-color:transparent !important;box-shadow:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;"
     : "background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);box-shadow:0 20px 60px rgba(0,0,0,.55);-webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);";
+  if (state.compact) {
+    // Keep the saved viewer geometry intact so + restores the previous layout.
+    const left = Math.min(Math.max(Math.round(geo.left), 0), Math.max(0, vp.w - 64));
+    const top = Math.min(Math.max(Math.round(geo.top), 0), Math.max(0, vp.h - 82));
+    return `position:fixed;left:${left}px;top:${top}px;width:64px;height:82px;z-index:99990;pointer-events:auto;display:flex;flex-direction:column;gap:0;padding:6px;box-sizing:border-box;${idle}`;
+  }
   if (state.collapsed) {
     // Prototype collapsed: image gone, tight padding, height auto.
     const width = Math.min(280, vp.w - 16);
@@ -37,7 +43,7 @@ async function nxFloatRender() {
     await nxFloatRoot.setStyleAttribute("position:fixed;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none;visibility:hidden;overflow:hidden;");
     return;
   }
-  await nxFloatRoot.setStyleAttribute(nxFloatRootCss({ collapsed, iconfold: mode === "bubble" && collapsed, idle: nxFloatIdle }));
+  await nxFloatRoot.setStyleAttribute(nxFloatRootCss({ collapsed, compact: nxFloatCompact, iconfold: !nxFloatCompact && mode === "bubble" && collapsed, idle: nxFloatIdle }));
   await nxFloatPaintChrome();
   await nxFloatPaintCounts();
 }
@@ -72,7 +78,7 @@ async function nxFloatPaintCounts() {
     await button.setAttribute('x-nx-float-active',nxFloatCountsOpen?'true':'false');
   }
   if (!nxFloatCounts) return;
-  if (!nxFloatCountsOpen || (nxFloatCollapsed && nxFloatMode()==='bubble')) {
+  if (!nxFloatCountsOpen || nxFloatCompact || (nxFloatCollapsed && nxFloatMode()==='bubble')) {
     await nxFloatCounts.setStyleAttribute('display:none;');return;
   }
   const card=t.backendSettings?.card || {};
@@ -98,6 +104,18 @@ async function nxFloatPaintChrome() {
   // Prototype idle: chrome fades out, image only. Collapsed idle: 10% remains.
   const idleOp = nxFloatIdle ? (collapsed ? "0.1" : "0") : "1";
   const show = (el, css) => { try { return el.setStyleAttribute(css); } catch { return Promise.resolve(); } };
+  await nxFloatCompactBtn.setTextContent(nxFloatCompact ? '+' : '−');
+  await show(nxFloatCompactBtn, nxFloatCompact ? 'position:static;width:44px;min-height:44px;flex:none;' : 'position:absolute;right:0;top:0;width:40px;min-height:44px;');
+  if (nxFloatCompact) {
+    await show(nxFloatIcon, "display:none;");
+    await show(nxFloatHead, "display:none;");
+    await show(nxFloatStage, "display:none;");
+    await show(nxFloatBar, "display:none;");
+    await show(nxFloatResize, "display:none;");
+    await show(nxFloatFoldGrid, "display:none;");
+    await show(nxFloatFoldGrip, `display:flex;flex-direction:column;gap:4px;min-height:0;opacity:${nxFloatIdle ? '0.1' : '1'};`);
+    return;
+  }
   if (iconfold) {
     // Prototype iconfold: bubble stays fully visible in idle (recovery handle).
     await show(nxFloatIcon, "display:block;");

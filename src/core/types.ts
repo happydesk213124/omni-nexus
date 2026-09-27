@@ -255,6 +255,7 @@ export interface CardSettings {
   toast_anchor?: 'tl' | 'bl' | 'tr' | 'br' | 'tc';
   /** Play a one-shot completion sound when an image generation job completes. */
   image_done_sound?: boolean;
+  image_done_sound_type?: 'ding' | 'soft' | 'bell' | 'loud';
   /** How a long-press on an inline/sticky shot opens the enlarge sheet. */
   image_press_inspect?: 'off' | 'hold' | 'two' | 'three' | 'both';
   auto_gen_on_reply: boolean;

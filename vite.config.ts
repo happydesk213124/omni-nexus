@@ -47,7 +47,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.10';
+const PLUGIN_VERSION = '0.2.11';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -961,6 +961,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.11</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>설정 프리셋: 새 프리셋 만들기, 선택 항목 편집, JSON 가져오기·내보내기를 정리했습니다. 예제 12종과 설정·작가의 노트 4종 저장을 지원합니다.</li>
+            <li>세션 작가의 노트: 현재 메시지의 캐릭터 이름을 검색창에 채우며, 쉼표로 여러 이름을 검색할 수 있습니다.</li>
+            <li>이미지 완료 알림음을 끄거나 띠링·부드럽게·종소리·큰 소리 중에서 고를 수 있습니다.</li>
+            <li>분기 이미지 분석이 생성 중 실패해도 텍스트·메타데이터로 계속 진행합니다. 수동 오토태그 오류와 취소 동작은 유지합니다.</li>
+            <li>플로팅 뷰어를 더 작게 접을 수 있고, 만화 컷 자연어 설명의 쉼표 형식과 여성 nude 태그를 보완했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.2.10</strong>
@@ -9297,7 +9307,7 @@ const VENDOR_INLINE_HELP_PATCH =
     "nx-inline-chat-scale": { title: "이미지 채팅 배율 (%)", body: "말풍선 안 삽화 크기입니다. 100%가 기본(폭 약 78%·높이 상한 70vh)이고, 50%면 약 절반, 150%면 더 크게 보입니다. 말풍선 폭을 넘지 않습니다." },
     "nx-inline-dom-radius": { title: "스피너 캐릭터 개수", body: "선택한 메시지 기준으로 위·아래에서 유지할 캐릭터 말풍선 수입니다. 기본 4, 범위 3–20입니다. 유저와 본문 30자 이하 메시지는 세지 않고 건너뜁니다. 사진은 위·아래 가장 가까운 캐릭터 1개씩입니다." },
     "nx-progress-toast": { title: "진행 토스트", body: "생성/리롤=보라. 인덱싱(민트)=지금 고른 메시지 이미지 준비만(갤러리 전체 워밍은 표시 안 함). 선택 알림은 별도 토스트. 칩·샷을 꽂기 직전에는 조각 불러오는 중 스피너가 같은 자리에 뜹니다." },
-    "nx-image-done-sound": { title: "이미지 생성 완료 알림음", body: "이미지 생성이 끝나면 짧은 알림음을 한 번 재생합니다." },
+    "nx-image-done-sound": { title: "이미지 생성 완료 알림음", body: "이미지 생성이 끝나면 선택한 알림음을 한 번 재생합니다. 안 함 / 띠링 / 부드럽게 / 종소리 / 큰 소리 중에서 고릅니다." },
     "nx-toast-anchor": { title: "토스트 위치", body: "진행·선택·알림·조각 로딩 토스트가 붙는 화면 모서리입니다. 기본은 중상단입니다." },
     "nx-image-press": { title: "이미지 크게보기", body: "인라인·스티키 샷을 크게 봅니다. 사용안함 / 더블 탭(이미지 위 빠른 두 번) / 트리플 탭(빠른 세 번) / 꾸욱 누르기 / 꾸욱 누르기 + 더블탭. 탐색기·메시지 선택 길게 누르기는 그대로입니다." },
     "nx-nai4-fallback": { title: "할당량 끝나면 NAI4 폴백", body: "V5 샷이 할당량(402)으로 실패하면 그 샷만 V4.5와 NAI4 프리셋으로 다시 뽑습니다. V5 자연어·대사는 빼입니다." },
@@ -9369,7 +9379,8 @@ const VENDOR_INLINE_SAVE_PATCH =
       inline_chat_scale_pct: Math.max(25, Math.min(200, Math.round(Ne(N("nx-inline-chat-scale"), 100)) || 100)),
       inline_chat_dom_radius: Math.max(3, Math.min(20, Math.round(Ne(N("nx-inline-dom-radius"), 4)) || 4)),
       progress_toast: ee("nx-progress-toast"),
-      image_done_sound: document.getElementById("nx-image-done-sound") ? ee("nx-image-done-sound") : !!t.backendSettings?.card?.image_done_sound,
+      image_done_sound: document.getElementById("nx-image-done-sound") ? N("nx-image-done-sound") !== "off" : !!t.backendSettings?.card?.image_done_sound,
+      image_done_sound_type: document.getElementById("nx-image-done-sound") && N("nx-image-done-sound") !== "off" ? N("nx-image-done-sound") : (t.backendSettings?.card?.image_done_sound_type || "ding"),
       toast_anchor: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeToastAnchor == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeToastAnchor(N("nx-toast-anchor")) : String(N("nx-toast-anchor") || "tc")),
       image_press_inspect: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeImagePressInspect == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeImagePressInspect(N("nx-image-press")) : String(N("nx-image-press") || "hold")),
       nai4_fallback: ee("nx-nai4-fallback"),`;
@@ -15176,18 +15187,29 @@ const VENDOR_PROGRESS_TOAST_FN_PATCH = `  async function dismissProgressToast() 
       if (!ctx || ctx.state === "closed") ctx = t._imageDoneAudioContext = new AudioContextCtor();
       const play = () => {
         const now = ctx.currentTime;
-        const oscillator = ctx.createOscillator();
-        const gain = ctx.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(880, now);
-        oscillator.frequency.setValueAtTime(1174.66, now + 0.11);
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.018);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
-        oscillator.connect(gain);
-        gain.connect(ctx.destination);
-        oscillator.start(now);
-        oscillator.stop(now + 0.43);
+        const type = t.backendSettings?.card?.image_done_sound_type || "ding";
+        const profiles = {
+          ding: [[880, 0, 0.42, 0.12, 1174.66]],
+          soft: [[660, 0, 0.6, 0.045]],
+          bell: [[1046.5, 0, 0.85, 0.09], [2093, 0, 0.55, 0.025]],
+          loud: [[880, 0, 0.22, 0.25], [1174.66, 0.28, 0.22, 0.25], [880, 0.56, 0.3, 0.25]]
+        };
+        for (const [frequency, offset, duration, volume, second] of profiles[type] || profiles.ding) {
+          const start = now + offset;
+          const oscillator = ctx.createOscillator();
+          const gain = ctx.createGain();
+          oscillator.type = type === "loud" ? "triangle" : "sine";
+          oscillator.frequency.setValueAtTime(frequency, start);
+          if (second) oscillator.frequency.setValueAtTime(second, start + 0.11);
+          gain.gain.setValueAtTime(0.0001, start);
+          gain.gain.exponentialRampToValueAtTime(volume, start + 0.018);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+          oscillator.connect(gain);
+          gain.connect(ctx.destination);
+          oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+          oscillator.start(start);
+          oscillator.stop(start + duration + 0.01);
+        }
       };
       if (ctx.state === "suspended") ctx.resume().then(play).catch(() => {});
       else play();
@@ -15208,7 +15230,7 @@ const VENDOR_PROGRESS_TOAST_FN_PATCH = `  async function dismissProgressToast() 
     t._imageDoneSoundUnlockBound = !0;
     document.addEventListener("change", (event) => {
       const input = event.target;
-      if (input?.id === "nx-image-done-sound" && input.checked) nxPrepareImageDoneAudio();
+      if (input?.id === "nx-image-done-sound" && input.value !== "off") nxPrepareImageDoneAudio();
     }, true);
   }
   function attachToastStyle(visible) {

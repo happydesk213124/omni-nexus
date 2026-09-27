@@ -42,6 +42,8 @@ const MODULES = {
   'llm-roles': 'src/domain/llm/roles.ts',
   'llm-guardrails': 'src/domain/llm/guardrails.ts',
   'settings-schema': 'src/config/schema.ts',
+  'settings-preset': 'src/domain/settings-preset.ts',
+  'settings-preset-examples': 'src/config/settings-preset-examples.ts',
   'reroll-setup': 'src/domain/prompt/reroll-setup.ts',
   'command-rewrite': 'src/domain/prompt/command-rewrite.ts',
   'command-char-edit': 'src/domain/character/command-edit.ts',

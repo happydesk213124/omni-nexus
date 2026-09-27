@@ -856,7 +856,9 @@ async function runJob(jobId: string): Promise<void> {
             lookAssetNames,
             [],
           );
-          lookMessages.push(...await characterImageInput(images, getConfig().card.image_analysis_separate === true));
+          lookMessages.push(...await characterImageInput(images, getConfig().card.image_analysis_separate === true, {
+            continueOnAnalysisFailure: true, ...llmOptions,
+          }));
           dbg('job.char_looks.messages', {
             mode: assetMode,
             msgs: lookMessages.length,
@@ -917,7 +919,7 @@ async function runJob(jobId: string): Promise<void> {
       debug_stage: 'job.tagging',
     });
 
-    const messages = await buildTaggerMessages(request, { skipAssetInject });
+    const messages = await buildTaggerMessages(request, { skipAssetInject, ...llmOptions });
     dbg('job.tagger.messages', { msgs: messages.length, skip_asset_inject: skipAssetInject });
     if (getConfig().card?.preprocessing) {
       const card = getConfig().card;

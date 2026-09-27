@@ -24,7 +24,9 @@ const NX_FLOAT_CSS = `
 [x-nx-float-bar] button:active{transform:scale(.92) !important;}
 [x-nx-float-resize]{position:absolute;right:0;bottom:0;width:44px;height:44px;cursor:nwse-resize;touch-action:none;border-bottom-right-radius:15px;}
 [x-nx-float-resize]::after{content:"";position:absolute;right:5px;bottom:5px;width:26px;height:26px;background:linear-gradient(to top-left,transparent 50%,rgba(255,255,255,.45) 50%);border-bottom-right-radius:10px;}
-[x-nx-float-foldgrip]{align-items:center;justify-content:center;flex:none;min-height:44px;touch-action:none;cursor:grab;color:rgba(255,255,255,.5);font-size:11px;letter-spacing:3px;}
+[x-nx-float-foldgrip]{position:relative;align-items:center;justify-content:center;flex:none;min-height:44px;touch-action:none;cursor:grab;color:rgba(255,255,255,.5);font-size:11px;letter-spacing:3px;}
+[x-nx-float-foldgrip] button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);padding:0;font:22px/1 system-ui;letter-spacing:0;border-radius:12px;color:#fff;cursor:pointer;touch-action:manipulation;}
+[x-nx-float-foldgrip] button:hover{background:rgba(255,255,255,.2);}
 [x-nx-float-foldgrip]:active{cursor:grabbing;}
 [x-nx-float-foldgrid]{grid-template-columns:repeat(5,1fr);gap:6px;}
 [x-nx-float-foldgrid] button{border:1px solid rgba(255,255,255,.12) !important;background:rgba(255,255,255,.08) !important;width:100% !important;aspect-ratio:1/1 !important;padding:0 !important;font-size:22px !important;line-height:1 !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;display:flex !important;align-items:center !important;justify-content:center !important;touch-action:manipulation !important;}
@@ -33,7 +35,7 @@ const NX_FLOAT_CSS = `
 [x-nx-float-icon]{font-size:26px;line-height:1;touch-action:none;}
 `;
 const NX_FLOAT_HEAD_L = [["stop", "🟥"], ["preset", "📚"], ["note", "✒️"]];
-const NX_FLOAT_HEAD_R = [["full", "⛶"], ["fold", "▴"]];
+const NX_FLOAT_HEAD_R = [["full", "⛶"], ["fold", "▴"], ["compact", "−"]];
 const NX_FLOAT_BAR_BTNS = [["tag", "⚛️"], ["regen", "🔃"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"]];
 const NX_FLOAT_GRID_BTNS = [["single", "🎲"], ["stop", "🟥"], ["preset", "📚"], ["note", "✒️"], ["unfold", "▾"], ["tag", "⚛️"], ["regen", "🔃"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"], ["full", "⛶"]];
 function nxFloatMode() {

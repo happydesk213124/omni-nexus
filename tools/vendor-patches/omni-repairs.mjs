@@ -232,7 +232,10 @@ export function repairOmniUi(source) {
     globalThis.__OMNI_SETTINGS_ACTIONS__ = {
       config: () => t.backendSettings,
       save: async patch => { await flushSettingsSave(); await pe(patch); },
-      saveModels: async () => { await flushSettingsSave(); await pe(Oe()); }
+      saveModels: async () => { await flushSettingsSave(); await pe(Oe()); },
+      request: (path, body) => K(path, body === undefined ? {method:"GET"} : {method:"POST",body}),
+      flush: async () => { if (!await xa({silent:true})) throw new Error("현재 설정을 저장하지 못했습니다."); },
+      reload: async () => { t.promptDrafts = {}; await le(); await Je(); if(t.uiOpen) await P(); }
     };`);
   replace('"[data-nx-help-id], .toggle-row, .model-form label, #nx-reset-windows, #nx-reset-settings, #nx-save-dash, #nx-run-now, #nx-open-viewer"', '"[data-nx-help-id], .row, .block, .field, .toggle-row, .model-form label, #nx-reset-windows, #nx-reset-settings, #nx-save-dash, #nx-run-now, #nx-open-viewer"');
   // This was a src reset, never a provider reroll.
@@ -300,6 +303,7 @@ export function repairOmniUi(source) {
   replace('  async function runMsgChipAction(', `  async function openOmniNote(msg) {
     const scope=await Z({useOverride:false}); const sid=scope.sessionId;
     if(!sid)throw new Error("현재 대화를 찾을 수 없습니다.");
+    if(msg?.sessionId && msg.sessionId!==sid)throw new Error("대화가 바뀌었습니다. 다시 눌러 주세요.");
     const value=await K("/v1/session-author-note?session_id="+encodeURIComponent(sid));
     const owned=!t.uiOpen;
     if(owned && typeof k.showContainer==="function")await k.showContainer("fullscreen");
@@ -382,7 +386,7 @@ export function repairOmniUi(source) {
       const lab=document.createElement("label");lab.style.minWidth="0";lab.textContent=label;const input=document.createElement("textarea");input.value=value[key]||"";input.maxLength=key==="location"?800:8000;input.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:90px;resize:vertical;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:10px;margin:8px 0 16px";input.oninput=event=>{if(!event?.isComposing)schedule();};input.oncompositionend=schedule;input.onblur=save;fields[key]=input;saved[key]=input.value;lab.append(input);noteFields.append(lab);
     }
     const wearTitle=document.createElement("div");wearTitle.textContent="옷 상태";wearTitle.style.cssText="margin:0 0 8px;font-size:13px;color:#9fb0c3";content.append(wearTitle);
-    const wearSearch=document.createElement("input");wearSearch.placeholder="이름 검색";wearSearch.maxLength=200;wearSearch.setAttribute("aria-label","옷 상태 이름 검색");wearSearch.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:32px;background:#192230;color:#eee;border:1px solid #394358;border-radius:8px;padding:6px 10px;margin:0 0 8px";wearSearch.oninput=()=>{const q=wearSearch.value.trim().toLowerCase();for(const id of Object.keys(wearRows)){const r=wearRows[id];r.row.style.display=(!q||r.name.toLowerCase().indexOf(q)>=0)?"flex":"none";}};content.append(wearSearch);
+    const wearSearch=document.createElement("input");wearSearch.placeholder="이름 검색 · 여러 이름은 쉼표로 구분";wearSearch.maxLength=4000;wearSearch.setAttribute("aria-label","옷 상태 이름 검색");wearSearch.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:32px;background:#192230;color:#eee;border:1px solid #394358;border-radius:8px;padding:6px 10px;margin:0 0 8px";wearSearch.oninput=()=>{const terms=wearSearch.value.toLowerCase().split(/[,，]/).map(s=>s.trim()).filter(Boolean);for(const id of Object.keys(wearRows)){const r=wearRows[id];r.row.style.display=(!terms.length||terms.some(q=>r.name.toLowerCase().includes(q)))?"flex":"none";}};content.append(wearSearch);
     const wearList=document.createElement("div");wearList.setAttribute("role","group");wearList.setAttribute("aria-label","옷 상태 목록");wearList.style.cssText="max-height:300px;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 16px;padding:10px;background:#0b1119;border:1px solid #394358;border-radius:12px";content.append(wearList);
     const wearRows={};
     const addWearRow=(id,name,character)=>{
@@ -435,6 +439,13 @@ export function repairOmniUi(source) {
         }
       }
     }catch{status.textContent="로스터를 불러오지 못했습니다. 기억된 옷 상태만 편집할 수 있습니다.";}
+    if(msg?.text)try{
+      const matched=await K("/v1/characters/triggered",{method:"POST",body:{message:msg.text,session_id:sid,character_id:scope.characterId||"",unified_session_id:scope.unifiedSessionId||("risu_"+ye((scope.characterId||"")+"|__unified__")),source_session_ids:typeof rootChatSessionIds==="function"?rootChatSessionIds(scope):[]}});
+      if(matched?.ok===false)throw new Error("trigger lookup failed");
+      const names=[];
+      for(const c of matched.characters||[]){if(!c?.name)continue;addWearRow(String(c.id||c.name),String(c.name),c);names.push(String(c.name));}
+      wearSearch.value=[...new Set(names)].join(", ");wearSearch.oninput();
+    }catch{status.textContent="트리거된 캐릭터를 불러오지 못했습니다. 이름을 직접 검색할 수 있습니다.";}
     presetSave.onclick=()=>mutatePresets(false);presetDelete.onclick=()=>mutatePresets(true);
     const close=document.createElement("button");close.textContent="닫기";close.style.cssText="flex:none;min-height:36px;padding:6px 16px";
     close.onclick=async()=>{
@@ -485,7 +496,6 @@ export function repairOmniUi(source) {
     if (kind0 === "stop") { await optimisticStopJobs(); return; }
     const tab = {counts:"gen_options",preset:"style_presets",char:"characters"}[kind0];
     if (tab) { await openSettingsTab(tab); return; }
-    if (kind0 === "note") { await openOmniNote(null); return; }
     let els = [];`);
   replace('if (idx >= 0 && Array.isArray(els) && els[idx]) {\n      try {\n        await Da(idx, els, { source: "provisional" });', 'if (idx >= 0 && Array.isArray(els) && els[idx]) {\n      try {\n        await omniResolveActionMessage(idx, els);');
   replace('  async function runMsgChipAction(kind, msgIndex) {', `  async function omniResolveActionMessage(index, els) {
