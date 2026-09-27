@@ -913,7 +913,43 @@
     }
       .row:has(input:disabled) { opacity: .6; cursor: default; }
     .sw:has(input:disabled) { filter: grayscale(1); cursor: default; }
-  </style>
+
+.nx-settings-presets .nx-sp-picker{display:flex;gap:8px;align-items:center;min-width:0}
+.nx-settings-presets #nx-sp-select{flex:1;min-width:0;width:100%;max-width:none;min-height:40px}
+.nx-settings-presets .nx-sp-picker button{flex:none;background:#7132f5;color:#fff;border:1px solid #5741d8;border-radius:12px;padding:9px 16px;min-height:40px}
+.nx-settings-presets .nx-sp-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.nx-settings-presets .nx-sp-toolbar button{flex:1 0 auto;min-height:36px;margin:0;padding:8px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);font-size:12px;white-space:nowrap}
+.nx-settings-presets #nx-sp-delete{color:#f29da6}
+.nx-settings-presets button:disabled{opacity:.4;cursor:default}
+.nx-settings-presets button:active:not(:disabled){scale:.96}
+.nx-settings-presets .nx-sp-scope{margin-top:16px;color:var(--muted);font-size:11px;line-height:1.6}
+.nx-settings-presets .nx-sp-scope summary{cursor:pointer}
+.nx-settings-presets .nx-sp-scope p{margin:6px 0 0}
+.nx-settings-presets .nx-sp-hint{font-size:12px;line-height:1.6;color:var(--muted,#9497a9);margin:8px 0;overflow-wrap:anywhere}
+.nx-settings-presets .nx-sp-status{font-size:12px;margin:10px 0 0;color:var(--muted);overflow-wrap:anywhere}
+.nx-settings-presets .nx-sp-status:empty{display:none}
+.nx-settings-presets .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.nx-sp-dialog{box-sizing:border-box;width:min(580px,calc(100vw - 24px));max-height:calc(100dvh - 32px);overflow:auto;background:var(--surface,#242635);color:var(--text,#eee);border:1px solid #5741d8;border-radius:16px;padding:20px;font:14px/1.5 'IBM Plex Sans','Noto Sans KR',sans-serif}
+.nx-sp-dialog::backdrop{background:rgba(0,0,0,.5)}
+.nx-sp-dialog form{display:flex;flex-direction:column;gap:12px;min-width:0}
+.nx-sp-dialog h3,.nx-sp-dialog p{margin:0}
+.nx-sp-dialog label{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.nx-sp-dialog input:not([type=checkbox]),.nx-sp-dialog textarea{box-sizing:border-box;width:100%;padding:10px;border-radius:10px;border:1px solid rgba(148,151,169,.3);background:rgba(148,151,169,.08);color:inherit;font:inherit}
+.nx-sp-dialog textarea{min-height:100px;resize:vertical}
+.nx-sp-dialog input:focus-visible,.nx-sp-dialog textarea:focus-visible{outline:2px solid #7132f5;outline-offset:2px}
+.nx-sp-dialog summary{cursor:pointer;padding:4px 0 12px}
+.nx-sp-dialog details label+label{margin-top:12px}
+.nx-sp-dialog footer{display:flex;justify-content:flex-end;gap:8px}
+.nx-sp-dialog button{border-radius:12px;border:1px solid rgba(148,151,169,.3);padding:9px 14px;background:rgba(148,151,169,.08);color:inherit;cursor:pointer;font:inherit}
+.nx-sp-dialog button[type=submit]{background:#7132f5;color:#fff;border-color:#5741d8}
+.nx-sp-dialog button[value=cancel]{background:rgba(148,151,169,.08);color:inherit;border-color:rgba(148,151,169,.3)}
+.nx-sp-dialog .nx-sp-capture{flex-direction:row;align-items:center}
+.nx-sp-dialog .nx-sp-dialog-hint,.nx-sp-dialog .nx-sp-optional{color:var(--muted,#9497a9);font-size:12px}
+.nx-sp-dialog .nx-sp-optional{display:inline;font-weight:400}
+.nx-sp-dialog [role=status]{color:#e8a2a2;overflow-wrap:anywhere}
+.nx-sp-dialog [role=status]:empty{display:none}
+
+</style>
 </head>
 <body>
   <div class="drawer-bg" id="drawerBg"></div>
@@ -976,7 +1012,7 @@
           <h3>알림 · 기타</h3>
           <div class="stack">
             <label class="row"><span class="row-text"><b>진행 토스트</b></span><span class="sw"><input id="nx-progress-toast" type="checkbox"></span></label>
-            <label class="row" data-nx-help-id="nx-image-done-sound"><span class="row-text"><b>이미지 생성 완료 알림음</b></span><span class="sw"><input id="nx-image-done-sound" type="checkbox"></span></label>
+            <div class="row" data-nx-help-id="nx-image-done-sound"><label class="row-text" for="nx-image-done-sound"><b>이미지 생성 완료 알림음</b></label><select class="ctrl" id="nx-image-done-sound"><option value="off">안 함</option><option value="ding">띠링</option><option value="soft">부드럽게</option><option value="bell">종소리</option><option value="loud">큰 소리</option></select></div>
             <div class="row"><span class="row-text"><b>토스트 위치</b></span>
               <select class="ctrl" id="nx-toast-anchor"><option value="tl">좌상단</option><option value="bl">좌하단</option><option value="tr">우상단</option><option value="br">우하단</option><option value="tc" selected>중상단</option></select>
             </div>
@@ -1029,6 +1065,15 @@
             </div>
           </div>
         </div>
+      <div class="group nx-settings-presets" id="nx-settings-presets">
+  <h3>설정 프리셋</h3>
+  <div class="nx-sp-picker"><label class="sr-only" for="nx-sp-select">설정 프리셋 선택</label><select class="ctrl" id="nx-sp-select"><option value="">불러오는 중…</option></select><button type="button" class="btn" id="nx-sp-apply">적용</button></div>
+  <p id="nx-sp-description" class="nx-sp-hint"></p>
+  <div class="nx-sp-toolbar"><button type="button" id="nx-sp-new">새로 만들기</button><button type="button" id="nx-sp-edit">이름 내용 편집</button><button type="button" id="nx-sp-export">JSON 내보내기</button><button type="button" id="nx-sp-import">JSON 가져오기</button><button type="button" id="nx-sp-delete">프리셋 삭제</button></div>
+  <input id="nx-sp-file" type="file" accept=".json,application/json" hidden>
+  <details class="nx-sp-scope"><summary>저장 범위 안내</summary><p>일반 설정 · 작가의 노트 4종을 저장합니다.<br>스타일 프리셋과 API 연결은 유지하며, 적용 시 다른 시스템 프롬프트는 기본값으로 돌아갑니다.</p></details>
+  <p id="nx-sp-status" class="nx-sp-status" role="status" aria-live="polite"></p>
+</div>
       </section>
 
       <section class="pane" id="gen_options">
@@ -2301,7 +2346,7 @@
   },
   "nx-image-done-sound": {
     "title": "이미지 생성 완료 알림음",
-    "body": "이미지 생성이 끝나면 짧은 알림음을 한 번 재생합니다."
+    "body": "이미지 생성이 끝나면 선택한 알림음을 한 번 재생합니다. 안 함 / 띠링 / 부드럽게 / 종소리 / 큰 소리 중에서 고릅니다."
   },
   "nx-toast-anchor": {
     "title": "토스트 위치",

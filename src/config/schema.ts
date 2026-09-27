@@ -316,6 +316,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   if (card.progress_toast == null) card.progress_toast = false;
   else card.progress_toast = card.progress_toast === true || card.progress_toast === 'true' || card.progress_toast === 1 || card.progress_toast === '1';
   card.image_done_sound = card.image_done_sound === true || card.image_done_sound === 'true' || card.image_done_sound === 1 || card.image_done_sound === '1';
+  if (!['ding', 'soft', 'bell', 'loud'].includes(String(card.image_done_sound_type))) card.image_done_sound_type = 'ding';
   card.toast_anchor = normalizeToastAnchor(card.toast_anchor);
   card.image_press_inspect = normalizeImagePressInspect(card.image_press_inspect);
   {

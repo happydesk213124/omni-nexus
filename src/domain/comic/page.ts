@@ -166,7 +166,7 @@ export function synthesizeLayout(cuts: readonly ComicCut[], withNatural = false)
     const body = [cut.base, description].filter(Boolean).join('. ');
     parts.push(body ? `${heading}. ${body}` : heading);
   }
-  return parts.length ? `${parts.join('. ')}.` : '';
+  return parts.length ? `${parts.join(', ')}.` : '';
 }
 
 export function parseComicPages(raw: unknown): ComicPage[] {

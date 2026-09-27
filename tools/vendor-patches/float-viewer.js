@@ -24,6 +24,7 @@ let nxFloatIcon = null, nxFloatImgReroll = null, nxFloatCss = null;
 let nxFloatDoc = null, nxFloatChatRoot = null, nxFloatMoveListener = null;
 let nxFloatCardId = null, nxFloatAsset = null, nxFloatGen = 0, nxFloatLastUrl = "";
 let nxFloatLastDomSrc = "", nxFloatCollapsed = null, nxFloatHidden = false;
+let nxFloatCompact = false, nxFloatCompactBtn = null;
 let nxFloatGeo = null, nxFloatIconGeo = null, nxFloatImage = null;
 let nxFloatEnsuring = null, nxFloatPainting = Promise.resolve(), nxFloatSelecting = 0;
 let nxFloatSession = '', nxFloatEpoch = 0, nxFloatHovered = false, nxFloatSelectedCard = null;
@@ -150,6 +151,7 @@ async function nxFloatClick(kind) {
   if (!nxFloatRoot || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden) return;
   nxFloatNudgeIdle();
   try {
+    if (kind === 'compact') { nxFloatCompact = !nxFloatCompact; await nxFloatApply(); return; }
     if (kind === 'counts') { await nxFloatToggleCounts(); return; }
     if (/^(min|max)-(up|down)$/.test(kind)) { await nxFloatChangeCount(kind); return; }
     if (kind === "fold") { await nxFloatSetCollapsed(true); return; }
@@ -293,8 +295,11 @@ async function nxFloatMount() {
     await bar.setAttribute("x-nx-float-bar", "1");
     const resize = await H(h.doc, "div", {});
     await resize.setAttribute("x-nx-float-resize", "1");
-    const foldGrip = await H(h.doc, "div", { text: "⋯⋯" });
+    const foldGrip = await H(h.doc, "div", {});
     await foldGrip.setAttribute("x-nx-float-foldgrip", "1");
+    const gripLabel = await H(h.doc, "span", { text: "⋯⋯", style: 'line-height:20px;' });
+    await foldGrip.appendChild(gripLabel);
+    await omniRelease(gripLabel);
     const foldGrid = await H(h.doc, "div", {});
     await foldGrid.setAttribute("x-nx-float-foldgrid", "1");
     await root.appendChild(icon);
@@ -320,12 +325,14 @@ async function nxFloatMount() {
         await b.setAttribute("x-nx-float-btn", kind);
         await host.appendChild(b);
         if (kind === "fold") nxFloatFoldBtn = b;
+        if (kind === "compact" && host === foldGrip) nxFloatCompactBtn = b;
       }
     };
     await wireBtns(NX_FLOAT_HEAD_L, spanL);
     await wireBtns(NX_FLOAT_HEAD_R, spanR);
     await wireBtns(NX_FLOAT_BAR_BTNS, bar);
     await wireBtns(NX_FLOAT_GRID_BTNS, foldGrid);
+    await wireBtns([["compact", "−"]], foldGrip);
     await nxFloatBindInputs(h);
     if (t.unloading || mountEpoch !== nxFloatEpoch || t.backendSettings?.card?.floating_viewer === false) {
       await nxFloatDispose();
@@ -369,15 +376,16 @@ async function nxFloatDispose(resetSession = true) {
   nxFloatIdleTimer = 0; nxFloatIdle = false; nxFloatHovered = false;
   await nxFloatPainting.catch(() => {});
   try { await nxFloatRoot?.remove(); await nxFloatCss?.remove(); } catch {}
-  for(const ref of new Set([nxFloatCss,nxFloatRoot,nxFloatImage,nxFloatCounts,nxFloatHead,nxFloatStage,nxFloatBar,nxFloatFoldBtn,nxFloatResize,nxFloatFoldGrip,nxFloatFoldGrid,nxFloatIcon,nxFloatImgReroll]))await omniRelease(ref);
+  for(const ref of new Set([nxFloatCss,nxFloatRoot,nxFloatImage,nxFloatCounts,nxFloatHead,nxFloatStage,nxFloatBar,nxFloatFoldBtn,nxFloatResize,nxFloatFoldGrip,nxFloatFoldGrid,nxFloatIcon,nxFloatImgReroll,nxFloatCompactBtn]))await omniRelease(ref);
   nxFloatReadingIndex=-1;nxFloatStructureDirty=true;
   nxFloatCss = null; nxFloatRoot = null; nxFloatImage = null;
   nxFloatCounts = null; nxFloatCountsOpen = false;
   nxFloatHead = null; nxFloatStage = null; nxFloatBar = null;
   nxFloatFoldBtn = null; nxFloatResize = null; nxFloatFoldGrip = null; nxFloatFoldGrid = null;
   nxFloatIcon = null; nxFloatImgReroll = null;
+  nxFloatCompactBtn = null;
   nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
-  if (resetSession) nxFloatSession = '';
+  if (resetSession) { nxFloatSession = ''; nxFloatCompact = false; }
   omniFooterTargets.delete(nxFloatKey);
 }
 // Console diagnostics (Risu devtools): __nxFloatState() dumps why it may not
@@ -392,7 +400,7 @@ globalThis.__nxFloatState = () => {
       hiddenModal: !!t._viewerHiddenForModal, hiddenRisu: !!t._viewerHiddenForRisuSettings,
       hidden: !!nxFloatHidden, mounted: !!nxFloatRoot,
       probeBound: !!nxFloatMoveListener, gallery: (t.gallery || []).length,
-      mode: nxFloatMode(), collapsed: !!nxFloatCollapsed,
+      mode: nxFloatMode(), collapsed: !!nxFloatCollapsed, compact: nxFloatCompact,
       cardId: String(nxFloatCardId || "").slice(0, 8)
     };
   } catch (e) { return { error: String(e) }; }

@@ -12,9 +12,11 @@ test('cut descriptions survive parsing and follow their own tags only when enabl
   assert.equal(page.cuts[0].natural, 'The woman on the left reaches across the table.');
   assert.doesNotMatch(page.layout, /reaches|reflects/);
   assert.equal(synthesizeLayout(page.cuts), page.layout);
+  assert.match(page.layout, /warm light, cut 2 is scenery\./);
   const detailed = synthesizeLayout(page.cuts, true);
   assert.match(detailed, /cafe, side view, warm light\. The woman/);
   assert.ok(detailed.indexOf('reaches') < detailed.indexOf('cut 2'));
+  assert.match(detailed, /table\., cut 2 is scenery\./);
   assert.match(detailed, /rainy street\. Rain reflects/);
   assert.match(comicNaturalInstruction(true), /cuts\[\]\.natural/);
   assert.match(comicNaturalInstruction(false), /OFF: omit/);

@@ -20,7 +20,7 @@ import { getConfig } from './context';
 /** Autotag-shaped vision call for one image. Throws on empty/failed looks. */
 export async function runVisionAutotagLook(
   imageBytes: BytesLike,
-  opts: { loreRef?: string } = {},
+  opts: { loreRef?: string; signal?: AbortSignal } = {},
 ): Promise<AutotagLook> {
   const prepared = await prepareAutotagImage(imageBytes);
   const u8 = prepared.bytes;
@@ -53,8 +53,9 @@ export async function runVisionAutotagLook(
   ];
   let raw = '';
   try {
-    raw = await callLlm(llm, messages);
+    raw = await callLlm(llm, messages, { signal: opts.signal });
   } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err;
     dbg('vision-autotag.llm.fail', { message: String((err as Error)?.message || err) }, 'error');
     throw new Error(`오토태그 LLM 실패: ${String((err as Error)?.message || err).slice(0, 240)}`);
   }

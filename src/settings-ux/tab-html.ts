@@ -159,7 +159,9 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   }
   if (card && keywords) keywords.textContent = String(card.stream_keywords || '');
   if (tab === 'dashboard' && card) {
-    out.querySelector<HTMLInputElement>('#nx-image-done-sound')?.toggleAttribute('checked', card.image_done_sound === true);
+    const sound = out.querySelector<HTMLSelectElement>('#nx-image-done-sound');
+    const soundType = ['ding', 'soft', 'bell', 'loud'].includes(String(card.image_done_sound_type)) ? String(card.image_done_sound_type) : 'ding';
+    if (sound) for (const option of sound.options) option.toggleAttribute('selected', option.value === (card.image_done_sound === true ? soundType : 'off'));
   }
   const chipRow = vendor.querySelector('.preset-chip-row');
   const tiles = out.querySelector('#nx-preset-chips');

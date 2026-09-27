@@ -253,6 +253,7 @@
     "inline_chat_dom_radius": 4,
     "progress_toast": true,
     "image_done_sound": false,
+    "image_done_sound_type": "ding",
     "toast_anchor": "tc",
     "image_press_inspect": "hold",
     "llm_anchor_percent": false,

@@ -451,6 +451,9 @@ function expectedAssetChange(a,b,at) {
   // The scenario separately attempts to re-enable it and asserts L-number output.
   if (/\.value\.(?:settings|json)\.card\.llm_anchor_percent$/.test(at)) return a === true && b === false;
   if (/\.value\.(?:settings|json)\.card\.omni_helper_prompt$/.test(at)) return a === undefined && b === false;
+  // Sound variants extend the existing boolean without changing old on/off settings.
+  // The scenario exercises every variant and restores the legacy ding default.
+  if (/\.value\.(?:settings|json)\.card\.image_done_sound_type$/.test(at)) return a === undefined && b === 'ding';
   if (/^(?:job\.(?:wait|wait_busy_duplicate|wait_for_folder)|speech\.job_wait)\.value\.result\.cards\[0\]\.y_percent$/.test(at)
     || /^(?:gallery\.list\.value\.items\[0\]|images\.json\.value|cards\.(?:tags|reroll)\.value\.card)\.y_percent$/.test(at)) return typeof a === 'number' && b === null;
   if(/^gallery\.(list|explore)\.value\.items\[0\]\.png_bytes$/.test(at))return Number(b)>Number(a)&&Number(a)>0;
@@ -625,6 +628,12 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  // Dashboard settings presets never existed in 1.x. Keep each new route's
+  // preservation and prompt-reset result explicit instead of normalizing it away.
+  ...['list','save','import','export','apply','delete'].map(action => [
+    `settings_presets.${action}`,
+    value => value?.valid === true ? null : `settings preset ${action} contract failed: ${JSON.stringify(value)}`,
+  ]),
   ['settings.stream_contract', v => v?.defaultOff === true && v.helperToggle === true && v.mandatoryOn === true && v.percentDisabled === true ? null : 'streaming settings contract failed'],
   ['job.commit_output_unknown', v => v?.ok === false && v.error?.code === 'not_pending' ? null : 'unknown stream attached'],
   ['job.line_placement_contract', v => v?.line === 1 && v.percent === null && v.count === 1 ? null : 'L-number placement contract failed'],

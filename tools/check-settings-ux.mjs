@@ -252,11 +252,28 @@ try {
   await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='dashboard';await paint();});
   assert.equal(await page.locator('#nx-image-done-sound').count(), 1, 'dashboard exposes image completion sound');
   assert.equal(await page.locator('[data-nx-help-id="nx-image-done-sound"]').isVisible(), true, 'completion sound control is in the active dashboard');
-  await page.locator('[data-nx-help-id="nx-image-done-sound"]').click();
+  for(const mode of ['ding','soft','bell','loud','off']) {
+    await page.locator('#nx-image-done-sound').selectOption(mode);
+    await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+    await page.waitForFunction(mode=>{const c=globalThis.uxTestRuntime.t.backendSettings.card;return c.image_done_sound===(mode!=='off')&&(mode==='off'||c.image_done_sound_type===mode);},mode);
+    await page.evaluate(async()=>{const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();t.uiTab='dashboard';await paint();});
+    assert.equal(await page.locator('#nx-image-done-sound').inputValue(),mode,'sound selection survives tab changes');
+  }
+  await page.locator('#nx-image-done-sound').selectOption('soft');
+  await page.locator('#nx-sp-new').click();
+  await page.locator('dialog input[name=name]').fill('실제 저장 경로 확인');
+  await page.evaluate(()=>{globalThis.uxTestRuntime.t.promptDrafts.author_note='프리셋 저장 직전 작성한 노트';});
+  await page.locator('dialog button[type=submit]').click();
+  await page.waitForFunction(()=>document.querySelector('#nx-sp-select option:checked')?.textContent==='실제 저장 경로 확인'&&!document.querySelector('#nx-sp-new').disabled);
+  const savedPresetId=await page.locator('#nx-sp-select').inputValue();
+  const savedPreset=await page.evaluate(async id=>JSON.parse((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings-presets/export?id='+encodeURIComponent(id))).json),savedPresetId);
+  assert.equal(savedPreset.settings.card.image_done_sound,true,'preset save flushes pending dashboard edits');
+  assert.equal(savedPreset.settings.card.image_done_sound_type,'soft');
+  assert.equal(savedPreset.prompts.author_note,'프리셋 저장 직전 작성한 노트','preset save flushes prompt drafts through the real bundle');
+  await page.locator('#nx-image-done-sound').selectOption('off');
   await page.evaluate(()=>globalThis.uxTestRuntime.flush());
-  await page.waitForFunction(() => globalThis.uxTestRuntime.t.backendSettings.card.image_done_sound === true);
-  await page.locator('[data-nx-help-id="nx-image-done-sound"]').click();
-  await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+  assert.equal(await page.locator('#nx-sp-save,#nx-sp-manage,#nx-sp-menu').count(),0);
+  assert.equal(await page.evaluate(async id=>JSON.parse((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings-presets/export?id='+encodeURIComponent(id))).json).settings.card.image_done_sound,savedPresetId),true,'live changes do not overwrite the saved preset');
   for(const nai of [{},{api_keys_v4_configured:1},{api_keys_v5_configured:1},{comfy_workflow_json:'{}'}]) {
     await page.evaluate(async nai=>{const {t,paint}=globalThis.uxTestRuntime;t.backendSettings.nai=nai;await paint();},nai);
     assert.equal(await page.locator('#nx-tabs [data-nx-tab="models"] .alarm').isVisible(),Object.keys(nai).length===0,'any image backend removes preview warning dot');

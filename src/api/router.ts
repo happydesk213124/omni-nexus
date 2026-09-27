@@ -35,6 +35,7 @@ import * as chatChrome from '../services/chat-chrome';
 import * as lorefilter from '../services/lorefilter';
 import * as charImport from '../services/char-import';
 import * as settings from '../services/settings';
+import * as settingsPresets from '../services/settings-presets';
 import * as storageMigrate from '../services/storage-migrate';
 import * as sessionAuthorNote from '../services/session-author-note';
 import * as charCommandPresets from '../services/char-command-presets';
@@ -209,6 +210,8 @@ const GET_ROUTES: readonly Route[] = [
     match: exact('/v1/character-command-presets'),
     handler: async () => ok(await charCommandPresets.listCommandPresets()),
   },
+  { match: exact('/v1/settings-presets'), handler: async () => ok(await settingsPresets.listSettingsPresets()) },
+  { match: exact('/v1/settings-presets/export'), handler: async ({ query }) => ok(await settingsPresets.exportSettingsPreset(q(query, 'id'))) },
   {
     match: exact('/v1/session-author-note-presets'),
     handler: async () => ok(await sessionAuthorNote.listSessionAuthorNotePresets()),
@@ -284,6 +287,10 @@ const GET_ROUTES: readonly Route[] = [
 // ── POST / PUT / PATCH ─────────────────────────────────────────────────────
 
 const WRITE_ROUTES: readonly Route[] = [
+  { match: exact('/v1/settings-presets/save'), handler: async ({ body }) => ok(await settingsPresets.saveSettingsPreset(body)) },
+  { match: exact('/v1/settings-presets/import'), handler: async ({ body }) => ok(await settingsPresets.importSettingsPreset(body)) },
+  { match: exact('/v1/settings-presets/apply'), handler: async ({ body }) => ok(await settingsPresets.applySettingsPreset(body)) },
+  { match: exact('/v1/settings-presets/delete'), handler: async ({ body }) => ok(await settingsPresets.deleteSettingsPreset(body)) },
   { match: exact('/v1/settings/reset'), handler: async () => ok(await settings.resetSettings()) },
   {
     match: exact('/v1/settings/import'),

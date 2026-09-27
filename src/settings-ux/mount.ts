@@ -1,4 +1,5 @@
 import { bindPromptUpdates } from './prompt-updates';
+import { bindSettingsPresets } from './settings-presets';
 import { bindCharacterOptions } from './character-options';
 import { bindModels } from './model-bindings';
 /**
@@ -348,6 +349,7 @@ export function afterPaint(): void {
   syncModelWarning();
   void bindPromptUpdates();
   const tab = activeTab();
+  if (tab === 'dashboard') bindSettingsPresets();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
   if (line) line.textContent = TAB_LABELS[tab] || '설정';

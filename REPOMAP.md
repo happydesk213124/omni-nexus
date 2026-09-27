@@ -132,6 +132,7 @@ main.ts                     entry: builds the bridge, publishes globals
 | The bridge object itself (`fetch`, `ready`) | `src/bridge/native.ts` |
 | Shot-tag 도화지 (갤러리 「샷 태그 수정」) | `src/tag-studio/` — peel/assemble in `peel.ts`/`model.ts`, overlay in `mount.ts` |
 | 설정창 크롬 / TTS 탭 afterPaint | `src/settings-ux/` — CSS inject + `__INLAY_SETTINGS_UX__.afterPaint` |
+| 대시보드 설정 프리셋 | `src/services/settings-presets.ts`, `src/domain/settings-preset.ts`, `src/settings-ux/settings-presets.ts` — 일반 설정 + 노트 4종, 기존 스타일/연결 유지 |
 | 박제 후 읽기 | `src/services/tts.ts` (`card.tts_*`) |
 | 캐릭터 LLM 명령수정 / 헤더 참고 | `src/char-command/` — `mount.ts`, `src/domain/character/command-edit.ts` |
 | 이 세션 작가 노트 | `src/services/session-author-note.ts`, tagger inject in `src/services/tagger.ts` |
@@ -175,6 +176,7 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_session_author_note_<sessionId>` | per-chat author's note (`{prefix,suffix,preset_id}`; not the global `author_note` prompt) |
 | `onx_session_author_note_presets` | reusable session-note phrases |
 | `onx_char_command_presets` | LLM 명령수정 phrase presets (legacy device row; live list is `card.command_presets`) |
+| `onx_settings_presets` | Dashboard settings presets, hidden examples and last applied id; no style collections or credentials. |
 
 **Keys are frozen.** Renaming one silently orphans every existing user's data.
 The same is true of `//@name omni-nexus` in `vite.config.ts` — Risu

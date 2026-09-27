@@ -322,6 +322,9 @@ test("client direction/focus default empty and trim to text", () => {
 });
 
 test("image completion sound defaults off and normalizes persisted booleans", () => {
+  assert.equal(migrateSettings({card:{image_done_sound:true}}).card.image_done_sound_type,'ding');
+  for(const type of ['ding','soft','bell','loud'])assert.equal(migrateSettings({card:{image_done_sound_type:type}}).card.image_done_sound_type,type);
+  assert.equal(migrateSettings({card:{image_done_sound_type:'invalid'}}).card.image_done_sound_type,'ding');
   assert.equal(migrateSettings({ card: {} }).card.image_done_sound, false);
   assert.equal(migrateSettings({ card: { image_done_sound: true } }).card.image_done_sound, true);
   assert.equal(migrateSettings({ card: { image_done_sound: "true" } }).card.image_done_sound, true);

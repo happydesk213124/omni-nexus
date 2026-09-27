@@ -138,6 +138,14 @@ skipped for health/debug.
 | `/v1/settings/export` | `{ json }` — drops `api_key`/`auth_token`/`password`/`secret`, but **not** `service_account_json`; see the note in `src/config/schema.ts`. Embeds the prompts pack as top-level `prompts: { [key]: text }` (same shape as `GET /v1/prompts/export`). |
 | `POST /v1/settings/import` | `{ json }` — a top-level `prompts` map is restored first (known pack keys only), then the settings merge runs without it, so prompt text never enters the live config |
 | `POST /v1/settings/reset` | `{}` → `{ settings }`; applies the recommended pack; **keeps API keys, window pin, card presets**; then `POST /v1/prompts/reset-defaults` `{ keep_author_note: true }` |
+| `/v1/settings-presets` | `{ items, appliedId }`; dashboard user presets and 12 editable examples |
+| `POST /v1/settings-presets/save` | `{ id?, name, description?, capture?, prompts?, comic_author_note? }`; capture current general settings, or edit an existing snapshot with `capture:false` |
+| `POST /v1/settings-presets/import` | `{ json, name? }`; accepts a preset or full settings export; saves without applying, excludes styles/connections and non-note prompts |
+| `/v1/settings-presets/export?id=…` | `{ json, name }`; portable general settings + three prompt notes and `card.comic_author_note` |
+| `POST /v1/settings-presets/apply` | `{ id }`; applies general settings and four notes, resets other system prompts, preserves current style presets/selection/tags and connection credentials |
+| `POST /v1/settings-presets/delete` | `{ id }`; removes saved preset or hides an example; does not alter live settings |
+
+The dashboard exposes one preset selector with `적용`, followed by five visible buttons in order: `새로 만들기`, `이름 내용 편집`, `JSON 내보내기`, `JSON 가져오기`, `프리셋 삭제`. Creating opens a name dialog; only its Save captures current general settings and all four notes after flushing pending edits. Editing changes the selected snapshot's name, description and notes. There is no separate overwrite control or hidden management menu; applying remains a separate action.
 
 The UI guards writes with a `settingsWriteGen` counter and merges pending patches,
 so out-of-order responses are discarded client-side. The backend just answers.
@@ -783,8 +791,11 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 
 ### Character tagging controls (0.1.4)
 
+- Session author-note search starts with comma-separated names returned by `/v1/characters/triggered` for the clicked message. Comma-separated terms match any name, case-insensitively; an empty search shows all rows and does not modify saved outfits.
+- Dashboard completion sound retains `card.image_done_sound` as its on/off flag and adds `card.image_done_sound_type` (`ding` default, `soft`, `bell`, `loud`). The select includes `off`; existing enabled settings keep the ding sound. Playback remains once per completed job.
 - `card.asset_nai_tags`: existing `off` / `prepass` / `inline`. The generation pane exposes enable and include-in-main toggles over this same value.
 - `card.image_analysis_separate`: boolean, default false. Image-bearing character analysis uses the autotag role when enabled; metadata-only inputs remain text. Inline generation receives textual image analysis in this mode.
+  During generation (inline or prepass), a failed separate image analysis supplies an explicit unavailable-result note and keeps existing text/metadata and other successful references. Raw provider errors are not sent to the tagger. Manual image autotag still reports failures; cancellation still stops generation.
 - `character_common` is the editable shared appearance prompt. Legacy `char_looks`, `autotag`, and `asset_tags_inject` records remain exportable but are no longer injected.
 - Shipped defaults preserve existing prompt edits. Per-key applied revisions live in internal `prompt:__applied__:*` meta rows; reading does not acknowledge updates.
 - Character asset selection follows the settings picker. Module selection lists active global/selected-character modules separately. New rows append without replacing the editor or roster DOM, and their writes share the live-edit queue.

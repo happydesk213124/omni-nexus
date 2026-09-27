@@ -8,7 +8,7 @@
 
 declare const __PLUGIN_VERSION__: string;
 
-export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.10';
+export const VERSION: string = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.2.11';
 
 /**
  * Identifies the installed pack. Existing edits are preserved; default revisions
@@ -62,6 +62,7 @@ export const SESSION_AUTHOR_NOTE_KEY = (sessionId: string): string =>
 export const CHAR_COMMAND_PRESETS_KEY = 'onx_char_command_presets';
 /** Reusable session-author-note phrases (not the per-session current text). */
 export const SESSION_AUTHOR_NOTE_PRESETS_KEY = 'onx_session_author_note_presets';
+export const SETTINGS_PRESETS_KEY = 'onx_settings_presets';
 export const IMAGE_KEY = (id: string): string => `onx_nximg_${String(id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 /** Wall-clock of the previous boot — a diagnostic stamp, never read for behaviour. */
 export const BOOT_STAMP_KEY = 'onx_boot_at';

@@ -106,6 +106,7 @@ export async function hydrateTaggerCharUser(request: TaggerArgs): Promise<void> 
 
 /** Optional switches for the main scene tagger call. */
 export interface BuildTaggerOptions {
+  signal?: AbortSignal;
   /**
    * When true, do not inject the NovelAI asset tag soup.
    * Used after a successful character-looks pre-pass already consumed assets
@@ -567,7 +568,9 @@ export async function buildTaggerMessages(
     const { collected, images } = await collectGenerationAssets(request);
     if (collected?.block) pushReferenceUser(messages, 'NovelAI asset tags', collected.block);
     if (assetMode === 'inline') {
-      messages.push(...await characterImageInput(images, card.image_analysis_separate === true));
+      messages.push(...await characterImageInput(images, card.image_analysis_separate === true, {
+        continueOnAnalysisFailure: true, signal: opts.signal,
+      }));
     }
   } else if (opts.skipAssetInject) {
     dbg('asset-tags.inject.skip', { reason: 'prepass_done' });

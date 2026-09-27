@@ -107,6 +107,18 @@ export async function runScenario(N, handles) {
 
   // ── settings ────────────────────────────────────────────────────────────
   await rec('settings.initial', () => get('/v1/settings'));
+  await rec('settings.sound_types', async () => {
+    const initial=(await get('/v1/settings'))?.settings?.card || {};
+    if(initial.image_done_sound_type!==undefined) {
+      for(const type of ['ding','soft','bell','loud']) {
+        await post('/v1/settings/update',{card:{image_done_sound:true,image_done_sound_type:type}});
+        const card=(await get('/v1/settings'))?.settings?.card;
+        if(card?.image_done_sound!==true || card?.image_done_sound_type!==type)throw new Error('sound type did not persist: '+type);
+      }
+      await post('/v1/settings/update',{card:{image_done_sound:initial.image_done_sound,image_done_sound_type:'ding'}});
+    }
+    return {ok:true};
+  });
   // Boot pack is user content (differs from the 1.x extract by design; see
   // compare). Sync both sides to the fixed floor before any behaviour step.
   await rec('settings.boot_floor', async () => {
@@ -1291,7 +1303,7 @@ export async function runScenario(N, handles) {
       cards: jobResult?.result?.cards?.length ?? -1,
       sent: sent.length,
       koma3: wire.includes('3::3koma::'),
-      layout: wire.includes('cut 1 is scene.') && wire.includes('cut 2 is close-up scene.'),
+      layout: wire.includes('cut 1 is scene.') && wire.includes(', cut 2 is close-up scene.'),
       closeup: wire.includes('2::close-up::'),
       xray: wire.includes('2::cross-section::'),
       sourceTag: wire.includes('source#grab'),
@@ -1543,6 +1555,58 @@ export async function runScenario(N, handles) {
     } finally {
       await post('/v1/characters', { session_id, characters: previous.characters || [] });
     }
+  });
+  // Settings presets are separate from style presets. The legacy backend has
+  // no such routes; each new contract is asserted in compare.mjs.
+  let settingsPresetId = '', capturedSettingsPresetId = '';
+  await rec('settings_presets.list', async () => {
+    const result = await get('/v1/settings-presets');
+    return { valid: result.items?.length === 12 && result.items.some(row => row.id === 'example-pov')
+      && result.items.every(row => !('presets' in row.settings.card) && !('llm' in row.settings) && Object.keys(row.prompts).length === 3) };
+  });
+  await rec('settings_presets.save', async () => {
+    const saved = await post('/v1/settings-presets/save', { name: 'Captured settings' });
+    capturedSettingsPresetId = saved.preset?.id || '';
+    const updated = await post('/v1/settings-presets/save', { id: capturedSettingsPresetId, name: 'Renamed settings', capture: false });
+    return { valid: !!capturedSettingsPresetId && updated.preset?.id === capturedSettingsPresetId
+      && updated.preset.name === 'Renamed settings' && JSON.stringify(updated.preset.settings) === JSON.stringify(saved.preset.settings) };
+  });
+  await rec('settings_presets.import', async () => {
+    const result = await post('/v1/settings-presets/import', { json: JSON.stringify({name:'Imported settings',card:{image_min:1,image_max:2,comic_author_note:'comic-note',presets:[{id:'foreign-style',name:'foreign'}],active_preset_id:'foreign-style'},llm:{api_key:'do-not-copy',endpoint:'do-not-copy'},prompts:{author_note:'main-note',asset_author_note:'asset-note',global_author_note:'global-note',tagger:'do-not-copy'}}) });
+    settingsPresetId = result.preset?.id || '';
+    return { valid: !!settingsPresetId && !JSON.stringify(result.preset).includes('do-not-copy') && !JSON.stringify(result.preset).includes('foreign-style') };
+  });
+  await rec('settings_presets.export', async () => {
+    const result = await get('/v1/settings-presets/export?id=' + settingsPresetId);
+    const file = JSON.parse(result.json);
+    return { valid: file.format === 'omni-nexus-settings-preset' && file.version === 1 && Object.keys(file.prompts).length === 3
+      && file.settings.card.comic_author_note === 'comic-note' && !('presets' in file.settings.card) && !('llm' in file.settings) };
+  });
+  await rec('settings_presets.apply', async () => {
+    await put('/v1/settings', {card:{presets:[{id:'keep-style',name:'Keep style',positive:'preserve-style',negative:'preserve-negative'}],active_preset_id:'keep-style',custom_pos:'preserve-style',custom_neg:'preserve-negative'}});
+    const before = (await get('/v1/settings')).settings;
+    await put('/v1/prompts/tagger', { text: 'replace-this-system-prompt' });
+    const result = await post('/v1/settings-presets/apply', {id:settingsPresetId});
+    const after = result.settings;
+    const prompts = (await get('/v1/prompts')).prompts;
+    const text = key => prompts.find(row => row.key === key)?.text;
+    const shipped = fs.readFileSync(new URL('../../prompts/tagger.txt', import.meta.url), 'utf8');
+    return { valid: result.ok === true && after.card.image_min === 1 && after.card.image_max === 2
+      && JSON.stringify(before.card.presets) === JSON.stringify(after.card.presets)
+      && after.card.active_preset_id === 'keep-style' && after.card.custom_pos === 'preserve-style'
+      && JSON.stringify(before.llm) === JSON.stringify(after.llm)
+      && text('author_note') === 'main-note' && text('asset_author_note') === 'asset-note' && text('global_author_note') === 'global-note'
+      && after.card.comic_author_note === 'comic-note'
+      && text('tagger').replace(/\s+/g,' ').trim() === shipped.replace(/\s+/g,' ').trim() };
+  });
+  await rec('settings_presets.delete', async () => {
+    const before = (await get('/v1/settings')).settings;
+    await post('/v1/settings-presets/delete', {id:settingsPresetId});
+    await post('/v1/settings-presets/delete', {id:capturedSettingsPresetId});
+    await post('/v1/settings-presets/delete', {id:'example-pov'});
+    const result = await get('/v1/settings-presets');
+    const after = (await get('/v1/settings')).settings;
+    return { valid: result.items.length === 11 && result.items.every(row => ![settingsPresetId,capturedSettingsPresetId,'example-pov'].includes(row.id)) && JSON.stringify(before) === JSON.stringify(after) };
   });
   return transcript;
 }
