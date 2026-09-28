@@ -1,3 +1,5 @@
+import { retainLocalCredentials } from '../core/util/export-secrets';
+import { shareableJson } from './export';
 import { withoutLegacyPercentPrompt } from '../domain/prompt/message-body';
 /**
  * Settings, the prompt store, and the health payload.
@@ -124,6 +126,11 @@ export async function exportPromptsPack(): Promise<{ version: string; prompts: R
   return { version: VERSION, prompts };
 }
 
+/** Internal preset snapshots keep the original text; only downloads are redacted. */
+export async function exportPromptsForSharing(): Promise<{ version: string; prompts: Record<string, string> }> {
+  return JSON.parse(shareableJson(await exportPromptsPack()));
+}
+
 /**
  * Import a prompts JSON pack. Accepts `{ prompts: { key: text } }`,
  * `{ prompts: [{ key, text }] }`, or a flat `{ key: text }` map.
@@ -226,7 +233,7 @@ export async function exportSettingsJson(): Promise<string> {
   // settings pack ferries them so one EXPORT backs up everything.
   const doc = JSON.parse(exportSettings(getConfig())) as Record<string, unknown>;
   doc.prompts = (await exportPromptsPack()).prompts;
-  return JSON.stringify(doc, null, 2);
+  return shareableJson(doc);
 }
 
 export async function importSettingsJson(json: string): Promise<ApiResult> {
@@ -247,9 +254,7 @@ export async function importSettingsJson(json: string): Promise<ApiResult> {
   const previous = deepcopy(getConfig());
   await idbPut('meta', { key: 'settings_backup', value: previous, updated_at: Date.now() / 1000 });
   const next = deepMerge(DEFAULT_CONFIG, imported);
-  next.llm = { ...next.llm, api_key: previous.llm?.api_key || '' };
-  next.nai = { ...next.nai, api_key: previous.nai?.api_key || '' };
-  next.auth_token = previous.auth_token || '';
+  retainLocalCredentials(next, previous);
   setConfig(next);
   await saveConfig({ flush: true });
   // Embedded pack (known keys only — importPromptsPack skips the rest).

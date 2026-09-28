@@ -134,7 +134,7 @@ const GET_ROUTES: readonly Route[] = [
   { match: exact('/v1/prompts'), handler: async () => ok({ ok: true, prompts: await settings.listPrompts() }) },
   {
     match: exact('/v1/prompts/export'),
-    handler: async () => ok({ ok: true, ...(await settings.exportPromptsPack()) }),
+    handler: async () => ok({ ok: true, ...(await settings.exportPromptsForSharing()) }),
   },
   {
     match: under('/v1/prompts/'),

@@ -1,3 +1,4 @@
+import { secureJsonExports } from './tools/vendor-patches/export-secrets.mjs';
 import { repairOmniUi } from './tools/vendor-patches/omni-repairs.mjs';
 import { compactSettingsMarkup } from './tools/vendor-patches/settings-state-markup.mjs';
 /**
@@ -47,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.0.0';
+const PLUGIN_VERSION = '1.0.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -961,6 +962,17 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.0.1 · 내보내기 인증정보 보호</strong>
+          <div class="muted" style="margin-top:8px">2026.09.29 · 공유 파일에서 인증정보를 제거합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>전체 설정 내보내기에 Google 서비스 계정 비밀키가 포함되던 문제를 수정했습니다.</li>
+            <li>설정·프리셋·캐릭터·프롬프트 JSON과 갤러리 ZIP의 JSON에서 API 키·서비스 계정·인증 토큰을 제거합니다.</li>
+            <li>노트 등에 복사된 현재 설정의 키와 비밀키 형식도 검사합니다. 사용 중인 인증정보는 기기에 그대로 보존합니다.</li>
+            <li>공유 설정을 가져와도 기존 API 키·서비스 계정·역할별 키·NAI 키 목록을 유지합니다. 다른 기기에서는 키를 직접 등록하세요.</li>
+            <li>이전에 내보낸 파일은 바뀌지 않습니다. 이미 공유한 키는 발급처에서 폐기하고 새로 발급하세요.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.0.0 · 정식 출시</strong>
@@ -14759,7 +14771,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "Omni Nexus 1.0.0 정식 출시! 삽화·만화 생성부터 캐릭터 관리, 샷 태그 수정, 프리셋과 갤러리까지 한곳에서 사용하세요. 업데이트 내역에 주요 기능과 이전 개발 기록을 정리했습니다. TTS는 아직 개발 중입니다."
+    body: "1.0.1 · 내보내기 인증정보 보호. 공유 JSON에서 API 키와 Google 서비스 계정 비밀키를 제거합니다. 현재 기기의 키는 유지되며, 다른 기기에서는 직접 등록해야 합니다. 이전에 공유한 키는 폐기·재발급하세요."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
@@ -18133,7 +18145,7 @@ const loadVendorUi = (): string => {
     if (final.includes('await lt()')) {
       throw new Error('[build] old viewer lt() must never be called');
     }
-    return compactSettingsMarkup(final);
+    return secureJsonExports(compactSettingsMarkup(final));
   })();
 };
 

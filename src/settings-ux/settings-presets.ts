@@ -1,4 +1,5 @@
 import { NOTE_KEYS, type SettingsPreset } from '../domain/settings-preset';
+import { jsonParts } from '../services/export';
 
 interface Result { ok?: boolean; items?: SettingsPreset[]; appliedId?: string; preset?: SettingsPreset; json?: string; name?: string }
 interface Actions {
@@ -167,7 +168,7 @@ export function bindSettingsPresets(): void {
     const preset = current(); if (!preset) return;
     void run('JSON 준비 중…', async () => {
       const result = await actions.request('/v1/settings-presets/export?id=' + encodeURIComponent(preset.id));
-      const url = URL.createObjectURL(new Blob([result.json!], { type: 'application/json' }));
+      const url = URL.createObjectURL(new Blob([jsonParts([result.json!])], { type: 'application/json' }));
       const link = document.createElement('a'); link.href = url; link.download = preset.name.replace(/[<>:"/\\|?*]/g, '_') + '.json';
       document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); report('프리셋 JSON 내보내기 완료');
     });

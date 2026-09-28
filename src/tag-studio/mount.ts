@@ -1,3 +1,4 @@
+import { shareableJson } from '../services/export';
 import { cleanText, joinTags } from '../core/util/text.ts';
 import { resolveCharacter } from '../domain/character/roster.ts';
 import type { CharacterInput } from '../domain/character/identity.ts';
@@ -1080,7 +1081,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       id: p.id, name: p.name, cmd: p.cmd, cmd_post: p.cmd_post,
     }));
     if (!list.length) return toast('내보낼 명령 프리셋이 없습니다.');
-    const blob = new Blob([JSON.stringify({ kind: 'inlay-llm-presets', presets: list }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([shareableJson({ kind: 'inlay-llm-presets', presets: list })], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'llm-presets.json';

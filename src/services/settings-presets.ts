@@ -1,3 +1,4 @@
+import { shareableJson } from './export';
 import { SETTINGS_PRESETS_KEY } from '../core/constants';
 import type { Settings } from '../core/types';
 import { deepcopy } from '../core/util/object';
@@ -70,7 +71,7 @@ export function importSettingsPreset(body: Record<string, unknown>) {
 export async function exportSettingsPreset(id: unknown) {
   await pending.catch(() => {});
   const preset = find(await readRegistry(), id);
-  return { ok: true, json: settingsPresetJson(preset), name: preset.name };
+  return { ok: true, json: shareableJson(JSON.parse(settingsPresetJson(preset))), name: preset.name };
 }
 export function deleteSettingsPreset(body: Record<string, unknown>) {
   return serial(async () => {

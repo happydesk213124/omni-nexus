@@ -1,3 +1,4 @@
+import { sanitizeForExport } from '../core/util/export-secrets';
 import { deepcopy } from '../core/util/object';
 
 export const SETTINGS_PRESET_FORMAT = 'omni-nexus-settings-preset';
@@ -54,7 +55,7 @@ export function normalizeSettingsPreset(raw: unknown, defaults: unknown, fallbac
 }
 
 export function settingsPresetJson(preset: SettingsPreset): string {
-  return JSON.stringify({ format: SETTINGS_PRESET_FORMAT, version: 1, name: preset.name, description: preset.description, settings: preset.settings, prompts: preset.prompts }, null, 2);
+  return JSON.stringify(sanitizeForExport({ format: SETTINGS_PRESET_FORMAT, version: 1, name: preset.name, description: preset.description, settings: preset.settings, prompts: preset.prompts }), null, 2);
 }
 
 export function applyPresetSettings(current: unknown, defaults: unknown, preset: SettingsPreset): Bag {
