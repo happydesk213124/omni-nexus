@@ -272,8 +272,20 @@ try {
   assert.equal(savedPreset.prompts.author_note,'프리셋 저장 직전 작성한 노트','preset save flushes prompt drafts through the real bundle');
   await page.locator('#nx-image-done-sound').selectOption('off');
   await page.evaluate(()=>globalThis.uxTestRuntime.flush());
-  assert.equal(await page.locator('#nx-sp-save,#nx-sp-manage,#nx-sp-menu').count(),0);
+  assert.equal(await page.locator('#nx-sp-manage,#nx-sp-menu').count(),0);
+  assert.equal(await page.locator('#nx-sp-save').count(),1);
   assert.equal(await page.evaluate(async id=>JSON.parse((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings-presets/export?id='+encodeURIComponent(id))).json).settings.card.image_done_sound,savedPresetId),true,'live changes do not overwrite the saved preset');
+  await page.locator('#nx-sp-save').click();
+  await page.locator('dialog button[value=no]').click();
+  await page.waitForFunction(()=>!document.querySelector('dialog'));
+  assert.equal(await page.evaluate(async id=>JSON.parse((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings-presets/export?id='+encodeURIComponent(id))).json).settings.card.image_done_sound,savedPresetId),true,'declining overwrite keeps the stored preset');
+  await page.evaluate(()=>{globalThis.uxTestRuntime.t.promptDrafts.author_note='덮어쓰기 직전 노트';});
+  await page.locator('#nx-sp-save').click();
+  await page.locator('dialog button[value=yes]').click();
+  await page.waitForFunction(()=>document.querySelector('#nx-sp-status')?.textContent==='‘실제 저장 경로 확인’을 현재 설정으로 저장했습니다.');
+  const overwrittenPreset=await page.evaluate(async id=>JSON.parse((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings-presets/export?id='+encodeURIComponent(id))).json),savedPresetId);
+  assert.equal(overwrittenPreset.settings.card.image_done_sound,false);
+  assert.equal(overwrittenPreset.prompts.author_note,'덮어쓰기 직전 노트','confirmed overwrite flushes prompt drafts in the real bundle');
   for(const nai of [{},{api_keys_v4_configured:1},{api_keys_v5_configured:1},{comfy_workflow_json:'{}'}]) {
     await page.evaluate(async nai=>{const {t,paint}=globalThis.uxTestRuntime;t.backendSettings.nai=nai;await paint();},nai);
     assert.equal(await page.locator('#nx-tabs [data-nx-tab="models"] .alarm').isVisible(),Object.keys(nai).length===0,'any image backend removes preview warning dot');

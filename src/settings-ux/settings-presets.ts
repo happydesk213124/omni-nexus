@@ -23,7 +23,7 @@ export function bindSettingsPresets(): void {
   const paint = () => {
     description.textContent = current()?.description || '';
     description.hidden = !description.textContent;
-    for (const id of ['apply', 'edit', 'duplicate', 'delete', 'export']) root.querySelector<HTMLButtonElement>('#nx-sp-' + id)!.disabled = busy || !current();
+    for (const id of ['apply', 'save', 'edit', 'duplicate', 'delete', 'export']) root.querySelector<HTMLButtonElement>('#nx-sp-' + id)!.disabled = busy || !current();
   };
   const refresh = async (preferred = selectedId) => {
     const result = await actions.request('/v1/settings-presets');
@@ -114,6 +114,29 @@ export function bindSettingsPresets(): void {
   on('new', () => edit());
   on('duplicate', () => { const preset = current(); if (preset) edit(preset, true); });
   on('edit', () => { const preset = current(); if (preset) edit(preset); });
+  on('save', () => {
+    const preset = current(); if (!preset) return;
+    const dialog = document.createElement('dialog'); dialog.className = 'nx-sp-dialog';
+    dialog.setAttribute('aria-label', '설정 프리셋 덮어쓰기');
+    const text = document.createElement('p'); text.textContent = `‘${preset.name}’을 현재 설정으로 덮어쓰겠습니까?`;
+    const footer = document.createElement('footer');
+    for (const [label, value] of [['아니오', 'no'], ['예', 'yes']] as const) {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.value = value;
+      if (value === 'yes') button.dataset.save = '';
+      button.addEventListener('click', () => dialog.close(value)); footer.append(button);
+    }
+    dialog.append(text, footer);
+    dialog.addEventListener('close', () => {
+      dialog.remove(); if (dialog.returnValue !== 'yes') return;
+      void run('프리셋 저장 중…', async () => {
+        await actions.flush();
+        await actions.request('/v1/settings-presets/save', { id: preset.id, name: preset.name, description: preset.description, capture: true });
+        await refresh(preset.id); report(`‘${preset.name}’을 현재 설정으로 저장했습니다.`);
+      });
+    });
+    document.body.append(dialog); dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>('button[value=no]')!.focus();
+  });
   on('delete', () => {
     const preset = current(); if (!preset) return;
     const dialog = document.createElement('dialog'); dialog.className = 'nx-sp-dialog'; dialog.setAttribute('aria-label', '설정 프리셋 삭제');

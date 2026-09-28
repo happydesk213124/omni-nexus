@@ -47,7 +47,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.12';
+const PLUGIN_VERSION = '0.2.13';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -961,6 +961,13 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.13</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>프리셋 복제를 새로 만들기 왼쪽으로 옮기고, 선택창 옆에 저장 버튼을 추가했습니다.</li>
+            <li>저장 시 프리셋 이름과 함께 현재 설정으로 덮어쓸지 묻습니다. 예를 선택할 때만 설정과 작가의 노트 4종을 갱신하며, 아니오나 창 닫기는 저장하지 않습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.2.12</strong>
