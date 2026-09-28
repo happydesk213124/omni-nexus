@@ -1,3 +1,4 @@
+import { sanitizeForExport } from '../core/util/export-secrets';
 /** Settings migration + export/import. Pure: no storage, no I/O. */
 
 import type { FocusCharacterMode, FocusPromptMode, ReverseBarMode } from '../core/types.ts';
@@ -145,29 +146,6 @@ export interface MigratedSettings {
  * is what keeps a live settings object safe to hand to `JSON.stringify` later.
  */
 const jsonClone = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? {})) as T;
-
-/**
- * Keys dropped from an exported settings file, compared lowercase so `API_KEY`
- * is caught too.
- *
- * Note that `service_account_json` is deliberately NOT in this set, matching the
- * deployed behaviour: exports are also how users move settings between devices,
- * and dropping the Vertex credential would silently break Vertex on the target
- * machine. It does mean an exported file can carry a Google service-account
- * private key, so treat exports as secrets.
- */
-const SECRET_KEYS = new Set(['api_key', 'api_keys_v5', 'api_keys_v4', 'auth_token', 'password', 'secret']);
-
-function redactSecrets(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactSecrets);
-  if (!value || typeof value !== 'object') return value;
-  const out: Record<string, unknown> = {};
-  for (const [name, child] of Object.entries(value as Record<string, unknown>)) {
-    if (SECRET_KEYS.has(name.toLowerCase())) continue;
-    out[name] = redactSecrets(child);
-  }
-  return out;
-}
 
 /** Drop in-memory preset/NAI preview data URLs. They are rebuilt on GET, not stored. */
 export function stripEphemeralPreviewUrls(settings: unknown): void {
@@ -546,9 +524,9 @@ export function applySettingsResetKeeps(
   if ('secondary_preset_id' in prevCard) nextCard.secondary_preset_id = prevCard.secondary_preset_id;
 }
 
-/** Migrated settings as pretty JSON, minus `SECRET_KEYS` — read its note first. */
+/** Sharing is credential-free; device migration requires registering keys again. */
 export function exportSettings(input: unknown): string {
-  return JSON.stringify(redactSecrets(migrateSettings(input)), null, 2);
+  return JSON.stringify(sanitizeForExport(migrateSettings(input), input), null, 2);
 }
 
 /**

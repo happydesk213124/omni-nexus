@@ -1,3 +1,4 @@
+import { jsonParts } from '../services/export';
 /**
  * The UI-contract globals.
  *
@@ -28,6 +29,7 @@ import * as messageBody from '../domain/prompt/message-body';
 import * as streamKeywords from '../domain/prompt/stream-keywords';
 
 export function installUiContractGlobals(): void {
+  Reflect.set(globalThis, '__OMNI_EXPORT__', { jsonParts });
   Reflect.set(globalThis, '__INLAY_VIEWER_CORE__', { ...viewerCore });
   Reflect.set(globalThis, '__INLAY_STREAM_KW__', {
     ...messageBody,

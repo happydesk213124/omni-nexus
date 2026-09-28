@@ -446,6 +446,10 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // 1.0.1 no longer exports the service-account credential field, even when empty.
+  // settings.vertex_credentials separately proves nonempty secrets are removed
+  // and reimporting the shared file preserves the device's existing credentials.
+  if (/^settings\.export(?:_for_import)?\.value\.json\.llm\.service_account_json$/.test(at)) return a === '' && b === undefined;
   // Retired positioning is an intentional contract, not normalization: retain
   // each difference in the report and reject any value other than disabled/null.
   // The scenario separately attempts to re-enable it and asserts L-number output.
@@ -510,7 +514,10 @@ const diff = (a, b, at, into) => {
         if (expectedAssetChange(undefined, b[k], `${at}.${k}`)) { expectedAssetChanges.push(`${at}.${k}`); continue; }
         into.push({ at: `${at}.${k}`, old: '(absent)', new: JSON.stringify(b[k])?.slice(0, 160) }); continue;
       }
-      if (!(k in b)) { into.push({ at: `${at}.${k}`, old: JSON.stringify(a[k])?.slice(0, 160), new: '(absent)' }); continue; }
+      if (!(k in b)) {
+        if (expectedAssetChange(a[k], undefined, `${at}.${k}`)) { expectedAssetChanges.push(`${at}.${k}`); continue; }
+        into.push({ at: `${at}.${k}`, old: JSON.stringify(a[k])?.slice(0, 160), new: '(absent)' }); continue;
+      }
       diff(a[k], b[k], `${at}.${k}`, into);
     }
     return;
@@ -640,7 +647,8 @@ const NEW_ONLY_STEPS = new Map([
   // Intentional fix: 1.x requires a nonempty SA form for deletion and lacks role
   // credentials. Keep the difference visible and assert the corrected API contract.
   ['settings.vertex_credentials', v => v?.saved === true && v.redacted === true && v.cleared === true
-    && v.otherKept === true && v.clearFlagGone === true ? null : 'Vertex credential save/clear contract failed: ' + JSON.stringify(v)],
+    && v.otherKept === true && v.clearFlagGone === true && v.exportedWithoutCredentials === true
+    && v.importKeepsCredentials === true ? null : 'Vertex credential save/clear/share contract failed: ' + JSON.stringify(v)],
   // Explorer now describes character-owned assets, not saved card rows. Preserve
   // the differences and assert the new inventory contract rather than normalize it.
   ['gallery.explore', v => v?.items?.length === 1 && v.folders.length === 1

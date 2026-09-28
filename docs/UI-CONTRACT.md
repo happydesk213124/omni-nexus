@@ -135,7 +135,7 @@ skipped for health/debug.
 | `/v1/settings` | `{ settings }` |
 | `PUT /v1/settings` | partial `{card?, llm?, llm_roles?, nai?}` → `{ settings }` |
 | `POST /v1/settings/update` | alias of the above |
-| `/v1/settings/export` | `{ json }` — drops `api_key`/`auth_token`/`password`/`secret`, but **not** `service_account_json`; see the note in `src/config/schema.ts`. Embeds the prompts pack as top-level `prompts: { [key]: text }` (same shape as `GET /v1/prompts/export`). |
+| `/v1/settings/export` | `{ json }` — removes API keys (including NAI key lists and role keys), the entire `service_account_json`, private keys and authentication tokens recursively. Embeds the sanitized prompts pack as top-level `prompts: { [key]: text }` (same shape as `GET /v1/prompts/export`). Import preserves credentials already registered on the receiving device. |
 | `POST /v1/settings/import` | `{ json }` — a top-level `prompts` map is restored first (known pack keys only), then the settings merge runs without it, so prompt text never enters the live config |
 | `POST /v1/settings/reset` | `{}` → `{ settings }`; applies the recommended pack; **keeps API keys, window pin, card presets**; then `POST /v1/prompts/reset-defaults` `{ keep_author_note: true }` |
 | `/v1/settings-presets` | `{ items, appliedId }`; dashboard user presets and 12 editable examples |

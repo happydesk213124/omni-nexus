@@ -1,3 +1,4 @@
+import { shareableJson } from './export';
 /**
  * Session gallery compatibility and character-asset explorer actions.
  * Explorer inventories use only asset names/owners and append order. Image
@@ -533,7 +534,7 @@ export async function exportGalleryZip(body: Record<string, unknown> = {}): Prom
   if (!imageFiles.length) return { ok: false, ...errorBody('image bytes missing', 'empty') };
   const manifest = buildGalleryManifest(named);
   const files: ZipEntryInput[] = [
-    { name: 'manifest.json', data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) },
+    { name: 'manifest.json', data: new TextEncoder().encode(shareableJson(manifest)) },
     ...imageFiles,
   ];
   const zip = packGalleryZip(files);

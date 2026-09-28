@@ -1525,10 +1525,16 @@ export async function runScenario(N, handles) {
       llm: { service_account_json: credential },
       llm_roles: { autotag: { service_account_json: credential }, asset_char: { service_account_json: credential } },
     }))?.settings;
+    const shared = (await get('/v1/settings/export'))?.json || '';
+    const exportedWithoutCredentials = !!JSON.parse(shared).llm && !shared.includes('service_account_json') && !shared.includes('private_key');
+    const restored = (await post('/v1/settings/import', { json: shared }))?.settings;
+    const importKeepsCredentials = restored?.llm?.service_account_configured === true
+      && restored?.llm_roles?.autotag?.service_account_configured === true;
     const cleared = (await put('/v1/settings', {
       llm: { clearServiceAccount: true }, llm_roles: { autotag: { clearServiceAccount: true } },
     }))?.settings;
     return {
+      exportedWithoutCredentials, importKeepsCredentials,
       saved: saved?.llm?.service_account_configured === true && saved?.llm_roles?.autotag?.service_account_configured === true,
       redacted: saved?.llm?.service_account_json === '' && saved?.llm_roles?.autotag?.service_account_json === '',
       cleared: cleared?.llm?.service_account_configured === false && cleared?.llm_roles?.autotag?.service_account_configured === false,

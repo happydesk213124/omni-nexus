@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
 
 const built = await build({ stdin: { contents: `
-  export { updateSettings, publicSettings, saveConfig } from './src/services/settings.ts';
+  export { updateSettings, publicSettings, saveConfig, exportSettingsJson, importSettingsJson, importPromptsPack, exportPromptsPack, exportPromptsForSharing } from './src/services/settings.ts';
   export { getConfig } from './src/services/context.ts';
   export { readLlmRoleFromDom } from './src/ui-contract/llm-form.ts';
 `, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', globalName: 'Subject' });
@@ -22,6 +22,30 @@ function fixture() {
   return { ...context.Subject, stored, state };
 }
 const sa = JSON.stringify({ project_id: 'test-project', client_email: 'test@example.invalid', private_key: 'fake-test-key' });
+
+test('shared settings omit service accounts and retain local credentials when reimported', async () => {
+  const f = fixture();
+  await f.updateSettings({ llm: { api_key: 'main-test-secret', service_account_json: sa }, llm_roles: {
+    autotag: { api_key: 'role-test-secret', service_account_json: sa },
+  }, nai: { api_keys_v4: ['nai-v4-test-secret'], api_keys_v5: ['nai-v5-test-secret'] } });
+  await f.importPromptsPack({ prompts: { author_note: 'pose description main-test-secret' } });
+  const json = await f.exportSettingsJson();
+  assert.equal(json.includes('fake-test-key'), false);
+  assert.equal(json.includes('service_account_json'), false);
+  assert.equal(json.includes('main-test-secret'), false);
+  assert.equal(json.includes('role-test-secret'), false);
+  assert.equal(json.includes('nai-v4-test-secret'), false);
+  assert.equal(json.includes('nai-v5-test-secret'), false);
+  assert.equal((await f.exportPromptsPack()).prompts.author_note, 'pose description main-test-secret');
+  assert.equal(JSON.stringify(await f.exportPromptsForSharing()).includes('main-test-secret'), false);
+  await f.importSettingsJson(json);
+  assert.equal(f.getConfig().llm.service_account_json, sa);
+  assert.equal(f.getConfig().llm.api_key, 'main-test-secret');
+  assert.equal(f.getConfig().llm_roles.autotag.service_account_json, sa);
+  assert.equal(f.getConfig().llm_roles.autotag.api_key, 'role-test-secret');
+  assert.equal(f.getConfig().nai.api_keys_v4[0], 'nai-v4-test-secret');
+  assert.equal(f.getConfig().nai.api_keys_v5[0], 'nai-v5-test-secret');
+});
 
 test('SA updates acknowledge durable storage and public responses redact the credential', async () => {
   const f = fixture();
