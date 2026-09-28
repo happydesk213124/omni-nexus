@@ -263,7 +263,7 @@ try {
   await page.locator('#nx-sp-new').click();
   await page.locator('dialog input[name=name]').fill('실제 저장 경로 확인');
   await page.evaluate(()=>{globalThis.uxTestRuntime.t.promptDrafts.author_note='프리셋 저장 직전 작성한 노트';});
-  await page.locator('dialog button[type=submit]').click();
+  await page.locator('dialog [data-save]').click();
   await page.waitForFunction(()=>document.querySelector('#nx-sp-select option:checked')?.textContent==='실제 저장 경로 확인'&&!document.querySelector('#nx-sp-new').disabled);
   const savedPresetId=await page.locator('#nx-sp-select').inputValue();
   const savedPreset=await page.evaluate(async id=>JSON.parse((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings-presets/export?id='+encodeURIComponent(id))).json),savedPresetId);

@@ -1,7 +1,7 @@
 {
   "name": "omni-nexus",
   "displayName": "Omni Nexus",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Omni Nexus LLM tagging + NovelAI overlay",
   "type": "module",
   "private": true,

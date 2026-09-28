@@ -914,11 +914,12 @@
       .row:has(input:disabled) { opacity: .6; cursor: default; }
     .sw:has(input:disabled) { filter: grayscale(1); cursor: default; }
 
-.nx-settings-presets .nx-sp-picker{display:flex;gap:8px;align-items:center;min-width:0}
-.nx-settings-presets #nx-sp-select{flex:1;min-width:0;width:100%;max-width:none;min-height:40px}
-.nx-settings-presets .nx-sp-picker button{flex:none;background:#7132f5;color:#fff;border:1px solid #5741d8;border-radius:12px;padding:9px 16px;min-height:40px}
-.nx-settings-presets .nx-sp-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
-.nx-settings-presets .nx-sp-toolbar button{flex:1 0 auto;min-height:36px;margin:0;padding:8px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);font-size:12px;white-space:nowrap}
+.nx-settings-presets .nx-sp-picker{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-width:0;max-inline-size:760px}
+.nx-settings-presets #nx-sp-select{flex:1 1 220px;min-width:0;width:100%;max-width:480px;min-height:36px}
+.nx-settings-presets .nx-sp-selected-actions{display:flex;gap:8px;align-items:center}
+.nx-settings-presets .nx-sp-picker button,.nx-settings-presets .nx-sp-toolbar button{flex:0 0 auto;width:auto;min-height:36px;margin:0;padding:8px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);font-size:12px;white-space:nowrap}
+.nx-settings-presets #nx-sp-apply{background:#7132f5;color:#fff;border-color:#5741d8}
+.nx-settings-presets .nx-sp-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
 .nx-settings-presets #nx-sp-delete{color:#f29da6}
 .nx-settings-presets button:disabled{opacity:.4;cursor:default}
 .nx-settings-presets button:active:not(:disabled){scale:.96}
@@ -941,7 +942,7 @@
 .nx-sp-dialog details label+label{margin-top:12px}
 .nx-sp-dialog footer{display:flex;justify-content:flex-end;gap:8px}
 .nx-sp-dialog button{border-radius:12px;border:1px solid rgba(148,151,169,.3);padding:9px 14px;background:rgba(148,151,169,.08);color:inherit;cursor:pointer;font:inherit}
-.nx-sp-dialog button[type=submit]{background:#7132f5;color:#fff;border-color:#5741d8}
+.nx-sp-dialog button[data-save]{background:#7132f5;color:#fff;border-color:#5741d8}
 .nx-sp-dialog button[value=cancel]{background:rgba(148,151,169,.08);color:inherit;border-color:rgba(148,151,169,.3)}
 .nx-sp-dialog .nx-sp-capture{flex-direction:row;align-items:center}
 .nx-sp-dialog .nx-sp-dialog-hint,.nx-sp-dialog .nx-sp-optional{color:var(--muted,#9497a9);font-size:12px}
@@ -1067,9 +1068,9 @@
         </div>
       <div class="group nx-settings-presets" id="nx-settings-presets">
   <h3>설정 프리셋</h3>
-  <div class="nx-sp-picker"><label class="sr-only" for="nx-sp-select">설정 프리셋 선택</label><select class="ctrl" id="nx-sp-select"><option value="">불러오는 중…</option></select><button type="button" class="btn" id="nx-sp-apply">적용</button></div>
+  <div class="nx-sp-picker"><label class="sr-only" for="nx-sp-select">설정 프리셋 선택</label><select class="ctrl" id="nx-sp-select"><option value="">불러오는 중…</option></select><div class="nx-sp-selected-actions"><button type="button" id="nx-sp-duplicate" title="선택한 프리셋 복제">복제</button><button type="button" id="nx-sp-edit" title="선택한 프리셋 이름과 내용 편집">편집</button><button type="button" id="nx-sp-delete" title="선택한 프리셋 삭제">삭제</button><button type="button" class="btn" id="nx-sp-apply">적용</button></div></div>
   <p id="nx-sp-description" class="nx-sp-hint"></p>
-  <div class="nx-sp-toolbar"><button type="button" id="nx-sp-new">새로 만들기</button><button type="button" id="nx-sp-edit">이름 내용 편집</button><button type="button" id="nx-sp-export">JSON 내보내기</button><button type="button" id="nx-sp-import">JSON 가져오기</button><button type="button" id="nx-sp-delete">프리셋 삭제</button></div>
+  <div class="nx-sp-toolbar"><button type="button" id="nx-sp-new">새로 만들기</button><button type="button" id="nx-sp-export">JSON 내보내기</button><button type="button" id="nx-sp-import">JSON 가져오기</button></div>
   <input id="nx-sp-file" type="file" accept=".json,application/json" hidden>
   <details class="nx-sp-scope"><summary>저장 범위 안내</summary><p>일반 설정 · 작가의 노트 4종을 저장합니다.<br>스타일 프리셋과 API 연결은 유지하며, 적용 시 다른 시스템 프롬프트는 기본값으로 돌아갑니다.</p></details>
   <p id="nx-sp-status" class="nx-sp-status" role="status" aria-live="polite"></p>

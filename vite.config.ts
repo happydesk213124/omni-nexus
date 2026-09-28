@@ -47,7 +47,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.11';
+const PLUGIN_VERSION = '0.2.12';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -961,6 +961,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>0.2.12</strong>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>설정 프리셋 팝업에서 저장·수정·삭제 버튼이 반응하지 않던 문제를 수정했습니다.</li>
+            <li>선택한 프리셋을 별도 항목으로 복제할 수 있습니다. 원본 설정과 작가의 노트 4종을 복사하며 현재 설정에는 바로 적용하지 않습니다.</li>
+            <li>선택창 옆을 복제·편집·삭제·적용 순으로 정리하고, 새로 만들기와 JSON 버튼이 넓은 화면에서 늘어나지 않도록 조정했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>0.2.11</strong>
