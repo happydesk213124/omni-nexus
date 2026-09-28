@@ -50,14 +50,14 @@ test('dashboard settings presets use real storage for create/edit/import/export/
       await page.setViewportSize({width,height:1000});
       await ui.locator('#nx-settings-presets').scrollIntoViewIfNeeded();
       assert.ok(await ui.locator('#nx-settings-presets').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
-      assert.deepEqual(await ui.locator('.nx-sp-toolbar button').allTextContents(),['새로 만들기','JSON 내보내기','JSON 가져오기']);
-      assert.deepEqual(await ui.locator('.nx-sp-selected-actions button').allTextContents(),['복제','편집','삭제','적용']);
+      assert.deepEqual(await ui.locator('.nx-sp-toolbar button').allTextContents(),['복제','새로 만들기','JSON 내보내기','JSON 가져오기']);
+      assert.deepEqual(await ui.locator('.nx-sp-selected-actions button').allTextContents(),['저장','편집','삭제','적용']);
       for(const button of await ui.locator('#nx-settings-presets button').all()) {
         assert.equal(await button.isVisible(),true);
         const bounds=await button.boundingBox();
         assert.ok(bounds.width < 150, `button must not stretch at ${width}px: ${bounds.width}`);
       }
-      assert.equal(await ui.locator('#nx-sp-save,#nx-sp-manage,#nx-sp-menu').count(),0,'no overwrite button or hidden management menu');
+      assert.equal(await ui.locator('#nx-sp-manage,#nx-sp-menu').count(),0,'no hidden management menu');
       assert.equal(await ui.locator('#nx-sp-name').count(),0,'name editing is not duplicated on the dashboard');
       await ui.locator('#nx-settings-presets').screenshot({path:`.test-build/settings-presets/dashboard-${width}.png`});
     }
@@ -126,6 +126,37 @@ test('dashboard settings presets use real storage for create/edit/import/export/
     assert.equal(exported.prompts.author_note,'수정한 작가 노트');
     assert.equal(exported.settings.card.image_max,7,'editing name and notes keeps the saved general settings');
     assert.doesNotMatch(JSON.stringify(exported),/keep-secret|keep-private|unchanged|active_preset_id/);
+    await ui.evaluate(async()=>{
+      PresetTest.getConfig().card.image_max=9;
+      PresetTest.getConfig().card.comic_author_note='현재 만화 노트';
+      for(const key of ['author_note','asset_author_note','global_author_note'])await PresetTest.setPrompt(key,'현재 '+key);
+    });
+    const beforeOverwrite=await ui.evaluate(async()=>({rows:(await PresetTest.listSettingsPresets()).items,flushes}));
+    await ui.locator('#nx-sp-save').click();
+    assert.equal(await ui.locator('dialog p').textContent(),'‘수정한 설정’을 현재 설정으로 덮어쓰겠습니까?');
+    assert.deepEqual(await ui.locator('dialog button').allTextContents(),['아니오','예']);
+    await ui.locator('dialog button[value=no]').click();
+    await ui.waitForFunction(()=>!document.querySelector('dialog'));
+    assert.deepEqual(await ui.evaluate(async()=>({rows:(await PresetTest.listSettingsPresets()).items,flushes})),beforeOverwrite,'no must not flush or change any preset');
+    await ui.locator('#nx-sp-save').click();
+    await ui.locator('dialog').press('Escape');
+    await ui.waitForFunction(()=>!document.querySelector('dialog'));
+    assert.deepEqual(await ui.evaluate(async()=>({rows:(await PresetTest.listSettingsPresets()).items,flushes})),beforeOverwrite,'escape must not overwrite');
+    await ui.locator('#nx-sp-save').click();
+    await ui.locator('dialog button[value=yes]').click();
+    await ui.waitForFunction(()=>document.querySelector('#nx-sp-status')?.textContent==='‘수정한 설정’을 현재 설정으로 저장했습니다.');
+    const afterOverwrite=await ui.evaluate(async()=>({rows:(await PresetTest.listSettingsPresets()).items,flushes}));
+    assert.equal(afterOverwrite.rows.length,beforeOverwrite.rows.length,'overwrite retains the existing identity');
+    const overwritten=afterOverwrite.rows.find(row=>row.id===id);
+    assert.equal(overwritten.name,'수정한 설정');
+    assert.equal(overwritten.settings.card.image_max,9);
+    assert.equal(overwritten.settings.card.comic_author_note,'현재 만화 노트');
+    assert.deepEqual(overwritten.prompts,{author_note:'현재 author_note',asset_author_note:'현재 asset_author_note',global_author_note:'현재 global_author_note'});
+    assert.equal(afterOverwrite.flushes,beforeOverwrite.flushes+1,'pending settings are flushed before capture');
+    assert.deepEqual(afterOverwrite.rows.filter(row=>row.id!==id),beforeOverwrite.rows.filter(row=>row.id!==id),'only the confirmed preset is overwritten');
+    await ui.evaluate(()=>paint());
+    await ui.waitForFunction(()=>!document.querySelector('#nx-sp-select').disabled);
+    assert.equal(await ui.locator('#nx-sp-select').inputValue(),id);
     await ui.locator('#nx-sp-file').setInputFiles({name:'import.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({card:{image_min:1,image_max:1,comic_author_note:'만화 노트',presets:[{id:'foreign'}]},prompts:{author_note:'불러온 노트',tagger:'DO NOT IMPORT'}}))});
     await ui.waitForFunction(()=>document.querySelector('#nx-sp-select option:checked')?.textContent==='import');
     await ui.locator('#nx-sp-apply').click();
