@@ -1568,7 +1568,15 @@ export async function runScenario(N, handles) {
     const saved = await post('/v1/settings-presets/save', { name: 'Captured settings' });
     capturedSettingsPresetId = saved.preset?.id || '';
     const updated = await post('/v1/settings-presets/save', { id: capturedSettingsPresetId, name: 'Renamed settings', capture: false });
+    const copied = await post('/v1/settings-presets/save', { copy_from: capturedSettingsPresetId, name: 'Copied settings' });
+    const original = JSON.parse((await get('/v1/settings-presets/export?id=' + capturedSettingsPresetId)).json);
+    const copiedValid = !!copied.preset?.id && copied.preset.id !== capturedSettingsPresetId
+      && copied.preset.name === 'Copied settings' && original.name === 'Renamed settings'
+      && JSON.stringify(copied.preset.settings) === JSON.stringify(updated.preset.settings)
+      && JSON.stringify(copied.preset.prompts) === JSON.stringify(updated.preset.prompts);
+    await post('/v1/settings-presets/delete', { id: copied.preset?.id });
     return { valid: !!capturedSettingsPresetId && updated.preset?.id === capturedSettingsPresetId
+      && copiedValid
       && updated.preset.name === 'Renamed settings' && JSON.stringify(updated.preset.settings) === JSON.stringify(saved.preset.settings) };
   });
   await rec('settings_presets.import', async () => {

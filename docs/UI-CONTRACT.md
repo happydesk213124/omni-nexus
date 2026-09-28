@@ -139,7 +139,7 @@ skipped for health/debug.
 | `POST /v1/settings/import` | `{ json }` — a top-level `prompts` map is restored first (known pack keys only), then the settings merge runs without it, so prompt text never enters the live config |
 | `POST /v1/settings/reset` | `{}` → `{ settings }`; applies the recommended pack; **keeps API keys, window pin, card presets**; then `POST /v1/prompts/reset-defaults` `{ keep_author_note: true }` |
 | `/v1/settings-presets` | `{ items, appliedId }`; dashboard user presets and 12 editable examples |
-| `POST /v1/settings-presets/save` | `{ id?, name, description?, capture?, prompts?, comic_author_note? }`; capture current general settings, or edit an existing snapshot with `capture:false` |
+| `POST /v1/settings-presets/save` | `{ id?, copy_from?, name, description?, capture?, prompts?, comic_author_note? }`; capture current general settings, or edit an existing snapshot with `capture:false`; `copy_from` creates a separate copy of the saved snapshot |
 | `POST /v1/settings-presets/import` | `{ json, name? }`; accepts a preset or full settings export; saves without applying, excludes styles/connections and non-note prompts |
 | `/v1/settings-presets/export?id=…` | `{ json, name }`; portable general settings + three prompt notes and `card.comic_author_note` |
 | `POST /v1/settings-presets/apply` | `{ id }`; applies general settings and four notes, resets other system prompts, preserves current style presets/selection/tags and connection credentials |

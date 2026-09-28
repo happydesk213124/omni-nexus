@@ -42,9 +42,10 @@ export function saveSettingsPreset(body: Record<string, unknown>) {
   return serial(async () => {
     const registry = await readRegistry();
     const previous = body.id ? find(registry, body.id) : null;
-    const snapshot = body.capture !== false || !previous
+    const source = previous || (body.copy_from ? find(registry, body.copy_from) : null);
+    const snapshot = !source || (!body.copy_from && body.capture !== false)
       ? { settings: getConfig(), prompts: (await exportPromptsPack()).prompts }
-      : previous;
+      : source;
     const preset = normalizeSettingsPreset({ ...snapshot, name: body.name, description: body.description, ...(body.prompts ? { prompts: body.prompts } : {}) }, DEFAULT_CONFIG);
     if (typeof body.comic_author_note === 'string') preset.settings.card.comic_author_note = body.comic_author_note;
     preset.id = previous?.id || `saved-${uuid()}`;

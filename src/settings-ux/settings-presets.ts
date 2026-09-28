@@ -23,7 +23,7 @@ export function bindSettingsPresets(): void {
   const paint = () => {
     description.textContent = current()?.description || '';
     description.hidden = !description.textContent;
-    for (const id of ['apply', 'edit', 'delete', 'export']) root.querySelector<HTMLButtonElement>('#nx-sp-' + id)!.disabled = busy || !current();
+    for (const id of ['apply', 'edit', 'duplicate', 'delete', 'export']) root.querySelector<HTMLButtonElement>('#nx-sp-' + id)!.disabled = busy || !current();
   };
   const refresh = async (preferred = selectedId) => {
     const result = await actions.request('/v1/settings-presets');
@@ -65,14 +65,14 @@ export function bindSettingsPresets(): void {
     });
   });
 
-  const edit = (preset?: SettingsPreset) => {
+  const edit = (preset?: SettingsPreset, duplicate = false) => {
     const dialog = document.createElement('dialog'); dialog.className = 'nx-sp-dialog';
-    dialog.setAttribute('aria-label', preset ? '설정 프리셋 수정' : '설정 프리셋 만들기');
-    dialog.innerHTML = `<form><h3>${preset ? '프리셋 편집' : '새 프리셋'}</h3>${preset ? '' : '<p class="nx-sp-dialog-hint">현재 설정을 새 프리셋으로 저장합니다.</p>'}<label>이름<input type="text" name="name" placeholder="예: 일상 대화용" maxlength="80" required></label><label><span>설명 <small class="nx-sp-optional">선택 사항</small></span><input type="text" name="description" maxlength="400"></label>${preset ? '<details><summary>작가의 노트 편집</summary></details>' : ''}<p role="status"></p><footer><button type="button">취소</button><button type="submit">${preset ? '변경 저장' : '프리셋 저장'}</button></footer></form>`;
+    dialog.setAttribute('aria-label', duplicate ? '설정 프리셋 복제' : preset ? '설정 프리셋 수정' : '설정 프리셋 만들기');
+    dialog.innerHTML = `<form><h3>${duplicate ? '프리셋 복제' : preset ? '프리셋 편집' : '새 프리셋'}</h3>${preset ? '' : '<p class="nx-sp-dialog-hint">현재 설정을 새 프리셋으로 저장합니다.</p>'}<label>이름<input type="text" name="name" placeholder="예: 일상 대화용" maxlength="80" required></label><label><span>설명 <small class="nx-sp-optional">선택 사항</small></span><input type="text" name="description" maxlength="400"></label>${preset ? '<details><summary>작가의 노트 편집</summary></details>' : ''}<p role="status"></p><footer><button type="button" data-cancel>취소</button><button type="button" data-save>${duplicate ? '복제 저장' : preset ? '변경 저장' : '프리셋 저장'}</button></footer></form>`;
     const form = dialog.querySelector('form')!;
     const name = form.elements.namedItem('name') as HTMLInputElement;
     const desc = form.elements.namedItem('description') as HTMLInputElement;
-    name.value = preset?.name || ''; desc.value = preset?.description || '';
+    name.value = duplicate ? (preset!.name.slice(0, 76) + ' 복사본') : preset?.name || ''; desc.value = preset?.description || '';
     const keys = [...NOTE_KEYS, 'comic_author_note'];
     if (preset) keys.forEach((key, index) => {
       const label = document.createElement('label'); label.textContent = NOTE_LABELS[index]!;
@@ -80,40 +80,49 @@ export function bindSettingsPresets(): void {
       field.value = key === 'comic_author_note' ? String(preset.settings.card.comic_author_note || '') : preset.prompts[key as typeof NOTE_KEYS[number]];
       label.append(field); form.querySelector('details')!.append(label);
     });
-    form.querySelector('button[type=button]')!.addEventListener('click', () => dialog.close());
+    form.querySelector('[data-cancel]')!.addEventListener('click', () => dialog.close());
     dialog.addEventListener('close', () => dialog.remove());
-    form.addEventListener('submit', event => {
-      event.preventDefault();
-      if (!name.value.trim()) { name.setCustomValidity('프리셋 이름을 입력하세요.'); name.reportValidity(); return; }
+    // Risu V3 omits allow-forms, so native submission never reaches a submit listener.
+    const save = () => {
+      if (!name.value.trim()) { name.setCustomValidity('프리셋 이름을 입력하세요.'); }
+      if (!form.reportValidity()) return;
       const data = new FormData(form);
-      const button = form.querySelector<HTMLButtonElement>('button[type=submit]')!;
+      const button = form.querySelector<HTMLButtonElement>('[data-save]')!;
       if (button.disabled) return;
       button.disabled = true;
+      form.querySelector('[role=status]')!.textContent = '저장 중…';
       void (async () => {
         try {
           await actions.flush();
           const result = await actions.request('/v1/settings-presets/save', {
-            id: preset?.id, name: name.value.trim(), description: data.get('description'), capture: !preset,
+            id: duplicate ? undefined : preset?.id, copy_from: duplicate ? preset?.id : undefined, name: name.value.trim(), description: data.get('description'), capture: !preset,
             ...(preset ? { prompts: Object.fromEntries(NOTE_KEYS.map(key => [key, data.get(key)])), comic_author_note: data.get('comic_author_note') } : {}),
           });
           selectedId = result.preset!.id; dialog.close(); await refresh(selectedId); report(`‘${result.preset!.name}’ 저장됨`);
         } catch (error) { form.querySelector('[role=status]')!.textContent = String((error as Error).message || error); }
         finally { button.disabled = false; }
       })();
+    };
+    form.querySelector('[data-save]')!.addEventListener('click', save);
+    form.addEventListener('submit', event => { event.preventDefault(); save(); });
+    form.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.isComposing && event.target instanceof HTMLInputElement) { event.preventDefault(); save(); }
     });
     name.addEventListener('input', () => name.setCustomValidity(''));
     document.body.append(dialog); dialog.showModal(); name.focus();
   };
   on('new', () => edit());
+  on('duplicate', () => { const preset = current(); if (preset) edit(preset, true); });
   on('edit', () => { const preset = current(); if (preset) edit(preset); });
   on('delete', () => {
     const preset = current(); if (!preset) return;
     const dialog = document.createElement('dialog'); dialog.className = 'nx-sp-dialog'; dialog.setAttribute('aria-label', '설정 프리셋 삭제');
-    const form = document.createElement('form'); form.method = 'dialog';
+    const form = document.createElement('form');
     const text = document.createElement('p'); text.textContent = `‘${preset.name}’ 프리셋을 삭제할까요? 현재 적용된 설정은 유지됩니다.`;
     const footer = document.createElement('footer');
     for (const [label, value] of [['취소', 'cancel'], ['삭제', 'delete']]) {
-      const button = document.createElement('button'); button.textContent = label!; button.value = value!; footer.append(button);
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label!; button.value = value!;
+      button.addEventListener('click', () => dialog.close(value!)); footer.append(button);
     }
     form.append(text, footer); dialog.append(form); document.body.append(dialog); dialog.showModal();
     dialog.addEventListener('close', () => {
