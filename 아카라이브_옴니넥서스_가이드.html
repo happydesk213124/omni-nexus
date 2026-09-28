@@ -1,0 +1,192 @@
+<div style="max-width:860px;margin:0 auto;padding:20px 16px;background:linear-gradient(145deg,#151226,#201936);color:#ece8f5;font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-size:16px;line-height:1.85;">
+  <div style="padding:30px 22px;border:1px solid #695186;border-radius:18px;background:linear-gradient(135deg,#382456,#211a36);">
+    <p style="margin:0 0 14px;color:#d8c4ff;font-size:13px;font-weight:700;letter-spacing:2px;">OMNI NEXUS · 1.0.0</p>
+    <h1 style="margin:0;color:#ffffff;font-size:32px;line-height:1.4;">읽던 장면을 그림으로.<br>마음에 드는 그림은 내 손으로.</h1>
+    <p style="margin:18px 0 0;color:#ece8f5;">옴니 넥서스는 RisuAI 대화를 읽고 삽화와 만화를 만드는 플러그인입니다. 캐릭터 외형을 정리하고, 완성된 그림의 태그를 고치고, 마음에 드는 결과를 모아 두는 과정까지 한곳에 담았습니다.</p>
+    <p style="margin:18px 0 0;"><span style="display:inline-block;padding:5px 12px;border:1px solid #a88bcf;border-radius:20px;color:#ffffff;font-size:14px;">1.0.0 정식 출시</span> <span style="display:inline-block;padding:5px 12px;color:#e0d2f2;font-size:14px;">2026.09.28</span></p>
+  </div>
+  <p style="margin:20px 4px;">긴 설정부터 읽을 필요는 없습니다. <strong style="color:#ffffff;">모델 연결 → 스타일 선택 → 한 장 생성</strong>부터 시작한 뒤, 필요한 기능만 하나씩 켜 보세요.</p>
+  <div style="padding:14px 18px;border-left:4px solid #ba94ff;background:linear-gradient(#282039,#282039);">
+    <strong style="color:#ffffff;">준비물</strong><br>플러그인을 사용할 수 있는 RisuAI 환경, 옴니 넥서스 JS 파일, 태깅용 LLM 연결, NovelAI 또는 ComfyUI 이미지 생성 환경이 필요합니다. 외부 모델 호출에는 사용하는 서비스의 비용이 발생할 수 있습니다.
+  </div>
+  <p style="margin:18px 4px;color:#d5c6e8;font-size:14px;">[영상 01 · 대표 시연] 대화에서 생성 시작 → 이미지가 한 장씩 나타남 → 크게보기 → 샷 태그 수정까지 20~30초로 보여 주세요.</p>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">01. 삽화 모듈을 쓰던 분께, 큰 장점 다섯 가지</h2>
+  <p>라이트보드 삽화 모듈에 익숙하다면, 옴니 넥서스에서는 <strong style="color:#ffffff;">생성을 시작하는 시점, 캐릭터를 관리하는 방법, 결과를 다듬고 보관하는 과정</strong>을 눈여겨보시면 됩니다.</p>
+  <div style="margin:20px 0;padding:0 0 16px;border-bottom:1px solid #493b5f;">
+    <p style="margin:0;color:#cbb0ff;font-size:14px;font-weight:700;">01 / 기다리는 방식</p>
+    <h3 style="margin:5px 0 8px;color:#ffffff;font-size:21px;">답변이 끝나기 전부터 준비하고, 완성된 그림부터 봅니다.</h3>
+    <p style="margin:0;">스트리밍 중 특정 표식이나 키워드를 감지하면 그 앞까지의 내용을 바탕으로 생성을 시작할 수 있습니다. 여러 장을 요청해도 모든 그림이 끝날 때까지 기다릴 필요 없이, 준비된 이미지부터 확인합니다. 답변이 끝난 뒤 자동으로 생성하거나 원하는 메시지만 수동으로 생성하는 방식도 지원합니다.</p>
+    <p style="margin:10px 0 0;color:#d5c6e8;font-size:14px;">[영상 02 · 스트리밍 생성] 답변이 출력되는 중 생성 진행 안내가 뜨고, 완성된 이미지가 순서대로 보이는 장면.</p>
+  </div>
+  <div style="margin:20px 0;padding:0 0 16px;border-bottom:1px solid #493b5f;">
+    <p style="margin:0;color:#cbb0ff;font-size:14px;font-weight:700;">02 / 캐릭터를 관리하는 방식</p>
+    <h3 style="margin:5px 0 8px;color:#ffffff;font-size:21px;">외형·코스튬·현재 옷 상태를 따로 관리합니다.</h3>
+    <p style="margin:0;">캐릭터 탭에서 이름과 별칭, 외형, 코스튬을 관리하고 로어북·페르소나·에셋을 활용해 정보를 채울 수 있습니다. 에셋에 생성 태그가 있으면 이를 참고하고, 설정에 따라 이미지 분석으로 외형을 보충합니다. 현재 채팅에서 입은 옷은 세션 작가의 노트에서 따로 지정할 수 있어, 기본 캐릭터 설정과 장면의 상태를 나누어 다루기 편합니다.</p>
+    <p style="margin:10px 0 0;color:#d5c6e8;font-size:14px;">[스크린샷 01 · 캐릭터 관리] 외형과 코스튬 목록이 보이는 캐릭터 탭. [스크린샷 02 · 현재 채팅 상태] 세션 작가의 노트의 코스튬·옷 상태 선택.</p>
+  </div>
+  <div style="margin:20px 0;padding:0 0 16px;border-bottom:1px solid #493b5f;">
+    <p style="margin:0;color:#cbb0ff;font-size:14px;font-weight:700;">03 / 그림을 고치는 방식</p>
+    <h3 style="margin:5px 0 8px;color:#ffffff;font-size:21px;">샷 태그 수정에서 보고, 고치고, 다시 뽑습니다.</h3>
+    <p style="margin:0;">이미지와 편집 화면을 함께 보면서 장면 태그, 캐릭터 외형·코스튬, 위치 좌표와 생성 설정을 손볼 수 있습니다. 자연어 명령으로 수정 방향을 전달하고, 시드를 고정한 상태로 결과를 비교하거나 생성 히스토리를 살펴볼 수도 있습니다. 만화도 컷과 등장인물을 나누어 편집합니다.</p>
+    <p style="margin:10px 0 0;color:#d5c6e8;font-size:14px;">[영상 03 · 편집 전후] 같은 그림에서 시드 고정을 켜고 표정 또는 의상 태그 한 항목을 바꾼 뒤, 생성 히스토리에서 전후를 비교.</p>
+  </div>
+  <div style="margin:20px 0;padding:0 0 16px;border-bottom:1px solid #493b5f;">
+    <p style="margin:0;color:#cbb0ff;font-size:14px;font-weight:700;">04 / 취향을 저장하는 방식</p>
+    <h3 style="margin:5px 0 8px;color:#ffffff;font-size:21px;">그림체와 사용 설정을 각각 프리셋으로 꺼내 씁니다.</h3>
+    <p style="margin:0;">그림체는 스타일 프리셋으로, 생성 방식과 작가의 노트는 설정 프리셋으로 관리합니다. 설정 프리셋에는 예제 12종이 준비되어 있고, 직접 만든 구성을 저장·복제하거나 JSON으로 주고받을 수 있습니다. 매번 여러 탭을 돌아다니며 같은 값을 다시 입력하는 수고를 줄여 줍니다.</p>
+    <p style="margin:10px 0 0;color:#d5c6e8;font-size:14px;">[스크린샷 03 · 두 종류의 프리셋] 대시보드의 설정 프리셋과 스타일 프리셋 탭을 각각 촬영.</p>
+  </div>
+  <div style="margin:20px 0;padding:0 0 16px;border-bottom:1px solid #493b5f;">
+    <p style="margin:0;color:#cbb0ff;font-size:14px;font-weight:700;">05 / 결과를 모아 보는 방식</p>
+    <h3 style="margin:5px 0 8px;color:#ffffff;font-size:21px;">채팅 안에서 감상하고, 탐색기에서 다시 찾습니다.</h3>
+    <p style="margin:0;">완성된 이미지는 채팅에 남고, 플로팅 뷰어와 크게보기로 감상할 수 있습니다. 탐색기에서는 캐릭터·채팅별 폴더, 검색, 정렬, 즐겨찾기와 선택 기능으로 결과를 찾습니다. 모아 둔 이미지는 ZIP으로 내보내고 다시 가져올 수 있습니다.</p>
+    <p style="margin:10px 0 0;color:#d5c6e8;font-size:14px;">[영상 04 · 감상과 정리] 플로팅 뷰어 접기·펼치기 → 이미지 크게보기 → 탐색기 폴더 선택 → 여러 장 선택.</p>
+  </div>
+  <p style="color:#cfc4df;font-size:14px;">비교 범위: 제공된 라이트보드 삽화 4.5.1 자료 기준입니다. 해당 모듈도 만화, 재생성, 프롬프트 편집, 캐릭터 태그 기록과 ComfyUI 연계를 지원합니다. 위 다섯 항목은 옴니의 통합 관리·편집 흐름을 중심으로 소개한 것이며, 생성 품질이나 속도의 우열을 보장하는 뜻은 아닙니다.</p>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">02. 어떤 기능이 있나요?</h2>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;background:linear-gradient(#231c33,#231c33);" open>
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">삽화 · 에셋 · 만화 생성</summary>
+    <p>대화에서 장면을 골라 그림용 태그와 설명을 만들고 이미지 생성 모델로 보냅니다. 생성 옵션에서 장수, 참고할 채팅 수, 인원 제한, 자연어 설명과 화면 비율을 조절할 수 있습니다.</p>
+    <p>만화 생성 탭에서는 만화로 만들 비율, 최대 페이지, 가로·세로·정사각 비율과 별도 생성 설정을 지정합니다. 만화 전용 LLM을 호출하거나 메인 태거에 함께 요청하는 방식을 선택할 수 있고, 자연어 보충 설명으로 컷의 구도와 행동을 더 자세히 전달할 수 있습니다.</p>
+    <p style="margin-bottom:0;color:#d5c6e8;font-size:14px;">[스크린샷 04 · 삽화와 만화] 같은 캐릭터의 일반 삽화 1장과 만화 1장을 각각 촬영. [스크린샷 05 · 만화 설정] 만화 생성 비율·페이지·비율 설정이 보이는 화면.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;background:linear-gradient(#231c33,#231c33);">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">캐릭터 · 코스튬 · 에셋 활용</summary>
+    <p>현재 캐릭터 챗과 전역 로스터를 구분해 관리합니다. 로스터는 그림에 사용할 등장인물 목록입니다. 외형과 별칭을 정리하고, 여러 코스튬을 등록해 상황에 맞게 사용합니다.</p>
+    <p>로어북에서, 페르소나에서, 에셋에서 가져오기와 오토태그를 활용할 수 있습니다. 오토태그는 이미지를 읽어 외형 태그를 만드는 기능입니다. 자동으로 채워진 내용은 캐릭터 탭에서 확인하고 고쳐 주세요.</p>
+    <p style="margin-bottom:0;">캐릭터 참고이미지는 등록과 실제 생성 모델 첨부가 별개입니다. 현재 옴니의 참고이미지 전달 기능은 NAI V4.5에서 사용하며, V5에는 같은 방식으로 전달하지 않습니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;background:linear-gradient(#231c33,#231c33);">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">작가의 노트 · 현재 채팅의 연출</summary>
+    <p>“인물의 얼굴을 가까이 보여 줘”, “실내 장면은 따뜻한 조명으로”처럼 이미지 생성 방향을 글로 지정할 수 있습니다.</p>
+    <ul style="padding-left:22px;">
+      <li><strong>메인 태거 작가의 노트:</strong> 장면 선택과 이미지 태그 작성 방향.</li>
+      <li><strong>에셋 태거 작가의 노트:</strong> 별도 에셋 태거의 외형·복장 추출 방향. 에셋 태깅을 메인 태깅에 포함하는 모드에서는 적용되지 않습니다.</li>
+      <li><strong>전역 작가의 노트:</strong> 메인·에셋·만화 LLM에 공통으로 전달할 방향.</li>
+      <li><strong>만화 작가의 프롬프트:</strong> 만화의 분위기와 연출 방향.</li>
+    </ul>
+    <p style="margin-bottom:0;">세션 작가의 노트는 현재 채팅용입니다. 선행·후행 지시와 장소, 캐릭터별 코스튬·옷 상태를 조절할 때 사용합니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;background:linear-gradient(#231c33,#231c33);">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">스타일 프리셋 · 설정 프리셋</summary>
+    <p><strong>스타일 프리셋</strong>은 그림체와 이미지 프롬프트를 관리합니다. 참고컷을 등록하고 프리셋을 복제하거나 JSON으로 가져오고 내보낼 수 있습니다. 메타데이터가 남아 있는 생성 이미지로 프리셋 정보를 불러오는 기능도 있습니다.</p>
+    <p><strong>설정 프리셋</strong>은 일반 설정과 작가의 노트 4종을 묶습니다. 대시보드에서 선택 후 적용하고, 현재 구성을 남기려면 새로 만들기 또는 저장을 사용합니다. 저장은 덮어쓰기 확인에서 승인해야 반영됩니다.</p>
+    <p style="margin-bottom:0;"><strong style="color:#f5d59b;">적용 범위를 확인해 주세요.</strong> 설정 프리셋은 스타일 프리셋과 API 연결을 유지하지만, 작가의 노트 4종 외의 시스템 프롬프트는 기본값으로 돌아갑니다. 직접 고친 프롬프트가 있다면 프롬프트 탭의 보내기로 먼저 보관해 두세요.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;background:linear-gradient(#231c33,#231c33);">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">샷 태그 수정 · 크게보기 · 탐색기</summary>
+    <p>크게보기의 수정 버튼으로 샷 태그 수정을 열어, 결과 이미지와 태그를 함께 보며 편집할 수 있습니다. 캐릭터 선택, 코스튬 적용, 좌표보기, 조립 미리보기, 시드 고정과 생성 히스토리를 제공합니다.</p>
+    <p>플로팅 뷰어는 접어서 작은 상태로 두거나 다시 펼쳐 사용할 수 있습니다. 탐색기에서는 검색·정렬·즐겨찾기·여러 장 선택과 ZIP 보관 기능을 사용합니다.</p>
+    <p style="margin-bottom:0;">생성 진행 안내와 완료 알림음도 설정할 수 있습니다. 대시보드에서 알림음을 안 함·띠링·부드럽게·종소리·큰 소리 중 선택하세요.</p>
+  </details>
+  <div style="margin:16px 0;padding:14px 18px;border-left:4px solid #e1b777;background:linear-gradient(#30273a,#30273a);">
+    <strong style="color:#f5d59b;">TTS · 개발 중</strong><br>음성 읽기와 FISHTTS 연결은 아직 개발 중입니다. TTS 탭에도 개발 중 안내가 표시됩니다.
+  </div>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">03. 처음 설치하고 한 장 만들기</h2>
+  <h3 style="margin:24px 0 8px;color:#d6bcff;font-size:20px;">1단계 · 플러그인 설치</h3>
+  <p>배포 파일 <strong>omninexus.js</strong>를 받은 뒤 RisuAI의 플러그인 관리에서 가져오고 활성화합니다. 옴니 설정을 열어 버전이 <strong>1.0.0</strong>인지 확인하세요. 기본 플러그인 설치 파일은 JS 한 개입니다.</p>
+  <p style="color:#d5c6e8;font-size:14px;">[배포 파일 자리] 게시할 때 이번 1.0.0의 omninexus.js 첨부 또는 다운로드 링크를 넣어 주세요.</p>
+  <p>옛 인레이 넥서스에서 옮겨 오는 경우에는 두 플러그인의 저장공간이 다릅니다. 필요한 프리셋·캐릭터·갤러리는 지원되는 내보내기 기능으로 보관하고, 옴니에서 가져온 결과를 확인해 주세요. 자동으로 모두 옮겨졌다고 생각하고 기존 데이터를 지우지는 마세요.</p>
+  <h3 style="margin:24px 0 8px;color:#d6bcff;font-size:20px;">2단계 · 글을 읽을 모델 연결</h3>
+  <p><strong>모델 설정 → 메인 태깅</strong>에서 소스를 고릅니다. 이미 Risu에서 쓰는 모델을 이용하려면 <strong>Risu 메인</strong> 또는 <strong>Risu 보조</strong>, 별도 연결을 쓰려면 <strong>직접 입력</strong>을 선택합니다. 직접 입력은 사용하는 서비스에 맞게 모델·주소·API 키를 채우고 <strong>연결 테스트</strong>로 확인합니다.</p>
+  <p>오토태그·에셋·만화생성은 역할별로 따로 설정할 수 있습니다. 이미지 분석을 사용할 역할에는 이미지를 읽을 수 있는 모델을 연결하세요.</p>
+  <h3 style="margin:24px 0 8px;color:#d6bcff;font-size:20px;">3단계 · 그림을 만들 모델 연결</h3>
+  <p>같은 모델 설정 탭에서 <strong>NovelAI 또는 ComfyUI</strong>를 설정합니다. NovelAI는 사용할 모델에 맞는 키와 생성 설정을 입력합니다. ComfyUI는 연결 주소와 워크플로가 필요하므로 해당 항목의 도움말을 함께 확인하세요.</p>
+  <p style="color:#d5c6e8;font-size:14px;">[스크린샷 06 · 최초 연결] 메인 태깅 설정과 이미지 생성 모델 설정을 각각 촬영. API 키와 개인 연결 주소는 가려 주세요.</p>
+  <h3 style="margin:24px 0 8px;color:#d6bcff;font-size:20px;">4단계 · 스타일과 장수 선택</h3>
+  <p><strong>스타일 프리셋</strong>에서 사용할 그림체를 선택합니다. 처음에는 <strong>생성 옵션 → Image Min / Image Max</strong>를 모두 1로 맞춰 한 장으로 시작하면 설정 결과를 확인하기 쉽습니다. 캐릭터 외형이 중요하다면 캐릭터 탭에서 이름과 외형도 확인합니다.</p>
+  <h3 style="margin:24px 0 8px;color:#d6bcff;font-size:20px;">5단계 · 원하는 메시지 생성</h3>
+  <p>대시보드에서 <strong>Power ON</strong>을 켭니다. <strong>채팅안에 바로가기툴 추가</strong>를 켜면 메시지에 붙은 <strong>⚛️</strong> 버튼으로 그 메시지의 장면 태깅을 시작할 수 있습니다. 진행 안내가 끝나면 생성된 이미지를 확인하세요.</p>
+  <p>완성된 이미지는 Risu 에셋으로 채팅에 남습니다. 대시보드의 <strong>이미지 크게보기</strong>에서 지정한 동작으로 열면 더 크게 볼 수 있습니다. 기본적으로 꾸욱 누르기를 사용할 수 있고, 더블 탭 등으로 바꿀 수도 있습니다.</p>
+  <p style="color:#d5c6e8;font-size:14px;">[영상 05 · 첫 생성] 메시지의 ⚛️ 버튼과 생성 진행, 완성된 이미지까지 한 번에 촬영.</p>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">04. 원하는 방식으로 사용하기</h2>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;" open>
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">필요한 메시지만 직접 생성하고 싶어요.</summary>
+    <p>응답 후 자동 생성과 스트리밍 키워드를 끄고, ⚛️ omni 보조 프롬도 끈 상태에서 필요한 메시지의 ⚛️ 버튼을 사용하세요. 메시지를 선택했을 때 자동으로 생성되는 설정을 쓰고 있다면 생성 방식도 수동으로 바꿉니다.</p>
+    <p style="margin-bottom:0;">장수와 스타일을 먼저 정해 두면 같은 방식으로 반복해서 생성하기 편합니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">답변이 끝날 때마다 자동으로 만들고 싶어요.</summary>
+    <p style="margin-bottom:0;"><strong>대시보드 → 응답 후 자동 생성</strong>을 켭니다. Power ON과 모델 연결을 확인하고, 생성 옵션에서 최소·최대 장수를 정하세요. 자동 생성도 설정한 모델을 호출하므로 장수는 한 장부터 늘려 가는 편이 좋습니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">본문은 나왔는데 상태창이 길어요. 먼저 생성하고 싶어요.</summary>
+    <p><strong>생성 옵션 → ⚛️ omni 보조 프롬</strong>을 켜면 이야기·대사 뒤, 부가 내용 앞에 이미지 시작 표식을 출력하도록 요청합니다. 표식을 감지하면 그 앞의 내용을 바탕으로 생성을 시작합니다.</p>
+    <p>또는 <strong>스트리밍 키워드</strong>를 켜고 상태창 앞에 늘 나오는 문구를 넣습니다. 키워드는 3글자 이상이며 쉼표로 구분합니다. 대소문자는 구분하지 않습니다. 시작 표식은 키워드 설정과 별도로 감지됩니다.</p>
+    <p><strong style="color:#f5d59b;">중간 출력이 전달되어야 작동합니다.</strong> PocketRisu의 스트리밍 최적화가 강함이면 중간 출력이 전달되지 않으므로 다른 단계를 사용하세요. Gemini의 생각 스트리밍을 쓰는 경우 Risu의 Stream Gemini Thoughts를 꺼 주세요. 본문 스트리밍을 끄라는 뜻은 아닙니다.</p>
+    <p style="margin-bottom:0;">일찍 시작하면 그 뒤에 나오는 내용은 이번 장면 분석에 포함되지 않을 수 있습니다. 끝까지 읽힌 장면이 필요하면 응답 후 자동 생성을 사용하세요.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-size:18px;font-weight:700;">외형은 유지하고 옷이나 연출만 바꾸고 싶어요.</summary>
+    <ol style="padding-left:22px;">
+      <li>캐릭터 탭에서 기본 외형과 코스튬을 정리합니다.</li>
+      <li>현재 채팅에 적용할 복장은 세션 작가의 노트에서 코스튬·옷 상태로 지정합니다.</li>
+      <li>한 장만 고칠 때는 크게보기의 수정 버튼을 눌러 샷 태그 수정으로 들어갑니다.</li>
+      <li>바꿀 항목을 편집하고 생성합니다. 시드를 유지하려면 생성 설정의 고정을 켭니다.</li>
+      <li>결과를 히스토리에서 비교하고, 사용할 결과를 확인한 뒤 저장합니다.</li>
+    </ol>
+    <p style="margin-bottom:0;">시드는 이미지 생성에 쓰는 난수의 시작값입니다. 고정하면 비교하기 편하지만, 태그를 바꿨을 때 얼굴이나 구도가 완전히 같게 유지되는 것은 아닙니다.</p>
+  </details>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">05. 헷갈리기 쉬운 버튼과 설정</h2>
+  <p><strong style="color:#d6bcff;">태그</strong>는 LLM에게 장면을 다시 분석시키는 쪽입니다. 장면 선택이나 내용부터 바꾸고 싶을 때 사용합니다.</p>
+  <p><strong style="color:#d6bcff;">재생성 · 리롤</strong>은 이미지 생성 쪽 작업입니다. 같은 장면으로 결과를 다시 뽑고 싶을 때 사용합니다. 시드를 유지하고 싶은 경우 샷 태그 수정의 고정 상태를 확인하세요.</p>
+  <p><strong style="color:#d6bcff;">수정</strong>은 샷 태그 수정 화면을 엽니다. 한 장의 장면·캐릭터·생성 설정을 직접 다듬을 때 사용합니다.</p>
+  <p><strong style="color:#d6bcff;">박제</strong>는 완성된 그림을 채팅에 Risu 에셋으로 남기는 뜻입니다. 현재 버전에서는 생성 중 표시와 완료 후 박제가 기본 흐름으로 적용됩니다. 옛 가이드처럼 두 옵션을 따로 켜야 하는 단계는 없습니다.</p>
+  <p><strong style="color:#d6bcff;">스타일 프리셋</strong>은 그림체용, <strong style="color:#d6bcff;">설정 프리셋</strong>은 사용 구성용입니다. 둘을 구분하면 프리셋을 바꿨는데 원하는 항목이 그대로인 이유를 이해하기 쉽습니다.</p>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">06. 막히면 여기부터 확인하세요</h2>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-weight:700;">버튼을 눌렀는데 생성이 안 돼요.</summary>
+    <p style="margin-bottom:0;">Power ON, 메인 태깅 연결, 이미지 생성 모델 연결을 차례로 확인하세요. 진행 안내나 디버그 탭에 나온 오류가 태깅 단계인지 이미지 생성 단계인지 확인하면 문제를 좁히기 쉽습니다. 태그는 나왔는데 그림만 실패했다면 이미지 모델의 키·할당량·연결 설정부터 확인합니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-weight:700;">캐릭터 외형이나 옷이 달라요.</summary>
+    <p style="margin-bottom:0;">캐릭터 이름·별칭과 외형 태그, 선택된 코스튬, 세션 작가의 노트의 현재 옷 상태를 확인하세요. 에셋에서 가져온 정보도 한 번 검토하는 것이 좋습니다. 참고이미지를 등록했더라도 사용하는 생성 모델과 참고이미지 모드에 따라 실제로 전달되지 않을 수 있습니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-weight:700;">스트리밍 도중에는 시작하지 않아요.</summary>
+    <p style="margin-bottom:0;">보조 프롬의 표식 또는 설정한 키워드가 실제로 출력되는지 확인하세요. PocketRisu 스트리밍 최적화 단계와 Gemini 생각 스트리밍 설정도 확인합니다. 모델이 표식을 출력하지 않거나 호스트가 중간 본문을 전달하지 않으면 조기 시작을 할 수 없습니다.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-weight:700;">설정 프리셋을 적용했더니 프롬프트가 달라졌어요.</summary>
+    <p style="margin-bottom:0;">설정 프리셋 적용 시 작가의 노트 4종 외의 시스템 프롬프트는 기본값으로 돌아갑니다. 직접 수정한 프롬프트는 미리 내보내고, 필요하면 프롬프트 탭에서 다시 가져오세요.</p>
+  </details>
+  <details style="margin:12px 0;padding:16px;border:1px solid #59476f;border-radius:12px;">
+    <summary style="color:#ffffff;font-weight:700;">TTS는 어떻게 사용하나요?</summary>
+    <p style="margin-bottom:0;">아직 개발 중입니다. 현재는 음성 기능의 완성된 사용법을 안내하지 않습니다.</p>
+  </details>
+  <p style="margin:20px 0;">오류를 제보할 때는 <strong>옴니 버전, RisuAI/PocketRisu 구분, 사용 모델, 누른 버튼, 오류 문구</strong>를 함께 적어 주세요. 같은 순서로 재현할 수 있는 짧은 영상이 있으면 확인에 도움이 됩니다.</p>
+
+  <h2 style="margin:42px 0 16px;padding-bottom:10px;border-bottom:1px solid #66517f;color:#ffffff;font-size:25px;">07. 1.0.0 정식 출시 업데이트</h2>
+  <p>개발 버전에서 다듬어 온 기능들을 모아 <strong style="color:#ffffff;">Omni Nexus 1.0.0</strong>으로 정식 출시합니다.</p>
+  <ul style="padding-left:22px;">
+    <li><strong>생성:</strong> 삽화·만화, 수동·응답 후 자동·스트리밍 중 생성.</li>
+    <li><strong>캐릭터:</strong> 외형·코스튬·에셋 활용과 현재 채팅의 옷 상태 관리.</li>
+    <li><strong>편집:</strong> 샷 태그 수정, 시드 고정, 자연어 명령과 생성 히스토리.</li>
+    <li><strong>설정:</strong> 스타일·설정 프리셋, 작가의 노트와 JSON 가져오기·내보내기.</li>
+    <li><strong>감상·보관:</strong> 플로팅 뷰어, 크게보기, 탐색기와 갤러리 ZIP.</li>
+    <li><strong>이번 정리:</strong> 버전·대시보드 안내를 통일하고 이전 개발 기록을 접어서 정리.</li>
+    <li><strong>개발 중 안내:</strong> TTS 탭에서 준비 중인 기능임을 표시.</li>
+  </ul>
+  <p style="color:#cfc4df;font-size:14px;">상세한 이전 수정 내역은 플러그인의 업데이트 내역에서 “이전 개발 버전 기록”을 펼치면 볼 수 있습니다.</p>
+
+  <div style="margin:36px 0 0;padding:22px;border:1px solid #695186;border-radius:16px;background:linear-gradient(135deg,#382456,#211a36);">
+    <h2 style="margin:0 0 10px;color:#ffffff;font-size:24px;">한 장 만들어 보고, 취향에 맞게 다듬어 보세요.</h2>
+    <p style="margin:0;">처음에는 모델 연결과 스타일만 맞추면 됩니다. 캐릭터 관리, 만화, 샷 편집은 필요해질 때 하나씩 사용해 보세요.</p>
+    <p style="margin:12px 0 0;color:#d5c6e8;font-size:14px;">[다운로드 자리] 1.0.0 배포 파일 또는 링크를 여기에 넣어 주세요. 버그와 건의는 댓글로 남겨 주세요.</p>
+  </div>
+  <details style="margin:22px 0 0;padding:14px;border-top:1px solid #59476f;">
+    <summary style="color:#d6bcff;font-weight:700;">참고 · 감사</summary>
+    <p style="font-size:14px;">기존 인레이 넥서스 가이드에 기재된 참고 자료를 이어 적습니다.</p>
+    <ul style="padding-left:22px;font-size:14px;">
+      <li>프롬프트 참고: <a href="https://arca.live/b/characterai/176675290" target="_blank" rel="noopener noreferrer"><span style="color:#d6bcff;text-decoration:underline;">인레이 모듈</span></a></li>
+      <li>UI 참고: <a href="https://arca.live/b/characterai/177582896" target="_blank" rel="noopener noreferrer"><span style="color:#d6bcff;text-decoration:underline;">Archive Nexus</span></a></li>
+      <li>기존 큐레이터 로직·프리셋 JSON 참고: <a href="https://arca.live/b/characterai/178025192" target="_blank" rel="noopener noreferrer"><span style="color:#d6bcff;text-decoration:underline;">NovelAI 참고 글</span></a></li>
+    </ul>
+  </details>
+</div>

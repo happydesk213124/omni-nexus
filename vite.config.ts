@@ -47,7 +47,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '0.2.13';
+const PLUGIN_VERSION = '1.0.0';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -960,8 +960,23 @@ const VENDOR_CURATION_PANEL_PATCH =
     } else t.uiTab === "explorer" ? u = ma() : t.uiTab === "changelog" ? (u = \`
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
-          <div class="muted" style="margin-top:8px">최신 버전이 위에 옵니다.</div>
+          <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
         </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.0.0 · 정식 출시</strong>
+          <div class="muted" style="margin-top:8px">2026.09.28 · 개발 버전에서 다듬어 온 기능을 모아 Omni Nexus 1.0.0으로 정식 출시합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>생성: 수동·응답 후 자동·스트리밍 중 생성, 완성된 이미지부터 표시하고 채팅에 박제하는 흐름을 제공합니다.</li>
+            <li>캐릭터: 로어북·에셋·페르소나에서 외형을 가져오고, 캐릭터별 코스튬과 현재 채팅의 옷 상태를 관리합니다.</li>
+            <li>편집: 샷 태그 수정에서 장면·캐릭터·만화 컷을 편집하고, 시드 고정·명령 수정·생성 히스토리를 활용할 수 있습니다.</li>
+            <li>설정: 스타일 프리셋과 설정 프리셋을 구분해 관리합니다. 설정 프리셋은 일반 설정과 작가의 노트 4종의 저장·복제·JSON 공유를 지원합니다.</li>
+            <li>감상·보관: 플로팅 뷰어·크게보기·탐색기에서 이미지를 보고, 갤러리 ZIP 내보내기·가져오기를 사용할 수 있습니다.</li>
+            <li>이번 정리: 버전 표시와 대시보드 안내를 통일하고, 이전 개발 버전 업데이트 내역을 접어 정리했습니다.</li>
+            <li>개발 중: TTS 탭에 아직 개발 중인 기능임을 안내합니다.</li>
+          </ul>
+        </div>
+        <details style="margin-top:14px">
+          <summary style="padding:12px;font-weight:700">이전 개발 버전 기록 · 0.2.13–0.1.1</summary>
         <div class="card" style="margin-top:14px">
           <strong>0.2.13</strong>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
@@ -1116,6 +1131,7 @@ const VENDOR_CURATION_PANEL_PATCH =
             <li>스피너·이미지 삽입 줄을 빈줄을 제외한 본문 기준으로 맞추고 외형에 섞인 penis 태그의 노출 상태 처리를 보완했습니다.</li>
           </ul>
         </div>
+        </details>
       \` ) : t.uiTab === "debug" && (u = \``;
 
 /** Debug tab: 로그 / 태깅 sub-panels for asset-NAI probe. */
@@ -14743,7 +14759,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "참고이미지는 등록된 캐릭터의 이름·별칭으로 검색합니다. 메타데이터에 머리·눈 정보가 부족하면 이미지로 보충합니다. 공통 캐릭터 프롬프트 기본값도 갱신했습니다."
+    body: "Omni Nexus 1.0.0 정식 출시! 삽화·만화 생성부터 캐릭터 관리, 샷 태그 수정, 프리셋과 갤러리까지 한곳에서 사용하세요. 업데이트 내역에 주요 기능과 이전 개발 기록을 정리했습니다. TTS는 아직 개발 중입니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

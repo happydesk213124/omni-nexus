@@ -30,6 +30,7 @@ for (const [previewId, tab] of Object.entries(map)) {
 panes.card = panes.style_presets;
 panes.curation = `
 <div class="stack">
+  <div class="block" role="status"><strong>TTS · 개발 중</strong><p style="margin:8px 0 0">아직 개발 중인 기능입니다. 음성 읽기와 연결 설정은 준비 중입니다.</p></div>
   <div class="block">캐릭터 말이 박제되면 그 줄을 읽습니다. Power가 꺼져 있으면 읽지 않습니다.</div>
   <label class="row"><span class="row-text"><b>읽기</b></span><span class="sw"><input id="nx-tts-on" type="checkbox"></span></label>
   <div class="row"><span class="row-text"><b>속도</b></span><input class="ctrl" id="nx-tts-rate" type="number" min="0.5" max="2" step="0.1" value="1"></div>
