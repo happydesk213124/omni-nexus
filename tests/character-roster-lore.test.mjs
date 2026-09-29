@@ -1,7 +1,7 @@
 import {test,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
-const bundle=await build({stdin:{contents:`export * from './src/storage/character-roster';export {sessionIdHash} from './src/core/util/text';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node'});
+const bundle=await build({stdin:{contents:`export * from './src/storage/character-roster';export {sessionIdHash,unifiedSessionIdForCharacter} from './src/core/util/text';export {ensureCastIds,resolveCastNames,resolveCastCharacters} from './src/services/cast-ids';export {seedCastId} from './src/domain/gallery/cast-ids';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node'});
 const api=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 let chars,old,discard;
 beforeEach(()=>{
@@ -11,6 +11,78 @@ beforeEach(()=>{
 });
 const scope=(chat)=>'risu_'+api.sessionIdHash('bot-a|'+chat);
 const row={id:'alice',name:'Alice',appearance:'blue eyes',attire:'shirt',costumes:[{name:'default',attire:'shirt'}]};
+
+test('copied bot owns its lore despite the old ID; both save paths rebind without losing data',async()=>{
+ await api.mutateCharacterRoster('bot-a',()=>[row]);
+ await api.writeCharacterEntryKey('bot-a','lorefilter',['t:Alice']);
+ chars[1].globalLore=structuredClone(chars[0].globalLore);
+ const original=JSON.stringify(chars[0]);
+ const copied=JSON.stringify(chars[1]);
+ assert.equal((await api.readCharacterRoster('bot-b'))[0].name,'Alice');
+ assert.deepEqual(await api.readCharacterEntryKey('bot-b','lorefilter'),['t:Alice']);
+ assert.equal(JSON.stringify(chars[1]),copied,'reads must not rewrite lore');
+ await api.mutateCharacterRoster('bot-b',rows=>rows.map(r=>({...r,name:'Copy'})));
+ let saved=JSON.parse(chars[1].globalLore[1].content);
+ assert.equal(saved.characterId,'bot-b');assert.deepEqual(saved.lorefilter,['t:Alice']);
+ saved.characterId='old-import-id';chars[1].globalLore[1].content=JSON.stringify(saved);
+ await api.writeCharacterEntryKey('bot-b','lorefilter',[]);
+ saved=JSON.parse(chars[1].globalLore[1].content);
+ assert.equal(saved.characterId,'bot-b');assert.equal(saved.roster[0].name,'Copy');
+ assert.deepEqual(saved.lorefilter,[]);assert.equal(JSON.stringify(chars[0]),original);
+});
+
+test('optional partial scans isolate each bad bot and shared roster without weakening direct reads',async()=>{
+ await api.mutateCharacterRoster('bot-b',()=>[row]);
+ chars[0].globalLore.push({comment:'omni.nexus.data.global',content:'broken'});
+ const before=JSON.stringify(chars),errors=[];
+ assert.equal((await api.allCharacterRosters((scope,error)=>errors.push({scope,error}))).length,1);
+ assert.equal(errors.length,1);assert.equal(errors[0].scope,api.unifiedSessionIdForCharacter('bot-a'));
+ assert.match(errors[0].error.message,/bot-a/);
+ await assert.rejects(api.allCharacterRosters());
+ await assert.rejects(api.mutateCharacterRoster('bot-a',()=>[]));
+ const get=globalThis.risuai.getDatabase;
+ globalThis.risuai.getDatabase=async()=>({...await get(),modules:[{id:'inlay-inray-display',lorebook:[{comment:'omni.nexus.data.globalcharacter',content:'broken'}]}]});
+ errors.length=0;
+ assert.equal((await api.allCharacterRosters((scope,error)=>errors.push({scope,error}))).length,1);
+ assert.equal(errors.length,2);assert.equal(errors[0].scope,'__global__');
+ assert.equal(JSON.stringify(chars),before);
+});
+
+test('existing cast IDs never read other bots; new IDs and viewer lookup survive a bad bot',async()=>{
+ await api.mutateCharacterRoster('bot-a',()=>[{...row,cast_id:'abcd'},{...row,id:'bob',name:'Bob',cast_id:''}]);
+ chars[1].globalLore.push({comment:'omni.nexus.data.global',content:'broken'});
+ const before=JSON.stringify(chars[1]);
+ const get=globalThis.risuai.getCharacterFromIndex;let otherReads=0;
+ globalThis.risuai.getCharacterFromIndex=async i=>{if(i===1)otherReads++;return get(i);};
+ assert.deepEqual(await api.ensureCastIds('bot-a',[{id:'alice'}]),{alice:'abcd'});
+ assert.equal(otherReads,0);
+ const issued=await api.ensureCastIds('bot-a',[{id:'bob'}]);
+ assert.match(issued.bob,/^[0-9a-f]{4}$/);
+ assert.equal((await api.readCharacterRoster('bot-a')).find(r=>r.id==='bob').cast_id,issued.bob);
+ assert.deepEqual(await api.resolveCastNames(['abcd',issued.bob]),{abcd:'Alice',[issued.bob]:'Bob'});
+ assert.equal((await api.resolveCastCharacters(['abcd'])).characters[0].id,'alice');
+ assert.ok(otherReads>0);assert.equal(JSON.stringify(chars[1]),before);
+});
+
+test('new cast IDs still avoid healthy-bot collisions and duplicate requests reuse the issued ID',async()=>{
+ await api.mutateCharacterRoster('bot-a',()=>[row]);
+ const taken=api.seedCastId('Alice||');
+ await api.mutateCharacterRoster('bot-b',()=>[{...row,id:'other',name:'Other',cast_id:taken}]);
+ const random=Math.random;Math.random=()=>taken==='0000'?0.5:0;
+ try {
+  const issued=await api.ensureCastIds('bot-a',[{id:'alice'},{id:'alice'}]);
+  assert.notEqual(issued.alice,taken);
+  assert.equal(issued.alice,taken==='0000'?'8888':'0000');
+  assert.equal((await api.readCharacterRoster('bot-a'))[0].cast_id,issued.alice);
+  assert.equal((await api.readCharacterRoster('bot-b'))[0].cast_id,taken);
+ } finally {Math.random=random;}
+});
+
+test('invalid lore reports the affected bot and exact failed setting',async()=>{
+ await api.mutateCharacterRoster('bot-a',()=>[row]);
+ chars[0].name='문제 봇';chars[0].globalLore[1].alwaysActive=true;
+ await assert.rejects(api.readCharacterRoster('bot-a'),/문제 봇.*항상 활성화/);
+});
 test('one bot roster is shared by its chats and isolated from another bot without legacy fallback',async()=>{
  assert.deepEqual(await api.readCharacterRoster(scope('one')),[]);
  await api.mutateCharacterRoster(scope('one'),()=>[row]);
