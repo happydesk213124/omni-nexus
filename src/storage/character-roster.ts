@@ -62,7 +62,16 @@ async function readEntryData(t: Target): Promise<{ char: Row; data: Row }> {
   let data: Row | null;
   try { data = object(JSON.parse(content)); }
   catch { throw new Error(`캐릭터 저장 데이터 오류 · ${String(char.name || t.id)} · ${CHARACTER_ROSTER_LORE} 내용이 올바른 JSON이 아닙니다. 원본은 보존했습니다.`); }
-  if (entry.key !== '' || entry.alwaysActive !== false || entry.mode !== 'normal' || data?.version !== 1 || data.characterId !== t.id || !Array.isArray(data.roster)) throw new Error('Invalid ' + CHARACTER_ROSTER_LORE + '; refusing overwrite');
+  const invalid = [
+    entry.key !== '' && '키워드가 비어 있지 않음',
+    entry.alwaysActive !== false && '항상 활성화가 꺼져 있지 않음',
+    entry.mode !== 'normal' && '모드가 일반이 아님',
+    data?.version !== 1 && '저장 버전이 1이 아님',
+    !Array.isArray(data?.roster) && '캐릭터 목록 형식 오류',
+  ].filter(Boolean);
+  if (invalid.length || !data) throw new Error(`캐릭터 저장 데이터 오류 · ${String(char.name || t.id)} · ${CHARACTER_ROSTER_LORE}: ${invalid.join(', ')}. 원본은 보존했습니다.`);
+  // The enclosing bot owns this lore, including after a copy/import. A stale
+  // embedded ID is informational; both write paths stamp the current owner.
   return { char, data };
 }
 
@@ -117,9 +126,19 @@ export async function rosterOwnerScopesForSession(sessionId:string):Promise<stri
   }
   return out;
 }
-export async function allCharacterRosters():Promise<CharacterRecord[]> {
-  const rows:CharacterRecord[]=[...(await readShared()).roster];
-  for(const t of await targets()) rows.push(...(await read(t)).roster);
+export async function allCharacterRosters(onReadError?: (scope: string, error: unknown) => void):Promise<CharacterRecord[]> {
+  // Partial results are opt-in for cast lookup. Storage/export callers still
+  // fail closed rather than mistaking an unreadable roster for an empty one.
+  const rows:CharacterRecord[]=[];
+  const collect = async (scope: string, load: () => Promise<{roster: CharacterRecord[]}>) => {
+    try { rows.push(...(await load()).roster); }
+    catch (error) {
+      if (!onReadError) throw error;
+      onReadError(scope, error);
+    }
+  };
+  await collect('__global__', readShared);
+  for(const t of await targets()) await collect(t.scope, () => read(t));
   return rows;
 }
 export async function mutateCharacterRoster(scope:string,change:(rows:CharacterRecord[])=>CharacterRecord[]):Promise<void> {

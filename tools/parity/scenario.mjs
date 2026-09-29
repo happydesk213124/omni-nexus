@@ -422,8 +422,33 @@ export async function runScenario(N, handles) {
     const b=db.characters.find(c=>c.chaId==='sess_chat_b');
     const entry=c=>c.globalLore.find(l=>l.comment==='omni.nexus.data.global');
     const ae=entry(a),be=entry(b);
-    return {stored:!!ae&&!!be,disabled:ae?.key===''&&ae?.alwaysActive===false,
+    const result = {stored:!!ae&&!!be,disabled:ae?.key===''&&ae?.alwaysActive===false,
       isolated:ae&&be ? JSON.parse(ae.content).roster[0].appearance==='old chat A marker' && JSON.parse(be.content).roster[0].appearance==='old chat B marker' : false};
+    if (!ae || !be) return result;
+    const ai=db.characters.indexOf(a),bi=db.characters.indexOf(b);
+    try {
+      // A copied lore entry belongs to its enclosing bot. An unrelated broken
+      // bot must not prevent filename-cast lookup from returning healthy rows.
+      const copy=structuredClone(a), broken=structuredClone(b);
+      const data=JSON.parse(entry(copy).content);
+      data.characterId='previous-owner';data.lorefilter=['t:keep'];
+      data.roster[0].cast_id='beef';entry(copy).content=JSON.stringify(data);
+      entry(broken).content='broken JSON';
+      await globalThis.risuai.setCharacterToIndex(ai,copy);
+      await globalThis.risuai.setCharacterToIndex(bi,broken);
+      const names=await post('/v1/shots/resolve-cast',{ids:['beef']});
+      const details=await post('/v1/shots/resolve-cast',{ids:['beef'],details:true});
+      result.corruptIsolated=names.beef===data.roster[0].name && details.characters?.some(c=>c.id===data.roster[0].id);
+      await post('/v1/characters',{session_id:a.chaId,character:{id:data.roster[0].id,name:data.roster[0].name,priority:7}});
+      const saved=JSON.parse(entry(await globalThis.risuai.getCharacterFromIndex(ai)).content);
+      result.ownerRebound=saved.characterId===a.chaId && saved.roster.some(r=>r.id===data.roster[0].id&&r.priority===7)
+        && JSON.stringify(saved.lorefilter)==='["t:keep"]';
+      result.badLorePreserved=entry(await globalThis.risuai.getCharacterFromIndex(bi)).content==='broken JSON';
+    } finally {
+      await globalThis.risuai.setCharacterToIndex(ai,a);
+      await globalThis.risuai.setCharacterToIndex(bi,b);
+    }
+    return result;
   });
 
   // ── legacy appearance API ──────────────────────────────────────────────

@@ -16,6 +16,14 @@ import { errorBody, makeFetchError } from '../core/errors';
 import { bytesToDataUrlAsync, sniffImageMime } from '../core/util/bytes';
 import { listCharacters, upsertCharacter } from './characters';
 
+type RosterReadError = (scope: string, error: unknown) => void;
+function readCastRosters(onReadError?: RosterReadError) {
+  return allCharacterRosters((scope, error) => {
+    dbg('cast.roster.read.fail', { scope, message: String((error as Error)?.message || error), background: true }, 'warn');
+    onReadError?.(scope, error);
+  });
+}
+
 function seedTextFor(row: { name?: unknown; aliases?: unknown; original?: unknown }): string {
   const aliases = Array.isArray(row.aliases) ? row.aliases.join(',') : String(row.aliases ?? '');
   return `${cleanText(row.name, 200)}|${cleanText(aliases, 1000)}|${cleanText(row.original, 400)}`;
@@ -30,13 +38,10 @@ export async function ensureCastIds(
   wants: ReadonlyArray<{ id?: unknown; name?: unknown }>,
 ): Promise<Record<string, string>> {
   const scopeKey = cleanText(scope, 200) || GLOBAL_SCOPE;
+  if (!wants.some(w => cleanText(w.id, 80))) return {};
   const rows = await listCharacters(scopeKey);
   const byId = new Map(rows.map((r) => [cleanText(r.id, 80), r]));
-  const taken = new Set<string>();
-  for (const r of await allCharacterRosters()) {
-    const c = sanitizeCastId((r as { cast_id?: unknown }).cast_id);
-    if (c) taken.add(c);
-  }
+  let taken: Set<string> | undefined;
   const out: Record<string, string> = {};
   for (const w of wants) {
     const id = cleanText(w.id, 80);
@@ -47,6 +52,10 @@ export async function ensureCastIds(
       out[id] = existing;
       continue;
     }
+    // Reusing a persisted ID needs only its owner's roster. Scan for collisions
+    // once, and only when this call actually needs to issue a new ID.
+    if (!taken) taken = new Set((await readCastRosters()).map(r => sanitizeCastId(r.cast_id)).filter(Boolean));
+    if (out[id]) continue;
     let candidate = seedCastId(seedTextFor({ name: row?.name ?? w.name, aliases: row?.aliases, original: row?.original }));
     let guard = 0;
     while (taken.has(candidate) && guard++ < 100) candidate = randomCastId();
@@ -59,11 +68,11 @@ export async function ensureCastIds(
 }
 
 /** Fullscreen path: cast ids → display names, '' when unknown. */
-export async function resolveCastNames(ids: readonly unknown[]): Promise<Record<string, string>> {
+export async function resolveCastNames(ids: readonly unknown[], onReadError?: RosterReadError): Promise<Record<string, string>> {
   const want = new Set(ids.map((v) => sanitizeCastId(v)).filter(Boolean));
   const out: Record<string, string> = {};
   if (!want.size) return out;
-  for (const r of await allCharacterRosters()) {
+  for (const r of await readCastRosters(onReadError)) {
     const c = sanitizeCastId((r as { cast_id?: unknown }).cast_id);
     if (c && want.has(c) && !(c in out)) out[c] = cleanText(r.name, 200);
   }
@@ -73,7 +82,7 @@ export async function resolveCastNames(ids: readonly unknown[]): Promise<Record<
 /** Identity travels with the name so a global cast never opens a session namesake. */
 export async function resolveCastCharacters(ids: readonly unknown[]): Promise<{ characters: Array<{cast_id: string; id: string; scope: string; name: string}> }> {
   const want = new Set(ids.map(sanitizeCastId).filter(Boolean));
-  const rows = want.size ? await allCharacterRosters() : [];
+  const rows = want.size ? await readCastRosters() : [];
   return { characters: rows.filter(row => want.has(sanitizeCastId(row.cast_id))).map(row => ({
     cast_id: sanitizeCastId(row.cast_id), id: String(row.id), scope: String(row.scope || GLOBAL_SCOPE), name: cleanText(row.name, 200),
   })) };
@@ -112,7 +121,11 @@ export async function shotAssetByName(name: unknown, includeCast = true, deliver
   const image = delivery === 'blob' ? { image_url, image_bytes: bytes.byteLength } : { image_url };
   if (!includeCast) return { ...image, ids, names: {} };
   try {
-    return { ...image, ids, names: await resolveCastNames(ids) };
+    let warning = '';
+    const names = await resolveCastNames(ids, (_scope, error) => {
+      warning ||= 'cast_resolve_failed: ' + String((error as Error)?.message || error);
+    });
+    return { ...image, ids, names, ...(warning ? { warning } : {}) };
   } catch (error) {
     // An unrelated corrupt roster must not discard successfully read pixels.
     const warning = 'cast_resolve_failed: ' + String((error as Error)?.message || error);

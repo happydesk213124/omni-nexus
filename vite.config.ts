@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.0.1';
+const PLUGIN_VERSION = '1.0.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -962,6 +962,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.0.2 · 캐릭터 저장 오류로 생성이 막히는 문제 수정</strong>
+          <div class="muted" style="margin-top:8px">2026.09.30 · 캐릭터 데이터가 복사되었거나 다른 봇 데이터에 문제가 있어도 이미지 생성을 계속할 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>복사한 봇의 로어북에 이전 봇 ID가 남아 있어도 저장 데이터를 읽고, 다음 저장 때 현재 ID로 갱신합니다.</li>
+            <li>다른 봇의 저장 오류가 이미지 생성과 뷰어의 캐릭터 이름 조회를 막지 않습니다.</li>
+            <li>고장 난 저장 내용을 자동으로 비우거나 덮어쓰지 않고 원본을 보존합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.0.1 · 내보내기 인증정보 보호</strong>
@@ -14771,7 +14780,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.0.1 · 내보내기 인증정보 보호. 공유 JSON에서 API 키와 Google 서비스 계정 비밀키를 제거합니다. 현재 기기의 키는 유지되며, 다른 기기에서는 직접 등록해야 합니다. 이전에 공유한 키는 폐기·재발급하세요."
+    body: "1.0.2 · 캐릭터 저장 안정화. 복사된 봇 ID와 다른 캐릭터의 저장 오류가 이미지 생성을 막지 않으며, 다음 저장 때 현재 봇 ID를 기록합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
