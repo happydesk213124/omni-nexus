@@ -318,7 +318,8 @@ function incompleteTargetsForLooks(
 
 /**
  * Looks-only pre-pass: asset tags (+ optional images).
- * No chat message, no filled-roster dump, no story lore, no lb-xnai pack.
+ * No chat message, no filled-roster dump or story lore. Manual imports may
+ * explicitly supply their selected lb-xnai instructions above every reference.
  * Global, asset and session notes guide appearance extraction in that order.
  */
 export async function buildCharacterLooksMessages(
@@ -326,6 +327,7 @@ export async function buildCharacterLooksMessages(
   assetBlock: string,
   assetNames: string[] = [],
   previews: AssetLookPreview[] = [],
+  opts: { loreExtraPriority?: string } = {},
 ): Promise<LlmMessage[]> {
   const sessionId = cleanText(request.session_id, 200);
   const looks = await characterPrompt('batch');
@@ -338,6 +340,7 @@ export async function buildCharacterLooksMessages(
     label: "Asset Author's Note",
     text: await getPrompt('asset_author_note'),
   });
+  if (opts.loreExtraPriority) messages.push({ role: 'system', content: opts.loreExtraPriority });
 
   const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
   const sourceSessionIds = Array.isArray(request.source_session_ids)

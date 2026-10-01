@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.0.2';
+const PLUGIN_VERSION = '1.0.3';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -962,6 +962,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.0.3 · 캐릭터·페소 가져오기에서 lb-xnai 최우선 적용</strong>
+          <div class="muted" style="margin-top:8px">2026.10.01 · lb-xnai.lb.extra를 체크하면 에셋·이미지 분석에서도 해당 지시와 태그를 우선합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>로어북·캐릭터 시트·페소 가져오기의 텍스트, 에셋 메타데이터, 이미지 분석 LLM에 최우선 지시를 함께 보냅니다.</li>
+            <li>별도 이미지 분석 모델에도 적용하며, 이미지·에셋·설명과 충돌하면 lb-xnai 지시와 태그를 우선하도록 요청합니다.</li>
+            <li>가져오는 캐릭터의 이름·별칭에 맞는 구역과 공통 지시만 보내고, 체크를 끄면 적용하지 않습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.0.2 · 캐릭터 저장 오류로 생성이 막히는 문제 수정</strong>
@@ -14780,7 +14789,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.0.2 · 캐릭터 저장 안정화. 복사된 봇 ID와 다른 캐릭터의 저장 오류가 이미지 생성을 막지 않으며, 다음 저장 때 현재 봇 ID를 기록합니다."
+    body: "1.0.3 · 캐릭터·페소 가져오기에서 lb-xnai.lb.extra를 체크하면 텍스트·에셋·이미지 분석 LLM 모두에 해당 지시와 태그를 최우선으로 따르도록 요청합니다. 별도 이미지 분석 모델에도 적용합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

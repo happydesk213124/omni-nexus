@@ -14,7 +14,7 @@ import { cleanText, parseAliasList } from '../core/util/text';
 import { resolveCharacter } from '../domain/character/roster';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 import { characterHasAppearance } from '../domain/character/tags';
-import { formatLoreExtraAuthorNote, isCharacterImageExtraLore, loreExtraInstructionBody, trimCharacterImageTagLore } from '../domain/lore/extra';
+import { characterImageExtraPriorityNote } from '../domain/lore/extra';
 import { resolveLlmRole } from '../domain/llm/roles';
 import {
   formatAssetTagsInjectBlock,
@@ -278,6 +278,7 @@ async function runPackedLooks(
   rows: ResolvedRow[],
   lorebook: LoreEntry[],
   extraHints: Record<string, string> = {},
+  loreExtraPriority = '',
 ): Promise<Record<string, unknown>[]> {
   setLastAssetWeightMap(packed.weightMap || new Map());
   const block = formatAssetTagsInjectBlock(packed);
@@ -294,12 +295,14 @@ async function runPackedLooks(
     block,
     names,
     previews,
+    { loreExtraPriority },
   );
   const needsVisual = packed.groups.some(group =>
     !metadataHasHairAndEyes([...group.common, ...group.assets.flatMap(asset => asset.unique)]));
   if (needsVisual && !previews.length) {
     messages.push(...await characterImageInput(rows.flatMap(row => row.bytes?.length
-      ? [{ name: row.name, trigger: row.name, bytes: row.bytes }] : []), getConfig().card.image_analysis_separate === true));
+      ? [{ name: row.name, trigger: row.name, bytes: row.bytes }] : []), getConfig().card.image_analysis_separate === true,
+      { loreExtraPriority }));
   }
   const chars = stampIdentity(await parseLooks(messages, 'asset_char'), rows);
   if (!chars.length) return [];
@@ -318,7 +321,7 @@ async function looksSystem(): Promise<string> {
   return characterPrompt('batch');
 }
 
-async function runVisionBatch(scope: string, characterId: string, rows: ResolvedRow[]): Promise<void> {
+async function runVisionBatch(scope: string, characterId: string, rows: ResolvedRow[], loreExtraPriority = ''): Promise<void> {
   try {
     const sys = await characterPrompt('batch');
     const parts: LlmContentPart[] = [{
@@ -339,7 +342,11 @@ async function runVisionBatch(scope: string, characterId: string, rows: Resolved
       parts.push({ type: 'image_url', image_url: { url: `data:${prepared.mime || 'image/png'};base64,${b64}` } });
     }
     const chars = stampIdentity(
-      await parseLooks([{ role: 'system', content: sys }, { role: 'user', content: parts }], 'autotag'),
+      await parseLooks([
+        { role: 'system', content: sys },
+        ...(loreExtraPriority ? [{ role: 'system' as const, content: loreExtraPriority }] : []),
+        { role: 'user', content: parts },
+      ], 'autotag'),
       rows,
     );
     if (!chars.length) throw new Error('이미지 분석 결과에 캐릭터 외형이 없습니다.');
@@ -356,18 +363,15 @@ async function runTextBatch(
   characterId: string,
   rows: ResolvedRow[],
   xnai = false,
+  lorebook?: LoreEntry[],
 ): Promise<boolean> {
   try {
     const sys = await looksSystem();
     const messages: LlmMessage[] = [{ role: 'system', content: sys }];
     if (xnai) {
-      const hostLore = await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries());
-      const extra = hostLore.find((e) => isCharacterImageExtraLore(e));
-      const raw = cleanText(extra?.content || String(extra?.data || ''), 50000);
+      const hostLore = lorebook ?? await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries());
       const names = rows.flatMap((r) => [r.name, ...r.aliases]);
-      const note = formatLoreExtraAuthorNote(rows.some(row => row.pick.kind === 'persona')
-        ? trimCharacterImageTagLore(raw, [], names)
-        : loreExtraInstructionBody(raw, names));
+      const note = characterImageExtraPriorityNote(hostLore, names);
       if (note) messages.push({ role: 'system', content: note });
     }
     const body = rows.map((r) => {
@@ -663,6 +667,7 @@ async function runLoreAssetLooksChunk(
   characterId: string,
   rows: ResolvedRow[],
   lorebook: LoreEntry[],
+  xnai: boolean,
 ): Promise<void> {
   const triggerKeys = parseAliasList(rows.flatMap((r) => [r.name, ...r.aliases]));
   if (!triggerKeys.length) return;
@@ -688,6 +693,7 @@ async function runLoreAssetLooksChunk(
       rows,
       lorebook,
       collected.originalHints || {},
+      xnai ? characterImageExtraPriorityNote(lorebook, triggerKeys) : '',
     );
   } catch (err) {
     dbg('char-import.lore.fail', { message: String((err as Error)?.message || err) }, 'warn');
@@ -699,9 +705,10 @@ async function runLoreAssetLooks(
   characterId: string,
   rows: ResolvedRow[],
   parallel: boolean,
+  hostLore: LoreEntry[],
+  xnai: boolean,
 ): Promise<void> {
   if (!rows.length) return;
-  const hostLore = await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries());
   const lorebook: LoreEntry[] = hostLore.length
     ? hostLore
     : rows.map((r) => ({
@@ -711,7 +718,7 @@ async function runLoreAssetLooks(
       key: r.aliases,
     }));
   await mapPool(chunk(rows, META_PER), parallel, async (part) => {
-    await runLoreAssetLooksChunk(sessionId, characterId, part, lorebook);
+    await runLoreAssetLooksChunk(sessionId, characterId, part, lorebook, xnai);
   });
 }
 
@@ -745,7 +752,11 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
   const lore = work.filter((r) => r.pick.kind === 'lore');
   const own = work.filter((r) => r.pick.kind !== 'lore');
 
-  await runLoreAssetLooks(writeScope, characterId, lore, parallel);
+  const hostLore = work.length ? await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries()) : [];
+  const priorityForRows = (rows: ResolvedRow[]): string => xnai
+    ? characterImageExtraPriorityNote(hostLore, rows.flatMap(row => [row.name, ...row.aliases]))
+    : '';
+  await runLoreAssetLooks(writeScope, characterId, lore, parallel, hostLore, xnai);
 
   const loreNeedImg = (await stillMissing(writeScope, characterId, lore))
     .filter((r) => !r.bytes?.length);
@@ -756,24 +767,12 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
     assignLookBytes(loreNeedImg, looks);
   }
 
-  const hostLore = own.length || lore.length ? await (characterId ? fetchCharacterLorebookEntries(characterId) : fetchHostLorebookEntries()) : [];
-
-  for (const row of own) {
-    const names = [row.name, ...row.aliases];
-    const refs = hostLore.filter(isCharacterImageExtraLore)
-      .map(entry => trimCharacterImageTagLore(entry.content || entry.data, [], names)).filter(Boolean);
-    if (refs.length) {
-      row.text = refs.join('\n\n') + '\n\n' + row.text;
-      await runTextBatch(writeScope, characterId, [row]);
-    }
-  }
-
   const meta = (await stillMissing(writeScope, characterId, own)).filter((r) => r.plains.length);
   const metaChunks = chunk(meta, META_PER);
   await mapPool(metaChunks, parallel, async (rows) => {
     try {
       const packed = packedFromMetaRows(rows);
-      await runPackedLooks(writeScope, characterId, packed, [], rows, hostLore);
+      await runPackedLooks(writeScope, characterId, packed, [], rows, hostLore, {}, priorityForRows(rows));
     } catch (err) {
       dbg('char-import.meta.fail', { message: String((err as Error)?.message || err) }, 'warn');
     }
@@ -783,7 +782,7 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
     .filter((r) => !r.plains.length && r.bytes?.length);
   const visChunks = chunk(vision, VISION_PER);
   await mapPool(visChunks, parallel, async (rows) => {
-    await runVisionBatch(writeScope, characterId, rows);
+    await runVisionBatch(writeScope, characterId, rows, priorityForRows(rows));
   });
 
   const seen = new Set<string>();
@@ -795,7 +794,7 @@ export async function runImportFill(body: Record<string, unknown>): Promise<ApiR
   });
   const textChunks = chunkText(textRows);
   await mapPool(textChunks, parallel, async (rows) => {
-    await runTextBatch(writeScope, characterId, rows, xnai);
+    await runTextBatch(writeScope, characterId, rows, xnai, hostLore);
   });
 
   const leftover = await stillMissing(writeScope, characterId, work);

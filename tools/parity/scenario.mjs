@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_LLM_REPLY, PNG_1X1 } from './host.mjs';
+import { DEFAULT_LLM_REPLY, PNG_1X1, PNG_NAI_1X1 } from './host.mjs';
 
 // Fixed sync floor for both backends (the pre-user-defaults first-boot
 // extract). Boot/reset packs are user content and differ from 1.x by design,
@@ -1646,6 +1646,54 @@ export async function runScenario(N, handles) {
     const result = await get('/v1/settings-presets');
     const after = (await get('/v1/settings')).settings;
     return { valid: result.items.length === 11 && result.items.every(row => ![settingsPresetId,capturedSettingsPresetId,'example-pov'].includes(row.id)) && JSON.stringify(before) === JSON.stringify(after) };
+  });
+  await rec('chars.import_extra_priority', async () => {
+    // The legacy importer has no all-path priority contract. Assert the intended
+    // Omni behavior against the actual outbound calls, not normalized prompt text.
+    if (N.VERSION === '1.3.0') return { valid: true };
+    const original = await globalThis.risuai.getCharacterFromIndex(0);
+    const settings = (await get('/v1/settings')).settings;
+    // PNG_1X1 is a permissive legacy host stub; strip metadata from the valid
+    // NAI fixture so this path exercises the real strict image decoder.
+    const png = Buffer.from(PNG_NAI_1X1), chunks = [png.subarray(0, 8)];
+    for (let offset = 8; offset + 12 <= png.length;) {
+      const end = offset + 12 + png.readUInt32BE(offset);
+      if (!['tEXt', 'zTXt', 'iTXt'].includes(png.toString('ascii', offset + 4, offset + 8))) chunks.push(png.subarray(offset, end));
+      offset = end;
+    }
+    const visionBytes = new Uint8Array(Buffer.concat(chunks));
+    try {
+      await put('/v1/settings', {card:{image_analysis_separate:true,llm_reverse_bar:false,llm_tag_cal:false}});
+      for (const [material, bytes] of [['metadata', PNG_NAI_1X1], ['image', visionBytes]]) {
+        const name = material === 'metadata' ? 'PriorityMetaAlice' : 'PriorityVisionBob';
+        const image = await globalThis.risuai.saveAsset(bytes);
+        await globalThis.risuai.setCharacterToIndex(0, {...original,name,image,
+          globalLore:[{comment:'lb-xnai.lb.extra',key:'',alwaysActive:false,
+            content:`## Character Image Tags\n### ${name}\nPARITY_EXTRA_PRIORITY\n### Other Person\nUNRELATED_EXTRA_PRIORITY`}],
+        });
+        handles.setLlmReply(JSON.stringify({name,appearance:'girl, blue hair',hair_style:'long hair',eye_color:'blue eyes, tsurime',
+          new_characters:[{name,appearance:'girl, blue hair',hair_style:'long hair',eye_color:'blue eyes, tsurime'}]}));
+        const before = handles.llmRequests.length;
+        const result = await post('/v1/characters/import-fill', {scope:'__global__',character_id:original.chaId,
+          picks:[{kind:'charinfo',id:'charinfo'}],xnai:true});
+        if (result.filled !== 1 || result.failed.length) throw new Error(`Extra priority import failed: ${material}`);
+        const calls = handles.llmRequests.slice(before);
+        if (!calls.length) throw new Error('Extra priority import made no model call');
+        for (const call of calls) {
+          const notes = call.messages.filter(m => m.role === 'system' && String(m.content).startsWith('# Priority: lb-xnai.lb.extra'));
+          if (notes.length !== 1 || !notes[0].content.includes('PARITY_EXTRA_PRIORITY')
+            || !notes[0].content.includes('highest-priority source')
+            || JSON.stringify(call.messages).includes('UNRELATED_EXTRA_PRIORITY')) {
+            throw new Error(`Extra priority missing from ${material} model call`);
+          }
+        }
+      }
+      return { valid: true };
+    } finally {
+      handles.setLlmReply(DEFAULT_LLM_REPLY);
+      await globalThis.risuai.setCharacterToIndex(0, original);
+      await put('/v1/settings', {card:settings.card});
+    }
   });
   return transcript;
 }
