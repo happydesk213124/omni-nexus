@@ -49,6 +49,8 @@ const bundle = await build({stdin:{contents:`
  export {characterHasAppearance,syncGenderIntoAppearance,composeCharacterCaptionTags} from './src/domain/character/tags';
  `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'esm',platform:'node',define:{__PLUGIN_ID__:'"omni-nexus"'},plugins:process.env.BREAK_META_COMPLETENESS?[{name:'break-completeness',setup(builder){
  builder.onLoad({filter:/look-completeness\.ts$/},()=>({loader:'ts',contents:'export function metadataHasHairAndEyes(){return true;}'}));
+ }}]:process.env.BREAK_IMPORT_EXTRA_PRIORITY?[{name:'break-import-extra',setup(builder){
+ builder.onLoad({filter:/domain[\\/]lore[\\/]extra\.ts$/},args=>({loader:'ts',contents:readFileSync(args.path,'utf8').replace('entries.filter(isCharacterImageExtraLore)','[].filter(isCharacterImageExtraLore)')}));
  }}]:[]});
 let sequence=0;
 async function runtime() {
@@ -285,6 +287,58 @@ test('persona import includes its alias-matched module extra without another per
   const requests=JSON.stringify(host.llmRequests);
   assert.match(requests,/blue hair, tsurime/);
   assert.doesNotMatch(requests,/UNRELATED APPEARANCE/);
+});
+
+test('checked extra takes priority in character and persona imports across text, metadata and vision',async()=>{
+ for(const kind of ['persona','charinfo','lore']) for(const material of ['text','metadata','image'])
+ for(const separate of [false,true]) for(const xnai of [false,true]) {
+  const {api,host,config}=await runtime();
+  const label=`${kind}/${material}/separate=${separate}/xnai=${xnai}`;
+  config.llm_roles.asset_char={...config.llm,follow_main:false};
+  config.card.image_analysis_separate=separate;
+  config.card.lorebook=false;config.card.lore_extra='off';
+  api.setConfig(config);
+  const extras=[
+    {comment:'lb-xnai.lb.extra',key:'',alwaysActive:false,content:'## Character Image Tags\nCOMMON_EXTRA_RULE\n### Alice\nEXTRA_BLUE_HAIR\n### Other Person\nUNRELATED_EXTRA_TAGS'},
+    {comment:'lb-xnai.lb.extra',key:'',alwaysActive:false,content:'### Alice\nEXTRA_ACCESSORY_RULE'},
+  ];
+  const image=material==='text'?'':'alice-image';
+  const bot={chaId:'smoke-character-save',name:'Alice',description:'DESCRIPTION_RED_HAIR',image,
+    globalLore:[{comment:'Alice',key:'Alice',content:'DESCRIPTION_RED_HAIR'},...extras],
+    additionalAssets:kind==='lore'&&image?[['Alice default',image]]:[],chats:[]};
+  await globalThis.risuai.setCharacterToIndex(0,bot);
+  const originalGet=globalThis.risuai.getDatabase;
+  globalThis.risuai.getDatabase=async(...args)=>({...await originalGet(...args),personas:[
+    {id:'p',name:'Alice',personaPrompt:'PERSONA_RED_HAIR',icon:image},
+  ]});
+  await globalThis.risuai.setDatabase({modules:[{id:'inlay-inray-display',namespace:'inlay.inray_display',lorebook:[],assets:[]}],enabledModules:[]});
+  globalThis.risuai.getCharacter=async()=>bot;
+  globalThis.risuai.readImage=async()=>material==='metadata'?PNG_NAI_1X1:PNG_NO_META;
+  const look={name:'Alice',gender:'girl',hair_color:'blue hair',hair_style:'long hair',eye_color:'blue eyes, tsurime',appearance:'girl, blue hair'};
+  host.setLlmReply(JSON.stringify({...look,new_characters:[look]}));
+  const result=await api.runImportFill({scope:kind==='persona'?'__global__':bot.chaId,
+    character_id:bot.chaId,picks:[{kind,id:kind==='persona'?'p':kind==='lore'?'t:alice':'charinfo'}],xnai});
+  assert.equal(result.filled,1,label);
+  assert.deepEqual(result.failed,[],label);
+  assert.ok(host.llmRequests.length>0,label);
+  // Every actual model call must receive the choice, including separate vision.
+  for(const request of host.llmRequests) {
+    const priority=request.messages.filter(m=>m.role==='system'&&typeof m.content==='string'&&m.content.startsWith('# Priority: lb-xnai.lb.extra'));
+    assert.equal(priority.length,xnai?1:0,label);
+    const all=JSON.stringify(request.messages);
+    assert.equal(all.includes('EXTRA_BLUE_HAIR'),xnai,label);
+    assert.equal(all.includes('EXTRA_ACCESSORY_RULE'),xnai,label);
+    assert.doesNotMatch(all,/UNRELATED_EXTRA_TAGS/,label);
+    if(xnai) {
+      assert.match(priority[0].content,/highest-priority source/,label);
+      assert.match(priority[0].content,/override conflicting character\/persona descriptions, roster data, asset metadata and visible image details/,label);
+    }
+  }
+  const hasPixels=host.llmRequests.some(request=>JSON.stringify(request.messages).includes('image_url'));
+  assert.equal(hasPixels,material!=='text',label);
+  if(material==='text') assert.match(JSON.stringify(host.llmRequests),kind==='persona'?/PERSONA_RED_HAIR/:/DESCRIPTION_RED_HAIR/,label);
+  if(material==='metadata') assert.match(JSON.stringify(host.llmRequests),/black hair/,label);
+ }
 });
 
 test('revision migration alerts only for the newly introduced shared prompt',async()=>{

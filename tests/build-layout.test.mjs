@@ -1952,25 +1952,25 @@ test('import picker is centered and offers lb-xnai next to parallel', () => {
   assert.match(patch, /xnai,/);
 });
 
-test('import-fill text path can attach lb-xnai; asset looks cannot', () => {
+test('import-fill priority is wired to text, metadata and vision paths', () => {
   const fill = read('src', 'services', 'char-import.ts');
   const textStart = fill.indexOf('async function runTextBatch');
   const textEnd = fill.indexOf('function chunk<T>', textStart);
   assert.ok(textStart >= 0 && textEnd > textStart, 'runTextBatch not found');
   const text = fill.slice(textStart, textEnd);
   assert.match(text, /xnai/);
-  assert.match(text, /formatLoreExtraAuthorNote/);
+  assert.match(text, /characterImageExtraPriorityNote/);
   assert.match(text, /role:\s*'system'/);
 
   const packedStart = fill.indexOf('async function runPackedLooks');
   const packedEnd = fill.indexOf('async function looksSystem', packedStart);
   assert.ok(packedStart >= 0 && packedEnd > packedStart, 'runPackedLooks not found');
-  assert.doesNotMatch(fill.slice(packedStart, packedEnd), /formatLoreExtraAuthorNote|loreExtraInstructionBody/);
+  assert.match(fill.slice(packedStart, packedEnd), /\{ loreExtraPriority \}/);
 
   const visStart = fill.indexOf('async function runVisionBatch');
   const visEnd = fill.indexOf('async function runTextBatch', visStart);
   assert.ok(visStart >= 0 && visEnd > visStart, 'runVisionBatch not found');
-  assert.doesNotMatch(fill.slice(visStart, visEnd), /formatLoreExtraAuthorNote|loreExtraInstructionBody/);
+  assert.match(fill.slice(visStart, visEnd), /role: 'system' as const, content: loreExtraPriority/);
 
   const looks = read('src', 'services', 'tagger.ts');
   const looksStart = looks.indexOf('export async function buildCharacterLooksMessages');
@@ -1978,6 +1978,7 @@ test('import-fill text path can attach lb-xnai; asset looks cannot', () => {
   assert.ok(looksStart >= 0 && looksEnd > looksStart, 'buildCharacterLooksMessages not found');
   assert.doesNotMatch(looks.slice(looksStart, looksEnd), /extraOnly/);
   assert.doesNotMatch(looks.slice(looksStart, looksEnd), /collectLorePayload/);
+  assert.match(looks.slice(looksStart, looksEnd), /role: 'system', content: opts\.loreExtraPriority/);
 });
 
 test('from-image filter, look attach, and NAI badge are wired in source', () => {

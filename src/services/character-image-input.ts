@@ -9,14 +9,16 @@ import { dbg } from '../core/debug';
 export async function characterImageInput(
   assets: ReadonlyArray<{ name: string; trigger: string; bytes: BytesLike }>,
   separate: boolean,
-  opts: { continueOnAnalysisFailure?: boolean; signal?: AbortSignal } = {},
+  opts: { continueOnAnalysisFailure?: boolean; signal?: AbortSignal; loreExtraPriority?: string } = {},
 ): Promise<LlmMessage[]> {
   const messages: LlmMessage[] = [];
   for (const asset of assets.slice(0, 5)) {
     const identity = `Character reference: ${asset.trigger}; asset: ${asset.name}`;
     if (separate) {
       try {
-        const look = await runVisionAutotagLook(asset.bytes, { signal: opts.signal });
+        const look = await runVisionAutotagLook(asset.bytes, {
+          signal: opts.signal, loreExtraPriority: opts.loreExtraPriority,
+        });
         messages.push({ role: 'user', content: `${identity}\nImage analysis (reference): ${JSON.stringify(look)}` });
       } catch (err) {
         if (opts.signal?.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' });

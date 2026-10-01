@@ -2,6 +2,7 @@
  * Shared vision look tagging — same wire shape as the Models-tab 오토태그.
  * One short system prompt + one user message (text + single image). Never mix
  * chat/lore/asset soup into the multimodal payload (that path fails often).
+ * Explicitly selected lb-xnai instructions travel as a priority system turn.
  */
 import { characterPrompt } from './character-prompt';
 import { characterHasAppearance, syncGenderIntoAppearance } from '../domain/character/tags';
@@ -20,7 +21,7 @@ import { getConfig } from './context';
 /** Autotag-shaped vision call for one image. Throws on empty/failed looks. */
 export async function runVisionAutotagLook(
   imageBytes: BytesLike,
-  opts: { loreRef?: string; signal?: AbortSignal } = {},
+  opts: { loreRef?: string; signal?: AbortSignal; loreExtraPriority?: string } = {},
 ): Promise<AutotagLook> {
   const prepared = await prepareAutotagImage(imageBytes);
   const u8 = prepared.bytes;
@@ -38,6 +39,7 @@ export async function runVisionAutotagLook(
   });
   const messages: LlmMessage[] = [
     { role: 'system', content: prompt },
+    ...(opts.loreExtraPriority ? [{ role: 'system' as const, content: opts.loreExtraPriority }] : []),
     {
       role: 'user',
       content: [

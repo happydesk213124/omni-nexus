@@ -165,6 +165,26 @@ export function formatLoreExtraAuthorNote(body: string): string {
   );
 }
 
+/** Explicit import selection outranks descriptions, asset metadata and pixels alike. */
+export function characterImageExtraPriorityNote(
+  entries: readonly LoreEntry[],
+  names: readonly string[],
+): string {
+  const bodies = entries.filter(isCharacterImageExtraLore).map((entry) => {
+    const raw = String(entry.content || entry.data || '').trim().slice(0, 50000);
+    const parsed = parseCharacterImageTagLore(raw);
+    // A different person's sections must never become this person's fallback.
+    return parsed.sections.length
+      ? trimCharacterImageTagLore(raw, [], names) || parsed.header.trim()
+      : raw;
+  }).filter(Boolean);
+  if (!bodies.length) return '';
+  return formatLoreExtraAuthorNote(bodies.join('\n\n'))
+    + '\nFor character appearance, costumes and accessories, the instructions and tags above are the highest-priority source. '
+    + 'They override conflicting character/persona descriptions, roster data, asset metadata and visible image details. '
+    + 'Use those other references only to fill details not specified here; do not replace or blend conflicting tags.';
+}
+
 /**
  * Section titles to inject for lb-xnai.lb.extra.
  * A section matches when:
