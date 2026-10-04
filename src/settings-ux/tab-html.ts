@@ -141,7 +141,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   // vendor dashboard has no matching node, fall back to the stored mode.
   if (card) {
     const preset = out.querySelector<HTMLSelectElement>('#nx-llm-guardrail-preset');
-    if (preset) for (const option of preset.options) option.toggleAttribute('selected', option.value === (card.llm_guardrail_preset || 'auto'));
+    if (preset) for (const option of preset.options) option.toggleAttribute('selected', option.value === (card.llm_guardrail_preset || 'none'));
     const reverseBar = out.querySelector<HTMLSelectElement>('#nx-llm-reverse-bar');
     if (reverseBar && !vendor.querySelector('#nx-llm-reverse-bar')) {
       const stored = card.llm_reverse_bar;

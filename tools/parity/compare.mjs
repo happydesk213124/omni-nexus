@@ -459,8 +459,8 @@ function expectedAssetChange(a,b,at) {
   // export and retaining the input when disabled. Keep these additions visible.
   if (/\.value\.(?:settings|json)\.card\.auto_gen_char_limit_enabled$/.test(at)) return a === undefined && b === false;
   if (/\.value\.(?:settings|json)\.card\.auto_gen_char_limit$/.test(at)) return a === undefined && b === 500;
-  // New family preset defaults to auto; the dedicated scenario asserts saving/export.
-  if (/\.value\.(?:settings|json)\.card\.llm_guardrail_preset$/.test(at)) return a === undefined && b === 'auto';
+  // No preset preserves legacy manual settings; the scenario asserts default/save/export.
+  if (/\.value\.(?:settings|json)\.card\.llm_guardrail_preset$/.test(at)) return a === undefined && b === 'none';
   // Sound variants extend the existing boolean without changing old on/off settings.
   // The scenario exercises every variant and restores the legacy ding default.
   if (/\.value\.(?:settings|json)\.card\.image_done_sound_type$/.test(at)) return a === undefined && b === 'ding';
@@ -642,7 +642,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  */
 const NEW_ONLY_STEPS = new Map([
   ['settings.reply_char_limit', v => v?.defaultOff === true && v.defaultLimit === 500 && v.saved === true && v.exported === true && v.retained === true ? null : 'Reply character limit contract failed'],
-  ['settings.guardrail_preset', v => v?.defaultAuto && v?.saved && v?.exported && v?.manualKept ? null : 'Guardrail preset persistence failed'],
+  ['settings.guardrail_preset', v => v?.defaultNone && v?.saved && v?.exported && v?.disabled && v?.manualKept ? null : 'Guardrail preset persistence failed'],
   // Freeform batch creation is a new route. Assert names/looks, reference input,
   // single-call batching and preservation directly on the actual API response.
   ['chars.create_from_description', v => v?.added === 2 && v.saved === true && v.references === true && v.singleCall === true && v.existingPreserved === true

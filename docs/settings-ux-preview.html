@@ -1142,7 +1142,7 @@
           <div class="stack">
             <label class="row"><span class="row-text"><b>CharAppearance 누적</b></span><span class="sw"><input id="nx-appearance" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>태거 오류 시 재시도</b></span><span class="sw"><input id="nx-llm-json-retry" type="checkbox"></span></label>
-            <label class="row" data-nx-help-id="nx-llm-guardrail-preset"><span class="row-text"><b>역바태칼 프리셋</b></span><select class="ctrl" id="nx-llm-guardrail-preset"><option value="auto">자동</option><option value="gemini">Gemini 계열</option><option value="deepseek">DeepSeek 계열</option><option value="glm">GLM 계열</option></select></label>
+            <label class="row" data-nx-help-id="nx-llm-guardrail-preset"><span class="row-text"><b>역바태칼 프리셋</b></span><select class="ctrl" id="nx-llm-guardrail-preset"><option value="none" selected>사용 안 함</option><option value="auto">자동</option><option value="gemini">Gemini 계열</option><option value="deepseek">DeepSeek 계열</option><option value="glm">GLM 계열</option></select></label>
             <label class="row"><span class="row-text"><b>역바</b></span><select class="ctrl" id="nx-llm-reverse-bar"><option value="off">안함</option><option value="memo">비망록</option><option value="authority">권위</option></select></label>
             <label class="block"><span>비망록 내용</span><textarea id="nx-client-direction" placeholder="예: 이번 장면은 밤, 비 오는 거리"></textarea></label>
             <label class="row"><span class="row-text"><b>포커스 캐릭터</b></span><input class="ctrl" id="nx-client-focus" placeholder="예: 엘로디아"></label>
@@ -2561,7 +2561,7 @@
   },
   "nx-llm-guardrail-preset": {
     "title": "역바태칼 프리셋",
-    "body": "자동: LLM 호출마다 모델 이름의 gemini·deepseek·glm을 확인해 적용합니다. Risu 모델은 요청 전 훅에서 실제 요청의 모델 이름 또는 Gemini 요청 종류를 확인합니다. Gemini는 비망록(태칼 유지), DeepSeek는 안함·태칼 끄기, GLM은 권위·태칼 끄기입니다. 직접 계열을 고르면 해당 조합으로 고정됩니다. 요청 전 훅을 지원하지 않거나 모델을 판별할 수 없는 호출은 아래 설정을 유지합니다."
+    "body": "사용 안 함(기본): 아래에서 직접 설정한 역바·태칼 값을 그대로 사용합니다. 자동: LLM 호출마다 모델 이름의 gemini·deepseek·glm을 확인해 적용합니다. Risu 모델은 요청 전 훅에서 실제 요청의 모델 이름 또는 Gemini 요청 종류를 확인합니다. Gemini는 비망록(태칼 유지), DeepSeek는 안함·태칼 끄기, GLM은 권위·태칼 끄기입니다. 직접 계열을 고르면 해당 조합으로 고정됩니다. 요청 전 훅을 지원하지 않거나 모델을 판별할 수 없는 호출은 아래 설정을 유지합니다."
   },
   "nx-llm-reverse-bar": {
     "title": "역바",

@@ -9,7 +9,7 @@ import { callLlm as callLlmRaw, type CallLlmOptions as RawCallLlmOptions } from 
 import type { LlmSettings } from '../core/types';
 import { normalizeReverseBarMode } from '../config/schema';
 import { stripCbs } from '../core/util/text';
-import { guardrailSettings } from '../domain/llm/guardrail-preset';
+import { guardrailSettings, normalizeGuardrailPreset } from '../domain/llm/guardrail-preset';
 import { llmModelName } from '../providers/llm/model-name';
 import { beginGuardrailRequest } from '../providers/llm/request-hook';
 import { llmIsRisuSource } from '../providers/llm/transform';
@@ -59,10 +59,10 @@ export async function callLlm(
   opts: CallLlmOptions = {},
 ): Promise<string> {
   const card = getConfig().card;
-  const preset = card.llm_guardrail_preset;
-  const model = !opts.plain && (!preset || preset === 'auto') ? await llmModelName(llm) : '';
+  const preset = normalizeGuardrailPreset(card.llm_guardrail_preset);
+  const model = !opts.plain && preset === 'auto' ? await llmModelName(llm) : '';
   const { mode, tagCal } = guardrailSettings(preset, model, normalizeReverseBarMode(card.llm_reverse_bar), card.llm_tag_cal === true);
-  const hook = !opts.plain && (!preset || preset === 'auto') && llmIsRisuSource(llm.source)
+  const hook = !opts.plain && preset === 'auto' && llmIsRisuSource(llm.source)
     ? await beginGuardrailRequest({ mode, tagCal, memo: await reverseBarTexts('memo'), authority: await reverseBarTexts('authority') }) : null;
   let text: string;
   try {
