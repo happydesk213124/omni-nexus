@@ -73,6 +73,10 @@ The UI's fetch wrapper is `K(path, init, timeoutMs)`; it throws
 > and controls live in the host document; settings' iframe is never opened.
 > Close removes/releases only the clone. A missing host image shows an error.
 > Cast names resolve separately into a reserved two-row, 72px chip area.
+> Inspect 태그/재생성 and the message/floating ⚛️/🔃 buttons share
+> `omniMessageAction`. Inspect resolves the image's owning message from saved
+> shot tokens or verified metadata, then passes its full text and message ID.
+> It never falls back to the last selected message or a DOM position.
 > The image-file route remains available to other callers.
 >
 > **Listing rows carry no `image_url`.** `/v1/gallery`, `/v1/gallery/explore`

@@ -94,7 +94,6 @@ async function omniFooterAction(kind,key) {
   const footer=pinned?null:await doc.querySelector('[x-omni-footer="'+key+'"]');if(!footer&&!pinned)return;
   const button=await footer?.querySelector('[data-omni-action="'+kind+'"],[x-omni-action="'+kind+'"]');
   await button?.setAttribute('x-omni-busy','true');
-  const start=performance.now();
   try {
     const current=await Z({useOverride:false});
     if(current.characterId!==target.characterId || current.chatId!==target.chatId)return;
@@ -102,18 +101,26 @@ async function omniFooterAction(kind,key) {
     if(!pinned && (!currentRow || (target.token && omniMessageToken(target.index,String(currentRow.data ?? currentRow.saying ?? ''))!==target.token)))return;
     if(kind==='counts') {if(pinned){await openSettingsTab('gen_options');return;}await omniToggleCounts(footer,key);return;}
     if(/^(min|max)-(up|down)$/.test(kind)) {await omniChangeCount(kind);return;}
-    const scope=current;
+    await omniMessageAction(kind,target,current);
+  } catch(error){y('error','footer.action',String(error));$e(String(error?.message || error));}
+  finally {await button?.setAttribute('x-omni-busy','false');}
+}
+// Footer, floating viewer and inspect actions share the same request and target checks.
+async function omniMessageAction(kind,target,scope) {
+    scope ||= await Z({useOverride:false});
+    if(scope.characterId!==target.characterId || scope.chatId!==target.chatId)throw new Error('대화가 바뀌었습니다. 다시 눌러 주세요.');
     if(kind==='char'||kind==='preset') {await openSettingsTab(kind==='char'?'characters':'style_presets');return;}
     const row=(scope.chat?.message || scope.chat?.messages || [])[target.index];
     if(!row || (target.hostId && omniMessageId(row)!==target.hostId))throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
     const text=String(row.data ?? row.saying ?? '');
+    if(target.token && omniMessageToken(target.index,text)!==target.token)throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
     if(kind==='note') {await openOmniNote({...target,text});return;}
     if(kind==='tag') {
-      y('info','footer.dispatch','tag ms='+Math.round(performance.now()-start));
+      y('info','footer.dispatch','tag');
       await Be({...scope,actionMessageIndex:target.index,actionMessageRole:row.role,actionMessageId:omniMessageId(row)},text,true);return;
     }
     if(kind==='regen') {
-      const ids=[...new Set([...text.matchAll(/\[\[@inray::([^:\]]+)::[^\]]+\]\]/g)].map(m=>m[1]))];
+      const ids=omniMessageCardIds(text);
       if(!ids.length){$e('이 메시지에 리롤할 이미지가 없습니다.');return;}
       t._rerollStopRequested=false;
       await withImageRerollToast('전체 이미지 리롤 중…',async()=>{
@@ -123,8 +130,35 @@ async function omniFooterAction(kind,key) {
         }
       });
     }
-  } catch(error){y('error','footer.action',String(error));$e(String(error?.message || error));}
-  finally {await button?.setAttribute('x-omni-busy','false');}
+}
+function omniMessageCardIds(text) {
+  return [...new Set([...String(text).matchAll(/\[\[@inray::([^:\]]+)::[^\]]+\]\]/g)].map(m=>m[1]))];
+}
+async function omniCardMessageTarget(card) {
+  const id=String(card?.id || '');
+  if(!id)throw new Error('이미지의 원본 메시지를 찾지 못했습니다.');
+  const meta=await globalThis.__OMNI_IMAGE_META__?.(id);
+  const owner={...meta?.location,...card},scope=await Z({useOverride:false});
+  if((owner.character_id && owner.character_id!==scope.characterId) || (owner.chat_id && owner.chat_id!==scope.chatId))throw new Error('대화가 바뀌었습니다. 다시 눌러 주세요.');
+  const rows=scope.chat?.message || scope.chat?.messages || [];
+  // Saved shot tokens identify the owner even after messages were inserted/deleted
+  // or the image left the gallery window. No DOM position or selected-message fallback.
+  const matches=[];
+  for(let i=0;i<rows.length;i++)if(omniMessageCardIds(rows[i].data ?? rows[i].saying ?? '').includes(id))matches.push(i);
+  const hostId=String(owner.host_message_id || '');
+  const storedIndex=Number(owner.message_index ?? -1);
+  let index=matches.length===1?matches[0]:matches.find(i=>hostId && omniMessageId(rows[i])===hostId);
+  if(index==null && matches.includes(storedIndex))index=storedIndex;
+  if(index==null && !matches.length && hostId)index=rows.findIndex(row=>omniMessageId(row)===hostId);
+  if(index==null && !matches.length && Number.isInteger(storedIndex) && storedIndex>=0 && rows[storedIndex] && owner.content_hash && ye(String(rows[storedIndex].data ?? rows[storedIndex].saying ?? ''))===owner.content_hash)index=storedIndex;
+  if(index==null || index<0)throw new Error('이미지의 원본 메시지를 찾지 못했습니다.');
+  return {sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,index,hostId:omniMessageId(rows[index]),token:omniMessageToken(index,String(rows[index].data ?? rows[index].saying ?? ''))};
+}
+async function omniCardMessageAction(kind,card) {
+  return nxWithScenePreparation(async()=>{
+    try {await omniMessageAction(kind,await omniCardMessageTarget(card));}
+    catch(error){y('error','inspect.message.action',String(error));$e(String(error?.message || error));}
+  },kind==='tag'?'scene':'reroll');
 }
 async function omniToggleCounts(footer,key) {
   const existing=await footer.querySelector('[x-omni-counts]');

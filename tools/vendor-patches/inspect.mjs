@@ -34,6 +34,20 @@ export function repairInspectCloseNow(source) {
   return source.replace(needle, patch);
 }
 
+/** The image's owning message uses the same actions as its footer buttons. */
+export function repairInspectMessageActions(source) {
+  const start = source.indexOf('      if (act === "retag") {');
+  const end = source.indexOf('    }, cancelMobilePress = () => {', start);
+  if (start < 0 || end < start || createHash('sha256').update(source.slice(start, end)).digest('hex') !== 'd23f5c25e8d45a4a32c4fd20ea831dafb160b8c9b3f4e6ecc040f95d8742cb1f') {
+    throw new Error('[inspect repair] message action drift');
+  }
+  return source.slice(0, start) + `      if (act === "retag" || act === "regen") {
+        await hideInspect();
+        await omniCardMessageAction(act === "retag" ? "tag" : "regen", card);
+      }
+` + source.slice(end);
+}
+
 /** Open-guard taps still reach 닫기: every other tap waits out the guard. */
 export function repairInspectGuardClose(source) {
   const needle = `      if (inspectOpen && await hitEl(actionMenu, x, I)) {
