@@ -455,6 +455,12 @@ function expectedAssetChange(a,b,at) {
   // The scenario separately attempts to re-enable it and asserts L-number output.
   if (/\.value\.(?:settings|json)\.card\.llm_anchor_percent$/.test(at)) return a === true && b === false;
   if (/\.value\.(?:settings|json)\.card\.omni_helper_prompt$/.test(at)) return a === undefined && b === false;
+  // Reply-only character filtering is opt-in; the scenario asserts persistence,
+  // export and retaining the input when disabled. Keep these additions visible.
+  if (/\.value\.(?:settings|json)\.card\.auto_gen_char_limit_enabled$/.test(at)) return a === undefined && b === false;
+  if (/\.value\.(?:settings|json)\.card\.auto_gen_char_limit$/.test(at)) return a === undefined && b === 500;
+  // New family preset defaults to auto; the dedicated scenario asserts saving/export.
+  if (/\.value\.(?:settings|json)\.card\.llm_guardrail_preset$/.test(at)) return a === undefined && b === 'auto';
   // Sound variants extend the existing boolean without changing old on/off settings.
   // The scenario exercises every variant and restores the legacy ding default.
   if (/\.value\.(?:settings|json)\.card\.image_done_sound_type$/.test(at)) return a === undefined && b === 'ding';
@@ -635,6 +641,12 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  ['settings.reply_char_limit', v => v?.defaultOff === true && v.defaultLimit === 500 && v.saved === true && v.exported === true && v.retained === true ? null : 'Reply character limit contract failed'],
+  ['settings.guardrail_preset', v => v?.defaultAuto && v?.saved && v?.exported && v?.manualKept ? null : 'Guardrail preset persistence failed'],
+  // Freeform batch creation is a new route. Assert names/looks, reference input,
+  // single-call batching and preservation directly on the actual API response.
+  ['chars.create_from_description', v => v?.added === 2 && v.saved === true && v.references === true && v.singleCall === true && v.existingPreserved === true
+    ? null : 'Description character creation contract failed: '+JSON.stringify(v)],
   // Dashboard settings presets never existed in 1.x. Keep each new route's
   // preservation and prompt-reset result explicit instead of normalizing it away.
   ...['list','save','import','export','apply','delete'].map(action => [
@@ -896,8 +908,10 @@ const NEW_ONLY_STEPS = new Map([
   // Enclosing-bot ownership now survives copied IDs; partial cast lookup must
   // preserve healthy results and leave unreadable source lore untouched.
   ['roster.bot_lore_contract', v => v?.stored && v?.disabled && v?.isolated && v?.ownerRebound && v?.corruptIsolated && v?.badLorePreserved ? null : 'bot lore ownership, copy rebinding or isolated cast lookup failed: ' + JSON.stringify(v)],
-  // Intentional save change: aliases no longer merge rows; given-name chains do.
-  ['chars.given_name_save_contract', v => v?.count === 3 && v?.merged === 1 && v?.triggersSeparate === true && JSON.stringify(v?.words) === '["yoona","yuna"]' ? null : 'Given-name save grouping failed: ' + JSON.stringify(v)],
+  // Intentional save change: preserve names/triggers/default, append owner-described donor costumes.
+  ['chars.given_name_save_contract', v => v?.count === 3 && v?.merged === 1 && v?.triggersSeparate === true
+    && v?.identityKept && v?.defaultKept && v?.owners && JSON.stringify(v?.words) === '["yuna"]'
+    ? null : 'Given-name costume save contract failed: ' + JSON.stringify(v)],
   [
     'char_cmd_presets.get',
     (v) => (v?.ok === true && v?.items?.[0]?.id === 'p1'

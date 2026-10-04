@@ -1,5 +1,7 @@
 import { repairGestures } from './gesture-repairs.mjs';
 import { repairSettingsSave } from './settings-save.mjs';
+import { repairCharacterIdentitySave } from './character-identity-save.mjs';
+import { repairGuardrailPreset } from './guardrail-preset.mjs';
 import { repairProgressToast } from './progress-toast.mjs';
 import { repairSpinnerPreview } from './spinner-preview.mjs';
 import { repairResponsiveness } from './responsiveness.mjs';
@@ -78,6 +80,13 @@ export function repairOmniUi(source) {
   replace('    globalThis.__OMNI_FLUSH_CHARACTERS__ = flush;', `    globalThis.__OMNI_FLUSH_CHARACTERS__ = flush;
     globalThis.__OMNI_QUEUE_CHARACTER_WRITE__ = work => (live.writes = live.writes.catch(()=>{}).then(work));
     globalThis.__OMNI_CHARACTER_SCOPE__ = () => t.lastScope?.sessionId || "";
+    globalThis.__OMNI_REPLACE_CHARACTER_CACHE__ = (target, rows) => {
+      t._omniRosterRevision=(t._omniRosterRevision||0)+1;
+      const global=target==="__global__";
+      if(global || t.lastScope?.sessionId===target)t[global?"charactersGlobal":"charactersSession"]=rows;
+      if(global)for(const entry of scopeCache.values())entry.global=rows;
+      else if(scopeCache.has(target))scopeCache.get(target).characters=rows;
+    };
     const scopeCache = t._omniRosterCache || (t._omniRosterCache = new Map());
     const deletedByScope = t._omniDeletedIds || (t._omniDeletedIds = new Map());
     const visibleRows = (scope, rows) => (rows || []).filter(row=>!deletedByScope.get(scope)?.has(String(row.id)));
@@ -231,9 +240,10 @@ export function repairOmniUi(source) {
   replace('    shell.dataset.nxLiveSave = "1";', `    shell.dataset.nxLiveSave = "1";
     globalThis.__OMNI_SETTINGS_ACTIONS__ = {
       config: () => t.backendSettings,
+      characterTarget: () => ({ session_id:t.lastScope?.sessionId || "", character_id:t.lastScope?.characterId || "" }),
       save: async patch => { await flushSettingsSave(); await pe(patch); },
       saveModels: async () => { await flushSettingsSave(); await pe(Oe()); },
-      request: (path, body) => K(path, body === undefined ? {method:"GET"} : {method:"POST",body}),
+      request: (path, body, timeout) => K(path, body === undefined ? {method:"GET"} : {method:"POST",body}, timeout),
       flush: async () => { if (!await xa({silent:true})) throw new Error("현재 설정을 저장하지 못했습니다."); },
       reload: async () => { t.promptDrafts = {}; await le(); await Je(); if(t.uiOpen) await P(); }
     };`);
@@ -562,5 +572,6 @@ export function repairOmniUi(source) {
   };
 `;
   replace('  async function Tt(e, n) {', bind + '  async function Tt(e, n) {');
-  return repairSpinnerPreview(repairProgressToast(repairSettingsSave(out)));
+  out = repairSpinnerPreview(repairProgressToast(repairSettingsSave(out)));
+  return repairGuardrailPreset(repairCharacterIdentitySave(out));
 }

@@ -5,6 +5,7 @@ import type { FocusCharacterMode, FocusPromptMode, ReverseBarMode } from '../cor
 import { cleanText } from '../core/util/text.ts';
 import { parseStreamKeywords } from '../domain/prompt/stream-keywords.ts';
 import { normalizeLlmRolesSettings } from '../domain/llm/roles.ts';
+import { normalizeGuardrailPreset } from '../domain/llm/guardrail-preset';
 import { naiStepsForFamily, normalizeNaiSampler, optionalNaiSampler } from '../domain/nai/samplers.ts';
 import { normalizeComicCoordsMode } from '../domain/comic/coords.ts';
 import { comicGenOn } from '../domain/comic/kind.ts';
@@ -21,6 +22,15 @@ export type { FocusCharacterMode, FocusPromptMode, ReverseBarMode };
 
 const FOCUS_CHARACTER_MODES = new Set<FocusCharacterMode>(['off', 'female', 'male', 'auto']);
 const FOCUS_PROMPT_MODES = new Set<FocusPromptMode>(['default', 'strong', 'always', 'manual']);
+
+export function normalizeAutoReplyCharLimit(value: unknown): number {
+  const limit = value == null || String(value).trim() === '' ? 500 : Number(value);
+  return Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 500;
+}
+
+export function normalizeAutoReplyCharLimitEnabled(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1' || value === 'on';
+}
 
 /** Clamp card.focus_weight to 0–5, one decimal (missing/NaN → 2). */
 export function normalizeFocusWeight(value: unknown): number {
@@ -203,6 +213,9 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   // asset_nai_tags: off | inline | prepass (legacy bool / prepass_vision → prepass)
   card.asset_nai_tags = normalizeAssetNaiTagsMode(card.asset_nai_tags);
   card.image_analysis_separate = card.image_analysis_separate === true;
+  // Missing toggle stays off so old saves retain their reply-generation behavior.
+  card.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
+  card.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);
   card.auto_aspect = card.auto_aspect === true || card.auto_aspect === 'true' || card.auto_aspect === 1 || card.auto_aspect === '1';
   card.llm_json_retry =
     card.llm_json_retry === true
@@ -213,6 +226,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   // llm_reverse_bar: legacy boolean toggle → "off" | "memo" | "authority"
   // (`true` meant the full role-lock trick, which is now `authority`).
   card.llm_reverse_bar = normalizeReverseBarMode(card.llm_reverse_bar);
+  card.llm_guardrail_preset = normalizeGuardrailPreset(card.llm_guardrail_preset);
   // Client Comments inputs (4.5.1 direction / focus): free text, trimmed,
   // capped like the author notes. Empty → the central block is skipped.
   card.client_direction = cleanText(card.client_direction, 8000);

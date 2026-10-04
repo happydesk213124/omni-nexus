@@ -1020,6 +1020,7 @@
             <label class="row"><span class="row-text"><b>스크롤 붙잡기</b></span><span class="sw"><input id="nx-scroll-hold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>할당량 끝나면 NAI4 폴백</b></span><span class="sw"><input id="nx-nai4-fallback" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>응답 후 자동 생성</b></span><span class="sw"><input id="nx-auto-gen-reply" type="checkbox"></span></label>
+            <div class="row" data-nx-help-id="nx-auto-gen-char-limit" style="gap:8px;flex-wrap:nowrap"><label for="nx-auto-gen-char-limit-on" style="font-size:14px;font-weight:600;white-space:nowrap">글자수 제한</label><span style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input class="ctrl" id="nx-auto-gen-char-limit" type="number" min="0" step="1" value="500" aria-label="자동생성을 건너뛸 기준 글자 수" style="width:88px;min-width:88px;flex:0 0 88px;padding-left:8px;padding-right:8px"><span>자 이하</span></span><label class="sw" style="margin-left:auto" aria-label="글자수 제한 켜기"><input id="nx-auto-gen-char-limit-on" type="checkbox"></label></div>
             <label class="row"><span class="row-text"><b>Lorebook 주입</b></span><span class="sw"><input id="nx-lore" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>CharInfo</b></span><span class="sw"><input id="nx-charinfo" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>UserInfo</b></span><span class="sw"><input id="nx-userinfo" type="checkbox"></span></label>
@@ -1141,6 +1142,7 @@
           <div class="stack">
             <label class="row"><span class="row-text"><b>CharAppearance 누적</b></span><span class="sw"><input id="nx-appearance" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>태거 오류 시 재시도</b></span><span class="sw"><input id="nx-llm-json-retry" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-llm-guardrail-preset"><span class="row-text"><b>역바태칼 프리셋</b></span><select class="ctrl" id="nx-llm-guardrail-preset"><option value="auto">자동</option><option value="gemini">Gemini 계열</option><option value="deepseek">DeepSeek 계열</option><option value="glm">GLM 계열</option></select></label>
             <label class="row"><span class="row-text"><b>역바</b></span><select class="ctrl" id="nx-llm-reverse-bar"><option value="off">안함</option><option value="memo">비망록</option><option value="authority">권위</option></select></label>
             <label class="block"><span>비망록 내용</span><textarea id="nx-client-direction" placeholder="예: 이번 장면은 밤, 비 오는 거리"></textarea></label>
             <label class="row"><span class="row-text"><b>포커스 캐릭터</b></span><input class="ctrl" id="nx-client-focus" placeholder="예: 엘로디아"></label>
@@ -1278,7 +1280,7 @@
             <button class="dock-btn" type="button" id="nx-char-look-act">참고컷 등록</button>
             <button class="dock-btn" type="button" id="nx-char-look-gen">참고컷 생성</button>
 
-            <button class="dock-btn" type="button" id="nx-char-import-session">로어북에서</button><button class="dock-btn" type="button" id="nx-char-import-global">페르소나에서</button>
+            <button class="dock-btn" type="button" id="nx-char-import-session">로어북에서</button><button class="dock-btn" type="button" id="nx-char-import-global">페르소나에서</button><button class="dock-btn" type="button" id="nx-char-create-llm">LLM한테 시키기</button>
             <button class="dock-btn" type="button" id="nx-export-session-chars">JSON 내보내기</button>
             <button class="dock-btn" type="button" id="nx-export-global-chars" hidden>JSON 내보내기</button>
             <button class="dock-btn" type="button" id="nx-import-session-chars">JSON 불러오기</button>
@@ -2491,7 +2493,15 @@
   },
   "nx-auto-gen-reply": {
     "title": "응답 후 자동 생성",
-    "body": "주 채팅(model) afterRequest 후 0.1초 뒤 한 번 생성. [LBDATA START]~END 는 글자 수에서 제외하고, 나머지가 30자 이하면 클릭해도 생성하지 않습니다. 이미 생성 중이면 뒤는 스킵. 보조 모델·유저 말·이미 이미지·Power/토글 OFF는 스킵. 발동 수동/자동과 무관."
+    "body": "Risu 응답 완료 알림을 받으면 해당 메시지로 한 번 생성합니다. 글자수 제한을 켜면 설정한 글자 수 이하인 답변은 건너뜁니다. 공백·줄바꿈과 [LBDATA START]~END 내부 데이터는 글자 수에서 제외합니다. 이미 생성 중이거나 이미지가 있는 메시지, 유저 말, Power/자동생성 OFF는 건너뜁니다. 발동 수동/자동과 무관합니다."
+  },
+  "nx-auto-gen-char-limit-on": {
+    "title": "글자수 제한",
+    "body": "응답 후 자동 생성에만 적용합니다. 켜면 기준 글자 수 이하인 답변은 이미지를 만들지 않습니다. 예: 500자 설정이면 500자까지 건너뛰고 501자부터 자동생성합니다. 공백·줄바꿈과 LBDATA 내부 데이터는 제외합니다. 수동 생성과 스트리밍 키워드 생성은 기존대로 동작합니다."
+  },
+  "nx-auto-gen-char-limit": {
+    "title": "기준 글자 수",
+    "body": "자동생성을 건너뛸 글자 수를 숫자로 입력합니다. 기본값은 500입니다. 글자수 제한을 꺼도 입력값은 저장됩니다. 기존의 본문 30자 이하 생성 제외 조건도 계속 적용됩니다."
   },
   "nx-lore": {
     "title": "Lorebook 주입",
@@ -2548,6 +2558,10 @@
   "nx-llm-json-retry": {
     "title": "태거 오류 시 재시도",
     "body": "메인 태거·전처리의 HTTP 오류(429 포함), 빈 응답, JSON 파싱 오류가 나면 각각 한 번 다시 요청합니다. 중단·교체된 작업은 재시도하지 않습니다. 재시도도 실패하면 작업이 오류로 끝납니다."
+  },
+  "nx-llm-guardrail-preset": {
+    "title": "역바태칼 프리셋",
+    "body": "자동: LLM 호출마다 모델 이름의 gemini·deepseek·glm을 확인해 적용합니다. Risu 모델은 요청 전 훅에서 실제 요청의 모델 이름 또는 Gemini 요청 종류를 확인합니다. Gemini는 비망록(태칼 유지), DeepSeek는 안함·태칼 끄기, GLM은 권위·태칼 끄기입니다. 직접 계열을 고르면 해당 조합으로 고정됩니다. 요청 전 훅을 지원하지 않거나 모델을 판별할 수 없는 호출은 아래 설정을 유지합니다."
   },
   "nx-llm-reverse-bar": {
     "title": "역바",

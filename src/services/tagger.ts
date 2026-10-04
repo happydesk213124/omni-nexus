@@ -1,4 +1,5 @@
 import { analysisBody } from '../domain/prompt/message-body';
+import { TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 import { comicNaturalInstruction } from '../domain/comic/natural';
 /**
@@ -117,7 +118,7 @@ export interface BuildTaggerOptions {
 
 /** Lore + UI trigger keys used for asset name matching. */
 export function assetTriggerPoolForRequest(request: TaggerArgs): string[] {
-  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), TAGGER_REFERENCE_LIMIT);
   return [
     ...(Array.isArray(request.lore_trigger_keys) ? request.lore_trigger_keys : []),
     ...collectTriggeredLoreKeys(request.lorebook || [], assistant),
@@ -147,7 +148,7 @@ export async function collectAssetTagsForTagger(
       characterId: cleanText(request.character_id, 200),
       roster,
       lorebook: Array.isArray(request.lorebook) ? request.lorebook : null,
-      message: cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000),
+      message: cleanText(analysisBody(stripBakeTokens(request.assistant_text)), TAGGER_REFERENCE_LIMIT),
     });
   } catch (err) {
     setLastAssetWeightMap(new Map());
@@ -342,7 +343,7 @@ export async function buildCharacterLooksMessages(
   });
   if (opts.loreExtraPriority) messages.push({ role: 'system', content: opts.loreExtraPriority });
 
-  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), TAGGER_REFERENCE_LIMIT);
   const sourceSessionIds = Array.isArray(request.source_session_ids)
     ? request.source_session_ids.map((s) => cleanText(s, 200)).filter(Boolean)
     : [];
@@ -448,6 +449,7 @@ function costumeHowTo(): string {
   return [
     '## Costumes (enabled)',
     'characters[].costume is a string: existing bare name, numeric index string, or catalog name[index]. Omit/empty only to keep the previous set. Reuse matching catalog clothes; never register them again.',
+    'Costume notes may begin with the original person\'s full name (surname + given name), added by the application. Compare that name with the person in the story and select the matching costume, including default. Keep characters[].name as the exact supplied roster name; do not rename the roster or add aliases to represent a costume owner.',
     'New outfit/transformation: new_costumes=[{name:"exact character name",costumes:[{name:"bare variant id",note:"what the outfit is, not when/where",...lookFields}]}]; wear it via characters[].costume. Never name a set default0/maid1/name[index].',
     'lookFields: appearance, hair_color, hair_style, eye_color, height, age, penis_size, attire, bottoms, accessories. Apply shared character rules; unchanged variant fields use [base]. Identity/name/aliases/original/gender stay common; never overwrite default.',
   ].join('\n');
@@ -547,7 +549,7 @@ export async function buildTaggerMessages(
     });
   }
 
-  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), 20000);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), TAGGER_MESSAGE_LIMIT);
   const sourceSessionIds = Array.isArray(request.source_session_ids)
     ? request.source_session_ids.map((s) => cleanText(s, 200)).filter(Boolean)
     : [];
@@ -564,7 +566,8 @@ export async function buildTaggerMessages(
 
   const outfitSessionId = chatNoteSessionId(sessionId, request);
   if (outfitSessionId) rosterEarly = rosterWithSessionOutfits(rosterEarly, await getSessionAuthorNote(outfitSessionId));
-  pushReferenceUser(messages, 'Lorebook', collectLorePayload(request, card, assistant, rosterEarly));
+  const referenceText = assistant.slice(0, TAGGER_REFERENCE_LIMIT);
+  pushReferenceUser(messages, 'Lorebook', collectLorePayload(request, card, referenceText, rosterEarly));
   pushReferenceUser(messages, 'Characters in this message', appearancePayload(card, assistant, sessionId, rosterEarly));
 
   if (!opts.skipAssetInject && assetMode !== 'off') {

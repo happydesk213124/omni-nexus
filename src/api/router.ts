@@ -34,6 +34,7 @@ import * as presetLook from '../services/preset-look';
 import * as chatChrome from '../services/chat-chrome';
 import * as lorefilter from '../services/lorefilter';
 import * as charImport from '../services/char-import';
+import * as characterCreate from '../services/character-create';
 import * as settings from '../services/settings';
 import * as settingsPresets from '../services/settings-presets';
 import * as storageMigrate from '../services/storage-migrate';
@@ -525,6 +526,10 @@ const WRITE_ROUTES: readonly Route[] = [
   {
     match: exact('/v1/characters/import-fill'),
     handler: async ({ body }) => ok(await charImport.runImportFill(body)),
+  },
+  {
+    match: exact('/v1/characters/create-from-description'),
+    handler: async ({ body }) => ok(await characterCreate.createCharactersFromDescription(body)),
   },
   {
     match: exact('/v1/characters/lorefilter'),

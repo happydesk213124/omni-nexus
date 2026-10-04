@@ -1,7 +1,7 @@
 {
   "name": "omni-nexus",
   "displayName": "Omni Nexus",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Omni Nexus LLM tagging + NovelAI overlay",
   "type": "module",
   "private": true,
@@ -11,7 +11,7 @@
     "dist"
   ],
   "scripts": {
-    "test:settings-ux": "node tools/extract-preview-ux.mjs && node tools/check-settings-ux.mjs && node tools/check-character-switch.mjs && node tools/check-spinner-layout.mjs && node tools/check-character-integration.mjs",
+    "test:settings-ux": "node tools/extract-preview-ux.mjs && node tools/check-settings-ux.mjs && node tools/check-character-switch.mjs && node tools/check-spinner-layout.mjs && node tools/check-character-integration.mjs && node tools/check-character-name-draft.mjs",
     "build": "node tools/extract-preview-ux.mjs && vite build",
     "build:dev": "vite build --mode development",
     "dev": "vite build --watch",

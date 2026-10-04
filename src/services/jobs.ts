@@ -86,6 +86,7 @@ import { shotKeepsComicSlots } from '../domain/comic/page';
 import { fillComicPagesForShots } from './comic';
 import { buildComicGenerationForShot, buildGenerationForShot, buildImageLocation, cardMetaFromLocation, generateImage, isComicShot, readImageLocation } from './generation';
 import { buildCharacterLooksMessages, buildTaggerMessages, collectGenerationAssets, flattenShots } from './tagger';
+import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import {
   applyLorefilter,
   ensureLorefilter,
@@ -814,7 +815,7 @@ async function runJob(jobId: string): Promise<void> {
           request.lorebook = filtered;
           request.lore_trigger_keys = collectTriggeredLoreKeys(
             filtered,
-            cleanText(request.assistant_text || '', 20000),
+            cleanText(request.assistant_text || '', TAGGER_REFERENCE_LIMIT),
           );
           dbg('job.lorefilter', {
             character_id: characterId,

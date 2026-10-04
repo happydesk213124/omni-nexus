@@ -52,6 +52,17 @@ try {
   });
   assert.deepEqual(streamingControls,{required:[true,true],helperOn:true,above:true,helperOff:true,asset:true,preprocessReset:1,retired:0,reset:0});
 
+  const replyLimitControls = await page.evaluate(() => {
+    const render = card => {
+      document.body.innerHTML = SettingsTabs.tabHtml('dashboard', '<input id="nx-auto-gen-reply" type="checkbox" checked>', {card});
+      const auto=document.getElementById('nx-auto-gen-reply'), toggle=document.getElementById('nx-auto-gen-char-limit-on'), input=document.getElementById('nx-auto-gen-char-limit');
+      return {on:toggle.checked,value:input.value,type:input.type,below:!!(auto.compareDocumentPosition(toggle)&Node.DOCUMENT_POSITION_FOLLOWING),count:document.querySelectorAll('#nx-auto-gen-char-limit').length};
+    };
+    return {saved:render({auto_gen_char_limit_enabled:true,auto_gen_char_limit:750}),disabled:render({auto_gen_char_limit_enabled:false,auto_gen_char_limit:750}),legacy:render({})};
+  });
+  const expectedLimit = (on,value) => ({on,value,type:'number',below:true,count:1});
+  assert.deepEqual(replyLimitControls,{saved:expectedLimit(true,'750'),disabled:expectedLimit(false,'750'),legacy:expectedLimit(false,'500')});
+
   await mkdir('.test-build/settings-ux', { recursive: true });
   for (const width of [320, 375, 425, 768, 1440, 3440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -80,6 +91,15 @@ try {
       });
       assert.equal(layout.width, width);
       assert.equal(layout.height, 900);
+      if (tab === 'dashboard') {
+        const digits = await page.evaluate(() => {
+          const input=document.getElementById('nx-auto-gen-char-limit');input.value='9999';
+          const style=getComputedStyle(input), canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=style.font;
+          return {space:input.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-18,text:ctx.measureText(input.value).width,right:input.getBoundingClientRect().right,rowRight:input.closest('.row').getBoundingClientRect().right};
+        });
+        assert.ok(digits.space >= digits.text,`four digits must fit without clipping at ${width}px`);
+        assert.ok(digits.right <= digits.rowRight,`reply limit stays inside its row at ${width}px`);
+      }
       assert.equal(layout.shadow, 'none');
       assert.ok(layout.closeBottom <= layout.headerBottom, `${tab}@${width}: header actions overlap content`);
       if (width <= 768) assert.equal(layout.mainLeft, 0, `${tab}: mobile sidebar must not consume a grid column`);
@@ -224,6 +244,22 @@ try {
   await page.waitForFunction(()=>globalThis.uxTestRuntime.t.backendSettings.card.secondary_preset_id==='rename-probe');
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),1,'setting secondary marks the tile without reopening settings');
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
+  const preset = page.locator('#nx-llm-guardrail-preset');
+  assert.deepEqual(await preset.locator('option').evaluateAll(rows=>rows.map(row=>row.value)),['auto','gemini','deepseek','glm']);
+  assert.ok(await preset.evaluate(el=>!!(el.compareDocumentPosition(document.getElementById('nx-llm-reverse-bar'))&Node.DOCUMENT_POSITION_FOLLOWING)));
+  for(const [family,reverse,disabled] of [['gemini','memo',false],['deepseek','off',true],['glm','authority',true],['auto','authority',false]]) {
+    if(family==='gemini')await page.locator('#nx-llm-tag-cal').setChecked(true);
+    await preset.selectOption(family);await page.evaluate(()=>uxTestRuntime.flush());
+    assert.equal(await page.locator('#nx-llm-reverse-bar').inputValue(),reverse);
+    assert.equal(await page.locator('#nx-llm-tag-cal').isDisabled(),disabled);
+    assert.equal(await page.locator('#nx-llm-tag-cal').isChecked(),family==='gemini');
+    const saved=await page.evaluate(()=>uxTestRuntime.t.backendSettings.card);
+    assert.equal(saved.llm_guardrail_preset,family);
+    await page.evaluate(()=>uxTestRuntime.paint());
+    assert.equal(await page.locator('#nx-llm-guardrail-preset').inputValue(),family,'preset restores on repaint');
+  }
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
   const previous = await page.locator('#nx-scroll-hold').isChecked();
   await page.locator('#nx-scroll-hold').setChecked(!previous);
   await page.evaluate(async () => { await globalThis.uxTestRuntime.flush(); });

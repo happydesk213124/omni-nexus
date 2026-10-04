@@ -1,7 +1,9 @@
 import { bindPromptUpdates } from './prompt-updates';
 import { bindSettingsPresets } from './settings-presets';
 import { bindCharacterOptions } from './character-options';
+import { bindCharacterCreate } from './character-create';
 import { bindModels } from './model-bindings';
+import { bindGuardrailPreset } from './guardrail-preset';
 /**
  * Preview HTML is the settings window. Vendor values/handlers bind by #nx-* id.
  */
@@ -350,6 +352,7 @@ export function afterPaint(): void {
   void bindPromptUpdates();
   const tab = activeTab();
   if (tab === 'dashboard') bindSettingsPresets();
+  if (tab === 'gen_options') bindGuardrailPreset();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
   if (line) line.textContent = TAB_LABELS[tab] || '설정';
@@ -393,6 +396,7 @@ export function afterPaint(): void {
   }
   if (tab === 'characters') {
     bindCharacterSheet();
+    bindCharacterCreate();
     bindSheet('nx-char-edit-btn', 'nx-char-sheet', 'nx-char-sheet-bg', 'nx-char-sheet-close', '▲ 캐릭터 수정', '▼ 캐릭터 수정');
     bindRisuPick();
     // Navigation nodes can outlive the form; refresh only their selection marks.

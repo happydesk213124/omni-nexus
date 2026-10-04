@@ -2,6 +2,7 @@ import { syncGenderIntoAppearance } from '../domain/character/tags';
 import { mergeSessionAndGlobalRoster } from '../domain/character/roster';
 import { readCharacterRoster, mutateCharacterRoster } from '../storage/character-roster';
 import { givenNameDuplicates, mergedGivenNames } from '../domain/character/save-identity';
+import { appendDuplicateCostumes, costumeOwnerName, describeCharacterCostumes } from '../domain/character/save-costumes';
 /**
  * Bot-owned character rosters. Storage resolves chat aliases to one disabled
  * character-lore entry; it never reads legacy plugin/global roster rows.
@@ -13,7 +14,7 @@ import { dbg } from '../core/debug';
 import { compactAssetKey } from '../domain/nai-meta/match.ts';
 import type { ApiResult, CharacterRecord, ShotCharacter, TaggerResult } from '../core/types';
 import { cleanText, joinTags, normalizeAlias, parseAliasList, writeSessionId } from '../core/util/text';
-import { characterMatchesIdentity, inferGenderFromExactTags, normalizeGender, latinGivenTokenOverlap, absorbAliasesFromDonor, ASSET_LOOKS_PRIORITY } from '../domain/character/identity';
+import { characterMatchesIdentity, inferGenderFromExactTags, normalizeGender, ASSET_LOOKS_PRIORITY } from '../domain/character/identity';
 import type { CharacterInput } from '../domain/character/identity';
 import {
   characterTriggers,
@@ -52,6 +53,11 @@ import { seedCharRefsFromLooks } from './nai-assets';
 export interface ReplaceOptions {
   prune?: boolean;
   rootSessionIds?: unknown[];
+}
+
+interface UpsertOptions {
+  /** Whole-list groups retain transitive donors without changing visible names. */
+  absorbed?: CharacterInput[];
 }
 
 /** Mirrors the `_runJob` call site: the tagger's own arguments, in order. */
@@ -125,7 +131,7 @@ export async function listCharacters(scope: string): Promise<CharacterRecord[]> 
       const inferred = inferGenderFromExactTags(appearance, attire, accessories);
       if (inferred) gender = inferred;
     }
-    const ensured = ensureCostumes(row);
+    const ensured = { ...ensureCostumes(row), costumes: describeCharacterCostumes(row, true) };
     const rec: CharacterRecord = {
       id: row.id,
       name: row.name,
@@ -287,7 +293,7 @@ export interface TaggerRosterArgs {
 
 /**
  * Roster the main tagger injects (merged session/unified + enabled globals,
- * then latin-peer alias absorb). The message-chip picker must call this —
+ * without changing saved triggers). The message-chip picker must call this —
  * not the raw GET session+global lists.
  */
 export async function loadTaggerRoster(args: TaggerRosterArgs = {}): Promise<CharacterRecord[]> {
@@ -324,7 +330,7 @@ export async function matchTriggeredCharactersPayload(
 
 // ── writes ─────────────────────────────────────────────────────────────────
 
-export async function upsertCharacter(scope: string, raw: unknown): Promise<CharacterRecord | null> {
+export async function upsertCharacter(scope: string, raw: unknown, opts: UpsertOptions = {}): Promise<CharacterRecord | null> {
   const appearanceProvided = hasOwn(raw, 'appearance');
   const attireProvided = hasOwn(raw, 'attire');
   const bottomsProvided = hasOwn(raw, 'bottoms');
@@ -384,28 +390,34 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
     rec.given_name = (givenProvided ? incomingNames.given_name : sameRow.given_name) || '';
     rec.given_name_variants = (givenVariantsProvided ? incomingNames.given_name_variants : sameRow.given_name_variants) || [];
   }
-  const duplicates = givenNameDuplicates(rec, existingList.filter(c => c.id !== selfId));
-  const dup = duplicates[0];
-  const nameFields = mergedGivenNames([rec, ...duplicates]);
-  for (const duplicate of duplicates) {
-    rec = foldCharacterUpsert(duplicate, rec, provided);
-    if (!rec) return null;
+  const candidates = new Map<string, CharacterInput>();
+  for (const row of [...existingList, ...(opts.absorbed || [])]) {
+    if (row.id !== selfId) candidates.set(String(row.id || row.name), row);
   }
-  Object.assign(rec, nameFields);
-  // Retain the first existing duplicate's identity, as the single-match save did.
-  if (dup) rec.id = dup.id!;
+  const duplicates = givenNameDuplicates(rec, [...candidates.values()]);
+  const dup = existingList.find(row => duplicates.some(other => other.id === row.id));
+  const mergedDuplicate = duplicates.length > 0;
+  if (mergedDuplicate) {
+    const survivor = sameRow || dup || rec;
+    const donors = duplicates.filter(row => row.id !== survivor.id);
+    if (sameRow || rec.id !== survivor.id) donors.unshift(rec);
+    rec = {
+      ...survivor,
+      costumes: appendDuplicateCostumes(survivor, donors),
+    } as typeof rec;
+  }
 
   // Normalize costumes: seed from attire if missing; sync active slot from wear on save.
   {
     let { costumes, active_costume } = ensureCostumes(rec);
-    if (!costumesProvided && (attireProvided || bottomsProvided || accessoriesProvided)) {
+    if (!mergedDuplicate && !costumesProvided && (attireProvided || bottomsProvided || accessoriesProvided)) {
       costumes = syncActiveCostumeFromWear(costumes, active_costume, {
         attire: rec.attire,
         bottoms: rec.bottoms,
         accessories: rec.accessories,
       });
     }
-    if (promoteDefault) {
+    if (!mergedDuplicate && promoteDefault) {
       costumes = promoteCostumeToDefault(costumes, {
         ...costumes[active_costume],
         ...Object.fromEntries(COSTUME_FIELDS.filter(key=>hasOwn(raw,key)).map(key=>[key,rec![key]])),
@@ -416,7 +428,8 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
       rec.bottoms = costumes[0]!.bottoms || '';
       rec.accessories = costumes[0]!.accessories;
     }
-    rec.costumes = costumes;
+    rec.costumes = describeCharacterCostumes({ ...rec, costumes }, Boolean(sameRow || mergedDuplicate),
+      sameRow && !mergedDuplicate ? costumeOwnerName(sameRow) : '');
     rec.active_costume = active_costume;
   }
 
@@ -452,18 +465,18 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
     age: rec.age ?? '',
     penis_size: cleanText(rec.penis_size || '', 40),
     wear_state: parseWearState(rec.wear_state) || '',
-    ref_hash: hasOwn(raw, 'ref_hash')
+    ref_hash: mergedDuplicate ? sanitizeHash(rec.ref_hash) : hasOwn(raw, 'ref_hash')
       ? sanitizeHash((raw as Record<string, unknown>).ref_hash)
-      : sanitizeHash(sameRow?.ref_hash || dup?.ref_hash || rec.ref_hash),
-    example_hash: hasOwn(raw, 'example_hash')
+      : sanitizeHash(rec.ref_hash || sameRow?.ref_hash || dup?.ref_hash),
+    example_hash: mergedDuplicate ? sanitizeHash(rec.example_hash) : hasOwn(raw, 'example_hash')
       ? sanitizeHash((raw as Record<string, unknown>).example_hash)
-      : sanitizeHash(sameRow?.example_hash || rec.example_hash),
+      : sanitizeHash(rec.example_hash || sameRow?.example_hash),
     // Cast ids are immutable once issued: an upsert that only touches looks
     // must carry the stored id forward, or resolve-cast goes blind while the
     // image location still points at it.
-    cast_id: hasOwn(raw, 'cast_id')
+    cast_id: mergedDuplicate ? sanitizeCastId(rec.cast_id) : hasOwn(raw, 'cast_id')
       ? sanitizeCastId((raw as Record<string, unknown>).cast_id)
-      : sanitizeCastId(sameRow?.cast_id || dup?.cast_id || rec.cast_id),
+      : sanitizeCastId(rec.cast_id || sameRow?.cast_id || dup?.cast_id),
     updated_at: now,
   } as CharacterRecord;
   const replacedIds = new Set([selfId, rec.id, ...duplicates.map(row => row.id)]);
@@ -472,7 +485,7 @@ export async function upsertCharacter(scope: string, raw: unknown): Promise<Char
   rec.appearance = appearance;
   rec.gender = gender;
 
-  return rec as CharacterRecord;
+  return saved;
 }
 
 /**
@@ -598,14 +611,22 @@ export async function replaceCharacters(
   const scopeKey = cleanText(scope, 200) || GLOBAL_SCOPE;
   const prune = opts.prune === true;
   const inputRows = (characters || []).filter((row): row is CharacterInput => Boolean(row && typeof row === 'object' && !Array.isArray(row)));
+  const previous = await listCharacters(scopeKey);
+  const identityKey = (row: CharacterInput): string => JSON.stringify([
+    cleanText(row.name), cleanText(row.surname), mergedGivenNames([row]),
+  ]);
+  const processed = new Set<CharacterInput>();
   const out: CharacterRecord[] = [];
-  for (const raw of characters || []) {
-    // The UI posts the whole list. A later row with the survivor's ID must not
-    // overwrite spellings already absorbed from earlier rows in that same list.
-    const group = raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? givenNameDuplicates(raw as CharacterInput, inputRows) : [];
-    const rec = await upsertCharacter(scopeKey, group.length > 1
-      ? { ...raw as CharacterInput, ...mergedGivenNames(group) } : raw);
+  for (const raw of inputRows) {
+    if (processed.has(raw)) continue;
+    const group = givenNameDuplicates(raw, inputRows);
+    const members = group.length ? group : [raw];
+    for (const member of members) processed.add(member);
+    // A newly renamed row is the donor, even if an earlier draft was saved.
+    const existing = previous.find(row => members.some(member => member.id === row.id && identityKey(member) === identityKey(row)))
+      || previous.find(row => members.some(member => member.id === row.id));
+    const seed = members.find(member => member.id === existing?.id) || raw;
+    const rec = await upsertCharacter(scopeKey, seed, { absorbed: members });
     if (rec) out.push(rec);
   }
   if (prune) {
@@ -677,30 +698,8 @@ export async function absorbAliasesOntoLatinPeers(args: {
   const unifiedSessionId = cleanText(args.unifiedSessionId || '', 200);
   const characterId = cleanText(args.characterId || '', 200);
   const sourceSessionIds = args.sourceSessionIds ?? [];
-  let roster = await rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
-  const hosts = roster.filter((row) => characterHasAppearance(row));
-  for (const host of hosts) {
-    let aliases = parseAliasList([...(host.aliases || []), host.name]);
-    let changed = false;
-    for (const donor of roster) {
-      if (!donor || cleanText(donor.id, 80) === cleanText(host.id, 80)) continue;
-      if (!latinGivenTokenOverlap(host, donor)) continue;
-      const next = absorbAliasesFromDonor(host, donor);
-      const nextList = parseAliasList(next);
-      if (nextList.length > aliases.length || nextList.some((a) => !aliases.includes(a))) {
-        aliases = nextList;
-        changed = true;
-      }
-    }
-    if (!changed) continue;
-    const writeScope = host.scope === GLOBAL_SCOPE ? GLOBAL_SCOPE : (host.scope || sessionId);
-    await upsertCharacter(writeScope, {
-      ...host,
-      aliases,
-    });
-    roster = await rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
-  }
-  return roster;
+  // Keep this bridge entry readable without silently expanding saved triggers.
+  return rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
 }
 
 /**
@@ -741,6 +740,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     ? await listMergedSessionCharacters([writeSessionId, ...sourceSessionIds])
     : roster;
   const newList = [...(tagged.new_characters || [])];
+  const savedCostumeOwners = new Set<string>();
   const covered = new Set(newList.map((raw) => normalizeAlias(raw?.name)));
   for (const row of pool) {
     const key = normalizeAlias(row.name);
@@ -847,6 +847,15 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
           ...(cleanText(rec.penis_size || '') ? { penis_size: rec.penis_size } : {}),
           ...(rec.gender ? { gender: rec.gender } : {}),
         });
+      } else {
+        const writeScope = existing.scope === GLOBAL_SCOPE ? GLOBAL_SCOPE : (existing.scope || writeSessionId);
+        await upsertCharacter(writeScope, {
+          id: existing.id,
+          name: existing.name,
+          costumes: appendDuplicateCostumes(existing, [rec]),
+          active_costume: existing.active_costume,
+        });
+        savedCostumeOwners.add(rec.name);
       }
       roster = await readRoster();
       continue;
@@ -883,12 +892,15 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
       ...(bottoms ? { bottoms } : {}),
       ...(accessories ? { accessories } : {}),
     });
+    savedCostumeOwners.add(rec.name);
     roster = await readRoster();
   }
 
   const costumePairs = collectCostumePairs({
     new_costumes: (tagged as { new_costumes?: unknown }).new_costumes,
-    new_characters: tagged.new_characters,
+    // These designs were already snapshotted above. Re-merging by costume name
+    // here would overwrite an existing named costume after preserving it.
+    new_characters: tagged.new_characters?.filter(row => !savedCostumeOwners.has(cleanText(row.name))),
     shots: [{ characters: shotChars }],
   });
   for (const pair of costumePairs) {

@@ -3,6 +3,7 @@ import { characterSource } from './character-source';
  * Collect NovelAI tags from Risu character additionalAssets and active module assets.
  */
 import { dbg } from '../core/debug';
+import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { hostHas, risuHost } from '../core/host';
 import type { ApiResult, LoreEntry } from '../core/types';
 import { cleanText } from '../core/util/text.ts';
@@ -537,7 +538,7 @@ export async function collectBestLookAssets(
  * Applies character lorefilter first (same as job head) when character_id is set.
  */
 export async function probeAssetNaiTags(body: Record<string, unknown> = {}): Promise<ApiResult> {
-  const message = cleanText(body.message ?? body.text ?? '', 20000);
+  const message = cleanText(body.message ?? body.text ?? '', TAGGER_REFERENCE_LIMIT);
   const loreIn = (Array.isArray(body.lorebook) ? body.lorebook : []) as LoreEntry[];
   const uiKeysRaw = Array.isArray(body.lore_trigger_keys)
     ? body.lore_trigger_keys.map((k) => cleanText(k, 200)).filter(Boolean)

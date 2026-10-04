@@ -9,6 +9,11 @@ import { callLlm as callLlmRaw, type CallLlmOptions as RawCallLlmOptions } from 
 import type { LlmSettings } from '../core/types';
 import { normalizeReverseBarMode } from '../config/schema';
 import { stripCbs } from '../core/util/text';
+import { guardrailSettings } from '../domain/llm/guardrail-preset';
+import { llmModelName } from '../providers/llm/model-name';
+import { beginGuardrailRequest } from '../providers/llm/request-hook';
+import { llmIsRisuSource } from '../providers/llm/transform';
+import type { ReverseBarTexts } from '../domain/llm/guardrails';
 import {
   applyReverseBar,
   applyTagCalInstruct,
@@ -21,16 +26,19 @@ export interface CallLlmOptions extends RawCallLlmOptions {
   plain?: boolean;
 }
 
+async function reverseBarTexts(mode: 'memo' | 'authority'): Promise<ReverseBarTexts> {
+  const keys = mode === 'memo' ? ['memo_jailbreak', 'memo_prefill', 'memo_prefill_user'] : ['jailbreak', 'prefill', 'prefill_user'];
+  const texts = await Promise.all(keys.map(async key => stripCbs(await getPrompt(key)).trim()));
+  return { jailbreak: texts[0], prefill: texts[1], prefillUser: texts[2] };
+}
+
 async function prepareMessages(
   messages: LlmMessage[],
-  opts: CallLlmOptions,
+  mode: 'off' | 'memo' | 'authority',
+  tagCal: boolean,
 ): Promise<LlmMessage[]> {
-  if (opts.plain) return messages;
-  const card = getConfig().card || {};
   // Role-swap option bar: memo = Freya role-lock set; authority = fake
   // supervisor approval role-lock set. User guidance is handled by author notes.
-  const mode = normalizeReverseBarMode(card.llm_reverse_bar);
-  const tagCal = card.llm_tag_cal === true;
   if (mode === 'off' && !tagCal) return messages;
 
   let out = messages;
@@ -38,17 +46,7 @@ async function prepareMessages(
     // Role-lock set per level, mirroring the 4.5.1 jb toggle: memo uses the
     // Freya set (4.4.0 and earlier), authority the fake supervisor-approval
     // set (reintroduced from illustration 3). Prompt-tab editable.
-    const pack = mode === 'memo'
-      ? {
-        jailbreak: stripCbs(await getPrompt('memo_jailbreak')),
-        prefill: stripCbs(await getPrompt('memo_prefill')),
-        prefillUser: stripCbs(await getPrompt('memo_prefill_user')),
-      }
-      : {
-        jailbreak: stripCbs(await getPrompt('jailbreak')),
-        prefill: stripCbs(await getPrompt('prefill')),
-        prefillUser: stripCbs(await getPrompt('prefill_user')),
-      };
+    const pack = await reverseBarTexts(mode);
     out = applyReverseBar(out, pack);
   }
   if (tagCal) out = applyTagCalInstruct(out);
@@ -60,8 +58,20 @@ export async function callLlm(
   messages: LlmMessage[],
   opts: CallLlmOptions = {},
 ): Promise<string> {
-  const prepared = await prepareMessages(messages, opts);
-  const text = await callLlmRaw(llm, prepared, opts);
-  if (opts.plain || getConfig().card?.llm_tag_cal !== true) return text;
+  const card = getConfig().card;
+  const preset = card.llm_guardrail_preset;
+  const model = !opts.plain && (!preset || preset === 'auto') ? await llmModelName(llm) : '';
+  const { mode, tagCal } = guardrailSettings(preset, model, normalizeReverseBarMode(card.llm_reverse_bar), card.llm_tag_cal === true);
+  const hook = !opts.plain && (!preset || preset === 'auto') && llmIsRisuSource(llm.source)
+    ? await beginGuardrailRequest({ mode, tagCal, memo: await reverseBarTexts('memo'), authority: await reverseBarTexts('authority') }) : null;
+  let text: string;
+  try {
+    let prepared = opts.plain ? messages : await prepareMessages(messages, mode, tagCal);
+    if (hook) prepared = [{ role: 'system', content: hook.request.marker }, ...prepared];
+    text = await callLlmRaw(llm, prepared, opts);
+  }
+  finally { hook?.end(); }
+  // Decode with the same decision that built this request, even if settings change mid-call.
+  if (opts.plain || !(hook?.request.appliedTagCal ?? tagCal)) return text;
   return decodeTagCal(text);
 }

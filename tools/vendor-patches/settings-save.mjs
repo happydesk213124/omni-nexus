@@ -28,5 +28,24 @@ export function repairSettingsSave(source) {
   // Keep a short debounce for sliders/viewer controls that bypass the field
   // collector. Close/save explicitly flush it instead of waiting for the timer.
   once('        t.uiOpen && $e(`자동 저장 실패: ${z(n?.message || n, 60)}`, !1);\n      });\n    }, 500);', '        omniSaveError(n);\n      });\n    }, 200);');
-  return out;
+  return repairReplyCharLimitSettings(out);
+}
+
+/** Preview-only controls need both final capture and immediate runtime feedback. */
+export function repairReplyCharLimitSettings(source) {
+  const needle = '      auto_gen_on_reply: ee("nx-auto-gen-reply"),';
+  const bind = '    const saveHabitCard = () => {';
+  for (const seam of [needle, bind]) {
+    if (source.split(seam).length !== 2) throw new Error('[reply char limit] needle drift: ' + seam);
+  }
+  return source.replace(needle, `${needle}
+      auto_gen_char_limit_enabled: ee("nx-auto-gen-char-limit-on"),
+      auto_gen_char_limit: omniReplyCharLimit(N("nx-auto-gen-char-limit")),`)
+    .replace(bind, `    shell.addEventListener("input", event => {
+      if(event.isComposing || !/^nx-auto-gen-char-limit(?:-on)?$/.test(event.target?.id || ""))return;
+      const next={auto_gen_char_limit_enabled:ee("nx-auto-gen-char-limit-on"),auto_gen_char_limit:omniReplyCharLimit(N("nx-auto-gen-char-limit"))};
+      t.backendSettings.card={...t.backendSettings.card,...next};
+      queueSettingsSave({card:next});
+    });
+${bind}`);
 }
