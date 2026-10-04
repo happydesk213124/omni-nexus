@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
-import { repairSettingsSave } from '../tools/vendor-patches/settings-save.mjs';
+import { repairSettingsSave, repairReplyCharLimitSettings } from '../tools/vendor-patches/settings-save.mjs';
 
 const runtime = readFileSync(new URL('../tools/vendor-patches/settings-save.js', import.meta.url), 'utf8');
 const bundle = await build({ stdin: { contents: `
@@ -254,4 +254,40 @@ test('settings-close handler dispatches hide before blocked persistence and stal
 
 test('save patch rejects a missing vendor seam rather than applying vacuously', () => {
   assert.throws(() => repairSettingsSave(''), /region drift/);
+});
+
+test('reply limit settings patch captures the vendor form and updates runtime before debounced saving', () => {
+  const vendor=readFileSync('vendor/inlay-nexus-ui.js','utf8');
+  const form=vendor.slice(vendor.indexOf('  function Mt() {'),vendor.indexOf('  function Ct() {'));
+  const binding='    const saveHabitCard = () => {};';
+  const source=form+binding;
+  const patched=repairReplyCharLimitSettings(source);
+  const normalize=new Function(readFileSync('tools/vendor-patches/reply-runtime.js','utf8')+';return omniReplyCharLimit;')();
+  const fields=new Map([['nx-power',{checked:true}],['nx-auto-gen-reply',{checked:true}],['nx-auto-gen-char-limit-on',{checked:true}],['nx-auto-gen-char-limit',{value:'750'}]]);
+  let input;
+  const writes=[], t={backendSettings:{card:{auto_gen_char_limit_enabled:false,auto_gen_char_limit:500}}};
+  const deps={document:{getElementById:id=>fields.get(id)},ee:id=>!!fields.get(id)?.checked,N:id=>fields.get(id)?.value ?? '',
+    Ne:(raw,fallback)=>Number.isFinite(Number(raw))?Number(raw):fallback,Bt:()=>'',Ut:()=>'',pinXPctDefault:0,pinYPctDefault:0,
+    omniReplyCharLimit:normalize,shell:{addEventListener:(_name,handler)=>{input=handler;}},t,queueSettingsSave:patch=>writes.push(patch)};
+  const collect=new Function(...Object.keys(deps),patched+';return Mt;')(...Object.values(deps));
+  assert.equal(collect().auto_gen_char_limit_enabled,true);
+  assert.equal(collect().auto_gen_char_limit,750);
+  input({target:{id:'nx-auto-gen-char-limit'}});
+  assert.equal(t.backendSettings.card.auto_gen_char_limit,750);
+  assert.equal(writes.length,1);
+  fields.get('nx-auto-gen-char-limit-on').checked=false;
+  input({target:{id:'nx-auto-gen-char-limit-on'}});
+  assert.equal(t.backendSettings.card.auto_gen_char_limit_enabled,false);
+  assert.equal(collect().auto_gen_char_limit,750);
+  for(const [value,expected] of [['',500],['invalid',500],['501.8',501],['-1',0],['0',0]]) {
+    fields.get('nx-auto-gen-char-limit').value=value;
+    assert.equal(collect().auto_gen_char_limit,expected);
+  }
+  input({isComposing:true,target:{id:'nx-auto-gen-char-limit'}});
+  input({target:{id:'nx-other-setting'}});
+  assert.equal(writes.length,2);
+  fields.delete('nx-power');assert.equal(collect(),null);
+  for(const changed of [source.replace('auto_gen_on_reply:','retired:'),source.replace('const saveHabitCard','const retired'),source+binding]) {
+    assert.throws(()=>repairReplyCharLimitSettings(changed),/needle drift/);
+  }
 });

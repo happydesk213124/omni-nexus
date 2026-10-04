@@ -1,5 +1,12 @@
 // Only committed chat output can start reply auto-generation. Never infer completion from DOM/chunks.
 const omniReplySeen = new Set();
+function omniReplyCharLimit(raw) {
+  const limit=raw==null || String(raw).trim()===''?500:Number(raw);
+  return Number.isFinite(limit)?Math.max(0,Math.floor(limit)):500;
+}
+function omniReplyMinChars(card) {
+  return card.auto_gen_char_limit_enabled?Math.max(30,omniReplyCharLimit(card.auto_gen_char_limit)):30;
+}
 async function onChatOutput(arg) {
   if(t.unloading)return;
   omniStreamOutput();
@@ -15,7 +22,7 @@ async function onChatOutput(arg) {
   const card=t.backendSettings?.card || {};
   const text=String(msg.data ?? msg.content ?? '');
   if (typeof omniCommitStreamReply === 'function' && omniCommitStreamReply(arg,msg,text)) return;
-  if(t.unloading || card.power===false || !card.auto_gen_on_reply || messageBodyChars(text)<=30)return;
+  if(t.unloading || card.power===false || !card.auto_gen_on_reply || messageBodyChars(text)<=omniReplyMinChars(card))return;
   const characterId=String(arg.char?.chaId || arg.char?.id || arg.char?.name || `char_${arg.characterIndex}`);
   const chatId=String(arg.chat?.id || arg.chat?.chatId || `chat_${arg.chatIndex}`);
   const key=JSON.stringify([characterId,chatId,msg.chatId || msg.id || index,ye(text)]);
@@ -52,10 +59,10 @@ async function omniGenerateCommittedReply(arg,msg,text,characterId,chatId) {
     chatName:w(chat.name || chat.chatName || chat.title || `Chat ${arg.chatIndex}`,200),
     liveChar:true,liveChat:true,unified:false};
   const card=t.backendSettings?.card || {};
-  if(t.unloading || card.power===false || !card.auto_gen_on_reply || t.jobsInFlight?.size)return;
+  if(t.unloading || card.power===false || !card.auto_gen_on_reply || messageBodyChars(text)<=omniReplyMinChars(card) || t.jobsInFlight?.size)return;
   const busy=await K('/v1/jobs/busy-message',{method:'POST',body:{session_id:scope.sessionId,character_id:characterId,chat_id:chatId,message_index:index,role:msg.role}});
   const latest=t.backendSettings?.card || {};
-  if(busy?.busy || t.unloading || latest.power===false || !latest.auto_gen_on_reply || t.jobsInFlight?.size)return;
+  if(busy?.busy || t.unloading || latest.power===false || !latest.auto_gen_on_reply || messageBodyChars(text)<=omniReplyMinChars(latest) || t.jobsInFlight?.size)return;
   // Non-forced generation preserves the existing image/rebind and job-lock safeguards.
   await Be({...scope,actionMessageIndex:index,actionMessageRole:msg.role,actionMessageId:id},text,false);
 }

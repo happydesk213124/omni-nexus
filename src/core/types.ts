@@ -99,6 +99,8 @@ export interface CardSettings {
   llm_json_retry: boolean;
   /** Role-swap option bar: off | memo (Client Comments) | authority (Client Comments + role-lock trick). */
   llm_reverse_bar: ReverseBarMode;
+  /** Per-call model-family preset; unknown auto models retain the manual controls. */
+  llm_guardrail_preset: 'auto' | 'gemini' | 'deepseek' | 'glm';
   /** 4.5.1 direction text: what the client wants, injected verbatim in the Client Comments block. */
   client_direction: string;
   /** 4.5.1 focus text: character(s) to feature in every scene, injected verbatim in the Client Comments block. */
@@ -259,6 +261,9 @@ export interface CardSettings {
   /** How a long-press on an inline/sticky shot opens the enlarge sheet. */
   image_press_inspect?: 'off' | 'hold' | 'two' | 'three' | 'both';
   auto_gen_on_reply: boolean;
+  /** Skip committed-reply generation at or below the configured body length. */
+  auto_gen_char_limit_enabled: boolean;
+  auto_gen_char_limit: number;
   /** Master switch for stream-keyword gen. Independent of execute / auto_gen_on_reply. */
   omni_helper_prompt: boolean;
   stream_keywords_enabled: boolean;

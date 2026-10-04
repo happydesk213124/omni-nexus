@@ -133,12 +133,15 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-preprocess', 'preprocessing', false],
     ['nx-stream-keywords-on', 'stream_keywords_enabled', false],
     ['nx-omni-helper', 'omni_helper_prompt', false],
+    ['nx-auto-gen-char-limit-on', 'auto_gen_char_limit_enabled', false],
   ] as const) {
     out.querySelector<HTMLInputElement>('#' + id)?.toggleAttribute('checked', card[key] == null ? defaultOn : Boolean(card[key]));
   }
   // Role-swap is an option bar (off/memo/authority), not a checkbox. When the
   // vendor dashboard has no matching node, fall back to the stored mode.
   if (card) {
+    const preset = out.querySelector<HTMLSelectElement>('#nx-llm-guardrail-preset');
+    if (preset) for (const option of preset.options) option.toggleAttribute('selected', option.value === (card.llm_guardrail_preset || 'auto'));
     const reverseBar = out.querySelector<HTMLSelectElement>('#nx-llm-reverse-bar');
     if (reverseBar && !vendor.querySelector('#nx-llm-reverse-bar')) {
       const stored = card.llm_reverse_bar;
@@ -159,6 +162,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   }
   if (card && keywords) keywords.textContent = String(card.stream_keywords || '');
   if (tab === 'dashboard' && card) {
+    const charLimit = out.querySelector<HTMLInputElement>('#nx-auto-gen-char-limit');
+    if (charLimit) charLimit.setAttribute('value', String(card.auto_gen_char_limit ?? 500));
     const sound = out.querySelector<HTMLSelectElement>('#nx-image-done-sound');
     const soundType = ['ding', 'soft', 'bell', 'loud'].includes(String(card.image_done_sound_type)) ? String(card.image_done_sound_type) : 'ding';
     if (sound) for (const option of sound.options) option.toggleAttribute('selected', option.value === (card.image_done_sound === true ? soundType : 'off'));

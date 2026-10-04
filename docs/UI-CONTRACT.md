@@ -464,6 +464,18 @@ already has a usable needle (≥3 chars). Independent of `card.execute` and
 `card.auto_gen_on_reply`. `card.execute === "manual"` still blocks gen when
 the user clicks a bubble; reply auto-gen and stream-keyword gen do not.
 
+The dashboard places `글자수 제한 [500] 자 이하` and the right-aligned
+`nx-auto-gen-char-limit-on` toggle on one row below 응답 후 자동 생성. The numeric
+input is `nx-auto-gen-char-limit`. They persist as
+`card.auto_gen_char_limit_enabled` (default `false`, including old saves) and
+`card.auto_gen_char_limit` (nonnegative integer, default `500`). When enabled,
+committed-reply auto-generation skips body lengths **at or below** the limit;
+500 skips 500 and allows 501. Counting excludes whitespace and LBDATA blocks,
+and the existing 30-character floor still applies. The latest limit is checked
+again after host and busy-message awaits. Manual and stream-keyword generation
+retain their existing behavior. The asserted settings-save patch collects both
+fields; `tabHtml` restores their saved values because the frozen UI lacks them.
+
 ### LLM role profiles (`settings.llm` + `settings.llm_roles`)
 
 `settings.llm` remains the **메인 태깅** profile (key name unchanged — no
@@ -580,6 +592,7 @@ prefers that over `content_hash`; hash and the Dice≥60% rebind remain fallback
 | `POST /v1/characters/analyze-asset` | `{image_b64, asset_name, name, aliases, session_id, character_id}` → normalized look slots plus `source: metadata|vision`. NovelAI/WebP metadata uses the `asset_char` looks prepass; vision autotag is used only when no usable metadata exists. This route does not save the roster. |
 | `POST /v1/characters/import-fill` | `{scope, session_id, character_id, parallel, xnai, picks[{kind,id}]}` → `{filled, failed[], vision_to_text}` timeout 160s. Lore and persona/CharInfo meta looks are chunked 8 per LLM call; `parallel` fires up to 10 chunks at once. Lore: asset meta + `char_looks`; if matching assets have no meta, one best-ranked file (default/normal/profile/smil*) via autotag; else lore body + `char_looks`. Persona/CharInfo with NAI meta: same looks messages + `mergeRosterFromTagged`. No meta + image → autotag then roster merge; else description + `char_looks`. `xnai` (popup toggle, default off) adds `lb-xnai.lb.extra` as an author's-note system turn on the lore-text path only — never on asset-meta or autotag. A name-matched asset file (meta or not) is also stored as that character's reference image when the slot is empty. |
 | `POST /v1/characters/lorefilter` | `{character_id, selected[]}` save, or `{character_id, rescan:true, lorebook?}` seed via `asset_char` |
+| `POST /v1/characters/create-from-description` | `{instruction, scope, session_id, character_id}` → `{ok, added, names[], characters[], message}`. Settings character-tab `LLM한테 시키기` accepts multiple descriptions in one call, uses the shared character prompt and `asset_char` model, references the selected bot's trigger-matched lorebook and current roster, validates the entire `new_characters` batch before merging into the selected scope. Popup `?` contains writing tips and examples. |
 | `POST /v1/characters/ref` | `{character_id, scope, session_id?, image_b64}` or `{character_id, scope, copy_from, copy_from_scope?}` or `{character_id, scope, clear:true}` — bytes as-is |
 | `POST /v1/characters/ref/clear` | `{character_id, scope, session_id?}` |
 | `/v1/appearance/:sessionId` · `POST` | legacy alias |
@@ -800,7 +813,16 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 - Shipped defaults preserve existing prompt edits. Per-key applied revisions live in internal `prompt:__applied__:*` meta rows; reading does not acknowledge updates.
 - Character asset selection follows the settings picker. Module selection lists active global/selected-character modules separately. New rows append without replacing the editor or roster DOM, and their writes share the live-edit queue.
 
+- Given-name save consolidation preserves the existing survivor's name, triggers, default looks, images and selected costume. Incoming looks and costume sets append as independent costumes; donor `[base]` fields resolve against the donor's own default first. Repeated identical owner/descriptions/looks do not append duplicates.
+- Code adds the original full name to descriptions of created/imported costumes, including `default`. Empty legacy descriptions receive that label on read; authored descriptions remain intact. The main tagger uses the description to select a costume while returning the existing roster name.
+- Name, surname, given-name, spelling and trigger fields remain drafts during typing and IME composition. Their live save runs on completed `change` (normally blur), so a partial matching given name cannot consolidate the roster. A successful consolidation refreshes the visible roster after checking the edit revision.
+
 ### Streaming image generation
+
+- Generation options place `역바태칼 프리셋` directly above the existing reverse-bar and tag-cal controls. `card.llm_guardrail_preset` is `auto` (default), `gemini`, `deepseek` or `glm`; it participates in immediate feedback, coalesced saving and export.
+- Gemini uses memo and retains tag-cal; DeepSeek uses off and disables tag-cal; GLM uses authority and disables tag-cal. Explicit picks update the visible controls. Auto resolves each call separately and preserves saved manual values; unrecognized models retain them.
+- For delegated Risu calls, one `registerBodyIntercepter` hook identifies only marked Omni requests and resolves the outgoing `model` or native Gemini request type. Concurrent calls keep separate decisions and response decoding. Other chat requests are untouched; missing/denied hooks retain the settings determined before dispatch.
+- The reply-only character limit input has enough content width for four digits, including at 320px.
 
 - `tools/vendor-patches/stream-keyword-runtime.js` consumes cumulative `output` script callbacks. It checks the latest changed text once per second, stops at the first signal, and sends only the preceding body. Reasoning tags and image markers are excluded by `src/domain/prompt/message-body.ts`.
 - `[[imgstart]]` works independently of the manual keyword toggle. `card.omni_helper_prompt` defaults off and controls the `⚛️ omni 보조 프롬` module, whose display regex hides the marker. Module writes share `src/storage/module-write.ts` with existing display and image modules.

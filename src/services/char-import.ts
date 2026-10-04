@@ -41,7 +41,6 @@ import {
   listCharacters,
   mergeRosterFromTagged,
   rosterForSession,
-  upsertCharacter,
 } from './characters';
 import { fetchHostLorebookEntries, fetchCharacterLorebookEntries, getLorefilterPayload } from './lorefilter';
 import { seedCharRefsFromLooks } from './nai-assets';
@@ -246,21 +245,6 @@ async function saveLooks(
   });
 }
 
-async function foldPickAliases(scope: string, rows: ResolvedRow[]): Promise<void> {
-  const list = await listCharacters(scope);
-  for (const r of rows) {
-    if (!r.aliases.length) continue;
-    const hit = resolveCharacter(r.name, list)
-      || r.aliases.map((a) => resolveCharacter(a, list)).find(Boolean);
-    if (!hit) continue;
-    await upsertCharacter(hit.scope || scope, {
-      id: hit.id,
-      name: hit.name,
-      aliases: parseAliasList([...(hit.aliases || []), ...r.aliases, r.name, hit.name]),
-    });
-  }
-}
-
 function assignLookBytes(rows: ResolvedRow[], looks: BestLookAsset[]): void {
   for (const row of rows) {
     if (row.bytes?.length) continue;
@@ -313,7 +297,6 @@ async function runPackedLooks(
     originalHintsFrom(rows, extraHints),
     packed.weightMap,
   );
-  await foldPickAliases(sessionId, rows);
   return chars;
 }
 
@@ -351,7 +334,6 @@ async function runVisionBatch(scope: string, characterId: string, rows: Resolved
     );
     if (!chars.length) throw new Error('이미지 분석 결과에 캐릭터 외형이 없습니다.');
     await saveLooks(scope, characterId, chars, originalHintsFrom(rows));
-    await foldPickAliases(scope, rows);
   } catch (err) {
     dbg('char-import.vision.fail', { message: String((err as Error)?.message || err) }, 'warn');
     throw err;
@@ -388,7 +370,6 @@ async function runTextBatch(
     const chars = stampIdentity(await parseLooks(messages), rows);
     if (!chars.length) return false;
     await saveLooks(scope, characterId, chars, originalHintsFrom(rows));
-    await foldPickAliases(scope, rows);
     return true;
   } catch (err) {
     dbg('char-import.text.fail', { message: String((err as Error)?.message || err) }, 'warn');

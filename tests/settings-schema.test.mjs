@@ -9,6 +9,19 @@ import {
   applySettingsResetKeeps,
 } from "../.test-build/settings-schema.mjs";
 
+test("reply character limit preserves legacy behavior, normalizes input and survives export/import", () => {
+  const legacy = migrateSettings({card:{}}).card;
+  assert.equal(legacy.auto_gen_char_limit_enabled, false);
+  assert.equal(legacy.auto_gen_char_limit, 500);
+  for (const [input, expected] of [[undefined,500],[null,500],['',500],[' ',500],['abc',500],['750',750],[500.9,500],[-1,0],[0,0],[Infinity,500]]) {
+    assert.equal(migrateSettings({card:{auto_gen_char_limit:input}}).card.auto_gen_char_limit, expected);
+  }
+  for (const flag of [true,'true',1,'1','on']) assert.equal(migrateSettings({card:{auto_gen_char_limit_enabled:flag}}).card.auto_gen_char_limit_enabled, true);
+  const card = importSettings(exportSettings({card:{auto_gen_char_limit_enabled:true,auto_gen_char_limit:750}})).card;
+  assert.equal(card.auto_gen_char_limit_enabled, true);
+  assert.equal(card.auto_gen_char_limit, 750);
+});
+
 test("inline chat overlay and persist-bake cannot be disabled", () => {
   const card = migrateSettings({ card: {} }).card;
   assert.equal(card.inline_chat_images, true);

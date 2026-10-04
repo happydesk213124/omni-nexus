@@ -14,9 +14,11 @@ try {
  await page.evaluate(()=>{
   const kv=new Map();
   const chars=Array.from({length:50},(_,i)=>({chaId:'bot-'+i,name:'Bot '+i,additionalAssets:[['Asset '+i,'asset-'+i]],modules:['m'],globalLore:[],chats:[{id:'chat-'+i,message:[]}]}));
+  let modules=[{id:'m',name:'Active module',assets:[['Module asset','module-asset']]},{id:'inlay-inray-display',namespace:'inlay.inray_display',lorebook:[],assets:[]}];
   globalThis.risuai={
    pluginStorage:{getItem:async k=>kv.get(k),setItem:async(k,v)=>kv.set(k,v),removeItem:async k=>kv.delete(k)},
-   getArgument:async()=>'',readImage:async()=>new Uint8Array([1,2,3]),getDatabase:async()=>({characters:structuredClone(chars),modules:[{id:'m',name:'Active module',assets:[['Module asset','module-asset']]}],enabledModules:['m']}),
+   getArgument:async()=>'',readImage:async()=>new Uint8Array([1,2,3]),getDatabase:async()=>({characters:structuredClone(chars),modules:structuredClone(modules),enabledModules:['m']}),
+   setDatabase:async value=>{if(value.modules)modules=structuredClone(value.modules)},
    getCharacterFromIndex:async i=>structuredClone(chars[i]),setCharacterToIndex:async(i,c)=>{await new Promise(r=>setTimeout(r,80));chars[i]=structuredClone(c);},
    getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async i=>structuredClone(chars[i].chats[0]),
   };
@@ -52,9 +54,11 @@ try {
  await page.locator('#nx-char-add-session').click();
  await page.waitForFunction(()=>document.querySelectorAll('.char-card[data-char-id]').length===2);
  await page.locator('#nx-char-edit-body [data-char-name]').fill('Second');
+ await page.locator('#nx-char-edit-body [data-char-name]').press('Tab');
  await page.evaluate(async()=>{await globalThis.__OMNI_FLUSH_CHARACTERS__();});
  assert.equal(await page.evaluate(()=>savedBody===document.getElementById('nx-char-edit-body')),true);
  assert.equal(await page.locator('#nx-char-edit-body [data-char-name]').inputValue(),'Second');
+ assert.match(await page.locator('#nx-char-edit-body [data-char-costume-note]').inputValue(),/^Second · /,'completed manual names update the visible default description');
  const persisted = await page.evaluate(async()=>{const s=switchTest.t.lastScope;return globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(s.sessionId)+'&character_id='+s.characterId,{method:'GET'});});
  assert.deepEqual(persisted.characters.map(c=>c.name).sort(),['Edited immediately','Second']);
  assert.deepEqual(await page.locator('.char-card [data-char-name]').evaluateAll(xs=>xs.map(x=>x.value)),['Edited immediately','Second']);
@@ -198,13 +202,52 @@ try {
  const expectedLooks=await page.evaluate(()=>expectedGeneratedLooks);
  for(const [key,value] of Object.entries(expectedLooks))assert.equal(await page.locator('#nx-char-edit-body [data-char-'+key.replaceAll('_','-')+']').inputValue(),value,key);
  await page.locator('#nx-char-edit-body [data-char-name]').fill('윤지호 확인');
+ await page.locator('#nx-char-edit-body [data-char-name]').press('Tab');
  await page.evaluate(async()=>{await globalThis.__OMNI_FLUSH_CHARACTERS__();});
  const afterEdit=await page.evaluate(async()=>{
    const data=await globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(switchTest.t.lastScope.sessionId),{method:'GET'});
    return data.characters.find(c=>c.name==='윤지호 확인');
  });
  for(const [key,value] of Object.entries(expectedLooks))assert.equal(afterEdit[key],value,'after edit '+key);
+ // Exercise the generated settings button, bridge patches, real service/storage,
+ // cache refresh and visible tiles together; a unit mock cannot catch these seams.
+ await page.locator('#nx-char-sheet-close').press('Enter');
+ await page.evaluate(async()=>{
+   globalThis.descriptionCalls=[];
+   globalThis.descriptionReply={new_characters:[
+     {name:'하진',aliases:['하진','Hajin'],given_name:'하진',given_name_variants:['Hajin'],appearance:'mature female',hair_color:'brown hair',hair_style:'side ponytail',eye_color:'brown eyes',attire:'white shirt',bottoms:'black pants'},
+     {name:'민지',aliases:['민지','Minji'],given_name:'민지',given_name_variants:['Minji'],appearance:'girl',hair_color:'blue hair',hair_style:'long hair',eye_color:'blue eyes',attire:'gray hoodie',bottoms:'jeans'},
+   ]};
+   risuai.runLLMModel=async({messages})=>{descriptionCalls.push(messages);return {success:true,content:JSON.stringify(descriptionReply)}};
+   await __INLAY_NATIVE__.fetch('/v1/settings',{method:'PUT',body:{llm:{source:'emotion'},llm_roles:{asset_char:{source:'emotion',follow_main:true}},card:{llm_reverse_bar:'off',llm_tag_cal:false}}});
+ });
+ await page.locator('#nx-char-create-llm').click();
+ await page.locator('#nx-char-create-description').fill('하진: 중년 여성, 갈색 머리와 갈색 눈, 사이드테일, 흰 셔츠와 검은 바지.\n민지: 파란 머리와 파란 눈, 긴 생머리, 회색 후드와 청바지.');
+ await page.locator('[data-create-run]').click();
+ await page.waitForFunction(()=>document.querySelector('[data-create-status]')?.textContent.includes('2명 추가됨'));
+ assert.equal(await page.evaluate(()=>descriptionCalls.length),1);
+ assert.equal(await page.locator('[data-ux-character-tile]').filter({hasText:'하진'}).count(),1);
+ assert.equal(await page.locator('[data-ux-character-tile]').filter({hasText:'민지'}).count(),1);
+ await page.locator('[data-create-close]').click();
+ await page.locator('[data-ux-character-tile]').filter({hasText:'하진'}).click();
+ if(!await page.locator('#nx-char-edit-body').isVisible())await page.locator('#nx-char-edit-btn').click();
+ assert.equal(await page.locator('#nx-char-edit-body [data-char-hair-style]').inputValue(),'side ponytail');
+ assert.equal(await page.locator('#nx-char-edit-body [data-char-bottoms]').inputValue(),'black pants');
+ await page.locator('#nx-char-sheet-close').press('Enter');
+ await page.locator('#nx-char-risu-open').click();
+ await page.locator('[data-risu-value="__global__"]').click();
+ await page.waitForFunction(()=>document.getElementById('nx-char-scope-bar')?.dataset.uxSelectedScope==='global');
+ await page.locator('#nx-risu-pick-close').press('Enter');
+ await page.evaluate(()=>{descriptionReply={new_characters:[{name:'수연',aliases:['수연','Suyeon'],appearance:'girl',hair_color:'green hair',hair_style:'long hair',eye_color:'green eyes',attire:'white shirt'}]}});
+ await page.locator('#nx-char-create-llm').click();
+ await page.locator('#nx-char-create-description').fill('수연: 초록 머리와 초록 눈, 긴 머리, 흰 셔츠.');
+ await page.locator('[data-create-run]').click();
+ await page.waitForFunction(()=>document.querySelector('[data-create-status]')?.textContent.includes('1명 추가됨'));
+ assert.equal(await page.locator('[data-ux-character-tile][data-ux-character-scope="global"]').filter({hasText:'수연'}).count(),1);
+ const shared=await page.evaluate(async()=>(await __INLAY_NATIVE__.fetch('/v1/characters?session_id=__global__',{method:'GET'})).characters);
+ assert.equal(shared.find(row=>row.name==='수연')?.hair_color,'green hair');
+ await page.locator('[data-create-close]').click();
  await page.screenshot({path:'.test-build/character-integration-mobile.png',fullPage:true});
  assert.deepEqual(errors,[]);
- console.log('Character integration: generated look persistence, incremental adds, draft preservation, image/text paste, module assets and both options passed.');
+ console.log('Character integration: description batch creation in session/global scopes, generated look persistence, incremental adds, draft preservation, image/text paste, module assets and both options passed.');
 } finally {await browser.close();}

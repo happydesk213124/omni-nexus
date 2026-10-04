@@ -84,6 +84,17 @@ export async function runScenario(N, handles) {
   const post = (p, body) => N.fetch(p, { method: 'POST', body });
   const put = (p, body) => N.fetch(p, { method: 'PUT', body });
 
+  await rec('settings.guardrail_preset', async () => {
+    const card=(await get('/v1/settings')).settings.card;
+    if(!('llm_guardrail_preset' in card))return {unsupported:true};
+    const defaultAuto=card.llm_guardrail_preset==='auto';
+    await put('/v1/settings',{card:{llm_guardrail_preset:'glm'}});
+    const saved=(await get('/v1/settings')).settings.card;
+    const exported=JSON.parse((await get('/v1/settings/export')).json).card;
+    await put('/v1/settings',{card:{llm_guardrail_preset:'auto'}});
+    return {defaultAuto,saved:saved.llm_guardrail_preset==='glm',exported:exported.llm_guardrail_preset==='glm',manualKept:saved.llm_reverse_bar===card.llm_reverse_bar&&saved.llm_tag_cal===card.llm_tag_cal};
+  });
+
   const waitForJob = async (jobId) => {
     for (let i = 0; i < 200; i += 1) {
       await new Promise((r) => setTimeout(r, 25));
@@ -118,6 +129,20 @@ export async function runScenario(N, handles) {
       await post('/v1/settings/update',{card:{image_done_sound:initial.image_done_sound,image_done_sound_type:'ding'}});
     }
     return {ok:true};
+  });
+  await rec('settings.reply_char_limit', async () => {
+    const initial=(await get('/v1/settings'))?.settings?.card || {};
+    if (!('auto_gen_char_limit_enabled' in initial)) return {unsupported:true};
+    if(initial.auto_gen_char_limit_enabled!==false || initial.auto_gen_char_limit!==500)throw new Error('Reply character limit defaults changed');
+    const saved=(await put('/v1/settings',{card:{auto_gen_char_limit_enabled:true,auto_gen_char_limit:'750.9'}})).settings.card;
+    if(saved.auto_gen_char_limit_enabled!==true || saved.auto_gen_char_limit!==750)throw new Error('Reply character limit did not persist');
+    const exported=JSON.parse((await get('/v1/settings/export')).json).card;
+    if(exported.auto_gen_char_limit_enabled!==true || exported.auto_gen_char_limit!==750)throw new Error('Reply character limit missing from export');
+    await put('/v1/settings',{card:{auto_gen_char_limit_enabled:false}});
+    const disabled=(await get('/v1/settings')).settings.card;
+    if(disabled.auto_gen_char_limit!==750)throw new Error('Disabling reply character limit lost input');
+    await put('/v1/settings',{card:{auto_gen_char_limit:500}});
+    return {defaultOff:true,defaultLimit:500,saved:true,exported:true,retained:true};
   });
   // Boot pack is user content (differs from the 1.x extract by design; see
   // compare). Sync both sides to the fixed floor before any behaviour step.
@@ -1567,7 +1592,7 @@ export async function runScenario(N, handles) {
       clearFlagGone: !('clearServiceAccount' in (cleared?.llm || {})) && !('clearServiceAccount' in (cleared?.llm_roles?.autotag || {})),
     };
   });
-  // Saving uses given-name spellings only; trigger aliases remain for text matching.
+  // Given-name grouping preserves the survivor; donor designs become named costumes.
   await rec('chars.given_name_save_contract', async () => {
     const session_id = 'char_parity';
     const previous = await get('/v1/characters?session_id=' + session_id);
@@ -1582,7 +1607,13 @@ export async function runScenario(N, handles) {
       const rows = result.characters || [];
       const merged = rows.filter(row => row.given_name_variants?.length);
       const words = (merged[0]?.given_name_variants || []).map(x => x.toLowerCase().replace(/\s/g, '')).sort();
-      return { count: rows.length, merged: merged.length, words, triggersSeparate: rows.filter(row => row.id.startsWith('trigger-')).length === 2 };
+      const survivor = merged[0];
+      return { count: rows.length, merged: merged.length, words,
+        identityKept: survivor?.id === 'name-a' && survivor?.name === 'name-a' && survivor?.surname === '김'
+          && JSON.stringify(survivor?.aliases) === '["name-a","shared"]',
+        defaultKept: survivor?.appearance === 'blue eyes' && survivor?.costumes?.[0]?.appearance === 'blue eyes',
+        owners: ['name-a','name-b','name-c'].every(name=>survivor?.costumes?.some(c=>c.note?.startsWith(name+' · '))),
+        triggersSeparate: rows.filter(row => row.id.startsWith('trigger-')).length === 2 };
     } finally {
       await post('/v1/characters', { session_id, characters: previous.characters || [] });
     }
@@ -1693,6 +1724,34 @@ export async function runScenario(N, handles) {
       handles.setLlmReply(DEFAULT_LLM_REPLY);
       await globalThis.risuai.setCharacterToIndex(0, original);
       await put('/v1/settings', {card:settings.card});
+    }
+  });
+  await rec('chars.create_from_description', async () => {
+    if (N.VERSION === '1.3.0') return { legacy: true };
+    const character_id = 'char_parity', session_id = 'char_parity';
+    const index = (await globalThis.risuai.getDatabase()).characters.findIndex(row => row.chaId === character_id);
+    const original = await globalThis.risuai.getCharacterFromIndex(index);
+    const previous = await get('/v1/characters?session_id='+session_id+'&character_id='+character_id);
+    const rows = [
+      {name:'하진',aliases:['하진','Hajin'],appearance:'mature female',hair_color:'brown hair',hair_style:'side ponytail',eye_color:'brown eyes',attire:'white shirt',bottoms:'black pants'},
+      {name:'민지',aliases:['민지','Minji'],appearance:'girl',hair_color:'blue hair',hair_style:'long hair',eye_color:'blue eyes',attire:'gray hoodie'},
+    ];
+    try {
+      await globalThis.risuai.setCharacterToIndex(index,{...original,globalLore:[...original.globalLore,{key:'하진',content:'DESCRIPTION_TRIGGER_REFERENCE'},{key:'UnmentionedPerson',content:'DO_NOT_INJECT_DESCRIPTION_REFERENCE'}]});
+      await post('/v1/characters', {session_id,characters:[{id:'description-existing',name:'DescriptionExisting',aliases:['DescriptionExisting'],appearance:'PRESERVED_DESCRIPTION_LOOK',hair_color:'black hair',hair_style:'short hair',eye_color:'black eyes'}]});
+      handles.setLlmReply(JSON.stringify({new_characters:rows}));
+      const before = handles.llmRequests.length;
+      const result = await post('/v1/characters/create-from-description', {session_id,character_id,scope:session_id,instruction:'하진: 갈색 머리, 갈색 눈, 사이드테일.\n민지: 파란 머리, 파란 눈.'});
+      const calls = handles.llmRequests.slice(before);
+      const text = JSON.stringify(calls[0]?.messages);
+      const saved = rows.every(row => result.characters?.some(c => c.name===row.name && c.hair_color===row.hair_color && c.hair_style===row.hair_style && c.eye_color===row.eye_color && c.aliases.includes(row.aliases[1])));
+      handles.setLlmReply(JSON.stringify({new_characters:[{name:'DescriptionExisting',appearance:'OVERWRITE_ATTEMPT',hair_color:'red hair',hair_style:'long hair',eye_color:'red eyes'}]}));
+      const repeated = await post('/v1/characters/create-from-description', {session_id,character_id,scope:session_id,instruction:'DescriptionExisting'});
+      return {added:result.added,saved,singleCall:calls.length===1,references:text.includes('DESCRIPTION_TRIGGER_REFERENCE')&&text.includes('PRESERVED_DESCRIPTION_LOOK')&&!text.includes('DO_NOT_INJECT_DESCRIPTION_REFERENCE'),existingPreserved:repeated.added===0&&repeated.characters.some(c=>c.id==='description-existing'&&c.appearance.includes('PRESERVED_DESCRIPTION_LOOK')&&!c.appearance.includes('OVERWRITE_ATTEMPT'))};
+    } finally {
+      handles.setLlmReply(DEFAULT_LLM_REPLY);
+      await globalThis.risuai.setCharacterToIndex(index, original);
+      await post('/v1/characters', {session_id,characters:previous.characters||[]});
     }
   });
   return transcript;

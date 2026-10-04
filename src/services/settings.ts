@@ -22,7 +22,7 @@ import { withoutLegacyPercentPrompt } from '../domain/prompt/message-body';
 import { acknowledgePromptDefault, hasPromptDefaultRevision } from './prompt-revisions';
 import { DEFAULT_CONFIG, RESET_FACTORY_CONFIG } from '../config/defaults';
 import { promptText } from '../config/prompts';
-import { applySettingsResetKeeps, exportSettings, importSettings, splitSettingsDocPrompts } from '../config/schema';
+import { applySettingsResetKeeps, exportSettings, importSettings, normalizeAutoReplyCharLimit, normalizeAutoReplyCharLimitEnabled, splitSettingsDocPrompts } from '../config/schema';
 import { PROMPT_KEYS, PROMPT_PACK, RETIRED_PROMPT_KEYS, VERSION } from '../core/constants';
 import { getEventCount, getFocusStage, getLastError, getLastStage } from '../core/debug';
 import type { ApiResult, StylePreset } from '../core/types';
@@ -561,6 +561,8 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Ap
     merged.persist_chat_images = true;
     merged.llm_anchor_percent = false;
     merged.omni_helper_prompt = merged.omni_helper_prompt === true;
+    if ('auto_gen_char_limit_enabled' in card) merged.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
+    if ('auto_gen_char_limit' in card) merged.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);
     cfg.card = merged;
     cfg.card.character_max = characterMaxLimit(cfg.card);
     // Old viewer modes retired with the galleryUi window (same mapping as
