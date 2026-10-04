@@ -246,19 +246,30 @@ try {
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
   const preset = page.locator('#nx-llm-guardrail-preset');
-  assert.deepEqual(await preset.locator('option').evaluateAll(rows=>rows.map(row=>row.value)),['auto','gemini','deepseek','glm']);
+  assert.deepEqual(await preset.locator('option').evaluateAll(rows=>rows.map(row=>row.value)),['none','auto','gemini','deepseek','glm']);
+  assert.equal(await preset.inputValue(),'none','fresh settings start without a preset');
+  assert.equal(await page.locator('#nx-llm-reverse-bar').isDisabled(),false);
+  assert.equal(await page.locator('#nx-llm-tag-cal').isDisabled(),false);
   assert.ok(await preset.evaluate(el=>!!(el.compareDocumentPosition(document.getElementById('nx-llm-reverse-bar'))&Node.DOCUMENT_POSITION_FOLLOWING)));
-  for(const [family,reverse,disabled] of [['gemini','memo',false],['deepseek','off',true],['glm','authority',true],['auto','authority',false]]) {
+  for(const [family,reverse,disabled] of [['gemini','memo',false],['deepseek','off',true],['glm','authority',true],['auto','authority',false],['none','authority',false]]) {
     if(family==='gemini')await page.locator('#nx-llm-tag-cal').setChecked(true);
     await preset.selectOption(family);await page.evaluate(()=>uxTestRuntime.flush());
     assert.equal(await page.locator('#nx-llm-reverse-bar').inputValue(),reverse);
     assert.equal(await page.locator('#nx-llm-tag-cal').isDisabled(),disabled);
+    assert.equal(await page.locator('#nx-llm-reverse-bar').isDisabled(),!['none','auto'].includes(family));
     assert.equal(await page.locator('#nx-llm-tag-cal').isChecked(),family==='gemini');
     const saved=await page.evaluate(()=>uxTestRuntime.t.backendSettings.card);
     assert.equal(saved.llm_guardrail_preset,family);
     await page.evaluate(()=>uxTestRuntime.paint());
     assert.equal(await page.locator('#nx-llm-guardrail-preset').inputValue(),family,'preset restores on repaint');
   }
+  await page.locator('#nx-llm-reverse-bar').selectOption('memo');
+  await page.locator('#nx-llm-tag-cal').setChecked(true);
+  await page.evaluate(()=>uxTestRuntime.flush());
+  await page.evaluate(()=>uxTestRuntime.paint());
+  assert.equal(await page.locator('#nx-llm-guardrail-preset').inputValue(),'none');
+  assert.equal(await page.locator('#nx-llm-reverse-bar').inputValue(),'memo','none preserves manual reverse-bar on repaint');
+  assert.equal(await page.locator('#nx-llm-tag-cal').isChecked(),true,'none preserves manual tag-cal on repaint');
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
   const previous = await page.locator('#nx-scroll-hold').isChecked();
   await page.locator('#nx-scroll-hold').setChecked(!previous);

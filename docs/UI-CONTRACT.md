@@ -823,7 +823,7 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 
 ### Streaming image generation
 
-- Generation options place `역바태칼 프리셋` directly above the existing reverse-bar and tag-cal controls. `card.llm_guardrail_preset` is `auto` (default), `gemini`, `deepseek` or `glm`; it participates in immediate feedback, coalesced saving and export.
+- Generation options place `역바태칼 프리셋` directly above the existing reverse-bar and tag-cal controls. `card.llm_guardrail_preset` is `none` (사용 안 함, default), `auto`, `gemini`, `deepseek` or `glm`; it participates in immediate feedback, coalesced saving and export. Missing/invalid values select `none`; explicit saved presets are preserved. `none` leaves both manual controls editable and applies their saved values without model lookup or request hooks.
 - Gemini uses memo and retains tag-cal; DeepSeek uses off and disables tag-cal; GLM uses authority and disables tag-cal. Explicit picks update the visible controls. Auto resolves each call separately and preserves saved manual values; unrecognized models retain them.
 - For delegated Risu calls, one `registerBodyIntercepter` hook identifies only marked Omni requests and resolves the outgoing `model` or native Gemini request type. Concurrent calls keep separate decisions and response decoding. Other chat requests are untouched; missing/denied hooks retain the settings determined before dispatch.
 - The reply-only character limit input has enough content width for four digits, including at 320px.

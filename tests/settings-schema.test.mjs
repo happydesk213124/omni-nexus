@@ -22,6 +22,21 @@ test("reply character limit preserves legacy behavior, normalizes input and surv
   assert.equal(card.auto_gen_char_limit, 750);
 });
 
+test("guardrail presets default to none and retain explicit selections and manual settings", () => {
+  for (const preset of [undefined,null,'','invalid','none']) {
+    const card = migrateSettings({card:{llm_guardrail_preset:preset,llm_reverse_bar:'memo',llm_tag_cal:true}}).card;
+    assert.equal(card.llm_guardrail_preset,'none');
+    assert.equal(card.llm_reverse_bar,'memo');
+    assert.equal(card.llm_tag_cal,true);
+  }
+  for (const preset of ['none','auto','gemini','deepseek','glm']) {
+    const card = importSettings(exportSettings({card:{llm_guardrail_preset:preset,llm_reverse_bar:'authority',llm_tag_cal:true}})).card;
+    assert.equal(card.llm_guardrail_preset,preset);
+    assert.equal(card.llm_reverse_bar,'authority');
+    assert.equal(card.llm_tag_cal,true);
+  }
+});
+
 test("inline chat overlay and persist-bake cannot be disabled", () => {
   const card = migrateSettings({ card: {} }).card;
   assert.equal(card.inline_chat_images, true);

@@ -100,7 +100,7 @@ export interface CardSettings {
   /** Role-swap option bar: off | memo (Client Comments) | authority (Client Comments + role-lock trick). */
   llm_reverse_bar: ReverseBarMode;
   /** Per-call model-family preset; unknown auto models retain the manual controls. */
-  llm_guardrail_preset: 'auto' | 'gemini' | 'deepseek' | 'glm';
+  llm_guardrail_preset: 'none' | 'auto' | 'gemini' | 'deepseek' | 'glm';
   /** 4.5.1 direction text: what the client wants, injected verbatim in the Client Comments block. */
   client_direction: string;
   /** 4.5.1 focus text: character(s) to feature in every scene, injected verbatim in the Client Comments block. */

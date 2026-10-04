@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.1';
+const PLUGIN_VERSION = '1.1.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -962,6 +962,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.2 · 역바태칼 프리셋 사용 안 함 기본값 추가</strong>
+          <div class="muted" style="margin-top:8px">2026.10.04 · 역바태칼 프리셋의 기본값을 사용 안 함으로 바꿨습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>사용 안 함에서는 직접 설정한 역바·태그 칼질 값을 그대로 적용합니다.</li>
+            <li>새 설정·초기화·프리셋 값이 없는 설정은 사용 안 함으로 시작하며, 자동 모델 확인과 요청 훅을 실행하지 않습니다.</li>
+            <li>자동·Gemini·DeepSeek·GLM 계열은 직접 선택할 수 있고, 이미 저장한 프리셋 선택은 유지합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.1 · 크게보기 팝업의 태그·재생성 대상 연결 수정</strong>
@@ -14808,7 +14817,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.1 · 크게보기 팝업의 태그·재생성을 ⚛️·🔃 버튼과 같은 함수로 연결했습니다. 보고 있는 이미지의 원본 메시지를 찾아 처리하고, 대상을 찾지 못하면 안내합니다."
+    body: "1.1.2 · 역바태칼 프리셋에 사용 안 함을 추가하고 기본값으로 설정했습니다. 직접 설정한 역바·태그 칼질 값을 그대로 적용하며, 자동·모델 계열 프리셋은 선택해서 사용할 수 있습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

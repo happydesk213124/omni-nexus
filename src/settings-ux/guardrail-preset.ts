@@ -9,12 +9,13 @@ export function bindGuardrailPreset(): void {
   select.dataset.bound = '1';
   const paint = () => {
     const preset = normalizeGuardrailPreset(select.value);
-    if (preset !== 'auto') {
+    const fixed = preset !== 'none' && preset !== 'auto';
+    if (fixed) {
       const next = guardrailSettings(preset, '', normalizeReverseBarMode(reverse.value), tag.checked);
       reverse.value = next.mode;
       tag.checked = next.tagCal;
     }
-    reverse.disabled = preset !== 'auto';
+    reverse.disabled = fixed;
     tag.disabled = preset === 'deepseek' || preset === 'glm';
   };
   select.addEventListener('change', () => {

@@ -1,8 +1,8 @@
 import type { ReverseBarMode } from '../../core/types';
 
-export type GuardrailPreset = 'auto' | 'gemini' | 'deepseek' | 'glm';
+export type GuardrailPreset = 'none' | 'auto' | 'gemini' | 'deepseek' | 'glm';
 export function normalizeGuardrailPreset(value: unknown): GuardrailPreset {
-  return value === 'gemini' || value === 'deepseek' || value === 'glm' ? value : 'auto';
+  return value === 'auto' || value === 'gemini' || value === 'deepseek' || value === 'glm' ? value : 'none';
 }
 
 /** Unknown models keep the user's settings; never guess a provider from an endpoint. */

@@ -27,7 +27,7 @@
     "auto_aspect": true,
     "llm_json_retry": true,
     "llm_reverse_bar": "authority",
-    "llm_guardrail_preset": "auto",
+    "llm_guardrail_preset": "none",
     "client_direction": "",
     "client_focus": "",
     "llm_tag_cal": false,

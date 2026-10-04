@@ -87,12 +87,13 @@ export async function runScenario(N, handles) {
   await rec('settings.guardrail_preset', async () => {
     const card=(await get('/v1/settings')).settings.card;
     if(!('llm_guardrail_preset' in card))return {unsupported:true};
-    const defaultAuto=card.llm_guardrail_preset==='auto';
+    const defaultNone=card.llm_guardrail_preset==='none';
     await put('/v1/settings',{card:{llm_guardrail_preset:'glm'}});
     const saved=(await get('/v1/settings')).settings.card;
     const exported=JSON.parse((await get('/v1/settings/export')).json).card;
-    await put('/v1/settings',{card:{llm_guardrail_preset:'auto'}});
-    return {defaultAuto,saved:saved.llm_guardrail_preset==='glm',exported:exported.llm_guardrail_preset==='glm',manualKept:saved.llm_reverse_bar===card.llm_reverse_bar&&saved.llm_tag_cal===card.llm_tag_cal};
+    await put('/v1/settings',{card:{llm_guardrail_preset:'none'}});
+    const disabled=(await get('/v1/settings')).settings.card;
+    return {defaultNone,saved:saved.llm_guardrail_preset==='glm',exported:exported.llm_guardrail_preset==='glm',disabled:disabled.llm_guardrail_preset==='none',manualKept:disabled.llm_reverse_bar===card.llm_reverse_bar&&disabled.llm_tag_cal===card.llm_tag_cal};
   });
 
   const waitForJob = async (jobId) => {

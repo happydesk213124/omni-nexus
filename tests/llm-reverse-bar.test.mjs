@@ -142,6 +142,41 @@ test('plain probe skips everything even in authority mode', async () => {
   );
 });
 
+test('none or missing preset keeps manual guardrails for every model family and Risu source', async () => {
+  for (const preset of ['none',undefined]) {
+    for (const model of ['gemini-3','deepseek-chat','GLM-5']) {
+      await setCard({llm_guardrail_preset:preset,llm_reverse_bar:'authority',llm_tag_cal:true});
+      globalThis.__captured.length=0;globalThis.__presetReply='gi%%rl, wfsn, 50%';
+      const reply=await api.callLlm({...llm,model},[{role:'user',content:'manual'}]);
+      const text=JSON.stringify(globalThis.__captured[0].body.messages);
+      assert.ok(text.includes(JB),model+' retains manual authority');
+      assert.ok(!text.includes(MJB),model+' does not switch to memo');
+      assert.ok(text.includes('Insert `%%`'),model+' retains manual tag-cal');
+      assert.equal(reply,'girl, nsfw, 50');
+    }
+  }
+  const oldRun=globalThis.risuai.runLLMModel,oldDb=globalThis.risuai.getDatabase,oldHook=globalThis.risuai.registerBodyIntercepter;
+  try {
+    let modelReads=0,hookRegistrations=0;
+    globalThis.risuai.getDatabase=async()=>{modelReads++;throw new Error('none must not look up model names');};
+    globalThis.risuai.registerBodyIntercepter=async()=>{hookRegistrations++;throw new Error('none must not install auto hooks');};
+    globalThis.risuai.runLLMModel=async options=>{
+      assert.deepEqual(options.messages,[{role:'user',content:'manual'}]);
+      return {success:true,content:'gi%%rl, wfsn, 50%'};
+    };
+    for (const preset of ['none',undefined]) for (const source of ['main','aux']) {
+      await setCard({llm_guardrail_preset:preset,llm_reverse_bar:'off',llm_tag_cal:false});
+      assert.equal(await api.callLlm({...llm,source},[{role:'user',content:'manual'}]),'gi%%rl, wfsn, 50%');
+    }
+    assert.equal(modelReads,0);
+    assert.equal(hookRegistrations,0);
+  } finally {
+    globalThis.risuai.runLLMModel=oldRun;globalThis.risuai.getDatabase=oldDb;globalThis.risuai.registerBodyIntercepter=oldHook;
+    globalThis.__presetReply='';
+    await setCard({llm_guardrail_preset:'none'});
+  }
+});
+
 test('custom calls choose the model-family preset, preserve Gemini tag-cal and decode only the applied setting', async () => {
   for (const [preset, model, expected, tag] of [
     ['auto','google/gemini-3-flash',MJB,true], ['auto','deepseek/DeepSeek-V3','',false],
