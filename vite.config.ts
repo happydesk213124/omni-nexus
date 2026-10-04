@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.0';
+const PLUGIN_VERSION = '1.1.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -964,6 +964,15 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
+          <strong>1.1.1 · 크게보기 팝업의 태그·재생성 대상 연결 수정</strong>
+          <div class="muted" style="margin-top:8px">2026.10.04 · 크게 보고 있는 이미지의 원본 메시지를 대상으로 태그·재생성을 실행합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>팝업의 태그·재생성을 메시지·플로팅 뷰어의 ⚛️·🔃 버튼과 같은 처리 함수로 연결했습니다.</li>
+            <li>이미지 ID로 원본 메시지를 찾아 전체 본문과 메시지 ID를 전달하며, 메시지 위치가 바뀌어도 같은 대상을 찾습니다.</li>
+            <li>원본 메시지를 찾지 못하거나 대화가 바뀌면 안내를 표시합니다. 마지막 선택 메시지로 넘어가서 생성하던 문제를 수정했습니다.</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:14px">
           <strong>1.1.0 · 코스튬 보존형 캐릭터 통합과 모델별 가드레일 프리셋</strong>
           <div class="muted" style="margin-top:8px">2026.10.04 · 동명이인 캐릭터의 기존 의상은 유지하면서 새 코스튬으로 합치고, 모델 계열에 맞춰 역바·태그 칼질 설정을 자동 적용합니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
@@ -971,6 +980,15 @@ const VENDOR_CURATION_PANEL_PATCH =
             <li>자동 프리셋은 호출 모델이 Gemini·DeepSeek·GLM 계열인지 확인해 역바와 태그 칼질 설정을 맞춥니다.</li>
             <li>역바·태그 칼질 조합별 프리셋을 추가하고, 기존 숫자 입력란은 네 자리까지 보이도록 넓혔습니다.</li>
             <li>캐릭터 이름을 입력하는 동안 기존 캐릭터와 즉시 합쳐지지 않도록 작성 완료 시점에 저장·통합합니다.</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.0.3 · 캐릭터·페소 가져오기에서 lb-xnai 최우선 적용</strong>
+          <div class="muted" style="margin-top:8px">2026.10.01 · lb-xnai.lb.extra를 체크하면 에셋·이미지 분석에서도 해당 지시와 태그를 우선합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>로어북·캐릭터 시트·페소 가져오기의 텍스트, 에셋 메타데이터, 이미지 분석 LLM에 최우선 지시를 함께 보냅니다.</li>
+            <li>별도 이미지 분석 모델에도 적용하며, 이미지·에셋·설명과 충돌하면 lb-xnai 지시와 태그를 우선하도록 요청합니다.</li>
+            <li>가져오는 캐릭터의 이름·별칭에 맞는 구역과 공통 지시만 보내고, 체크를 끄면 적용하지 않습니다.</li>
           </ul>
         </div>
         <div class="card" style="margin-top:14px">
@@ -14790,7 +14808,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.0 · 동명이인 캐릭터를 기존 값은 보존한 채 새 코스튬으로 통합합니다. 모델 계열별 역바·태그 칼질 자동 프리셋과 네 자리 숫자 입력 개선을 추가했습니다."
+    body: "1.1.1 · 크게보기 팝업의 태그·재생성을 ⚛️·🔃 버튼과 같은 함수로 연결했습니다. 보고 있는 이미지의 원본 메시지를 찾아 처리하고, 대상을 찾지 못하면 안내합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

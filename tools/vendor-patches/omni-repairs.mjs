@@ -7,7 +7,7 @@ import { repairSpinnerPreview } from './spinner-preview.mjs';
 import { repairResponsiveness } from './responsiveness.mjs';
 import { rebuildMessageRuntime } from './runtime-rebuild.mjs';
 import { readFileSync } from 'node:fs';
-import { repairInspectFullscreen, repairAsyncInspect, repairInspectCloseNow, repairInspectGuardClose, repairInspectGuardCloseUp } from './inspect.mjs';
+import { repairInspectFullscreen, repairAsyncInspect, repairInspectCloseNow, repairInspectMessageActions, repairInspectGuardClose, repairInspectGuardCloseUp } from './inspect.mjs';
 /** Final asserted compatibility repairs: preview owns markup, legacy functions own behavior. */
 export function repairOmniUi(source) {
   let out = source;
@@ -557,7 +557,7 @@ export function repairOmniUi(source) {
   // Inspect sheet buttons follow the settings UI: 12px radius, Kraken purple primary.
   replace('border-radius:10px;padding:9px 14px;font:700 12px Segoe UI', 'border-radius:12px;padding:9px 14px;font:700 12px Segoe UI');
   replace('addInspectBtn(actRow, "재생성", "regen", `${actStyle};background:rgba(124,108,255,.92);color:#fff`)', 'addInspectBtn(actRow, "재생성", "regen", `${actStyle};background:#7132f5;color:#fff`)');
-  out = repairGestures(repairResponsiveness(repairInspectGuardCloseUp(repairInspectGuardClose(repairInspectCloseNow(repairAsyncInspect(repairInspectFullscreen(rebuildMessageRuntime(out))))))));
+  out = repairGestures(repairResponsiveness(repairInspectGuardCloseUp(repairInspectGuardClose(repairInspectMessageActions(repairInspectCloseNow(repairAsyncInspect(repairInspectFullscreen(rebuildMessageRuntime(out)))))))));
   const autoStart = out.indexOf('    tt(), document.querySelectorAll("[data-char-autotag]")');
   const autoEnd = out.indexOf('    }), t._autotagPasteBound', autoStart);
   const refStart = out.indexOf('    })), (() => {', autoEnd);
