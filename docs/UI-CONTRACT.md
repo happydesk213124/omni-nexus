@@ -73,6 +73,15 @@ The UI's fetch wrapper is `K(path, init, timeoutMs)`; it throws
 > and controls live in the host document; settings' iframe is never opened.
 > Close removes/releases only the clone. A missing host image shows an error.
 > Cast names resolve separately into a reserved two-row, 72px chip area.
+> Cast lookup reads only the current Risu character's roster and the shared
+> global roster, never the all-character directory or another bot's roster.
+> The floating viewer mounts without loading the gallery or rehashing chat
+> messages. Its position index stays lazy; initial placement and large scroll
+> jumps use binary position lookup, then only the adjacent three bubbles are
+> considered for images. A local miss preserves the selected image without
+> changing its DOM; it never triggers a wider image search. Switching chats
+> still clears the previous chat's image.
+> Neighboring bubble snapshots refresh only when their content or layout size changes.
 > Inspect 태그/재생성 and the message/floating ⚛️/🔃 buttons share
 > `omniMessageAction`. Inspect resolves the image's owning message from saved
 > shot tokens or verified metadata, then passes its full text and message ID.

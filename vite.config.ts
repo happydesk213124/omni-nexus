@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.2';
+const PLUGIN_VERSION = '1.1.3';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -962,6 +962,17 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.3 · 플로팅 뷰어와 크게보기 조회 최적화</strong>
+          <div class="muted" style="margin-top:8px">2026.10.06 · 긴 채팅에서 뷰어를 열거나 스크롤할 때 필요한 조회를 줄였습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>플로팅 뷰어를 열 때 갤러리 로딩과 전체 메시지 해시 계산을 기다리지 않습니다.</li>
+            <li>읽는 위치 주변 말풍선 3개에서만 이미지를 찾고, 변경된 말풍선의 이미지 정보만 다시 확인합니다.</li>
+            <li>근처에 이미지가 없으면 전체 검색이나 안내 표시 없이 이전 이미지를 그대로 유지합니다. 채팅을 바꾸면 초기화합니다.</li>
+            <li>처음 열거나 스크롤로 기존 범위를 벗어나면 필요한 위치만 빠르게 찾아갑니다.</li>
+            <li>크게보기의 캐릭터 이름·정보는 현재 봇과 전역 챗 로스터에서만 조회합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.2 · 역바태칼 프리셋 사용 안 함 기본값 추가</strong>
@@ -14817,7 +14828,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.2 · 역바태칼 프리셋에 사용 안 함을 추가하고 기본값으로 설정했습니다. 직접 설정한 역바·태그 칼질 값을 그대로 적용하며, 자동·모델 계열 프리셋은 선택해서 사용할 수 있습니다."
+    body: "1.1.3 · 플로팅 뷰어의 갤러리 대기와 넓은 이미지 검색을 줄였습니다. 근처에 이미지가 없으면 이전 이미지를 유지하며, 크게보기는 현재 봇과 전역 챗 로스터만 조회합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

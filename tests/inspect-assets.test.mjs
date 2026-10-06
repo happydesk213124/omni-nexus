@@ -115,7 +115,7 @@ test('character asset wins over legacy; unreadable pixels fail and roster errors
   const char={chaId:'bot',additionalAssets:[[name,'live/path','webp']],globalLore:[lore]};
   let unreadable=false;
   globalThis.risuai={getDatabase:async()=>({characters:[char],modules:[{id:'inlay-gallery',assets:[[name,'old/path','webp']]}]}),
-    getCharacterFromIndex:async()=>char,readImage:async path=>{assert.equal(path,'live/path');return unreadable?null:new Uint8Array(64);}};
+    getCurrentCharacterIndex:async()=>0,getCharacterFromIndex:async()=>char,readImage:async path=>{assert.equal(path,'live/path');return unreadable?null:new Uint8Array(64);}};
   api.invalidateShotListing();
   const result=await api.shotAssetByName(name);
   assert.deepEqual(result.ids,['9396','1234']);

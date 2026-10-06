@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 
 const streamSource=readFileSync(new URL('../tools/vendor-patches/stream-runtime.js',import.meta.url),'utf8');
 const streamHelpers=streamSource.slice(streamSource.indexOf('async function omniRelease'),streamSource.indexOf('let omniObserverWork'));
-const parts = ['style', '', 'render', 'input', 'drag'];
+const parts = ['style', '', 'render', 'input', 'position', 'drag'];
 const runtime = parts.map(part => readFileSync(new URL(`../tools/vendor-patches/float-viewer${part ? '-'+part : ''}.js`,import.meta.url),'utf8')).join('\n');
 const messageRuntime=readFileSync(new URL('../tools/vendor-patches/message-runtime.js',import.meta.url),'utf8');
 const countRuntime=messageRuntime.slice(messageRuntime.indexOf('let omniCountWrites='),messageRuntime.indexOf('async function omniDisposeMessageRuntime('));
@@ -20,22 +20,30 @@ async function hoverAt(page, inside) {
   await page.waitForFunction(want=>fixture.api.hovered()===want,inside);
 }
 
-async function setup(page, width = 1000) {
+async function setup(page, width = 1000, cacheGallery = true) {
   await page.setViewportSize({width,height:700});
   await page.setContent(`<style>html,body{margin:0;height:100%}.default-chat-screen{height:100vh;overflow:auto}.risu-chat{padding:20px;margin-left:390px}.shot{height:260px;margin-bottom:100px}.shot img{width:80px;height:80px}</style>
     <div class="default-chat-screen"><div class="risu-chat" data-chat-index="4" data-chat-id="message-four"><div class="chattext">
     <div class="shot" x-inlay-inline-shot="a" x-inray-asset="asset-a"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"></div>
     <div class="shot" x-inlay-inline-shot="b" x-inray-asset="asset-b"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='red'/%3E"></div>
     </div></div></div>`);
-  await page.evaluate(runtime => {
+  await page.evaluate(({runtime,cacheGallery}) => {
     const wrap = n => n ? new Safe(n) : null;
     const listeners = new Map(); let serial = 0;
+    const stats={bubbleRects:0,bubbleHandles:0,shotQueries:0,galleryLoads:0};
     class Safe {
       constructor(n) { this.n = n; }
       async querySelector(q) { return wrap(this.n.querySelector(q)); }
-      async querySelectorAll(q) { return [...this.n.querySelectorAll(q)].map(wrap); }
+      async querySelectorAll(q) {
+        if(this.n.matches('.risu-chat'))stats.shotQueries++;
+        const nodes=this.n.querySelectorAll(q);
+        if(q==='.risu-chat' && window.fixture?.lazy) return {length:async()=>nodes.length,at:async i=>{stats.bubbleHandles++;return wrap(nodes[i]);}};
+        return [...nodes].map(wrap);
+      }
       async getOuterHTML() { return this.n.outerHTML; }
-      async getBoundingClientRect() { return this.n.getBoundingClientRect().toJSON(); }
+      async getParent() { return wrap(this.n.parentElement); }
+      async getProperty(key) { return this.n[key]; }
+      async getBoundingClientRect() { if(this.n.matches('.risu-chat'))stats.bubbleRects++;return this.n.getBoundingClientRect().toJSON(); }
       async setAttribute(k,v) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); this.n.setAttribute(k,v); }
       async getAttribute(k) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); return this.n.getAttribute(k); }
       async setStyle(k,v) { this.n.style[k]=v; }
@@ -64,6 +72,8 @@ async function setup(page, width = 1000) {
     const t = {hostDoc:doc,backendSettings:{card:{floating_viewer:true,viewer_minimize_mode:'buttons'}},gallery:[]};
     let scope = {sessionId:'s',characterId:'char',chatId:'chat',charIndex:1,chatIndex:2};
     const cards = ['a','b'].map((id,i)=>({id,session_id:'s',character_id:'char',chat_id:'chat',message_index:4,paragraph:i,shot_index:0}));
+    t.gallery=cards;
+    if(cacheGallery)t._galleryCache={sessionId:'s'};
     const H = async(_doc,tag,opts={}) => {
       const n = document.createElement(tag);
       if(opts.text) n.textContent=opts.text;
@@ -73,7 +83,7 @@ async function setup(page, width = 1000) {
     globalThis.__INLAY_NATIVE__ = {resolveImageUrl:c=>'data:image/png;base64,'+c.id,ensureImageUrl:async id=>'data:image/png;base64,'+id};
     t._nxInspectOpener = async (...args) => calls.push(['full',...args]);
     const k = {createMutationObserver:async fn=>{const observer=new MutationObserver(fn);return {observe:async(node,opts)=>observer.observe(node.n,opts),disconnect:async()=>observer.disconnect()};}};
-    const deps = {omniScope:{pending:null},omniPerf:{released:0,viewerPasses:0},omniReadScope:async()=>scope,t,H,k,pe:async patch=>{await new Promise(r=>setTimeout(r,10));Object.assign(t.backendSettings.card,patch.card);calls.push(['save',patch]);},ue:async()=>doc,Z:async()=>scope,ce:async sid=>{t.gallery=sid==='s'?cards:[];t._galleryCache={sessionId:sid};},
+    const deps = {omniScope:{pending:null},omniPerf:{released:0,viewerPasses:0},omniReadScope:async()=>scope,t,H,k,pe:async patch=>{await new Promise(r=>setTimeout(r,10));Object.assign(t.backendSettings.card,patch.card);calls.push(['save',patch]);},ue:async()=>doc,Z:async()=>scope,ce:async sid=>{stats.galleryLoads++;t.gallery=sid==='s'?cards:[];t._galleryCache={sessionId:sid};},
       Aa:async()=>({left:10,top:10,w:360,h:560}),loadViewerIconGeo:async()=>({left:10,top:10}),loadViewerMinimized:async()=>false,
       saveViewerMinimized:async v=>calls.push(['collapsed',v]),saveViewerIconGeo:async v=>v,qt:async v=>calls.push(['geo',v]),
       omniFooterTargets:targets,omniFooterAction:async(kind,key)=>calls.push([kind,targets.get(key)]),
@@ -83,8 +93,8 @@ async function setup(page, width = 1000) {
       passes:()=>omniPerf.viewerPasses,
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
       target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove()};`)(...Object.values(deps));
-    window.fixture = {api,t,calls,targets,listeners,scope:v=>{scope={...scope,...v};},wrap};
-  },streamHelpers+countRuntime+runtime);
+    window.fixture = {api,t,calls,targets,listeners,stats,scope:v=>{scope={...scope,...v};},wrap};
+  },{runtime:streamHelpers+countRuntime+runtime,cacheGallery});
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
 }
 
@@ -166,6 +176,68 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     assert.equal(await page.evaluate(()=>fixture.listeners.size),0,'dispose releases every host listener');
     await page.close();
   } finally {await browser.close();}
+});
+
+test('floating position lookup stays bounded across a large jump and never searches for distant images',async()=>{
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+ try {
+  const page=await browser.newPage();await setup(page,1000,false);
+  assert.equal(await page.evaluate(()=>fixture.stats.galleryLoads),0,'mount must not load the gallery or rehash the chat');
+  await page.evaluate(()=>{
+   fixture.retainedImage=document.querySelector('[x-nx-float-body] img');
+   fixture.lazy=true;
+   const screen=document.querySelector('.default-chat-screen');
+   screen.innerHTML=Array.from({length:1000},(_,i)=>`<div class="risu-chat" data-chat-index="${i}" data-chat-id="m${i}" style="height:100px;box-sizing:border-box">${i===0?'<div x-inlay-inline-shot="a"><img src="data:image/png;base64,a"></div>':'text '+i}</div>`).join('');
+   screen.scrollTop=80000;
+  });
+  assert.ok(await page.evaluate(()=>!!fixture.retainedImage),'the previously displayed image must exist');
+  await page.evaluate(async()=>{fixture.stats.bubbleRects=0;fixture.stats.shotQueries=0;await fixture.api.scan();});
+  const stats=await page.evaluate(()=>({...fixture.stats}));
+  assert.ok(stats.bubbleRects<40,JSON.stringify(stats));
+  assert.ok(stats.bubbleHandles<40,JSON.stringify(stats));
+  assert.ok(stats.shotQueries<=3,JSON.stringify(stats));
+  assert.equal(await page.evaluate(()=>fixture.api.state().id),'b','missing nearby image must keep the previous selection');
+  assert.equal(await page.evaluate(()=>document.querySelector('[x-nx-float-body] img')===fixture.retainedImage),true,'an image miss must not replace the displayed DOM image');
+  assert.equal(await page.locator('[x-nx-float-empty]').count(),0);
+  await page.waitForTimeout(220);
+  const before=await page.evaluate(()=>fixture.api.passes());
+  await page.evaluate(()=>{document.querySelector('[data-chat-index="5"]').textContent='unrelated edit';});
+  await page.waitForTimeout(220);
+  assert.equal(await page.evaluate(()=>fixture.api.passes()),before,'an unrelated message must not restart the viewer');
+  await page.evaluate(()=>{fixture.stats.shotQueries=0;const index=fixture.api.target().index;document.querySelector('[data-chat-index="'+index+'"]').innerHTML='<div x-inlay-inline-shot="a"><img style="width:60px;height:60px" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'/%3E"></div>';});
+  await page.waitForFunction(()=>fixture.api.state().id==='a');
+  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),1,'only the changed nearby message is reread');
+  await page.evaluate(async()=>{fixture.stats.shotQueries=0;await fixture.api.scan();});
+  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),0,'unchanged neighboring image metadata is reused');
+  await page.evaluate(async()=>{document.querySelector('.default-chat-screen').scrollTop=80300;await fixture.api.scan();});
+  assert.equal(await page.evaluate(()=>fixture.api.target().index),806,'a moderate scroll must still track the message at the reading position');
+  await page.evaluate(async()=>{
+   const screen=document.querySelector('.default-chat-screen');
+   screen.style.display='flex';screen.style.flexDirection='column-reverse';
+   for(const row of screen.querySelectorAll('.risu-chat'))row.style.flexShrink='0';
+   screen.scrollTop=-60000;
+   fixture.stats.bubbleRects=0;await fixture.api.scan();
+  });
+  const reverse=await page.evaluate(()=>({actual:fixture.api.target().index,
+   expected:Number(document.elementFromPoint(600,350).closest('.risu-chat').dataset.chatIndex),rects:fixture.stats.bubbleRects}));
+  assert.equal(reverse.actual,reverse.expected,'reverse chat layout must keep the reading position');
+  assert.ok(reverse.rects<40,JSON.stringify(reverse));
+  await page.evaluate(()=>fixture.api.dispose());
+ }finally{await browser.close();}
+});
+
+test('floating snapshots refresh when bubble layout changes without a message mutation',async()=>{
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+ try {
+  const page=await browser.newPage();await setup(page);
+  assert.equal(await page.evaluate(()=>fixture.api.state().id),'b');
+  await page.evaluate(async()=>{fixture.stats.shotQueries=0;document.querySelector('style').textContent+=' .shot{height:520px}';await fixture.api.scan();});
+  assert.equal(await page.evaluate(()=>fixture.api.state().id),'a','external layout changes must not reuse old image positions');
+  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),1,'only the resized bubble is reread');
+  await page.evaluate(async()=>{fixture.stats.shotQueries=0;await fixture.api.scan();});
+  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),0);
+  await page.evaluate(()=>fixture.api.dispose());
+ }finally{await browser.close();}
 });
 
 test('floating counts opens below viewer, edits saved min/max and works folded without resizing image',async()=>{
@@ -293,11 +365,10 @@ test('floating viewer fits narrow windows and preserves reroll across image repl
 });
 
 
-test('generation follows the central text-only message while the displayed image stays selected',async()=>{
+test('generation follows the central text-only message while the viewer keeps its previous image',async()=>{
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage();await setup(page);
-    const image=await page.evaluate(()=>fixture.api.state().id);
     await page.evaluate(async()=>{
       document.querySelector('.default-chat-screen').innerHTML='<div class="risu-chat" data-chat-index="9" data-chat-id="text-nine" style="height:680px">Only text here</div>';
       await fixture.api.scan();
@@ -305,7 +376,8 @@ test('generation follows the central text-only message while the displayed image
     await clickAt(page,'[x-nx-float-bar] [x-nx-float-btn="tag"]');
     const action=await page.evaluate(()=>fixture.calls.find(c=>c[0]==='tag'));
     assert.equal(action[1].index,9);assert.equal(action[1].hostId,'text-nine');
-    assert.equal(await page.evaluate(()=>fixture.api.state().id),image);
+    assert.equal(await page.evaluate(()=>fixture.api.state().id),'b');
+    assert.equal(await page.locator('[x-nx-float-empty]').count(),0);
     await page.evaluate(()=>fixture.api.dispose());
   }finally{await browser.close();}
 });
