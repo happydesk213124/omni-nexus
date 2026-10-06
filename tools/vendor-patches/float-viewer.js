@@ -252,11 +252,11 @@ async function nxFloatMount() {
     ++nxFloatEpoch; ++nxFloatGen; ++nxFloatSelecting;
     nxFloatSession = scope.sessionId;
     nxFloatDirty = true;
+    nxFloatStructureDirty = true; nxFloatReadingIndex = -1;
     nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
     omniFooterTargets.delete(nxFloatKey);
     await nxFloatPaintImg('');
   }
-  if (t._galleryCache?.sessionId !== scope.sessionId) await ce(scope.sessionId);
   if (nxFloatBlocked()) { await nxFloatHide(); return false; }
   // SafeElement wrappers do not preserve JS identity; use a DOM marker for remount detection.
   if(nxFloatRoot){const mounted=await h.doc.querySelector('[x-nx-float]');try{if(!mounted)await nxFloatDispose(false);}finally{await omniRelease(mounted);}}
@@ -341,15 +341,12 @@ async function nxFloatMount() {
     nxFloatArmIdle();
   }
   nxFloatHidden = !!nxFloatBlocked();
+  // The frame must be visible before position reads; pixels need no gallery.
+  await nxFloatApply();
   if (!nxFloatBlocked()) {
     await nxFloatWatchChat(h);
     if (nxFloatDirty) await nxFloatScan();
-    if (!nxFloatCardId && t._galleryCache?.sessionId === scope.sessionId) {
-      const card = (t.gallery || []).at(-1);
-      if (card) await nxFloatSelect(card.id);
-    }
   }
-  await nxFloatApply();
   return true;
   } finally {if(h.root!==nxFloatWatchRoot)await omniRelease(h.root);if(h.body!==nxFloatChatRoot)await omniRelease(h.body);}
 }

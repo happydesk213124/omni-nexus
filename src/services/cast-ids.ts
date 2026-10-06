@@ -1,14 +1,14 @@
 /**
  * Cast ids live on the roster row (`cast_id`): assigned once, immutable.
  * Seed from name+aliases+original on first issue; random redraw on collision.
- * Uniqueness is global across all rosters because fullscreen resolves ids
- * through a roster-wide scan.
+ * Uniqueness remains global on issuance; viewers read only the current bot
+ * and shared roster so naming an image cannot load every other bot.
  */
 import { randomCastId, sanitizeCastId, seedCastId } from '../domain/gallery/cast-ids.ts';
 import { castFromShotAssetName } from '../domain/gallery/shot-assets.ts';
 import { GLOBAL_SCOPE } from '../core/constants';
 import { cleanText } from '../core/util/text';
-import { allCharacterRosters } from '../storage/character-roster';
+import { allCharacterRosters, viewerCharacterRosters } from '../storage/character-roster';
 import { readShotAssetBytes } from '../storage/shot-character.ts';
 import { findInspectAsset } from '../storage/inspect-assets';
 import { dbg } from '../core/debug';
@@ -19,6 +19,12 @@ import { listCharacters, upsertCharacter } from './characters';
 type RosterReadError = (scope: string, error: unknown) => void;
 function readCastRosters(onReadError?: RosterReadError) {
   return allCharacterRosters((scope, error) => {
+    dbg('cast.roster.read.fail', { scope, message: String((error as Error)?.message || error), background: true }, 'warn');
+    onReadError?.(scope, error);
+  });
+}
+function readViewerCastRosters(onReadError?: RosterReadError) {
+  return viewerCharacterRosters((scope, error) => {
     dbg('cast.roster.read.fail', { scope, message: String((error as Error)?.message || error), background: true }, 'warn');
     onReadError?.(scope, error);
   });
@@ -72,7 +78,7 @@ export async function resolveCastNames(ids: readonly unknown[], onReadError?: Ro
   const want = new Set(ids.map((v) => sanitizeCastId(v)).filter(Boolean));
   const out: Record<string, string> = {};
   if (!want.size) return out;
-  for (const r of await readCastRosters(onReadError)) {
+  for (const r of await readViewerCastRosters(onReadError)) {
     const c = sanitizeCastId((r as { cast_id?: unknown }).cast_id);
     if (c && want.has(c) && !(c in out)) out[c] = cleanText(r.name, 200);
   }
@@ -82,7 +88,7 @@ export async function resolveCastNames(ids: readonly unknown[], onReadError?: Ro
 /** Identity travels with the name so a global cast never opens a session namesake. */
 export async function resolveCastCharacters(ids: readonly unknown[]): Promise<{ characters: Array<{cast_id: string; id: string; scope: string; name: string}> }> {
   const want = new Set(ids.map(sanitizeCastId).filter(Boolean));
-  const rows = want.size ? await readCastRosters() : [];
+  const rows = want.size ? await readViewerCastRosters() : [];
   return { characters: rows.filter(row => want.has(sanitizeCastId(row.cast_id))).map(row => ({
     cast_id: sanitizeCastId(row.cast_id), id: String(row.id), scope: String(row.scope || GLOBAL_SCOPE), name: cleanText(row.name, 200),
   })) };

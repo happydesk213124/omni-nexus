@@ -907,7 +907,9 @@ const NEW_ONLY_STEPS = new Map([
   ],
   // Enclosing-bot ownership now survives copied IDs; partial cast lookup must
   // preserve healthy results and leave unreadable source lore untouched.
-  ['roster.bot_lore_contract', v => v?.stored && v?.disabled && v?.isolated && v?.ownerRebound && v?.corruptIsolated && v?.badLorePreserved ? null : 'bot lore ownership, copy rebinding or isolated cast lookup failed: ' + JSON.stringify(v)],
+  // Viewer lookup intentionally restricts reads to the current bot and shared
+  // roster; keep its read boundary visible beside the ownership assertions.
+  ['roster.bot_lore_contract', v => v?.stored && v?.disabled && v?.isolated && v?.ownerRebound && v?.corruptIsolated && v?.badLorePreserved && v?.viewerScoped ? null : 'bot lore ownership, copy rebinding or scoped cast lookup failed: ' + JSON.stringify(v)],
   // Intentional save change: preserve names/triggers/default, append owner-described donor costumes.
   ['chars.given_name_save_contract', v => v?.count === 3 && v?.merged === 1 && v?.triggersSeparate === true
     && v?.identityKept && v?.defaultKept && v?.owners && JSON.stringify(v?.words) === '["yuna"]'

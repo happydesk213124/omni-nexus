@@ -16,7 +16,7 @@ async function nxFloatWatchChat(h) {
   await omniRelease(marker);
   nxFloatWatchRoot=h.root;
   nxFloatObserver = await k.createMutationObserver(records => {void omniRelease(records);nxFloatStructureDirty=true;nxFloatScheduleScan();});
-  await nxFloatObserver.observe(h.root, {childList:true,subtree:true,attributes:true,attributeFilter:['src','data-inlay-inline-shot','x-inlay-inline-shot']});
+  await nxFloatObserver.observe(h.root, {childList:true});
   nxFloatDirty = true;
 }
 async function nxFloatListen(node, kind, fn, options = {}) {
@@ -93,6 +93,7 @@ async function nxFloatUnbindInputs() {
   await nxFloatEndDrag(true);
   nxFloatPointer=null;
   await nxFloatObserver?.disconnect();await omniRelease(nxFloatObserver);nxFloatObserver = null;
+  await nxFloatDropPosition();
   await omniRelease(nxFloatWatchRoot);nxFloatWatchRoot=null;
   if (nxFloatDoc) {
     const refs=omniDomScope();
@@ -116,70 +117,4 @@ async function nxFloatScan() {
 function nxFloatHtmlAttr(html, name) {
   const match = new RegExp('(?:^|\\s)' + name + '=["\']([^"\']*)["\']', 'i').exec(html);
   return (match?.[1] || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-}
-async function nxFloatReadPosition() {
-  if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag) return;
-  nxFloatDirty = false;
-  const scope=await omniReadScope();
-  if(!scope || scope.sessionId!==nxFloatSession)return;
-  omniPerf.viewerPasses++;
-  const epoch = nxFloatEpoch;
-  const refs=omniDomScope();
-  try {
-  const h = await nxFloatChat();
-  if (!h) return;
-  refs.own(h.root);refs.own(h.body);
-  const sr = await h.root.getBoundingClientRect(), vp = nxFloatViewport();
-  const top = Math.max(0, sr.top), bottom = Math.min(vp.h, sr.bottom);
-  const readingY = top + (bottom - top) * .5;
-  let best = null, distance = Infinity, readingBubble=null, readingDistance=Infinity;
-  const scan=async selector=>{
-  const bubbles = await refs.all(await h.root.querySelectorAll(selector));
-  for (const bubble of bubbles) {
-    if(epoch!==nxFloatEpoch)return;
-    const br = await bubble.getBoundingClientRect();
-    if (br.bottom <= top || br.top >= bottom || br.height <= 0) continue;
-    const readingGap=Math.max(br.top-readingY,readingY-br.bottom,0);
-    if(readingGap<readingDistance){readingDistance=readingGap;readingBubble=bubble;}
-    const nodes = await refs.all(await bubble.querySelectorAll('[x-inlay-inline-shot],[data-inlay-inline-shot]'));
-    for (const node of nodes) {
-      const rect = await node.getBoundingClientRect();
-      if (!rect.height || rect.bottom <= top || rect.top >= bottom) continue;
-      const gap = Math.abs((rect.top + rect.bottom) / 2 - readingY);
-      if (gap >= distance) continue;
-      const html = await node.getOuterHTML();
-      const opening = html.slice(0, html.indexOf('>') + 1);
-      const id = nxFloatHtmlAttr(opening, 'x-inlay-inline-shot') || nxFloatHtmlAttr(opening, 'data-inlay-inline-shot');
-      if (!id || id.startsWith('pending_')) continue;
-      best = {id, node, bubble, opening}; distance = gap;
-    }
-  }
-  };
-  if(!nxFloatStructureDirty && nxFloatReadingIndex>=0)await scan([nxFloatReadingIndex-1,nxFloatReadingIndex,nxFloatReadingIndex+1].filter(i=>i>=0).map(i=>'.risu-chat[data-chat-index="'+i+'"]').join(','));
-  if(nxFloatStructureDirty || readingDistance>0 || !best) {best=null;distance=Infinity;readingBubble=null;readingDistance=Infinity;await scan('.risu-chat');}
-  nxFloatStructureDirty=false;
-  if(epoch!==nxFloatEpoch || nxFloatBlocked())return;
-  if(readingBubble){
-    const html=await readingBubble.getOuterHTML();
-    nxFloatReadingIndex=Number(/data-chat-index="(\d+)"/.exec(html)?.[1] ?? -1);
-    await nxFloatSetTarget(null,html,()=>epoch===nxFloatEpoch);
-  }
-  else omniFooterTargets.delete(nxFloatKey);
-  if (!best || epoch !== nxFloatEpoch || nxFloatBlocked()) return;
-  const img = refs.own(await best.node.querySelector('img'));
-  let src = '';
-  if (img) {
-    for (const key of ['currentSrc', 'src']) {
-      try { src = String(await img.getProperty?.(key) || ''); } catch {}
-      if (src) break;
-    }
-    if (!src) src = nxFloatHtmlAttr(await img.getOuterHTML(), 'src');
-  }
-  if (!src) src = nxFloatHtmlAttr(best.opening, 'data-src') || nxFloatHtmlAttr(best.opening, 'x-src');
-  if (!src) src = /url\(["']?([^"')]+)["']?\)/.exec(nxFloatHtmlAttr(best.opening, 'style'))?.[1] || '';
-  if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
-  if (best.id === nxFloatCardId && (!src || src === nxFloatLastDomSrc)) return;
-  const asset = nxFloatHtmlAttr(best.opening, 'x-inray-asset') || nxFloatHtmlAttr(best.opening, 'data-inray-asset');
-  await nxFloatSelect(best.id, await best.bubble.getOuterHTML(), asset, src);
-  } finally {await refs.close();}
 }

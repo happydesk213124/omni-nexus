@@ -462,8 +462,16 @@ export async function runScenario(N, handles) {
       entry(broken).content='broken JSON';
       await globalThis.risuai.setCharacterToIndex(ai,copy);
       await globalThis.risuai.setCharacterToIndex(bi,broken);
-      const names=await post('/v1/shots/resolve-cast',{ids:['beef']});
-      const details=await post('/v1/shots/resolve-cast',{ids:['beef'],details:true});
+      const host=globalThis.risuai, current=host.getCurrentCharacterIndex, getDb=host.getDatabase, getChar=host.getCharacterFromIndex;
+      let names,details,directoryReads=0,otherReads=0;
+      host.getCurrentCharacterIndex=async()=>ai;
+      host.getDatabase=async keys=>{if(keys?.includes('characters'))directoryReads++;return getDb(keys);};
+      host.getCharacterFromIndex=async index=>{if(index!==ai)otherReads++;return getChar(index);};
+      try {
+        names=await post('/v1/shots/resolve-cast',{ids:['beef']});
+        details=await post('/v1/shots/resolve-cast',{ids:['beef'],details:true});
+      } finally {host.getCurrentCharacterIndex=current;host.getDatabase=getDb;host.getCharacterFromIndex=getChar;}
+      result.viewerScoped=directoryReads===0 && otherReads===0;
       result.corruptIsolated=names.beef===data.roster[0].name && details.characters?.some(c=>c.id===data.roster[0].id);
       await post('/v1/characters',{session_id:a.chaId,character:{id:data.roster[0].id,name:data.roster[0].name,priority:7}});
       const saved=JSON.parse(entry(await globalThis.risuai.getCharacterFromIndex(ai)).content);
@@ -621,17 +629,23 @@ export async function runScenario(N, handles) {
   // (1.x 404 → NEW_ONLY_STEPS). Source the ids off a real generated asset so
   // the step proves the full chain: issuance → location → filename → resolve.
   await rec('shots.resolve_cast', async () => {
-    const ids = Array.isArray(imageJson?.cast_ids) ? imageJson.cast_ids.map(String) : [];
-    // Route returns a flat {id:name} map.
-    const names = ids.length ? await post('/v1/shots/resolve-cast', { ids }) : {};
-    const unknown = await post('/v1/shots/resolve-cast', { ids: ['zzzz'] });
-    const detail = await post('/v1/shots/resolve-cast', { ids, details: true });
-    return {
-      count: ids.length,
-      identities: detail?.characters || [],
-      resolved: ids.map((id) => names?.[id] || ''),
-      unknown_keys: Object.keys(unknown || {}),
-    };
+    // Fullscreen now names only the bot being viewed plus the shared roster.
+    const host=globalThis.risuai,current=host.getCurrentCharacterIndex;
+    const db=await host.getDatabase(['characters']);
+    host.getCurrentCharacterIndex=async()=>db.characters.findIndex(c=>c.chaId==='char_main');
+    try {
+      const ids = Array.isArray(imageJson?.cast_ids) ? imageJson.cast_ids.map(String) : [];
+      // Route returns a flat {id:name} map.
+      const names = ids.length ? await post('/v1/shots/resolve-cast', { ids }) : {};
+      const unknown = await post('/v1/shots/resolve-cast', { ids: ['zzzz'] });
+      const detail = await post('/v1/shots/resolve-cast', { ids, details: true });
+      return {
+        count: ids.length,
+        identities: detail?.characters || [],
+        resolved: ids.map((id) => names?.[id] || ''),
+        unknown_keys: Object.keys(unknown || {}),
+      };
+    } finally {host.getCurrentCharacterIndex=current;}
   });
 
   // 2.0-only: card id → cast ids from the character asset name (1.x 404).
@@ -648,28 +662,33 @@ export async function runScenario(N, handles) {
   // 2.0-only: the ⛶ handler design — chat div's data-inray-asset file name →
   // base64 pixels + resolved cast names in one round trip (1.x 404).
   await rec('shots.asset', async () => {
-    const got = castRec?.name
-      ? await get(`/v1/shots/asset?name=${encodeURIComponent(castRec.name)}`)
-      : {};
-    const names = got?.names && typeof got.names === 'object' ? got.names : {};
-    const pixels = castRec?.name ? await get(`/v1/shots/asset?cast=0&name=${encodeURIComponent(castRec.name)}`) : {};
-    const blob = castRec?.name ? await get(`/v1/shots/asset?cast=0&display=blob&name=${encodeURIComponent(castRec.name)}`) : {};
-    let blobPixels = false;
-    if (blob?.image_url?.startsWith('blob:')) {
-      try {
-        const bytes = new Uint8Array(await (await fetch(blob.image_url)).arrayBuffer());
-        const expected = new Uint8Array(await (await fetch(pixels.image_url)).arrayBuffer());
-        blobPixels = bytes.length > 0 && bytes.length === blob.image_bytes && bytes.length === expected.length && bytes.every((value, i) => value === expected[i]);
-      } finally { URL.revokeObjectURL(blob.image_url); }
-      if (!blobPixels) throw new Error('Blob fullscreen must preserve every original image byte');
-    }
-    return {
-      blob_pixels: blobPixels,
-      has_image: typeof got?.image_url === 'string' && got.image_url.startsWith('data:'),
-      names: Object.keys(names).length,
-      pixels_only: pixels?.image_url === got?.image_url && Object.keys(pixels?.names || {}).length === 0,
-      ordered_ids: JSON.stringify(pixels?.ids) === JSON.stringify(castRec?.ids),
-    };
+    const host=globalThis.risuai,current=host.getCurrentCharacterIndex;
+    const db=await host.getDatabase(['characters']);
+    host.getCurrentCharacterIndex=async()=>db.characters.findIndex(c=>c.chaId==='char_main');
+    try {
+      const got = castRec?.name
+        ? await get(`/v1/shots/asset?name=${encodeURIComponent(castRec.name)}`)
+        : {};
+      const names = got?.names && typeof got.names === 'object' ? got.names : {};
+      const pixels = castRec?.name ? await get(`/v1/shots/asset?cast=0&name=${encodeURIComponent(castRec.name)}`) : {};
+      const blob = castRec?.name ? await get(`/v1/shots/asset?cast=0&display=blob&name=${encodeURIComponent(castRec.name)}`) : {};
+      let blobPixels = false;
+      if (blob?.image_url?.startsWith('blob:')) {
+        try {
+          const bytes = new Uint8Array(await (await fetch(blob.image_url)).arrayBuffer());
+          const expected = new Uint8Array(await (await fetch(pixels.image_url)).arrayBuffer());
+          blobPixels = bytes.length > 0 && bytes.length === blob.image_bytes && bytes.length === expected.length && bytes.every((value, i) => value === expected[i]);
+        } finally { URL.revokeObjectURL(blob.image_url); }
+        if (!blobPixels) throw new Error('Blob fullscreen must preserve every original image byte');
+      }
+      return {
+        blob_pixels: blobPixels,
+        has_image: typeof got?.image_url === 'string' && got.image_url.startsWith('data:'),
+        names: Object.keys(names).length,
+        pixels_only: pixels?.image_url === got?.image_url && Object.keys(pixels?.names || {}).length === 0,
+        ordered_ids: JSON.stringify(pixels?.ids) === JSON.stringify(castRec?.ids),
+      };
+    } finally {host.getCurrentCharacterIndex=current;}
   });
 
   // ── card editing + reroll ─────────────────────────────────────────────

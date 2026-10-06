@@ -47,6 +47,9 @@ export async function characterIdForRosterScope(scope: string): Promise<string> 
 
 async function readEntryData(t: Target): Promise<{ char: Row; data: Row }> {
   const char = object(await risuHost()?.getCharacterFromIndex?.(t.index));
+  return entryData(char, t);
+}
+function entryData(char: Row | null, t: Target): { char: Row; data: Row } {
   if (!char || String(char.chaId || char.id) !== t.id) throw new Error('Character moved during roster access');
   if (char.globalLore != null && !Array.isArray(char.globalLore)) throw new Error('Invalid character lorebook');
   const entries = (char.globalLore as unknown[] || []).filter(v => object(v)?.comment === CHARACTER_ROSTER_LORE);
@@ -139,6 +142,26 @@ export async function allCharacterRosters(onReadError?: (scope: string, error: u
   };
   await collect('__global__', readShared);
   for(const t of await targets()) await collect(t.scope, () => read(t));
+  return rows;
+}
+
+/** Viewer reads must not fetch the all-bot directory just to name one image. */
+export async function viewerCharacterRosters(onReadError?: (scope: string, error: unknown) => void): Promise<CharacterRecord[]> {
+  const rows: CharacterRecord[] = [];
+  try { rows.push(...(await readShared()).roster); }
+  catch (error) { if (!onReadError) throw error; onReadError('__global__', error); }
+  const host = risuHost();
+  const index = Number(await host?.getCurrentCharacterIndex?.());
+  if (!Number.isInteger(index) || index < 0) return rows;
+  let scope = '';
+  try {
+    const char = object(await host?.getCharacterFromIndex?.(index));
+    const id = String(char?.chaId || char?.id || '');
+    if (!id) return rows;
+    scope = unifiedSessionIdForCharacter(id);
+    const { data } = entryData(char, { index, id, scope });
+    rows.push(...(data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope })));
+  } catch (error) { if (!onReadError) throw error; onReadError(scope, error); }
   return rows;
 }
 export async function mutateCharacterRoster(scope:string,change:(rows:CharacterRecord[])=>CharacterRecord[]):Promise<void> {

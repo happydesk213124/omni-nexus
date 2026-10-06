@@ -7,7 +7,7 @@ let chars,old,discard;
 beforeEach(()=>{
  chars=['bot-a','bot-b'].map(chaId=>({chaId,globalLore:[{comment:'unrelated',content:'keep'}],chats:[{id:'one'},{id:'two'}]}));
  old=new Map([['onx_old_roster',{name:'legacy'}]]);discard=false;
- globalThis.risuai={getDatabase:async()=>({characters:structuredClone(chars)}),getCharacterFromIndex:async i=>structuredClone(chars[i]),setCharacterToIndex:async(i,c)=>{if(!discard)chars[i]=structuredClone(c);},pluginStorage:{getItem:async k=>old.get(k),setItem:async()=>assert.fail('must not write plugin storage')}};
+ globalThis.risuai={getCurrentCharacterIndex:async()=>0,getDatabase:async()=>({characters:structuredClone(chars)}),getCharacterFromIndex:async i=>structuredClone(chars[i]),setCharacterToIndex:async(i,c)=>{if(!discard)chars[i]=structuredClone(c);},pluginStorage:{getItem:async k=>old.get(k),setItem:async()=>assert.fail('must not write plugin storage')}};
 });
 const scope=(chat)=>'risu_'+api.sessionIdHash('bot-a|'+chat);
 const row={id:'alice',name:'Alice',appearance:'blue eyes',attire:'shirt',costumes:[{name:'default',attire:'shirt'}]};
@@ -76,6 +76,28 @@ test('new cast IDs still avoid healthy-bot collisions and duplicate requests reu
   assert.equal((await api.readCharacterRoster('bot-a'))[0].cast_id,issued.alice);
   assert.equal((await api.readCharacterRoster('bot-b'))[0].cast_id,taken);
  } finally {Math.random=random;}
+});
+
+test('viewer cast lookup reads only the current bot and shared roster, including after a switch',async()=>{
+ await api.mutateCharacterRoster('bot-a',()=>[{...row,cast_id:'aaaa'}]);
+ await api.mutateCharacterRoster('bot-b',()=>[{...row,id:'other',name:'Other',cast_id:'bbbb'}]);
+ const shared={id:'inlay-inray-display',lorebook:[{comment:'omni.nexus.data.globalcharacter',key:'',alwaysActive:false,content:JSON.stringify({version:1,roster:[{...row,id:'shared',name:'Shared',cast_id:'cccc'}]})}]};
+ let current=0;const reads=[];
+ globalThis.risuai.getCurrentCharacterIndex=async()=>current;
+ globalThis.risuai.getDatabase=async keys=>{
+   assert.deepEqual(keys,['modules'],'viewer must not request the directory of every bot');
+   return {modules:[structuredClone(shared)]};
+ };
+ globalThis.risuai.getCharacterFromIndex=async i=>{
+   assert.equal(i,current,'viewer must never fetch another bot');reads.push(i);return structuredClone(chars[i]);
+ };
+ assert.deepEqual(await api.resolveCastNames(['aaaa','bbbb','cccc']),{aaaa:'Alice',cccc:'Shared'});
+ const details=await api.resolveCastCharacters(['aaaa','bbbb','cccc']);
+ assert.deepEqual(details.characters.map(r=>r.id),['shared','alice']);
+ assert.deepEqual(reads,[0,0],'one current-bot snapshot per lookup');
+ current=1;
+ assert.deepEqual(await api.resolveCastNames(['aaaa','bbbb','cccc']),{bbbb:'Other',cccc:'Shared'});
+ assert.deepEqual(reads,[0,0,1]);
 });
 
 test('invalid lore reports the affected bot and exact failed setting',async()=>{
