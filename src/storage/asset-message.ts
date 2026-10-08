@@ -1,5 +1,6 @@
 import { risuHost } from '../core/host';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
+import { imageHistoryRoot } from '../domain/gallery/image-history';
 
 type Row = Record<string, unknown>;
 const obj = (value: unknown): Row => value && typeof value === 'object' ? value as Row : {};
@@ -25,7 +26,9 @@ export async function messageAssetIds(sessionId: string, messageIndex: number): 
   for await (const target of chatTargets({session_id:sessionId})) {
     const messages = target.chat.message ?? target.chat.messages;
     const msg = obj(Array.isArray(messages) ? messages[messageIndex] : null);
-    return bakedIds(msg.data ?? msg.saying);
+    const selected = new Map<string, string>();
+    for (const id of bakedIds(msg.data ?? msg.saying)) selected.set(imageHistoryRoot(id), id);
+    return [...selected.values()];
   }
   return [];
 }
@@ -39,7 +42,7 @@ async function* chatTargets(hint: Row): AsyncGenerator<{chat:Row;location:Row}> 
     if (hint.character_id && hint.character_id!==cid) continue;
     const char=obj(await host?.getCharacterFromIndex?.(ci));
     const chats=Array.isArray(char.chats)?char.chats:[];
-    const sid=String(hint.session_id || '');
+    const sid=hint.chat_id ? '' : String(hint.session_id || '');
     for(let ti=0;ti<chats.length;ti++) {
       const entryChat=obj(chats[ti]),tid=String(entryChat.id || '');
       if(hint.chat_id && hint.chat_id!==tid) continue;

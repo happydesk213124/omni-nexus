@@ -4,7 +4,9 @@ let nxFloatInputs = [], nxFloatScanTimer = 0, nxFloatScanning = null;
 let nxFloatScanAgain = false;
 let nxFloatObserver = null, nxFloatWatchRoot=null, nxFloatDirty = true;
 let nxFloatReadingIndex=-1, nxFloatStructureDirty=true;
-let nxFloatHoverPos = null, nxFloatHoverBusy = false;
+let nxFloatTouchReveal=false;
+const nxFloatTouchMedia=globalThis.matchMedia?.('(hover: none)');
+function nxFloatTouchOnly(){return !!nxFloatTouchMedia?.matches;}
 async function nxFloatWatchChat(h) {
   const existing=await h.root.querySelector('[x-nx-float-watch]');
   if(existing){await omniRelease(existing);return;}
@@ -31,46 +33,43 @@ async function nxFloatBindInputs(h) {
   await nxFloatListen(h.body, 'click', async e => {
     const pos = nxFloatEvPos(e);
     if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
+    if(nxFloatTouchReveal){nxFloatTouchReveal=false;return;}
     const refs=omniDomScope();
     try {
     const buttons = await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
-    for (const button of buttons) {
-      if (await hitEl(button,pos.x,pos.y)) {
-        await nxFloatClick(await button.getAttribute('x-nx-float-btn'));
-        return;
-      }
-    }
+    const hits=await Promise.all(buttons.map(button=>hitEl(button,pos.x,pos.y)));
+    const button=buttons[hits.indexOf(true)];
+    if(button)await nxFloatClick(await button.getAttribute('x-nx-float-btn'));
     } finally {await refs.close();}
   });
   await nxFloatListen(h.body, 'pointerdown', async e => {
     const pos = nxFloatEvPos(e);
     const pointer=nxFloatPointer={held:true,pos};
-    if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden || !await hitEl(nxFloatRoot,pos.x,pos.y)) return;
-    for (const [handle,kind] of [[nxFloatResize,'resize'],[nxFloatIcon,'bubble-move'],[nxFloatHead,'move'],[nxFloatFoldGrip,'move'],[nxFloatStage,'move']]) {
-      if (await hitEl(handle,pos.x,pos.y)) { await nxFloatMaybeDrag(e,kind,pointer); return; }
+    if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden || !nxFloatContains(nxFloatBounds,pos.x,pos.y)) return;
+    if(nxFloatTouchOnly()) {
+      nxFloatTouchReveal=nxFloatIdle;nxFloatHovered=false;nxFloatNudgeIdle();
     }
+    const handles=[[nxFloatResize,'resize'],[nxFloatIcon,'bubble-move'],[nxFloatHead,'move'],[nxFloatFoldGrip,'move'],[nxFloatStage,'move']];
+    const hits=await Promise.all(handles.map(([handle])=>hitEl(handle,pos.x,pos.y)));
+    const found=handles[hits.indexOf(true)];
+    if(found)await nxFloatMaybeDrag(e,found[1],pointer);
   });
   await nxFloatListen(h.body, 'pointermove', e => {
     nxFloatMoveDrag(e);
+    if (nxFloatDrag || nxFloatTouchOnly()) return;
     const pos = nxFloatEvPos(e);
     if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden) return;
-    nxFloatHoverPos = pos;
-    if (nxFloatHoverBusy) return;
-    nxFloatHoverBusy = true;
-    void (async () => {
-      const rect = await nxFloatRoot.getBoundingClientRect();
-      const latest = nxFloatHoverPos;
-      if (!latest || nxFloatBlocked() || nxFloatHidden) return;
-      const inside = (rect.width > 0 && rect.height > 0 && latest.x >= rect.left && latest.x <= rect.right && latest.y >= rect.top && latest.y <= rect.bottom)
-        || !!(nxFloatCountsOpen && nxFloatCounts && await hitEl(nxFloatCounts,latest.x,latest.y));
-      if (inside !== nxFloatHovered) {
-        nxFloatHovered = inside;
-        if (inside) nxFloatNudgeIdle(); else nxFloatArmIdle();
-      }
-    })().catch(() => {}).finally(() => { nxFloatHoverBusy = false; });
+    const inside=nxFloatContains(nxFloatBounds,pos.x,pos.y) || (nxFloatCountsOpen && nxFloatContains(nxFloatCountBounds,pos.x,pos.y));
+    // A fixed frame changes bounds on render/drag, not on mousemove.
+    if(inside!==nxFloatHovered){nxFloatHovered=inside;if(inside)nxFloatNudgeIdle();else nxFloatArmIdle();}
   }, {capture:true});
   for (const kind of ['pointerup','pointercancel']) await nxFloatListen(h.body,kind,e=>{
     if(nxFloatPointer)nxFloatPointer.held=false;
+    if(nxFloatTouchOnly()) {
+      nxFloatHovered=false;
+      if(nxFloatPointer?.pos && nxFloatContains(nxFloatBounds,nxFloatPointer.pos.x,nxFloatPointer.pos.y))nxFloatArmIdle();
+      if(kind==='pointercancel')nxFloatTouchReveal=false;
+    }
     nxFloatMoveDrag(e);void nxFloatEndDrag(kind==='pointercancel');
   },{capture:true});
   for (const kind of ['scroll', 'scrollend']) {
@@ -87,7 +86,6 @@ function nxFloatScheduleScan() {
   }, 150);
 }
 async function nxFloatUnbindInputs() {
-  nxFloatHoverPos = null;
   clearTimeout(nxFloatScanTimer); nxFloatScanTimer = 0;
   if(nxFloatPointer)nxFloatPointer.held=false;
   await nxFloatEndDrag(true);
@@ -107,10 +105,13 @@ async function nxFloatUnbindInputs() {
 }
 async function nxFloatScan() {
   if(t.unloading)return;
-  if (nxFloatScanning) { nxFloatScanAgain = true; return nxFloatScanning; }
+  // A direct read (e.g. pressing a viewer action) consumes the queued scroll
+  // read too. Keeping its timer caused a second pass after the button reacted.
+  clearTimeout(nxFloatScanTimer);nxFloatScanTimer=0;
+  if (nxFloatScanning) { if(nxFloatDirty)nxFloatScanAgain = true; return nxFloatScanning; }
   nxFloatScanning = nxFloatReadPosition().finally(() => {
     nxFloatScanning = null;
-    if (nxFloatScanAgain) { nxFloatScanAgain = false; nxFloatScheduleScan(); }
+    if (nxFloatScanAgain) { nxFloatScanAgain = false;if(nxFloatDirty)nxFloatScheduleScan(); }
   });
   return nxFloatScanning;
 }

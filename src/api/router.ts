@@ -23,6 +23,7 @@ import { base64ToBytes, u8ToArrayBuffer } from '../core/util/bytes';
 import { cleanText } from '../core/util/text';
 import { GLOBAL_SCOPE, normalizeCharRefScope } from '../core/constants';
 import { getConfig, getPresetVibePreviewUrl } from '../services/context';
+import { readImageHistory, pinImageRevision } from '../services/image-history';
 import * as cards from '../services/cards';
 import * as characters from '../services/characters';
 import * as diagnostics from '../services/diagnostics';
@@ -257,6 +258,7 @@ const GET_ROUTES: readonly Route[] = [
     match: wrapped('/v1/cards/', '/nai-prompt'),
     handler: async ({ param }) => ok(await cards.readCardNaiPrompts(param)),
   },
+  { match: wrapped('/v1/cards/', '/history'), handler: async ({ param }) => ok(await readImageHistory(param)) },
   {
     match: under('/v1/images/'),
     handler: async ({ param }) => {
@@ -430,6 +432,7 @@ const WRITE_ROUTES: readonly Route[] = [
     match: wrapped('/v1/cards/', '/tags'),
     handler: async ({ param, body }) => ok(await cards.updateCardTags(param, body)),
   },
+  { match: wrapped('/v1/cards/', '/pin'), handler: async ({ param }) => ok(await pinImageRevision(param)) },
   {
     match: wrapped('/v1/cards/', '/studio-generate'),
     handler: async ({ param, body }) => ok(await cards.studioGenerate(param, body)),

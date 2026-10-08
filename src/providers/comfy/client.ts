@@ -8,7 +8,7 @@
 import { dbg } from '../../core/debug.ts';
 import type { ImageBackend, NaiSettings, ShotCharacter } from '../../core/types.ts';
 import { Mutex, sleep } from '../../core/util/async.ts';
-import { naiToComfyEmphasis } from '../../domain/prompt/nai-to-comfy.ts';
+import { comfyPromptPair } from '../../domain/prompt/nai-to-comfy.ts';
 import { sniffImageMime } from '../../core/util/bytes.ts';
 import { cleanText } from '../../core/util/text.ts';
 import { networkFetch, readResponseBytes, type NetworkFetchOptions, type ReadBytesOptions } from '../nai/http.ts';
@@ -319,9 +319,11 @@ export function applyComfyRandomSeeds(wf: ComfyWorkflow, seed: unknown): void {
 export function buildComfyPlaceholderValues(
   { main, neg, captions, nai, seed, ref }: ComfyPlaceholderInput,
 ): ComfyPlaceholderValues {
+  const pair = comfyPromptPair(main, neg);
+  const chars = (captions || []).map(c => comfyPromptPair(c.prompt, c.uc));
   const values: ComfyPlaceholderValues = {
-    pos: naiToComfyEmphasis(main),
-    neg: naiToComfyEmphasis(neg),
+    pos: pair.positive,
+    neg: [pair.negative, ...chars.map(c => c.negative)].filter(Boolean).join(', '),
     width: Number(nai.width ?? 832) || 832,
     height: Number(nai.height ?? 1216) || 1216,
     seed: Number(seed) || 1,
@@ -330,7 +332,7 @@ export function buildComfyPlaceholderValues(
     ref: cleanText(ref, 300),
   };
   for (let i = 0; i < 6; i += 1) {
-    values[`char${i + 1}`] = naiToComfyEmphasis(cleanText(captions?.[i]?.prompt, 2000));
+    values[`char${i + 1}`] = chars[i]?.positive || '';
   }
   return values;
 }

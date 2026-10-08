@@ -1107,7 +1107,7 @@
             <label class="row"><span class="row-text"><b>LLM한테 V4/V5 선택권</b></span><span class="sw"><input id="nx-nai5-first" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>무조건 NAI V5만</b></span><span class="sw"><input id="nx-nai5-only" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>NAI5 대사삽입</b></span><span class="sw"><input id="nx-nai5-speech" type="checkbox"></span></label>
-            <label class="row"><span class="row-text"><b>자동 비율 조절</b></span><span class="sw"><input id="nx-auto-aspect" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-character-height"><span class="row-text"><b>캐릭터 키 넣기</b></span><span class="sw"><input id="nx-character-height" type="checkbox" checked></span></label><label class="row" data-nx-help-id="nx-character-age"><span class="row-text"><b>캐릭터 나이 넣기</b></span><span class="sw"><input id="nx-character-age" type="checkbox" checked></span></label><label class="row"><span class="row-text"><b>자동 비율 조절</b></span><span class="sw"><input id="nx-auto-aspect" type="checkbox"></span></label>
           </div>
         </div>
         <div class="group">
@@ -2551,7 +2551,7 @@
     "title": "코스튬",
     "body": "켜면 메인 태거가 캐릭터별 코스튬 목록을 보고 샷마다 복장을 고릅니다(이름·번호). 꺼도 에셋으로 캐릭을 만들 때는 복장이 코스튬으로 나뉘어 저장됩니다. 샷에 고른 값이 없으면 이전 샷 옷, 없으면 로스터 현재 코스튬을 씁니다."
   },
-  "nx-auto-aspect": {
+  "nx-character-height": {"title":"캐릭터 키 넣기","body":"기본 켜짐. 캐릭터와 선택한 코스튬의 키를 이미지 생성 태그에 넣습니다(예: 170cm, tall). 끄면 키 항목에서 자동으로 붙이는 태그만 생략하며 저장된 키와 직접 쓴 외형 태그는 유지합니다. 다음 생성부터 적용됩니다."},"nx-character-age": {"title":"캐릭터 나이 넣기","body":"기본 켜짐. 캐릭터와 선택한 코스튬의 나이를 이미지 생성 태그에 넣습니다(예: 24 years old). 끄면 나이 항목에서 자동으로 붙이는 태그만 생략하며 저장된 나이와 직접 쓴 외형 태그는 유지합니다. 다음 생성부터 적용됩니다."},"nx-auto-aspect": {
     "title": "자동 비율 조절",
     "body": "켜면 샷마다 태거가 portrait/square/landscape를 고르고, 생성 크기를 832×1216 / 1024×1024 / 1216×832로 맞춥니다(NovelAI 기본 사이즈). ComfyUI는 워크플로 Empty Latent 등에 [[width]]/[[height]]를 넣어야 반영됩니다. 참조 그림은 LoadImage에 [[ref]]. 끄면 NAI Width/Height 설정을 씁니다."
   },

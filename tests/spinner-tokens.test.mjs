@@ -79,7 +79,7 @@ test('four shots publish individually and successful cleanup never rewrites the 
  await api.clearJobSpinners(target);
  assert.equal(writes,before,'no final clear/replace jump for successful slots');assert.equal(chat.message[0].data,complete);
  assert.equal(await api.finishJobSpinner({...target,shot:0,cardId:'shot-0'}),false,'duplicate completion does not duplicate the asset');
- assert.equal(db.modules[0].regex[0].comment,'omni-framed-asset-display','pair rule must run before either standalone token');
+ assert.deepEqual(db.modules[0].regex.slice(0,2).map(row=>row.comment),['omni-image-history-display','omni-framed-asset-display'],'history and pair rules must run before standalone tokens');
 });
 
 test('reroll follows stable bot/chat and baked token after indices move; second reroll uses new id',async()=>{

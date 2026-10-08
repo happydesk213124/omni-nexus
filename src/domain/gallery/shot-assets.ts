@@ -59,15 +59,18 @@ export function shotAssetName(id: unknown, ext = 'webp', sessionId?: unknown, ca
   const room = sid ? `.${SESSION_MARK}${sid}` : '';
   const cast = formatCastSegment(castIds ?? []);
   const castSeg = cast ? `.${cast}` : '';
-  return `${SHOT_ASSET_PREFIX}${safe}${room}${castSeg}.${e}`;
+  const revision = safe.match(/_([rs]\d+)$/)?.[0] || '';
+  const base = revision ? safe.slice(0, -revision.length) : safe;
+  return `${SHOT_ASSET_PREFIX}${base}${room}${castSeg}${revision}.${e}`;
 }
 
 /** The `.s<session>`, `.c<cast>` and `.<ext>` segments of a name; ''/[] when absent. */
 function shotNameParts(name: unknown): { id: string; session: string; cast: string[] } {
   const n = cleanText(name, 400);
   if (!n.toLowerCase().startsWith(SHOT_ASSET_PREFIX)) return { id: '', session: '', cast: [] };
-  const parts = n.slice(SHOT_ASSET_PREFIX.length).split('.');
-  const id = sanitizeShotId(parts[0]);
+  const revision = n.match(/_([rs]\d+)(?=\.[a-z0-9]+$)/i)?.[0] || '';
+  const parts = (revision ? n.replace(/_[rs]\d+(?=\.[a-z0-9]+$)/i, '') : n).slice(SHOT_ASSET_PREFIX.length).split('.');
+  const id = sanitizeShotId(parts[0]) + revision;
   // parts: [id, ext] before rooms were stamped, [id, s<session>, ext] after,
   // [id, s<session>, c<cast>, ext] with the cast segment.
   let session = '';

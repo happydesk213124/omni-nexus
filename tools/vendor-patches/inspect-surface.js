@@ -8,6 +8,11 @@ nxEnsureInspectSurface = async () => {
     await root.appendChild(fullscreen);
     await root.appendChild(actionMenu);
     await o.appendChild(root);
+    // The chat gesture listener can be blocked while this surface is open.
+    // Own the next press here so the opener guard cannot swallow backdrop taps.
+    await root.addEventListener("pointerdown", () => {
+      if(inspectOpen && !t.uiOpen)nxInspectOpeningPointer=null;
+    });
     // SafeElement callbacks are document-wide and have coordinates, not a target.
     await root.addEventListener("click", async event => {
       if (!inspectOpen || t.uiOpen || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
@@ -19,17 +24,25 @@ nxEnsureInspectSurface = async () => {
         if (!await hitEl(root, x, y) || !live()) return;
         for (const zone of inspectZones) {
           if (await hitEl(zone.el, x, y)) {
-            if (live() && (!openingClick || zone.act === "close")) await runInspectAction(zone.act, card, zone.charI ?? -1);
+            if (live() && (!openingClick || zone.act === "close")) {
+              if (zone.act.startsWith('history-')) await omniInspectHistoryAction(zone.act.slice(8), card);
+              else await runInspectAction(zone.act, card, zone.charI ?? -1);
+            }
             return;
           }
           if (!live()) return;
         }
         if (nxInspectShell && await hitEl(nxInspectShell.sheet, x, y)) return;
+        if (await omniInspectHistoryTouch(event)) return;
         if (nxInspectMirroredImage && await hitEl(nxInspectMirroredImage, x, y)) return;
         if (live() && !openingClick) await runInspectAction("close", card, -1);
       } catch (error) { y("error", "shots.asset.inspect.action.fail", String(error?.message || error)); }
     });
     await root.addEventListener("keydown", async event => {
+      if (inspectOpen && !t.uiOpen && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        try { await omniInspectHistoryAction(event.key === 'ArrowLeft' ? 'prev' : 'next', actionCard); }
+        catch (error) { y('error','inspect.history',String(error)); }
+      }
       if (event.key === "Escape" && inspectOpen && !t.uiOpen) {
         try { await runInspectAction("close", actionCard, -1); }
         catch (error) { y("error", "shots.asset.inspect.close.fail", String(error?.message || error)); }

@@ -34,6 +34,7 @@ async function omniInitModuleControls() {
   omniFooterKeyListener=await omniFooterRoot.addEventListener('keydown',async event=>{
     if(t._nxHostInspectOpen)return;
     if(event.repeat || (event.key!=='Enter' && event.key!==' '))return;
+    if(await omniHistoryHit(doc,event,true))return;
     const button=await doc.querySelector('[data-omni-action]:focus,[x-omni-action]:focus');if(!button)return;
     try {const hit=await omniBindModuleButton(button);if(hit)await omniFooterAction(hit.kind,hit.index);} finally {await omniRelease(button);}
   });
@@ -88,7 +89,21 @@ async function omniFooterHit(doc,x,y) {
 async function omniFooterAction(kind,key) {
   if(t._nxHostInspectOpen)return;
   if(kind==='stop') {await optimisticStopJobs();return;}
+  if(kind==='char'||kind==='preset'){await openSettingsTab(kind==='char'?'characters':'style_presets');return;}
   const target=omniFooterTargets.get(Number(key));if(!target)return;
+  if(kind==='note') {
+    try {
+      await openOmniNote(target,async()=>{
+        const scope=await Z({useOverride:false});
+        if(scope.characterId!==target.characterId || scope.chatId!==target.chatId)throw new Error('대화가 바뀌었습니다. 다시 눌러 주세요.');
+        const row=(scope.chat?.message || scope.chat?.messages || [])[target.index];
+        const text=String(row?.data ?? row?.saying ?? '');
+        if(!row || (target.hostId && omniMessageId(row)!==target.hostId) || (target.token && omniMessageToken(target.index,text)!==target.token))throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
+        return {scope,target:{...target,text}};
+      });
+    }catch(error){y('error','footer.note',String(error));$e(String(error?.message || error));}
+    return;
+  }
   const doc=t.hostDoc || omniFooterDoc;
   const pinned=!!target._floatPin;
   const footer=pinned?null:await doc.querySelector('[x-omni-footer="'+key+'"]');if(!footer&&!pinned)return;
@@ -199,6 +214,7 @@ async function omniRefreshCountLabels() {
 }
 async function omniDisposeMessageRuntime() {
   t.unloading=true;
+  await omniTouchWork.catch(()=>{});await omniHistoryTouchHide();
   omniStreamDispose();
   await omniObserverWork.catch(()=>{});
   await omniFooterPainting?.catch(()=>{});

@@ -1,4 +1,4 @@
-import { messageAssetIds, findAssetMessage } from '../storage/asset-message';
+import { messageAssetIds } from '../storage/asset-message';
 /**
  * Edits to a single already-generated card.
  *
@@ -11,7 +11,7 @@ import { messageAssetIds, findAssetMessage } from '../storage/asset-message';
  * overrides replace base (and char prompts when the form sent them). The
  * settings tab is not applied.
  *
- * **A reroll allocates a new card id** and deletes the old row, so callers must
+ * **A reroll appends a revision of the original card id**, so callers must
  * follow `replaced` rather than assume the id survived. The image location
  * (message index, content hash, y position) is carried across unchanged — that
  * is what keeps the new image anchored to the same message.
@@ -32,7 +32,6 @@ import {
   toInt,
   toOptionalFloat,
   unifiedSessionIdForCharacter,
-  uuid,
 } from '../core/util/text';
 import { characterMaxLimit, stripPersonCountTags } from '../domain/character/tags';
 import { collectStylePositives } from '../domain/prompt/reroll-setup';
@@ -71,12 +70,14 @@ import {
   readImageLocation,
 } from './generation';
 import { persistChatImagesOn, rewriteBakedCardInChatMessage } from './chat-bake';
-import { deleteCard, getImageBytes } from './gallery';
+import { getImageBytes } from './gallery';
 import { busyReplyForRequest, jobKey } from './job-locks';
 import { createJob } from './jobs';
 import { getPrompt } from './settings';
 import { bytesToDataUrlAsync, base64ToAb } from '../core/util/bytes';
-import { shotCastIds } from './cast-ids';
+import { ensureStudioCastIds, shotCastIds } from './cast-ids';
+import { allocateImageRevision, imageRevisionLock, locateImageRevision } from './image-history';
+import { imageHistoryRoot } from '../domain/gallery/image-history';
 
 function parseJsonOr(raw: unknown, fallback: unknown): unknown {
   try {
@@ -283,8 +284,11 @@ function decodeStudioImage(body: Record<string, unknown>): ArrayBuffer | null {
   return b64 ? base64ToAb(b64) : null;
 }
 
-/** NAI replay into bytes only — does not replace the card. */
-export async function studioGenerate(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
+/** Replay and persist a studio revision without adding it to the message. */
+export function studioGenerate(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
+  return imageRevisionLock.run(() => generateStudioRevision(cardId, body));
+}
+async function generateStudioRevision(cardId: string, body: Record<string, unknown>): Promise<ApiResult> {
   const id = cleanText(cardId, 80);
   const row = await idbGet('cards', id);
   if (!row) return { ok: false, error: { code: 'not_found', message: 'card not found' } };
@@ -310,52 +314,72 @@ export async function studioGenerate(cardId: string, body: Record<string, unknow
   }
   const ovSeed = 'seed' in body ? Number(body.seed) : NaN;
   const seedOverride = Number.isFinite(ovSeed) && ovSeed > 0 ? Math.floor(ovSeed) : undefined;
-  const { bytes, seed } = await generateFromNaiReplay(
+  const { bytes, seed, recipe } = await generateFromNaiReplay(
     t2iRequestFromScene(scene, seedOverride || randomNaiSeed()),
   );
+  const image_data_url = await bytesToDataUrlAsync(bytes, 'image/png');
+  const saved = await commitStudioRevision(id, { ...body, image_data_url, seed, recipe, history_only: true }) as Record<string, unknown>;
+  if (saved.ok === false) return saved;
   return {
     ok: true,
-    image_data_url: await bytesToDataUrlAsync(bytes, 'image/png'),
+    image_data_url,
+    card: saved.card,
     seed,
   };
 }
 
 /**
  * Commit the studio canvas the way a reroll lands: the bytes are published
- * under a NEW card id at the same place (location and cast inherited from the
- * old row), tags are written onto the new row, the old row is dropped, and
+ * under a NEW card id at the same place, with the current tabs' cast in its
+ * filename. Tags are written onto the new row, the old row is retained, and
  * callers must follow `replaced`. The image location (message index, content
  * hash, y position) is carried across unchanged — that is what keeps the new
  * image anchored to the same message. Tags-only commits (no canvas bytes)
  * keep the old same-id path.
  */
-export async function studioCommit(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
+export function studioCommit(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
+  return imageRevisionLock.run(() => commitStudioRevision(cardId, body));
+}
+async function commitStudioRevision(cardId: string, body: Record<string, unknown>): Promise<ApiResult> {
   const id = cleanText(cardId, 80);
   const row = await idbGet('cards', id);
   if (!row) return { ok: false, error: { code: 'not_found', message: 'card not found' } };
   const bytes = decodeStudioImage(body);
   if (!bytes?.byteLength) return updateCardTags(id, body);
+  const revisionId = cleanText(body.revision_id, 80);
+  if (revisionId && imageHistoryRoot(revisionId) === imageHistoryRoot(id) && await idbGet('cards', revisionId)) {
+    const result = await updateCardTags(revisionId, body);
+    const target = await locateImageRevision(id, await readImageLocation(id));
+    if (persistChatImagesOn() && target) {
+      const loc = target.location;
+      await rewriteBakedCardInChatMessage({ charIndex:toInt(loc.char_index,-1),chatIndex:toInt(loc.chat_index,-1),messageIndex:toInt(loc.message_index,-1),
+        characterId:String(loc.character_id || ''),chatId:String(loc.chat_id || ''),prevCardId:target.id,nextCardId:revisionId,replaceLatest:true,pin:true });
+    }
+    return { ...result, replaced: id };
+  }
   const meta = parseJsonOr(row.meta_json || '{}', {}) as Record<string, unknown>;
   const prevLocMeta = (meta.location || {}) as Record<string, unknown>;
   const sessionId = row.session_id;
   const characterId = cleanText(prevLocMeta.character_id || meta.character_id || '', 200);
   let unifiedSessionId = cleanText(meta.unified_session_id || prevLocMeta.unified_session_id || '', 200);
   if (!unifiedSessionId && characterId) unifiedSessionId = unifiedSessionIdForCharacter(characterId);
-  const newId = uuid();
+  const newId = await allocateImageRevision(id, 's');
   const now = Date.now() / 1000;
   const storedLoc = await readImageLocation(row.id);
-  const prevLoc = await findAssetMessage(row.id, storedLoc) || { ...storedLoc, message_index: -1 };
-  // The source asset file name already carries the cast, so no roster minting
-  // is needed. Castless source → filename stays without .c.
-  let inheritCast: string[] = [];
-  try {
-    const prev = await shotCastIds(row.id);
-    if (prev && Array.isArray(prev.ids)) inheritCast = prev.ids.filter(Boolean).map(String);
-  } catch { /* keep castless */ }
+  const target = await locateImageRevision(row.id, storedLoc);
+  const prevLoc = target?.location || { ...storedLoc, message_index: -1 };
+  // An explicit empty tab list clears the cast. Only legacy callers without
+  // character overrides inherit the source filename's generation snapshot.
+  let castIds: string[] = [];
+  if (Array.isArray(body.characters)) {
+    castIds = await ensureStudioCastIds(body.characters, characterId || unifiedSessionId || sessionId);
+  } else {
+    try { castIds = (await shotCastIds(row.id)).ids; } catch { /* keep castless */ }
+  }
   const location = {
     version: 1,
     image_id: newId,
-    ...(inheritCast.length ? { cast_ids: inheritCast } : {}),
+    ...(castIds.length ? { cast_ids: castIds } : {}),
     session_id: sessionId,
     unified_session_id: unifiedSessionId,
     character_id: cleanText(prevLoc.character_id || '', 200),
@@ -371,7 +395,19 @@ export async function studioCommit(cardId: string, body: Record<string, unknown>
     content_hash: cleanText(prevLoc.content_hash || '', 128),
     assistant_preview: cleanText(prevLoc.assistant_preview || meta.assistant_preview || '', ASSISTANT_PREVIEW_LIMIT),
   };
-  await publishImage(newId, bytes, location);
+  const embedded = readGenerationImageData(bytes);
+  let recipe = body.recipe || embedded?.recipe;
+  if (!recipe) {
+    const scene = await loadCardImageScene(id);
+    applyScenePromptOverrides(scene, body);
+    recipe = t2iRequestFromScene(scene, Number(body.seed) || Number(row.seed));
+  }
+  const source = readGenerationImageData(await getImageBytes(id) || new ArrayBuffer(0));
+  const characters = Array.isArray(body.characters)
+    ? body.characters.filter((value): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value))
+      .map(c => ({ scope: cleanText(c.scope, 200), id: cleanText(c.id, 80), name: cleanText(c.name, 200) }))
+    : embedded?.characters || source?.characters || [];
+  await publishImage(newId, bytes, location, { recipe, characters, generatedAt: Date.now() });
   const slimCast = slimCardCharacters(parseJsonOr(row.characters_json || '[]', []));
   const genMetaExtra: Record<string, unknown> = {
     kind: cleanText(meta.kind, 20) || 'illustration',
@@ -401,18 +437,19 @@ export async function studioCommit(cardId: string, body: Record<string, unknown>
   });
   const tagged = await updateCardTags(newId, body);
   if ((tagged as { ok?: unknown }).ok !== true) return tagged;
-  if (persistChatImagesOn()) {
+  if (persistChatImagesOn() && body.history_only !== true) {
       await rewriteBakedCardInChatMessage({
         charIndex: toInt(location.char_index, -1),
         chatIndex: toInt(location.chat_index, -1),
         messageIndex: toInt(location.message_index, -1),
-        prevCardId: id,
+        prevCardId: target?.id || id,
         nextCardId: newId,
+        replaceLatest: true,
+        pin: true,
         characterId: location.character_id,
         chatId: location.chat_id,
       });
   }
-  try { await deleteCard(id); } catch { /* A committed replacement can retain an orphan gallery row. */ }
   return { ok: true, replaced: id, card: (tagged as { card: unknown }).card };
 }
 
@@ -492,7 +529,10 @@ export async function stampCardCostume(
  * `mode: "full"` re-runs the entire originating job (tagging included) rather
  * than just the image.
  */
-export async function rerollCard(
+export function rerollCard(cardId: string, mode = 'nai', overrides: unknown = null, opts: RerollOptions = {}): Promise<ApiResult> {
+  return imageRevisionLock.run(() => createRerollRevision(cardId, mode, overrides, opts));
+}
+async function createRerollRevision(
   cardId: string,
   mode = 'nai',
   overrides: unknown = null,
@@ -607,10 +647,11 @@ export async function rerollCard(
     kind: comic ? 'comic' : cleanText(meta.kind, 20) || 'illustration',
     characters: slimCast,
   };
-  const newId = uuid();
+  const newId = await allocateImageRevision(cardId, 'r');
   const now = Date.now() / 1000;
   const storedLoc = await readImageLocation(row.id);
-  const prevLoc = await findAssetMessage(row.id, storedLoc) || {...storedLoc,message_index:-1};
+  const target = await locateImageRevision(row.id, storedLoc);
+  const prevLoc = target?.location || {...storedLoc,message_index:-1};
   // Reroll inherits the previous .c: the source asset file name already
   // carries the cast, so no roster minting is needed. Castless source →
   // filename stays without .c (chips empty by construction).
@@ -669,13 +710,14 @@ export async function rerollCard(
         charIndex: toInt(location.char_index, -1),
         chatIndex: toInt(location.chat_index, -1),
         messageIndex: toInt(location.message_index, -1),
-        prevCardId: cardId,
+        prevCardId: target?.id || cardId,
         nextCardId: newId,
+        history: true,
+        pin: true,
         characterId: location.character_id,
         chatId: location.chat_id,
       });
   }
-  try { await deleteCard(cardId); } catch { /* A committed replacement can retain an orphan gallery row. */ }
 
   const card = {
     id: newId,

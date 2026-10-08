@@ -24,6 +24,7 @@ import {
   loadNaiQuota,
   loadRoster,
   loadSettings,
+  loadHistory,
   saveCharacter,
   saveSettings,
   studioCommit,
@@ -844,7 +845,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       img.alt = '';
       img.src = h.url;
       const b = document.createElement('b');
-      b.textContent = h.seed ? `seed ${h.seed}` : '';
+      b.textContent = [h.id?.match(/_([rs]\d+)$/)?.[1] || (h.id ? '원본' : ''), h.seed ? `seed ${h.seed}` : ''].filter(Boolean).join(' · ');
       el.append(img, b);
       grid.append(el);
     });
@@ -1488,7 +1489,8 @@ export async function openTagStudio(card: unknown): Promise<void> {
         return;
       }
       if (!state.gen.seedLock && seed > 0) state.gen.seed = seed;
-      state.history.unshift({ url, seed });
+      const saved = asRecord(res.card);
+      state.history.unshift({ url, seed, id: cleanText(saved.id, 80) });
       state.historySel = 0;
       await showImage(url);
       renderAll();
@@ -1507,6 +1509,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const res = await studioCommit(state.cardId, {
         ...assembleOverrides(state, roster),
         image_data_url: canvasUrl,
+        revision_id: state.history[state.historySel]?.id,
       });
       if (res.ok === false) {
         toast(errMsg(res, '저장에 실패했습니다.'));
@@ -2104,6 +2107,16 @@ export async function openTagStudio(card: unknown): Promise<void> {
     }
 
     state.imageUrl = imageUrl;
+    const history = await loadHistory(cardId).catch(() => ({})) as Record<string, unknown>;
+    if (Array.isArray(history.cards)) {
+      const rows = history.cards as Array<Record<string, unknown>>;
+      for (const row of rows) {
+        const id = cleanText(row.id, 80);
+        const url = id === cardId ? imageUrl : await resolveCardUrl(id, '');
+        if (url) state.history.push({ id, url, seed: Number(row.seed) || 0 });
+      }
+      state.historySel = state.history.findIndex(row => row.id === cardId);
+    }
     if (imageUrl) await showImage(imageUrl);
     else drawStage();
     renderAll();

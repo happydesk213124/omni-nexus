@@ -559,7 +559,8 @@ try {
         const src='data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="purple"/></svg>`);
         document.body.style.margin='0';
         const baked = ChatGeometry.inrayDisplayOut(false,scale).replaceAll('$1','test').replace('{{$'+'2}}',src).replaceAll('{{raw::$2}}',src).replaceAll('$3',String(w)).replaceAll('$4',String(h));
-        document.body.innerHTML=`<div style="text-align:center"><span style="${ChatGeometry.inlineChatStackStyle(scale)}"><img id="spinner-test" src="${src}" style="${ChatGeometry.inlineChatSpinnerImgStyle(scale)}"><span style="${ChatGeometry.inlineChatOverlayImgStyle(true,scale)}"><img id="photo-test" src="${src}" style="${ChatGeometry.inlineChatOverlayPhotoStyle()}"></span></span></div>`+baked;
+        // Match markerBlockHtml: the real placeholder carries its intrinsic dimensions.
+        document.body.innerHTML=`<div style="text-align:center"><span data-inlay-inline-stack="1" style="${ChatGeometry.inlineChatStackStyle(scale,{width:w,height:h})}"><img id="spinner-test" src="${src}" style="${ChatGeometry.inlineChatSpinnerImgStyle(scale,{width:w,height:h})}"><span style="${ChatGeometry.inlineChatOverlayImgStyle(true,scale)}"><img id="photo-test" src="${src}" style="${ChatGeometry.inlineChatOverlayPhotoStyle()}"></span></span></div>`+baked;
         const rule=ChatGeometry.spinnerDisplayRegexScript(scale);
         document.body.insertAdjacentHTML('beforeend',`[[@inrayspinner::job_0::${w}::${h}]]`.replace(new RegExp(rule.in,rule.flag),rule.out));
         await Promise.all([...document.images].map(image=>image.decode()));

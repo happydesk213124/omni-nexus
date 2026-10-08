@@ -1,4 +1,5 @@
-import { chatImageSizeStyle } from '../domain/inray-display';
+import { chatImageFrameStyle, chatImageSizeStyle, chatImageResponsiveCss } from '../domain/inray-display';
+export { imageHistoryCss, imageHistoryControls, imageHistoryIndicators } from '../domain/gallery/history-overlay';
 export { progressToastView, progressToastStyles } from './progress-toast';
 /**
  * Chat-overlay geometry and matching logic.
@@ -4031,7 +4032,7 @@ export function shouldStripLeftoverInlineId(
 export interface InlineInjectOptions {
   /** Bubble client width — clamps img so intrinsic size cannot expand the parent. */
   maxWidthPx?: number;
-  /** Dashboard scale % for bubble illustrations (100 = default 78%/70vh caps). */
+  /** Dashboard width % for bubble illustrations; height follows aspect ratio. */
   scalePct?: number;
   /** Insert the frame before the line's first character, or after its last. */
   textSide?: unknown;
@@ -4048,12 +4049,14 @@ export function clampInlineChatScalePct(value: unknown): number {
 export function inlineChatImgStyle(scalePct: unknown = 100): string {
   return `${chatImageSizeStyle(scalePct)};object-fit:contain;border-radius:10px;display:inline-block;vertical-align:top`;
 }
-export function inlineChatSpinnerImgStyle(scalePct: unknown = 100): string {
+export function inlineChatSpinnerImgStyle(scalePct: unknown = 100, size?: { width: number; height: number }): string {
+  if (size) return 'width:100%;height:auto;max-width:100%;object-fit:contain;border-radius:10px;display:block;pointer-events:none';
   return `${inlineChatImgStyle(scalePct)};max-width:100%;pointer-events:none`;
 }
 
 /** Stack that keeps the spinner in flow and parks the photo on top. */
-export function inlineChatStackStyle(scalePct: unknown = 100): string {
+export function inlineChatStackStyle(scalePct: unknown = 100, size?: { width: number; height: number }): string {
+  if (size) return `position:relative;display:inline-block;line-height:0;${chatImageFrameStyle(String(size.width), String(size.height), scalePct)};box-sizing:border-box;vertical-align:top`;
   return `position:relative;display:inline-block;line-height:0;width:fit-content;${chatImageSizeStyle(scalePct).replace('width:auto;height:auto;', '')};box-sizing:border-box;vertical-align:top`;
 }
 
@@ -4468,13 +4471,10 @@ export function markerBlockHtml(
   const keyAttr = key ? ` ${INLAY_INLINE_KEY_ATTR}="${key}" x-inlay-inline-key="${key}"` : '';
   const owner = escapeHtmlAttr(String(ownerKey || ''));
   const ownerAttr = owner ? ` x-inlay-inline-owner="${owner}"` : '';
-  // Centered block; <br> keeps Risu bubble spacing. Width cap is a bit looser than
-  // height so landscape shots don't look tiny next to portrait/1:1 (those still
-  // hit max-height first). Mobile narrow bubbles still shrink instead of clipping.
-  // scalePct (dashboard) multiplies the 78%/70vh defaults.
+  // Mobile fills the message; desktop starts from a bounded image size.
   const wrapStyle = inlineChatFrameStyle();
-  const imgStyle = inlineChatSpinnerImgStyle(scalePct);
   const size = inlinePlaceholderSize(p);
+  const imgStyle = inlineChatSpinnerImgStyle(scalePct, size);
   const sizeAttr = ` width="${size.width}" height="${size.height}"`;
   const placeholder = inlinePlaceholderSrc(p);
   const slot = escapeHtmlAttr(inlinePlacementSlotKey(p));
@@ -4486,7 +4486,8 @@ export function markerBlockHtml(
     : '';
   return (
     `<div ${INLAY_INLINE_ATTR}="${id}" data-inlay-inline-slot="${slot}"${keyAttr}${ownerAttr} data-inlay-inline-layout="${INLINE_FRAME_LAYOUT_VERSION}"${pendingAttr} x-inlay-inline-shot="${id}" x-inlay-inline-slot="${slot}" x-inlay-inline-layout="${INLINE_FRAME_LAYOUT_VERSION}" x-inlay-inline-pending="${showPhoto ? '0' : '1'}" x-inlay-inline-active="${embed ? 'a' : ''}" contenteditable="false" style="${wrapStyle}">`
-    + `<br><span data-inlay-inline-stack="1" style="${inlineChatStackStyle(scalePct)}">`
+    + `<style>${chatImageResponsiveCss()}</style>`
+    + `<br><span data-inlay-inline-stack="1" style="${inlineChatStackStyle(scalePct, size)}">`
     + `<img data-inlay-inline-spin="1" src="${escapeHtmlAttr(placeholder)}" alt=""${sizeAttr} style="${imgStyle}" loading="eager" decoding="sync">`
     + `<span data-inlay-inline-img="1" x-inlay-inline-cell="1" x-inlay-inline-layer="a" x-inlay-inline-live="${embed ? '1' : '0'}" style="${inlineChatOverlayImgStyle(!!embed)}">${photo}</span>`
     + `<span data-inlay-inline-img="1" x-inlay-inline-cell="1" x-inlay-inline-layer="b" x-inlay-inline-live="0" style="${inlineChatOverlayImgStyle(false)}"></span>`

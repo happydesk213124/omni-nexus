@@ -32,6 +32,7 @@ function harness(clickSource=click) {
     const t={gallery:[{id:'card'}]},PRESS_MS=550,k={};
     const root={box:[0,0,1000,800]},image={box:[250,30,750,630]},closeButton={box:[850,700,990,790]};
     const nxInspectShell={sheet:{box:[200,650,990,800]}},nxInspectMirroredImage=image;
+    const omniInspectHistoryTouch=async()=>false;
     const node={box:[900,0,1000,100],getAttribute:async()=> 'card'};
     const e={querySelectorAll:async()=>[node]};
     const hitEl=async(el,x,y)=>{const [l,t,r,b]=el.box;return x>=l&&x<=r&&y>=t&&y<=b;};

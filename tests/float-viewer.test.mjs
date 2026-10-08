@@ -20,7 +20,7 @@ async function hoverAt(page, inside) {
   await page.waitForFunction(want=>fixture.api.hovered()===want,inside);
 }
 
-async function setup(page, width = 1000, cacheGallery = true) {
+async function setup(page, width = 1000, cacheGallery = true, runtimeSource = runtime) {
   await page.setViewportSize({width,height:700});
   await page.setContent(`<style>html,body{margin:0;height:100%}.default-chat-screen{height:100vh;overflow:auto}.risu-chat{padding:20px;margin-left:390px}.shot{height:260px;margin-bottom:100px}.shot img{width:80px;height:80px}</style>
     <div class="default-chat-screen"><div class="risu-chat" data-chat-index="4" data-chat-id="message-four"><div class="chattext">
@@ -30,7 +30,7 @@ async function setup(page, width = 1000, cacheGallery = true) {
   await page.evaluate(({runtime,cacheGallery}) => {
     const wrap = n => n ? new Safe(n) : null;
     const listeners = new Map(); let serial = 0;
-    const stats={bubbleRects:0,bubbleHandles:0,shotQueries:0,galleryLoads:0};
+    const stats={bubbleRects:0,bubbleHandles:0,shotQueries:0,galleryLoads:0,floatRects:0,styleWrites:0,textWrites:0};
     class Safe {
       constructor(n) { this.n = n; }
       async querySelector(q) { return wrap(this.n.querySelector(q)); }
@@ -43,13 +43,15 @@ async function setup(page, width = 1000, cacheGallery = true) {
       async getOuterHTML() { return this.n.outerHTML; }
       async getParent() { return wrap(this.n.parentElement); }
       async getProperty(key) { return this.n[key]; }
-      async getBoundingClientRect() { if(this.n.matches('.risu-chat'))stats.bubbleRects++;return this.n.getBoundingClientRect().toJSON(); }
+      async clientWidth() {return this.n.clientWidth;}
+      async clientHeight() {return this.n.clientHeight;}
+      async getBoundingClientRect() { if(this.n.matches('.risu-chat'))stats.bubbleRects++;if(this.n.matches('[x-nx-float]'))stats.floatRects++;return this.n.getBoundingClientRect().toJSON(); }
       async setAttribute(k,v) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); this.n.setAttribute(k,v); }
       async getAttribute(k) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); return this.n.getAttribute(k); }
       async setStyle(k,v) { this.n.style[k]=v; }
-      async setStyleAttribute(v) { this.n.style.cssText = v; }
+      async setStyleAttribute(v) { stats.styleWrites++;this.n.style.cssText = v; }
       async setInnerHTML(v) { this.n.innerHTML = v; }
-      async setTextContent(v) { this.n.textContent = v; }
+      async setTextContent(v) { stats.textWrites++;this.n.textContent = v; }
       async appendChild(n) { this.n.appendChild(n.n); }
       async remove() { this.n.remove(); }
       async addEventListener(kind,fn,options) {
@@ -88,15 +90,66 @@ async function setup(page, width = 1000, cacheGallery = true) {
       saveViewerMinimized:async v=>calls.push(['collapsed',v]),saveViewerIconGeo:async v=>v,qt:async v=>calls.push(['geo',v]),
       omniFooterTargets:targets,omniFooterAction:async(kind,key)=>calls.push([kind,targets.get(key)]),
       nxUnwrapSafeNodes:async v=>v,hitEl:async(el,x,y)=>{const r=await el.getBoundingClientRect();return r.width>0&&r.height>0&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;},
+      // Browser animation frames cannot drive work in Risu's hidden plugin iframe.
+      requestAnimationFrame:()=>{throw Error('animation frames unavailable in hidden plugin iframe');},
       y:()=>{},$e:()=>{},withImageRerollToast:async(_text,fn)=>fn(),K:async()=>({card:cards[0]})};
     const api = new Function(...Object.keys(deps),runtime+`;return {ensure:nxFloatEnsure,apply:nxFloatApply,show:nxFloatShow,hide:nxFloatHide,scan:nxFloatScan,select:nxFloatShowCard,dispose:nxFloatDispose,
       passes:()=>omniPerf.viewerPasses,
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
-      target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove()};`)(...Object.values(deps));
+      target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove(),armIdle:nxFloatArmIdle};`)(...Object.values(deps));
     window.fixture = {api,t,calls,targets,listeners,stats,scope:v=>{scope={...scope,...v};},wrap};
-  },{runtime:streamHelpers+countRuntime+runtime,cacheGallery});
+  },{runtime:streamHelpers+countRuntime+runtimeSource,cacheGallery});
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
 }
+
+async function verifyNoIdleBridgeWork(page, runtimeSource=runtime) {
+  await setup(page,1000,true,runtimeSource);
+  await page.evaluate(async()=>{
+    const {stats,api}=fixture;
+    stats.floatRects=stats.styleWrites=stats.textWrites=0;
+    for(let i=0;i<100;i++)document.body.dispatchEvent(new PointerEvent('pointermove',{clientX:900,clientY:650,bubbles:true}));
+    await Promise.all(Array.from({length:30},()=>api.apply()));
+  });
+  const stats=await page.evaluate(()=>({...fixture.stats}));
+  assert.equal(stats.floatRects,0,'mouse movement outside the fixed viewer does not read host geometry');
+  assert.equal(stats.styleWrites,0,'unchanged maintenance performs no bridge style writes');
+  assert.equal(stats.textWrites,0,'unchanged maintenance performs no bridge text writes');
+}
+
+test('floating viewer reuses fixed bounds and unchanged chrome; performance guard detects regressions',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage();await verifyNoIdleBridgeWork(page);
+    assert.deepEqual(await page.locator('[x-nx-float-headbtns="r"] button').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('x-nx-float-btn'))),['compact','fold','full']);
+    await page.close();
+    const broken=await browser.newPage();
+    const mutation=runtime.replace('nxFloatStyleCache.get(el) === css','false');
+    assert.notEqual(mutation,runtime,'the guard mutation must change the runtime');
+    await assert.rejects(()=>verifyNoIdleBridgeWork(broken,mutation),/unchanged maintenance performs no bridge style writes/);
+    await broken.close();
+  } finally {await browser.close();}
+});
+
+async function verifyConsumedScan(page,runtimeSource=runtime) {
+  await setup(page,1000,true,runtimeSource);
+  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+1000));
+  await page.evaluate(async()=>{
+    document.querySelector('.default-chat-screen').dispatchEvent(new Event('scroll'));
+    await fixture.api.scan();fixture.completedPasses=fixture.api.passes();
+  });
+  await page.clock.runFor(200);
+  assert.equal(await page.evaluate(()=>fixture.api.passes()),await page.evaluate(()=>fixture.completedPasses),'a direct action read must consume the queued scroll read');
+}
+
+test('direct viewer reads consume pending scroll scans; the scheduler guard detects a duplicate pass',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage();await verifyConsumedScan(page);await page.close();
+    const mutation=runtime.replace('  clearTimeout(nxFloatScanTimer);nxFloatScanTimer=0;','');
+    assert.notEqual(mutation,runtime);
+    const broken=await browser.newPage();await assert.rejects(()=>verifyConsumedScan(broken,mutation),/a direct action read must consume/);await broken.close();
+  } finally {await browser.close();}
+});
 
 test('floating viewer survives coordinate-only host events, scroll, idle, settings and remounts',async()=>{
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -141,7 +194,9 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     await hoverAt(page,true);
     await page.evaluate(()=>fixture.api.apply());
     assert.equal(await page.evaluate(()=>fixture.api.state().idle),false);
-    assert.notEqual(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).backdropFilter),'none','hover restores frame too');
+    assert.equal(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).backdropFilter),'none','hover keeps the alpha surface without background blur');
+    assert.equal(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).boxShadow),'none');
+    assert.notEqual(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)','hover restores the alpha surface');
     await page.clock.runFor(2500);
     assert.equal(await page.evaluate(()=>fixture.api.state().idle),false,'hovered controls remain usable');
     await clickAt(page,'[x-nx-float-bar] [x-nx-float-btn="tag"]');
@@ -159,6 +214,7 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     await page.evaluate(()=>{fixture.t.backendSettings.card.viewer_minimize_mode='bubble';return fixture.api.ensure();});
     assert.equal(await page.locator('[x-nx-float-icon]').isVisible(),true);
     const bubble=await page.locator('[x-nx-float]').boundingBox(); assert.equal(bubble.width,52);
+    assert.equal(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).boxShadow),'none','minimized bubble has no shadow');
     assert.equal(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).borderRadius),'50%');
     await page.evaluate(async()=>{
       fixture.t.backendSettings.card.viewer_minimize_mode='buttons';
@@ -398,4 +454,43 @@ test('mobile header drag updates immediately and stores geometry exactly once on
     await page.waitForFunction(()=>fixture.calls.filter(c=>c[0]==='geo').length===1);
     await page.evaluate(()=>fixture.api.dispose());assert.equal(await page.evaluate(()=>fixture.listeners.size),0);
   }finally{await browser.close();}
+});
+
+async function verifyTouchIdle(page,runtimeSource=runtime) {
+  await setup(page,320,true,runtimeSource);
+  await page.addStyleTag({content:'*{transition-duration:0s!important}'});
+  assert.equal(await page.evaluate(()=>matchMedia('(hover: none)').matches),true);
+  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+1000));
+  await page.evaluate(()=>{fixture.api.armIdle();return fixture.api.apply();});
+  await page.clock.runFor(2500);
+  assert.equal(await page.evaluate(()=>fixture.api.state().idle),true);
+  const button=await page.locator('[x-nx-float-head] [x-nx-float-btn="full"]').boundingBox();
+  const point={clientX:button.x+button.width/2,clientY:button.y+button.height/2,button:0};
+  await page.locator('body').dispatchEvent('pointerdown',point);
+  await page.evaluate(()=>fixture.api.apply());
+  await page.locator('body').dispatchEvent('pointermove',point);
+  await page.locator('body').dispatchEvent('pointerup',point);
+  await page.locator('body').dispatchEvent('click',point);
+  await page.locator('body').dispatchEvent('pointermove',point);
+  await page.evaluate(()=>fixture.api.apply());
+  assert.equal(await page.evaluate(()=>fixture.api.state().idle),false,'touch reveals floating buttons');
+  assert.equal(await page.evaluate(()=>fixture.calls.filter(c=>c[0]==='full').length),0,'the reveal tap cannot activate a hidden fullscreen button');
+  await page.clock.runFor(2500);
+  await page.evaluate(()=>fixture.api.apply());
+  assert.equal(await page.evaluate(()=>fixture.api.state().idle),true,'stationary touch coordinates cannot keep hover alive after release');
+  const opacity=await page.locator('[x-nx-float-reroll]').evaluate(n=>getComputedStyle(n).opacity);
+  assert.equal(opacity,'0','touch hover cannot leave reroll visible after idle');
+  await page.evaluate(()=>fixture.api.dispose());
+}
+
+test('touch-only floating controls reveal safely and hide after release; sticky-hover guard detects regression',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage({hasTouch:true,isMobile:true});await verifyTouchIdle(page);await page.close();
+    const mutation=runtime.replace('nxFloatDrag || nxFloatTouchOnly()','nxFloatDrag');
+    assert.notEqual(mutation,runtime);
+    const broken=await browser.newPage({hasTouch:true,isMobile:true});
+    await assert.rejects(()=>verifyTouchIdle(broken,mutation),/stationary touch coordinates cannot keep hover alive/);
+    await broken.close();
+  } finally {await browser.close();}
 });

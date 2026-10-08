@@ -108,6 +108,16 @@ export async function runScenario(N, handles) {
   // ── boot ────────────────────────────────────────────────────────────────
   await rec('ready', () => N.ready());
   const supportsComicNatural = typeof (await get('/v1/settings'))?.settings?.card?.comic_natural_supplement === 'boolean';
+  await rec('settings.character_fields', async () => {
+    const initial = (await get('/v1/settings'))?.settings?.card || {};
+    await post('/v1/settings', { card: { character_height:false, character_age:false } });
+    const saved = (await get('/v1/settings'))?.settings?.card || {};
+    const exported = JSON.parse((await get('/v1/settings/export')).json || '{}').card || {};
+    await post('/v1/settings', { card: { character_height:true, character_age:true } });
+    return { defaultOn:initial.character_height === true && initial.character_age === true,
+      savedOff:saved.character_height === false && saved.character_age === false,
+      exportedOff:exported.character_height === false && exported.character_age === false };
+  });
   // Shape, not value: a 2.0 is expected to report a different version than 1.3.
   // `tools/audit.mjs` asserts the exact string in the built bundle.
   await rec('bridge.VERSION', () => (/^\d+\.\d+\.\d+$/.test(String(N.VERSION)) ? 'semver' : `bad:${N.VERSION}`));
@@ -812,21 +822,30 @@ export async function runScenario(N, handles) {
   // 2.0-only: studio commit with canvas bytes publishes under a NEW card id at
   // the same place (1.x overwrote the same id → NEW_ONLY_STEPS). Run it on the
   // rerolled card so the tags-only commit above keeps comparing the legacy path.
-  await rec('cards.studio_commit_bytes', () => post(`/v1/cards/${rerolledId}/studio-commit`, {
+  const studioSaved = await rec('cards.studio_commit_bytes', () => post(`/v1/cards/${rerolledId}/studio-commit`, {
     main_prompt: 'STUDIO BYTES',
     negative_prompt: 'studio bytes neg',
     characters: [{ name: '태양', prompt: 'boy, black hair' }],
-    image_data_url: PNG_DATA_URL,
+    image_data_url: `data:image/png;base64,${b64(PNG_NAI_1X1)}`,
   }).then((res) => ({
     replaced: res?.replaced ?? null,
     id: res?.card?.id ?? null,
     image_url_len: String(res?.card?.image_url ?? '').length,
     message_index: res?.card?.message_index ?? null,
   })));
-  await rec('cards.reroll_with_overrides', () => post(`/v1/cards/${rerolledId}/reroll`, {
+  const secondReroll = await rec('cards.reroll_with_overrides', () => post(`/v1/cards/${rerolledId}/reroll`, {
     mode: 'nai',
     overrides: { main_prompt: '', negative_prompt: '', characters: [] },
   }));
+  await rec('cards.history_contract', async () => {
+    const result = await get(`/v1/cards/${secondReroll?.card?.id}/history`);
+    const ids = (result.cards || []).map(card => card.id).sort();
+    const expected = [cardId,cardId+'_r1',cardId+'_r2',cardId+'_s1'].sort();
+    const pin = await post(`/v1/cards/${cardId}/pin`, {});
+    return { sameHash: rerolledId === cardId+'_r1' && secondReroll?.card?.id === cardId+'_r2' && studioSaved?.id === cardId+'_s1',
+      preserved:JSON.stringify(ids) === JSON.stringify(expected), root:result.root === cardId,
+      noTargetPinRejected:pin.ok === false && pin.error?.code === 'not_found' };
+  });
   await rec('messages.reroll', () => post('/v1/messages/reroll', {
     session_id: 'sess_main', content_hash: 'hash_main', message_index: 1,
   }));
@@ -1060,7 +1079,11 @@ export async function runScenario(N, handles) {
   // Folder delete path: drop the main chat's folder, which still holds cards.
   const folderKey = (exploreForDelete?.folders ?? []).find((f) => f.key === 'char_main|chat_main')?.key;
   await rec('gallery.delete_folder_key_present', () => typeof folderKey === 'string' && folderKey.length > 0);
-  await rec('gallery.delete_folder', () => post('/v1/gallery/delete', { folder_key: folderKey }));
+  await rec('gallery.delete_folder', async () => {
+    const expected = (exploreForDelete?.items || []).filter(row => row.folder_key === folderKey).map(row => row.id).sort();
+    const deleted = await post('/v1/gallery/delete', { folder_key: folderKey });
+    return { ...deleted, exactOwner:expected.length > 0 && JSON.stringify((deleted.ids || []).slice().sort()) === JSON.stringify(expected) };
+  });
   await rec('gallery.explore_after_folder_delete', () => get('/v1/gallery/explore?limit=200'));
 
   // ── settings import / reset ───────────────────────────────────────────

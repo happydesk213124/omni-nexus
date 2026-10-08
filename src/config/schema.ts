@@ -213,6 +213,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   // asset_nai_tags: off | inline | prepass (legacy bool / prepass_vision → prepass)
   card.asset_nai_tags = normalizeAssetNaiTagsMode(card.asset_nai_tags);
   card.image_analysis_separate = card.image_analysis_separate === true;
+  card.character_height = ![false, 'false', 0, '0', 'off'].includes(card.character_height as string | number | boolean);
+  card.character_age = ![false, 'false', 0, '0', 'off'].includes(card.character_age as string | number | boolean);
   // Missing toggle stays off so old saves retain their reply-generation behavior.
   card.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
   card.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);

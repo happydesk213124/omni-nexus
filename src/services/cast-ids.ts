@@ -73,6 +73,23 @@ export async function ensureCastIds(
   return out;
 }
 
+/** Studio tabs carry roster identity; free captions must not mint orphan cast ids. */
+export async function ensureStudioCastIds(characters: readonly unknown[], fallbackScope: string): Promise<string[]> {
+  const wants = characters.flatMap(value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const row = value as Record<string, unknown>;
+    const id = cleanText(row.id, 80);
+    return id ? [{ id, scope: cleanText(row.scope, 200) || fallbackScope }] : [];
+  });
+  const issuedByScope = new Map<string, Record<string, string>>();
+  for (const scope of new Set(wants.map(row => row.scope))) {
+    const rows = await listCharacters(scope);
+    const requested = new Set(wants.filter(row => row.scope === scope).map(row => row.id));
+    issuedByScope.set(scope, await ensureCastIds(scope, rows.filter(row => requested.has(row.id))));
+  }
+  return [...new Set(wants.map(row => issuedByScope.get(row.scope)?.[row.id]).filter((id): id is string => !!id))];
+}
+
 /** Fullscreen path: cast ids → display names, '' when unknown. */
 export async function resolveCastNames(ids: readonly unknown[], onReadError?: RosterReadError): Promise<Record<string, string>> {
   const want = new Set(ids.map((v) => sanitizeCastId(v)).filter(Boolean));

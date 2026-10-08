@@ -6,6 +6,7 @@ import { analysisBody } from './prompt/message-body';
  */
 import { isShotAssetName, sanitizeShotId } from './gallery/shot-assets.ts';
 import { cleanText } from '../core/util/text.ts';
+import { imageHistoryRoot } from './gallery/image-history';
 
 const INRAY_TOKEN_RE = /\[\[@inray::[^\]]+\]\]/g;
 const LEGACY_BAKE_RE = /\{\{#asset::inxbake_[^}]+\}\}/g;
@@ -125,6 +126,28 @@ export function replaceBakeTokenCard(
       ? frame.replace(/::[0-9]+::[0-9]+\]\]/, `::${size.width}::${size.height}]]`)
       : frame || '';
     return nextFrame + bakeTokenForCard(nextCardId, nextAssetName, dimensions || (previous ? bakeDimensions(previous[1], previous[2]) : undefined));
+  });
+}
+
+/** Keep revisions together; the last token is the displayed/pinned choice. */
+export function appendBakeRevision(text: string, previous: string, id: string, asset: string, dimensions?: BakeDimensions, pin = false, replaceLatest = false): string {
+  const root = imageHistoryRoot(previous);
+  const revision = /_([rs]\d+)$/.exec(id)?.[1] || '';
+  let token = bakeTokenForCard(id, asset, dimensions);
+  if (!token) return text;
+  if (revision || pin) token = token.replace(/\]\]$/, `${revision ? '_' + revision : ''}${pin ? '_pin' : ''}]]`);
+  const escapedRoot = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const groupPattern = new RegExp('(?:\\[\\[@inrayspinner::[^\\]]+\\]\\]\\s*)?(?:\\[\\[@inray::' + escapedRoot + '(?:_[rs]\\d+)?::[^\\]]+\\]\\]\\s*)+', 'g');
+  return text.replace(groupPattern, group => {
+    if (![...group.matchAll(/\[\[@inray::([^:]+)::/g)].some(match => imageHistoryRoot(match[1]!) === root)) return group;
+    let next = group.replace(/(\[\[@inray::[^\]]+?)_pin\]\]/g, '$1]]').trimEnd();
+    if (replaceLatest) next = next.replace(/\[\[@inray::[^\]]+\]\]$/, '');
+    if (pin) {
+      const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      next = next.replace(new RegExp('\\[\\[@inray::' + escaped + '::[^\\]]+\\]\\]', 'g'), '');
+    }
+    if (dimensions) next = next.replace(/(\[\[@inrayspinner::[^:]+)::\d+::\d+\]\]/, `$1::${dimensions.width}::${dimensions.height}]]`);
+    return next + token + (group.match(/\s*$/)?.[0] || '');
   });
 }
 

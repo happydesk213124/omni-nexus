@@ -68,7 +68,20 @@ export function rebuildMessageRuntime(source) {
   once('  async function At() {',`  async function At() {
     if(await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();`);
   once('  async function P() {','  async function P() {\n    if(t.uiOpen && await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();');
-  once('const scope=await Z({useOverride:false}); const sid=scope.sessionId;', 'const scope=await Z({useOverride:false}); const sid=msg?.sessionId || scope.sessionId;');
+  once('      auto_aspect: document.getElementById("nx-auto-aspect")', `      character_height: document.getElementById("nx-character-height") ? ee("nx-character-height") : e.character_height !== false,
+      character_age: document.getElementById("nx-character-age") ? ee("nx-character-age") : e.character_age !== false,
+      auto_aspect: document.getElementById("nx-auto-aspect")`);
+  once('          const rawAct = typeof e.querySelectorAll', '          if (await omniHistoryHit(e, f)) return;\n          const rawAct = typeof e.querySelectorAll');
+  once('    }, l = async (f) => {', '    }, l = async (f) => {\n      if(nxFloatDrag || nxFloatDragStarting || (!t._nxHostInspectOpen && !nxFloatHidden && nxFloatContains(nxFloatBounds,f?.clientX ?? f?.pageX,f?.clientY ?? f?.pageY)))return;\n      if (t._nxHostInspectOpen) void omniInspectHistoryHover(f).catch(error=>y("warn","inspect.history.hover",String(error)));\n      else void omniHistoryHover().catch(error=>y("warn","image.history",String(error)));');
+  once('      t.backendSettings = n?.settings || t.backendSettings;', '      t.backendSettings = n?.settings || t.backendSettings; await omniApplyChatScale().catch(error=>y("warn","chat.scale",String(error)));');
+  once('    t.settingsSavePending = mergeSettingsPatch(t.settingsSavePending, e),', `    if (e.card && "inline_chat_scale_pct" in e.card) {
+      t.backendSettings ||= {}; t.backendSettings.card ||= {};
+      t.backendSettings.card.inline_chat_scale_pct = e.card.inline_chat_scale_pct;
+      void omniApplyChatScale().catch(error=>y("warn","chat.scale",String(error)));
+    }
+    t.settingsSavePending = mergeSettingsPatch(t.settingsSavePending, e),`);
+  once('      inline_chat_scale_pct: Math.max(25, Math.min(200, Math.round(Ne(N("nx-inline-chat-scale"), 100)) || 100)),',
+    '      inline_chat_scale_pct: document.getElementById("nx-inline-chat-scale") ? Math.max(25, Math.min(200, Math.round(Ne(N("nx-inline-chat-scale"), 100)) || 100)) : e.inline_chat_scale_pct ?? 100,');
   // Closing a job drops JS references only. The message parser owns DOM replacement.
   once('    nxClosedSpinnerPreviews.add(jobId);','    nxClosedSpinnerPreviews.add(jobId);if(nxClosedSpinnerPreviews.size>128)nxClosedSpinnerPreviews.delete(nxClosedSpinnerPreviews.values().next().value);');
   once('        if(nxSpinnerPreviews.get(key)!==row) {await layer.remove();continue;}', '        if(nxSpinnerPreviews.get(key)!==row) continue;');
@@ -83,10 +96,10 @@ export function rebuildMessageRuntime(source) {
   once(inspect, '');
   const inspectHost = '    let pointerGesture = null, mobilePress = null, pinClick = null, actionCard = null, inspectOpen = !1, inspectGuardUntil = 0, pendingSheetHit = null, inspectZones = [], inspectSheetEl = null;';
   once(inspectHost, inspectHost+'\n'+inspect);
-  once('      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;', '      if (t._nxHostInspectOpen || t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;\n      if (await nxFloatHitSurface(x, I)) return;');
+  once('      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;', '      if (t._nxHostInspectOpen || t.uiOpen || t._hostChromeBlocked || t.charEditUi) return;\n      const x = f.clientX, I = f.clientY;\n      if (typeof x != "number" || typeof I != "number") return;\n      if (await nxFloatHitSurface(x, I)) return;\n      if (await omniHistoryTouch(f)) { pointerGesture=null; t._lastPointerGesture=null; return; }');
   once('    }, onPointerUp = async (f) => {', '    }, onPointerUp = async (f) => {\n      if (t._nxHostInspectOpen) { cancelMobilePress(); pinClick = null; pointerGesture = null; pendingSheetHit = null; t._msgChipPress = null; return; }');
   once('      await restoreFloatingViewerAfterRisuSettings();', '      await restoreFloatingViewerAfterRisuSettings();\n      await nxFloatEnsure();');
-  once('  const nxSpinnerPreviews=new Map();',read('stream-runtime.js')+'\n'+read('message-runtime.js')+'\n'+read('scroll-runtime.js')+'\n'+['float-viewer-style.js','float-viewer.js','float-viewer-render.js','float-viewer-input.js','float-viewer-position.js','float-viewer-drag.js'].map(read).join('\n')+'\n  const nxSpinnerPreviews=new Map();');
+  once('  const nxSpinnerPreviews=new Map();',read('stream-runtime.js')+'\n'+read('message-runtime.js')+'\n'+read('image-history-runtime.js')+'\n'+read('scroll-runtime.js')+'\n'+['float-viewer-style.js','float-viewer.js','float-viewer-render.js','float-viewer-input.js','float-viewer-position.js','float-viewer-drag.js'].map(read).join('\n')+'\n  const nxSpinnerPreviews=new Map();');
   once('    nxSpinnerPreviews.set(row.jobId+\'_\'+row.shot,{...row});', '    nxSpinnerPreviews.set(row.jobId+\'_\'+row.shot,{...row});\n    await omniMountFooters();\n    await omniStreamObservers();');
   once('    for(const [key,row] of nxSpinnerPreviews) if(row.jobId===jobId) nxSpinnerPreviews.delete(key);', '    for(const [key,row] of nxSpinnerPreviews) if(row.jobId===jobId) nxSpinnerPreviews.delete(key);\n    await omniStreamObservers();');
   fn('  async function onChatOutput(', read('reply-runtime.js'));

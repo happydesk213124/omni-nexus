@@ -92,6 +92,8 @@ export interface CardSettings {
    * generation uses 832×1216 / 1024×1024 / 1216×832 instead of nai.width/height.
    */
   auto_aspect: boolean;
+  character_height?: boolean;
+  character_age?: boolean;
   /**
    * When true, main-tagger JSON parse failure appends the error and retries the
    * LLM once before failing the job.

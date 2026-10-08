@@ -336,7 +336,7 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
     const char = chars[idx];
     const name = cleanText(char.name, 200);
     const stored = name ? resolveCharacter(name, roster) : null;
-    const prompt = joinTags(composeCharacterCaptionTags(stored, char));
+    const prompt = joinTags(composeCharacterCaptionTags(stored, char, card));
     const uc = cleanText(char.negative);
     const taggedX = readNaiCoord(char.center_x);
     const taggedY = readNaiCoord(char.center_y);
@@ -392,7 +392,7 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
   });
   const use_coords = shouldUseNaiCoords(cardFlagOn(card.nai_use_coords, true), taggedPairs);
   return {
-    ...insertCharacterPlaceholders(main, neg, captions),
+    ...(imageBackendKind(nai) === 'comfy' ? { main, neg, captions } : insertCharacterPlaceholders(main, neg, captions)),
     meta: {
       setup,
       person,
@@ -469,7 +469,7 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
     const char = slots[idx]!;
     const name = cleanText(char.name, 200);
     const stored = name ? resolveCharacter(name, roster) : null;
-    const prompt = joinTags(composeComicSlotCaption(stored, char)) || 'girl';
+    const prompt = joinTags(composeComicSlotCaption(stored, char, card)) || 'girl';
     const uc = cleanText(char.negative);
     const taggedX = readNaiCoord(char.center_x);
     const taggedY = readNaiCoord(char.center_y);
@@ -491,7 +491,7 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
   const use_coords = resolveComicUseCoords(card.comic_coords, page.coords, taggedPairs);
   const cfg = resolveComicNaiParams(card, nai, route.preset);
   return {
-    ...insertCharacterPlaceholders(main, neg, captions),
+    ...(imageBackendKind(nai) === 'comfy' ? { main, neg, captions } : insertCharacterPlaceholders(main, neg, captions)),
     meta: {
       setup: layout,
       person,
@@ -531,6 +531,11 @@ export async function generateImage(
   const routeModelEarly = cleanText(plan.model) || nai.model || 'nai-diffusion-4-5-full';
   const routeFamily = isNaiV5(routeModelEarly) ? 'v5' : 'v4';
   if (imageBackendKind(nai) === 'comfy') {
+    const card = getConfig().card;
+    const active = (card.presets || []).find(p => p.id === card.active_preset_id);
+    const markers = String(active?.positive || '').match(/@ch\d+@/g) || [];
+    const sourceMain = plan.replay ? plan.main.replace(/@ch\d+@/g, '') : plan.main;
+    const comfyPlan = insertCharacterPlaceholders(/@ch\d+@/.test(sourceMain) ? sourceMain : joinTags(sourceMain, ...markers), plan.neg, plan.captions, true);
     const naiSized = {
       ...nai,
       width: dims.width,
@@ -546,9 +551,9 @@ export async function generateImage(
     const refBytes = wantsRef ? await getReferenceImageBytes() : null;
     const [comfyBytes, comfySeed] = await generateViaComfy(
       naiSized,
-      plan.main,
-      plan.neg,
-      characters,
+      comfyPlan.main,
+      comfyPlan.neg,
+      comfyPlan.captions as unknown as ShotCharacter[],
       refBytes,
     );
     return { bytes: comfyBytes, seed: comfySeed, recipe:{prompt:plan.main,negative_prompt:plan.neg,

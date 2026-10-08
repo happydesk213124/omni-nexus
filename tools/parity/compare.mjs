@@ -19,7 +19,7 @@ const UC_HUMAN_FOCUS_TOKENS = new Set(
     .filter(Boolean),
 );
 
-const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\b|_[rs]\d+)/gi;
 const TS_LOW = FIXED_EPOCH - 60_000;
 const TS_HIGH = FIXED_EPOCH + 86_400_000;
 
@@ -446,6 +446,8 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // New default-on field injection switches; scenario asserts disabling, export and restore.
+  if (/\.value\.(?:settings|json)\.card\.character_(?:height|age)$/.test(at)) return a === undefined && b === true;
   // 1.0.1 no longer exports the service-account credential field, even when empty.
   // settings.vertex_credentials separately proves nonempty secrets are removed
   // and reimporting the shared file preserves the device's existing credentials.
@@ -641,6 +643,14 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],
+  // Revisions intentionally keep the original entity; assert identity and the complete family.
+  ['cards.reroll',v=>v?.ok === true && v.card?.id === v.replaced+'_r1' ? null : 'Reroll must retain the source hash and add r1'],
+  ['cards.history_contract',v=>v?.sameHash && v.preserved && v.root && v.noTargetPinRejected ? null : 'Reroll/studio history or pin validation failed'],
+  // Four retained assets are exported, and reimport retains all four; diagnostics counts
+  // now include their history. Exact counts remain assertions instead of volatile normalization.
+  ['gallery.export_shape',v=>v?.ok === true && v.count === 4 && v.hasZip === true ? null : 'History export must contain all four retained assets'],
+  ['nai.probe',v=>v?.ok === true && v.is_png === true && v.bytes > 0 && v.debug?.counts?.cards === 8 && v.debug?.counts?.images === 8 && v.debug?.counts?.blob_urls === 8 ? null : 'NAI probe must preserve all original and imported history rows'],
   ['settings.reply_char_limit', v => v?.defaultOff === true && v.defaultLimit === 500 && v.saved === true && v.exported === true && v.retained === true ? null : 'Reply character limit contract failed'],
   ['settings.guardrail_preset', v => v?.defaultNone && v?.saved && v?.exported && v?.disabled && v?.manualKept ? null : 'Guardrail preset persistence failed'],
   // Freeform batch creation is a new route. Assert names/looks, reference input,
@@ -672,7 +682,7 @@ const NEW_ONLY_STEPS = new Map([
     ? null : 'Character asset inventory contract failed'],
   ['gallery.explore_folder_keys', v => JSON.stringify(v) === JSON.stringify(['char_folder|chat_folder','char_main|chat_main','smoke-character-save|unknown'])
     ? null : 'Unmatched imported session must remain in owner unknown-chat folder: '+JSON.stringify(v)],
-  ['gallery.delete_folder', v => v?.ok === true && v.deleted === 1 && v.ids?.length === 1 && v.folder_key === 'char_main|chat_main'
+  ['gallery.delete_folder', v => v?.ok === true && v.deleted === 4 && v.ids?.length === 4 && v.folder_key === 'char_main|chat_main' && v.exactOwner === true
     ? null : 'Folder delete must affect only assets classified in that owner/chat: '+JSON.stringify(v)],
   ['asset_only.contract',v=>v?.no_fabricated_message===true && v?.gallery_bytes_positive===true && v?.explorer_metadata_deferred===true ? null : 'Asset recipe/index contract failed: '+JSON.stringify(v)],
   [
