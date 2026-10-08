@@ -45,6 +45,40 @@ const css = node => Object.fromEntries(node.style.cssText.split(';').filter(Bool
   return [pair.slice(0, colon).trim(), pair.slice(colon + 1).trim()];
 }));
 
+for(const pending of ['target','scope','note'])test('note shows a cancellable dialog before pending '+pending+' read; late data cannot reopen it',async()=>{
+  const document={body:new Element('body'),createElement:tag=>new Element(tag)};
+  let release,reads=0,hides=0,shows=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const bindings={document,t:{uiOpen:false},k:{showContainer:async()=>{shows++;},hideContainer:async()=>{hides++;}},
+    Z:async()=>{if(pending==='scope')await gate;return {sessionId:'s'};},
+    K:async()=>{reads++;assert.equal(pending,'note');await gate;return {};}};
+  const open=new Function(...Object.keys(bindings),popupSource+';return openOmniNote;')(...Object.values(bindings));
+  const work=open({},pending==='target'?async()=>{await gate;return {scope:{sessionId:'s'},target:{}};}:undefined);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(shows,1);
+  const nodes=descendants(document.body);
+  assert.ok(nodes.some(node=>node.attributes.role==='dialog'),'a popup must appear while the host read is blocked');
+  assert.equal(nodes.filter(node=>node.tagName==='textarea').length,0,'unloaded empty fields must never be saved');
+  await nodes.find(node=>node.tagName==='button' && node.textContent==='닫기').onclick();
+  assert.equal(document.body.children.length,0);
+  release();await work;
+  assert.equal(document.body.children.length,0,'a closed loading popup stays closed');
+  assert.equal(hides,1);assert.equal(reads,pending==='note'?1:0);
+});
+
+test('opening settings while a note is loading keeps settings visible and discards the late note',async()=>{
+  const document={body:new Element('body'),createElement:tag=>new Element(tag)},t={uiOpen:false};
+  let release,hides=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const bindings={document,t,k:{showContainer:async()=>{},hideContainer:async()=>{hides++;}},
+    Z:async()=>{await gate;return {sessionId:'s'};},K:()=>{throw Error('a displaced popup must stop reading');}};
+  const open=new Function(...Object.keys(bindings),popupSource+';return openOmniNote;')(...Object.values(bindings));
+  const work=open({});
+  const settings=new Element('settings');t.uiOpen=true;document.body.replaceChildren(settings);
+  release();await work;
+  assert.deepEqual(document.body.children,[settings]);assert.equal(hides,0);assert.equal(t._omniNoteLoading,null);
+});
+
 async function harness(source = popupSource, opts = {}) {
   const document = { body: new Element('body'), createElement: tag => new Element(tag) };
   const state = {

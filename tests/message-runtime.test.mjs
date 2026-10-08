@@ -46,7 +46,7 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
       H:async(_,tag,opts={})=>{const n=document.createElement(tag);n.textContent=opts.text||'';return new Safe(n);},
       Z:async()=>scope,nxMsgFan:()=>true,nxUnwrapSafeNodes:async a=>a,nxSpinnerPreviews:new Map(),
       omniRelease:async()=>{},omniStream:{paused:false},y:()=>{},Be:async(...a)=>calls.push(a),$e:e=>errors.push(e),
-      openOmniNote:async msg=>notes.push(msg),
+      openOmniNote:async(_msg,resolveTarget)=>notes.push((await resolveTarget()).target),
       pe:async patch=>{await new Promise(r=>setTimeout(r,2));Object.assign(t.backendSettings.card,patch.card);writes.push(patch);},
     };
     const api=new Function(...Object.keys(deps),runtime+';return {mount:omniMountFooters,bind:omniBindModuleButton,run:omniFooterAction,token:omniMessageToken,count:omniChangeCount};')(...Object.values(deps));
@@ -73,7 +73,7 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
    assert.equal(result.calls,1);assert.equal(result.hidden,true);assert.equal(result.reused,true);
    assert.equal(result.notes.length,1);assert.equal(result.notes[0].text,'본문 😀');assert.equal(result.notes[0].sessionId,'s');
    assert.equal(result.range,'1~6');assert.equal(result.writes,4);assert.equal(result.after,2);
-   assert.equal(result.noPanel,true);assert.equal(result.stale,true);assert.equal(result.observers,0);assert.deepEqual(result.errors,[]);
+   assert.equal(result.noPanel,true);assert.equal(result.stale,true);assert.equal(result.observers,0);assert.deepEqual(result.errors,['메시지가 바뀌었습니다. 다시 눌러 주세요.']);
    await page.close();
   }
  } finally {await browser.close();}

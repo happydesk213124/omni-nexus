@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.3';
+const PLUGIN_VERSION = '1.1.4';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -962,6 +962,19 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.4 · 이미지 히스토리·ComfyUI 호환과 뷰어 조작 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.08 · 생성·리롤·샷태그 수정의 이미지 기록을 연결하고 PC·모바일 조작을 개선했습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>생성옵션에서 캐릭터 키·나이 태그를 각각 끌 수 있습니다. 기본값은 켜짐이며 도움말에서 적용 범위를 확인할 수 있습니다.</li>
+            <li>ComfyUI의 음수 강조 태그는 네거티브로 보내며, 리롤·샷태그 수정에도 같은 변환을 적용합니다. 선택 프리셋의 @ch1@·@ch2@에 해당하는 캐릭터는 positive 끝에 넣고 해당 char 칸을 비웁니다.</li>
+            <li>리롤은 기존 해시를 유지한 _rN, 샷태그 생성은 _sN으로 기록합니다. 새 리롤 이미지를 자동 선택하며 화살표·핀으로 이전 이미지를 고르고 샷태그 히스토리에서도 다시 열 수 있습니다.</li>
+            <li>샷태그에서 추가·삭제한 캐릭터 탭의 ID를 새 이미지 파일명에 반영합니다. 기존 캐릭터 칩으로 연결되며 예전 이미지를 저장하면 그 이미지의 캐릭터 목록을 유지합니다.</li>
+            <li>채팅 이미지 배율을 숫자로 설정하고 PC의 세로·정사각 이미지 크기를 제한했습니다. 이미지 안쪽 우측 상단에 조작 버튼을 모으고 화살표·장수 표시는 마우스를 올릴 때 나타납니다. 모바일은 탭하면 잠깐 표시됩니다.</li>
+            <li>크게보기는 ⚛️·🔃·🎲·🔮·닫기 버튼을 사용하고 버튼에 반응 색상을 적용했습니다. 여백 클릭·탭으로 다시 닫을 수 있습니다.</li>
+            <li>플로팅 뷰어의 블러·그림자를 없애고 드래그 중 응답 대기를 줄이며 중복 갱신을 합쳤습니다. 전체화면을 맨 오른쪽, 접기를 바로 왼쪽에 배치하고 설정·작가 노트는 데이터 조회 전에 화면을 표시합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.3 · 플로팅 뷰어와 크게보기 조회 최적화</strong>
@@ -5619,6 +5632,10 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
           await paint();
         };
         const pixels = (async () => {
+          if (card?._nxHistorySrc) {
+            view.image_url = card._nxHistorySrc; view._nxAssetLoading = false;
+            await paint(); return;
+          }
           const image = await nxCloneInspectImage(card, typeof assetName === "string" ? assetName : "", sourceNode);
           if (!current()) { await nxDropInspectImage(image); return; }
           view._nxImage = image; view._nxAssetLoading = false;
@@ -14828,7 +14845,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.3 · 플로팅 뷰어의 갤러리 대기와 넓은 이미지 검색을 줄였습니다. 근처에 이미지가 없으면 이전 이미지를 유지하며, 크게보기는 현재 봇과 전역 챗 로스터만 조회합니다."
+    body: "1.1.4 · ComfyUI 음수 태그·캐릭터 슬롯 호환, 리롤·샷태그 히스토리와 파일명 캐릭터 ID 저장을 개선했습니다. PC·모바일 이미지 조작, 플로팅 드래그, 크게보기 닫기와 설정 열기 반응도 다듬었습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

@@ -310,13 +310,38 @@ export function repairOmniUi(source) {
       const A = galleryFocusOf(), order = globalThis.__INLAY_VIEWER_CORE__?.galleryForMessage;`);
   replace('    return o && HEAD_HELP[o] ? { id: o, tip: HEAD_HELP[o], host: n } : null;', `    const tip = globalThis.__INLAY_SETTINGS_UX__?.previewHelp?.(o) || HEAD_HELP[o];
     return o && tip ? {id:o,tip,host:n} : null;`);
-  replace('  async function runMsgChipAction(', `  async function openOmniNote(msg) {
-    const scope=await Z({useOverride:false}); const sid=scope.sessionId;
+  replace('  async function runMsgChipAction(', `  async function openOmniNote(msg,resolveTarget) {
+    if(t._omniNoteLoading?.parentNode || t._omniNoteRoot?.parentNode)return;
+    t._omniNoteLoading=null;t._omniNoteRoot=null;
+    const owned=!t.uiOpen;
+    const loading=document.createElement("div");loading.style.cssText="position:fixed;inset:0;z-index:100000;background:#0009;display:grid;place-items:center;padding:16px;color:#eee;color-scheme:dark";
+    const loadingPanel=document.createElement("div");loadingPanel.style.cssText="width:min(700px,100%);box-sizing:border-box;padding:20px;background:#101620;border:1px solid #394358;border-radius:12px";
+    loadingPanel.setAttribute("role","dialog");loadingPanel.setAttribute("aria-label","세션 작가의 노트");
+    const loadingStatus=document.createElement("p");loadingStatus.textContent="세션 작가의 노트 · 불러오는 중…";loadingStatus.setAttribute("role","status");
+    const loadingClose=document.createElement("button");loadingClose.textContent="닫기";
+    let cancelled=false;
+    t._omniNoteLoading=loading;
+    const shown=owned?Promise.resolve(k.showContainer?.("fullscreen")):Promise.resolve();
+    const cancel=async()=>{if(cancelled)return;cancelled=true;loadingClose.disabled=true;if(loading.parentNode)loading.remove();if(t._omniNoteLoading===loading)t._omniNoteLoading=null;await shown.catch(()=>{});if(owned && !t.uiOpen && !t._omniNoteLoading && !t._omniNoteRoot)await k.hideContainer?.();};
+    loadingClose.onclick=cancel;loadingPanel.append(loadingStatus,loadingClose);loading.append(loadingPanel);document.body.append(loading);
+    let scope,sid,value;
+    try {
+    const prepared=resolveTarget?await resolveTarget():null;
+    scope=prepared?.scope || await Z({useOverride:false}); sid=scope.sessionId;
+    if(prepared?.target)msg=prepared.target;
+    if(cancelled || loading.parentNode!==document.body){await cancel();return;}
     if(!sid)throw new Error("현재 대화를 찾을 수 없습니다.");
     if(msg?.sessionId && msg.sessionId!==sid)throw new Error("대화가 바뀌었습니다. 다시 눌러 주세요.");
-    const value=await K("/v1/session-author-note?session_id="+encodeURIComponent(sid));
-    const owned=!t.uiOpen;
-    if(owned && typeof k.showContainer==="function")await k.showContainer("fullscreen");
+    if(msg?.characterId && (msg.characterId!==scope.characterId || msg.chatId!==scope.chatId))throw new Error("대화가 바뀌었습니다. 다시 눌러 주세요.");
+    if(msg?.index!=null && msg?.characterId){
+      const row=(scope.chat?.message || scope.chat?.messages || [])[msg.index];
+      if(!row || (msg.hostId && omniMessageId(row)!==msg.hostId) || (msg.token && omniMessageToken(msg.index,String(row.data ?? row.saying ?? ""))!==msg.token))throw new Error("메시지가 바뀌었습니다. 다시 눌러 주세요.");
+      msg={...msg,text:String(row.data ?? row.saying ?? "")};
+    }
+    value=await K("/v1/session-author-note?session_id="+encodeURIComponent(sid));
+    await shown;
+    if(cancelled || loading.parentNode!==document.body){await cancel();return;}
+    } catch(error){if(cancelled)return;await cancel();throw error;}
     const root=document.createElement("div");
     root.style.cssText="position:fixed;inset:0;z-index:100000;background:#0009;display:grid;place-items:center;padding:16px";
     const panel=document.createElement("div");panel.style.cssText="box-sizing:border-box;width:min(700px,100%);height:auto;max-height:min(960px,95vh);min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#101620;color:#eee;border:1px solid #394358;border-radius:12px;color-scheme:dark";
@@ -462,8 +487,10 @@ export function repairOmniUi(source) {
       if(closing||presetBusy)return;closing=true;close.disabled=true;content.inert=true;
       const ok=await save();
       if(!ok){closing=false;close.disabled=false;content.inert=false;return;}
-      root.remove();if(owned && !t.uiOpen)await k.hideContainer?.();
+      root.remove();if(t._omniNoteRoot===root)t._omniNoteRoot=null;if(owned && !t.uiOpen)await k.hideContainer?.();
     };
+    if(cancelled || loading.parentNode!==document.body){await cancel();return;}
+    loading.remove();if(t._omniNoteLoading===loading)t._omniNoteLoading=null;t._omniNoteRoot=root;
     footer.append(status,close);panel.append(footer);root.append(panel);document.body.append(root);fields.prefix.focus();
     select.disabled=presetSave.disabled=presetDelete.disabled=true;
     try {
@@ -474,7 +501,7 @@ export function repairOmniUi(source) {
     finally {select.disabled=presetSave.disabled=false;presetDelete.disabled=!presets.some(p=>p.id===select.value);}
   }
   async function runMsgChipAction(`);
-  replace('  async function openOmniNote(msg) {', '  globalThis.__OMNI_AUTOTAG_FILE__ = (card,file) => Tt(card,file); globalThis.__OMNI_ANALYZE_FILE__ = file => Lt(file,null);\n  async function openOmniNote(msg) {');
+  replace('  async function openOmniNote(msg,resolveTarget) {', '  globalThis.__OMNI_AUTOTAG_FILE__ = (card,file) => Tt(card,file); globalThis.__OMNI_ANALYZE_FILE__ = file => Lt(file,null);\n  async function openOmniNote(msg,resolveTarget) {');
   replace('  async function showSelectionToast(msg) {', '  async function showSelectionToast(msg) { return;');
   replace('  async function showAttachToast() {', '  async function showAttachToast() { return;');
   replace('  function schedulePointerSelect(reason, delayMs = 1e3) {', `  function schedulePointerSelect(reason, delayMs = 1e3) {

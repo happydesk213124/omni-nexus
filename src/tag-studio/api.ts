@@ -31,6 +31,9 @@ export async function loadSettings(): Promise<Record<string, unknown>> {
   const res = await studioGet('/v1/settings');
   return asRecord(res.settings);
 }
+export function loadHistory(cardId: string): Promise<Record<string, unknown>> {
+  return studioGet(`/v1/cards/${encodeURIComponent(cardId)}/history`);
+}
 
 export async function saveSettings(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
   return studioPost('/v1/settings', patch);

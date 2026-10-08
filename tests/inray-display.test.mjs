@@ -23,7 +23,7 @@ test('display regex rewrites Inray tokens to centered gallery assets', () => {
   assert.equal(/>재생성</.test(out), false);
   assert.match(out, /src="\{\{raw::inxshot_card-1\.sroom\.webp\}\}"/);
   assert.match(out, /width:100%/);
-  assert.match(out, /max-height:min\(70vh/);
+  assert.match(out, /max-height:none/);
   assert.equal(/aspect-ratio:2\/3/.test(out), false);
   assert.match(out, /inray-fold-card-1/);
   assert.match(out, /content:"▼"/);
@@ -48,10 +48,9 @@ test('spinner exposes a stable preview slot independent of Risu class prefixes',
 });
 
  test('baked size follows dashboard scale including clamping', () => {
-  for (const [scale, width, height] of [[25,20,18],[50,39,35],[100,78,70],[200,100,140],[999,100,140]]) {
+  for (const [scale, width] of [[25,25],[50,50],[100,100],[200,100],[999,100]]) {
     const out = inrayDisplayOut(false, scale);
-    assert.ok(out.includes(`max-width:min(${width}%,100%)`));
-    assert.ok(out.includes(`max-height:min(${height}vh,`));
+    assert.ok(out.includes(`width:min(${width}%,var(--inray-desktop-width,100%));height:auto;max-width:100%;max-height:none`));
   }
 });
 

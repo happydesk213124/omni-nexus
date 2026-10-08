@@ -10,6 +10,27 @@ import {
   studioRowIsGlobal,
 } from '../.test-build/tag-studio-model.mjs';
 
+it('sends the surviving character tabs’ roster identities, including shared namesakes', () => {
+  const state = emptyState();
+  const local = { id: 'local-a', scope: 'owner', name: '동명이인', appearance: 'red hair' };
+  const shared = { id: 'shared-a', scope: '__global__', name: '동명이인', appearance: 'blue hair' };
+  const roster = [local, shared];
+  hydrateFromNai({ state, nai: { characters: [{ ...shared, prompt: 'blue hair' }, { ...local, prompt: 'red hair' }] },
+    settings: {}, rosterPayload: { characters: [local], global: [shared] }, card: {} });
+  assert.deepEqual(assembleOverrides(state, roster).characters.map(({ id, scope }) => ({ id, scope })),
+    [{ id: shared.id, scope: shared.scope }, { id: local.id, scope: local.scope }]);
+  const tabs = state.tabs.filter(tab => tab.kind === 'char');
+  state.tabs = state.tabs.filter(tab => tab.id !== tabs[0].id);
+  assert.deepEqual(assembleOverrides(state, roster).characters.map(char => char.id), [local.id],
+    'deleted tabs cannot leak identity from the retained chars map');
+  state.chars[tabs[1].id].rosterId = shared.id;
+  assert.deepEqual(assembleOverrides(state, roster).characters.map(({ id, scope }) => ({ id, scope })),
+    [{ id: shared.id, scope: shared.scope }], 'changing a tab replaces its old metadata identity');
+  state.chars[tabs[1].id].rosterId = '';
+  assert.equal(assembleOverrides(state, roster).characters[0].id, undefined,
+    'an unassigned caption must not recover its stale roster identity');
+});
+
 describe('studioModelChoice', () => {
   it('maps metadata labels onto the two family buttons', () => {
     assert.equal(studioModelChoice('nai-diffusion-5-curated'), 'nai-diffusion-5-full');

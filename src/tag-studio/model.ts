@@ -72,7 +72,7 @@ export interface StudioState {
   llm: { presetId: string; presetName: string; cmd: string; cmdPost: string };
   chars: Record<string, StudioChar>;
   fold: Record<string, boolean>;
-  history: Array<{ url: string; seed: number }>;
+  history: Array<{ url: string; seed: number; id?: string }>;
   historySel: number;
   coordMode: 'ai' | 'manual';
   coordVisible: boolean;
@@ -202,12 +202,13 @@ function qualityTail(state: StudioState): string {
   return String(QUALITY_TAGS[key] || QUALITY_TAGS.naid5f || '').replace(/^,/, '').trim();
 }
 
-export function assemble(state: StudioState, _roster: CharacterInput[]): Assembled {
+export function assemble(state: StudioState, roster: CharacterInput[]): Assembled {
   const quality = qualityTail(state);
   const main = joinOrRaw(personTag(state), state.main.presetPrompt, state.main.post, quality);
   const chars = charList(state).map((c) => {
     const prompt = joinOrRaw(c.tags, c.costumeTags, c.costumeBottoms, c.post);
     if (!prompt && !String(c.uc || '').trim()) return null;
+    const stored = c.rosterId ? roster.find((row) => cleanText(row.id, 80) === c.rosterId) : undefined;
     return {
       no: c.i + 1,
       name: c.charName || '',
@@ -217,6 +218,8 @@ export function assemble(state: StudioState, _roster: CharacterInput[]): Assembl
       center_y: c.y,
       slim: {
         ...c.slim,
+        id: stored?.id,
+        scope: stored?.scope,
         name: c.charName || undefined,
         costume: c.costume || c.costumeName || undefined,
         action: c.post || undefined,
@@ -234,6 +237,8 @@ export function assembleOverrides(state: StudioState, roster: CharacterInput[]):
     main_prompt: a.main,
     negative_prompt: a.neg,
     characters: a.chars.map((c) => ({
+      id: c.slim.id,
+      scope: c.slim.scope,
       name: c.name,
       prompt: c.prompt,
       uc: c.uc,
@@ -337,7 +342,11 @@ export function hydrateFromNai(args: {
     const id = nextId('c');
     const slot = CHAR_SLOTS[slotNo] || [0.5, 0.5];
     slotNo += 1;
-    const stored = rawName ? resolveCharacter(rawName, roster) : null;
+    const rosterId = cleanText(ch.id, 80);
+    const scope = cleanText(ch.scope, 200);
+    const stored = rosterId
+      ? roster.find((row) => cleanText(row.id, 80) === rosterId && (!scope || cleanText(row.scope, 200) === scope))
+      : rawName ? resolveCharacter(rawName, roster) : null;
     const name = stored ? (stored.name || rawName) : '';
     const costumePick = ch.costume ?? asRecord(ch.raw).costume;
     const look = stored ? composeCharacterCaptionTags(stored, { costume: costumePick }) : '';

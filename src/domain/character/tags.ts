@@ -683,6 +683,7 @@ export function composeCharacterCaptionTags(
     weapon?: unknown;
     negative?: unknown;
   } | null | undefined,
+  options: { character_height?: unknown; character_age?: unknown } = {},
 ): string {
   const resolvedCostume = resolveCostumeWear(stored || {}, shot?.costume, stored?.active_costume);
   const ownsAppearance = Array.isArray(stored?.costumes) && Object.hasOwn(stored.costumes[resolvedCostume.index] || {}, 'appearance');
@@ -724,11 +725,11 @@ export function composeCharacterCaptionTags(
   const penis = gender === 'm' ? normalizePenisSize(stored?.penis_size) : '';
   const wear = wearTagsForWearState(joinTags(attire, bottoms), wearState, gender, penis);
   const explicitGender = normalizeGender(shot?.gender ?? stored?.gender ?? stored?.sex);
-  const heightCap = formatHeightCaption(
+  const heightCap = options.character_height === false ? '' : formatHeightCaption(
     stored?.height ?? (shot as { height?: unknown } | null | undefined)?.height,
     explicitGender,
   );
-  const ageCap = formatAgeCaption(shot?.age ?? stored?.age);
+  const ageCap = options.character_age === false ? '' : formatAgeCaption(shot?.age ?? stored?.age);
   const hairStyle = cleanLookSlot(stored?.hair_style, 400);
   const faceTags = joinTags(
     shot?.eye_expression,

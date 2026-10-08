@@ -344,14 +344,17 @@ names carry a 글로벌/채팅 suffix. The chosen row opens the existing charact
 editor.
 On listener rebind, stale action bars from the previous plugin instance are
 removed before new listeners attach. The preset chip opens the settings shell
-(`At()`) on `style_presets`. `At()` paints after `showContainer`; if `#nx-shell`
+(`At()`) on `style_presets`. `At()` paints cached controls while `showContainer`
+and host-overlay cleanup run; if `#nx-shell`
 never lands after retries, it `hideContainer`s unless another modal owns the iframe.
 The close watchdog (`armSettingsCloseWatch`, 4×500ms without `#nx-shell`) is
 armed only once the shell has painted — armed earlier it raced the host
 roundtrips before `P()` and closed a settings shell that had not opened yet. The
-character catalog (`ia()` → `getDatabase`) is not awaited outright: with a
-catalog from a previous open the shell paints immediately, otherwise it waits at
-most 600ms; a catalog that lands later re-paints once, never over a focused field.
+character catalog (`ia()` → `getDatabase`) loads in the background even on first
+open. Its late result updates only scope choices, with guards for closed or
+changed UI; it does not repaint editable settings. Session author notes mount a
+cancellable loading dialog before reading chat scope or saved note fields.
+Closing that dialog prevents a late response from reopening it or saving empty fields.
 New chat / first open / reply waits 1s then selects the bubble nearest the
 current pointer (`provisional`, no auto-gen). A real click in that window
 cancels the timer. Listener binding also requests an immediate repaint on an
@@ -576,8 +579,8 @@ lore_trigger_keys[], character_description, persona_description, force`.
 | `GET /v1/cards/:id/nai-prompt` | image NovelAI tags for the shot-tag form: `{ok, main_prompt, negative_prompt, characters[], model, width, height, steps, cfg_scale, cfg_rescale, sampler, scheduler}` — pixels of that one card |
 | `POST /v1/cards/nai-from-image` | `{image_data_url}` → same shape as nai-prompt. No card write. Missing bytes → `{ok:false, error:{code:bad_request}}` |
 | `POST /v1/cards/:id/tags` | `{main_prompt, negative_prompt, characters[]}` — persist slim cast only; main/neg stay on the file |
-| `POST /v1/cards/:id/studio-generate` | assembled prompts → NAI replay bytes only (`{ok, image_data_url, seed}`). Does not replace the card |
-| `POST /v1/cards/:id/studio-commit` | center-canvas bytes + tags → NEW card id at the same place (reroll-style: location / content_hash / cast inherited, old row dropped, `{ok, replaced, card}`). Tags-only commits (no canvas bytes) keep the old same-id path. Tag studio then calls `__INLAY_REPLACE_INLINE_PHOTO__` with the new id so the inline slot flips like a reroll |
+| `POST /v1/cards/:id/studio-generate` | assembled prompts → NAI replay bytes and retained studio revision (`{ok, image_data_url, card, seed}`). Does not change message tokens |
+| `POST /v1/cards/:id/studio-commit` | center-canvas bytes + tags → NEW revision at the same place (location / content_hash retained, current tabs' roster IDs converted into filename cast IDs, old rows retained, `{ok, replaced, card}`). A `revision_id` selects an existing revision without rewriting its filename cast. Tags-only commits (no canvas bytes) keep the old same-id path. Tag studio then calls `__INLAY_REPLACE_INLINE_PHOTO__` with the selected id |
 | `POST /v1/cards/:id/reroll` | `{mode:"nai", overrides?}` → `{ok, card, replaced?}` — replay file sampler/size/base + new seed; keep file char captions; roster rebuild only when a slot prompt is empty. Comic never resolves names |
 | `POST /v1/messages/reroll` | `{session_id, content_hash, message_index}` |
 | `/v1/images/:id`, `/v1/images/:id.json` | raw bytes / placement sidecar |
@@ -716,7 +719,7 @@ viewer geometry (`risuai.pluginStorage` keys `viewerGeo`, `viewerIconGeo`,
 debounce, preset/character JSON file download, explorer marquee + lightbox, the
 in-chat debug log ring buffer, and the 2200 ms gallery cache.
 
-The floating viewer is a single-shot glass window (no gallery strip, no
+The floating viewer is a single-shot alpha window without blur or shadow (no gallery strip, no
 `galleryUi` object): hovering a chat shot shows that card's pixels via the shared
 blob cache (miss keeps the previous image while warming in the background), and
 its buttons dispatch the existing inline-shot actions for the hovered card
@@ -725,6 +728,26 @@ through a pinned footer target. Collapse mode `viewer_minimize_mode` is
 `icon`→`bubble`, `toolbar`/`actions`→`buttons` are normalized on settings write.
 Marker clicks and the open-gallery action feed the viewer instead of mounting
 the old viewer window (`await lt()` no longer occurs in the bundle).
+Mouse movement uses fixed-frame and count-popup bounds cached after layout
+changes. Dragging sends transforms directly from pointer callbacks without
+hidden-frame timers or waiting for each bridge response. Outstanding writes
+are bounded at 16; a stalled bridge coalesces overflow into the latest position,
+and release drains the writes before committing/saving geometry once;
+unrelated image-hover work is suspended during the drag. Unchanged chrome does
+not rewrite styles/text, and concurrent render requests coalesce. Collapse is
+painted before its serialized background save. Fullscreen is the rightmost
+header control, immediately preceded by collapse; chat controls use reroll,
+pin, collapse, fullscreen, with spacing before collapse.
+On touch-only screens, chat controls/arrows/counts start hidden and an image
+tap reveals them for two seconds. The reveal tap cannot execute a hidden action;
+later taps execute normally and restart the timer. Sticky native hover/focus
+does not override touch visibility. Floating viewer touch release clears hover,
+arms the same two-second idle timer, and safely reveals hidden controls before
+executing them. Fullscreen counts follow image taps and expire independently;
+its footer actions and 닫기 remain available.
+Fullscreen owns the next pointer press even if chat gesture handling is paused:
+clicking/tapping outside the image and action sheet closes it immediately,
+while image taps keep it open and the original opening gesture stays excluded.
 
 
 ## Omni settings migration (2026-09-13)
@@ -829,6 +852,7 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 - Given-name save consolidation preserves the existing survivor's name, triggers, default looks, images and selected costume. Incoming looks and costume sets append as independent costumes; donor `[base]` fields resolve against the donor's own default first. Repeated identical owner/descriptions/looks do not append duplicates.
 - Code adds the original full name to descriptions of created/imported costumes, including `default`. Empty legacy descriptions receive that label on read; authored descriptions remain intact. The main tagger uses the description to select a costume while returning the existing roster name.
 - Name, surname, given-name, spelling and trigger fields remain drafts during typing and IME composition. Their live save runs on completed `change` (normally blur), so a partial matching given name cannot consolidate the roster. A successful consolidation refreshes the visible roster after checking the edit revision.
+- The character duplicate button appends the next available `_복제N` to the display name and every Korean/English given-name spelling before saving. It checks display/save identities in the same roster, including unsaved cards. Copying a copy replaces its suffix rather than nesting it. Triggers, surnames, looks and costumes retain their original values; ordinary name consolidation remains unchanged.
 
 ### Streaming image generation
 
@@ -843,3 +867,11 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 - The tagger uses `L1`, `L2` body lines; insertion maps these to original source offsets even when reasoning occupies earlier rows. `y_percent` no longer controls generation or placement. Legacy fields remain readable for saved-data compatibility.
 - `inline_chat_images` and `persist_chat_images` are required, checked and disabled in the menu. Retired prompt editors and the individual `character_common` reset button are absent; prompt update notices and the shared reset remain.
 - Help asks users to disable **Stream Gemini Thoughts** so reasoning remains tagged, and avoid PocketRisu's **strong** streaming optimization when early generation is wanted. The plugin does not change those host settings.
+
+- Generation options `card.character_height` and `card.character_age` default on and independently control automatic caption injection, preserving roster values. Preview controls are `nx-character-height` and `nx-character-age`, with help entries.
+- ComfyUI moves negative NovelAI weights to the negative input with their absolute weight. Characters referenced by the active preset's `@chN@` join the end of `[[pos]]`; unreferenced `[[charN]]` slots retain their original indices. Generation, reroll and studio replay share this boundary.
+- Rerolls retain the source hash as `<root>_rN`; studio generations persist as `<root>_sN`. Asset names append the revision after existing session/cast segments, before the extension. `GET /v1/cards/:id/history` lists the retained family without reading pixels. `POST /v1/cards/:id/pin` validates a durable message target and selects the requested image with an `_pin` token suffix.
+- Adjacent tokens of the same image family render once, selecting the final token. A successful reroll automatically pins its new revision; manual pin selects the displayed revision, and the next successful reroll takes over. Studio history restores all revisions when reopened. Generating in the studio leaves message tokens alone; saving pins the chosen result in the existing slot.
+- Studio character overrides carry each surviving tab's roster `id` and `scope`. New studio images publish that cast in the existing filename `.c` segment; an empty list clears the cast, while legacy requests without a character list inherit the source cast. Free captions and missing roster IDs do not mint filename identities. The existing image metadata carries the same edited slot identities for reopening the studio; chips continue to use the filename resolver.
+- Chat keeps left/right gradient arrows; chat and fullscreen share dot pagination, a reroll count and cached revision metadata. Counts appear on desktop image hover, 8px below the image top; the chat count uses the left corner to avoid the top-right actions. HTML uses data markers and CSS attribute selectors so Risu class-prefixing and sanitizing preserve the controls. Chat fold/fullscreen/reroll/pin controls share one bar inside the top-right image corner; toolbar hits take precedence over history arrows. Fullscreen has no arrow or pin buttons; bottom actions are ⚛️, 🔃, 🎲, 🔮, 닫기, with the same hover background color as chat controls. Fullscreen geometry and indicators have inline styles for hosts without a standalone stylesheet; hover uses the existing pointermove listener, coalesces events and keeps the last position. Coordinate hit testing remains valid after `:active` ends; only the selected revision loads pixels.
+- Dashboard chat scale updates mounted image/spinner geometry and remains unchanged when saving another tab. Mobile width is the dashboard percentage directly (100% fills the message), without a 78% multiplier. Desktop starts from the intrinsic size bounded by 640px width and 780px height at 100%, then applies dashboard scale; all frames remain bounded by the message width and retain their aspect ratio. Floating viewer surfaces use alpha without background blur or shadows; dragging sends coordinates without timer/bridge-response pacing, bounds outstanding writes, and skips hover geometry reads.

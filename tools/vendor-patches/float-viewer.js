@@ -158,6 +158,7 @@ async function nxFloatClick(kind) {
     if (kind === "unfold") { await nxFloatSetCollapsed(false); return; }
     if (kind === "stop") { await omniFooterAction("stop", nxFloatKey); return; }
     if (kind === "single") { await nxFloatRerollOne(); return; }
+    if(kind === "char" || kind === "preset") {await omniFooterAction(kind,nxFloatKey);return;}
     if (kind === "full") {
       const card = nxFloatFind(nxFloatCardId);
       if (!card) return;
@@ -165,8 +166,8 @@ async function nxFloatClick(kind) {
       if (typeof open == "function") await open(card, nxFloatAsset || undefined, nxFloatImage);
       return;
     }
-    if (kind === "tag" || kind === "regen" || kind === "char" || kind === "preset" || kind === "note") {
-      await nxFloatScan();
+    if (kind === "tag" || kind === "regen" || kind === "note") {
+      if(kind !== "note" || !omniFooterTargets.has(nxFloatKey))await nxFloatScan();
       if (!omniFooterTargets.get(nxFloatKey)) {
         $e("화면에 보이는 채팅 메시지가 없습니다.");
         return;
@@ -204,8 +205,7 @@ async function nxFloatRerollOne() {
 }
 function nxFloatNudgeIdle() {
   clearTimeout(nxFloatIdleTimer);
-  nxFloatIdle = false;
-  void nxFloatApply();
+  if(nxFloatIdle){nxFloatIdle = false;void nxFloatApply();}
   nxFloatArmIdle();
 }
 function nxFloatArmIdle() {
@@ -242,7 +242,7 @@ async function nxFloatMount() {
   const rect = await html.getBoundingClientRect();
   const chatRect = await h.root.getBoundingClientRect();
   let vw = 0, vh = 0;
-  try { vw = Number(await html.getProperty('clientWidth')); vh = Number(await html.getProperty('clientHeight')); } catch {}
+  try { [vw,vh] = await Promise.all([html.clientWidth(),html.clientHeight()]); } catch {}
   const viewport = {w: Math.max(240, vw || rect.width || chatRect.right), h: Math.max(240, vh || chatRect.bottom || rect.height)};
   if (viewport.w !== nxFloatViewportSize.w || viewport.h !== nxFloatViewportSize.h) nxFloatDirty = true;
   nxFloatViewportSize = viewport;
@@ -262,11 +262,11 @@ async function nxFloatMount() {
   if(nxFloatRoot){const mounted=await h.doc.querySelector('[x-nx-float]');try{if(!mounted)await nxFloatDispose(false);}finally{await omniRelease(mounted);}}
   if (!nxFloatRoot) {
     const mountEpoch = nxFloatEpoch;
-    try { nxFloatGeo = await Aa(); } catch { nxFloatGeo = null; }
-    try { nxFloatIconGeo = await loadViewerIconGeo(); } catch { nxFloatIconGeo = null; }
-    if (nxFloatCollapsed == null) {
-      try { nxFloatCollapsed = !!(await loadViewerMinimized()); } catch { nxFloatCollapsed = false; }
-    }
+    const [geo,iconGeo,minimized]=await Promise.all([
+      Aa().catch(()=>null),loadViewerIconGeo().catch(()=>null),
+      nxFloatCollapsed==null?loadViewerMinimized().catch(()=>false):Promise.resolve(nxFloatCollapsed),
+    ]);
+    nxFloatGeo=geo;nxFloatIconGeo=iconGeo;nxFloatCollapsed=!!minimized;
     if (!nxFloatCss) {
       try {
         const st = await H(h.doc, "style", { text: NX_FLOAT_CSS });
@@ -320,19 +320,26 @@ async function nxFloatMount() {
     nxFloatIcon = icon; nxFloatImgReroll = reroll;
     // Event routing is attached once to the host after all controls exist.
     const wireBtns = async (pairs, host) => {
-      for (const [kind, glyph] of pairs) {
-        const b = await H(h.doc, "button", { text: glyph });
-        await b.setAttribute("x-nx-float-btn", kind);
+      // Independent button creation crosses the bridge together; insertion
+      // remains ordered within each row.
+      const nodes=await Promise.all(pairs.map(async([kind,glyph])=>{
+        const button=await H(h.doc,'button',{text:glyph});
+        await button.setAttribute('x-nx-float-btn',kind);return button;
+      }));
+      for (let index=0;index<nodes.length;index++) {
+        const b=nodes[index],kind=pairs[index][0];
         await host.appendChild(b);
         if (kind === "fold") nxFloatFoldBtn = b;
         if (kind === "compact" && host === foldGrip) nxFloatCompactBtn = b;
+        if(b!==nxFloatFoldBtn && b!==nxFloatCompactBtn)await omniRelease(b);
       }
     };
-    await wireBtns(NX_FLOAT_HEAD_L, spanL);
-    await wireBtns(NX_FLOAT_HEAD_R, spanR);
-    await wireBtns(NX_FLOAT_BAR_BTNS, bar);
-    await wireBtns(NX_FLOAT_GRID_BTNS, foldGrid);
-    await wireBtns([["compact", "−"]], foldGrip);
+    await Promise.all([
+      wireBtns(NX_FLOAT_HEAD_L,spanL),wireBtns(NX_FLOAT_HEAD_R,spanR),
+      wireBtns(NX_FLOAT_BAR_BTNS,bar),wireBtns(NX_FLOAT_GRID_BTNS,foldGrid),
+      wireBtns([["compact","−"]],foldGrip),
+    ]);
+    await omniRelease(spanL);await omniRelease(spanR);
     await nxFloatBindInputs(h);
     if (t.unloading || mountEpoch !== nxFloatEpoch || t.backendSettings?.card?.floating_viewer === false) {
       await nxFloatDispose();
@@ -350,11 +357,13 @@ async function nxFloatMount() {
   return true;
   } finally {if(h.root!==nxFloatWatchRoot)await omniRelease(h.root);if(h.body!==nxFloatChatRoot)await omniRelease(h.body);}
 }
+let nxFloatFoldWrites=Promise.resolve();
 async function nxFloatSetCollapsed(next) {
   nxFloatCollapsed = !!next;
-  try { await saveViewerMinimized(nxFloatCollapsed); } catch {}
   t.viewerMinimized = !!next;
   await nxFloatApply();
+  const value=!!next;
+  nxFloatFoldWrites=nxFloatFoldWrites.catch(()=>{}).then(()=>saveViewerMinimized(value)).catch(error=>nxFloatLog('fold.save',String(error)));
 }
 async function nxFloatHide() {
   nxFloatHidden = true;
@@ -375,8 +384,10 @@ async function nxFloatDispose(resetSession = true) {
   try { await nxFloatRoot?.remove(); await nxFloatCss?.remove(); } catch {}
   for(const ref of new Set([nxFloatCss,nxFloatRoot,nxFloatImage,nxFloatCounts,nxFloatHead,nxFloatStage,nxFloatBar,nxFloatFoldBtn,nxFloatResize,nxFloatFoldGrip,nxFloatFoldGrid,nxFloatIcon,nxFloatImgReroll,nxFloatCompactBtn]))await omniRelease(ref);
   nxFloatReadingIndex=-1;nxFloatStructureDirty=true;
+  nxFloatBounds = null;
   nxFloatCss = null; nxFloatRoot = null; nxFloatImage = null;
   nxFloatCounts = null; nxFloatCountsOpen = false;
+  nxFloatCountBounds=null;nxFloatCountsPaintKey='';
   nxFloatHead = null; nxFloatStage = null; nxFloatBar = null;
   nxFloatFoldBtn = null; nxFloatResize = null; nxFloatFoldGrip = null; nxFloatFoldGrid = null;
   nxFloatIcon = null; nxFloatImgReroll = null;

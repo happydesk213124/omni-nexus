@@ -386,7 +386,7 @@ test("injectInlineImagesIntoHtml keeps formatting and uses line numbers", () => 
   assert.match(out, /data-inlay-inline-shot="c2"/);
   assert.match(out, /<b>커피를 마셨다<\/b>/);
   assert.doesNotMatch(out, /data-inlay-inline-frame=/);
-  assert.match(out, /max-width:min\(78%,100%\)/);
+  assert.match(out, /width:min\(100%,var\(--inray-desktop-width,100%\)\);height:auto;max-width:100%;max-height:none/);
   // first coffee line is bold — marker for line 2 sits before <b>
   assert.match(out, /data-inlay-inline-shot="c1"[^>]*>[\s\S]*?<b>커피를 마셨다<\/b>/);
   // duplicate plain "커피를 마셨다" still gets line-3 marker (not string search of first)
@@ -682,7 +682,8 @@ test("markerBlockHtml parks a sized SVG and overlays the real image on top", () 
   assert.ok(pending.includes(`src="${placeholder}"`));
   assert.match(decodeURIComponent(placeholder), /width="1216"/);
   assert.match(decodeURIComponent(placeholder), /height="832"/);
-  assert.match(pending, /width:auto;height:auto;max-width:min\(78%,100%\)/);
+  assert.match(pending, /width:min\(100%,var\(--inray-desktop-width,100%\)\);height:auto;max-width:100%;max-height:none;--inray-native-width:[^;]+;aspect-ratio:1216\/832/);
+  assert.match(pending, /data-inlay-inline-spin="1"[^>]*style="width:100%;height:auto;max-width:100%/);
   assert.match(pending, /data-inlay-inline-spin="1"[^>]*pointer-events:none/);
   assert.match(pending, /position:absolute/);
   assert.match(pending, /opacity:0/);
@@ -711,8 +712,7 @@ test("markerBlockHtml parks a sized SVG and overlays the real image on top", () 
   assert.match(ready, /opacity:1/);
   assert.match(ready, /transition:opacity 80ms linear/);
   assert.match(ready, /left:50%;top:50%;width:100%;height:100%;max-width:100%;overflow:hidden;transform:translate\(-50%,-50%\)/);
-  assert.match(ready, /width:auto;height:auto;max-width:min\(78%,100%\)/);
-  assert.match(ready, /max-height:min\(70vh,900px\)/);
+  assert.match(ready, /width:min\(100%,var\(--inray-desktop-width,100%\)\);height:auto;max-width:100%;max-height:none;--inray-native-width:[^;]+;aspect-ratio:1216\/832/);
   assert.doesNotMatch(ready, /data-inlay-inline-frame=/);
   assert.doesNotMatch(ready, /object-position:center top/);
   assert.doesNotMatch(ready, /data-inlay-inline-act=/);
@@ -723,8 +723,7 @@ test("markerBlockHtml parks a sized SVG and overlays the real image on top", () 
     shotIndex: 0,
     cardId: "c1",
   }, 50);
-  assert.match(scaled, /max-width:min\(39%,100%\)/);
-  assert.match(scaled, /max-height:min\(35vh,450px\)/);
+  assert.match(scaled, /width:min\(50%,var\(--inray-desktop-width,100%\)\);height:auto;max-width:100%;max-height:none/);
   const blobReady = markerBlockHtml({
     line: 2,
     src: "blob:https://host/abc",

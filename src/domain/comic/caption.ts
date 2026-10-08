@@ -31,6 +31,7 @@ export function comicSpeechCaption(bubble: unknown, text: unknown): string {
 export function composeComicSlotCaption(
   stored: Partial<CharacterRecord> | null | undefined,
   slot: ShotCharacter & { bubble?: unknown },
+  options: { character_height?: unknown; character_age?: unknown } = {},
 ): string {
   // Zoomed cuts: action + interaction + speech only. Passing null roster drops
   // looks, costume, and wear — the prompt already forbids them per cut.
@@ -71,7 +72,7 @@ export function composeComicSlotCaption(
     sex: slot.sex,
     wear_state: slot.wear_state,
     nude: slot.nude,
-  });
+  }, options);
   const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text);
   // Dialogue commas must survive; joinTags would split `korean text:안돼, 가지마`.
   if (!speech) return looks;

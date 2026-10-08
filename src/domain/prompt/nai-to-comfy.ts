@@ -56,3 +56,24 @@ export function naiToComfyEmphasis(text: unknown): string {
   if (!raw.trim()) return raw;
   return splitNaiPromptTokens(raw).map(convertToken).filter(Boolean).join(', ');
 }
+
+/** Negative NAI weights express exclusion; route them to Comfy's negative input. */
+export function comfyPromptPair(main: unknown, neg: unknown): { positive: string; negative: string } {
+  const moved: string[] = [];
+  const positive = splitNaiPromptTokens(String(main ?? '')).map(token => {
+    const match = token.trim().match(WEIGHT_RE);
+    if (match && Number(match[1]) < 0) {
+      moved.push(`${Math.abs(Number(match[1]))}::${match[2]}::`);
+      return '';
+    }
+    const wrapper = peelWrapper(token);
+    if (wrapper) {
+      const inner = comfyPromptPair(wrapper.inner, '');
+      if (inner.negative) moved.push(inner.negative);
+      return inner.positive ? `${wrapper.kind === 'brace' ? '('.repeat(wrapper.depth) : '['.repeat(wrapper.depth)}${inner.positive}${wrapper.kind === 'brace' ? ')'.repeat(wrapper.depth) : ']'.repeat(wrapper.depth)}` : '';
+    }
+    return convertToken(token);
+  }).filter(Boolean).join(', ');
+  const negative = splitNaiPromptTokens(String(neg ?? '').replace(/-(\d+(?:\.\d+)?)::/g, '$1::')).map(convertToken);
+  return { positive, negative: [...negative, ...moved.map(naiToComfyEmphasis)].filter(Boolean).join(', ') };
+}

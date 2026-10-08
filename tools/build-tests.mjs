@@ -115,6 +115,8 @@ const MODULES = {
   'chat-bake': 'src/domain/chat-bake.ts',
   tts: 'src/services/tts.ts',
   'inray-display': 'src/domain/inray-display.ts',
+  'image-history': 'src/domain/gallery/image-history.ts',
+  'history-services': ['src/services/image-history.ts','src/services/cards.ts','src/services/generation.ts','src/services/context.ts','src/services/characters.ts','src/services/cast-ids.ts','src/storage/stores.ts','src/storage/image-urls.ts'],
   'comic-kind': 'src/domain/comic/kind.ts',
   'comic-llm-prose': 'src/domain/comic/llm-prose.ts',
   'comic-schedule': 'src/domain/comic/schedule.ts',

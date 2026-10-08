@@ -6,7 +6,7 @@ import { measureWrite } from '../core/write-metrics';
 import { serializeSessionStorage } from '../storage/chat-session-store';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, stripBakeTokens } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, stripBakeTokens } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -185,6 +185,9 @@ export async function rewriteBakedCardInChatMessage(opts: {
   messageIndex: number;
   prevCardId: string;
   nextCardId: string;
+  history?: boolean;
+  pin?: boolean;
+  replaceLatest?: boolean;
   characterId?: string;
   chatId?: string;
   width?: number;
@@ -212,7 +215,10 @@ export async function rewriteBakedCardInChatMessage(opts: {
   const asset = await imageAssetRef(opts.nextCardId);
   if(!asset?.path)throw new Error('새 이미지 에셋이 저장되지 않았습니다.');
   const assetName = asset && isShotAssetName(asset.name) ? asset.name : shotAssetName(opts.nextCardId, 'webp');
-  const next = replaceBakeTokenCard(prev, opts.prevCardId, opts.nextCardId, assetName, await dimensionsForCard(opts.nextCardId, opts, true));
+  const dimensions = await dimensionsForCard(opts.nextCardId, opts, true);
+  const next = opts.history || opts.pin || opts.replaceLatest
+    ? appendBakeRevision(prev, opts.prevCardId, opts.nextCardId, assetName, dimensions, opts.pin, opts.replaceLatest)
+    : replaceBakeTokenCard(prev, opts.prevCardId, opts.nextCardId, assetName, dimensions);
   if (next === prev) return false;
   setMessageBody(msg, next);
   messages[idx] = msg;

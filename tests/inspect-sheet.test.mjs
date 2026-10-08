@@ -31,13 +31,14 @@ function sheet() {
   class Element {
     constructor(tag) {this.tag=tag;this.children=[];this.html='';this.style='';}
     async setStyleAttribute(value) {this.style=value;writes.push(['style',this,value]);}
+    async setAttribute(key,value) {if(!key.startsWith('x-'))throw Error('unsafe attribute');this[key]=value;}
     async setInnerHTML(value) {this.html=value;this.children=[];writes.push(['html',this,value]);}
     async setTextContent(value) {this.text=value;}
     async appendChild(child) {this.children.push(child);}
   }
   const fullscreen=new Element('fullscreen'),actionMenu=new Element('menu'),root=new Element('root');
   const c={t:{},inspectOpen:false,actionCard:null,pendingSheetHit:null,inspectGuardUntil:0,inspectZones:[],inspectSheetEl:null,
-    nxInspectShell:null,nxInspectBuild:null,nxInspectImageHtml:'',nxInspectMirroredImage:null,nxDropInspectImage:async image=>{if(image)image.removed=true;},nxInspectPaint:Promise.resolve(),URL,
+    nxInspectShell:null,nxInspectBuild:null,nxInspectImageHtml:'',nxInspectMirroredImage:null,nxDropInspectImage:async image=>{if(image)image.removed=true;},nxInspectPaint:Promise.resolve(),URL,clearTimeout,
     fullscreen,actionMenu,k:{showContainer:async()=>{},hideContainer:async()=>{}},hidePressFill:async()=>{},Ie:()=> 'data:image/png;base64,CACHED',h:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),w:value=>String(value),
     e:{createElement:async tag=>{const node=new Element(tag);nodes.push(node);return node;}},
     hideActionMenu:async()=>{c.actionCard=null;c.inspectZones=[];c.inspectSheetEl=null;await actionMenu.setStyleAttribute('display:none');},
@@ -92,9 +93,10 @@ test('frozen sheet exposes close during loading and reuses all nodes on reopen',
   assert.match(c.fullscreen.html,/이미지 불러오는 중/);
   assert.match(c.fullscreen.style,/display:flex/);
   assert.deepEqual(Array.from(c.inspectZones,z=>z.act),['retag','regen','reroll','base','close']);
+  assert.deepEqual(Array.from(c.inspectZones,z=>z.el.text),['⚛️','🔃','🎲','🔮','닫기']);
   const edit=c.inspectZones.find(z=>z.act==='base').el,reroll=c.inspectZones.find(z=>z.act==='reroll').el;
   assert.equal(edit.style.split(';background:')[0],reroll.style.split(';background:')[0]);
-  assert.match(edit.style,/background:rgba\(124,108,255,.22\)/);
+  assert.match(edit.style,/background:rgba\(255,255,255,.08\)/);
   view.image_url='data:image/png;base64,FILE';view._nxAssetLoading=false;
   await c.update(view);
   assert.match(c.fullscreen.html,/base64,FILE/);
@@ -127,7 +129,8 @@ test('closing during delayed host paint never reopens or hides the next inspect'
 test('updated chips keep frozen character indexes and escape names through text nodes',async()=>{
   const {c,nodes}=sheet();
   const view={id:'a',image_url:'data:image/png;base64,FILE',characters:[{name:'Old'}]};
-  await c.show(view);const shell=c.inspectSheetEl,staticButtons=nodes.filter(n=>['수정','태그','리롤','닫기'].includes(n.text));
+  await c.show(view);const shell=c.inspectSheetEl,staticButtons=nodes.filter(n=>['🔮','⚛️','🎲','닫기'].includes(n.text));
+  assert.equal(staticButtons.length,4);
   view.characters=[{name:'<img onerror=evil>'},{name:'Second'}];
   await c.update(view);
   assert.equal(c.inspectSheetEl,shell);

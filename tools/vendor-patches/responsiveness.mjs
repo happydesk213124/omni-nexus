@@ -80,6 +80,7 @@ export function repairResponsiveness(source) {
   for(const slot of ['idx','charI']) {const pad=slot==='idx'?'        ':'            ';once(pad+'roster: Dt(name),\n'+pad+'index: '+slot,pad+'roster: raw?.id ? raw : Dt(name),\n'+pad+'id:raw?.id, scope:raw?.scope,\n'+pad+'index: '+slot);}
   once('  async function xa(opts) {', '  async function xa(opts) {\n    t._flushSettingsFields?.();await globalThis.__OMNI_FLUSH_CHARACTERS__?.();');
   once('    if (!Array.isArray(t.charCatalog) || !t.charCatalog.length) {\n      await Promise.race([catalogP, new Promise((ok) => setTimeout(ok, 600))]);\n    }', '');
+  region('  async function At() {','  const _a = [',readFileSync(new URL('./settings-open.js',import.meta.url),'utf8')+'\n');
   once('        const me = Dt(J);', '        const me = B?.id ? B : Dt(J);');
   once('        entry.roster = Dt(entry.name) || entry.roster;', '        entry.roster = entry.roster?.id ? entry.roster : Dt(entry.name);');
   once('      void ensureViewerRosterLoaded().catch(() => null);\n      const idx =', '      const idx =');

@@ -16,6 +16,7 @@ import {
   inrayDisplayRegexScript,
   spinnerDisplayRegexScript,
   framedAssetDisplayRegexScript,
+  historyDisplayRegexScript,
 } from '../domain/inray-display';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 
@@ -152,7 +153,8 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       modules[idx]={...modules[idx],regex};changed=true;
     }
     const pair = framedAssetDisplayRegexScript(folded,scalePct);
-    const paired = [pair,...(modules[idx]!.regex || []).filter(row=>scriptComment(row)!==pair.comment)];
+    const history = historyDisplayRegexScript(folded, scalePct);
+    const paired = [history, pair,...(modules[idx]!.regex || []).filter(row=>scriptComment(row)!==pair.comment && scriptComment(row)!==history.comment)];
     if(JSON.stringify(paired)!==JSON.stringify(modules[idx]!.regex)) {
       modules[idx]={...modules[idx],regex:paired};changed=true;
     }
