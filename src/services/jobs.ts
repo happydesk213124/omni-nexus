@@ -680,6 +680,8 @@ export async function getJob(jobId: string): Promise<ApiResult> {
     }
   }
   noteLastGeneratingPoll(jobId, row.state, result);
+  const lineProgress=streamJob(jobId)?.lineAttachments?.stats() || result?.line_group;
+  if(lineProgress)progress.line_group=lineProgress;
   // Result cards carry no display URL (see gallery.ts). Encoding here is what
   // once left the toast on generating N/N; attaching from cache was retention
   // the UI's own `resolveImageUrl` lookup makes redundant.
@@ -762,6 +764,7 @@ async function runJob(jobId: string): Promise<void> {
     }
   };
   async function finishCompletedSpinners(): Promise<boolean> {
+    if(deferred?.lineAttachments)return false;
     if (deferred && (!deferred.committed || deferred.cancelled)) return false;
     if (!durableSpinners || !completedSpinnerCards.size) return false;
     return enqueueBakeWrite(async () => {
@@ -1006,12 +1009,15 @@ async function runJob(jobId: string): Promise<void> {
     const imageMax = lineLimits?.max ?? Math.max(imageMin, Number(card.image_max ?? 3));
     shots = shots.slice(0, imageMax);
     if (!shots.length && lineLimits) {
+      deferred?.lineAttachments?.plan(jobId,{jobId,shots:[],completed:completedSpinnerCards});
+      deferred?.lineAttachments?.settle(jobId);
       const result={cards:[],shot_count:0,shot_done:0,progress:100,phase:'done',message:'구간 이미지 생략',message_index:request.message_index ?? -1};
       if(deferred && !deferred.committed && !deferred.cancelled) {
         await setJob(jobId,'generating',{...result,phase:'waiting_output',message:'이미지 생략 · 응답 완료 대기…'});
         await deferred.ready;
       }
       if(await cancelJobIfStale(jobId))return;
+      if(deferred?.committed)await deferred.lineAttachments?.waitFinished();
       await setJob(jobId,'done',{...result,message_index:request.message_index ?? -1});
       jobSpan.end({message:'line batch skipped',cards:0});return;
     }
@@ -1131,7 +1137,7 @@ async function runJob(jobId: string): Promise<void> {
         releaseComic();
       }
     };
-    if (normalizeComicSchedule(card.comic_schedule) === 'wait_taggers') {
+    if (lineRange || normalizeComicSchedule(card.comic_schedule) === 'wait_taggers') {
       await runComicLayout();
     } else {
       void runComicLayout();
@@ -1161,11 +1167,13 @@ async function runJob(jobId: string): Promise<void> {
       });
     });
     let attachment: Promise<void> = Promise.resolve();
+    deferred?.lineAttachments?.plan(jobId,{jobId,shots:pendingInline,completed:completedSpinnerCards});
     const attach = () => attachment = attachment.catch(() => {}).then(async () => {
       if (deferred?.cancelled || !isJobCurrent(jobId)) return;
-      if (!durableSpinners) durableSpinners = await enqueueJobSpinners();
+      if(deferred?.lineAttachments)durableSpinners=deferred.lineAttachments.inserted && pendingInline.length>0;
+      else if (!durableSpinners) durableSpinners = await enqueueJobSpinners();
       await finishCompletedSpinners();
-      if (deferred?.committed) {
+      if (deferred?.committed && (!deferred.lineAttachments || deferred.lineAttachments.stats().settled===deferred.lineAttachments.stats().batches)) {
         await persistSessionLocation(noteSessionId, sessionLocation);
         await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,shot])=>shot), roster, outfitRevision);
       }
@@ -1446,14 +1454,14 @@ async function runJob(jobId: string): Promise<void> {
           recipe,
           characters:(meta.characters || []).map(c=>({scope:String(c.scope || ''),id:String(c.id || ''),name:String(c.name || '')})),
           generatedAt:Date.now(),
-          ...(durableSpinners ? { onPreview: async (url: string) => {
+          ...(durableSpinners || deferred?.lineAttachments ? { onPreview: async (url: string) => {
             if (!isJobCurrent(jobId)) return;
             const preview = Reflect.get(globalThis, '__OMNI_SPINNER_PREVIEW__');
             if (typeof preview !== 'function') {
               dbg('job.preview.unavailable', { shot: idx }, 'warn');
               return;
             }
-            try { await preview({jobId, shot:idx, cardId, characterId:request.character_id, chatId:request.chat_id, messageIndex:request.message_index, url}); }
+            try { await preview({jobId, shot:idx, cardId, characterId:request.character_id, chatId:request.chat_id, messageIndex:request.message_index, url,deferPaint:deferred?.lineAttachments && !deferred.lineAttachments.inserted}); }
             catch { dbg('job.preview.fail', {shot:idx}, 'warn'); }
           }} : {}),
         });
@@ -1524,7 +1532,7 @@ async function runJob(jobId: string): Promise<void> {
         completedSpinnerCards.set(idx,cardId);
         if (deferred?.committed && durableSpinners) await finishCompletedSpinners();
         successfulOutfitShots.set(idx, shot);
-        if (isJobCurrent(jobId) && (!deferred || deferred.committed)) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
+        if (isJobCurrent(jobId) && !deferred?.lineAttachments && (!deferred || deferred.committed)) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
         dbg('job.shot.saved', { shot: idx, card_id: cardId });
         await setJob(
           jobId,
@@ -1587,6 +1595,7 @@ async function runJob(jobId: string): Promise<void> {
     if (shotSaveFailed) throw shotSaveFailed;
     if (await cancelJobIfStale(jobId, 'superseded before done')) return;
     const finalCards = cards.filter((c): c is Record<string, unknown> => Boolean(c));
+    deferred?.lineAttachments?.settle(jobId);
     const result = {
       cards: finalCards,
       message_index: request.message_index != null ? Number(request.message_index) : -1,
@@ -1594,6 +1603,7 @@ async function runJob(jobId: string): Promise<void> {
       shot_done: shots.length,
       progress: 100,
       phase: 'done',
+      ...(deferred?.lineAttachments ? {line_group:deferred.lineAttachments.stats()} : {}),
       message: `이미지 ${shots.length}/${shots.length} 완료`,
       // Done = no spinners. Leaving pending_inline here kept circles on finished bubbles.
     };
@@ -1602,6 +1612,7 @@ async function runJob(jobId: string): Promise<void> {
       await deferred.ready;
     }
     if (await cancelJobIfStale(jobId)) return;
+    if(deferred?.committed && deferred.lineAttachments){await deferred.lineAttachments.waitFinished();result.line_group=deferred.lineAttachments.stats();}
     if (deferred?.committed) {
       await deferred.attach?.();
       await rebindCardsHash({session_id:sessionId,card_ids:finalCards.map(c=>String(c.id)),to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
@@ -1640,6 +1651,9 @@ async function runJob(jobId: string): Promise<void> {
       /* prefer the primary error below */
     }
     if (llmController.signal.aborted && await cancelJobIfStale(jobId, '사용자 중단')) return;
+    deferred?.lineAttachments?.settle(jobId);
+    // A terminal error toast must follow the shared final save, including paid shots.
+    if(deferred?.committed)await deferred.lineAttachments?.waitFinished().catch(err=>dbg('job.group.bake.fail',{message:String(err)},'warn'));
     jobSpan.fail(exc);
     const err = exc as Error;
     const errText = `${err?.message || exc}\n${err?.stack || ''}`.slice(-1500);
@@ -1648,6 +1662,7 @@ async function runJob(jobId: string): Promise<void> {
       'error',
       {
         phase: 'error',
+        ...(deferred?.lineAttachments ? {line_group:deferred.lineAttachments.stats()} : {}),
         message: String(err?.message || exc).slice(0, 240),
         debug_stage: getLastStage(),
         debug_tail: eventsForJob(jobId, 12),
@@ -1657,10 +1672,12 @@ async function runJob(jobId: string): Promise<void> {
   } finally {
     llmController.abort();
     jobLlmControllers.delete(jobId);
+    deferred?.lineAttachments?.settle(jobId);
     try {
       // A later shot may fail after earlier paid shots finished. Their attachment
       // still belongs to the committed output, even when the job is already error.
       if (deferred && !deferred.committed && !deferred.cancelled && completedSpinnerCards.size) await deferred.ready;
+      if(deferred?.committed)await deferred.lineAttachments?.waitFinished().catch(err=>dbg('job.group.bake.fail',{message:String(err)},'warn'));
       if (deferred?.committed && !deferred.cancelled) {
         await deferred.attach?.().catch(err => dbg('job.partial.attach.fail', {message:String(err)}, 'warn'));
         if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});

@@ -106,6 +106,8 @@ test('sibling line batches generate ahead without chat writes and preserve both 
   assert.equal((await f.api.createJob(batch(11,20))).busy,true,'duplicate ranges cannot be paid twice');
   assert.equal((await f.api.createJob({...batch(21,25),stream_id:'other-stream'})).busy,true);
   chat.isStreaming=false;await risuai.setChatToIndex(0,0,chat);
+  const setChat=risuai.setChatToIndex,writes=[];
+  risuai.setChatToIndex=async(...args)=>{if((await f.chat()).message[0].data!==args[2].message[0].data)writes.push(args[2].message[0].data);return setChat(...args);};
   const result=await f.api.commitStreamOutput({...f.request,job_ids:[first.job_id,second.job_id],assistant_text:text,content_hash:'final',message_index:0});
   assert.equal(result.ok,true);
   for(const id of [first.job_id,second.job_id]) {await f.wait(id,j=>j.state==='done');await assertRuntimeReleased(f,id);}
@@ -113,9 +115,11 @@ test('sibling line batches generate ahead without chat writes and preserve both 
   assert.equal((body.match(/\[\[@inray::/g)||[]).length,2);
   assert.ok(body.indexOf('::inxshot_')<body.indexOf('Narrative line 4'));
   assert.equal(analysisBody(body),text);
+  assert.equal(writes.length,1,'all images already generated: only one initial message write');
+  risuai.setChatToIndex=setChat;
 });
 
-test('an earlier tagger finishing after a later batch attached cannot erase its image',async()=>{
+test('a line group waits for every tagger and inserts already generated images in one write',async()=>{
   const f=await fixture(),chat=await f.chat();
   const text=Array.from({length:4},(_,i)=>`A sufficiently long narrative paragraph ${i+1}.`).join('\n');
   chat.message[0].data=text;await risuai.setChatToIndex(0,0,chat);
@@ -131,10 +135,17 @@ test('an earlier tagger finishing after a later batch attached cannot erase its 
     f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[{shots:[{line:4,composition:'later scene'}]}]}));
     const second=await f.api.createJob(request(3,4));
     await f.wait(second.job_id,j=>j.progress.phase==='waiting_output');
-    assert.equal((await f.api.commitStreamOutput({...f.request,job_ids:[first.job_id,second.job_id],assistant_text:text,content_hash:'final',message_index:0})).ok,true);
-    await f.wait(second.job_id,j=>j.state==='done');await assertRuntimeReleased(f,second.job_id);
+    const writes=[],setChat=risuai.setChatToIndex;
+    risuai.setChatToIndex=async(...args)=>{if((await f.chat()).message[0].data!==args[2].message[0].data)writes.push(args[2].message[0].data);return setChat(...args);};
+    const committing=f.api.commitStreamOutput({...f.request,job_ids:[first.job_id,second.job_id],assistant_text:text,content_hash:'final',message_index:0});
+    await sleep();assert.equal(writes.length,0,'a slow earlier tagger blocks all insertion');
     f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[{shots:[{line:1,composition:'earlier scene'}]}]}));
-    release();await f.wait(first.job_id,j=>j.state==='done');await assertRuntimeReleased(f,first.job_id);
+    release();assert.equal((await committing).ok,true);
+    await f.wait(first.job_id,j=>j.state==='done');await assertRuntimeReleased(f,first.job_id);
+    await f.wait(second.job_id,j=>j.state==='done');await assertRuntimeReleased(f,second.job_id);
+    assert.ok(writes.length<=2,'one initial group write and at most one final group write');
+    assert.match(writes[0],/@inray::/,'already completed images are in the first insertion');
+    risuai.setChatToIndex=setChat;
     const final=(await f.chat()).message[0].data;
     assert.equal((final.match(/\[\[@inray::/g)||[]).length,2);assert.equal(analysisBody(final),text);
   } finally {release();risuai.nativeFetch=nativeFetch;}
@@ -155,6 +166,78 @@ test('out-of-range tagging fails before paid generation and does not prevent a v
   assert.equal((await f.api.commitStreamOutput({...f.request,job_ids:[first.job_id,failed.job_id],assistant_text:text,content_hash:'final',message_index:0})).ok,true);
   await f.wait(first.job_id,j=>j.state==='done');await assertRuntimeReleased(f,first.job_id);
   assert.equal(((await f.chat()).message[0].data.match(/\[\[@inray::/g)||[]).length,1);
+});
+
+test('line images update base64 previews without further message writes until all sibling images finish',{timeout:12000},async()=>{
+  const f=await fixture(),chat=await f.chat();
+  const text=Array.from({length:4},(_,i)=>`Narrative scene paragraph number ${i+1}, long enough to depict.`).join('\n');
+  chat.message[0].data=text;await risuai.setChatToIndex(0,0,chat);
+  Object.assign(f.api.getConfig().card,{stream_lines_image_min:2,stream_lines_image_max:2});
+  const request=(start,end)=>({...f.request,assistant_text:text.split('\n').slice(0,end).join('\n'),stream_line_start:start,stream_line_end:end});
+  const fetch=risuai.nativeFetch,setChat=risuai.setChatToIndex,preview=globalThis.__OMNI_SPINNER_PREVIEW__;
+  let releaseSecond,releaseFourth,enterSecond,enterFourth,calls=0;
+  const secondGate=new Promise(r=>releaseSecond=r),fourthGate=new Promise(r=>releaseFourth=r);
+  const secondStarted=new Promise(r=>enterSecond=r),fourthStarted=new Promise(r=>enterFourth=r),writes=[],previews=[];
+  risuai.nativeFetch=async(url,...args)=>{
+    if(String(url).includes('generate-image')){calls++;if(calls===2){enterSecond();await secondGate;}if(calls===4){enterFourth();await fourthGate;}}
+    return fetch(url,...args);
+  };
+  risuai.setChatToIndex=async(...args)=>{if((await f.chat()).message[0].data!==args[2].message[0].data)writes.push(args[2].message[0].data);return setChat(...args);};
+  globalThis.__OMNI_SPINNER_PREVIEW__=async row=>previews.push(row);
+  try {
+    f.host.setLlmReply(JSON.stringify({scenes:[{shots:[{line:1,composition:'one'},{line:2,composition:'two'}]}]}));
+    const first=await f.api.createJob(request(1,2));await secondStarted;
+    await f.wait(first.job_id,j=>j.progress.shot_done===1);
+    f.host.setLlmReply(JSON.stringify({scenes:[{shots:[{line:3,composition:'three'},{line:4,composition:'four'}]}]}));
+    const second=await f.api.createJob(request(3,4));await f.wait(second.job_id,j=>j.state==='generating');
+    assert.equal(writes.length,0,'no insertion while output is streaming');
+    assert.equal((await f.api.commitStreamOutput({...f.request,job_ids:[first.job_id,second.job_id],assistant_text:text,content_hash:'final'})).ok,true);
+    assert.equal(writes.length,1);assert.equal((writes[0].match(/@inray::/g)||[]).length,1);assert.equal((writes[0].match(/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/g)||[]).length,3);
+    releaseSecond();await fourthStarted;
+    await f.wait(first.job_id,j=>j.progress.shot_done===2);await f.wait(second.job_id,j=>j.progress.shot_done===1);
+    assert.equal(writes.length,1,'intermediate completions never save the message body');
+    assert.ok(previews.filter(row=>!row.deferPaint).length>=2);
+    assert.ok(previews.every(row=>/^data:image\/\w+;base64,/.test(row.url)));
+    releaseFourth();for(const id of [first.job_id,second.job_id]){await f.wait(id,j=>j.state==='done');await assertRuntimeReleased(f,id);}
+    assert.equal(writes.length,2);assert.equal((writes[1].match(/@inray::/g)||[]).length,4);assert.doesNotMatch(writes[1],/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/);
+    assert.equal(analysisBody(writes[1]),text);
+  } finally {releaseSecond();releaseFourth();risuai.nativeFetch=fetch;risuai.setChatToIndex=setChat;globalThis.__OMNI_SPINNER_PREVIEW__=preview;}
+});
+
+test('line group keeps paid images and removes pending slots after a later NAI failure',{timeout:12000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_lines_image_min:2,stream_lines_image_max:2});
+  f.host.setLlmReply(JSON.stringify({scenes:[{shots:[{line:1,composition:'one'},{line:2,composition:'two'}]}]}));
+  const fetch=risuai.nativeFetch;let calls=0,release,entered;
+  const gate=new Promise(r=>release=r),started=new Promise(r=>entered=r);
+  risuai.nativeFetch=async(url,...args)=>{
+    if(String(url).includes('generate-image')&&++calls===2){entered();await gate;throw Error('NAI fixture failure');}
+    return fetch(url,...args);
+  };
+  try {
+    const created=await f.api.createJob({...f.request,stream_line_start:1,stream_line_end:2});await started;
+    await f.wait(created.job_id,j=>j.progress.shot_done===1);
+    assert.equal((await f.commit(created.job_id)).ok,true);
+    assert.equal(((await f.chat()).message[0].data.match(/@inray::/g)||[]).length,1);
+    release();await f.wait(created.job_id,j=>j.state==='error');await assertRuntimeReleased(f,created.job_id);
+    const final=(await f.chat()).message[0].data;
+    assert.equal((final.match(/@inray::/g)||[]).length,1);
+    assert.doesNotMatch(final,/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/);
+    assert.equal((await f.api.getJob(created.job_id)).progress.line_group.failed,1);
+  } finally {release();risuai.nativeFetch=fetch;}
+});
+
+test('line commit rechecks changed host text after waiting for a slow tagger',{timeout:12000},async()=>{
+  const f=await fixture(),fetch=risuai.nativeFetch;let release,entered;
+  const gate=new Promise(r=>release=r),started=new Promise(r=>entered=r);
+  risuai.nativeFetch=async(url,...args)=>{if(String(url).includes('completions')){entered();await gate;}return fetch(url,...args);};
+  try {
+    const created=await f.api.createJob({...f.request,stream_line_start:1,stream_line_end:2});await started;
+    const committing=f.commit(created.job_id);await sleep();
+    const chat=await f.chat();chat.message[0].data='User replaced this reply while the tagger was pending.';await risuai.setChatToIndex(0,0,chat);
+    release();assert.equal((await committing).error.code,'message_changed');
+    await f.wait(created.job_id,j=>j.state==='cancelled');await assertRuntimeReleased(f,created.job_id);
+    assert.equal((await f.chat()).message[0].data,chat.message[0].data);
+  } finally {release();risuai.nativeFetch=fetch;}
 });
 
 test('sibling NAI requests share a key slot while tagging proceeds, and cancelled queued batches spend nothing',async()=>{

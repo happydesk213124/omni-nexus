@@ -2,7 +2,7 @@
   const nxClosedSpinnerPreviews=new Set();
   let nxSpinnerPreviewPainting=null, nxSpinnerPreviewDirty=false, nxSpinnerPreviewTimer=null;
   function nxScheduleSpinnerPreviews() {
-    if(t.unloading || !nxSpinnerPreviews.size || nxSpinnerPreviewTimer)return;
+    if(t.unloading || ![...nxSpinnerPreviews.values()].some(row=>!row.deferPaint) || nxSpinnerPreviewTimer)return;
     nxSpinnerPreviewTimer=setTimeout(()=>{
       nxSpinnerPreviewTimer=null;
       void nxPaintSpinnerPreviews().catch(error=>y('warn','spinner.preview',String(error)));
@@ -21,7 +21,8 @@
   async function nxPaintSpinnerPreviewPass() {
     const doc=t.hostDoc || t.overlayUi?.doc;
     if(!doc || t.unloading || !nxSpinnerPreviews.size)return;
-    const rows=new Map(nxSpinnerPreviews);
+    const rows=new Map([...nxSpinnerPreviews].filter(([,row])=>!row.deferPaint));
+    if(!rows.size)return;
     const refs=omniDomScope();
     try {
       // A job/shot token identifies the exact reserved slot across chat changes.
@@ -81,6 +82,7 @@
     const key=row.jobId+'_'+row.shot,old=nxSpinnerPreviews.get(key);
     if(old?.cardId===row.cardId && old.url===row.url)return;
     nxSpinnerPreviews.set(key,{...row});
+    if(row.deferPaint)return;
     await omniMountFooters();
     if(first)await omniStreamObservers();
     await nxPaintSpinnerPreviews();
@@ -90,4 +92,10 @@
     for(const [key,row] of nxSpinnerPreviews)if(row.jobId===jobId)nxSpinnerPreviews.delete(key);
     if(!nxSpinnerPreviews.size){clearTimeout(nxSpinnerPreviewTimer);nxSpinnerPreviewTimer=null;}
     await omniStreamObservers();
+  };
+  globalThis.__OMNI_REPAINT_SPINNER_PREVIEWS__=async jobIds=>{
+    for(const row of nxSpinnerPreviews.values())if(jobIds.includes(row.jobId))row.deferPaint=false;
+    if(!nxSpinnerPreviews.size)return;
+    await omniMountFooters();await omniStreamObservers();
+    await nxPaintSpinnerPreviews();
   };

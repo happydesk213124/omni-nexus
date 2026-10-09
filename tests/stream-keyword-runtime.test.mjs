@@ -7,6 +7,7 @@ import {retirePercentPlacement} from '../tools/vendor-patches/runtime-rebuild.mj
 import {parseStreamKeywords} from '../.test-build/stream-keywords.mjs';
 import {createStreamSignalScanner} from '../.test-build/stream-signal.mjs';
 import {createStreamLineBatcher} from '../.test-build/stream-lines.mjs';
+import {aggregateStreamLineProgress} from '../.test-build/viewer-core.mjs';
 const source=readFileSync('tools/vendor-patches/stream-keyword-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-lines-runtime.js','utf8');
 const replySource=readFileSync('tools/vendor-patches/reply-runtime.js','utf8');
 const tick=()=>new Promise(r=>setImmediate(r));
@@ -18,6 +19,7 @@ function fixture(card={}) {
   const calls=[],polls=[],galleries=[],autoGenerations=[],jobStates=new Map(),timers=new Map();let scans=0,seq=0,reads=0,now=Date.now(),timerWrites=0;
   const context={t,console,Promise,Date:class extends Date {static now(){return now;}},Math,setTimeout:(fn,ms)=>{timerWrites++;timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),
     clearInterval:id=>timers.delete(id),ce:async id=>galleries.push(id),onSelectionChanged:async()=>{},Se:async()=>{},
+    __INLAY_VIEWER_CORE__:{aggregateStreamLineProgress},
     __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,
       createStreamSignalScanner:()=>{const scanner=createStreamSignalScanner();return {scan:(...args)=>{scans++;return scanner.scan(...args);}};}},
     Z:async()=>{reads++;return scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},

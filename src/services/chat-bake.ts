@@ -273,6 +273,52 @@ export async function readStoredMessageBody(
 }
 
 /** One durable placeholder per job/shot; completion never recomputes its paragraph. */
+export type LineBakeBatch = {
+  jobId: string;
+  shots: Array<{line?:unknown;shot_index:number;width?:number;height?:number}>;
+  completed: Map<number,string>;
+};
+
+/** A line reply has one initial placement and one final save, across all jobs. */
+export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarget>, batches: LineBakeBatch[], final=false): Promise<void> {
+  if(!batches.some(batch=>batch.shots.length))return;
+  const loaded=await loadTargetChat(target.charIndex,target.chatIndex);if(!loaded)throw new Error('Chat unavailable');
+  const msg=chatMessageList(loaded.chat)[target.messageIndex];if(!msg)throw new Error('Message unavailable');
+  if(target.hostMessageId && String(msg.chatId || msg.id || '')!==target.hostMessageId)throw new Error('Message identity changed');
+  const previousBody=messageBody(msg);
+  if(target.expectedPrefix && !analysisBody(previousBody).startsWith(target.expectedPrefix))throw new Error('Message body changed');
+  if(!final)await ensureInrayDisplayModule(getConfig().card.persist_chat_images_folded===true,getConfig().card.inline_chat_scale_pct,{enabled:getConfig().card.inline_msg_fan===true,userchat:getConfig().card.userchat===true});
+  let next=final ? previousBody : stripBakeTokens(previousBody);
+  const groups=new Map<number,string[]>(),lines=chatBodyLineCount(next);
+  for(const batch of batches) {
+    for(const shot of batch.shots) {
+      const cardId=batch.completed.get(shot.shot_index);
+      let token=spinnerToken(batch.jobId,shot.shot_index,shot.width,shot.height);
+      if(cardId) {
+        const asset=await imageAssetRef(cardId);if(!asset?.path)throw new Error('Shot asset missing');
+        token=bakeTokenForCard(cardId,asset.name,await dimensionsForCard(cardId) || bakeDimensions(shot.width,shot.height));
+        if(!token)throw new Error('Invalid shot asset');
+      }
+      if(final) {
+        if(cardId) {
+          const replaced=attachBakeToSpinner(next,batch.jobId,shot.shot_index,token);
+          if(replaced===next && !next.includes(token))throw new Error('Spinner slot changed');
+          next=replaced;
+        }
+      } else {
+        const line=Math.floor(Number(shot.line)||lines),list=groups.get(line)||[];
+        // The frame is also the reroll-history anchor; an attached image hides loading.
+        list.push(cardId ? spinnerToken(batch.jobId,shot.shot_index,shot.width,shot.height)+token : token);groups.set(line,list);
+      }
+    }
+    if(final)next=removeJobSpinners(next,batch.jobId);
+  }
+  if(!final)for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0]))next=insertAtAnalysisLine(next,line,normalizeInlineChatTextSide(getConfig().card.inline_chat_text_side),tokens.join(''));
+  if(next===previousBody)return;
+  setMessageBody(msg,next);
+  await writeChat(loaded.host,target.charIndex,target.chatIndex,loaded.chat,{messageIndex:target.messageIndex,previousBody});
+}
+
 export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });

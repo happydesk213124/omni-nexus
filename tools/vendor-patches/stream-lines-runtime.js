@@ -35,7 +35,7 @@ function omniCommitLineReply(arg,msg,text,key) {
     if(scope.characterId!==characterId || scope.chatId!==chatId)return null;
     return omniKeywordIdentity({...scope,chat:arg.chat},arg.messageIndex);
   }).then(value=>{run.identity=value;run.targetResolved=true;return value;});
-  stopStreamKeywordTick();run.text=text;
+  stopStreamKeywordTick();run.text=text;run.outputComplete=true;
   run=omniScanLineRun(run,true);
   // Without a line tagging request, the ordinary reply listener owns ON/OFF,
   // character limits and dedupe. Do not mark this reply as stream-handled.
@@ -54,36 +54,42 @@ function omniCommitLineReply(arg,msg,text,key) {
       job_ids:accepted.map(batch=>batch.jobId),message_index:arg.messageIndex,assistant_text:text,content_hash:ye(text)}});
     if(!result?.ok)throw Error(result?.error?.message || '줄 단위 이미지 부착 실패');
     run.committed=true;
-    omniPollLineJobs(run.identity.scope.sessionId,result.job_ids || accepted.map(batch=>batch.jobId),ye(text));
+    omniPollLineJobs(run.identity.scope.sessionId,result.job_ids || accepted.map(batch=>batch.jobId),ye(text),run);
   }).catch(error=>{omniCancelKeywordRun(run);y('error','stream.lines.commit',String(error));})
     .finally(()=>{if(omniKeywordRun===run)omniKeywordRun=null;});
   return true;
 }
 // The frozen poller owns one job ID. A line group needs one shared timer so an
 // earlier slow tagger still refreshes the gallery after a later batch finishes.
-function omniPollLineJobs(sessionId,ids,hash) {
-  const waiting=new Set(ids);let previous='',timer;
+function omniPollLineJobs(sessionId,ids,hash,run) {
+  if(run){if(hash)run.pollHash=hash;if(run.pollStarted)return;run.pollStarted=true;}
+  const cache=new Map();let previous='',timer;
   if(t.pollTimer)clearInterval(t.pollTimer);
   const poll=async()=>{
-    if(t.unloading || t.pollTimer!==timer)return;
-    const jobs=await Promise.all([...waiting].map(async id=>{
+    if(t.unloading || t.pollTimer!==timer || run?.cancelled)return;
+    const current=run ? run.batches.map(batch=>batch.jobId).filter(Boolean) : ids;
+    const jobs=await Promise.all(current.map(async id=>{
       try {const job=await K(`/v1/jobs/${id}`,{method:'GET'},15000);return {id,job};}
       catch {return {id,job:null};}
     }));
     if(t.unloading || t.pollTimer!==timer)return;
-    for(const {id,job} of jobs)if(job && (['done','error','cancelled'].includes(job.state) || job.error?.code==='not_found'))waiting.delete(id);
-    const stamp=JSON.stringify(jobs.map(({id,job})=>[id,job?.state,job?.progress?.shot_done]));
-    const active=jobs.find(({id})=>waiting.has(id));
+    for(const {id,job} of jobs)if(job?.ok)cache.set(id,job);else if(job?.error?.code==='not_found')cache.set(id,{...cache.get(id),state:'done'});
+    const rows=current.map(id=>cache.get(id)).filter(Boolean);
+    const active=jobs.find(({job})=>job?.ok && !['done','error','cancelled'].includes(job.state));
     t.activeJobId=active?.id || '';
-    t.jobProgress=active?.job?.ok ? {...active.job.progress,state:active.job.state,jobId:active.id} : null;
-    if(stamp!==previous) {
+    const summary=globalThis.__INLAY_VIEWER_CORE__.aggregateStreamLineProgress(rows,{batchCount:run?.batches.length || ids.length,outputComplete:run?!!run.outputComplete:true,committed:run?!!run.committed:true});
+    t.jobProgress={...summary,jobId:run?.streamId || ids[0],toastRun:run?.streamId || ids[0]};
+    if(typeof syncProgressToast==='function')await syncProgressToast();
+    const finished=['done','error','cancelled'].includes(summary.state),stamp=run?.committed ? finished?'done':'inserted':'';
+    if(stamp && stamp!==previous) {
       previous=stamp;
-      try {await ce(sessionId,true);await onSelectionChanged(waiting.size?'content':'full');await Se();}
+      try {await ce(sessionId,true);await onSelectionChanged(finished?'full':'content');await Se();}
       catch(error){y('warn','stream.lines.refresh',String(error));}
     }
     if(t.pollTimer!==timer)return;
-    if(waiting.size) t.pollTimer=timer=setTimeout(poll,1000);
-    else {t.pollTimer=null;t.jobsInFlight?.delete(hash);}
+    if(!finished) {t.pollTimer=timer=setTimeout(poll,1000);if(run)run.linePollTimer=timer;}
+    else {t.pollTimer=null;t.jobsInFlight?.delete(run?.pollHash || hash);}
   };
   t.pollTimer=timer=setTimeout(poll,1);
+  if(run)run.linePollTimer=timer;
 }

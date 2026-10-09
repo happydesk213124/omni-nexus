@@ -1,6 +1,6 @@
 import { chatImageFrameStyle, chatImageSizeStyle, chatImageResponsiveCss } from '../domain/inray-display';
 export { imageHistoryCss, imageHistoryControls, imageHistoryIndicators } from '../domain/gallery/history-overlay';
-export { progressToastView, progressToastStyles } from './progress-toast';
+export { progressToastView, progressToastStyles, aggregateStreamLineProgress } from './progress-toast';
 /**
  * Chat-overlay geometry and matching logic.
  *

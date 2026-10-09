@@ -37,7 +37,7 @@ export async function checkSpinnerPreview(page, source, render) {
     const ownScope=()=>{const refs=new Set();return {own:n=>{if(n)refs.add(n);return n;},all:async nodes=>{for(const n of nodes)refs.add(n);return nodes;},close:async()=>{for(const n of refs)n.release();}};};
     const H=async(_doc,tag,{html})=>{const n=wrap(document.createElement(tag));n.setInnerHTML(html);return n;};
     const logs=[];
-    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y','omniMountFooters','omniStreamObservers','omniDomScope',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,rows:nxSpinnerPreviews,schedule:nxScheduleSpinnerPreviews,dispose:nxDisposeSpinnerPreviews};')(
+    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y','omniMountFooters','omniStreamObservers','omniDomScope',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,release:globalThis.__OMNI_REPAINT_SPINNER_PREVIEWS__,rows:nxSpinnerPreviews,schedule:nxScheduleSpinnerPreviews,dispose:nxDisposeSpinnerPreviews};')(
       {hostDoc:doc},async()=>{throw Error('Preview must not load the full character/chat');},H,()=>{},(...args)=>logs.push(args),async()=>{},async()=>{},ownScope);
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=768;
     canvas.getContext('2d').fillRect(0,0,512,768);const url=canvas.toDataURL('image/png');
@@ -50,6 +50,14 @@ export async function checkSpinnerPreview(page, source, render) {
     check(!document.querySelector('[x-inray-spinner]'),'sanitizer must reproduce the old missing marker');
     let api=make();await api.accept(row(0));check(count()===0,'old module markup must fail to paint');
     check(logs.some(r=>r[2].startsWith('slot ')),'missing slots need a diagnostic');
+
+    api.dispose();mount(pending);api=make();queries=0;
+    await api.accept({...row(0),deferPaint:true});await api.paint();api.schedule();
+    await new Promise(resolve=>setTimeout(resolve,160));
+    check(queries===0&&count()===0,'streaming previews must cache without querying or painting host DOM');
+    await api.release(['job']);
+    check(count()===1,'one group insertion must release the already generated preview');
+    api.dispose();
 
     mount(pending);api=make();const initial=boxes();
     check(document.querySelectorAll('.x-risu-omni-spinner').length===4,'each shot must have one dedicated spinner frame');
@@ -92,5 +100,5 @@ export async function checkSpinnerPreview(page, source, render) {
     return {passed:true};
   },{code,pending,completed:render('[[@inrayspinner::job_0::512::768]][[@inray::card-0::inxshot_card-0.webp::512::768]]')});
   assert.equal(result.passed,true);
-  console.log('Sanitized spinner preview: old-marker failure, 4 sequential images, fixed geometry, remount, dedupe and late-completion cleanup passed.');
+  console.log('Sanitized spinner preview: deferred cache/release, old-marker failure, 4 sequential images, fixed geometry, remount, dedupe and late-completion cleanup passed.');
 }
