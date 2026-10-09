@@ -10,6 +10,7 @@ import {
   replaceBakeTokenCard,
   stripBakeTokenForCard,
   stripBakeTokens,
+  stripBakeTokensExceptJobs,
 } from '../.test-build/chat-bake.mjs';
 import {
   applyBakeTokensToBody,
@@ -20,6 +21,15 @@ import {
 
 const NAME = 'inxshot_card-1.webp';
 const TOKEN = '[[@inray::card-1::inxshot_card-1.webp]]';
+
+test('adding a line batch keeps sibling spinner and reroll history while removing unrelated slots',()=>{
+  const kept='[[@inrayspinner::batch-a_0::832::1216]]'+TOKEN+'[[@inray::card-1_r1::inxshot_card-1_r1.webp::832::1216_r1_pin]]';
+  const old='[[@inrayspinner::old-job_0::832::1216]][[@inray::old::inxshot_old.webp]]';
+  const prose='First line\nSecond line\n\u0000omni-stream-frame-0\u0000';
+  const result=stripBakeTokensExceptJobs('First line\n'+kept+'\nSecond line\n'+old+'\n\u0000omni-stream-frame-0\u0000',['batch-a']);
+  assert.ok(result.includes(kept));assert.ok(!result.includes(old));
+  assert.equal(stripBakeTokens(result),prose);
+});
 
 test('bake tokens point at gallery shots and strip leaves user assets', () => {
   const token = bakeTokenForCard('card-1', NAME);

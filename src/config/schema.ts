@@ -12,6 +12,7 @@ import { comicGenOn } from '../domain/comic/kind.ts';
 import { normalizeComicAspect } from '../domain/comic/aspect.ts';
 import { normalizeComicGenRatio, normalizeComicLlmBatch, normalizeComicMaxPages, normalizeComicSchedule } from '../domain/comic/params.ts';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat.ts';
+import { streamLineImageLimits } from '../domain/prompt/stream-lines';
 import { normalizeInlineMsgActions } from '../domain/inline-msg-actions.ts';
 import { normalizeImagePressInspect, normalizeToastAnchor } from '../domain/toast-press.ts';
 
@@ -336,6 +337,10 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     || card.unified_winners_only === '1'
     || card.unified_winners_only === 'on';
   card.stream_keywords = String(card.stream_keywords ?? '').slice(0, 4000);
+  card.stream_lines_enabled = ['true', '1', 'on'].includes(String(card.stream_lines_enabled));
+  card.stream_lines_count = Math.max(2, Math.min(100, Math.floor(Number(card.stream_lines_count)) || 30));
+  const lineImages=streamLineImageLimits(card);
+  card.stream_lines_image_min=lineImages.min;card.stream_lines_image_max=lineImages.max;
   if (Object.prototype.hasOwnProperty.call(card, 'stream_keywords_enabled')) {
     card.stream_keywords_enabled =
       card.stream_keywords_enabled === true

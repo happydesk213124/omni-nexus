@@ -134,6 +134,23 @@ test("stream_keywords defaults to empty string", () => {
   assert.equal(migrateSettings({ card: {} }).card.stream_keywords, "");
   assert.equal(migrateSettings({ card: { stream_keywords: "future plan" } }).card.stream_keywords, "future plan");
 });
+test('line-stream settings start disabled and preserve bounded saved counts',()=>{
+  assert.equal(migrateSettings({card:{}}).card.stream_lines_enabled,false);
+  assert.equal(migrateSettings({card:{}}).card.stream_lines_count,30);
+  const saved=migrateSettings({card:{stream_lines_enabled:'true',stream_lines_count:6}}).card;
+  assert.equal(saved.stream_lines_enabled,true);assert.equal(saved.stream_lines_count,6);
+  assert.equal(migrateSettings({card:{stream_lines_count:999}}).card.stream_lines_count,100);
+  assert.equal(migrateSettings({card:{stream_lines_count:-5}}).card.stream_lines_count,2);
+});
+
+test('line image budget defaults to 0–2 without copying the general count and preserves zero on migration',()=>{
+  const defaults=migrateSettings({card:{image_min:5,image_max:5}}).card;
+  assert.equal(defaults.stream_lines_image_min,0);assert.equal(defaults.stream_lines_image_max,2);assert.equal(defaults.image_max,5);
+  for(const [input,expected] of [[{stream_lines_image_min:0,stream_lines_image_max:0},[0,0]],[{stream_lines_image_min:1,stream_lines_image_max:2},[1,2]],[{stream_lines_image_min:3,stream_lines_image_max:1},[3,3]],[{stream_lines_image_min:-2,stream_lines_image_max:99},[0,20]]]) {
+    const card=migrateSettings({card:input}).card;
+    assert.deepEqual([card.stream_lines_image_min,card.stream_lines_image_max],expected);
+  }
+});
 
 test("stream_keywords_enabled migrates from needles when missing", () => {
   assert.equal(migrateSettings({ card: {} }).card.stream_keywords_enabled, false);

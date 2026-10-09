@@ -24,30 +24,48 @@ async function omniCaptureKeywordTarget() {
   return omniKeywordIdentity(scope, (scope.chat.message?.length || 0)-1);
 }
 function omniNewKeywordRun(target) {
+  const lineMode=!!t.backendSettings?.card?.stream_lines_enabled;
   const run = {target, text:'', checked:'', timer:0, fired:false, cancelled:false, committed:false,
-    streamId:'stream_'+Date.now()+'_'+Math.random().toString(36).slice(2), task:null, jobId:'', expiry:0};
+    streamId:'stream_'+Date.now()+'_'+Math.random().toString(36).slice(2), task:null, jobId:'', expiry:0,
+    activeAt:Date.now(),assistantText:'',scanner:globalThis.__INLAY_STREAM_KW__.createStreamSignalScanner(),
+    lineMode,batches:[],lineBatcher:lineMode?globalThis.__INLAY_STREAM_KW__.createStreamLineBatcher():null};
   if(target!==undefined)run.target=Promise.resolve(target).catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   return run;
+}
+function omniArmKeywordExpiry(run, delay=30000) {
+  if(run.expiry)return;
+  run.expiry=setTimeout(()=>{
+    run.expiry=0;
+    if(run!==omniKeywordRun || run.cancelled || run.committing)return;
+    const remaining=30000-(Date.now()-run.activeAt);
+    if(remaining>0)omniArmKeywordExpiry(run,remaining);
+    else omniCancelKeywordRun(run);
+  },delay);
 }
 function onScriptOutput(content) {
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
   let run = omniKeywordRun;
-  const text=String(content || '');
-  // A replaced response cannot inherit an abandoned run. Chunk activity owns
-  // idle cleanup only; this timer never infers successful completion.
-  if (run?.fired && run.text && !text.startsWith(run.text)) {omniCancelKeywordRun(run);run=null;}
+  if(run && run.lineMode!==!!t.backendSettings?.card?.stream_lines_enabled) {omniCancelKeywordRun(run);run=null;}
   if (!run) omniKeywordRun = run = omniNewKeywordRun();
-  run.text=text;
-  clearTimeout(run.expiry);
-  run.expiry=setTimeout(()=>omniCancelKeywordRun(run),30000);
-  if (run.fired || run.cancelled) return content;
-  if (!run.timer && run.text !== run.checked) run.timer = setTimeout(() => {
+  run.text=String(content || '');run.activeAt=Date.now();
+  if(run.cancelled || run.committing)return content;
+  omniArmKeywordExpiry(run);
+  if (!run.timer) run.timer = setTimeout(() => {
     run.timer = 0;
-    if (run !== omniKeywordRun || run.cancelled || run.fired || run.text === run.checked) return;
+    if (run !== omniKeywordRun || run.cancelled || run.committing || run.text === run.checked) return;
+    if(run.lineMode) {run.checked=run.text;omniScanLineRun(run);return;}
+    // Full-prefix comparisons belong to the scan window, never each chunk.
+    if(run.fired && !run.text.startsWith(run.checked)) {
+      const text=run.text,activeAt=run.activeAt;
+      omniCancelKeywordRun(run);
+      omniKeywordRun=run=omniNewKeywordRun();run.text=text;run.activeAt=activeAt;
+      omniArmKeywordExpiry(run);
+    }
     run.checked = run.text;
-    const hit = omniSignal(run.text);
+    if(run.fired)return;
+    const hit = run.scanner.scan(run.text,parsedStreamKeywords(t.backendSettings?.card || {}));
     if (!hit || messageBodyChars(hit.text) <= 30) return;
-    run.fired = true;
+    run.fired = true;run.assistantText=hit.text;
     run.task = omniStartKeywordJob(run, hit.text).catch(error => {y('error','stream.start',String(error));return null;});
   }, 1000);
   return content;
@@ -59,7 +77,7 @@ function omniKeywordScope(scope) {
   // Exact message identity is checked again by the committed-output path.
   if(scope.characterId!==target.scope.characterId || scope.chatId!==target.scope.chatId)omniCancelKeywordRun(run);
 }
-async function omniStartKeywordJob(run, text) {
+async function omniStartKeywordJob(run, text, batch) {
   if(!run.target)run.target=omniCaptureKeywordTarget().catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   const target = await run.target;
   if (!target || run.cancelled || t.unloading || !(await ve()).enabled || t.backendSettings?.card?.power === false) return null;
@@ -71,19 +89,22 @@ async function omniStartKeywordJob(run, text) {
     character_id:scope.characterId, character_name:scope.characterName || char.name || '',
     chat_id:scope.chatId, chat_name:scope.chatName || '', char_index:scope.charIndex, chat_index:scope.chatIndex,
     host_message_id:id, message_index:index, message_role:role, content_hash:ye(text), assistant_text:text,
+    ...(batch?{stream_line_start:batch.start,stream_line_end:batch.end}:{}),
     lorebook:lore, recent_messages:Xe({...scope.chat,message:scope.chat.message.slice(0,index)},re(card.include_max,0,20,0),!!card.userchat),
     character_description:char.description || char.desc || '', persona_description:char.personality || ''
   }});
   if (!result?.accepted || !result.job_id) return null;
-  run.jobId = result.job_id;
-  run.payload = {job_id:run.jobId,stream_id:run.streamId,character_id:scope.characterId,chat_id:scope.chatId,host_message_id:id};
-  if (run.cancelled) await K('/v1/jobs/commit-output',{method:'POST',body:{...run.payload,cancel:true}});
+  const owner=batch || run;
+  owner.jobId = result.job_id;
+  owner.payload = {job_id:owner.jobId,stream_id:run.streamId,character_id:scope.characterId,chat_id:scope.chatId,host_message_id:id};
+  if (run.cancelled) await K('/v1/jobs/commit-output',{method:'POST',body:{...owner.payload,cancel:true}});
   return target;
 }
 function omniCancelKeywordRun(run = omniKeywordRun) {
   if (!run || run.committed) return;
   run.cancelled = true; clearTimeout(run.timer); clearTimeout(run.expiry);
   if (run.payload) void K('/v1/jobs/commit-output',{method:'POST',body:{...run.payload,cancel:true}}).catch(()=>{});
+  for(const batch of run.batches)if(batch.payload)void K('/v1/jobs/commit-output',{method:'POST',body:{...batch.payload,cancel:true}}).catch(()=>{});
   if (omniKeywordRun === run) omniKeywordRun = null;
 }
 function omniCommitStreamReply(arg, msg, text) {
@@ -91,8 +112,14 @@ function omniCommitStreamReply(arg, msg, text) {
   const id=String(msg.chatId || msg.id || ''), key=JSON.stringify([characterId,chatId,id,ye(globalThis.__INLAY_STREAM_KW__.analysisBody(text))]);
   if (!id || !characterId || !chatId) return false;
   if (omniKeywordSeen.has(key)) return true;
+  if(omniKeywordRun?.lineMode && !t.backendSettings?.card?.stream_lines_enabled)omniCancelKeywordRun();
+  if(t.backendSettings?.card?.stream_lines_enabled) return omniCommitLineReply(arg,msg,text,key);
   let run = omniKeywordRun;
   if(run?.identity && (run.identity.scope.characterId!==characterId || run.identity.scope.chatId!==chatId || run.identity.id!==id))return false;
+  if(run?.fired && run.checked && !text.startsWith(run.checked) &&
+    !globalThis.__INLAY_STREAM_KW__.analysisBody(text).startsWith(run.assistantText)) {
+    omniCancelKeywordRun(run);run=null;
+  }
   stopStreamKeywordTick();
   if (!run?.fired || (run.targetResolved && !run.identity)) {
     const hit = omniSignal(text);
@@ -103,7 +130,7 @@ function omniCommitStreamReply(arg, msg, text) {
       if(scope.characterId!==characterId || scope.chatId!==chatId)return null;
       return omniKeywordIdentity({...scope,chat:arg.chat},arg.messageIndex);
     })();
-    omniKeywordRun=run=omniNewKeywordRun(target);run.fired=true;
+    omniKeywordRun=run=omniNewKeywordRun(target);run.fired=true;run.assistantText=hit.text;
     run.task=omniStartKeywordJob(run,hit.text).catch(error=>{y('error','stream.start',String(error));return null;});
   }
   const selected=run;

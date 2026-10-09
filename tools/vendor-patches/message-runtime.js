@@ -64,13 +64,23 @@ async function omniBindModuleButton(node) {
       if(token) {
         const scope=await Z({useOverride:false}),index=Number(token.split(':')[0]);
         const row=(scope.chat?.message || scope.chat?.messages || [])[index];
-        if(!row || (row.role==='user'&&!t.backendSettings?.card?.userchat) || omniMessageToken(index,String(row.data ?? row.saying ?? ''))!==token)return null;
+        if(!row || (row.role!=='char' && !(row.role==='user'&&t.backendSettings?.card?.userchat)))return null;
+        const currentToken=omniMessageToken(index,String(row.data ?? row.saying ?? ''));
+        // Old mounted controls still carry a body token; new controls compute it on click only.
+        if(token.includes(':') && currentToken!==token)return null;
         const old=Number(await footer.getAttribute('x-omni-footer'));
         const key=old>0?old:++omniFooterSerial;
         if(!old)await footer.setAttribute('x-omni-footer',String(key));
+        if(!token.includes(':')) {
+          // The host wrapper supplies identity without hashing prose on every render.
+          const hostId=omniMessageId(row).replace(/[\x00-\x1f\x7f"\\]/g,c=>'\\'+c.charCodeAt(0).toString(16)+' ');
+          const live=await (t.hostDoc || omniFooterDoc).querySelector('.risu-chat[data-chat-index="'+index+'"][data-chat-id="'+hostId+'"] [x-omni-footer="'+key+'"]');
+          if(!live)return null;
+          await omniRelease(live);
+        }
         // A target is allocated on interaction, not for every displayed message.
         for(const [id,target] of omniFooterTargets)if(!target._floatPin && id!==key)omniFooterTargets.delete(id);
-        omniFooterTargets.set(key,{sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,charIndex:scope.charIndex,chatIndex:scope.chatIndex,index,hostId:omniMessageId(row),token});
+        omniFooterTargets.set(key,{sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,charIndex:scope.charIndex,chatIndex:scope.chatIndex,index,hostId:omniMessageId(row),token:currentToken});
         return {kind,index:key,node};
       }
       footer=await footer.getParent();

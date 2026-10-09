@@ -271,6 +271,10 @@ export interface CardSettings {
   stream_keywords_enabled: boolean;
   /** Comma-separated stream needles (≥3 chars). Empty = off even if the toggle is on. */
   stream_keywords: string;
+  stream_lines_enabled: boolean;
+  stream_lines_count: number;
+  stream_lines_image_min: number;
+  stream_lines_image_max: number;
   /** Speak the character line after bake. Stored under existing onx_* card blob. */
   tts_on?: boolean;
   /** speechSynthesis rate, typically 0.5–2. */
@@ -573,6 +577,8 @@ export interface JobRequest {
   stream_id?: string;
   defer_attachment?: boolean;
   analysis_lines?: boolean;
+  stream_line_start?: number;
+  stream_line_end?: number;
   session_id: string;
   character_id?: string;
   character_name?: string;

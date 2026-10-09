@@ -136,6 +136,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-llm-tag-cal', 'llm_tag_cal', false],
     ['nx-preprocess', 'preprocessing', false],
     ['nx-stream-keywords-on', 'stream_keywords_enabled', false],
+    ['nx-stream-lines-on', 'stream_lines_enabled', false],
     ['nx-omni-helper', 'omni_helper_prompt', false],
     ['nx-auto-gen-char-limit-on', 'auto_gen_char_limit_enabled', false],
   ] as const) {
@@ -157,6 +158,12 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     }
   }
   const keywords = out.querySelector('#nx-stream-keywords');
+  const streamCount=out.querySelector<HTMLInputElement>('#nx-stream-lines-count');
+  if(card && streamCount)streamCount.setAttribute('value',String(card.stream_lines_count ?? 30));
+  for(const [id,key,fallback] of [['nx-stream-lines-image-min','stream_lines_image_min',0],['nx-stream-lines-image-max','stream_lines_image_max',2]] as const) {
+    const input=out.querySelector<HTMLInputElement>('#'+id);
+    if(card && input)input.setAttribute('value',String(card[key] ?? fallback));
+  }
   for (const id of ['nx-inline-chat', 'nx-persist-chat']) {
     const input = out.querySelector<HTMLInputElement>('#' + id);
     if (input) { input.setAttribute('checked', ''); input.setAttribute('disabled', ''); }

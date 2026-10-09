@@ -116,7 +116,7 @@ export function rebuildMessageRuntime(source) {
   assertCommittedReplyRuntime(out);
   for (const name of ['stopStreamKeywordTick', 'parsedStreamKeywords', 'tickStreamKeywords', 'ensureStreamKeywordTick']) fn('  function '+name+'(', '');
   for (const name of ['runAutoGenFromDom', 'scheduleAutoGenOnReply']) fn('  async function '+name+'(', '');
-  fn('  async function onScriptOutput(', read('stream-keyword-runtime.js'));
+  fn('  async function onScriptOutput(', read('stream-keyword-runtime.js')+'\n'+read('stream-lines-runtime.js'));
   once('            <label class="toggle-row" data-nx-help-id="nx-llm-anchor"><input type="checkbox" id="nx-llm-anchor" ${i.llm_anchor_percent ? "checked" : ""}><span>LLM 읽기 위치 배치</span></label>', '');
   once('llm_anchor_percent: ee("nx-llm-anchor"),', 'llm_anchor_percent: false,');
   return protectSavedFrames(retirePercentPlacement(out));

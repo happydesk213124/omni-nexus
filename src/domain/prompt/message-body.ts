@@ -1,16 +1,39 @@
 /** Analysis projection. Keep original nonempty-line indices for durable placement. */
-export function projectMessageBody(value: unknown, keepMarker = false): { text: string; sourceLines: number[]; ranges: Array<[number, number]> } {
+export function projectMessageBody(value: unknown, keepMarker = false, preserveUnclosedThoughts = true): { text: string; sourceLines: number[]; ranges: Array<[number, number]> } {
   const raw = String(value ?? '').replace(/\r\n/g, '\n');
   const token = /<\/?(?:thoughts|think)\b[^>]*>|\[\[imgstart\]\]|\[\[@inray(?:spinner)?::[^\]]+\]\]|\{\{#asset::inxbake_[^}]+\}\}/gi;
+  const matches = [...raw.matchAll(token)];
+  const closedThoughtTags = new Set<number>();
+  if (preserveUnclosedThoughts) {
+    // A completed reply can omit its closing tag; hide only paired thought spans.
+    const openings: Array<{ index: number; name: string }> = [];
+    for (const match of matches) {
+      const thought = /^<(\/)?(thoughts|think)\b/i.exec(match[0]);
+      if (!thought) continue;
+      const name = thought[2]!.toLowerCase();
+      if (!thought[1]) openings.push({ index: match.index!, name });
+      else {
+        for (let i = openings.length - 1; i >= 0; i--) {
+          if (openings[i]!.name !== name) continue;
+          closedThoughtTags.add(openings[i]!.index);
+          closedThoughtTags.add(match.index!);
+          openings.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
   let depth = 0, start = 0, masked = '';
   const blank = (s: string) => s.replace(/[^\n]/g, ' ');
-  for (const match of raw.matchAll(token)) {
+  for (const match of matches) {
     const i = match.index!;
     const piece = raw.slice(start, i);
     masked += depth ? blank(piece) : piece;
     const tag = match[0];
     masked += keepMarker && !depth && tag.toLowerCase() === '[[imgstart]]' ? tag : blank(tag);
-    if (tag.startsWith('<')) depth = tag.startsWith('</') ? Math.max(0, depth - 1) : depth + 1;
+    if (tag.startsWith('<') && (!preserveUnclosedThoughts || closedThoughtTags.has(i))) {
+      depth = tag.startsWith('</') ? Math.max(0, depth - 1) : depth + 1;
+    }
     start = i + tag.length;
   }
   let tail = raw.slice(start);
@@ -51,10 +74,10 @@ export function insertAtAnalysisLine(value: unknown, line: number, side: 'before
 
 export const analysisBody = (value: unknown): string => projectMessageBody(value).text;
 
-/** Preserve the marker until matching; thought contents can never be signals. */
+/** A live thought block may still close later, so its contents cannot be signals. */
 export function findStreamSignal(value: unknown, keywords: readonly string[]): { text: string; signal: string } | null {
   const marker = '[[imgstart]]';
-  const body = projectMessageBody(value, true).text;
+  const body = projectMessageBody(value, true, false).text;
   const lower = body.toLowerCase();
   let at = lower.indexOf(marker.toLowerCase()), signal = '[[imgstart]]';
   for (const key of keywords) {

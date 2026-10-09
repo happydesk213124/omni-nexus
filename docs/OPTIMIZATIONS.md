@@ -220,3 +220,37 @@ sections a user dump can be read against, none of them behaviour:
 - `main_thread` — a 250ms timer that records ticks arriving ≥200ms late:
   `stalls`, `stall_max_ms`, `stall_total_ms` and the last 24 with heap size.
   The iframe shares the host's main thread, so this sees host freezes too.
+
+## Streaming keyword and message-control work (2026-10-09)
+
+`node tools/bench-stream-signal.mjs` compares the previous full-body detector
+against the incremental scanner over 240 growing snapshots, ending at 125,280
+characters. In the local Node benchmark, median time across seven warmed runs
+was 100.27ms before and 20.95ms after. Full projections without a signal fell
+from 240 to zero; projection still runs to confirm an actual candidate.
+The prefilter processed 125,280 characters instead of 15,096,240 cumulative
+characters. Timings vary by machine and exclude Risu rendering and iframe RPC.
+
+The runtime regression fixture also feeds 10,000 incoming callbacks: timer
+allocations in the first scan window fell from 10,001 to two. Idle expiry is
+based on the most recent callback; it does not infer response completion.
+Split keywords/tags, replacement before the scan window, final-output
+replacement, and paid-image cancellation remain covered by existing/extended
+tests. Display controls now read only the role and emit the message index;
+body hashing and exact message-ID checks happen on interaction.
+
+Risu's own per-output callback round trip and display regex processing remain
+unchanged. These are source/fixture measurements, not an installed-host lag
+measurement.
+
+Optional line-based pre-generation uses the same incremental lexer to collect
+completed nonempty prose lines inside the one-second scan window. Incoming
+callbacks still only replace the latest snapshot. Reserved prefixes are sent
+once per batch; thoughts and status after the first marker/keyword are excluded.
+Taggers may overlap while sibling NAI requests queue by API key. A cancelled
+queued caller releases its runtime without bypassing a request already running.
+Message writes and gallery polling start only after the committed-output event;
+one shared timer observes the group until its jobs finish or are pruned.
+This overlaps network work, not JavaScript calculations on a Worker. Repeated
+cumulative prefixes increase tagging token costs; it does not promise a lag-free
+installed Risu session.

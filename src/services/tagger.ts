@@ -1,4 +1,5 @@
 import { analysisBody } from '../domain/prompt/message-body';
+import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-lines';
 import { TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 import { comicNaturalInstruction } from '../domain/comic/natural';
@@ -108,6 +109,7 @@ export async function hydrateTaggerCharUser(request: TaggerArgs): Promise<void> 
 /** Optional switches for the main scene tagger call. */
 export interface BuildTaggerOptions {
   signal?: AbortSignal;
+  lineImageLimits?: {min:number;max:number};
   /**
    * When true, do not inject the NovelAI asset tag soup.
    * Used after a successful character-looks pre-pass already consumed assets
@@ -476,8 +478,9 @@ export async function buildTaggerMessages(
 
   const naturalMode = normalizeNaturalBaseMode(card.natural_base);
   const charMax = characterMaxLimit(card);
-  const imageMin = Math.max(1, Number(card.image_min ?? 1) || 1);
-  const imageMax = Math.max(imageMin, Number(card.image_max ?? 3) || 3);
+  const lineLimits=streamLineRange(request) ? opts.lineImageLimits ?? streamLineImageLimits(card) : null;
+  const imageMin = lineLimits?.min ?? Math.max(1, Number(card.image_min ?? 1) || 1);
+  const imageMax = lineLimits?.max ?? Math.max(imageMin, Number(card.image_max ?? 3) || 3);
   const placement = [
     'LINE: `line` is the matching message L#; image goes immediately before it. `paragraph` is 0-based shot order, NOT line. Example: third shot matching L7 uses paragraph:2,line:7; never assign line=1,2,3 by shot order.',
     imageMin === imageMax
@@ -549,7 +552,7 @@ export async function buildTaggerMessages(
     });
   }
 
-  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), TAGGER_MESSAGE_LIMIT);
+  const assistant = cleanText(analysisBody(stripBakeTokens(request.assistant_text)), streamLineRange(request) ? Number.MAX_SAFE_INTEGER : TAGGER_MESSAGE_LIMIT);
   const sourceSessionIds = Array.isArray(request.source_session_ids)
     ? request.source_session_ids.map((s) => cleanText(s, 200)).filter(Boolean)
     : [];
@@ -596,6 +599,8 @@ export async function buildTaggerMessages(
   if (assistant) chunks.push(numberMessageLinesForTagger(assistant));
   const userContent = chunks.length ? chunks.join('\n\n') : numberMessageLinesForTagger(assistant);
   if (!userContent) throw new Error('태깅할 메시지 텍스트가 없습니다.');
+  const range=streamLineRange(request);
+  if(range) messages.push({role:'system',content:`STREAM LINE BATCH: choose shots ONLY from L${range.start} through L${range.end}, inclusive. Keep the global L numbers exactly; never restart at L1. Earlier lines are context only and have already been requested. Do not select or illustrate them again. Produce ${imageMin} to ${imageMax} shots in this new range only; these limits override any general image count in other instructions.${imageMin===0 ? ' If this range has no worthwhile visual moment, return a valid JSON object with scenes: [] instead of inventing a shot. Zero shots is a successful skip.' : ''}`});
   messages.push({ role: 'user', content: userContent });
   return messages;
 }
