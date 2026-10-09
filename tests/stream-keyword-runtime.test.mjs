@@ -8,24 +8,27 @@ import {parseStreamKeywords} from '../.test-build/stream-keywords.mjs';
 import {createStreamSignalScanner} from '../.test-build/stream-signal.mjs';
 import {createStreamLineBatcher} from '../.test-build/stream-lines.mjs';
 const source=readFileSync('tools/vendor-patches/stream-keyword-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-lines-runtime.js','utf8');
+const replySource=readFileSync('tools/vendor-patches/reply-runtime.js','utf8');
 const tick=()=>new Promise(r=>setImmediate(r));
 function fixture(card={}) {
   const prose='First narrative paragraph that is long enough.\nSecond spoken dialogue.';
   const msg={role:'char',chatId:'m',data:prose},chat={id:'room',isStreaming:true,message:[{role:'user',data:'previous'},msg]};
   const scope={characterId:'c',chatId:'room',charIndex:0,chatIndex:0,sessionId:'s',chat};
   const t={backendSettings:{card:{power:true,stream_keywords_enabled:true,stream_keywords:'RP-Guide',...card}}};
-  const calls=[],polls=[],galleries=[],jobStates=new Map(),timers=new Map();let scans=0,seq=0,reads=0,now=Date.now(),timerWrites=0;
+  const calls=[],polls=[],galleries=[],autoGenerations=[],jobStates=new Map(),timers=new Map();let scans=0,seq=0,reads=0,now=Date.now(),timerWrites=0;
   const context={t,console,Promise,Date:class extends Date {static now(){return now;}},Math,setTimeout:(fn,ms)=>{timerWrites++;timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),
     clearInterval:id=>timers.delete(id),ce:async id=>galleries.push(id),onSelectionChanged:async()=>{},Se:async()=>{},
     __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,
       createStreamSignalScanner:()=>{const scanner=createStreamSignalScanner();return {scan:(...args)=>{scans++;return scanner.scan(...args);}};}},
-    Z:async()=>{reads++;return scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0},
+    Z:async()=>{reads++;return scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},
+    omniStreamOutput:()=>{},scheduleHashRelinkAfterReply:()=>{},D:async(_name,read)=>read(),w:value=>String(value),
+    Be:async(scope,text,force)=>autoGenerations.push({scope,text,force}),
     isSelectedCharRole:role=>role==='char',messageBodyChars:s=>s.length,ve:async()=>({enabled:true}),la:async()=>[],
     re:(v,_a,_b,f)=>v??f,Xe:chat=>chat.message,ye:s=>'hash:'+s,y:()=>{},ua:(...args)=>polls.push(args),
     K:async(path,options)=>{calls.push({path,body:options.body});return path.endsWith('/create')?{accepted:true,job_id:'j'+calls.filter(c=>c.path.endsWith('/create')).length}:options.method==='GET'?{ok:true,state:jobStates.get(path.split('/').at(-1)) || 'done',progress:{shot_done:1}}:{ok:true};}};
-  runInNewContext(source+';this.api={onScriptOutput,omniCommitStreamReply,omniKeywordScope,omniCancelKeywordRun};',context);
+  runInNewContext(source+'\n'+replySource+';this.api={onScriptOutput,onChatOutput,omniCommitStreamReply,omniKeywordScope,omniCancelKeywordRun};',context);
   const fire=async(ms=1000,elapsed=ms)=>{now+=elapsed;for(const [id,row]of [...timers])if(row.ms===ms){timers.delete(id);row.fn();}await tick();};
-  return {...context.api,t,scope,msg,prose,calls,polls,galleries,jobStates,timers,fire,advance:ms=>now+=ms,scans:()=>scans,reads:()=>reads,timerWrites:()=>timerWrites,arg:()=>({char:{chaId:'c'},chat,messageIndex:1,characterIndex:0,chatIndex:0})};
+  return {...context.api,t,scope,msg,prose,calls,polls,galleries,autoGenerations,jobStates,timers,fire,advance:ms=>now+=ms,scans:()=>scans,reads:()=>reads,timerWrites:()=>timerWrites,arg:()=>({char:{chaId:'c'},chat,messageIndex:1,characterIndex:0,chatIndex:0})};
 }
 
 test('incoming chunks allocate only one scan timer and one idle timer per window',async()=>{
@@ -162,14 +165,44 @@ test('final 80-percent tails create one additional global range, while smaller t
   }
 });
 
-test('an entire response below 80 percent is handled without falling through to ordinary auto-generation',async()=>{
-  for(const [size,total] of [[10,7],[30,23]]) {
+test('an entire response below 80 percent yields to ordinary reply auto-generation',async()=>{
+  for(const [size,total] of [[10,7],[30,23],[50,20]]) {
     const f=fixture({stream_lines_enabled:true,stream_lines_count:size,auto_gen_on_reply:true});
     const text=Array.from({length:total},(_,i)=>`Final narrative line ${i+1}, describing a scene.`).join('\n');
     f.msg.data=text;f.scope.chat.isStreaming=false;
-    assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,text),true,'handled=true prevents the committed listener from creating a normal whole-reply job');
+    assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,text),false,'no line request leaves the ordinary committed listener in control');
     await tick();assert.equal(f.calls.length,0);
-    assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,text),true);await tick();assert.equal(f.calls.length,0);
+    assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,text),false);await tick();assert.equal(f.calls.length,0);
+  }
+});
+
+test('50-line mode with a 20-line reply follows the actual auto-generation toggle and character limit once',async()=>{
+  for(const [enabled,limited,expected] of [[true,false,1],[false,false,0],[true,true,0]]) {
+    const f=fixture({stream_lines_enabled:true,stream_lines_count:50,auto_gen_on_reply:enabled,auto_gen_char_limit_enabled:limited,auto_gen_char_limit:2000,image_min:4,image_max:4});
+    const text=Array.from({length:20},(_,i)=>`Final narrative line ${i+1}, describing a scene.`).join('\n');
+    f.onScriptOutput(text+'\n');await f.fire();
+    assert.equal(f.calls.length,0,'no line request while streaming');
+    f.msg.data=text;f.scope.chat.isStreaming=false;
+    await f.onChatOutput(f.arg());await tick();
+    await f.onChatOutput(f.arg());await tick();
+    assert.equal(f.autoGenerations.length,expected,'real committed listener preserves ON/OFF, character threshold and dedupe');
+    assert.equal(f.calls.filter(c=>c.path.endsWith('/create') || c.path.endsWith('/commit-output')).length,0);
+    if(expected){assert.equal(f.autoGenerations[0].text,text);assert.equal(f.autoGenerations[0].force,false);}
+    assert.equal(f.t.backendSettings.card.image_max,4,'ordinary generation keeps its general image budget');
+  }
+});
+
+test('a full or qualifying final line batch blocks ordinary auto-generation even with a zero image budget',async()=>{
+  for(const [total,stream,max] of [[40,false,2],[70,true,2],[50,true,0]]) {
+    const f=fixture({stream_lines_enabled:true,stream_lines_count:50,stream_lines_image_min:0,stream_lines_image_max:max,auto_gen_on_reply:true});
+    const text=Array.from({length:total},(_,i)=>`Final narrative line ${i+1}, describing a scene.`).join('\n');
+    if(stream){f.onScriptOutput(text+'\n');await f.fire();}
+    f.msg.data=text;f.scope.chat.isStreaming=false;
+    await f.onChatOutput(f.arg());await tick();
+    await f.onChatOutput(f.arg());await tick();
+    assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,1);
+    assert.equal(f.calls.filter(c=>c.path.endsWith('/commit-output') && !c.body.cancel).length,1);
+    assert.equal(f.autoGenerations.length,0,'a line tagging request already owns the reply regardless of its image count');
   }
 });
 test('line batches cancel paid work on replacement and never reuse its ranges',async()=>{

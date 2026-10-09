@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.5';
+const PLUGIN_VERSION = '1.1.5.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -705,7 +705,7 @@ const VENDOR_ASSET_NAI_HELP_PATCH =
     "nx-llm-reverse-bar": { title: "역바", body: "안함=끄기. 비망록=Freya 역할 고정. 권위=가짜 슈퍼바이저 승인 방식(요정 역할 + 승인 앞말). 문구는 프롬프트 탭에서 고칩니다." },
     "nx-llm-tag-cal": { title: "태칼", body: "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다." },
     "nx-stream-keywords": { title: "스트리밍 키워드", body: "토글과 Power가 켜져 있고, 칸에 3글자 이상 단어가 있을 때 AI 답이 나오는 동안 그 단어가 들어가면(대소문자 무시, 부분 일치) 최신 말풍선으로 한 번 생성합니다. 쉼표로 여러 개. 비우거나 토글 OFF면 꺼짐. 「응답 후 자동 생성」·발동과 별개입니다. 이미 생성 중이면 안 돕니다." },
-    "nx-stream-lines": { title: "줄 단위 선행생성(beta)", body: "기본 OFF. 켜면 완성된 본문 L줄이 설정한 수만큼 쌓일 때마다 태깅·이미지 생성을 미리 시작합니다. 기본 30줄, 2~100줄 설정. 아직 베타 기능입니다. 생각 내용과 빈 줄은 세지 않습니다. 앞 구간은 참고하고 새 구간에서만 장면을 고릅니다. 이미지·스피너는 응답 완료 후 붙입니다. 마지막 남은 구간이 설정 줄 수의 80% 이상이면 응답 완료 후 추가 생성하고, 미만이면 생략합니다. 10줄 기준은 8줄 이상, 30줄 기준은 24줄 이상이며 소수점은 올림합니다. 앞에서 생성한 묶음이 없고 전체 답변이 짧을 때도 같은 기준을 적용합니다. 옆의 이미지 개수는 줄 구간 전용 최소~최대 범위이며 기본 0~2개, 0~20개까지 설정할 수 있습니다. 0~1개면 장면이 없을 때 생략하고 최대 1개, 1~2개면 최소 1개·최대 2개를 고릅니다. 전체가 짧아 완료 후 생성하는 경우에도 이 범위를 씁니다. 일반 이미지 개수 설정은 따로 유지됩니다. 태깅 요청·토큰·이미지 비용이 늘어납니다. 키워드와 함께 켜면 줄 단위 생성을 우선합니다." },
+    "nx-stream-lines": { title: "줄 단위 선행생성(beta)", body: "기본 OFF. 켜면 완성된 본문 L줄이 설정한 수만큼 쌓일 때마다 태깅·이미지 생성을 미리 시작합니다. 기본 30줄, 2~100줄 설정. 아직 베타 기능입니다. 생각 내용과 빈 줄은 세지 않습니다. 앞 구간은 참고하고 새 구간에서만 장면을 고릅니다. 이미지·스피너는 응답 완료 후 붙입니다. 마지막 남은 구간이 설정 줄 수의 80% 이상이면 응답 완료 후 추가 생성하고, 미만이면 생략합니다. 10줄 기준은 8줄 이상, 30줄 기준은 24줄 이상이며 소수점은 올림합니다. 앞에서 생성한 묶음이 없고 전체 답변이 짧을 때도 같은 기준을 적용합니다. 옆의 이미지 개수는 줄 구간 전용 최소~최대 범위이며 기본 0~2개, 0~20개까지 설정할 수 있습니다. 0~1개면 장면이 없을 때 생략하고 최대 1개, 1~2개면 최소 1개·최대 2개를 고릅니다. 마지막 구간이 80% 기준을 만족해 생성하는 경우에도 이 범위를 씁니다. 줄 단위 태깅을 한 번도 요청하지 못한 짧은 응답은 기존 응답 후 자동생성의 ON/OFF와 글자 수 조건을 따르고 일반 이미지 개수 설정으로 생성합니다. 이미 줄 단위 태깅을 요청했다면 일반 자동생성은 추가하지 않습니다. 태깅 요청·토큰·이미지 비용이 늘어납니다. 키워드와 함께 켜면 줄 단위 생성을 우선합니다." },
     "nx-fixed-prompt-prefix": { title: "선행 고정 프롬프트", body: "값이 있으면 사람 태그 다음·스타일 프리셋/장면 앞에 항상 붙습니다. 프리셋이 바뀌어도 유지됩니다." },
     "nx-fixed-prompt-suffix": { title: "후행 고정 프롬프트", body: "값이 있으면 장면·큐레이션 뒤·NAI 품질 태그 앞에 항상 붙습니다. JSON으로 내보내/가져오기 할 수 있습니다." },
 `;
@@ -976,6 +976,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.5.1 · 짧은 응답의 자동생성 복구</strong>
+          <div class="muted" style="margin-top:8px">2026.10.09 · 줄 단위 선행생성이 한 번도 요청되지 않은 짧은 응답은 기존 응답 후 자동생성 설정을 따릅니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>예를 들어 50줄 설정에 20줄 응답이면, 응답 후 자동생성이 ON이고 기존 글자 수 조건을 만족할 때 일반 이미지 개수 설정으로 생성합니다. OFF이면 생략합니다.</li>
+            <li>줄 단위 태깅을 이미 요청했다면 일반 자동생성은 추가로 실행하지 않습니다. 마지막 구간의 80% 기준과 기본 OFF·30줄마다 0~2개는 유지합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.5 · 줄 단위 선행생성(beta)과 스트리밍 검사 개선</strong>
@@ -14873,7 +14881,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.5 · 줄 단위 선행생성(beta)을 추가했습니다. 기본 OFF·30줄마다 0~2개이며, 스트리밍 중 먼저 생성하고 응답 완료 후 이미지를 붙입니다. 마지막 구간은 설정 줄 수의 80% 이상일 때 처리합니다. 키워드 검사와 메시지 버튼 계산도 줄였습니다."
+    body: "1.1.5.1 · 줄 단위 선행생성이 한 번도 요청되지 않은 짧은 응답은 기존 응답 후 자동생성의 ON/OFF·글자 수 조건·일반 이미지 개수 설정을 따릅니다. 줄 단위 태깅을 이미 요청했다면 중복 자동생성은 실행하지 않습니다. 기본 OFF·30줄마다 0~2개와 마지막 구간의 80% 기준은 유지합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
