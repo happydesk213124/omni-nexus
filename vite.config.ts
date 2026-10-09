@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.5.2';
+const PLUGIN_VERSION = '1.1.5.3';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -976,6 +976,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.5.3 · PocketRisu 플로팅 뷰어 오류 우회</strong>
+          <div class="muted" style="margin-top:8px">2026.10.10 · 플로팅 뷰어의 글자 변경 감시를 제거하여 PocketRisu의 화면 변경 감시 오류를 피합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>PocketRisu v1.13.0에서 글자 변경을 처리할 때 발생할 수 있는 getAttribute 오류를 우회합니다.</li>
+            <li>이미지 추가·교체와 이미지 주소 변경 감시, 스크롤에 따른 뷰어 갱신은 유지합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.5.2 · 선행 이미지 일괄 삽입과 진행 토스트 개선</strong>
@@ -14891,7 +14899,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.5.2 · 줄 단위 선행생성은 응답과 모든 구간 태깅이 끝나면 완성된 이미지와 남은 스피너를 한 번에 붙입니다. 이후 이미지는 base64 미리보기로 표시하고 전체 완료 후 최종 저장하여 본문 변경은 최대 2번입니다. 토스트에서 전체 태깅·이미지 완료 수와 대기·최종 반영·일부 실패 상태를 확인할 수 있습니다. 기본 OFF·30줄마다 0~2개와 마지막 구간의 80% 기준은 유지합니다."
+    body: "1.1.5.3 · 플로팅 뷰어의 글자 변경 감시를 제거하여 PocketRisu v1.13.0에서 발생할 수 있는 getAttribute 오류를 우회합니다. 이미지 추가·교체와 이미지 주소 변경 감시, 스크롤에 따른 뷰어 갱신은 유지합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

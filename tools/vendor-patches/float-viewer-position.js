@@ -46,7 +46,8 @@ async function nxFloatWatchBubbles(rows, refs) {
       nxFloatScheduleScan();
     });
     try {
-      await observer.observe(row.node, {childList:true,subtree:true,characterData:true,attributes:true,
+      // PocketRisu wraps mutation targets as elements, which fails for text nodes.
+      await observer.observe(row.node, {childList:true,subtree:true,attributes:true,
         attributeFilter:['src','style','class','data-inlay-inline-shot','x-inlay-inline-shot']});
       nxFloatBubbleWatches.set(row.slot, {observer, node:refs.keep(row.node)});
     } catch (error) { await observer.disconnect(); await omniRelease(observer); throw error; }
