@@ -4,6 +4,8 @@ import { analysisBody } from '../domain/prompt/message-body';
 import { streamLineRange } from '../domain/prompt/stream-lines';
 import { stripBakeTokens } from '../domain/chat-bake';
 import { getConfig, jobRunMeta, jobLlmControllers } from './context';
+import { StreamLineAttachments } from './stream-line-attachments';
+import { jobChatTarget } from './chat-bake';
 
 type Pending = {
   request: JobRequest;
@@ -18,6 +20,7 @@ type Pending = {
   cancelledReady: Promise<void>;
   resolveCancelled: () => void;
   imageQueue: Map<string, Promise<void>>;
+  lineAttachments?: StreamLineAttachments;
 };
 const pending = new Map<string, Pending>();
 
@@ -31,13 +34,15 @@ export function registerStreamJob(id: string, request: JobRequest): void {
     row.request.host_message_id===request.host_message_id && row.request.character_id===request.character_id &&
     row.request.chat_id===request.chat_id && row.request.session_id===request.session_id);
   const siblings=sibling?.siblings ?? new Set<string>();siblings.add(id);
+  const lineAttachments=streamLineRange(request) ? sibling?.lineAttachments ?? new StreamLineAttachments() : undefined;
+  lineAttachments?.add(id);
   pending.set(id, { request, committed: false, cancelled: false, ready, resolve, siblings,
-    closed:sibling?.closed ?? new Set(), cancelledReady, resolveCancelled, imageQueue:sibling?.imageQueue ?? new Map() });
+    closed:sibling?.closed ?? new Set(), cancelledReady, resolveCancelled, imageQueue:sibling?.imageQueue ?? new Map(),lineAttachments });
 }
 export function streamJob(id: string): Pending | undefined { return pending.get(id); }
 export function closeStreamJob(id: string): void {
   const row=pending.get(id);
-  row?.closed.add(id);row?.resolve();pending.delete(id);
+  row?.lineAttachments?.settle(id);row?.closed.add(id);row?.resolve();pending.delete(id);
 }
 /** Taggers overlap; paid generation by sibling jobs shares one slot per API key. */
 export function runStreamImageTask<T>(id:string,key:string,work:()=>Promise<T>):Promise<T> {
@@ -57,6 +62,7 @@ export function cancelStreamJob(id: string): void {
   const row = pending.get(id);
   if (row) {
     row.cancelled = true; row.resolve(); row.resolveCancelled();
+    row.lineAttachments?.releaseTag(id);
     const meta = jobRunMeta.get(id);
     if (meta) { meta.cancelRequested = true; meta.userStop = true; }
     jobLlmControllers.get(id)?.abort();
@@ -102,6 +108,8 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
   if (row.committing) return row.committing;
   if (row.committed) return { ok: true, committed: true, job_id: id, job_ids: ids };
   row.committing = (async () => {
+    // Generation may already be running; no placement until every tag plan exists.
+    await row.lineAttachments?.waitTags(ids);
     const index = Number(input.message_index);
     const host = risuHost();
     const character = await host?.getCharacterFromIndex?.(Number(request.char_index));
@@ -126,6 +134,11 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
       if(meta){meta.messageIndex=index;meta.saveContentHash=row.request.content_hash;meta.saveAssistantPreview=body;}
       row.committed=true;
     });
+    // One shared placement precedes per-job bookkeeping; unblock all runners on error.
+    if(row.lineAttachments) {
+      try {await row.lineAttachments.insert(ids,{...jobChatTarget(request),expectedPrefix:analysisBody(stripBakeTokens(body))});}
+      catch(error){group.forEach(r=>r.resolve());throw error;}
+    }
     // Resolve even if placement fails: the runner must not leak an active lock.
     const attachments=await Promise.allSettled(group.map(async row=>{
       try {await row.attach?.();} finally {row.resolve();}

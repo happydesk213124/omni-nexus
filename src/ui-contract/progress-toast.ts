@@ -7,6 +7,10 @@ export interface ProgressToastJob {
   shot_done?: unknown;
   shot_index?: unknown;
   shot_failed?: unknown;
+  phase?: unknown;
+  batch_count?: unknown;
+  batch_done?: unknown;
+  batch_failed?: unknown;
 }
 
 const count = (n: unknown): number => Number.isFinite(Number(n)) ? Math.max(0, Math.floor(Number(n))) : 0;
@@ -48,12 +52,40 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
   const elapsed = Math.max(0, Math.floor(elapsedMs / 5000) * 5);
   const clock = !terminal && elapsed >= 5
     ? elapsed < 60 ? `${elapsed}초` : `${Math.floor(elapsed / 60)}분 ${elapsed % 60}초` : '';
+  const lineMode=job.kind==='stream-lines';
+  if(lineMode) {
+    const phase=String(job.phase || ''),batches=count(job.batch_count),tagged=count(job.batch_done),errors=count(job.batch_failed);
+    title=state==='done' ? (total ? '선행 생성 완료' : '선행 생성 이미지 생략')
+      : state==='error' ? '선행 생성 일부 실패'
+      : state==='cancelled' ? '선행 생성 취소됨'
+      : phase==='streaming' ? '줄 단위 선행 생성 중'
+      : phase==='waiting_tags' ? '남은 구간 태깅 중'
+      : phase==='waiting_insert' ? '이미지·스피너 삽입 준비 중'
+      : phase==='finalizing' ? '최종 이미지 반영 중' : '선행 이미지 생성 중';
+    detail=`태깅 ${tagged}/${batches}구간 · 이미지 ${done}/${total}장`;
+    if(phase==='streaming')detail+=' · 응답 출력 중';
+    if(errors)detail+=` · ${errors}구간 실패`;
+  }
   const success = state === 'done' && !failed && !/사용자.*중단/.test(message);
-  const measured = success || (total > 0 && (state === 'generating' || state === 'running'));
+  const measured = success || (total > 0 && (state === 'generating' || state === 'running') && (!lineMode || ['generating','finalizing'].includes(String(job.phase))));
   const ratio = success ? 1 : measured ? done / total : 0;
   const tone = state === 'error' || (terminal && failed > 0) ? 'error' : success ? 'success' : terminal ? 'muted' : 'busy';
   return { title, detail, clock, terminal, tone, measured, ratio,
     showRail: !terminal || success, announcement: [title, detail].filter(Boolean).join(' · ') };
+}
+
+/** Total work may grow while the reply streams; never invent a completion percent. */
+export function aggregateStreamLineProgress(rows: Array<{state?:unknown;progress?:Record<string,unknown>}>, flags:{batchCount:number;outputComplete:boolean;committed:boolean}) {
+  const groups=rows.map(row=>row.progress?.line_group).filter((v):v is Record<string,unknown>=>!!v && typeof v==='object');
+  const max=(key:string)=>Math.max(0,...groups.map(group=>count(group[key])));
+  const batches=Math.max(flags.batchCount,max('batches'));
+  const tagged=Math.min(batches,Math.max(max('tagged'),rows.filter(row=>!['queued','tagging'].includes(String(row.state))).length));
+  const total=groups.length ? max('total') : rows.reduce((n,row)=>n+count(row.progress?.shot_count),0);
+  const done=Math.min(total,groups.length ? max('done') : rows.reduce((n,row)=>n+count(row.progress?.shot_done),0));
+  const failed=Math.max(max('failed'),rows.filter(row=>row.state==='error').length);
+  const finished=flags.outputComplete && flags.committed && rows.length>=batches && rows.every(row=>['done','error','cancelled'].includes(String(row.state)));
+  const phase=!flags.outputComplete ? 'streaming' : tagged<batches ? 'waiting_tags' : !flags.committed ? 'waiting_insert' : done<total ? 'generating' : 'finalizing';
+  return {kind:'stream-lines',state:finished ? failed?'error':'done' : 'generating',phase,batch_count:batches,batch_done:tagged,batch_failed:failed,shot_count:total,shot_done:done};
 }
 
 // High background opacity preserves white-text contrast over bright images.

@@ -4,7 +4,27 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { repairProgressToast } from '../tools/vendor-patches/progress-toast.mjs';
-import { progressToastView, progressToastStyles } from '../.test-build/viewer-core.mjs';
+import { progressToastView, progressToastStyles, aggregateStreamLineProgress } from '../.test-build/viewer-core.mjs';
+
+test('line-generation toast tracks all batches, pending insertion and one final save without claiming early completion',()=>{
+  const group={batches:3,tagged:2,total:4,done:1,settled:0,failed:0};
+  const rows=()=>Array.from({length:3},(_,i)=>({state:i<group.tagged?'generating':'tagging',progress:{line_group:{...group}}}));
+  const summary=(flags)=>aggregateStreamLineProgress(rows(),{batchCount:3,outputComplete:false,committed:false,...flags});
+  let view=progressToastView(summary({}));
+  assert.equal(view.title,'줄 단위 선행 생성 중');assert.equal(view.detail,'태깅 2/3구간 · 이미지 1/4장 · 응답 출력 중');assert.equal(view.measured,false);
+  view=progressToastView(summary({outputComplete:true}));assert.equal(view.title,'남은 구간 태깅 중');
+  Object.assign(group,{tagged:3,total:6,done:4});
+  view=progressToastView(summary({outputComplete:true}));assert.equal(view.title,'이미지·스피너 삽입 준비 중');assert.equal(view.measured,false);
+  view=progressToastView(summary({outputComplete:true,committed:true}));assert.equal(view.title,'선행 이미지 생성 중');assert.equal(view.ratio,4/6);
+  group.done=6;view=progressToastView(summary({outputComplete:true,committed:true}));assert.equal(view.title,'최종 이미지 반영 중');assert.equal(view.terminal,false);
+  const final=aggregateStreamLineProgress(rows().map(row=>({...row,state:'done'})),{batchCount:3,outputComplete:true,committed:true});
+  assert.equal(progressToastView(final).title,'선행 생성 완료');assert.equal(progressToastView(final).detail,'태깅 3/3구간 · 이미지 6/6장');
+  group.failed=1;const partial=aggregateStreamLineProgress(rows().map(row=>({...row,state:'done'})),{batchCount:3,outputComplete:true,committed:true});
+  assert.equal(progressToastView(partial).title,'선행 생성 일부 실패');assert.match(progressToastView(partial).detail,/1구간 실패/);
+  Object.assign(group,{failed:0,total:0,done:0});
+  const empty=aggregateStreamLineProgress(rows().map(row=>({...row,state:'done'})),{batchCount:3,outputComplete:true,committed:true});
+  assert.equal(progressToastView(empty).title,'선행 생성 이미지 생략');
+});
 
 const runtime = readFileSync(new URL('../tools/vendor-patches/progress-toast-runtime.js', import.meta.url), 'utf8');
 function legacyFixture() {

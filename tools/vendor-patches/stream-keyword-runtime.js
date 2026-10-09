@@ -97,12 +97,18 @@ async function omniStartKeywordJob(run, text, batch) {
   const owner=batch || run;
   owner.jobId = result.job_id;
   owner.payload = {job_id:owner.jobId,stream_id:run.streamId,character_id:scope.characterId,chat_id:scope.chatId,host_message_id:id};
+  if(batch && !run.cancelled)omniPollLineJobs(scope.sessionId,[], '',run);
   if (run.cancelled) await K('/v1/jobs/commit-output',{method:'POST',body:{...owner.payload,cancel:true}});
   return target;
 }
 function omniCancelKeywordRun(run = omniKeywordRun) {
   if (!run || run.committed) return;
   run.cancelled = true; clearTimeout(run.timer); clearTimeout(run.expiry);
+  if(run.linePollTimer && t.pollTimer===run.linePollTimer) {
+    clearTimeout(run.linePollTimer);t.pollTimer=null;
+    if(t.jobProgress?.jobId===run.streamId)t.jobProgress={...t.jobProgress,state:'cancelled'};
+    if(typeof syncProgressToast==='function')void syncProgressToast().catch(()=>{});
+  }
   if (run.payload) void K('/v1/jobs/commit-output',{method:'POST',body:{...run.payload,cancel:true}}).catch(()=>{});
   for(const batch of run.batches)if(batch.payload)void K('/v1/jobs/commit-output',{method:'POST',body:{...batch.payload,cancel:true}}).catch(()=>{});
   if (omniKeywordRun === run) omniKeywordRun = null;
