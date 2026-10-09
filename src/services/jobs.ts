@@ -1,5 +1,6 @@
 import { analysisBody } from '../domain/prompt/message-body';
-import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage } from './stream-jobs';
+import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-lines';
+import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage, runStreamImageTask } from './stream-jobs';
 export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
 import { writeJobSpinners, finishJobSpinners } from './chat-bake';
@@ -607,6 +608,11 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
     }
   }
   const payload: JobRequest = { ...request, session_id: sessionId, unified_session_id: sessionId };
+  const range=streamLineRange(payload);
+  if (payload.stream_line_start!=null || payload.stream_line_end!=null) {
+    if(!range || !payload.defer_attachment || analysisBody(payload.assistant_text).split('\n').filter(Boolean).length!==range.end)
+      return {ok:false,error:{code:'bad_request',message:'선행 생성 줄 범위가 올바르지 않습니다.'}};
+  }
   if (payload.defer_attachment) payload.force = false;
   if (payload.defer_attachment && (!payload.stream_id || !payload.host_message_id || !payload.character_id || !payload.chat_id)) return {ok:false,error:{code:'bad_request',message:'선행 생성 대상 ID가 필요합니다.'}};
   const occupied = streamOwnsMessage(payload);
@@ -702,6 +708,8 @@ async function runJob(jobId: string): Promise<void> {
   if (!row) return;
   const deferred = streamJob(jobId);
   const request = deferred?.request ?? JSON.parse(row.request_json ?? '{}') as JobRequest;
+  const lineRange=streamLineRange(request);
+  const lineLimits=lineRange ? streamLineImageLimits(getConfig().card) : null;
   request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
   const noteSessionId = chatNoteSessionId(request.session_id, request);
@@ -920,11 +928,11 @@ async function runJob(jobId: string): Promise<void> {
       debug_stage: 'job.tagging',
     });
 
-    const messages = await buildTaggerMessages(request, { skipAssetInject, ...llmOptions });
+    const messages = await buildTaggerMessages(request, { skipAssetInject, ...llmOptions, ...(lineLimits ? {lineImageLimits:lineLimits} : {}) });
     dbg('job.tagger.messages', { msgs: messages.length, skip_asset_inject: skipAssetInject });
     if (getConfig().card?.preprocessing) {
       const card = getConfig().card;
-      const pre = preprocessPrompt(await getPrompt('preprocess'), card.image_min, card.image_max);
+      const pre = preprocessPrompt(await getPrompt('preprocess'), lineLimits?.min ?? card.image_min, lineLimits?.max ?? card.image_max,!!lineLimits);
       if (pre) {
         const preMessages = [{ role: 'system', content: pre }, messages[messages.length - 1]];
         const summary = await requestMainTagger(preMessages);
@@ -945,7 +953,12 @@ async function runJob(jobId: string): Promise<void> {
     const readMainTagger = (raw: string): { tagged: TaggerResult; shots: TaggedShot[] } => {
       const tagged = parseJsonLoose(raw) as TaggerResult;
       const shots = flattenShots(tagged, request.assistant_text);
-      if (!shots.length) throw new Error('태거가 shot을 반환하지 않았습니다.');
+      const range=streamLineRange(request);
+      if(range && shots.some(shot=>Number(shot.line)<range.start || Number(shot.line)>range.end))
+        throw new Error(`선행 생성은 L${range.start}~L${range.end}에서만 장면을 선택해야 합니다.`);
+      if (!shots.length && !(lineLimits?.min===0 && Array.isArray(tagged.scenes) && tagged.scenes.every(scene=>Array.isArray(scene.shots) && scene.shots.length===0)))
+        throw new Error('태거가 shot을 반환하지 않았습니다.');
+      if (lineLimits && shots.length<lineLimits.min)throw new Error(`이 구간은 최소 ${lineLimits.min}개 이미지가 필요합니다.`);
       return { tagged, shots };
     };
     let tagged: TaggerResult;
@@ -989,9 +1002,19 @@ async function runJob(jobId: string): Promise<void> {
     }
     dbg('job.tagger.done', { shots: shots.length, raw_len: String(taggedRaw || '').length });
     const card = getConfig().card || {};
-    const imageMin = Math.max(1, Number(card.image_min ?? 1));
-    const imageMax = Math.max(imageMin, Number(card.image_max ?? 3));
+    const imageMin = lineLimits?.min ?? Math.max(1, Number(card.image_min ?? 1));
+    const imageMax = lineLimits?.max ?? Math.max(imageMin, Number(card.image_max ?? 3));
     shots = shots.slice(0, imageMax);
+    if (!shots.length && lineLimits) {
+      const result={cards:[],shot_count:0,shot_done:0,progress:100,phase:'done',message:'구간 이미지 생략',message_index:request.message_index ?? -1};
+      if(deferred && !deferred.committed && !deferred.cancelled) {
+        await setJob(jobId,'generating',{...result,phase:'waiting_output',message:'이미지 생략 · 응답 완료 대기…'});
+        await deferred.ready;
+      }
+      if(await cancelJobIfStale(jobId))return;
+      await setJob(jobId,'done',{...result,message_index:request.message_index ?? -1});
+      jobSpan.end({message:'line batch skipped',cards:0});return;
+    }
     if (comicGenOn(card)) shots = clampComicByRatio(shots, card.comic_gen_ratio);
     shots = applyComicAspect(shots, card.comic_aspect);
 
@@ -1149,7 +1172,7 @@ async function runJob(jobId: string): Promise<void> {
     });
     if (deferred) deferred.attach = attach;
     if (!deferred || deferred.committed) await attach();
-    async function enqueueJobSpinners() { return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline})); }
+    async function enqueueJobSpinners() { return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})})); }
     await setJob(
       jobId,
       'generating',
@@ -1275,7 +1298,7 @@ async function runJob(jobId: string): Promise<void> {
         );
         let lastErr: unknown;
         let sawQuota = false;
-        const runGenerate = (token: string) => generateImage(
+        const runGenerate = (token: string) => runStreamImageTask(jobId,token,()=>generateImage(
           {
             main,
             neg,
@@ -1290,7 +1313,7 @@ async function runJob(jobId: string): Promise<void> {
           },
           shot.aspect,
           { useShotAspect: isComicShot(shot) },
-        );
+        ));
         for (const token of tryKeys) {
           try {
             ({ bytes: raw, seed, recipe } = await runGenerate(token));

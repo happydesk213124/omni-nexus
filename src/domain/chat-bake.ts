@@ -66,6 +66,18 @@ export function stripBakeTokens(text: unknown): string {
     .replace(/\n{3,}/g, '\n\n');
 }
 
+/** A later streaming batch must retain slots owned by every earlier sibling. */
+export function stripBakeTokensExceptJobs(text: string, jobIds: readonly string[]): string {
+  const kept: string[]=[];
+  let prefix='\u0000omni-stream-frame-';
+  while(text.includes(prefix))prefix+='\u0000';
+  const masked=text.replace(/\[\[@inrayspinner::([a-zA-Z0-9_-]+)_\d+::\d+::\d+\]\](?:\[\[@inray::[^\]]+\]\])*/g,(token,id)=>{
+    if(!jobIds.includes(id))return token;
+    kept.push(token);return prefix+(kept.length-1)+'\u0000';
+  });
+  return stripBakeTokens(masked).replace(new RegExp(prefix+'(\\d+)\u0000','g'),(_token,index)=>kept[Number(index)]);
+}
+
 /** Hash / tagger prose — bake marks must not change the fingerprint. */
 export function proseForHash(text: unknown): string {
   return stripBakeTokens(text);

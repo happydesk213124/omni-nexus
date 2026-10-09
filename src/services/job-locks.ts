@@ -11,6 +11,7 @@
  */
 
 import type { JobRequest } from '../core/types';
+import { streamLineRange } from '../domain/prompt/stream-lines';
 import { cleanText, toInt } from '../core/util/text';
 import { idbGet } from '../storage/stores';
 import { jobEpochByKey, jobRunMeta, messageBusyKeys } from './context';
@@ -28,6 +29,8 @@ export type TargetRequest = Partial<JobRequest> & Record<string, unknown>;
  */
 export function jobKey(request: TargetRequest = {}, sessionId = ''): string {
   const sid = cleanText(sessionId || request.session_id || '', 200) || '_';
+  const range=streamLineRange(request);
+  if(range && request.defer_attachment && request.stream_id) return `${sid}::stream:${request.stream_id}:${range.start}-${range.end}`;
   const hash = cleanText(request.content_hash || '', 128);
   if (hash) return `${sid}::h:${hash}`;
   const mi = toInt(request.message_index, -1);

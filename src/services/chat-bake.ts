@@ -6,7 +6,7 @@ import { measureWrite } from '../core/write-metrics';
 import { serializeSessionStorage } from '../storage/chat-session-store';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, stripBakeTokens } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, stripBakeTokens, stripBakeTokensExceptJobs } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -273,7 +273,7 @@ export async function readStoredMessageBody(
 }
 
 /** One durable placeholder per job/shot; completion never recomputes its paragraph. */
-export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
+export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
@@ -284,7 +284,7 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   const groups=new Map<number,string[]>();
   // All generation modes replace old marks atomically, using the same clean
   // prose as tagging so previous slot positions cannot override the new shots.
-  let next=stripBakeTokens(previousBody);
+  let next=opts.preserveJobIds ? stripBakeTokensExceptJobs(previousBody,opts.preserveJobIds.filter(id=>id!==opts.jobId)) : stripBakeTokens(previousBody);
   const lines=chatBodyLineCount(next);
   for(const shot of opts.shots) {
     const requested=Math.floor(Number(shot.line)||lines);

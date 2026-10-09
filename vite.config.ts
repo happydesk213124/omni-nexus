@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.4';
+const PLUGIN_VERSION = '1.1.5';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -624,6 +624,11 @@ const VENDOR_ASSET_NAI_HTML_PATCH =
             <span style="display:block;margin-bottom:6px">쉼표, 3글자+, 비면 꺼짐</span>
             <textarea id="nx-stream-keywords" rows="2" style="width:100%;min-height:52px" placeholder="future plan, RP-Guide">\${h(i.stream_keywords || "")}</textarea>
           </label>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px;grid-column:1/-1" data-nx-help-id="nx-stream-lines">
+            <label class="toggle-row"><input type="checkbox" id="nx-stream-lines-on" \${i.stream_lines_enabled ? "checked" : ""}><span>줄 단위 선행생성(beta)</span></label>
+            <input id="nx-stream-lines-count" type="number" min="2" max="100" step="1" value="\${Number(i.stream_lines_count) || 30}" style="width:76px"><span>줄마다</span>
+            <span>이미지</span><input id="nx-stream-lines-image-min" type="number" min="0" max="20" step="1" value="\${i.stream_lines_image_min ?? 0}" style="width:60px"><span>~</span><input id="nx-stream-lines-image-max" type="number" min="0" max="20" step="1" value="\${i.stream_lines_image_max ?? 2}" style="width:60px"><span>개</span>
+          </div>
           <div class="model-form" style="margin-top:14px">
 `;
 
@@ -639,6 +644,10 @@ const VENDOR_ASSET_NAI_SAVE_PATCH =
       omni_helper_prompt: ee("nx-omni-helper"),
       stream_keywords_enabled: ee("nx-stream-keywords-on"),
       stream_keywords: w(N("nx-stream-keywords") || "", 4000),
+      stream_lines_enabled: ee("nx-stream-lines-on"),
+      stream_lines_count: Math.max(2, Math.min(100, Number(N("nx-stream-lines-count")) || 30)),
+      stream_lines_image_min: document.getElementById("nx-stream-lines-image-min") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-min")) || 0)) : t.backendSettings?.card?.stream_lines_image_min ?? 0,
+      stream_lines_image_max: document.getElementById("nx-stream-lines-image-max") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-max")) || 0)) : t.backendSettings?.card?.stream_lines_image_max ?? 2,
 `;
 
 /** Card options: asset NAI select after solo+costume checks-grid. */
@@ -674,6 +683,10 @@ const VENDOR_ASSET_NAI_CT_PATCH =
       omni_helper_prompt: document.getElementById("nx-omni-helper") ? ee("nx-omni-helper") : !!e.omni_helper_prompt,
       stream_keywords_enabled: document.getElementById("nx-stream-keywords-on") ? ee("nx-stream-keywords-on") : !!e.stream_keywords_enabled,
       stream_keywords: document.getElementById("nx-stream-keywords") ? w(N("nx-stream-keywords") || "", 4000) : w(e.stream_keywords || "", 4000),
+      stream_lines_enabled: document.getElementById("nx-stream-lines-on") ? ee("nx-stream-lines-on") : !!e.stream_lines_enabled,
+      stream_lines_count: document.getElementById("nx-stream-lines-count") ? Math.max(2, Math.min(100, Number(N("nx-stream-lines-count")) || 30)) : Number(e.stream_lines_count) || 30,
+      stream_lines_image_min: document.getElementById("nx-stream-lines-image-min") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-min")) || 0)) : e.stream_lines_image_min ?? 0,
+      stream_lines_image_max: document.getElementById("nx-stream-lines-image-max") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-max")) || 0)) : e.stream_lines_image_max ?? 2,
       asset_nai_tags: document.getElementById("nx-asset-nai-tags") ? N("nx-asset-nai-tags") || "off" : e.asset_nai_tags || "off",
       costume: document.getElementById("nx-costume") ? !!document.getElementById("nx-costume").checked : !!e.costume,
       fixed_prompt_prefix: document.getElementById("nx-fixed-prompt-prefix") ? String(N("nx-fixed-prompt-prefix") || "").slice(0, 8000) : String(e.fixed_prompt_prefix || "").slice(0, 8000),
@@ -692,6 +705,7 @@ const VENDOR_ASSET_NAI_HELP_PATCH =
     "nx-llm-reverse-bar": { title: "역바", body: "안함=끄기. 비망록=Freya 역할 고정. 권위=가짜 슈퍼바이저 승인 방식(요정 역할 + 승인 앞말). 문구는 프롬프트 탭에서 고칩니다." },
     "nx-llm-tag-cal": { title: "태칼", body: "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다." },
     "nx-stream-keywords": { title: "스트리밍 키워드", body: "토글과 Power가 켜져 있고, 칸에 3글자 이상 단어가 있을 때 AI 답이 나오는 동안 그 단어가 들어가면(대소문자 무시, 부분 일치) 최신 말풍선으로 한 번 생성합니다. 쉼표로 여러 개. 비우거나 토글 OFF면 꺼짐. 「응답 후 자동 생성」·발동과 별개입니다. 이미 생성 중이면 안 돕니다." },
+    "nx-stream-lines": { title: "줄 단위 선행생성(beta)", body: "기본 OFF. 켜면 완성된 본문 L줄이 설정한 수만큼 쌓일 때마다 태깅·이미지 생성을 미리 시작합니다. 기본 30줄, 2~100줄 설정. 아직 베타 기능입니다. 생각 내용과 빈 줄은 세지 않습니다. 앞 구간은 참고하고 새 구간에서만 장면을 고릅니다. 이미지·스피너는 응답 완료 후 붙입니다. 마지막 남은 구간이 설정 줄 수의 80% 이상이면 응답 완료 후 추가 생성하고, 미만이면 생략합니다. 10줄 기준은 8줄 이상, 30줄 기준은 24줄 이상이며 소수점은 올림합니다. 앞에서 생성한 묶음이 없고 전체 답변이 짧을 때도 같은 기준을 적용합니다. 옆의 이미지 개수는 줄 구간 전용 최소~최대 범위이며 기본 0~2개, 0~20개까지 설정할 수 있습니다. 0~1개면 장면이 없을 때 생략하고 최대 1개, 1~2개면 최소 1개·최대 2개를 고릅니다. 전체가 짧아 완료 후 생성하는 경우에도 이 범위를 씁니다. 일반 이미지 개수 설정은 따로 유지됩니다. 태깅 요청·토큰·이미지 비용이 늘어납니다. 키워드와 함께 켜면 줄 단위 생성을 우선합니다." },
     "nx-fixed-prompt-prefix": { title: "선행 고정 프롬프트", body: "값이 있으면 사람 태그 다음·스타일 프리셋/장면 앞에 항상 붙습니다. 프리셋이 바뀌어도 유지됩니다." },
     "nx-fixed-prompt-suffix": { title: "후행 고정 프롬프트", body: "값이 있으면 장면·큐레이션 뒤·NAI 품질 태그 앞에 항상 붙습니다. JSON으로 내보내/가져오기 할 수 있습니다." },
 `;
@@ -962,6 +976,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.5 · 줄 단위 선행생성(beta)과 스트리밍 검사 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.09 · 응답을 기다리는 동안 줄 구간별 태깅·이미지 생성을 먼저 진행하는 베타 기능을 추가했습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>생성옵션에 줄 단위 선행생성(beta)을 추가했습니다. 기본값은 OFF·30줄마다 0~2개이며 줄 수와 구간별 이미지 최소·최대를 따로 설정할 수 있습니다. 태깅 요청과 토큰 비용이 늘어납니다.</li>
+            <li>각 요청은 앞 구간을 참고하고 새 구간에서만 장면을 고릅니다. 이미지·스피너는 응답 완료 후 붙이며 마지막 구간은 설정 줄 수의 80% 이상일 때 처리합니다. 30줄 기준은 24줄 이상입니다.</li>
+            <li>줄 단위 생성은 기존 키워드 생성과 응답 후 자동생성보다 우선하여 중복 요청을 막습니다. 태깅은 겹쳐 진행하고 같은 NAI 키의 이미지 생성은 순서대로 처리합니다.</li>
+            <li>스트리밍 키워드는 새로 들어온 부분을 검사하고 반복되는 메시지 버튼 계산을 줄였습니다. 닫히지 않은 Thoughts·think 뒤의 글은 완료된 메시지를 태깅할 때 보낼 수 있도록 수정했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.4 · 이미지 히스토리·ComfyUI 호환과 뷰어 조작 개선</strong>
@@ -9744,7 +9768,11 @@ const VENDOR_DT_FN_PATCH =
         llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!t.backendSettings?.card?.llm_tag_cal,
         preprocessing: document.getElementById("nx-preprocess") ? ee("nx-preprocess") : !!t.backendSettings?.card?.preprocessing,
         stream_keywords_enabled: document.getElementById("nx-stream-keywords-on") ? ee("nx-stream-keywords-on") : !!t.backendSettings?.card?.stream_keywords_enabled,
-        stream_keywords: document.getElementById("nx-stream-keywords") ? w(N("nx-stream-keywords") || "", 4000) : String(t.backendSettings?.card?.stream_keywords || "")
+        stream_keywords: document.getElementById("nx-stream-keywords") ? w(N("nx-stream-keywords") || "", 4000) : String(t.backendSettings?.card?.stream_keywords || ""),
+        stream_lines_enabled: document.getElementById("nx-stream-lines-on") ? ee("nx-stream-lines-on") : !!t.backendSettings?.card?.stream_lines_enabled,
+        stream_lines_count: document.getElementById("nx-stream-lines-count") ? Math.max(2, Math.min(100, Number(N("nx-stream-lines-count")) || 30)) : Number(t.backendSettings?.card?.stream_lines_count) || 30,
+        stream_lines_image_min: document.getElementById("nx-stream-lines-image-min") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-min")) || 0)) : t.backendSettings?.card?.stream_lines_image_min ?? 0,
+        stream_lines_image_max: document.getElementById("nx-stream-lines-image-max") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-max")) || 0)) : t.backendSettings?.card?.stream_lines_image_max ?? 2
       };
       t.backendSettings = t.backendSettings || {};
       t.backendSettings.card = { ...(t.backendSettings.card || {}), ...next };
@@ -9752,7 +9780,7 @@ const VENDOR_DT_FN_PATCH =
     };
     shell.addEventListener("change", event => {
       const id = String(event.target?.id || "");
-      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|image-done-sound)$/.test(id)) saveHabitCard();
+      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|stream-lines-on|stream-lines-count|stream-lines-image-min|stream-lines-image-max|image-done-sound)$/.test(id)) saveHabitCard();
     });
   }
   async function nxScrollHoldScroller() {
@@ -14845,7 +14873,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.4 · ComfyUI 음수 태그·캐릭터 슬롯 호환, 리롤·샷태그 히스토리와 파일명 캐릭터 ID 저장을 개선했습니다. PC·모바일 이미지 조작, 플로팅 드래그, 크게보기 닫기와 설정 열기 반응도 다듬었습니다."
+    body: "1.1.5 · 줄 단위 선행생성(beta)을 추가했습니다. 기본 OFF·30줄마다 0~2개이며, 스트리밍 중 먼저 생성하고 응답 완료 후 이미지를 붙입니다. 마지막 구간은 설정 줄 수의 80% 이상일 때 처리합니다. 키워드 검사와 메시지 버튼 계산도 줄였습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

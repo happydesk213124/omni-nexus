@@ -18,6 +18,21 @@ test('earliest body signal wins and everything after it is omitted',()=>{
   assert.equal(findStreamSignal('one [[imgsta',[]),null);
   assert.equal(findStreamSignal('one\ntwo',[]),null);
 });
+test('completed message analysis keeps prose after unclosed thought tags',()=>{
+  for(const tag of ['Thoughts','think','THINK']) {
+    const raw=`<${tag}>\nfirst\nsecond [[imgstart]]`;
+    assert.equal(analysisBody(raw),'first\nsecond');
+    assert.equal(analysisBody(analysisBody(raw)),analysisBody(raw));
+    assert.equal(findStreamSignal(raw,[]),null,'live thinking must still suppress early image signals');
+  }
+  assert.equal(analysisBody('<Thoughts><think>first\nsecond'),'first\nsecond');
+  assert.equal(analysisBody('<Thoughts>first\n<think>secret</think>\nsecond'),'first\nsecond');
+  assert.equal(analysisBody('<Thoughts>first\n</think>second'),'first\nsecond');
+  assert.equal(analysisBody('<Thoughts>secret<think>secret</Thoughts>body'),'body');
+  const raw='<Thoughts>\nfirst\n[[imgstart]]\nsecond';
+  assert.deepEqual(projectMessageBody(raw).sourceLines,[2,4]);
+  assert.equal(insertAtAnalysisLine(raw,2,'before','SLOT'),raw.replace('second','SLOT\nsecond'));
+});
 test('analysis line numbers project back to original nonempty lines',()=>{
   const projected=projectMessageBody('<Thoughts>\nsecret\n</Thoughts>\n\nfirst\n[[imgstart]]\nsecond');
   assert.equal(projected.text,'first\nsecond');assert.deepEqual(projected.sourceLines,[4,6]);

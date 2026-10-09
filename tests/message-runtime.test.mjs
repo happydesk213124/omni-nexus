@@ -15,15 +15,20 @@ test('module controls are display-only and preserve the seven actions',()=>{
  assert.doesNotMatch(lua,/getFullChat|setChat|setChatVar|request\(/);
  assert.equal((buttons.match(/data-omni-action=/g)||[]).length,7);
  assert.match(messageControlsTrigger(false,false).effect[0].code,/if not false/);
- assert.match(messageControlsTrigger(true,true).effect[0].code,/true and row.role == "user"/);
+ assert.match(messageControlsTrigger(true,true).effect[0].code,/true and role == "user"/);
+});
+
+test('display buttons read only the role and never retrieve or hash the message body',()=>{
+ assert.match(lua,/getChatRole\(tid, meta.index\)/);
+ assert.doesNotMatch(lua,/getChat\(|raw:byte|#raw|for i = 1/);
 });
 
 test('module-owned controls dispatch, reject stale targets, and lazily reuse persisted counts',async()=>{
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
  try {
-  for(const width of [320,1440,3440]) {
+  for(const width of [320,1440,3440]) for(const legacy of [false,true]) {
    const page=await browser.newPage({viewport:{width,height:900}});
-   const result=await page.evaluate(async({runtime,buttons,css})=>{
+   const result=await page.evaluate(async({runtime,buttons,css,legacy})=>{
     class Safe {
       constructor(n){this.n=n;}
       async querySelector(q){const n=this.n.querySelector(q);return n?new Safe(n):null;}
@@ -50,7 +55,7 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
       pe:async patch=>{await new Promise(r=>setTimeout(r,2));Object.assign(t.backendSettings.card,patch.card);writes.push(patch);},
     };
     const api=new Function(...Object.keys(deps),runtime+';return {mount:omniMountFooters,bind:omniBindModuleButton,run:omniFooterAction,token:omniMessageToken,count:omniChangeCount};')(...Object.values(deps));
-    const render=()=>{document.body.innerHTML='<style>'+css+'</style>'+['top','bottom'].map(edge=>'<div data-omni-footer="'+api.token(0,scope.chat.message[0].data)+'" data-omni-edge="'+edge+'">'+buttons+'</div>').join('<p>본문 😀</p>');};
+    const render=()=>{document.body.innerHTML='<style>'+css+'</style><div class="risu-chat" data-chat-index="0" data-chat-id="'+scope.chat.message[0].id+'">'+['top','bottom'].map(edge=>'<div data-omni-footer="'+(legacy?api.token(0,scope.chat.message[0].data):'0')+'" data-omni-edge="'+edge+'">'+buttons+'</div>').join('<p>본문 😀</p>')+'</div>';};
     render();await api.mount();
     const first=document.querySelector('[data-omni-footer]'),bounds=first.getBoundingClientRect();
     const invoke=async q=>{const hit=await api.bind(new Safe(first.querySelector(q)));if(hit)await api.run(hit.kind,hit.index);return hit;};
@@ -65,15 +70,19 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
     const range=panel.querySelector('[x-omni-count-value]').textContent;
     scope.chat.message[0].data='edited';await api.run('tag',tag.index);await api.run('note',tag.index);
     const stale=await api.bind(new Safe(first.querySelector('[data-omni-action="tag"]')));
+    if(stale)await api.run(stale.kind,stale.index);
+    scope.chat.message[0].id='replacement-in-another-chat';
+    const wrongIdentity=await api.bind(new Safe(first.querySelector('[data-omni-action="tag"]')));
     render();await api.mount();const after=document.querySelectorAll('[data-omni-footer]').length;
     const noPanel=!document.querySelector('[x-omni-counts]');
-    return {right:bounds.right,width:innerWidth,calls:calls.length,hidden,reused,range,writes:writes.length,after,noPanel,stale:stale===null,observers,errors,notes};
-   },{runtime,buttons,css});
+    return {right:bounds.right,width:innerWidth,calls:calls.length,lastText:calls.at(-1)[1],hidden,reused,range,writes:writes.length,after,noPanel,stale:stale===null,wrongIdentity:wrongIdentity===null,observers,errors,notes};
+   },{runtime,buttons,css,legacy});
    assert.ok(result.right<=result.width);
-   assert.equal(result.calls,1);assert.equal(result.hidden,true);assert.equal(result.reused,true);
+   assert.equal(result.calls,legacy?1:2);assert.equal(result.lastText,legacy?'본문 😀':'edited');assert.equal(result.hidden,true);assert.equal(result.reused,true);
    assert.equal(result.notes.length,1);assert.equal(result.notes[0].text,'본문 😀');assert.equal(result.notes[0].sessionId,'s');
    assert.equal(result.range,'1~6');assert.equal(result.writes,4);assert.equal(result.after,2);
-   assert.equal(result.noPanel,true);assert.equal(result.stale,true);assert.equal(result.observers,0);assert.deepEqual(result.errors,['메시지가 바뀌었습니다. 다시 눌러 주세요.']);
+   assert.equal(result.noPanel,true);assert.equal(result.stale,legacy);assert.equal(result.observers,0);assert.deepEqual(result.errors,['메시지가 바뀌었습니다. 다시 눌러 주세요.']);
+   assert.equal(result.wrongIdentity,true);
    await page.close();
   }
  } finally {await browser.close();}

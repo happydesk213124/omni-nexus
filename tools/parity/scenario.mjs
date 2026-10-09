@@ -184,6 +184,38 @@ export async function runScenario(N, handles) {
     if (result.ok !== false || result.error?.code !== 'not_pending') throw new Error('Unknown stream must not attach');
     return result;
   });
+  await rec('settings.stream_lines_contract', async () => {
+    const card=(await get('/v1/settings')).settings.card;
+    if(!('stream_lines_enabled' in card))return {unsupported:true};
+    if(card.stream_lines_enabled!==false || card.stream_lines_count!==30)throw Error('line batching must default OFF at 30 lines');
+    await put('/v1/settings',{card:{stream_lines_enabled:true,stream_lines_count:6}});
+    const saved=(await get('/v1/settings')).settings.card;
+    await put('/v1/settings',{card:{stream_lines_enabled:false}});
+    const disabled=(await get('/v1/settings')).settings.card;
+    const low=(await put('/v1/settings',{card:{stream_lines_count:1}})).settings.card.stream_lines_count;
+    const high=(await put('/v1/settings',{card:{stream_lines_count:999}})).settings.card.stream_lines_count;
+    await put('/v1/settings',{card:{stream_lines_enabled:false,stream_lines_count:30}});
+    if(saved.stream_lines_enabled!==true || saved.stream_lines_count!==6 || disabled.stream_lines_enabled!==false || disabled.stream_lines_count!==6 || low!==2 || high!==100)throw Error('line batching save/disable/bounds failed');
+    return {defaultOff:true,defaultCount:30,saved:true,disabledRetainsCount:true,bounds:[low,high]};
+  });
+  await rec('job.commit_output_group_unknown', async () => {
+    const result=await post('/v1/jobs/commit-output',{job_ids:['missing-a','missing-b'],stream_id:'missing'});
+    if(result.ok!==false || result.error?.code!=='not_pending')throw Error('unknown line group must not attach');
+    return result;
+  });
+  await rec('settings.stream_line_images_contract', async () => {
+    const initial=(await get('/v1/settings')).settings.card;
+    if(!('stream_lines_image_min' in initial))return {unsupported:true};
+    if(initial.stream_lines_image_min!==0 || initial.stream_lines_image_max!==2)throw Error('line image budget must default to 0–2');
+    const saved=(await put('/v1/settings',{card:{stream_lines_image_min:1,stream_lines_image_max:2}})).settings.card;
+    const exported=JSON.parse((await get('/v1/settings/export')).json).card;
+    const zero=(await put('/v1/settings',{card:{stream_lines_image_min:0,stream_lines_image_max:0}})).settings.card;
+    const bounded=(await put('/v1/settings',{card:{stream_lines_image_min:-2,stream_lines_image_max:99}})).settings.card;
+    const ordered=(await put('/v1/settings',{card:{stream_lines_image_min:3,stream_lines_image_max:1}})).settings.card;
+    await put('/v1/settings',{card:{stream_lines_image_min:0,stream_lines_image_max:2}});
+    if(saved.stream_lines_image_min!==1 || saved.stream_lines_image_max!==2 || exported.stream_lines_image_max!==2 || zero.stream_lines_image_max!==0 || bounded.stream_lines_image_min!==0 || bounded.stream_lines_image_max!==20 || ordered.stream_lines_image_max!==3 || saved.image_min!==initial.image_min || saved.image_max!==initial.image_max)throw Error('line image budget roundtrip/zero/bounds/independence failed');
+    return {defaultRange:[0,2],saved:true,exported:true,zeroPreserved:true,bounded:true,ordered:true,generalUnchanged:true};
+  });
   await rec('settings.image_analysis_separate', async () => {
     const initial = (await get('/v1/settings')).settings.card.image_analysis_separate;
     await put('/v1/settings', {card:{image_analysis_separate:true}});

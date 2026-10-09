@@ -17,10 +17,10 @@ import promptFallbacks from './prompt-fallbacks.json';
 import qualityTags from './quality-tags.json';
 import ucPresets from './uc-presets.json';
 
-export const DEFAULT_CONFIG = { ...defaultSettings, card: { ...defaultSettings.card, character_height: true, character_age: true } } as unknown as Settings;
+export const DEFAULT_CONFIG = { ...defaultSettings, card: { ...defaultSettings.card, character_height: true, character_age: true, stream_lines_enabled: false, stream_lines_count: 30, stream_lines_image_min: 0, stream_lines_image_max: 2 } } as unknown as Settings;
 
 /** Recommended pack applied by 전체 초기화 (not first-boot). */
-export const RESET_FACTORY_CONFIG = { ...resetFactory, card: { ...resetFactory.card, character_height: true, character_age: true } } as unknown as Settings;
+export const RESET_FACTORY_CONFIG = { ...resetFactory, card: { ...resetFactory.card, character_height: true, character_age: true, stream_lines_enabled: false, stream_lines_count: 30, stream_lines_image_min: 0, stream_lines_image_max: 2 } } as unknown as Settings;
 
 export const PROMPT_FALLBACKS: Readonly<Record<string, string>> = promptFallbacks;
 

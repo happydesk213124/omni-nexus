@@ -27,12 +27,16 @@ import * as embeddingProviders from '../providers/embedding/client';
 import * as viewerCore from '../ui-contract/viewer-core';
 import * as messageBody from '../domain/prompt/message-body';
 import * as streamKeywords from '../domain/prompt/stream-keywords';
+import { createStreamSignalScanner } from '../domain/prompt/stream-signal';
+import { createStreamLineBatcher } from '../domain/prompt/stream-lines';
 
 export function installUiContractGlobals(): void {
   Reflect.set(globalThis, '__OMNI_EXPORT__', { jsonParts });
   Reflect.set(globalThis, '__INLAY_VIEWER_CORE__', { ...viewerCore });
   Reflect.set(globalThis, '__INLAY_STREAM_KW__', {
     ...messageBody,
+    createStreamSignalScanner,
+    createStreamLineBatcher,
     parseStreamKeywords: streamKeywords.parseStreamKeywords,
     haystackHasStreamKeyword: streamKeywords.haystackHasStreamKeyword,
   });

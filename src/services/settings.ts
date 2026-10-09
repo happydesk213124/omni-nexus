@@ -1,6 +1,7 @@
 import { retainLocalCredentials } from '../core/util/export-secrets';
 import { shareableJson } from './export';
 import { withoutLegacyPercentPrompt } from '../domain/prompt/message-body';
+import { streamLineImageLimits } from '../domain/prompt/stream-lines';
 /**
  * Settings, the prompt store, and the health payload.
  *
@@ -561,6 +562,12 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Ap
     merged.persist_chat_images = true;
     merged.llm_anchor_percent = false;
     merged.omni_helper_prompt = merged.omni_helper_prompt === true;
+    if ('stream_lines_enabled' in card) merged.stream_lines_enabled = ['true','1','on'].includes(String(card.stream_lines_enabled));
+    if ('stream_lines_count' in card) merged.stream_lines_count = Math.max(2,Math.min(100,Math.floor(Number(card.stream_lines_count)) || 30));
+    if ('stream_lines_image_min' in card || 'stream_lines_image_max' in card) {
+      const limits=streamLineImageLimits(merged);
+      merged.stream_lines_image_min=limits.min;merged.stream_lines_image_max=limits.max;
+    }
     if ('auto_gen_char_limit_enabled' in card) merged.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
     if ('auto_gen_char_limit' in card) merged.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);
     cfg.card = merged;

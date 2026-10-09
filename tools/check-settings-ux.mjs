@@ -63,10 +63,19 @@ try {
   const expectedLimit = (on,value) => ({on,value,type:'number',below:true,count:1});
   assert.deepEqual(replyLimitControls,{saved:expectedLimit(true,'750'),disabled:expectedLimit(false,'750'),legacy:expectedLimit(false,'500')});
 
+  const lineControls=await page.evaluate(()=>{
+    document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{}});
+    const values=()=>[document.getElementById('nx-stream-lines-image-min').value,document.getElementById('nx-stream-lines-image-max').value];
+    const defaults={on:document.getElementById('nx-stream-lines-on').checked,count:document.getElementById('nx-stream-lines-count').value,images:values()};
+    document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{stream_lines_enabled:true,stream_lines_count:6,stream_lines_image_min:1,stream_lines_image_max:2}});
+    return {defaults,on:document.getElementById('nx-stream-lines-on').checked,count:document.getElementById('nx-stream-lines-count').value,images:values(),help:!!document.querySelector('[data-nx-help-id="nx-stream-lines"]'),beta:document.querySelector('label[for="nx-stream-lines-on"] b').textContent};
+  });
+  assert.deepEqual(lineControls,{defaults:{on:false,count:'30',images:['0','2']},on:true,count:'6',images:['1','2'],help:true,beta:'줄 단위 선행생성(beta)'});
+
   await mkdir('.test-build/settings-ux', { recursive: true });
   for (const width of [320, 375, 425, 768, 1440, 3440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const tab of ['dashboard', 'style_presets', 'characters', 'models', 'comic_gen']) {
+    for (const tab of ['dashboard', 'gen_options', 'style_presets', 'characters', 'models', 'comic_gen']) {
       await page.evaluate(({ chrome, pane }) => {
         document.documentElement.className = 'nx-ux-on';
         document.head.innerHTML = '<style>' + SettingsCss.previewCss + '</style>';
@@ -279,10 +288,25 @@ try {
   assert.equal(await page.locator('#nx-scroll-hold').isChecked(), !previous, 'real checkbox persists through tab remount');
   for (const checked of [true,false]) {
     await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();});
-    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on']) await page.locator('#'+id).setChecked(checked);
+    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on','nx-stream-lines-on']) await page.locator('#'+id).setChecked(checked);
     await page.evaluate(()=>globalThis.uxTestRuntime.flush());
     await page.evaluate(async()=>{const {t,paint}=globalThis.uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
-    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on']) assert.equal(await page.locator('#'+id).isChecked(),checked,`${id}: moved habit restores persisted value`);
+    for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on','nx-stream-lines-on']) assert.equal(await page.locator('#'+id).isChecked(),checked,`${id}: moved habit restores persisted value`);
+  }
+  await page.locator('#nx-stream-lines-count').fill('6');
+  await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+  await page.waitForFunction(()=>uxTestRuntime.t.backendSettings.card.stream_lines_count===6);
+  await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
+  assert.equal(await page.locator('#nx-stream-lines-count').inputValue(),'6','line count persists when switching away from generation options');
+  assert.equal(await page.locator('[data-nx-help-id="nx-stream-lines"]').isVisible(),true);
+  for(const [min,max] of [[0,1],[1,2],[0,0]]) {
+    await page.locator('#nx-stream-lines-image-min').fill(String(min));
+    await page.locator('#nx-stream-lines-image-max').fill(String(max));
+    await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+    await page.waitForFunction(([min,max])=>uxTestRuntime.t.backendSettings.card.stream_lines_image_min===min && uxTestRuntime.t.backendSettings.card.stream_lines_image_max===max,[min,max]);
+    await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
+    assert.equal(await page.locator('#nx-stream-lines-image-min').inputValue(),String(min));
+    assert.equal(await page.locator('#nx-stream-lines-image-max').inputValue(),String(max),'per-line count including zero persists through real save/tab changes');
   }
   // Role-swap is an option bar (off/memo/authority), not a checkbox.
   for (const mode of ['memo','authority','off']) {

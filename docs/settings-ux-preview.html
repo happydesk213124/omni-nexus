@@ -1151,6 +1151,14 @@
             <label class="row" data-nx-help-id="nx-omni-helper"><span class="row-text"><b>⚛️ omni 보조 프롬</b></span><span class="sw"><input id="nx-omni-helper" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>스트리밍 키워드</b></span><span class="sw"><input id="nx-stream-keywords-on" type="checkbox"></span></label>
             <label class="block"><span>키워드</span><textarea id="nx-stream-keywords" placeholder="future plan, RP-Guide"></textarea></label>
+            <div data-nx-help-id="nx-stream-lines">
+              <div class="row"><label class="row-text" for="nx-stream-lines-on"><b>줄 단위 선행생성(beta)</b></label><label class="sw" aria-label="줄 단위 선행생성(beta) 켜기"><input id="nx-stream-lines-on" type="checkbox"></label></div>
+              <div class="row" style="justify-content:flex-start;gap:6px;flex-wrap:wrap">
+                <input class="ctrl" id="nx-stream-lines-count" type="number" min="2" max="100" step="1" value="30" aria-label="선행 생성할 줄 수" style="width:54px;min-width:54px;padding:4px 6px"><span>줄마다 이미지</span>
+                <input class="ctrl" id="nx-stream-lines-image-min" type="number" min="0" max="20" step="1" value="0" aria-label="줄 구간당 최소 이미지 수" style="width:48px;min-width:48px;padding:4px 6px"><span>~</span>
+                <input class="ctrl" id="nx-stream-lines-image-max" type="number" min="0" max="20" step="1" value="2" aria-label="줄 구간당 최대 이미지 수" style="width:48px;min-width:48px;padding:4px 6px"><span>개</span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="group">
@@ -2580,6 +2588,7 @@
     "body": "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다."
   },
   "nx-omni-helper": {"title":"⚛️ omni 보조 프롬","body":"같은 이름의 Risu 모듈을 켜거나 끕니다. 이야기·대사 뒤, 상태창 등 부가 내용 전에 [[imgstart]]를 출력하도록 요청합니다. 표식은 화면에서 숨기며, 감지 시 그 앞까지 이미지 생성을 시작합니다. Gemini 생각 스트리밍과 PocketRisu 최적화 안내는 스트리밍 키워드 도움말을 확인하세요."},
+  "nx-stream-lines": {"title":"줄 단위 선행생성(beta)","body":"기본 OFF. 켜면 완성된 본문 L줄이 설정한 수만큼 쌓일 때마다 태깅·이미지 생성을 미리 시작합니다. 기본 30줄, 2~100줄 설정. 아직 베타 기능입니다. 생각 내용과 빈 줄은 세지 않습니다. 앞 구간은 참고하고 새 구간에서만 장면을 고릅니다. 이미지·스피너는 응답 완료 후 붙입니다. 마지막 남은 구간이 설정 줄 수의 80% 이상이면 응답 완료 후 추가 생성하고, 미만이면 생략합니다. 10줄 기준은 8줄 이상, 30줄 기준은 24줄 이상이며 소수점은 올림합니다. 앞에서 생성한 묶음이 없고 전체 답변이 짧을 때도 같은 기준을 적용합니다. 옆의 이미지 개수는 줄 구간 전용 최소~최대 범위이며 기본 0~2개, 0~20개까지 설정할 수 있습니다. 0~1개면 장면이 없을 때 생략하고 최대 1개, 1~2개면 최소 1개·최대 2개를 고릅니다. 전체가 짧아 완료 후 생성하는 경우에도 이 범위를 씁니다. 일반 이미지 개수 설정은 따로 유지됩니다. 태깅 요청·토큰·이미지 비용이 늘어납니다. 키워드와 함께 켜면 줄 단위 생성을 우선합니다."},
   "nx-stream-keywords": {
     "title": "스트리밍 키워드",
     "body": "누적 본문을 새 글이 들어온 경우에만 1초 간격으로 확인합니다. 키워드를 발견하면 그 앞까지 분석·생성하고, 응답 완료 후 스피너와 이미지를 붙입니다. 키워드는 쉼표로 구분한 3글자 이상이며 대소문자를 구분하지 않습니다. [[imgstart]]는 키워드 설정과 별도로 감지합니다. 생각·추론 태그 안은 제외합니다.\n\nRisu의 Stream Gemini Thoughts(생각 스트리밍)를 꺼 주세요. 모델의 추론이나 본문 스트리밍을 끄는 설정이 아닙니다. PocketRisu의 스트리밍 최적화가 강함이면 중간 출력이 전달되지 않으므로 조기 생성을 쓰려면 다른 단계를 선택하세요."
@@ -2675,6 +2684,10 @@
 }, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-mode":{"title":"Mode","body":"삽화는 장면 그림, 에셋은 캐릭터/소품용입니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"전처리(저능력 모델용)","body":"Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요."}});
     const HELP_ALIAS = {
       "nx-stream-keywords-on": "nx-stream-keywords",
+      "nx-stream-lines-on": "nx-stream-lines",
+      "nx-stream-lines-count": "nx-stream-lines",
+      "nx-stream-lines-image-min": "nx-stream-lines",
+      "nx-stream-lines-image-max": "nx-stream-lines",
       "nx-comic-gen-ratio": "nx-comic-ratio",
       "nx-comic-author-note": "nx-comic-note",
       "nx-comic-cfg-rescale": "nx-comic-rescale",

@@ -8,12 +8,9 @@ export function messageControlsTrigger(enabled: boolean, userchat: boolean) {
     effect: [{ type: 'triggerlua', code: `listenEdit("editDisplay", function(tid, data, meta)
   if not ${enabled} or not meta or type(meta.index) ~= "number" or meta.index < 0 or not data or data == "" then return data end
   if data:find('data-omni-footer=', 1, true) then return data end
-  local row = getChat(tid, meta.index)
-  if not row or (row.role ~= "char" and not (${userchat} and row.role == "user")) then return data end
-  local raw = row.data or ""
-  local sum = 0
-  for i = 1, #raw do sum = (sum * 31 + raw:byte(i)) % 65521 end
-  local token = tostring(meta.index) .. ":" .. tostring(#raw) .. ":" .. tostring(sum)
+  local role = getChatRole(tid, meta.index)
+  if role ~= "char" and not (${userchat} and role == "user") then return data end
+  local token = tostring(meta.index)
   local function bar(edge)
     return '<div data-omni-footer="' .. token .. '" data-omni-edge="' .. edge .. '">${buttons}</div>'
   end
