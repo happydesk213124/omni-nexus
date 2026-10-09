@@ -37,11 +37,11 @@ function omniCommitLineReply(arg,msg,text,key) {
   }).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   stopStreamKeywordTick();run.text=text;
   run=omniScanLineRun(run,true);
+  // Without a line tagging request, the ordinary reply listener owns ON/OFF,
+  // character limits and dedupe. Do not mark this reply as stream-handled.
+  if(!run.batches.length){omniCancelKeywordRun(run);return false;}
   omniKeywordSeen.add(key);
   if(omniKeywordSeen.size>128)omniKeywordSeen.delete(omniKeywordSeen.values().next().value);
-  // A below-threshold reply is deliberately handled; do not fall through to
-  // ordinary auto-generation and bypass the user's per-line count and cutoff.
-  if(!run.batches.length){omniCancelKeywordRun(run);return true;}
   run.committing=true;clearTimeout(run.expiry);
   void Promise.all(run.batches.map(batch=>batch.task)).then(async targets=>{
     if(run.cancelled || t.unloading)return;
