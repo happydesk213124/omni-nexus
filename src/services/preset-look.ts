@@ -17,7 +17,7 @@ import { joinPresetLookPrompt } from '../domain/style-presets/look-prompt';
 import { resolveGenerationCfgParams } from '../domain/style-preset-overrides';
 import { generateViaComfy, imageBackendKind } from '../providers/comfy/client';
 import { generateT2i } from '../providers/nai/client';
-import { modelToNaia, type T2iRequest } from '../providers/nai/payload';
+import { modelForRequest, type T2iRequest } from '../providers/nai/payload';
 import { getCharRefAssetBytes, putCharRefAsset } from './char-ref-module';
 import { getConfig, setPresetLookPreviewUrl } from './context';
 import { saveConfig } from './settings';
@@ -94,7 +94,7 @@ export async function generatePresetLook(body: Record<string, unknown>): Promise
     sampler: body.sampler != null && String(body.sampler).trim() ? String(body.sampler) : row.sampler,
     scheduler: body.scheduler != null && String(body.scheduler).trim() ? String(body.scheduler) : row.scheduler,
   });
-  const model = modelToNaia(modelForFamily(nai, family));
+  const model = modelForRequest(modelForFamily(nai, family));
   const req: T2iRequest = {
     prompt: joinPresetLookPrompt(positive),
     negative_prompt: negative,

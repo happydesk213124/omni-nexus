@@ -113,14 +113,17 @@ export function resolveShotFamily(
 }
 
 export function modelForFamily(
-  nai: Pick<NaiSettings, 'model'>,
+  nai: Pick<NaiSettings, 'model' | 'model_v5' | 'model_v4' | 'effort_v5'>,
   family: NaiFamily,
 ): string {
   const selected = cleanText(nai.model) || V4_DEFAULT_MODEL;
   if (family === 'v5') {
-    return naiFamilyOfModel(selected) === 'v5' ? resolveModel(selected) : V5_DEFAULT_MODEL;
+    const saved = cleanText(nai.model_v5);
+    const model = saved && naiFamilyOfModel(saved) === 'v5' ? resolveModel(saved) : naiFamilyOfModel(selected) === 'v5' ? resolveModel(selected) : V5_DEFAULT_MODEL;
+    return model === V5_DEFAULT_MODEL && nai.effort_v5 === 'medium' ? 'nai-diffusion-5-full-medium' : model;
   }
-  return naiFamilyOfModel(selected) === 'v4' ? resolveModel(selected) : V4_DEFAULT_MODEL;
+  const saved = cleanText(nai.model_v4);
+  return saved && naiFamilyOfModel(saved) === 'v4' ? resolveModel(saved) : naiFamilyOfModel(selected) === 'v4' ? resolveModel(selected) : V4_DEFAULT_MODEL;
 }
 
 /**

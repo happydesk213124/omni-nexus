@@ -42,6 +42,11 @@ export function bindModels(): void {
   if (!actions) return;
   const cfg = actions.config();
   const backend = cfg.nai?.backend === 'comfy' ? 'comfy' : 'nai';
+  const v5Model = document.getElementById('nx-nai-model-v5') as HTMLSelectElement | null;
+  const effortRow = document.getElementById('nx-nai-effort-v5')?.closest<HTMLElement>('.row');
+  const paintEffort = () => { if (effortRow) effortRow.hidden = v5Model?.value !== 'nai-diffusion-5-full'; };
+  v5Model?.addEventListener('change', paintEffort);
+  paintEffort();
   document.querySelectorAll<HTMLElement>('[data-nx-backend-pane]').forEach(el => el.hidden = el.dataset.nxBackendPane !== backend);
   const familyBar = document.querySelector('[data-nai-family]')?.parentElement;
   if (familyBar) {

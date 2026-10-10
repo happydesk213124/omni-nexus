@@ -1829,5 +1829,17 @@ export async function runScenario(N, handles) {
       await post('/v1/characters', {session_id,characters:previous.characters||[]});
     }
   });
+  await rec('settings.nai_effort_contract', async () => {
+    const nai = {model:'nai-diffusion-5-full',model_v5:'nai-diffusion-5-full',model_v4:'nai-diffusion-4-5-curated',effort_v5:'medium',steps_v5:21,steps_v4:27};
+    await put('/v1/settings', {nai});
+    await put('/v1/settings', {nai:{backend:'comfy'}});
+    const comfy = (await get('/v1/settings'))?.settings?.nai || {};
+    await put('/v1/settings', {nai:{backend:'nai'}});
+    const restored = (await get('/v1/settings'))?.settings?.nai || {};
+    const exported = JSON.parse((await get('/v1/settings/export'))?.json || '{}')?.nai || {};
+    return {persisted:restored.effort_v5==='medium',models:restored.model_v5===nai.model_v5&&restored.model_v4===nai.model_v4,
+      steps:restored.steps_v5===21&&restored.steps_v4===27,comfyKept:comfy.effort_v5==='medium'&&comfy.steps_v5===21,
+      exported:exported.effort_v5==='medium'&&exported.model_v4===nai.model_v4};
+  });
   return transcript;
 }

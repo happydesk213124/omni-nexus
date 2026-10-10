@@ -15,7 +15,7 @@ import { joinCharacterPreviewPrompt, joinExampleShotPrompt } from '../domain/sty
 import { resolveGenerationCfgParams } from '../domain/style-preset-overrides';
 import { generateViaComfy, imageBackendKind } from '../providers/comfy/client';
 import { generateT2i } from '../providers/nai/client';
-import { modelToNaia, type T2iRequest } from '../providers/nai/payload';
+import { modelForRequest, type T2iRequest } from '../providers/nai/payload';
 import { pngToDataUrl } from '../storage/image-urls';
 import { getConfig } from './context';
 
@@ -84,7 +84,7 @@ export async function generateCharacterPreview(body: Record<string, unknown>): P
     sampler: row.sampler,
     scheduler: row.scheduler,
   });
-  const model = modelToNaia(modelForFamily(nai, family));
+  const model = modelForRequest(modelForFamily(nai, family));
   const rawPrompt = joinCharacterPreviewPrompt(joinTags(row.positive, characterPreviewTags(rec)));
   // preview-shot (vibe/참고용) and example-shot share one framing. The frozen
   // UI never sends an opt-out, so default to the example tail; pass

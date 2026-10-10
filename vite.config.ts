@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.6';
+const PLUGIN_VERSION = '1.1.7';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -978,6 +978,15 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
+          <strong>1.1.7 · ComfyUI 설정 보존·NAI V5 Effort</strong>
+          <div class="muted" style="margin-top:8px">2026.10.10 · ComfyUI와 NAI 설정을 오가도 NAI 값을 유지하고 V5 Full의 Effort 선택을 추가했습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>ComfyUI로 전환했다가 돌아와도 NAI4·NAI5 모델, Steps, 샘플러와 크기·CFG 등 기존 NAI 설정이 초기화되지 않습니다.</li>
+            <li>NAI V5 Full에 Effort High·Medium을 추가했습니다. Medium은 14 Steps·Euler Ancestral을 사용하며 부정 프롬프트와 CFG rescale을 적용하지 않습니다. V5 Curated와 NAI4에는 적용되지 않습니다.</li>
+            <li>모델별 선택과 Effort를 저장·복원하고 일반 생성·캐릭터 미리보기·프리셋 미리보기 요청에도 같은 선택을 적용합니다.</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:14px">
           <strong>1.1.6 · ComfyUI 워크플로 도움말</strong>
           <div class="muted" style="margin-top:8px">2026.10.10 · Models의 ComfyUI 워크플로 옆에 API Export 설정과 자리표시자 사용법을 추가했습니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
@@ -1485,6 +1494,8 @@ const VENDOR_NAI_OE_KEYS_PATCH =
     const mv5 = hasEl("nx-nai-model-v5") ? N("nx-nai-model-v5") : "";
     const mv4 = hasEl("nx-nai-model-v4") ? N("nx-nai-model-v4") : "";
     o.model = fam === "v5" ? (mv5 || "nai-diffusion-5-full") : (mv4 || "nai-diffusion-4-5-full");
+    if (mv5) o.model_v5 = mv5;
+    if (mv4) o.model_v4 = mv4;
     const hid = document.getElementById("nx-nai-model");
     if (hid) hid.value = o.model;
     const sv5 = hasEl("nx-nai-sampler-v5") ? N("nx-nai-sampler-v5") : "";
@@ -1495,6 +1506,7 @@ const VENDOR_NAI_OE_KEYS_PATCH =
     if (sv4) o.sampler_v4 = sv4;
     if (Number.isFinite(st5)) o.steps_v5 = st5;
     if (Number.isFinite(st4)) o.steps_v4 = st4;
+    if (hasEl("nx-nai-effort-v5")) o.effort_v5 = N("nx-nai-effort-v5") === "medium" ? "medium" : "high";
     o.sampler = fam === "v5" ? (sv5 || o.sampler) : (sv4 || o.sampler);
     o.steps = fam === "v5" ? (Number.isFinite(st5) ? st5 : o.steps) : (Number.isFinite(st4) ? st4 : o.steps);
     const hidSamp = document.getElementById("nx-nai-sampler");
@@ -1508,6 +1520,8 @@ const VENDOR_NAI_OE_KEYS_PATCH =
     if (k4.length) o.api_keys_v4 = k4;
     if (ee("nx-nai-keys-v5-clear")) o.clearApiKeysV5 = !0;
     if (ee("nx-nai-keys-v4-clear")) o.clearApiKeysV4 = !0;
+    // The Comfy vendor card omits NAI controls. Preview defaults must not overwrite saved NAI values.
+    if (o.backend === "comfy") for (const key of ["provider", "model", "model_v5", "model_v4", "request_url", "width", "height", "sampler", "sampler_v5", "sampler_v4", "scheduler", "steps", "steps_v5", "steps_v4", "effort_v5", "cfg_scale", "cfg_rescale", "image_reference", "image_reference_strength", "image_reference_fidelity", "image_reference_type", "vibe_transfer", "vibe_transfer_strength", "vibe_transfer_information_extracted", "variety_plus", "enable_i2i", "apply_quality_tags", "sdxl_emphasis"]) delete o[key];
     return a && (o.api_key = a), {
       llm: e,
       llm_roles,
@@ -14882,7 +14896,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.6 · ComfyUI 워크플로 옆에 API Export와 프롬프트·캐릭터·크기·시드·참조 이미지 자리표시자 도움말을 추가했습니다."
+    body: "1.1.7 · ComfyUI를 오가도 NAI 설정을 유지하고 NAI V5 Full에 Effort High·Medium 선택을 추가했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

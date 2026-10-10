@@ -44,7 +44,7 @@ function copyNode(dst: Element, src: Element): void {
   dst.innerHTML = src.innerHTML;
 }
 
-export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Record<string, unknown>}): string {
+export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Record<string, unknown>; nai?: Record<string, unknown>}): string {
   const pane = pack.panes[tab];
   if (!pane || typeof vendorHtml !== 'string') return vendorHtml;
   const vendor = document.createElement('div');
@@ -112,6 +112,21 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     const help = src.closest('[data-nx-help-id]');
     if (help) dst.setAttribute('data-nx-help-id', help.getAttribute('data-nx-help-id') || id);
   });
+  if (tab === 'models' && settings?.nai) {
+    const nai = settings.nai;
+    const active = String(nai.model || '');
+    const selected = [
+      ['nx-nai-model-v5', nai.model_v5 || (active.includes('nai-diffusion-5') ? active : 'nai-diffusion-5-full')],
+      ['nx-nai-model-v4', nai.model_v4 || (!active.includes('nai-diffusion-5') ? active : 'nai-diffusion-4-5-full')],
+      ['nx-nai-effort-v5', nai.effort_v5 === 'medium' ? 'medium' : 'high'],
+    ] as const;
+    for (const [id, value] of selected) {
+      const select = out.querySelector<HTMLSelectElement>('#' + id);
+      if (!select) continue;
+      const current = [...select.options].some(option => option.value === value) ? String(value) : select.options[0]?.value;
+      for (const option of select.options) option.toggleAttribute('selected', option.value === current);
+    }
+  }
   if (tab === 'characters') {
     const slot = out.querySelector('#nx-lorefilter-slot');
     const lorefilter = vendor.querySelector('#nx-lorefilter');

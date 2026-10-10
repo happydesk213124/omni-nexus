@@ -5,11 +5,13 @@ import {
   characterReferenceCandidates,
   effectiveCharacterReferenceMode,
   naiFamilyOfModel,
+  modelForFamily,
   pickPresetForFamily,
   resolveShotFamily,
   shouldPrepareSharedVibe,
   taggerShouldUseV5Rules,
 } from '../.test-build/nai-routing.mjs';
+
 import {
   naiSamplerForFamily,
   naiStepsForFamily,
@@ -23,6 +25,14 @@ import {
   speechCaptionTagsForShot,
   stripSpokenBubbleSuppression,
 } from '../.test-build/nai-speech.mjs';
+
+test('Medium effort applies only to V5 Full', () => {
+  assert.equal(modelForFamily({ model: 'nai-diffusion-5-full', effort_v5: 'medium' }, 'v5'), 'nai-diffusion-5-full-medium');
+  assert.equal(modelForFamily({ model: 'nai-diffusion-5-curated', effort_v5: 'medium' }, 'v5'), 'nai-diffusion-5-curated');
+  assert.equal(modelForFamily({ model: 'nai-diffusion-4-5-full', effort_v5: 'medium' }, 'v4'), 'nai-diffusion-4-5-full');
+  assert.equal(modelForFamily({ model: 'nai-diffusion-4-5-full', model_v5: 'nai-diffusion-5-curated', effort_v5: 'high' }, 'v5'), 'nai-diffusion-5-curated');
+  assert.equal(modelForFamily({ model: 'nai-diffusion-5-full', model_v4: 'nai-diffusion-4-full', effort_v5: 'high' }, 'v4'), 'nai-diffusion-4-full');
+});
 
 test('NAI5 first off uses selected model for every shot', () => {
   assert.equal(
