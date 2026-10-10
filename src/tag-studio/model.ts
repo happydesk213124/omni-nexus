@@ -415,9 +415,9 @@ export function hydrateFromNai(args: {
   const seed = Math.floor(Number(nai.seed));
   if (Number.isFinite(seed) && seed > 0) state.gen.seed = seed;
   const placed = hasPlacedCoords(Object.values(state.chars));
-  if (placed) {
-    state.coordMode = 'manual';
-  }
+  // Explicit user choice must survive importing an image with fixed centers.
+  state.coordMode = cardCfg.studio_coord_mode === 'ai' || cardCfg.studio_coord_mode === 'manual'
+    ? cardCfg.studio_coord_mode : placed ? 'manual' : 'ai';
   state.coordVisible = cardCfg.studio_coords_visible !== false;
 }
 

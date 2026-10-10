@@ -985,7 +985,7 @@ const VENDOR_CURATION_PANEL_PATCH =
             <li>샷태그 수정의 V5 Full 설정에서 시드 옆에 Effort High·Medium 선택을 추가했습니다. 이미지 값 모드에서도 변경할 수 있습니다.</li>
             <li>Medium은 14 Steps·Euler Ancestral로 생성하고 CFG rescale을 사용하지 않습니다. High로 돌아오면 편집하던 Steps·샘플러·rescale 값을 유지합니다.</li>
             <li>프리셋·인원수·캐릭터 상태 배지를 제거하고 확대·좌표만 남겼습니다. 표시 박스를 더 작고 투명하게 줄이고 좌표 도구 상자의 모서리를 안쪽 버튼과 맞췄습니다.</li>
-            <li>좌표보기의 켜짐·꺼짐을 저장해 다음에 열 때도 복원합니다. 좌표보기를 꺼도 생성에 쓰는 좌표값은 유지합니다.</li>
+            <li>AI·수동 좌표 선택과 좌표보기의 켜짐·꺼짐을 저장해 다음에 열 때도 복원합니다. 좌표보기를 꺼도 생성에 쓰는 좌표값은 유지합니다.</li>
           </ul>
         </div>
         <div class="card" style="margin-top:14px">

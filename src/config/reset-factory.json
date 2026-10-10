@@ -212,6 +212,7 @@
     "nai5_speech": true,
     "studio_seed_lock": false,
     "studio_coords_visible": true,
+    "studio_coord_mode": "image",
     "studio_folds": {
       "preset": false,
       "post": false
