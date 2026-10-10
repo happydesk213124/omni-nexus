@@ -496,6 +496,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     nai.steps_v4 = nai.steps_v4 == null || nai.steps_v4 === ''
       ? sharedSteps
       : naiStepsForFamily({ steps_v4: nai.steps_v4, steps: sharedSteps }, 'v4');
+    nai.effort_v5 = nai.effort_v5 === 'medium' ? 'medium' : 'high';
   }
   // sticky_layout_v2 was a temporary toggle; v2 is always-on — drop leftover saves.
   if (card && typeof card === 'object' && 'sticky_layout_v2' in card) delete card.sticky_layout_v2;

@@ -423,6 +423,26 @@ try {
   await page.locator('[data-backend="nai"]').click();
   assert.equal(await page.locator('#nx-comfy-url').isVisible(),false);
   await page.evaluate(async () => {
+    await globalThis.__OMNI_SETTINGS_ACTIONS__.save({nai:{model:'nai-diffusion-5-full',width:1088,height:896,steps_v5:21,steps_v4:27,steps:21,sampler_v5:'k_euler',sampler_v4:'k_dpmpp_2m',cfg_scale:5.5,cfg_rescale:0.2,effort_v5:'medium'}});
+    await globalThis.uxTestRuntime.paint();
+  });
+  assert.equal(await page.locator('#nx-nai-steps-v5').inputValue(),'21');
+  assert.equal(await page.evaluate(() => globalThis.uxTestRuntime.t.backendSettings.nai.effort_v5),'medium','saved effort reaches UI state');
+  assert.equal(await page.locator('#nx-nai-effort-v5').inputValue(),'medium',await page.locator('#nx-nai-effort-v5').evaluate(el=>el.outerHTML));
+  await page.locator('[data-backend="comfy"]').click();
+  await page.locator('[data-backend="nai"]').click();
+  const naiAfterComfy = await page.evaluate(() => globalThis.uxTestRuntime.t.backendSettings.nai);
+  for (const [key, value] of Object.entries({model:'nai-diffusion-5-full',width:1088,height:896,steps_v5:21,steps_v4:27,steps:21,sampler_v5:'k_euler',sampler_v4:'k_dpmpp_2m',cfg_scale:5.5,cfg_rescale:0.2,effort_v5:'medium'})) {
+    assert.equal(naiAfterComfy[key],value,`Comfy round-trip reset nai.${key}`);
+  }
+  assert.equal(await page.locator('#nx-nai-effort-v5').inputValue(),'medium');
+  await page.locator('[data-nai-family="v4"]').click();
+  assert.equal(await page.locator('#nx-nai-steps-v4').inputValue(),'27');
+  await page.locator('[data-backend="comfy"]').click();
+  await page.locator('[data-backend="nai"]').click();
+  assert.equal(await page.locator('#nx-nai-steps-v4').inputValue(),'27','NAI4 steps survive Comfy round-trip');
+  assert.equal(await page.locator('#nx-nai-steps-v5').inputValue(),'21','NAI5 steps survive Comfy round-trip');
+  await page.evaluate(async () => {
     await globalThis.__OMNI_SETTINGS_ACTIONS__.save({nai:{api_keys_v4:['test-v4-key'],api_keys_v5:['test-v5-key']}});
     await globalThis.uxTestRuntime.paint();
   });

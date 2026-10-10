@@ -16,7 +16,7 @@ export interface SettingsPreset {
 
 const STYLE_KEYS = new Set(['presets', 'active_preset_id', 'secondary_preset_id', 'custom_pos', 'custom_neg', 'preset', 'preset_from_image_filter', 'fixed_prompt_prefix', 'fixed_prompt_suffix']);
 const LOCAL_KEYS = /^(?:overlay_pin_|viewer_(?:left|top|width|height|icon|geo)|studio_|command_presets$|client_direction$|client_focus$|original_text$)/;
-const NAI_KEYS = ['model', 'width', 'height', 'sampler', 'sampler_v4', 'sampler_v5', 'scheduler', 'steps', 'steps_v4', 'steps_v5', 'cfg_scale', 'cfg_rescale', 'seed', 'variety_plus', 'uc_preset', 'apply_quality_tags', 'sdxl_emphasis'] as const;
+const NAI_KEYS = ['model', 'model_v4', 'model_v5', 'width', 'height', 'sampler', 'sampler_v4', 'sampler_v5', 'scheduler', 'steps', 'steps_v4', 'steps_v5', 'effort_v5', 'cfg_scale', 'cfg_rescale', 'seed', 'variety_plus', 'uc_preset', 'apply_quality_tags', 'sdxl_emphasis'] as const;
 export function record(raw: unknown): Bag {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Bag : {};
 }

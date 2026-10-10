@@ -320,6 +320,8 @@ export interface NaiSettings {
   /** Extra NovelAI tokens for V4/V4.5 generations. */
   api_keys_v4: string[];
   model: string;
+  model_v5?: string;
+  model_v4?: string;
   width: number;
   height: number;
   sampler: string;
@@ -331,6 +333,8 @@ export interface NaiSettings {
   steps: number;
   /** Last step count on the NAI5 tab. Falls back to `steps`. */
   steps_v5: number;
+  /** V5 Full effort; Curated and V4 always use their normal model. */
+  effort_v5: 'high' | 'medium';
   /** Last step count on the NAI4 tab. Falls back to `steps`. */
   steps_v4: number;
   cfg_scale: number;

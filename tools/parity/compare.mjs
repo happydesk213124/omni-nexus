@@ -384,6 +384,11 @@ const normalize = (root) => {
           || k === 'sampler_v4'
           || k === 'steps_v5'
           || k === 'steps_v4'
+          // Per-family model choices and V5 Full effort have no 1.x field.
+          // The scenario asserts persistence, backend switching and export.
+          || k === 'model_v5'
+          || k === 'model_v4'
+          || k === 'effort_v5'
         ) continue;
         // Stream rematch keeps assistant_preview on the newest 20 card metas
         // only; the images index no longer copies the prose. 1.x wrote it on
@@ -649,6 +654,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],
   // Revisions intentionally keep the original entity; assert identity and the complete family.
   ['cards.reroll',v=>v?.ok === true && v.card?.id === v.replaced+'_r1' ? null : 'Reroll must retain the source hash and add r1'],

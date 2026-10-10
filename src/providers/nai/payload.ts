@@ -159,30 +159,36 @@ export function buildV4Prompt(req: T2iRequest): V4PromptFields {
 /** Builds the `parameters` object of a generate-image request. */
 export function buildBaseParameters(req: T2iRequest): Record<string, unknown> {
   const modelName = resolveModel(req.model);
+  const medium = modelName === 'nai-diffusion-5-full-medium';
   const params: Record<string, unknown> = {
     width: req.width,
     height: req.height,
     n_samples: 1,
     seed: req.seed,
     extra_noise_seed: req.seed,
-    sampler: req.sampler,
-    steps: req.steps,
+    sampler: medium ? 'k_euler_ancestral' : req.sampler,
+    steps: medium ? 14 : req.steps,
     scale: req.cfg_scale,
-    negative_prompt: req.negative_prompt,
-    cfg_rescale: req.cfg_rescale,
+    negative_prompt: medium ? '' : req.negative_prompt,
+    cfg_rescale: medium ? 0 : req.cfg_rescale,
     noise_schedule: req.scheduler,
     params_version: modelName.includes('nai-diffusion-5') ? 4 : 3,
     legacy: false,
     legacy_v3_extend: false,
   };
-  if (req.var_plus) {
+  if (req.var_plus && !medium) {
     params.skip_cfg_above_sigma =
       modelName.includes('4-5') || modelName.includes('nai-diffusion-5') ? 58 : 19;
   } else params.skip_cfg_above_sigma = null;
   if (usesCharCaptions(modelName)) {
     const v4 = buildV4Prompt(req);
     if (modelName.includes('nai-diffusion-5')) v4.autoSmea = false;
+    if (medium) {
+      v4.v4_negative_prompt.caption.base_caption = '';
+      v4.v4_negative_prompt.caption.char_captions = [];
+    }
     Object.assign(params, v4);
+    if (medium) delete params.ucPreset;
   }
   if (req.vibes?.length && supportsVibeTransfer(modelName)) {
     params.reference_image_multiple = req.vibes.map((v) => v.encoded);
@@ -225,4 +231,11 @@ export function modelToNaia(model: unknown): string {
   if (compact.includes('nai-diffusion-5-curated')) return 'naid5c';
   if (compact.includes('nai-diffusion-5')) return 'naid5f';
   return 'naid4.5f';
+}
+
+/** Preserve the V5 distilled model id when constructing a generation request. */
+export function modelForRequest(model: unknown): string {
+  return resolveModel(cleanText(model)) === 'nai-diffusion-5-full-medium'
+    ? 'nai-diffusion-5-full-medium'
+    : modelToNaia(model);
 }

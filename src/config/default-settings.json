@@ -373,6 +373,7 @@
     "scheduler": "karras",
     "steps": 28,
     "steps_v5": 18,
+    "effort_v5": "high",
     "steps_v4": 28,
     "cfg_scale": 7,
     "cfg_rescale": 0.36,

@@ -76,6 +76,7 @@ import { generateT2i } from '../providers/nai/client';
 import {
   isNaiV5,
   modelToNaia,
+  modelForRequest,
   resolveModel,
   supportsDirectorReference,
   supportsVibeTransfer,
@@ -735,7 +736,7 @@ export async function generateImage(
     cfg_rescale: cfgParams.cfg_rescale,
     sampler: cfgParams.sampler,
     scheduler: cfgParams.scheduler,
-    model: naiModel,
+    model: modelForRequest(routeModel),
     use_coords: Boolean(plan.use_coords),
     var_plus: Boolean(nai.variety_plus),
     characters,

@@ -382,6 +382,11 @@ per-family sampler + steps (Models NAI5/NAI4 panes). Legacy `sampler` /
 the per-family keys are missing. Sampler UI is labeled 샘플러 and only
 offers Euler Ancestral, Euler, DPM++ 2S Ancestral, DPM++ 2M SDE, DPM++ 2M,
 DPM++ SDE. Style-preset `steps` / `sampler` / `scheduler` override when set.
+`nai.model_v5` / `nai.model_v4` preserve each family's model selection when
+switching tabs or returning from ComfyUI. `nai.effort_v5` defaults to `high`;
+`medium` applies only to V5 Full and requests the distilled Medium model with
+fixed 14 steps and Euler Ancestral. Its request omits custom undesired content
+and CFG rescale. ComfyUI-only saves must leave all NAI fields untouched.
 
 `card.asset_nai_tags` is a string mode: `off` | `inline` | `prepass`
 (legacy `true` / `prepass_vision` → `prepass`, `false` → `off`). Card

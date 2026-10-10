@@ -27,13 +27,13 @@ import {
   sceneFromNaiMetadata,
   styleFieldsFromNaiMetadata,
 } from '../domain/nai-meta/index.ts';
-import { naiFamilyOfModel } from '../domain/nai/routing';
+import { modelForFamily, naiFamilyOfModel } from '../domain/nai/routing';
 import { comfyBaseUrl, imageBackendKind } from '../providers/comfy/client';
 import { callLlm } from './llm-call';
 import { normalizeLlmProvider } from '../providers/llm/providers';
 import { llmConfigured, llmIsRisuSource, normalizeLlmSource } from '../providers/llm/transform';
 import { generateT2i, getAnlas, getNaiQuotaDetail } from '../providers/nai/client';
-import { modelToNaia, type T2iRequest } from '../providers/nai/payload';
+import { modelForRequest, modelToNaia, type T2iRequest } from '../providers/nai/payload';
 import { allUniqueNaiTokens, maskNaiToken } from '../domain/nai/keys';
 import { getConfig } from './context';
 import { saveConfig, updateSettings } from './settings';
@@ -193,7 +193,7 @@ export async function probeNaiGenerate(): Promise<ApiResult> {
       cfg_rescale: 0,
       sampler: 'k_euler_ancestral',
       scheduler: 'karras',
-      model: modelToNaia(nai.model || 'nai-diffusion-4-5-full'),
+      model: modelForRequest(modelForFamily(nai, naiFamilyOfModel(nai.model))),
       var_plus: false,
       characters: [],
       seed: Math.floor(Math.random() * 4294967295) || 1,
