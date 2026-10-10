@@ -12,6 +12,34 @@ try {
   await page.setContent('<!doctype html><html><head></head><body></body></html>');
   await page.addScriptTag({ content: bundled.outputFiles[0].text });
   await page.addScriptTag({ content: cssModule.outputFiles[0].text });
+  const modelsModule = await build({ entryPoints:['src/settings-ux/model-bindings.ts'], bundle:true, write:false, format:'iife', globalName:'SettingsModels' });
+  await page.addScriptTag({content:modelsModule.outputFiles[0].text});
+  for (const viewport of [{width:1440,height:900},{width:375,height:812},{width:812,height:375}]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => {
+      document.head.insertAdjacentHTML('beforeend','<style id="comfy-test-css">'+SettingsCss.previewCss+'</style>');
+      document.documentElement.classList.add('nx-ux-on');
+      document.body.innerHTML='<div id="nx-shell" class="nx-ux"><main id="nx-main">'+SettingsTabs.tabHtml('models','<textarea id="nx-comfy-workflow">saved workflow draft</textarea>')+'</main></div>';
+      globalThis.__OMNI_SETTINGS_ACTIONS__={config:()=>({nai:{backend:'comfy'}}),save:async()=>{throw new Error('help must not save settings');}};
+      SettingsModels.bindModels(); SettingsModels.bindModels();
+    });
+    await page.locator('#nx-comfy-help-open').click();
+    assert.equal(await page.locator('#nx-comfy-help').evaluate(el=>el.open),true);
+    const layout=await page.locator('#nx-comfy-help').evaluate(el=>{
+      const box=el.getBoundingClientRect(),close=el.querySelector('button').getBoundingClientRect(),css=getComputedStyle(el);
+      return {fits:box.left>=0 && box.right<=innerWidth && box.top>=0 && box.bottom<=innerHeight,scrolls:el.scrollHeight>el.clientHeight,closeVisible:close.top>=box.top && close.bottom<=box.bottom,color:css.backgroundColor};
+    });
+    assert.deepEqual(layout,{fits:true,scrolls:true,closeVisible:true,color:'rgb(16, 22, 34)'});
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#nx-comfy-help').evaluate(el=>el.open),false);
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'nx-comfy-help-open');
+    await page.locator('#nx-comfy-help-open').click();
+    await page.locator('#nx-comfy-help-close').click();
+    assert.equal(await page.locator('#nx-comfy-help').evaluate(el=>el.open),false);
+    assert.equal(await page.locator('#nx-comfy-workflow').inputValue(),'saved workflow draft');
+    await page.evaluate(()=>{delete globalThis.__OMNI_SETTINGS_ACTIONS__;document.documentElement.classList.remove('nx-ux-on');document.getElementById('comfy-test-css')?.remove();});
+  }
+  await page.setViewportSize({width:1280,height:720});
   const changelog = await page.evaluate(() => {
     const html = '<div class="card"><strong>0.1.2</strong><ul><li>Latest release</li></ul></div><div class="card"><strong>0.1.1</strong><ul><li>Previous release</li></ul></div>';
     document.body.innerHTML = SettingsTabs.tabHtml('changelog', html);
@@ -203,6 +231,14 @@ try {
     assert.deepEqual(live.duplicates, [], `${tab}: duplicate mounted ids`);
     assert.ok(live.pane, `${tab}: preview pane missing`);
     assert.equal(live.shadow,'none');
+    if (tab === 'models') {
+      await page.locator('[data-backend="comfy"]').click();
+      await page.locator('#nx-comfy-help-open').click();
+      assert.equal(await page.locator('#nx-comfy-help').evaluate(el=>el.open),true,'built plugin must bind the help button');
+      await page.screenshot({path:'.test-build/settings-ux/comfy-help.png'});
+      await page.locator('#nx-comfy-help-close').click();
+      await page.locator('[data-backend="nai"]').click();
+    }
     if (tab === 'comic_gen') {
       const toggle = page.locator('#nx-comic-natural-supplement');
       assert.equal(await toggle.isVisible(), true, 'comic natural toggle must be visible');

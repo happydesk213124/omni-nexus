@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.5.3';
+const PLUGIN_VERSION = '1.1.6';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -978,39 +978,22 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
-          <strong>1.1.5.3 · PocketRisu 플로팅 뷰어 오류 우회</strong>
-          <div class="muted" style="margin-top:8px">2026.10.10 · 플로팅 뷰어의 글자 변경 감시를 제거하여 PocketRisu의 화면 변경 감시 오류를 피합니다.</div>
+          <strong>1.1.6 · ComfyUI 워크플로 도움말</strong>
+          <div class="muted" style="margin-top:8px">2026.10.10 · Models의 ComfyUI 워크플로 옆에 API Export 설정과 자리표시자 사용법을 추가했습니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
-            <li>PocketRisu v1.13.0에서 글자 변경을 처리할 때 발생할 수 있는 getAttribute 오류를 우회합니다.</li>
-            <li>이미지 추가·교체와 이미지 주소 변경 감시, 스크롤에 따른 뷰어 갱신은 유지합니다.</li>
+            <li>[[pos]]·[[neg]]·[[char1]]~[[char6]], 크기·Steps·CFG, 시드와 참조 이미지 설정 예시를 제공합니다.</li>
+            <li>조건부 마커·강조 변환과 연결 테스트, 참조 노드 및 시간 초과 관련 주의사항을 안내합니다.</li>
           </ul>
         </div>
         <div class="card" style="margin-top:14px">
-          <strong>1.1.5.2 · 선행 이미지 일괄 삽입과 진행 토스트 개선</strong>
-          <div class="muted" style="margin-top:8px">2026.10.10 · 응답과 모든 구간 태깅이 끝난 뒤 이미지·스피너를 한 번에 붙이고, 전체 진행을 토스트로 표시합니다.</div>
+          <strong>1.1.5–1.1.5.3 · 줄 단위 선행생성·스트리밍·PocketRisu 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.09–10.10 · 줄 단위 선행생성 베타부터 짧은 응답 자동생성 복구, 이미지 일괄 삽입, PocketRisu 뷰어 호환까지의 변경을 모았습니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
-            <li>줄 단위 선행생성은 이미지 생성을 미리 진행하되, 응답과 모든 구간 태깅이 끝날 때까지 메시지에 삽입하지 않습니다. 이미 완성된 이미지와 남은 스피너를 한 번에 배치합니다.</li>
-            <li>이후 도착한 이미지는 스피너 자리에 base64 미리보기로 표시합니다. 전체 이미지 작업이 끝나면 최종 결과를 한 번 저장하여 본문 변경은 최대 2번, 처음부터 이미지가 전부 완성됐으면 1번입니다.</li>
-            <li>토스트에서 전체 구간의 태깅 수와 이미지 완료 수, 응답 출력·태깅 대기·삽입 준비·이미지 생성·최종 반영 상태를 확인할 수 있습니다.</li>
-            <li>일부 생성이 실패해도 완성된 이미지를 유지하고 남은 대기 스피너를 정리합니다. 기본 OFF·30줄마다 0~2개와 마지막 구간의 80% 기준은 유지합니다.</li>
-          </ul>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <strong>1.1.5.1 · 짧은 응답의 자동생성 복구</strong>
-          <div class="muted" style="margin-top:8px">2026.10.09 · 줄 단위 선행생성이 한 번도 요청되지 않은 짧은 응답은 기존 응답 후 자동생성 설정을 따릅니다.</div>
-          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
-            <li>예를 들어 50줄 설정에 20줄 응답이면, 응답 후 자동생성이 ON이고 기존 글자 수 조건을 만족할 때 일반 이미지 개수 설정으로 생성합니다. OFF이면 생략합니다.</li>
-            <li>줄 단위 태깅을 이미 요청했다면 일반 자동생성은 추가로 실행하지 않습니다. 마지막 구간의 80% 기준과 기본 OFF·30줄마다 0~2개는 유지합니다.</li>
-          </ul>
-        </div>
-        <div class="card" style="margin-top:14px">
-          <strong>1.1.5 · 줄 단위 선행생성(beta)과 스트리밍 검사 개선</strong>
-          <div class="muted" style="margin-top:8px">2026.10.09 · 응답을 기다리는 동안 줄 구간별 태깅·이미지 생성을 먼저 진행하는 베타 기능을 추가했습니다.</div>
-          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
-            <li>생성옵션에 줄 단위 선행생성(beta)을 추가했습니다. 기본값은 OFF·30줄마다 0~2개이며 줄 수와 구간별 이미지 최소·최대를 따로 설정할 수 있습니다. 태깅 요청과 토큰 비용이 늘어납니다.</li>
-            <li>각 요청은 앞 구간을 참고하고 새 구간에서만 장면을 고릅니다. 이미지·스피너는 응답 완료 후 붙이며 마지막 구간은 설정 줄 수의 80% 이상일 때 처리합니다. 30줄 기준은 24줄 이상입니다.</li>
-            <li>줄 단위 생성은 기존 키워드 생성과 응답 후 자동생성보다 우선하여 중복 요청을 막습니다. 태깅은 겹쳐 진행하고 같은 NAI 키의 이미지 생성은 순서대로 처리합니다.</li>
-            <li>스트리밍 키워드는 새로 들어온 부분을 검사하고 반복되는 메시지 버튼 계산을 줄였습니다. 닫히지 않은 Thoughts·think 뒤의 글은 완료된 메시지를 태깅할 때 보낼 수 있도록 수정했습니다.</li>
+            <li>줄 단위 선행생성(beta)을 추가했습니다. 기본 OFF·30줄마다 0~2개이며, 줄 수와 구간별 이미지 최소·최대를 설정합니다. 각 구간은 앞 내용을 참고해 새 장면만 고릅니다.</li>
+            <li>마지막 구간은 설정 줄 수의 80% 이상일 때 처리합니다. 줄 단위 태깅이 이미 시작됐다면 키워드 생성이나 응답 후 자동생성을 중복 실행하지 않습니다. 태깅 요청과 토큰 비용이 늘어납니다.</li>
+            <li>줄 단위 태깅이 시작되지 않은 짧은 응답은 응답 후 자동생성 설정을 따릅니다. 예를 들어 50줄 설정에서 20줄 응답은 자동생성이 켜져 있고 글자 수 조건을 만족할 때 일반 이미지 개수 설정으로 생성합니다.</li>
+            <li>응답과 모든 구간 태깅이 끝난 뒤 이미지와 스피너를 한 번에 배치합니다. 나중에 끝난 이미지는 스피너 자리에 미리보기로 보이며 전체 작업이 끝나면 결과를 저장합니다. 토스트에서 전체 구간의 태깅·이미지·삽입 진행을 확인합니다. 일부 이미지가 실패해도 완성된 결과를 보존합니다.</li>
+            <li>PocketRisu v1.13.0에서 발생할 수 있는 플로팅 뷰어의 글자 변경 감시 오류를 우회합니다. 이미지 추가·교체, 이미지 주소 변경, 스크롤 갱신은 유지합니다.</li>
           </ul>
         </div>
         <div class="card" style="margin-top:14px">
@@ -14899,7 +14882,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.5.3 · 플로팅 뷰어의 글자 변경 감시를 제거하여 PocketRisu v1.13.0에서 발생할 수 있는 getAttribute 오류를 우회합니다. 이미지 추가·교체와 이미지 주소 변경 감시, 스크롤에 따른 뷰어 갱신은 유지합니다."
+    body: "1.1.6 · ComfyUI 워크플로 옆에 API Export와 프롬프트·캐릭터·크기·시드·참조 이미지 자리표시자 도움말을 추가했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
