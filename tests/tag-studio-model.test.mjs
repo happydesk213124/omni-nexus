@@ -7,8 +7,24 @@ import {
   hydrateFromNai,
   mergeStudioRosterPayloads,
   studioModelChoice,
+  studioCharacterLookTags,
   studioRowIsGlobal,
 } from '../.test-build/tag-studio-model.mjs';
+
+it('picker looks resolve costume slots and retain weighted appearance without duplicate colors', () => {
+  const stored = { gender: 'girl', appearance: 'girl, 2::black hair::, freckles', hair_color: 'black',
+    hair_style: 'long hair', eye_color: 'blue', age: 24, height: '172cm', costumes: [
+      { name: 'default', attire: 'hoodie', bottoms: 'jeans' },
+      { name: 'alternate', appearance: '[base]', hair_style: 'ponytail', hair_color: 'red',
+        eye_color: '[base]', age: '28', height: '165cm', attire: 'shirt', bottoms: 'skirt' },
+    ] };
+  assert.equal(studioCharacterLookTags(stored, 'default'),
+    'girl, 2::black hair::, freckles, long hair, blue eyes, 172cm, tall, 24 years old');
+  assert.equal(studioCharacterLookTags(stored, 'alternate'),
+    'girl, 2::black hair::, freckles, red hair, ponytail, blue eyes, 165cm, 28 years old');
+  assert.equal(studioCharacterLookTags({ appearance: 'freckles' }), 'freckles');
+  assert.equal(studioCharacterLookTags(null), '');
+});
 
 it('sends the surviving character tabs’ roster identities, including shared namesakes', () => {
   const state = emptyState();

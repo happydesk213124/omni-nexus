@@ -7,30 +7,39 @@ import {retirePercentPlacement} from '../tools/vendor-patches/runtime-rebuild.mj
 import {parseStreamKeywords} from '../.test-build/stream-keywords.mjs';
 import {createStreamSignalScanner} from '../.test-build/stream-signal.mjs';
 import {createStreamLineBatcher} from '../.test-build/stream-lines.mjs';
-import {aggregateStreamLineProgress} from '../.test-build/viewer-core.mjs';
+import {aggregateStreamLineProgress,progressToastView} from '../.test-build/viewer-core.mjs';
 const source=readFileSync('tools/vendor-patches/stream-keyword-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-lines-runtime.js','utf8');
 const replySource=readFileSync('tools/vendor-patches/reply-runtime.js','utf8');
 const tick=()=>new Promise(r=>setImmediate(r));
-function fixture(card={}) {
+function fixture(card={},syncProgressToast,readScope) {
   const prose='First narrative paragraph that is long enough.\nSecond spoken dialogue.';
   const msg={role:'char',chatId:'m',data:prose},chat={id:'room',isStreaming:true,message:[{role:'user',data:'previous'},msg]};
   const scope={characterId:'c',chatId:'room',charIndex:0,chatIndex:0,sessionId:'s',chat};
   const t={backendSettings:{card:{power:true,stream_keywords_enabled:true,stream_keywords:'RP-Guide',...card}}};
-  const calls=[],polls=[],galleries=[],autoGenerations=[],jobStates=new Map(),timers=new Map();let scans=0,seq=0,reads=0,now=Date.now(),timerWrites=0;
+  const calls=[],polls=[],galleries=[],autoGenerations=[],sounds=[],jobStates=new Map(),timers=new Map();let scans=0,seq=0,reads=0,now=Date.now(),timerWrites=0;
   const context={t,console,Promise,Date:class extends Date {static now(){return now;}},Math,setTimeout:(fn,ms)=>{timerWrites++;timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),
-    clearInterval:id=>timers.delete(id),ce:async id=>galleries.push(id),onSelectionChanged:async()=>{},Se:async()=>{},
+    clearInterval:id=>timers.delete(id),ce:async id=>galleries.push(id),onSelectionChanged:async()=>{},Se:async()=>{},syncProgressToast,
     __INLAY_VIEWER_CORE__:{aggregateStreamLineProgress},
     __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,
       createStreamSignalScanner:()=>{const scanner=createStreamSignalScanner();return {scan:(...args)=>{scans++;return scanner.scan(...args);}};}},
-    Z:async()=>{reads++;return scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},
+    Z:async()=>{reads++;return readScope?readScope(scope,reads):scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},
     omniStreamOutput:()=>{},scheduleHashRelinkAfterReply:()=>{},D:async(_name,read)=>read(),w:value=>String(value),
     Be:async(scope,text,force)=>autoGenerations.push({scope,text,force}),
+    nxPlayImageDoneSoundOnce:id=>{if(t.backendSettings.card.image_done_sound && !sounds.includes(id))sounds.push(id);},
     isSelectedCharRole:role=>role==='char',messageBodyChars:s=>s.length,ve:async()=>({enabled:true}),la:async()=>[],
     re:(v,_a,_b,f)=>v??f,Xe:chat=>chat.message,ye:s=>'hash:'+s,y:()=>{},ua:(...args)=>polls.push(args),
-    K:async(path,options)=>{calls.push({path,body:options.body});return path.endsWith('/create')?{accepted:true,job_id:'j'+calls.filter(c=>c.path.endsWith('/create')).length}:options.method==='GET'?{ok:true,state:jobStates.get(path.split('/').at(-1)) || 'done',progress:{shot_done:1}}:{ok:true};}};
+    K:async(path,options)=>{
+      calls.push({path,body:options.body});
+      if(path.endsWith('/create'))return {accepted:true,job_id:'j'+calls.filter(c=>c.path.endsWith('/create')).length};
+      if(options.method==='GET') {
+        const state=jobStates.get(path.split('/').at(-1)) || 'done';
+        return typeof state==='object'?{ok:true,...state}:{ok:true,state,progress:{shot_count:1,shot_done:state==='done'?1:0}};
+      }
+      return {ok:true};
+    }};
   runInNewContext(source+'\n'+replySource+';this.api={onScriptOutput,onChatOutput,omniCommitStreamReply,omniKeywordScope,omniCancelKeywordRun};',context);
   const fire=async(ms=1000,elapsed=ms)=>{now+=elapsed;for(const [id,row]of [...timers])if(row.ms===ms){timers.delete(id);row.fn();}await tick();};
-  return {...context.api,t,scope,msg,prose,calls,polls,galleries,autoGenerations,jobStates,timers,fire,advance:ms=>now+=ms,scans:()=>scans,reads:()=>reads,timerWrites:()=>timerWrites,arg:()=>({char:{chaId:'c'},chat,messageIndex:1,characterIndex:0,chatIndex:0})};
+  return {...context.api,t,scope,msg,prose,calls,polls,galleries,autoGenerations,sounds,jobStates,timers,fire,advance:ms=>now+=ms,scans:()=>scans,reads:()=>reads,timerWrites:()=>timerWrites,arg:()=>({char:{chaId:'c'},chat,messageIndex:1,characterIndex:0,chatIndex:0})};
 }
 
 test('incoming chunks allocate only one scan timer and one idle timer per window',async()=>{
@@ -207,15 +216,88 @@ test('a full or qualifying final line batch blocks ordinary auto-generation even
     assert.equal(f.autoGenerations.length,0,'a line tagging request already owns the reply regardless of its image count');
   }
 });
-test('line batches cancel paid work on replacement and never reuse its ranges',async()=>{
+test('line batches keep paid work and L ranges when the same reply body changes',async()=>{
   const f=fixture({stream_lines_enabled:true,stream_lines_count:2});
   f.onScriptOutput(f.prose+'\n');await f.fire();assert.equal(f.calls.length,1);
   const replaced='Entirely new first narrative paragraph.\nEntirely new second narrative paragraph.\n';
   f.onScriptOutput(replaced);await f.fire();
-  assert.equal(f.calls[1].body.cancel,true);
-  assert.equal(f.calls[2].body.stream_line_start,1);
-  assert.notEqual(f.calls[0].body.stream_id,f.calls[2].body.stream_id);
-  f.omniCancelKeywordRun();await tick();assert.equal(f.calls.at(-1).body.cancel,true);
+  assert.equal(f.calls.length,1,'body changes cannot restart a paid range');
+  f.msg.data=replaced+'A third paragraph long enough.\nA fourth paragraph long enough.';
+  f.scope.chat.isStreaming=false;
+  await f.onChatOutput(f.arg());await tick();
+  assert.deepEqual(f.calls.filter(c=>c.path.endsWith('/create')).map(c=>[c.body.stream_line_start,c.body.stream_line_end]),[[1,2],[3,4]]);
+  assert.equal(f.calls.filter(c=>c.body.cancel).length,0);
+  assert.equal(f.calls[0].body.stream_id,f.calls[1].body.stream_id);
+});
+
+test('96 prose lines at size 20 tag five ranges once and sound only after the whole reply finishes',async()=>{
+ for(const enabled of [false,true]) {
+  const f=fixture({stream_lines_enabled:true,stream_lines_count:20,image_done_sound:enabled});
+  const lines=n=>Array.from({length:n},(_,i)=>`Narrative paragraph ${i+1}, long enough for an image.`).join('\n');
+  for(const n of [20,40,60,80,96]){f.onScriptOutput('<think>hidden\nhidden again</think>\n'+lines(n)+'\n');await f.fire();}
+  assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,4);
+  for(let n=1;n<=5;n++)f.jobStates.set('j'+n,'generating');
+  f.msg.data=lines(96).replace('paragraph 1,','paragraph one,');f.scope.chat.isStreaming=false;
+  await f.onChatOutput(f.arg());await tick();
+  assert.deepEqual(f.calls.filter(c=>c.path.endsWith('/create')).map(c=>[c.body.stream_line_start,c.body.stream_line_end]),[[1,20],[21,40],[41,60],[61,80],[81,96]]);
+  assert.equal(f.calls.filter(c=>c.body.cancel).length,0);
+  await f.fire(1);assert.equal(f.sounds.length,0);
+  for(let n=1;n<=4;n++)f.jobStates.set('j'+n,'done');
+  await f.fire();assert.equal(f.sounds.length,0,'one pending image group must suppress completion sound');
+  f.jobStates.set('j5','done');await f.fire();
+  assert.equal(f.sounds.length,enabled?1:0);
+  await f.onChatOutput(f.arg());await tick();await f.fire();
+  assert.equal(f.sounds.length,enabled?1:0,'duplicate output cannot replay the sound');
+ }
+});
+
+test('line groups with no generated images or a failed batch do not play a completion sound',async()=>{
+ for(const state of [{state:'done',progress:{shot_count:0,shot_done:0}},{state:'error',progress:{shot_count:1,shot_done:0}}]) {
+  const f=fixture({stream_lines_enabled:true,stream_lines_count:2,image_done_sound:true});
+  f.onScriptOutput(f.prose+'\n');await f.fire();
+  f.jobStates.set('j1',state);f.scope.chat.isStreaming=false;
+  await f.onChatOutput(f.arg());await tick();await f.fire(1);
+  assert.equal(f.sounds.length,0);
+ }
+});
+
+test('a toast write failure cannot stop line progress, final refresh or completion sound',async()=>{
+ for(const failAt of ['streaming','done']) {
+  let failPaint=false,lastView;
+  const f=fixture({stream_lines_enabled:true,stream_lines_count:10,image_done_sound:true},async()=>{
+    if(failPaint)throw new Error('Instance not found or released');
+    lastView=progressToastView(f.t.jobProgress,40000);
+  });
+  const text=Array.from({length:30},(_,i)=>`Narrative line ${i+1}, long enough to depict.`).join('\n');
+  f.onScriptOutput(text+'\n');await f.fire();
+  for(const [i,total] of [2,2,1].entries())f.jobStates.set('j'+(i+1),{state:'done',progress:{shot_count:total,shot_done:total}});
+  await f.fire(1);
+  assert.equal(lastView.detail,'태깅 3/3구간 · 이미지 5/5장 · 응답 출력 중');
+  if(failAt==='done') {
+    f.msg.data=text;f.scope.chat.isStreaming=false;
+    await f.onChatOutput(f.arg());await tick();
+  }
+  failPaint=true;
+  const timer=f.t.pollTimer, poll=f.timers.get(timer);
+  assert.ok(poll,'the live group has a scheduled progress check');
+  f.timers.delete(timer);
+  await assert.doesNotReject(poll.fn);
+  failPaint=false;
+  if(failAt==='streaming') {
+    assert.ok(f.timers.has(f.t.pollTimer),'a failed toast write must leave the next check scheduled');
+    f.msg.data=text;f.scope.chat.isStreaming=false;
+    await f.onChatOutput(f.arg());await tick();await f.fire();
+    assert.equal(lastView.title,'선행 생성 완료');
+    assert.doesNotMatch(lastView.detail,/응답 출력 중/);
+  }
+  assert.equal(f.t.jobProgress.state,'done');assert.equal(f.t.pollTimer,null);
+  assert.equal(f.galleries.length,1,'completion must still refresh the saved images');
+  assert.equal(f.sounds.length,1,'a toast error must not suppress the enabled completion sound');
+  await f.onChatOutput(f.arg());await tick();await f.fire();
+  assert.equal(f.calls.filter(call=>call.path.endsWith('/create')).length,3,'the fix cannot create more image jobs');
+  assert.equal(f.calls.filter(call=>call.path.endsWith('/commit-output')).length,1);
+  assert.equal(f.sounds.length,1);
+ }
 });
 
 test('turning line mode off before the completion event cancels its pending ranges',async()=>{
@@ -234,6 +316,62 @@ test('a host target unavailable during streaming can be bound once at committed 
   assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,f.prose),true);await tick();
   assert.deepEqual(f.calls.map(c=>c.path),['/v1/jobs/create','/v1/jobs/commit-output']);
   assert.equal(f.calls[0].body.stream_line_start,1);assert.equal(f.calls[0].body.stream_line_end,2);
+});
+
+test('a temporarily unavailable line target recovers during output without losing or repeating ranges',async()=>{
+ for(const rewrite of [false,true]) {
+  const views=[];
+  const f=fixture({stream_lines_enabled:true,stream_lines_count:20},async()=>views.push(progressToastView(f.t.jobProgress)));
+  const lines=n=>Array.from({length:n},(_,i)=>`Narrative paragraph ${i+1}, long enough for an image.`).join('\n');
+  f.scope.chat.isStreaming=false;
+  f.onScriptOutput(lines(20)+'\n');await f.fire();
+  assert.equal(f.calls.length,0);
+  f.scope.chat.isStreaming=true;
+  const updated=n=>rewrite?lines(n).replace('paragraph 1,','paragraph one,'):lines(n);
+  f.onScriptOutput(updated(40)+'\n');await f.fire();
+  assert.deepEqual(f.calls.filter(c=>c.path.endsWith('/create')).map(c=>[c.body.stream_line_start,c.body.stream_line_end]),[[1,20],[21,40]]);
+  await f.fire(1);
+  assert.match(views.at(-1).detail,/응답 출력 중/,'the progress toast must appear before output completes');
+  for(const n of [60,80]){f.onScriptOutput(updated(n)+'\n');await f.fire();}
+  assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,4);
+  f.msg.data=updated(96);f.scope.chat.isStreaming=false;
+  await f.onChatOutput(f.arg());await tick();
+  const requests=f.calls.filter(c=>c.path.endsWith('/create'));
+  assert.deepEqual(requests.map(c=>[c.body.stream_line_start,c.body.stream_line_end]),[[1,20],[21,40],[41,60],[61,80],[81,96]]);
+  assert.equal(new Set(requests.map(c=>c.body.stream_id)).size,1);
+  assert.equal(f.calls.filter(c=>c.body?.cancel).length,0);
+ }
+});
+
+test('unchanged snapshots retry an unbound line target without generating again at completion',async()=>{
+ const f=fixture({stream_lines_enabled:true,stream_lines_count:2});
+ f.scope.chat.isStreaming=false;
+ f.onScriptOutput(f.prose+'\n');await f.fire();
+ f.scope.chat.isStreaming=true;
+ f.onScriptOutput(f.prose+'\n');await f.fire();
+ assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,1);
+ f.scope.chat.isStreaming=false;
+ await f.onChatOutput(f.arg());await tick();
+ assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,1);
+ assert.equal(f.calls.filter(c=>c.path.endsWith('/commit-output')&&!c.body.cancel).length,1);
+});
+
+test('a delayed streaming capture cannot replace the committed message or duplicate line requests',async()=>{
+ let release;
+ const pending=new Promise(resolve=>{release=resolve;});
+ const f=fixture({stream_lines_enabled:true,stream_lines_count:2},undefined,(scope,reads)=>reads===1?pending:scope);
+ f.onScriptOutput(f.prose+'\n');await f.fire();
+ assert.equal(f.calls.length,0);
+ f.scope.chat.isStreaming=false;
+ await f.onChatOutput(f.arg());await tick();
+ assert.deepEqual(f.calls.map(c=>c.path),['/v1/jobs/create','/v1/jobs/commit-output']);
+ release({...f.scope,chat:{isStreaming:true,message:[{role:'char',chatId:'old-message'}]}});
+ await tick();await f.fire(1);
+ assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,1);
+ assert.equal(f.calls[0].body.host_message_id,'m');
+ assert.equal(f.calls.filter(c=>c.body?.cancel).length,0);
+ assert.equal(f.t.jobProgress.state,'done');
+ assert.equal(f.galleries.length,1);
 });
 
 test('cached viewer rows cannot cancel a newly captured streaming message',async()=>{

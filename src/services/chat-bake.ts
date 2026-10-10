@@ -1,4 +1,5 @@
 import { insertAtAnalysisLine, analysisBody } from '../domain/prompt/message-body';
+import { streamLineRange } from '../domain/prompt/stream-lines';
 import { measureWrite } from '../core/write-metrics';
 /**
  * Write / strip `[[@inray::cardId::inxshot_…]]` on one Risu chat message.
@@ -240,11 +241,13 @@ export function jobChatTarget(request: {
   host_message_id?: string;
   defer_attachment?: boolean;
   assistant_text?: string;
+  stream_line_start?: unknown;
+  stream_line_end?: unknown;
 }): { charIndex: number; chatIndex: number; messageIndex: number; analysisLines?: boolean; hostMessageId?: string; expectedPrefix?: string } {
   return {
     analysisLines: request.analysis_lines === true,
     hostMessageId: request.host_message_id,
-    expectedPrefix: request.defer_attachment ? request.assistant_text : undefined,
+    expectedPrefix: request.defer_attachment && !streamLineRange(request) ? request.assistant_text : undefined,
     charIndex: toInt(request.char_index, -1),
     chatIndex: toInt(request.chat_index, -1),
     messageIndex: toInt(request.message_index, -1),

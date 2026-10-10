@@ -1,6 +1,7 @@
 import { composeCharacterCaptionTags } from '../domain/character/tags.ts';
 import { resolveCharacter } from '../domain/character/roster.ts';
-import type { CharacterInput } from '../domain/character/identity.ts';
+import { normalizeGender, type CharacterInput } from '../domain/character/identity.ts';
+import { formatAgeCaption, formatHeightCaption, lookSlotMissingFromAppearance, normalizeEyeColorSlot, normalizeHairColorSlot } from '../domain/character/looks-fields.ts';
 import { QUALITY_TAGS } from '../config/defaults.ts';
 import { GLOBAL_SCOPE } from '../core/constants.ts';
 import { cleanText, joinTags } from '../core/util/text.ts';
@@ -165,6 +166,21 @@ export function charList(state: StudioState): Array<StudioChar & { tab: StudioTa
     .filter((t) => t.kind === 'char')
     .map((tab, i) => ({ tab, i, id: tab.id, ...state.chars[tab.id]! }))
     .filter((c) => c && state.chars[c.id]);
+}
+
+/** Picker fills the saved look slots; clothing stays in its editable columns. */
+export function studioCharacterLookTags(stored: CharacterInput | null | undefined, costume?: string): string {
+  if (!stored) return '';
+  const look = resolveCostumeWear(stored, costume);
+  const appearance = cleanText(look.appearance, 4000);
+  return joinTags(
+    appearance,
+    lookSlotMissingFromAppearance(normalizeHairColorSlot(look.hair_color), appearance),
+    cleanText(look.hair_style, 400),
+    lookSlotMissingFromAppearance(normalizeEyeColorSlot(look.eye_color), appearance),
+    formatHeightCaption(look.height, normalizeGender(stored.gender || stored.sex)),
+    formatAgeCaption(look.age),
+  );
 }
 
 function personTag(state: StudioState): string {
