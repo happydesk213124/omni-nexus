@@ -14,6 +14,7 @@ import {
   mergedRoster,
   nextId,
   studioRowIsGlobal,
+  studioUsesV5Full,
   type StudioChar,
   type StudioTab,
 } from './model.ts';
@@ -570,10 +571,6 @@ export async function openTagStudio(card: unknown): Promise<void> {
     ].join('\n');
   }
 
-  function chip(t: string, on: boolean): string {
-    return `<span class="chip ${on ? 'on' : ''}">${esc(t)}</span>`;
-  }
-
   function secOpen(id: string): boolean {
     return !state.fold[id];
   }
@@ -621,6 +618,8 @@ export async function openTagStudio(card: unknown): Promise<void> {
   function genSettings(): string {
     const g = state.gen;
     const ratio = `${g.w}x${g.h}`;
+    const v5Full = studioUsesV5Full(state);
+    const medium = v5Full && g.effort === 'medium';
     return `<div class="seg">
         ${MODELS.filter(([v]) => v).map(([v, t]) => (
           `<button class="${g.model === v ? 'on' : ''}" data-model="${esc(v)}" type="button">${esc(t)}</button>`
@@ -638,16 +637,17 @@ export async function openTagStudio(card: unknown): Promise<void> {
         <input type="number" data-g="h" value="${esc(g.h)}" />
       </div>
       <div class="g3">
-        <label class="k">steps<input type="number" data-g="steps" value="${esc(g.steps)}" placeholder="이미지" /></label>
+        <label class="k">steps<input type="number" data-g="steps" value="${esc(medium ? 14 : g.steps)}" placeholder="이미지" ${medium ? 'disabled title="Medium은 14 Steps 고정"' : ''} /></label>
         <label class="k">cfg<input type="number" step="0.1" data-g="cfg" value="${esc(g.cfg)}" /></label>
-        <label class="k">rescale<input type="number" step="0.1" data-g="rescale" value="${esc(g.rescale)}" /></label>
+        <label class="k">rescale<input type="number" step="0.1" data-g="rescale" value="${esc(medium ? 0 : g.rescale)}" ${medium ? 'disabled title="Medium은 CFG rescale 미사용"' : ''} /></label>
       </div>
-      <div class="inline">
+      <div class="inline seed-row">
         <button class="btn sm ${g.seedLock ? 'on' : ''}" data-act="seedLock" type="button">고정 ${g.seedLock ? '켬' : '끔'}</button>
-        <input type="text" data-g="seed" value="${esc(g.seed)}" placeholder="시드" />
+        <input type="text" data-g="seed" value="${esc(g.seed)}" placeholder="시드" aria-label="시드" />
+        ${v5Full ? `<select data-g="effort" aria-label="Effort" title="Effort · Medium: 14 Steps, Euler Ancestral 고정 · 부정 프롬프트·CFG rescale 미사용">${opts([['high', 'High'], ['medium', 'Medium']], g.effort)}</select>` : ''}
       </div>
       <div class="g2">
-        <label class="k">샘플러<select data-g="sampler">${opts(SAMPLERS, g.sampler)}</select></label>
+        <label class="k">샘플러<select data-g="sampler" ${medium ? 'disabled title="Medium은 Euler Ancestral 고정"' : ''}>${opts(SAMPLERS, medium ? 'k_euler_ancestral' : g.sampler)}</select></label>
         <label class="k">스케줄<select data-g="scheduler">${opts(SCHEDULERS, g.scheduler)}</select></label>
       </div>
       <button class="quota" data-act="quotaRefresh" type="button">${esc(quotaLabel)}${
@@ -660,13 +660,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
   function panelMain(): string {
     const m = state.main;
     const negPane = m.presetPane === 'neg';
-    const n = charList(state).length;
     return [
-      `<div class="chips">
-        ${chip(m.presetName || '선행 프리셋 없음', !!m.presetId)}
-        ${chip(m.autoPerson ? '인원수 자동' : '인원수 수동', m.autoPerson)}
-        ${chip(`캐릭터 ${n}`, n > 0)}
-      </div>`,
       sec('preset',
         `<span class="name">선행 프리셋</span>
         <span class="grow"></span>
@@ -1630,6 +1624,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         }
         renderDots();
         renderPanel();
+        void persistCard({ studio_coords_visible: state.coordVisible }).catch(() => toast('좌표보기 설정을 저장하지 못했습니다.'));
         break;
       case 'fit':
         fitView();
@@ -1640,7 +1635,6 @@ export async function openTagStudio(card: unknown): Promise<void> {
         break;
       case 'auto':
         state.coordMode = 'ai';
-        state.coordVisible = true;
         renderDots();
         renderPanel();
         toast('AI 좌표. 생성할 때 NAI API에 AI choice를 넣습니다.');
@@ -1760,6 +1754,10 @@ export async function openTagStudio(card: unknown): Promise<void> {
       else if (k === 'cfg' || k === 'rescale') state.gen[k] = num(el.value, 0);
       else if (k === 'sampler') state.gen.sampler = el.value;
       else if (k === 'scheduler') state.gen.scheduler = el.value;
+      else if (k === 'effort') {
+        state.gen.effort = el.value === 'medium' ? 'medium' : 'high';
+        renderPanel();
+      }
       renderPeek();
       return;
     }

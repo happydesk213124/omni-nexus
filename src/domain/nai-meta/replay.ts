@@ -92,6 +92,11 @@ function captionChars(caption: unknown, negCaption: unknown): NaiSceneChar[] {
 export function modelFromNaiSource(source: unknown): string {
   const s = cleanText(source).toLowerCase();
   if (!s) return '';
+  // NovelAI's import mapping identifies the distilled V5 model by these hashes,
+  // not by step count: an ordinary High image can also have 14 steps.
+  if (s.includes('nai-diffusion-5-full-medium') || (/\bv5\b/.test(s) && /\b(?:70ab5786|93f4bd30)\b/.test(s))) {
+    return 'nai-diffusion-5-full-medium';
+  }
   if (s.includes('5-curated') || s.includes('v5 curated') || s.includes('nai diffusion 5 curated')) {
     return 'nai-diffusion-5-curated';
   }
@@ -121,7 +126,7 @@ export function sceneFromNaiMetadata(meta: unknown): NaiScene {
   );
   const source = root.Source ?? root.source ?? comment.Source ?? comment.source;
   const model = cleanText(comment.model ?? root.model ?? '', 200)
-    || modelFromNaiSource(source);
+    || modelFromNaiSource(`${cleanText(source || comment.model_name)} ${cleanText(comment.model_hash)}`);
   const seedRaw = Number(comment.seed ?? root.seed);
   const seed = Number.isFinite(seedRaw) && seedRaw > 0 ? Math.floor(seedRaw) : 0;
   return {

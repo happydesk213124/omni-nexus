@@ -457,6 +457,9 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // New overlay preference; its scenario asserts on/off persistence and export.
+  // Keep every addition visible and reject values other than the restored default.
+  if (/\.value\.(?:settings|json)\.card\.studio_coords_visible$/.test(at)) return a === undefined && b === true;
   // New default-on field injection switches; scenario asserts disabling, export and restore.
   if (/\.value\.(?:settings|json)\.card\.character_(?:height|age)$/.test(at)) return a === undefined && b === true;
   // 1.0.1 no longer exports the service-account credential field, even when empty.
@@ -665,6 +668,7 @@ const NEW_ONLY_STEPS = new Map([
   ['nai.probe',v=>v?.ok === true && v.is_png === true && v.bytes > 0 && v.debug?.counts?.cards === 8 && v.debug?.counts?.images === 8 && v.debug?.counts?.blob_urls === 8 ? null : 'NAI probe must preserve all original and imported history rows'],
   ['settings.reply_char_limit', v => v?.defaultOff === true && v.defaultLimit === 500 && v.saved === true && v.exported === true && v.retained === true ? null : 'Reply character limit contract failed'],
   ['settings.guardrail_preset', v => v?.defaultNone && v?.saved && v?.exported && v?.disabled && v?.manualKept ? null : 'Guardrail preset persistence failed'],
+  ['settings.studio_coords_visible', v => v?.defaultOn === true && v.hidden === true && v.exportedHidden === true && v.shown === true ? null : 'Coordinate visibility persistence failed'],
   // Freeform batch creation is a new route. Assert names/looks, reference input,
   // single-call batching and preservation directly on the actual API response.
   ['chars.create_from_description', v => v?.added === 2 && v.saved === true && v.references === true && v.singleCall === true && v.existingPreserved === true

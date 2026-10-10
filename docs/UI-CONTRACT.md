@@ -196,7 +196,9 @@ metadata (`GET /v1/cards/:id/nai-prompt`). Dropping a PNG/WebP onto the
 canvas uses `POST /v1/cards/nai-from-image` `{ image_data_url }` (same
 payload, no card write). Unmatched char names stay C1/C2/C3. V4.5 / V5 and 가로·세로·정사각
 override that scene on generate. Metadata with a non-0.5 character center
-opens 좌표보기. AI 좌표 sends `use_coords: false`. `card.studio_seed_lock`
+uses manual coordinates, while `card.studio_coords_visible` (default on) restores
+the last 좌표보기 visibility across opens and image imports. Hiding it preserves
+the generation centers. AI 좌표 sends `use_coords: false`. `card.studio_seed_lock`
 (default off) keeps the 고정 켬 toggle across studio opens.
 `card.studio_folds` is `{ [sectionId]: true }` for collapsed tag-studio
 sections (`preset`, `post`, `gset`, `llm`, `llmPeek`, `ap`, `po`, `costume`,
@@ -387,6 +389,14 @@ switching tabs or returning from ComfyUI. `nai.effort_v5` defaults to `high`;
 `medium` applies only to V5 Full and requests the distilled Medium model with
 fixed 14 steps and Euler Ancestral. Its request omits custom undesired content
 and CFG rescale. ComfyUI-only saves must leave all NAI fields untouched.
+Shot Tag Studio reads Medium from the image model id or the official V5 Source
+hashes `70AB5786` / `93F4BD30`; 14 steps alone never imply Medium. The compact
+Effort selector sits beside the seed for V5 Full, including image-value mode,
+and is hidden for V4 or an original Curated model in image-value mode. Medium
+locks displayed Steps/sampler/rescale while preserving the editable High values
+for switching back. Redundant preset/person-count/character status badges are
+removed. The canvas readout only shows zoom and coordinates in a small translucent
+box. The coordinate toolbar and its buttons use the same 8px corner radius.
 
 `card.asset_nai_tags` is a string mode: `off` | `inline` | `prepass`
 (legacy `true` / `prepass_vision` → `prepass`, `false` → `off`). Card
