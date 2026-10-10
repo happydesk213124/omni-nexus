@@ -18,6 +18,15 @@ test('studio coordinate visibility preserves explicit off through migration and 
   }
 });
 
+test('studio coordinate mode defaults to image and preserves explicit AI/manual selection', () => {
+  for (const mode of [undefined, null, '', 'invalid', 'image', 'ai', 'manual']) {
+    const expected = mode === 'ai' || mode === 'manual' ? mode : 'image';
+    const migrated = migrateSettings({ card: { studio_coord_mode: mode } });
+    assert.equal(migrated.card.studio_coord_mode, expected);
+    assert.equal(importSettings(exportSettings(migrated)).card.studio_coord_mode, expected);
+  }
+});
+
 test("reply character limit preserves legacy behavior, normalizes input and survives export/import", () => {
   const legacy = migrateSettings({card:{}}).card;
   assert.equal(legacy.auto_gen_char_limit_enabled, false);

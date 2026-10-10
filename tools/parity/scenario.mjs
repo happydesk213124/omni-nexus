@@ -132,13 +132,16 @@ export async function runScenario(N, handles) {
   await rec('settings.studio_coords_visible', async () => {
     const initial = (await get('/v1/settings')).settings.card;
     if (!('studio_coords_visible' in initial)) return { unsupported: true };
-    await post('/v1/settings', { card: { studio_coords_visible: false } });
+    await post('/v1/settings', { card: { studio_coords_visible: false, studio_coord_mode: 'ai' } });
     const hidden = (await get('/v1/settings')).settings.card;
     const exported = JSON.parse((await get('/v1/settings/export')).json).card;
-    await post('/v1/settings', { card: { studio_coords_visible: true } });
+    await post('/v1/settings', { card: { studio_coords_visible: true, studio_coord_mode: 'manual' } });
     const shown = (await get('/v1/settings')).settings.card;
+    await post('/v1/settings', { card: { studio_coord_mode: 'image' } });
     return { defaultOn: initial.studio_coords_visible === true, hidden: hidden.studio_coords_visible === false,
-      exportedHidden: exported.studio_coords_visible === false, shown: shown.studio_coords_visible === true };
+      exportedHidden: exported.studio_coords_visible === false, shown: shown.studio_coords_visible === true,
+      modeDefault: initial.studio_coord_mode === 'image', savedAi: hidden.studio_coord_mode === 'ai',
+      exportedAi: exported.studio_coord_mode === 'ai', savedManual: shown.studio_coord_mode === 'manual' };
   });
   await rec('settings.sound_types', async () => {
     const initial=(await get('/v1/settings'))?.settings?.card || {};

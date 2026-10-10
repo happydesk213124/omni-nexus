@@ -40,6 +40,19 @@ describe('studioModelChoice', () => {
 });
 
 describe('hydrateFromNai', () => {
+  it('restores explicit AI/manual mode ahead of the imported image coordinates', () => {
+    for (const [mode, x] of [['ai', 0.38], ['manual', 0.5]]) {
+      const state = emptyState();
+      hydrateFromNai({ state, nai: { characters: [{ prompt: 'girl', center_x: x, center_y: 0.5 }] },
+        settings: { card: { studio_coord_mode: mode, studio_coords_visible: false } }, rosterPayload: {}, card: {} });
+      assert.equal(state.coordMode, mode);
+      assert.equal(state.coordVisible, false);
+      const request = assembleOverrides(state, []);
+      assert.equal(request.use_coords, mode === 'manual');
+      assert.equal(request.characters[0].center_x, mode === 'manual' ? x : undefined);
+    }
+  });
+
   it('restores coordinate visibility without discarding imported positions', () => {
     for (const visible of [false, true]) {
       const state = emptyState();

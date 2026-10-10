@@ -1624,7 +1624,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         }
         renderDots();
         renderPanel();
-        void persistCard({ studio_coords_visible: state.coordVisible }).catch(() => toast('좌표보기 설정을 저장하지 못했습니다.'));
+        void persistCard({ studio_coord_mode: state.coordMode, studio_coords_visible: state.coordVisible }).catch(() => toast('좌표보기 설정을 저장하지 못했습니다.'));
         break;
       case 'fit':
         fitView();
@@ -1637,6 +1637,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         state.coordMode = 'ai';
         renderDots();
         renderPanel();
+        void persistCard({ studio_coord_mode: state.coordMode }).catch(() => toast('AI 좌표 설정을 저장하지 못했습니다.'));
         toast('AI 좌표. 생성할 때 NAI API에 AI choice를 넣습니다.');
         break;
       case 'history':

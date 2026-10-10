@@ -194,6 +194,8 @@ export interface CardSettings {
   studio_seed_lock: boolean;
   /** Coordinate overlay visibility; generation positions are independent. */
   studio_coords_visible: boolean;
+  /** Follow image metadata until the user explicitly selects AI or manual. */
+  studio_coord_mode: 'image' | 'ai' | 'manual';
   /** Tag studio section folds. `true` = collapsed. Stable ids: preset, post, gset, … */
   studio_folds: Record<string, boolean>;
   /** Language for V5 natural (always on for V5 shots). */

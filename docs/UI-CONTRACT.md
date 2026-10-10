@@ -198,7 +198,10 @@ payload, no card write). Unmatched char names stay C1/C2/C3. V4.5 / V5 and 가�
 override that scene on generate. Metadata with a non-0.5 character center
 uses manual coordinates, while `card.studio_coords_visible` (default on) restores
 the last 좌표보기 visibility across opens and image imports. Hiding it preserves
-the generation centers. AI 좌표 sends `use_coords: false`. `card.studio_seed_lock`
+the generation centers. `card.studio_coord_mode` defaults to `image` (follow
+metadata until a user choice); selecting AI 좌표 or 좌표보기 saves `ai` or
+`manual`, which takes precedence on subsequent opens and image imports.
+AI 좌표 sends `use_coords: false`. `card.studio_seed_lock`
 (default off) keeps the 고정 켬 toggle across studio opens.
 `card.studio_folds` is `{ [sectionId]: true }` for collapsed tag-studio
 sections (`preset`, `post`, `gset`, `llm`, `llmPeek`, `ap`, `po`, `costume`,

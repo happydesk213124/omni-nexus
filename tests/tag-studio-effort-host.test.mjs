@@ -86,6 +86,24 @@ test('studio imports Medium, switches effort in requests, and fits the seed row 
       assert.equal(await page.evaluate(() => window.requests[2].model), 'nai-diffusion-5-full');
       await page.locator('[data-model="nai-diffusion-4-5-full"]').click();
       assert.equal(await effort.count(), 0, 'V4 has no effort control');
+      const auto = page.locator('[data-act="auto"]:visible').first();
+      await auto.click();
+      await page.waitForFunction(() => window.cardSettings.studio_coord_mode === 'ai');
+      await page.evaluate(() => { Studio.closeTagStudio(); void Studio.openTagStudio({ id: 'medium-image', session_id: 'session1' }); });
+      await effort.waitFor();
+      assert.equal(await auto.evaluate(el => el.classList.contains('on')), true, 'AI choice survives reopening an image with placed coordinates');
+      assert.equal(await grid.evaluate(el => el.classList.contains('on')), false);
+      assert.equal(await page.locator('#dots').evaluate(el => el.classList.contains('hide')), true);
+      await page.locator('#gen').click();
+      await page.waitForFunction(() => window.requests.length === 4);
+      assert.equal(await page.evaluate(() => window.requests[3].use_coords), false, 'restored AI choice also applies to generation');
+      await grid.click();
+      await grid.click();
+      await page.waitForFunction(() => window.cardSettings.studio_coord_mode === 'manual' && window.cardSettings.studio_coords_visible === false);
+      await page.evaluate(() => { Studio.closeTagStudio(); void Studio.openTagStudio({ id: 'medium-image', session_id: 'session1' }); });
+      await effort.waitFor();
+      assert.equal(await auto.evaluate(el => el.classList.contains('on')), false, 'manual mode also persists');
+      assert.equal(await grid.evaluate(el => el.classList.contains('on')), false, 'manual mode can reopen with the overlay hidden');
       await page.evaluate(() => Studio.closeTagStudio());
       await page.close();
     }
