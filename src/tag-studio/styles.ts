@@ -162,6 +162,9 @@ export function tagStudioCss(): string {
 #nx-tag-studio .costume-fields .k, #nx-tag-studio .costume-fields textarea { min-width: 0; }
 #nx-tag-studio .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 #nx-tag-studio .inline { display: flex; align-items: center; gap: 6px; }
+#nx-tag-studio .seed-row > button { flex: 0 0 auto; }
+#nx-tag-studio .seed-row > input { flex: 1; width: 0; min-width: 0; }
+#nx-tag-studio .seed-row > select { flex: 0 0 86px; width: 86px; padding: 0 6px; }
 #nx-tag-studio .hint { color: var(--muted); font-size: 11px; }
 #nx-tag-studio .quota {
   display: block; width: 100%; text-align: left;
@@ -186,19 +189,12 @@ export function tagStudioCss(): string {
 #nx-tag-studio textarea.t { min-height: 74px; font-size: 12px; }
 #nx-tag-studio textarea.t.big { min-height: 108px; }
 
-#nx-tag-studio .chips { display: flex; flex-wrap: wrap; gap: 5px; }
-#nx-tag-studio .chip {
-  font-size: 10.5px; padding: 3px 7px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--muted); background: #12141c;
-}
-#nx-tag-studio .chip.on { color: var(--ok); border-color: #2d5a48; background: #14241d; }
-
 #nx-tag-studio .center { flex: 1; min-width: 0; position: relative; background: var(--stage); overflow: hidden; }
 #nx-tag-studio .cbar {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 6px; padding: 5px;
   background: rgba(20,22,29,.86); border: 1px solid var(--line);
-  border-radius: 999px; backdrop-filter: blur(10px); z-index: 5;
+  border-radius: 8px; backdrop-filter: blur(10px); z-index: 5;
   max-width: calc(100% - 20px); overflow: auto; scrollbar-width: none;
 }
 #nx-tag-studio .cbar::-webkit-scrollbar { display: none; }
@@ -263,9 +259,9 @@ export function tagStudioCss(): string {
 #nx-tag-studio .dot.sel { background: var(--pink); color: #fff; box-shadow: 0 0 0 3px rgba(232,90,140,.25); }
 #nx-tag-studio .readout {
   position: absolute; left: 10px; bottom: 10px; z-index: 5;
-  display: flex; gap: 10px; font-size: 11px; color: #cfd2e0;
-  background: rgba(8,9,13,.6); border: 1px solid var(--line);
-  padding: 5px 9px; border-radius: 8px; backdrop-filter: blur(6px);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 20px); font-size: 9px; color: #cfd2e0;
+  background: rgba(8,9,13,.12); border: 1px solid rgba(148,153,173,.06);
+  padding: 1px 3px; border-radius: 3px;
   pointer-events: none;
 }
 #nx-tag-studio .peek {

@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.7';
+const PLUGIN_VERSION = '1.1.7.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -976,6 +976,17 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.7.1 · 샷태그 V5 Effort·상태 표시 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.10 · 원본 이미지의 Medium을 읽고 샷태그 수정에서도 Effort를 선택할 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>알파 채널에 숨겨진 NAI 원본 메타데이터의 V5 모델 식별값으로 Medium을 구분합니다. Steps가 14라는 이유만으로 Medium으로 판단하지 않습니다.</li>
+            <li>샷태그 수정의 V5 Full 설정에서 시드 옆에 Effort High·Medium 선택을 추가했습니다. 이미지 값 모드에서도 변경할 수 있습니다.</li>
+            <li>Medium은 14 Steps·Euler Ancestral로 생성하고 CFG rescale을 사용하지 않습니다. High로 돌아오면 편집하던 Steps·샘플러·rescale 값을 유지합니다.</li>
+            <li>프리셋·인원수·캐릭터 상태 배지를 제거하고 확대·좌표만 남겼습니다. 표시 박스를 더 작고 투명하게 줄이고 좌표 도구 상자의 모서리를 안쪽 버튼과 맞췄습니다.</li>
+            <li>좌표보기의 켜짐·꺼짐을 저장해 다음에 열 때도 복원합니다. 좌표보기를 꺼도 생성에 쓰는 좌표값은 유지합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.7 · ComfyUI 설정 보존·NAI V5 Effort</strong>
@@ -14896,7 +14907,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.7 · ComfyUI를 오가도 NAI 설정을 유지하고 NAI V5 Full에 Effort High·Medium 선택을 추가했습니다."
+    body: "1.1.7.1 · 샷태그 수정에 V5 Effort 선택을 추가했습니다. 확대·좌표 표시를 작고 투명하게 줄이고 좌표보기의 켜짐·꺼짐을 기억합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

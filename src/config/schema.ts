@@ -366,6 +366,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.nai4_fallback = flagOn(card.nai4_fallback, false);
   card.nai5_speech = flagOn(card.nai5_speech, false);
   card.studio_seed_lock = flagOn(card.studio_seed_lock, false);
+  card.studio_coords_visible = flagOn(card.studio_coords_visible, true);
   {
     const raw = card.studio_folds && typeof card.studio_folds === 'object' && !Array.isArray(card.studio_folds)
       ? card.studio_folds as Record<string, unknown>

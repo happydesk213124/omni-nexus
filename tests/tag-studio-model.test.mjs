@@ -40,6 +40,42 @@ describe('studioModelChoice', () => {
 });
 
 describe('hydrateFromNai', () => {
+  it('restores coordinate visibility without discarding imported positions', () => {
+    for (const visible of [false, true]) {
+      const state = emptyState();
+      hydrateFromNai({ state, nai: { characters: [{ prompt: 'girl', center_x: 0.38, center_y: 0.5 }] },
+        settings: { card: { studio_coords_visible: visible } }, rosterPayload: {}, card: {} });
+      assert.equal(state.coordMode, 'manual');
+      assert.equal(state.coordVisible, visible);
+      assert.equal(assembleOverrides(state, []).characters[0].center_x, 0.38,
+        'hiding the overlay must preserve generation coordinates');
+    }
+  });
+
+  it('retains imported Medium effort and lets studio override it in either model mode', () => {
+    const state = emptyState();
+    hydrateFromNai({ state, nai: { model: 'nai-diffusion-5-full-medium', steps: 14, sampler: 'k_euler_ancestral' },
+      settings: {}, rosterPayload: {}, card: {} });
+    assert.equal(state.gen.effort, 'medium');
+    assert.equal(assembleOverrides(state, []).model, 'nai-diffusion-5-full-medium');
+    state.gen.model = '';
+    assert.equal(assembleOverrides(state, []).model, 'nai-diffusion-5-full-medium', 'image values retain Medium');
+    state.gen.effort = 'high';
+    assert.equal(assembleOverrides(state, []).model, 'nai-diffusion-5-full', 'image values can switch to High');
+    state.gen.model = 'nai-diffusion-5-full';
+    state.gen.steps = '23'; state.gen.sampler = 'k_euler'; state.gen.rescale = 0.2;
+    state.gen.effort = 'medium';
+    const medium = assembleOverrides(state, []);
+    assert.equal(medium.steps, 14); assert.equal(medium.sampler, 'k_euler_ancestral'); assert.equal(medium.cfg_rescale, 0);
+    state.gen.model = 'nai-diffusion-4-5-full';
+    assert.equal(assembleOverrides(state, []).model, 'nai-diffusion-4-5-full');
+    assert.equal(assembleOverrides(state, []).steps, '23', 'V4 keeps editable settings');
+    state.gen.model = 'nai-diffusion-5-full'; state.gen.effort = 'high';
+    assert.equal(assembleOverrides(state, []).steps, '23', 'High settings survive temporary Medium selection');
+    hydrateFromNai({ state, nai: { model: 'nai-diffusion-5-full', steps: 14 }, settings: {}, rosterPayload: {}, card: {} });
+    assert.equal(state.gen.effort, 'high', '14 steps do not imply Medium');
+  });
+
   it('fills gen from image meta and turns coord view on when centers are placed', () => {
     const state = emptyState();
     hydrateFromNai({

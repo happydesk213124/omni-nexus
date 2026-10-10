@@ -211,6 +211,7 @@
     "nai4_fallback": false,
     "nai5_speech": true,
     "studio_seed_lock": false,
+    "studio_coords_visible": true,
     "studio_folds": {
       "preset": false,
       "post": false

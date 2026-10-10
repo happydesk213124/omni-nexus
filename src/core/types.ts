@@ -192,6 +192,8 @@ export interface CardSettings {
   nai5_speech: boolean;
   /** Tag studio seed-lock toggle. Persists across opens; seed number does not. */
   studio_seed_lock: boolean;
+  /** Coordinate overlay visibility; generation positions are independent. */
+  studio_coords_visible: boolean;
   /** Tag studio section folds. `true` = collapsed. Stable ids: preset, post, gset, … */
   studio_folds: Record<string, boolean>;
   /** Language for V5 natural (always on for V5 shots). */

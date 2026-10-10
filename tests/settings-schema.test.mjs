@@ -9,6 +9,15 @@ import {
   applySettingsResetKeeps,
 } from "../.test-build/settings-schema.mjs";
 
+test('studio coordinate visibility preserves explicit off through migration and export/import', () => {
+  assert.equal(migrateSettings({ card: {} }).card.studio_coords_visible, true);
+  for (const [value, expected] of [[false, false], ['false', false], [0, false], [true, true], ['on', true]]) {
+    const migrated = migrateSettings({ card: { studio_coords_visible: value } });
+    assert.equal(migrated.card.studio_coords_visible, expected);
+    assert.equal(importSettings(exportSettings(migrated)).card.studio_coords_visible, expected);
+  }
+});
+
 test("reply character limit preserves legacy behavior, normalizes input and survives export/import", () => {
   const legacy = migrateSettings({card:{}}).card;
   assert.equal(legacy.auto_gen_char_limit_enabled, false);

@@ -133,6 +133,18 @@ describe('applyNaiSceneOverrides', () => {
 });
 
 describe('modelFromNaiSource', () => {
+  it('recognizes the official V5 Medium hashes instead of guessing from 14 steps', () => {
+    for (const hash of ['70AB5786', '93F4BD30']) {
+      assert.equal(modelFromNaiSource(`NovelAI Diffusion V5 ${hash}`), 'nai-diffusion-5-full-medium');
+    }
+    assert.equal(modelFromNaiSource('nai-diffusion-5-full-medium'), 'nai-diffusion-5-full-medium');
+    const scene = sceneFromNaiMetadata({ Source: 'NovelAI Diffusion V5 70AB5786', Comment: { steps: 14, prompt: 'cafe' } });
+    assert.equal(t2iRequestFromScene(scene, 1).model, 'nai-diffusion-5-full-medium');
+    assert.equal(sceneFromNaiMetadata({ Comment: { model_name: 'NovelAI Diffusion V5', model_hash: '70AB5786' } }).model,
+      'nai-diffusion-5-full-medium', 'Comment model hash also identifies Medium without Source');
+    assert.equal(sceneFromNaiMetadata({ Source: 'NovelAI Diffusion V5 0ADF9AB7', Comment: { steps: 14 } }).model, 'nai-diffusion-5-full');
+  });
+
   it('maps common Source labels', () => {
     assert.equal(modelFromNaiSource('NAI Diffusion V5 Full'), 'nai-diffusion-5-full');
     assert.equal(modelFromNaiSource('Stable Diffusion XL 9B - NAI Diffusion V4.5 Full'), 'nai-diffusion-4-5-full');

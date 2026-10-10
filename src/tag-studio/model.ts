@@ -59,6 +59,8 @@ export interface StudioState {
   };
   gen: {
     model: string;
+    imageModel: string;
+    effort: 'high' | 'medium';
     w: number;
     h: number;
     steps: string;
@@ -139,7 +141,7 @@ export function emptyState(): StudioState {
       quality: true,
     },
     gen: {
-      model: '', w: 832, h: 1216, steps: '', cfg: 5, rescale: 0,
+      model: '', imageModel: '', effort: 'high', w: 832, h: 1216, steps: '', cfg: 5, rescale: 0,
       sampler: '', scheduler: '', seed: 0, seedLock: false,
     },
     llm: { presetId: '', presetName: '', cmd: '', cmdPost: '' },
@@ -231,8 +233,16 @@ export function assemble(state: StudioState, roster: CharacterInput[]): Assemble
   return { main, neg: state.main.neg, chars };
 }
 
+export function studioUsesV5Full(state: StudioState): boolean {
+  const model = state.gen.model || state.gen.imageModel;
+  return model === 'nai-diffusion-5-full' || model === 'nai-diffusion-5-full-medium';
+}
+
 export function assembleOverrides(state: StudioState, roster: CharacterInput[]): Record<string, unknown> {
   const a = assemble(state, roster);
+  const v5Full = studioUsesV5Full(state);
+  const medium = v5Full && state.gen.effort === 'medium';
+  const model = v5Full ? `nai-diffusion-5-full${medium ? '-medium' : ''}` : state.gen.model;
   return {
     main_prompt: a.main,
     negative_prompt: a.neg,
@@ -248,13 +258,13 @@ export function assembleOverrides(state: StudioState, roster: CharacterInput[]):
       action: c.slim.action || undefined,
     })),
     seed: state.gen.seedLock && state.gen.seed > 0 ? state.gen.seed : undefined,
-    ...(state.gen.model ? { model: state.gen.model } : {}),
+    ...(model ? { model } : {}),
     width: state.gen.w,
     height: state.gen.h,
-    ...(String(state.gen.steps || '').trim() ? { steps: state.gen.steps } : {}),
+    ...(medium ? { steps: 14 } : String(state.gen.steps || '').trim() ? { steps: state.gen.steps } : {}),
     cfg_scale: state.gen.cfg,
-    cfg_rescale: state.gen.rescale,
-    ...(state.gen.sampler ? { sampler: state.gen.sampler } : {}),
+    cfg_rescale: medium ? 0 : state.gen.rescale,
+    ...(medium ? { sampler: 'k_euler_ancestral' } : state.gen.sampler ? { sampler: state.gen.sampler } : {}),
     ...(state.gen.scheduler ? { scheduler: state.gen.scheduler } : {}),
     use_coords: state.coordMode !== 'ai',
   };
@@ -386,7 +396,11 @@ export function hydrateFromNai(args: {
   });
   state.selChar = state.tabs.find((t) => t.kind === 'char')?.id || '';
   const model = studioModelChoice(nai.model);
-  if (model) state.gen.model = model;
+  if (model) {
+    state.gen.model = model;
+    state.gen.imageModel = cleanText(nai.model, 200);
+    state.gen.effort = state.gen.imageModel.includes('-medium') ? 'medium' : 'high';
+  }
   const width = Math.floor(Number(nai.width));
   const height = Math.floor(Number(nai.height));
   if (Number.isFinite(width) && width >= 64) state.gen.w = width;
@@ -403,8 +417,8 @@ export function hydrateFromNai(args: {
   const placed = hasPlacedCoords(Object.values(state.chars));
   if (placed) {
     state.coordMode = 'manual';
-    state.coordVisible = true;
   }
+  state.coordVisible = cardCfg.studio_coords_visible !== false;
 }
 
 export function mergedRoster(payload: Record<string, unknown>): CharacterInput[] {
