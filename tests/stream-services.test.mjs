@@ -119,7 +119,7 @@ test('sibling line batches generate ahead without chat writes and preserve both 
   risuai.setChatToIndex=setChat;
 });
 
-test('a line group waits for every tagger and inserts already generated images in one write',async()=>{
+test('a slow tagger does not block insertion of a completed sibling',async()=>{
   const f=await fixture(),chat=await f.chat();
   const text=Array.from({length:4},(_,i)=>`A sufficiently long narrative paragraph ${i+1}.`).join('\n');
   chat.message[0].data=text;await risuai.setChatToIndex(0,0,chat);
@@ -138,12 +138,14 @@ test('a line group waits for every tagger and inserts already generated images i
     const writes=[],setChat=risuai.setChatToIndex;
     risuai.setChatToIndex=async(...args)=>{if((await f.chat()).message[0].data!==args[2].message[0].data)writes.push(args[2].message[0].data);return setChat(...args);};
     const committing=f.api.commitStreamOutput({...f.request,job_ids:[first.job_id,second.job_id],assistant_text:text,content_hash:'final',message_index:0});
-    await sleep();assert.equal(writes.length,0,'a slow earlier tagger blocks all insertion');
+    for(let n=0;n<100 && !writes.length;n++)await sleep();
+    assert.equal(writes.length,1,'insert the ready sibling before the slow tagger finishes');
+    assert.equal((writes[0].match(/@inray::/g)||[]).length,1);
     f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[{shots:[{line:1,composition:'earlier scene'}]}]}));
     release();assert.equal((await committing).ok,true);
     await f.wait(first.job_id,j=>j.state==='done');await assertRuntimeReleased(f,first.job_id);
     await f.wait(second.job_id,j=>j.state==='done');await assertRuntimeReleased(f,second.job_id);
-    assert.ok(writes.length<=2,'one initial group write and at most one final group write');
+    assert.ok(writes.length<=3,'ready insertion, remaining tag plans, and final images only');
     assert.match(writes[0],/@inray::/,'already completed images are in the first insertion');
     risuai.setChatToIndex=setChat;
     const final=(await f.chat()).message[0].data;
@@ -202,6 +204,54 @@ test('line images update base64 previews without further message writes until al
     assert.equal(writes.length,2);assert.equal((writes[1].match(/@inray::/g)||[]).length,4);assert.doesNotMatch(writes[1],/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/);
     assert.equal(analysisBody(writes[1]),text);
   } finally {releaseSecond();releaseFourth();risuai.nativeFetch=fetch;risuai.setChatToIndex=setChat;globalThis.__OMNI_SPINNER_PREVIEW__=preview;}
+});
+
+test('96 lines at size 20 insert ready slots, remaining plans, then final assets in exactly three writes',{timeout:12000},async()=>{
+  const f=await fixture(),chat=await f.chat();
+  const text=Array.from({length:96},(_,i)=>`Narrative line ${i+1}, long enough to depict.`).join('\n');
+  chat.message[0].data=text;await risuai.setChatToIndex(0,0,chat);
+  const fetch=risuai.nativeFetch,setChat=risuai.setChatToIndex,preview=globalThis.__OMNI_SPINNER_PREVIEW__;
+  const images=f.host.pauseGeneration();let releaseTags,calls=0;
+  const tags=new Promise(r=>releaseTags=r),writes=[],previews=[],ids=[];
+  risuai.nativeFetch=async(url,...args)=>{
+    if(String(url).includes('completions')) {
+      const index=++calls,response=await fetch(url,...args);
+      if(index>2)await tags;
+      return response;
+    }
+    return fetch(url,...args);
+  };
+  risuai.setChatToIndex=async(...args)=>{if((await f.chat()).message[0].data!==args[2].message[0].data)writes.push(args[2].message[0].data);return setChat(...args);};
+  globalThis.__OMNI_SPINNER_PREVIEW__=async row=>previews.push(row);
+  try {
+    for(const [start,end] of [[1,20],[21,40],[41,60],[61,80],[81,96]]) {
+      f.host.setLlmReply(JSON.stringify({scenes:[{shots:[{line:end,composition:'scene '+end}]}]}));
+      const created=await f.api.createJob({...f.request,assistant_text:text.split('\n').slice(0,end).join('\n'),stream_line_start:start,stream_line_end:end});
+      assert.equal(created.accepted,true);ids.push(created.job_id);
+      if(ids.length<=2)await f.wait(created.job_id,j=>j.state==='generating');
+      else for(let n=0;n<100 && calls<ids.length;n++)await sleep();
+    }
+    await images.started;assert.equal(writes.length,0);
+    // Host postprocessing changes wording before output commits; paid L ranges remain usable.
+    const finalText=text.replace('Narrative line 1,','Final narrative line one,');
+    const finalChat=await f.chat();finalChat.isStreaming=false;finalChat.message[0].data=finalText;
+    await setChat(0,0,finalChat);
+    const committing=f.api.commitStreamOutput({...f.request,job_ids:ids,assistant_text:finalText,content_hash:'final'});
+    for(let n=0;n<100 && !writes.length;n++)await sleep();
+    assert.equal(writes.length,1);assert.equal((writes[0].match(/@inrayspinner::/g)||[]).length,2);
+    releaseTags();assert.equal((await committing).ok,true);
+    assert.equal(writes.length,2);assert.equal((writes[1].match(/@inrayspinner::/g)||[]).length,5);
+    assert.equal(analysisBody(writes[1]),finalText);
+    images.release();
+    for(const id of ids){await f.wait(id,j=>j.state==='done');await assertRuntimeReleased(f,id);}
+    assert.equal(writes.length,3,'five image completions share one final message save');
+    assert.equal((writes[2].match(/@inray::/g)||[]).length,5);
+    assert.doesNotMatch(writes[2],/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/);
+    assert.equal(analysisBody(writes[2]),finalText);
+    assert.equal(calls,5,'no retagging after the final body rewrite');
+    assert.equal(previews.length,5);assert.ok(previews.every(row=>/^data:image\/\w+;base64,/.test(row.url)));
+    assert.equal(f.host.naiRequests.filter(row=>row.kind==='generate').length,5);
+  } finally {releaseTags();images.release();risuai.nativeFetch=fetch;risuai.setChatToIndex=setChat;globalThis.__OMNI_SPINNER_PREVIEW__=preview;}
 });
 
 test('line group keeps paid images and removes pending slots after a later NAI failure',{timeout:12000},async()=>{

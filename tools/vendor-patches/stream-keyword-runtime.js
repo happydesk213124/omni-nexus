@@ -52,7 +52,8 @@ function onScriptOutput(content) {
   omniArmKeywordExpiry(run);
   if (!run.timer) run.timer = setTimeout(() => {
     run.timer = 0;
-    if (run !== omniKeywordRun || run.cancelled || run.committing || run.text === run.checked) return;
+    if (run !== omniKeywordRun || run.cancelled || run.committing ||
+      (run.text === run.checked && (!run.lineMode || run.identity))) return;
     if(run.lineMode) {run.checked=run.text;omniScanLineRun(run);return;}
     // Full-prefix comparisons belong to the scan window, never each chunk.
     if(run.fired && !run.text.startsWith(run.checked)) {

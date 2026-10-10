@@ -1,12 +1,18 @@
 function omniScanLineRun(run, final=false) {
   const card=t.backendSettings?.card || {};
-  const result=run.lineBatcher.scan(run.text,card.stream_lines_count || 30,parsedStreamKeywords(card),final);
-  if(result.reset && run.batches.length) {
-    const text=run.text,activeAt=run.activeAt,target=final?run.target:undefined;
-    omniCancelKeywordRun(run);
-    omniKeywordRun=run=omniNewKeywordRun(target);run.text=text;run.activeAt=activeAt;
-    if(!final)omniArmKeywordExpiry(run);
-    return omniScanLineRun(run,final);
+  const result=run.lineBatcher.scan(run.text,card.stream_lines_count || 30,parsedStreamKeywords(card),final,final || !!run.identity);
+  if(!final && !run.identity) {
+    if(!run.target && result.batches.some(range=>messageBodyChars(range.text)>30)) {
+      const target=omniCaptureKeywordTarget().catch(error=>{y('warn','stream.lines.target',String(error));return null;});
+      run.target=target;
+      void target.then(value=>{
+        if(run.target!==target || run.cancelled || run.committing)return;
+        if(!value){run.target=null;return;}
+        run.identity=value;run.targetResolved=true;
+        omniScanLineRun(run);
+      });
+    }
+    return run;
   }
   for(const range of result.batches) {
     if(messageBodyChars(range.text)<=30)continue;
@@ -25,12 +31,11 @@ function omniCommitLineReply(arg,msg,text,key) {
   let run=omniKeywordRun;
   if(!id || !characterId || !chatId)return false;
   if(run?.identity && (run.identity.scope.characterId!==characterId || run.identity.scope.chatId!==chatId || run.identity.id!==id))return false;
-  if(run?.targetResolved && !run.identity){omniCancelKeywordRun(run);run=null;}
   if(run && !run.lineMode){omniCancelKeywordRun(run);run=null;}
   if(!run)omniKeywordRun=run=omniNewKeywordRun();
   // Short replies (or a final burst before the scan window) have no captured
   // streaming target. Use the committed event, with the same identity check.
-  if(!run.target)run.target=Promise.resolve().then(async()=>{
+  if(!run.identity)run.target=Promise.resolve().then(async()=>{
     const scope=await Z({useOverride:false});
     if(scope.characterId!==characterId || scope.chatId!==chatId)return null;
     return omniKeywordIdentity({...scope,chat:arg.chat},arg.messageIndex);
@@ -79,7 +84,9 @@ function omniPollLineJobs(sessionId,ids,hash,run) {
     t.activeJobId=active?.id || '';
     const summary=globalThis.__INLAY_VIEWER_CORE__.aggregateStreamLineProgress(rows,{batchCount:run?.batches.length || ids.length,outputComplete:run?!!run.outputComplete:true,committed:run?!!run.committed:true});
     t.jobProgress={...summary,jobId:run?.streamId || ids[0],toastRun:run?.streamId || ids[0]};
-    if(typeof syncProgressToast==='function')await syncProgressToast();
+    // A SafeDOM write failure must not break the next poll or completion sound.
+    try {if(typeof syncProgressToast==='function')await syncProgressToast();}
+    catch(error){y('warn','stream.lines.toast',String(error));}
     const finished=['done','error','cancelled'].includes(summary.state),stamp=run?.committed ? finished?'done':'inserted':'';
     if(stamp && stamp!==previous) {
       previous=stamp;
@@ -88,7 +95,10 @@ function omniPollLineJobs(sessionId,ids,hash,run) {
     }
     if(t.pollTimer!==timer)return;
     if(!finished) {t.pollTimer=timer=setTimeout(poll,1000);if(run)run.linePollTimer=timer;}
-    else {t.pollTimer=null;t.jobsInFlight?.delete(run?.pollHash || hash);}
+    else {
+      t.pollTimer=null;t.jobsInFlight?.delete(run?.pollHash || hash);
+      if(summary.state==='done' && summary.shot_done>0)nxPlayImageDoneSoundOnce(run?.streamId || ids[0]);
+    }
   };
   t.pollTimer=timer=setTimeout(poll,1);
   if(run)run.linePollTimer=timer;

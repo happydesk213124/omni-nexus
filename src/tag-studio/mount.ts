@@ -13,6 +13,7 @@ import {
   mergeStudioRosterPayloads,
   mergedRoster,
   nextId,
+  studioCharacterLookTags,
   studioRowIsGlobal,
   studioUsesV5Full,
   type StudioChar,
@@ -1363,7 +1364,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       c.costumeTags = first?.attire || '';
       c.costumeBottoms = first?.bottoms || '';
       c.costumeNote = first?.note || '';
-      c.tags = cleanText(r?.appearance, 4000);
+      c.tags = studioCharacterLookTags(r, c.costume);
       relabel();
       renderAll();
       return;
@@ -1595,7 +1596,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       costumeTags: firstCos?.attire || '',
       costumeBottoms: firstCos?.bottoms || '',
       costumeNote: firstCos?.note || '',
-      tags: cleanText(r?.appearance, 4000),
+      tags: studioCharacterLookTags(r, firstCos?.name),
       post: '',
       uc: '',
       x: slot[0],

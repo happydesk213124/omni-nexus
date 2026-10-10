@@ -8,6 +8,7 @@ export class StreamLineAttachments {
   private ids: string[] = [];
   private target?: ReturnType<typeof jobChatTarget>;
   private insertion?: Promise<void>;
+  private placementComplete = false;
   private finishing = false;
   private failure?: unknown;
   private resolveFinished!: () => void;
@@ -38,15 +39,23 @@ export class StreamLineAttachments {
     if(this.inserted)void this.finalize();
   }
   waitTags(ids: string[]): Promise<unknown> {return Promise.all(ids.map(id=>this.entries.get(id)?.ready));}
-  insert(ids: string[],target: ReturnType<typeof jobChatTarget>): Promise<void> {
+  insert(ids: string[],target: ReturnType<typeof jobChatTarget>,validate:()=>Promise<void>): Promise<void> {
     if(this.insertion)return this.insertion;
     this.ids=ids;this.target=target;
     this.insertion=(async()=>{
-      await writeLineGroupSlots(target,this.plans());
+      const ready=this.plans();
+      await writeLineGroupSlots(target,ready);
       this.inserted=true;
-      const repaint=Reflect.get(globalThis,'__OMNI_REPAINT_SPINNER_PREVIEWS__');
-      // SafeDOM previews are best effort; they cannot invalidate durable placement.
-      if(typeof repaint==='function')try {await repaint(ids);} catch { /* Host remount retries. */ }
+      await this.repaint();
+      await this.waitTags(ids);
+      await validate();
+      const plans=this.plans();
+      // All late taggers share one insertion, regardless of their finish order.
+      if(plans.some(plan=>plan.shots.length && !ready.includes(plan))) {
+        await writeLineGroupSlots(target,plans);
+        await this.repaint();
+      }
+      this.placementComplete=true;
       await this.finalize();
     })().catch(error=>{this.failure=error;this.resolveFinished();throw error;});
     return this.insertion;
@@ -54,8 +63,13 @@ export class StreamLineAttachments {
   private plans(): LineBakeBatch[] {
     return this.ids.flatMap(id=>{const plan=this.entries.get(id)?.plan;return plan?[plan]:[];});
   }
+  private async repaint(): Promise<void> {
+    const repaint=Reflect.get(globalThis,'__OMNI_REPAINT_SPINNER_PREVIEWS__');
+    // SafeDOM previews are best effort; they cannot invalidate durable placement.
+    if(typeof repaint==='function')try {await repaint(this.ids);} catch { /* Host remount retries. */ }
+  }
   private async finalize(): Promise<void> {
-    if(this.finishing || !this.target || !this.ids.every(id=>this.entries.get(id)?.ended))return;
+    if(this.finishing || !this.placementComplete || !this.target || !this.ids.every(id=>this.entries.get(id)?.ended))return;
     this.finishing=true;
     try {
       await writeLineGroupSlots(this.target,this.plans(),true);

@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.7.1';
+const PLUGIN_VERSION = '1.1.8';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -976,6 +976,17 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.8 · 줄 단위 선행생성·샷태그 캐릭터 외형 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.11 · 출력 중 태깅과 응답 완료 후 이미지 등록 흐름을 정리하고 샷태그에 저장된 캐릭터 외형을 함께 넣습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>응답 앞부분이 달라져도 이미 처리한 줄 구간을 취소하거나 처음부터 다시 태깅하지 않습니다.</li>
+            <li>출력 중 대상 메시지를 아직 확인하지 못한 경우 다음 출력 알림에서 다시 확인합니다. 대상 확인 전에 줄 구간을 처리한 것으로 표시해 선행 태깅이 응답 완료 뒤로 밀리던 문제를 수정했습니다.</li>
+            <li>응답이 완료되면 준비된 이미지와 스피너를 먼저 넣고, 남은 태깅이 끝나면 추가 슬롯을 함께 넣습니다. 이후 이미지는 미리보기로 갱신하고 마지막에 일괄 저장해 본문 수정은 최대 3회로 제한합니다.</li>
+            <li>토스트 표시 오류가 완료 상태 확인을 막지 않도록 수정했습니다. 이미지 등록과 최종 저장이 끝나면 진행 토스트를 닫고, 완료 알림음이 켜져 있으면 한 번 재생합니다.</li>
+            <li>샷태그 수정에서 캐릭터 선택·교체·+ 추가 시 선택한 코스튬의 외형과 머리색·머리 모양·눈색·나이·키를 함께 넣습니다. 외형에 이미 있는 색상 태그는 중복으로 넣지 않습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.7.1 · 샷태그 V5 Effort·상태 표시 개선</strong>
@@ -14907,7 +14918,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.7.1 · 샷태그 수정에 V5 Effort 선택을 추가했습니다. 확대·좌표 표시를 작고 투명하게 줄이고 좌표보기의 켜짐·꺼짐을 기억합니다."
+    body: "1.1.8 · 줄 단위 선행생성의 재태깅·시작 지연·완료 토스트를 수정했습니다. 이미지와 스피너를 단계별로 넣고 최종 등록 후 완료 알림음을 재생합니다. 샷태그 캐릭터 추가에 머리·눈·나이·키를 함께 넣습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

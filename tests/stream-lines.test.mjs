@@ -33,14 +33,16 @@ test('final tails after full batches use 80 percent of the configured size, roun
     assert.equal(batcher.scan(lines(total),size,[],true).batches.length,0,'final output cannot pay for the tail twice');
   }
 });
-test('replacement resets ownership; split thought tags and blank lines never consume L numbers',()=>{
+test('body rewrites retain reserved ranges; split thought tags and blank lines never consume L numbers',()=>{
   const batcher=createStreamLineBatcher();
   batcher.scan('<Thou',2,[]);
   assert.equal(batcher.scan('<Thoughts>\nsecret\nsecret again\n',2,[]).batches.length,0);
   const text='<Thoughts>\nsecret\nsecret again\n</Thoughts>\n\n'+lines(2)+'\n';
   assert.deepEqual(batcher.scan(text,2,[]).batches.map(b=>[b.start,b.end,b.text]),[[1,2,lines(2)]]);
   const replaced=batcher.scan('New first paragraph.\nNew second paragraph.\n',2,[]);
-  assert.equal(replaced.reset,true);assert.deepEqual(replaced.batches.map(b=>[b.start,b.end]),[[1,2]]);
+  assert.deepEqual(replaced.batches,[],'the same reply cannot reserve L1-L2 again');
+  const extended=batcher.scan('New first paragraph.\nNew second paragraph.\nThird paragraph.\nFourth paragraph.\n',2,[]);
+  assert.deepEqual(extended.batches.map(b=>[b.start,b.end]),[[3,4]]);
 });
 test('keyword/marker terminates prose before status lines, without another range',()=>{
   for(const marker of ['RP-Guide','[[imgstart]]']) {

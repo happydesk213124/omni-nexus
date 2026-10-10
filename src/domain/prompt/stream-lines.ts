@@ -13,34 +13,31 @@ export function streamLineImageLimits(card: {stream_lines_image_min?: unknown;st
 /** Reserve each range once; an unfinished last line never counts toward a batch. */
 export function createStreamLineBatcher() {
   const scanner = createStreamSignalScanner(true);
-  let consumed = 0, revision = 0, covered = '';
+  let consumed = 0;
   return {
-    scan(raw: string, size: number, keywords: readonly string[], final = false) {
+    scan(raw: string, size: number, keywords: readonly string[], final = false, reserve = true) {
       const signal = scanner.scan(raw, keywords);
-      const changed = revision !== scanner.revision;
-      revision = scanner.revision;
       const lines = signal ? signal.text.split('\n').filter(Boolean)
         : final && scanner.partialLine ? [...scanner.completedLines, scanner.partialLine] : scanner.completedLines;
-      // A host may trim the final newline or remove closed thought wrappers.
-      // Equivalent prose must not reserve the same paid range twice.
-      const reset = changed && (!covered || lines.slice(0, consumed).join('\n') !== covered);
-      if (reset) { consumed = 0; covered = ''; }
+      // A reply owns paid L ranges even if the host rewrites its prose.
+      // Placement uses the final body's L numbers; never pay for a range twice.
       const batches: StreamLineBatch[] = [];
       const count = Math.max(2, Math.min(100, Math.floor(size) || 30));
-      while (lines.length - consumed >= count) {
-        const end = consumed + count;
-        batches.push({ start: consumed + 1, end, text: lines.slice(0, end).join('\n') });
-        consumed = end;
-        covered = batches.at(-1)!.text;
+      let next = consumed;
+      while (lines.length - next >= count) {
+        const end = next + count;
+        batches.push({ start: next + 1, end, text: lines.slice(0, end).join('\n') });
+        next = end;
       }
       // Completion admits only tails at least 80% full, including short replies
       // with no preceding batch. Round upward because L lines are indivisible.
-      if (final && lines.length-consumed>=Math.ceil(count*4/5)) {
-        batches.push({ start: consumed+1, end: lines.length, text: lines.join('\n') });
-        consumed = lines.length;
-        covered = batches.at(-1)!.text;
+      if (final && lines.length-next>=Math.ceil(count*4/5)) {
+        batches.push({ start: next+1, end: lines.length, text: lines.join('\n') });
+        next = lines.length;
       }
-      return { reset, batches };
+      // A temporarily unavailable host target must not consume unpaid ranges.
+      if (reserve) consumed = next;
+      return { batches };
     },
   };
 }

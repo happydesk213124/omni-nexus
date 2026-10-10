@@ -108,8 +108,6 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
   if (row.committing) return row.committing;
   if (row.committed) return { ok: true, committed: true, job_id: id, job_ids: ids };
   row.committing = (async () => {
-    // Generation may already be running; no placement until every tag plan exists.
-    await row.lineAttachments?.waitTags(ids);
     const index = Number(input.message_index);
     const host = risuHost();
     const character = await host?.getCharacterFromIndex?.(Number(request.char_index));
@@ -122,7 +120,7 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
         String(chat?.id || chat?.chatId || '') !== request.chat_id ||
         String(msg.chatId || msg.id || '') !== request.host_message_id ||
         body !== String(input.assistant_text ?? '') ||
-        group.some(r=>!analysisBody(stripBakeTokens(body)).startsWith(String(r.request.assistant_text || '')))) {
+        group.some(r=>!streamLineRange(r.request) && !analysisBody(stripBakeTokens(body)).startsWith(String(r.request.assistant_text || '')))) {
       ids.forEach(cancelStreamJob);
       return { ok: false, error: { code: 'message_changed', message: '본문 또는 대상이 변경되어 선행 이미지 부착을 취소했습니다.' } };
     }
@@ -134,10 +132,27 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
       if(meta){meta.messageIndex=index;meta.saveContentHash=row.request.content_hash;meta.saveAssistantPreview=body;}
       row.committed=true;
     });
-    // One shared placement precedes per-job bookkeeping; unblock all runners on error.
+    // Ready plans attach now; all remaining taggers share the second placement.
     if(row.lineAttachments) {
-      try {await row.lineAttachments.insert(ids,{...jobChatTarget(request),expectedPrefix:analysisBody(stripBakeTokens(body))});}
-      catch(error){group.forEach(r=>r.resolve());throw error;}
+      const expected=analysisBody(stripBakeTokens(body));
+      try {await row.lineAttachments.insert(ids,{...jobChatTarget(request),expectedPrefix:expected},async()=>{
+        const latest=await host?.getChatFromIndex?.(Number(request.char_index),Number(request.chat_index));
+        const message=latest?.message?.[index];
+        if(group.some(r=>r.cancelled) || getConfig().card.power===false ||
+          String(latest?.id || latest?.chatId || '')!==request.chat_id ||
+          String(message?.chatId || message?.id || '')!==request.host_message_id ||
+          !['char','assistant','bot'].includes(String(message?.role)) ||
+          analysisBody(stripBakeTokens(String(message?.data ?? '')))!==expected) {
+          ids.forEach(cancelStreamJob);
+          throw Object.assign(new Error('본문 또는 대상이 변경되어 선행 이미지 부착을 취소했습니다.'),{code:'message_changed'});
+        }
+      });}
+      catch(error){
+        group.forEach(r=>r.resolve());
+        if(error instanceof Error && 'code' in error && error.code==='message_changed')
+          return {ok:false,error:{code:'message_changed',message:error.message}};
+        throw error;
+      }
     }
     // Resolve even if placement fails: the runner must not leak an active lock.
     const attachments=await Promise.allSettled(group.map(async row=>{
