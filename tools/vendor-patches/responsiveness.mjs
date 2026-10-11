@@ -19,6 +19,10 @@ export function repairResponsiveness(source) {
     '    }), document.getElementById("nx-nai-ref-pick")', '    }), [null].forEach(() => {');
   once('  function oe(e) {\n    return [...document.querySelectorAll(`[data-char-scope="${e}"]`)].map',
     '  function oe(e, only) {\n    return (only ? [only] : [...document.querySelectorAll(`[data-char-scope="${e}"]`)]).map');
+  // The delegated live writer below merges one edited row with its metadata.
+  // This older listener ran first, dropping every row's image hashes on input.
+  region('document.querySelectorAll("[data-char-scope] input, [data-char-scope] textarea").forEach((a) => {',
+    'document.querySelectorAll("[data-global-toggle]").forEach((a) => {', '');
   once('characters: oe("session"), global: oe("global") }, scope);\n        const merge=',
     'characters: t.charactersSession, global: t.charactersGlobal }, scope);\n        const node=field.closest(".char-card[data-char-id]"), kind=node.dataset.charScope;\n        const changed=oe(kind,node)[0];\n        if(changed){const key=kind==="global"?"global":"characters";body[key]=(body[key]||[]).map(row=>row.id===changed.id?{...row,...changed}:row);}\n        const merge=');
   once('const key = field.id.slice("nx-prompt-".length), text = field.value || "";',

@@ -6,7 +6,19 @@ import {chromium} from 'playwright';
 const streamSource=readFileSync(new URL('../tools/vendor-patches/stream-runtime.js',import.meta.url),'utf8');
 const streamHelpers=streamSource.slice(streamSource.indexOf('async function omniRelease'),streamSource.indexOf('let omniObserverWork'));
 const parts = ['style', '', 'render', 'input', 'position', 'drag'];
-const runtime = parts.map(part => readFileSync(new URL(`../tools/vendor-patches/float-viewer${part ? '-'+part : ''}.js`,import.meta.url),'utf8')).join('\n');
+let runtime = parts.map(part => readFileSync(new URL(`../tools/vendor-patches/float-viewer${part ? '-'+part : ''}.js`,import.meta.url),'utf8')).join('\n');
+if(process.env.BREAK_FLOAT_INSPECT) runtime=runtime.replace('t.uiOpen || t._nxHostInspectOpen ||','t.uiOpen ||');
+const inspectRuntime=readFileSync(new URL('../tools/vendor-patches/inspect-runtime.js',import.meta.url),'utf8');
+const inspectShow=inspectRuntime.slice(inspectRuntime.indexOf('showStickyInspect = async')).trim().replace(/,$/,'');
+const inspectHide=inspectRuntime.slice(inspectRuntime.indexOf('nxHideInspectQueued ='),inspectRuntime.indexOf(', nxEnsureInspectSheet ='));
+const inspectHarness=`
+ let inspectOpen=false,actionCard=null,pendingSheetHit=null,inspectGuardUntil=0,inspectZones=[],inspectSheetEl=null;
+ let nxInspectShell=null,nxInspectMirroredImage=null,nxInspectImageHtml='',nxInspectPaint=Promise.resolve();
+ const surface={setAttribute:async()=>{},setStyleAttribute:async()=>{},setInnerHTML:async()=>{}};
+ const nxEnsureInspectSurface=async()=>({root:surface,fullscreen:surface,actionMenu:surface});
+ const nxDropInspectImage=async()=>{},hidePressFill=async()=>{},nxPaintInspect=async()=>{};
+ const ${inspectShow}; const ${inspectHide};
+`;
 const messageRuntime=readFileSync(new URL('../tools/vendor-patches/message-runtime.js',import.meta.url),'utf8');
 const countRuntime=messageRuntime.slice(messageRuntime.indexOf('let omniCountWrites='),messageRuntime.indexOf('async function omniDisposeMessageRuntime('));
 async function clickAt(page, selector) {
@@ -27,7 +39,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
     <div class="shot" x-inlay-inline-shot="a" x-inray-asset="asset-a"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"></div>
     <div class="shot" x-inlay-inline-shot="b" x-inray-asset="asset-b"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='red'/%3E"></div>
     </div></div></div>`);
-  await page.evaluate(({runtime,cacheGallery}) => {
+  await page.evaluate(({runtime,cacheGallery,inspectHarness}) => {
     const wrap = n => n ? new Safe(n) : null;
     const listeners = new Map(); let serial = 0;
     const stats={bubbleRects:0,bubbleHandles:0,shotQueries:0,galleryLoads:0,floatRects:0,styleWrites:0,textWrites:0};
@@ -93,14 +105,39 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
       // Browser animation frames cannot drive work in Risu's hidden plugin iframe.
       requestAnimationFrame:()=>{throw Error('animation frames unavailable in hidden plugin iframe');},
       y:()=>{},$e:()=>{},withImageRerollToast:async(_text,fn)=>fn(),K:async()=>({card:cards[0]})};
-    const api = new Function(...Object.keys(deps),runtime+`;return {ensure:nxFloatEnsure,apply:nxFloatApply,show:nxFloatShow,hide:nxFloatHide,scan:nxFloatScan,select:nxFloatShowCard,dispose:nxFloatDispose,
+    const api = new Function(...Object.keys(deps),runtime+inspectHarness+`;return {inspect:showStickyInspect,closeInspect:async()=>{inspectOpen=false;++t._inspectGen;return nxHideInspectQueued();},ensure:nxFloatEnsure,apply:nxFloatApply,show:nxFloatShow,hide:nxFloatHide,scan:nxFloatScan,select:nxFloatShowCard,dispose:nxFloatDispose,
       passes:()=>omniPerf.viewerPasses,
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
       target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove(),armIdle:nxFloatArmIdle};`)(...Object.values(deps));
     window.fixture = {api,t,calls,targets,listeners,stats,scope:v=>{scope={...scope,...v};},wrap};
-  },{runtime:streamHelpers+countRuntime+runtimeSource,cacheGallery});
+  },{runtime:streamHelpers+countRuntime+runtimeSource,cacheGallery,inspectHarness});
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
 }
+
+test('fullscreen hides the floating viewer until the latest inspect closes',async()=>{
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+ try {
+  const page=await browser.newPage();await setup(page);
+  const before=await page.locator('[x-nx-float]').boundingBox();
+  await page.evaluate(()=>{fixture.t._nxInspectOpener=fixture.api.inspect;});
+  await clickAt(page,'[x-nx-float-head] [x-nx-float-btn="full"]');
+  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'fullscreen button hides the floater');
+  await page.evaluate(()=>fixture.api.show());
+  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'background refresh cannot reveal it');
+  await page.evaluate(()=>fixture.api.closeInspect());
+  assert.deepEqual(await page.locator('[x-nx-float]').boundingBox(),before,'close restores the original position and size');
+  await clickAt(page,'[x-nx-float-head] [x-nx-float-btn="fold"]');
+  await page.evaluate(()=>fixture.api.inspect({id:'a'}));
+  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'opening from chat also hides folded controls');
+  await page.evaluate(()=>Promise.all([fixture.api.closeInspect(),fixture.api.inspect({id:'b'})]));
+  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'old close cannot reveal it over a newer fullscreen');
+  await page.evaluate(()=>fixture.api.closeInspect());
+  assert.equal(await page.locator('[x-nx-float-foldgrid]').isVisible(),true);
+  await page.evaluate(async()=>{await fixture.api.inspect({id:'a'});fixture.t.uiOpen=true;await fixture.api.closeInspect();});
+  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'settings still block restore');
+  await page.evaluate(()=>fixture.api.dispose());
+ }finally{await browser.close();}
+});
 
 async function verifyNoIdleBridgeWork(page, runtimeSource=runtime) {
   await setup(page,1000,true,runtimeSource);
@@ -199,7 +236,7 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     assert.notEqual(await page.locator('[x-nx-float]').evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)','hover restores the alpha surface');
     await page.clock.runFor(2500);
     assert.equal(await page.evaluate(()=>fixture.api.state().idle),false,'hovered controls remain usable');
-    await clickAt(page,'[x-nx-float-bar] [x-nx-float-btn="tag"]');
+    await clickAt(page,'[x-nx-float-headbtns="l"] [x-nx-float-btn="tag"]');
     await clickAt(page,'[x-nx-float-head] [x-nx-float-btn="full"]');
     assert.deepEqual(await page.evaluate(()=>fixture.calls.map(c=>c[0])),['tag','full']);
     await clickAt(page,'[x-nx-float-btn="fold"]');
@@ -238,6 +275,7 @@ test('floating position lookup stays bounded across a large jump and never searc
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
  try {
   const page=await browser.newPage();await setup(page,1000,false);
+  await page.clock.install();await page.clock.pauseAt(new Date(Date.now()+1000));
   assert.equal(await page.evaluate(()=>fixture.stats.galleryLoads),0,'mount must not load the gallery or rehash the chat');
   await page.evaluate(()=>{
    fixture.retainedImage=document.querySelector('[x-nx-float-body] img');
@@ -255,12 +293,14 @@ test('floating position lookup stays bounded across a large jump and never searc
   assert.equal(await page.evaluate(()=>fixture.api.state().id),'b','missing nearby image must keep the previous selection');
   assert.equal(await page.evaluate(()=>document.querySelector('[x-nx-float-body] img')===fixture.retainedImage),true,'an image miss must not replace the displayed DOM image');
   assert.equal(await page.locator('[x-nx-float-empty]').count(),0);
-  await page.waitForTimeout(220);
+  await page.clock.runFor(220);
+  await page.evaluate(()=>fixture.api.scan());
   const before=await page.evaluate(()=>fixture.api.passes());
   await page.evaluate(()=>{document.querySelector('[data-chat-index="5"]').textContent='unrelated edit';});
-  await page.waitForTimeout(220);
+  await page.clock.runFor(220);
   assert.equal(await page.evaluate(()=>fixture.api.passes()),before,'an unrelated message must not restart the viewer');
   await page.evaluate(()=>{fixture.stats.shotQueries=0;const index=fixture.api.target().index;document.querySelector('[data-chat-index="'+index+'"]').innerHTML='<div x-inlay-inline-shot="a"><img style="width:60px;height:60px" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'/%3E"></div>';});
+  await page.clock.runFor(200);
   await page.waitForFunction(()=>fixture.api.state().id==='a');
   assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),1,'only the changed nearby message is reread');
   await page.evaluate(async()=>{fixture.stats.shotQueries=0;await fixture.api.scan();});
@@ -429,7 +469,7 @@ test('generation follows the central text-only message while the viewer keeps it
       document.querySelector('.default-chat-screen').innerHTML='<div class="risu-chat" data-chat-index="9" data-chat-id="text-nine" style="height:680px">Only text here</div>';
       await fixture.api.scan();
     });
-    await clickAt(page,'[x-nx-float-bar] [x-nx-float-btn="tag"]');
+    await clickAt(page,'[x-nx-float-headbtns="l"] [x-nx-float-btn="tag"]');
     const action=await page.evaluate(()=>fixture.calls.find(c=>c[0]==='tag'));
     assert.equal(action[1].index,9);assert.equal(action[1].hostId,'text-nine');
     assert.equal(await page.evaluate(()=>fixture.api.state().id),'b');
@@ -478,8 +518,9 @@ async function verifyTouchIdle(page,runtimeSource=runtime) {
   await page.clock.runFor(2500);
   await page.evaluate(()=>fixture.api.apply());
   assert.equal(await page.evaluate(()=>fixture.api.state().idle),true,'stationary touch coordinates cannot keep hover alive after release');
-  const opacity=await page.locator('[x-nx-float-reroll]').evaluate(n=>getComputedStyle(n).opacity);
-  assert.equal(opacity,'0','touch hover cannot leave reroll visible after idle');
+  const buttons=page.locator('[x-nx-float-bar]');
+  assert.equal(await buttons.evaluate(n=>getComputedStyle(n).opacity),'0','touch hover cannot leave any generation button visible after idle');
+  assert.equal(await buttons.evaluate(n=>getComputedStyle(n).pointerEvents),'none','hidden generation controls cannot receive touch clicks');
   await page.evaluate(()=>fixture.api.dispose());
 }
 
@@ -493,4 +534,52 @@ test('touch-only floating controls reveal safely and hide after release; sticky-
     await assert.rejects(()=>verifyTouchIdle(broken,mutation),/stationary touch coordinates cannot keep hover alive/);
     await broken.close();
   } finally {await browser.close();}
+});
+
+test('expanded viewer gives the image the whole frame and reveals corner controls on hover',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    for(const width of [1000,320,240]) {
+      const page=await browser.newPage();await setup(page,width);
+      await page.addStyleTag({content:'*{transition-duration:0s!important}'});
+      const root=page.locator('[x-nx-float]'), body=page.locator('[x-nx-float-body]');
+      const frame=await root.boundingBox(), image=await body.boundingBox();
+      assert.ok(image.height>=frame.height-18,'head/bar cannot reserve vertical image space');
+      assert.ok(image.width>=frame.width-18);
+      await page.mouse.move(width-1,699);
+      const groups=['[x-nx-float-headbtns="l"]','[x-nx-float-headbtns="r"]','[x-nx-float-bar]'];
+      for(const selector of groups)assert.equal(await page.locator(selector).evaluate(n=>getComputedStyle(n).opacity),'0');
+      await page.mouse.move(frame.x+frame.width/2,frame.y+frame.height/2);
+      for(const selector of groups)assert.equal(await page.locator(selector).evaluate(n=>getComputedStyle(n).opacity),'1');
+      const rects=await root.locator('[x-nx-float-head] button,[x-nx-float-bar] button').evaluateAll(nodes=>nodes.map(node=>{
+        const r=node.getBoundingClientRect();return {kind:node.getAttribute('x-nx-float-btn'),x:r.x,y:r.y,right:r.right,bottom:r.bottom};
+      }));
+      assert.equal(rects.length,11,'all existing expanded controls remain available');
+      for(const r of rects)assert.ok(r.x>=frame.x && r.y>=frame.y && r.right<=frame.x+frame.width && r.bottom<=frame.y+frame.height,r.kind+' stays inside the image frame');
+      for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++) {
+        const a=rects[i],b=rects[j];
+        assert.ok(a.right<=b.x || b.right<=a.x || a.bottom<=b.y || b.bottom<=a.y,a.kind+' cannot overlap '+b.kind);
+      }
+      const left=await page.locator(groups[0]).boundingBox(), right=await page.locator(groups[1]).boundingBox(), lower=await page.locator(groups[2]).boundingBox();
+      assert.ok(left.x<frame.x+20 && left.y<frame.y+20);
+      assert.ok(lower.x<frame.x+20 && lower.y+lower.height>frame.y+frame.height-20);
+      assert.ok(right.x+right.width>frame.x+frame.width-20 && right.y<frame.y+20);
+      assert.deepEqual(await page.locator(groups[0]+' button').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('x-nx-float-btn'))),['single','tag','regen','stop']);
+      assert.deepEqual(await page.locator(groups[2]+' button').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('x-nx-float-btn'))),['note','preset','char','counts']);
+      for(const selector of groups) {
+        const tops=await page.locator(selector+' button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().top));
+        assert.ok(tops.every(top=>top===tops[0]),'each corner group stays on one line');
+      }
+      for(const [w,h] of [[832,1216],[1216,832],[1024,1024]]) {
+        await body.locator('img').evaluate((node,{w,h})=>{node.src='data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#7132f5"/><stop offset="1" stop-color="#e2e8f0"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><circle cx="${w/2}" cy="${h/2}" r="${Math.min(w,h)/4}" fill="#fff" opacity=".45"/></svg>`);},{w,h});
+        await page.screenshot({path:`.test-build/float-overlay-${width}-${w}x${h}.png`});
+        assert.deepEqual(await body.boundingBox(),image,'image aspect ratio cannot move the controls');
+      }
+      await page.locator('[x-nx-float-headbtns="l"] [x-nx-float-btn="tag"]').click();
+      await page.waitForFunction(()=>fixture.calls.some(c=>c[0]==='tag'));
+      await page.locator('[x-nx-float-headbtns="l"] [x-nx-float-btn="stop"]').click();
+      await page.waitForFunction(()=>fixture.calls.some(c=>c[0]==='stop'));
+      await page.evaluate(()=>fixture.api.dispose());await page.close();
+    }
+  }finally{await browser.close();}
 });

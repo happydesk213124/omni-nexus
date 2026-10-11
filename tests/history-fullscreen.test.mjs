@@ -56,7 +56,7 @@ async function setup(page) {
         return {};
       };
       const hitEl=async(el,x,y)=>{const r=el.node.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;};
-      const deps={t,H,K,e:doc,o:body,nxUnwrapSafeNodes:async n=>n,omniRelease:async()=>{},ue:async()=>doc,hitEl,
+      const deps={t,H,K,e:doc,o:body,nxFloatHide:async()=>{},nxFloatShow:async()=>{},nxUnwrapSafeNodes:async n=>n,omniRelease:async()=>{},ue:async()=>doc,hitEl,
         nxFloatHtmlAttr:(html,name)=>new RegExp('(?:^|\\s)'+name+'=["\']([^"\']*)["\']','i').exec(html)?.[1]||'',
         h:v=>String(v).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;'),w:v=>String(v),Ie:card=>card.image_url||'',hidePressFill:async()=>{},y:(...args)=>errors.push(args)};
       const setup=`let inspectOpen=false,actionCard=null,pendingSheetHit=null,inspectGuardUntil=0,inspectZones=[],inspectSheetEl=null;

@@ -174,6 +174,7 @@ export async function mutateCharacterRoster(scope:string,change:(rows:CharacterR
     const roster=(data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope}));
     const next=change(roster).map(clean);
     if(new Set(next.map(row=>row.id)).size!==next.length) throw new Error('Duplicate roster IDs');
+    if(data.characterId===t.id && JSON.stringify(roster.map(clean))===JSON.stringify(next)) return;
     const content=JSON.stringify({...data,version:1,characterId:t.id,roster:next});
     const entries=[...(char.globalLore as unknown[] || [])];
     const index=entries.findIndex(v=>object(v)?.comment===CHARACTER_ROSTER_LORE);
@@ -205,11 +206,13 @@ async function readShared() {
 }
 async function mutateShared(change:(rows:CharacterRecord[])=>CharacterRecord[]):Promise<void> {
   await serializeSessionStorage(async()=> {
-    const host=risuHost();if(!host?.setDatabase)throw new Error('Module writing unavailable');
+    const host=risuHost();
     const {modules,module,entries,roster}=await readShared();
-    if(!module) throw new Error('Omni display module required');
     const next=change(roster).map(clean);
     if(new Set(next.map(r=>r.id)).size!==next.length)throw new Error('Duplicate roster IDs');
+    if(JSON.stringify(roster.map(clean))===JSON.stringify(next)) return;
+    if(!host?.setDatabase)throw new Error('Module writing unavailable');
+    if(!module) throw new Error('Omni display module required');
     const entry={comment:SHARED_ROSTER_LORE,key:'',secondkey:'',alwaysActive:false,selective:false,mode:'normal',insertorder:0,content:JSON.stringify({version:1,roster:next})};
     const lore=entries.filter(e=>object(e)?.comment!==SHARED_ROSTER_LORE);lore.push(entry);
     await host.setDatabase({modules:modules.map(m=>m===module?{...m,lorebook:lore}:m)});

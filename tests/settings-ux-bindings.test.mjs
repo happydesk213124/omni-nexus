@@ -80,7 +80,10 @@ test('picker keeps global and other bot selections through repeated fills', asyn
   assert.equal(bar.dataset.uxSelectedScope, 'session');
   await subject.fillRisuTiles(box);
   assert.equal(box.children[2].on, true);
+  const liveChanged = new Promise(resolve => select.addEventListener('change', resolve, {once:true}));
   box.children[0].dispatchEvent(new Event('click'));
+  // Resolve the current host index before choosing; the cached index may be stale.
+  await liveChanged;
   assert.equal(select.value, '1');
   assert.equal(box.children[0]['aria-pressed'], 'false');
   assert.equal(box.children[3]['aria-pressed'], 'true');

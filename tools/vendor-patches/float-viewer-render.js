@@ -29,10 +29,11 @@ function nxFloatRootCss(state) {
   const w = Math.min(vp.w - 16, Math.max(240, Math.round(geo.w || 360))), hh = Math.min(vp.h - 16, Math.max(320, Math.round(geo.h || 560)));
   const left = Math.min(Math.max(Math.round(geo.left), 0), Math.max(0, vp.w - w));
   const top = Math.min(Math.max(Math.round(geo.top), 0), Math.max(0, vp.h - hh));
-  return `position:fixed;left:${left}px;top:${top}px;width:${w}px;height:${hh}px;max-height:calc(100vh - 20px);z-index:99990;pointer-events:auto;display:flex;flex-direction:column;gap:10px;padding:10px;border-radius:20px;box-sizing:border-box;${idle}`;
+  const button = Math.min(40, Math.floor((w - 40) / 8));
+  return `position:fixed;left:${left}px;top:${top}px;width:${w}px;height:${hh}px;--nx-float-button:${button}px;--nx-float-glyph:${Math.min(20,button-6)}px;max-height:calc(100vh - 20px);z-index:99990;pointer-events:auto;display:flex;flex-direction:column;gap:0;padding:8px;border-radius:20px;box-sizing:border-box;${idle}`;
 }
 // SafeElement calls cross Risu's bridge; unchanged chrome must cost no writes.
-const nxFloatStyleCache = new WeakMap(), nxFloatTextCache = new WeakMap();
+const nxFloatStyleCache = new WeakMap(), nxFloatTextCache = new WeakMap(), nxFloatOverlayCache = new WeakMap();
 let nxFloatRenderDirty = false, nxFloatRenderPending = null, nxFloatBounds = null;
 async function nxFloatStyle(el, css) {
   if (!el || nxFloatStyleCache.get(el) === css) return;
@@ -69,6 +70,11 @@ async function nxFloatRender() {
     return;
   }
   const css = nxFloatRootCss({ collapsed, compact: nxFloatCompact, iconfold: !nxFloatCompact && mode === "bubble" && collapsed, idle: nxFloatIdle })+`;--nx-float-touch-opacity:${nxFloatIdle?'0':'1'};--nx-float-touch-events:${nxFloatIdle?'none':'auto'};`;
+  const overlay = !collapsed && !nxFloatCompact;
+  if(nxFloatOverlayCache.get(nxFloatRoot)!==overlay) {
+    await nxFloatRoot.setAttribute('x-nx-float-overlay',overlay?'true':'false');
+    nxFloatOverlayCache.set(nxFloatRoot,overlay);
+  }
   const changed = nxFloatStyleCache.get(nxFloatRoot) !== css;
   await nxFloatStyle(nxFloatRoot,css);
   await nxFloatPaintChrome();

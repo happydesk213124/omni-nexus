@@ -15,9 +15,7 @@ const NX_FLOAT_CSS = `
 [x-nx-float-bar],[x-nx-float-foldgrid],[x-nx-float-resize],[x-nx-float-foldgrip]{transition:opacity .45s ease;}
 [x-nx-float-body]{position:relative;min-height:0;overflow:hidden;background:transparent;}
 [x-nx-float-body] img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:12px;pointer-events:none;}
-[x-nx-float-reroll]{position:absolute;left:8px;bottom:8px;z-index:2;border:1px solid rgba(255,255,255,.2) !important;background:rgba(20,24,36,.55) !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;min-width:44px !important;min-height:44px !important;padding:6px !important;font-size:22px !important;line-height:1 !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;opacity:0 !important;pointer-events:none;transition:opacity .2s ease;touch-action:manipulation;}
-[x-nx-float-body]:hover [x-nx-float-reroll]{opacity:1 !important;pointer-events:auto;}
-@media(hover:none){[x-nx-float] [x-nx-float-body] [x-nx-float-reroll]{opacity:var(--nx-float-touch-opacity,0)!important;pointer-events:var(--nx-float-touch-events,none);}}
+[x-nx-float-reroll]{border:1px solid rgba(255,255,255,.2) !important;background:rgba(20,24,36,.55) !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;min-width:44px !important;min-height:44px !important;padding:6px !important;font-size:22px !important;line-height:1 !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;touch-action:manipulation;}
 [x-nx-float-reroll]:active{transform:scale(.92) !important;}
 [x-nx-float-bar]{align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;padding:2px;background:transparent;flex:none;}
 [x-nx-float-bar] button{border:1px solid rgba(255,255,255,.12) !important;background:rgba(255,255,255,.08) !important;min-width:44px !important;min-height:44px !important;padding:6px !important;font-size:24px !important;line-height:1 !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;touch-action:manipulation !important;}
@@ -34,10 +32,36 @@ const NX_FLOAT_CSS = `
 [x-nx-float-foldgrid] button:hover{background:rgba(255,255,255,.2) !important;}
 [x-nx-float-foldgrid] button:active{transform:scale(.92) !important;}
 [x-nx-float-icon]{font-size:26px;line-height:1;touch-action:none;}
+[x-nx-float-overlay="true"] [x-nx-float-head]{position:absolute;inset:0;min-height:0;padding:0;z-index:2;pointer-events:none;}
+[x-nx-float-overlay="true"] [x-nx-float-headbtns="l"]{position:absolute;left:8px;top:8px;}
+[x-nx-float-overlay="true"] [x-nx-float-headbtns="r"]{position:absolute;right:8px;top:8px;}
+[x-nx-float-overlay="true"] [x-nx-float-headbtns]{gap:2px;}
+[x-nx-float-overlay="true"] [x-nx-float-head] button{border-radius:12px!important;background:rgba(20,24,36,.72)!important;}
+[x-nx-float-overlay="true"] [x-nx-float-bar]{position:absolute;left:8px;bottom:8px;gap:2px;padding:0;z-index:2;}
+/* Both top rows stay on one line, including the smallest 240px frame. */
+[x-nx-float-overlay="true"] [x-nx-float-head] button,
+[x-nx-float-overlay="true"] [x-nx-float-bar] button{width:var(--nx-float-button,40px)!important;min-width:var(--nx-float-button,40px)!important;height:40px!important;min-height:40px!important;padding:2px!important;font-size:var(--nx-float-glyph,20px)!important;background:rgba(20,24,36,.72)!important;}
+[x-nx-float-overlay="true"] [x-nx-float-head],
+[x-nx-float-overlay="true"] [x-nx-float-headbtns],
+[x-nx-float-overlay="true"] [x-nx-float-bar]{opacity:0!important;pointer-events:none;transition:opacity .2s ease;}
+@media(hover:hover){
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-head],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-headbtns],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar]{opacity:1!important;}
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-headbtns],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar]{pointer-events:auto;}
+}
+@media(hover:none){
+  [x-nx-float-overlay="true"] [x-nx-float-head],
+  [x-nx-float-overlay="true"] [x-nx-float-headbtns],
+  [x-nx-float-overlay="true"] [x-nx-float-bar]{opacity:var(--nx-float-touch-opacity,0)!important;}
+  [x-nx-float-overlay="true"] [x-nx-float-headbtns],
+  [x-nx-float-overlay="true"] [x-nx-float-bar]{pointer-events:var(--nx-float-touch-events,none);}
+}
 `;
-const NX_FLOAT_HEAD_L = [["stop", "🟥"], ["preset", "📚"], ["note", "✒️"]];
+const NX_FLOAT_HEAD_L = [["tag", "⚛️"], ["regen", "🔃"], ["stop", "🟥"]];
 const NX_FLOAT_HEAD_R = [["compact", "−"], ["fold", "▴"], ["full", "⛶"]];
-const NX_FLOAT_BAR_BTNS = [["tag", "⚛️"], ["regen", "🔃"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"]];
+const NX_FLOAT_BAR_BTNS = [["note", "✒️"], ["preset", "📚"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"]];
 const NX_FLOAT_GRID_BTNS = [["single", "🎲"], ["stop", "🟥"], ["preset", "📚"], ["note", "✒️"], ["unfold", "▾"], ["tag", "⚛️"], ["regen", "🔃"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"], ["full", "⛶"]];
 function nxFloatMode() {
   const m = String(t.backendSettings?.card?.viewer_minimize_mode || "buttons");

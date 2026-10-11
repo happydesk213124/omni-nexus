@@ -50,7 +50,7 @@ function nxFloatFind(id) {
 }
 function nxFloatViewport() { return nxFloatViewportSize; }
 function nxFloatBlocked() {
-  return t.unloading || t.uiOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings || t.backendSettings?.card?.floating_viewer === false;
+  return t.unloading || t.uiOpen || t._nxHostInspectOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings || t.backendSettings?.card?.floating_viewer === false;
 }
 async function nxFloatSetTarget(card, bubbleHtml, valid = () => true) {
   const scope = await omniReadScope().catch(() => null);
@@ -308,9 +308,9 @@ async function nxFloatMount() {
     await head.appendChild(spanR);
     await root.appendChild(stage);
     await stage.appendChild(pixels);
-    await stage.appendChild(reroll);
     nxFloatImage = pixels;
     await root.appendChild(bar);
+    await spanL.appendChild(reroll);
     await root.appendChild(resize);
     await root.appendChild(foldGrip);
     await root.appendChild(foldGrid);

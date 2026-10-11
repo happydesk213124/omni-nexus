@@ -37,7 +37,7 @@ function sheet() {
     async appendChild(child) {this.children.push(child);}
   }
   const fullscreen=new Element('fullscreen'),actionMenu=new Element('menu'),root=new Element('root');
-  const c={t:{},inspectOpen:false,actionCard:null,pendingSheetHit:null,inspectGuardUntil:0,inspectZones:[],inspectSheetEl:null,
+  const c={t:{},nxFloatHide:async()=>{},nxFloatShow:async()=>{},inspectOpen:false,actionCard:null,pendingSheetHit:null,inspectGuardUntil:0,inspectZones:[],inspectSheetEl:null,
     nxInspectShell:null,nxInspectBuild:null,nxInspectImageHtml:'',nxInspectMirroredImage:null,nxDropInspectImage:async image=>{if(image)image.removed=true;},nxInspectPaint:Promise.resolve(),URL,clearTimeout,
     fullscreen,actionMenu,k:{showContainer:async()=>{},hideContainer:async()=>{}},hidePressFill:async()=>{},Ie:()=> 'data:image/png;base64,CACHED',h:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),w:value=>String(value),
     e:{createElement:async tag=>{const node=new Element(tag);nodes.push(node);return node;}},

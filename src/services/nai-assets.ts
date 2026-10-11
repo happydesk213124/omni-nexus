@@ -34,14 +34,14 @@ import { modelToNaia, resolveModel, supportsVibeTransfer } from '../providers/na
 import { encodeVibe } from '../providers/nai/vibe';
 import { pngToDataUrl } from '../storage/image-urls';
 import { characterSource } from './character-source';
-import { characterIdForRosterScope, rosterOwnerScopesForSession } from '../storage/character-roster';
+import { characterIdForRosterScope, readCharacterRoster } from '../storage/character-roster';
+import { warmCharacterImagePreviews, type CharacterPreviewTarget } from './character-image-hydration';
 import { idbDelete, idbGet, idbGetAll, idbPut } from '../storage/stores';
 import {
   clearAllCharRefPreviewUrls,
   getCharRefPreviewUrl,
   getConfig,
   getExamplePreviewUrl,
-  setExamplePreviewUrl,
   getPresetVibePreviewUrl,
   getRefPreviewUrl,
   getVibePreviewUrl,
@@ -52,8 +52,8 @@ import {
 } from './context';
 import {
   getCharRefAssetBytes,
+  getCharRefAssetPreviewUrl,
   putCharRefAsset,
-  refreshCharRefAssetIndex,
   resetCharRefLibrary,
 } from './char-ref-module';
 import { saveConfig } from './settings';
@@ -402,9 +402,9 @@ export async function ensureCharRefPreviewUrl(scope: unknown, characterId: strin
   if (!id) return '';
   const existing = getCharRefPreviewUrl(sc, id);
   if (existing) return existing;
-  const bytes = await getCharRefImageBytes(sc, id);
-  if (!bytes || bytes.byteLength < MIN_IMAGE_BYTES) return '';
-  const preview = pngToDataUrl(bytes);
+  const hash = await readRosterRefHash(sc, id);
+  const preview = await getCharRefAssetPreviewUrl(hash);
+  if (!preview) return '';
   setCharRefPreviewUrl(sc, id, preview);
   return preview;
 }
@@ -564,20 +564,25 @@ export async function ensureCharRefVibeEncoded(
 }
 
 export async function hydrateCharRefs(opts: {
+  warm?: boolean;
   sessionId?: string;
   characterId?: string;
   scope?: string;
 } = {}): Promise<{ session: CharRefHydrateRow[]; global: CharRefHydrateRow[] }> {
-  await refreshCharRefAssetIndex();
   const wantId = cleanText(opts.characterId || '', 200);
   const wantScope = normalizeCharRefScope(opts.scope || '');
   const sessionId = cleanText(opts.sessionId || '', 200);
-  const rows = await idbGetAll('characters');
+  // Listing one bot must not fetch/decode every other bot's roster.
+  const rows = wantScope
+    ? await readCharacterRoster(wantScope)
+    : sessionId
+      ? (await Promise.all([readCharacterRoster(sessionId), readCharacterRoster(GLOBAL_SCOPE)])).flat()
+      : await idbGetAll('characters');
   // Lorebook session rows carry the bot-level unified scope, not the chat
   // session id the tab asks with. Without the owner set the entry filter
-  // below matches zero session rows (proven red by tools/repro-hydrate.mjs).
-  const ownerScopes = !wantId && sessionId
-    ? await rosterOwnerScopesForSession(sessionId).catch(() => [] as string[])
+  // below matches zero session rows, including focused edit-popup requests.
+  const ownerScopes = wantScope || sessionId
+    ? rows.filter(row => row.scope !== GLOBAL_SCOPE).map(row => row.scope)
     : [];
   const ownerSet = new Set(ownerScopes);
   const matches = (row: { id?: unknown; scope?: unknown }): boolean => {
@@ -585,7 +590,7 @@ export async function hydrateCharRefs(opts: {
     const scope = normalizeCharRefScope(row.scope);
     if (!id || !scope) return false;
     if (wantId && id !== wantId) return false;
-    if (wantScope && scope !== wantScope && !(wantScope !== GLOBAL_SCOPE && scope !== GLOBAL_SCOPE && sessionId && ownerSet.has(scope))) return false;
+    if (wantScope && scope !== wantScope && !(wantScope !== GLOBAL_SCOPE && scope !== GLOBAL_SCOPE && ownerSet.has(scope))) return false;
     if (!wantId && !wantScope && sessionId && scope !== sessionId && scope !== GLOBAL_SCOPE && !ownerSet.has(scope)) return false;
     return true;
   };
@@ -596,14 +601,18 @@ export async function hydrateCharRefs(opts: {
     storedScope === GLOBAL_SCOPE ? storedScope : (sessionId || storedScope);
   // Empty-slot seeding must not block the tab paint. The single-ref route and
   // explicit import-fill still seed on demand; hydrate only backfills.
-  const sourceCharacterId = await characterIdForRosterScope(sessionId || wantScope);
-  void seedCharRefsFromLooks(rows.filter(matches).map((row) => ({ ...row, scope: effScopeOf(normalizeCharRefScope(row.scope)) })), sourceCharacterId).catch((err) => {
-    dbg('char_ref.seed.hydrate.fail', { message: String((err as Error)?.message || err) }, 'warn');
-  });
+  const seedRows = rows.filter(matches).map(row => ({ ...row, scope: effScopeOf(normalizeCharRefScope(row.scope)) }));
+  if (refSeedTargets(seedRows).length) {
+    void (async () => {
+      const sourceCharacterId = await characterIdForRosterScope(sessionId || wantScope);
+      await seedCharRefsFromLooks(seedRows, sourceCharacterId);
+    })().catch((err) => {
+      dbg('char_ref.seed.hydrate.fail', { message: String((err as Error)?.message || err) }, 'warn');
+    });
+  }
   const session: CharRefHydrateRow[] = [];
   const global: CharRefHydrateRow[] = [];
-  const missing: Array<{ scope: string; id: string; hash: string }> = [];
-  const missingExample: Array<{ scope: string; id: string; hash: string }> = [];
+  const missing: CharacterPreviewTarget[] = [];
   for (const row of rows) {
     if (!matches(row)) continue;
     const id = cleanText((row as { id?: unknown }).id, 200);
@@ -613,13 +622,13 @@ export async function hydrateCharRefs(opts: {
     // names/status immediately; visible thumbs fill via the single-ref route
     // (GET /v1/characters/ref) or the background warm below.
     const preview = hash ? getCharRefPreviewUrl(scope, id) || '' : '';
-    if (hash && !preview) missing.push({ scope, id, hash });
+    if (hash && !preview) missing.push({ scope, id, hash, kind: 'ref' });
     // Example-shot had no warm path at all: its preview stayed '' until the
     // character's own card was opened (single example-shot fetch), so tiles
     // only appeared after leaving and re-entering the tab. Warm it here too.
     const exHash = sanitizeHash((row as { example_hash?: unknown }).example_hash);
     const exPreview = exHash ? getExamplePreviewUrl(scope, id) || '' : '';
-    if (exHash && !exPreview) missingExample.push({ scope, id, hash: exHash });
+    if (exHash && !exPreview) missing.push({ scope, id, hash: exHash, kind: 'example' });
     const item: CharRefHydrateRow = {
       id,
       scope,
@@ -633,50 +642,9 @@ export async function hydrateCharRefs(opts: {
     if (scope === GLOBAL_SCOPE) global.push(item);
     else session.push(item);
   }
-  // Background warm (max 4 concurrent) so scrolling fills thumbnails without
-  // blocking the first paint. Fire-and-forget by design. Each warmed preview
-  // is published so open tabs paint it immediately — without this the tab
-  // would stay imageless until the next full repaint (tab switch), because
-  // the fast path above already answered '' for these rows.
-  if (missing.length || missingExample.length) {
-    void (async () => {
-      const POOL = 4;
-      // Ref and example warms run concurrently so a slow ref queue cannot
-      // starve example tiles (or vice versa).
-      const warmRefs = (async () => {
-        for (let i = 0; i < missing.length; i += POOL) {
-          await Promise.all(
-            missing.slice(i, i + POOL).map(async (m) => {
-              const url = await ensureCharRefPreviewUrl(m.scope, m.id).catch(() => '');
-              if (!url) return;
-              // The row may have been re-saved while warming; never publish a
-              // preview for a hash that is no longer current.
-              const current = await readRosterRefHash(m.scope, m.id).catch(() => '');
-              if (!current || current !== m.hash) return;
-              publishCharacterImage({ scope: m.scope, id: m.id, kind: 'ref', url, hash: m.hash, configured: true });
-            }),
-          );
-        }
-      })();
-      const warmExamples = (async () => {
-        for (let i = 0; i < missingExample.length; i += POOL) {
-          await Promise.all(
-            missingExample.slice(i, i + POOL).map(async (m) => {
-              const bytes = await getCharRefAssetBytes(m.hash).catch(() => null);
-              if (!bytes || bytes.byteLength < MIN_IMAGE_BYTES) return;
-              const url = pngToDataUrl(bytes);
-              setExamplePreviewUrl(m.scope, m.id, url);
-              const row = await idbGet('characters', { scope: m.scope, id: m.id }).catch(() => null);
-              const current = sanitizeHash((row as { example_hash?: unknown } | null)?.example_hash);
-              if (!current || current !== m.hash) return;
-              publishCharacterImage({ scope: m.scope, id: m.id, kind: 'example', url, hash: m.hash, configured: true });
-            }),
-          );
-        }
-      })();
-      await Promise.all([warmRefs, warmExamples]);
-    })();
-  }
+  // A worker takes the next image as soon as it finishes; a slow file no
+  // longer holds up all later thumbnails in its four-image batch.
+  if (opts.warm !== false) void warmCharacterImagePreviews(missing);
   return { session, global };
 }
 

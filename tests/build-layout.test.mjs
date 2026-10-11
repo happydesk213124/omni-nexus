@@ -112,7 +112,9 @@ test('character reads preserve appearance and explicit saves synchronize the gen
   assert.ok(readStart >= 0 && readEnd > readStart, 'listCharacters section not found');
   assert.ok(writeStart >= 0 && writeEnd > writeStart, 'upsertCharacter section not found');
   assert.doesNotMatch(source.slice(readStart, readEnd), /syncGenderIntoAppearance/);
-  assert.match(source.slice(writeStart, writeEnd), /syncGenderIntoAppearance\(rec\.appearance, gender\)/);
+  assert.match(source.slice(writeStart, writeEnd), /prepareCharacterUpsert\(/);
+  const saveRecord = read('src', 'domain', 'character', 'save-record.ts');
+  assert.match(saveRecord, /syncGenderIntoAppearance\(rec\.appearance, gender\)/);
 });
 
 test('wear-state persistence only writes the note wear key, never roster looks', () => {

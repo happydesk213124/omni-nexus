@@ -3,7 +3,11 @@ import {readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {build} from 'esbuild';
 
-const full=await readFile('dist/omninexus.js','utf8');
+let full=await readFile('dist/omninexus.js','utf8');
+if(process.argv.includes('--break-save-race')) {
+ const broken=full.replace('t.lastScope?.sessionId === body.session_id && t._omniRosterRevision === revision','t.lastScope?.sessionId === body.session_id');
+ assert.notEqual(broken,full,'save race guard mutation must change the runtime');full=broken;
+}
 const taggerBundle = await build({stdin:{contents:`export {mergeRosterFromTagged} from './src/services/characters';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'iife',globalName:'taggerRegression',define:{__PLUGIN_ID__:'"omni-nexus"'}});
 assert.equal(full.split('  await Qa();').length,2);
 const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -28,6 +32,11 @@ try {
    const actualK=K;
    const pending=[];
    K=async (url,options,...rest)=>{
+     if (url==='/v1/characters' && options?.method==='POST' && switchTest.holdNextSave) {
+       switchTest.holdNextSave=false;
+       await new Promise(resolve=>{switchTest.releaseSave=resolve;});
+       switchTest.releaseSave=null;
+     }
      if(url.includes('/v1/characters/lorefilter')) {
        const cid=options?.body?.character_id || new URL(url,'https://test.invalid').searchParams.get('character_id');
        if(options?.body?.rescan) return new Promise(resolve=>pending.push({cid,resolve}));
@@ -37,7 +46,7 @@ try {
      if(url.startsWith('/v1/characters?'))await new Promise(resolve=>setTimeout(resolve,120));
      return actualK(url,options,...rest);
    };
-   globalThis.switchTest={t,paint:P,refresh:ce,pending,complete(cid){const at=pending.findIndex(p=>p.cid===cid);if(at<0)throw Error('missing scan '+cid);const p=pending.splice(at,1)[0];p.resolve({ok:true,character_id:cid,selected:['t:'+cid],catalog:[{id:'t:'+cid,title:cid,keys:[cid],content:'Lore '+cid}],initialized:true});}};
+   globalThis.switchTest={t,paint:P,refresh:ce,importFile:importCharactersFromFile,pending,complete(cid){const at=pending.findIndex(p=>p.cid===cid);if(at<0)throw Error('missing scan '+cid);const p=pending.splice(at,1)[0];p.resolve({ok:true,character_id:cid,selected:['t:'+cid],catalog:[{id:'t:'+cid,title:cid,keys:[cid],content:'Lore '+cid}],initialized:true});}};
    ${process.argv.includes('--break-navigation') ? 'globalThis.__INLAY_SETTINGS_UX__.replaceMain=(main,html)=>{main.innerHTML=html;};' : ''}
    await P();
   `)});
@@ -62,6 +71,40 @@ try {
  const persisted = await page.evaluate(async()=>{const s=switchTest.t.lastScope;return globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(s.sessionId)+'&character_id='+s.characterId,{method:'GET'});});
  assert.deepEqual(persisted.characters.map(c=>c.name).sort(),['Edited immediately','Second']);
  assert.deepEqual(await page.locator('.char-card [data-char-name]').evaluateAll(xs=>xs.map(x=>x.value)),['Edited immediately','Second']);
+ // A full save completing after another edit cannot put its old form back.
+ await page.locator('#nx-char-edit-body [data-char-appearance]').fill('first eyes');
+ await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());
+ const editedId=await page.locator('#nx-char-edit-body').getAttribute('data-selected-id');
+ await page.evaluate(()=>{switchTest.holdNextSave=true;document.getElementById('nx-save-chars').click();});
+ await page.waitForFunction(()=>!!switchTest.releaseSave);
+ await page.locator('#nx-char-edit-body [data-char-appearance]').fill('second eyes');
+ await page.evaluate(()=>switchTest.releaseSave());
+ await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());
+ await page.waitForFunction(()=>!switchTest.t._charsDirty);
+ assert.equal(await page.locator('#nx-char-edit-body [data-char-appearance]').inputValue(),'second eyes');
+ assert.equal(await page.evaluate(id=>switchTest.t.charactersSession.find(row=>row.id===id)?.appearance,editedId),'second eyes','an old full-save response cannot replace a newer edit');
+ // Import rows appear immediately and remain included in edits made mid-save.
+ await page.evaluate(()=>{
+   switchTest.holdNextSave=true;
+   switchTest.importing=switchTest.importFile({text:async()=>JSON.stringify([{id:'race-import',name:'Imported',appearance:'green eyes',costumes:[{name:'default',attire:'shirt'},{name:'winter',attire:'coat'}]}])},'session');
+ });
+ await page.waitForFunction(()=>!!switchTest.releaseSave);
+ assert.equal(await page.locator('.char-card[data-char-id="race-import"]').count(),1,'imports paint before the slow write completes');
+ await page.locator('#nx-char-edit-body [data-char-appearance]').fill('third eyes');
+ await page.evaluate(()=>switchTest.releaseSave());
+ await page.evaluate(async()=>{await switchTest.importing;await __OMNI_FLUSH_CHARACTERS__();});
+ assert.equal(await page.locator('#nx-char-edit-body [data-char-appearance]').inputValue(),'third eyes');
+ const afterImport=await page.evaluate(async()=>{const scope=switchTest.t.lastScope;return __INLAY_NATIVE__.fetch('/v1/characters?session_id='+scope.sessionId+'&character_id='+scope.characterId,{method:'GET'});});
+ assert.equal(afterImport.characters.find(row=>row.id===editedId)?.appearance,'third eyes');
+ assert.equal(afterImport.characters.find(row=>row.id==='race-import')?.costumes.length,2);
+ // Return to the two-row fixture for the remaining interaction checks.
+ await page.evaluate(async()=>{
+   const scope=switchTest.t.lastScope;
+   await __INLAY_NATIVE__.fetch('/v1/characters',{method:'POST',body:{session_id:scope.sessionId,characters:switchTest.t.charactersSession.filter(row=>row.id!=='race-import')}});
+   switchTest.t._omniRosterCache?.delete(scope.sessionId);
+   await switchTest.refresh(scope.sessionId);await switchTest.paint();
+   if(!document.getElementById('nx-char-sheet')?.classList.contains('open'))document.getElementById('nx-char-edit-btn')?.click();
+ });
  // A failed background create keeps its card, edits and a usable retry.
  await page.evaluate(()=>{
    const queue=globalThis.__OMNI_QUEUE_CHARACTER_WRITE__;

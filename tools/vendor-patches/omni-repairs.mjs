@@ -1,6 +1,7 @@
 import { repairGestures } from './gesture-repairs.mjs';
 import { repairSettingsSave } from './settings-save.mjs';
 import { repairCharacterIdentitySave } from './character-identity-save.mjs';
+import { repairCharacterRosterSave } from './character-roster-save.mjs';
 import { repairGuardrailPreset } from './guardrail-preset.mjs';
 import { repairProgressToast } from './progress-toast.mjs';
 import { repairSpinnerPreview } from './spinner-preview.mjs';
@@ -80,6 +81,8 @@ export function repairOmniUi(source) {
   replace('    globalThis.__OMNI_FLUSH_CHARACTERS__ = flush;', `    globalThis.__OMNI_FLUSH_CHARACTERS__ = flush;
     globalThis.__OMNI_QUEUE_CHARACTER_WRITE__ = work => (live.writes = live.writes.catch(()=>{}).then(work));
     globalThis.__OMNI_CHARACTER_SCOPE__ = () => t.lastScope?.sessionId || "";
+    globalThis.__OMNI_CHARACTER_INDEX__ = () => t.lastScope?.charIndex;
+    globalThis.__OMNI_CHARACTER_ROWS__ = () => ({session:t.charactersSession || [],global:t.charactersGlobal || []});
     globalThis.__OMNI_REPLACE_CHARACTER_CACHE__ = (target, rows) => {
       t._omniRosterRevision=(t._omniRosterRevision||0)+1;
       const global=target==="__global__";
@@ -600,5 +603,5 @@ export function repairOmniUi(source) {
 `;
   replace('  async function Tt(e, n) {', bind + '  async function Tt(e, n) {');
   out = repairSpinnerPreview(repairProgressToast(repairSettingsSave(out)));
-  return repairGuardrailPreset(repairCharacterIdentitySave(out));
+  return repairCharacterRosterSave(repairGuardrailPreset(repairCharacterIdentitySave(out)));
 }

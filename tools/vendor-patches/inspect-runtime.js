@@ -34,7 +34,6 @@ showFullscreen = async (f) => {
     const { root, fullscreen, actionMenu } = await nxEnsureInspectSurface();
     await fullscreen.setAttribute('x-inray-touch','0');
     await root.setStyleAttribute("display:none");
-    if (t._inspectGen === hideGen) t._nxHostInspectOpen = false;
     await fullscreen.setStyleAttribute("display:none");
     await fullscreen.setInnerHTML("");
     nxInspectImageHtml = "";
@@ -44,6 +43,10 @@ showFullscreen = async (f) => {
     await actionMenu.setStyleAttribute("display:none");
     actionCard = null; inspectZones = []; inspectSheetEl = null;
     if (t._inspectGen !== hideGen && latest) actionCard = latest;
+    if (t._inspectGen === hideGen) {
+      t._nxHostInspectOpen = false;
+      await nxFloatShow();
+    }
   });
   nxInspectPaint = task.catch(() => {});
   return task;
@@ -162,6 +165,7 @@ showFullscreen = async (f) => {
   const gen = t._inspectGen = (t._inspectGen || 0) + 1;
   actionCard = f; inspectOpen = true; pendingSheetHit = null;
   t._nxHostInspectOpen = true;
+  await nxFloatHide();
   inspectGuardUntil = Date.now() + 400; inspectZones = []; inspectSheetEl = null;
   hidePressFill().catch(() => {});
   return nxPaintInspect(f, gen, true);

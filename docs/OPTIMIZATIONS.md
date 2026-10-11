@@ -254,3 +254,48 @@ one shared timer observes the group until its jobs finish or are pruned.
 This overlaps network work, not JavaScript calculations on a Worker. Repeated
 cumulative prefixes increase tagging token costs; it does not promise a lag-free
 installed Risu session.
+
+## Character image loading (2026-10-11)
+
+Character-reference hydration reads only the requested bot and global roster;
+an unscoped request still lists all rosters. Concurrent thumbnail validation
+shares an in-flight roster read, then releases it so later work reads fresh
+host state. Reference/example workers take the next image independently;
+one slow file no longer blocks the remainder of a four-image batch.
+
+Content hashes share image reads and data-URL encoding across both preview
+types, with an 8MiB LRU budget (estimated UTF-16 string bytes). Unreadable
+images are not cached. Preview identity caches and UI publication update only
+after checking the fresh roster hash and image-edit revision. The module-index
+refresh preserves known paths when PocketRisu returns an unloaded asset list.
+
+`node --test tests/character-image-loading.test.mjs` uses a mock host with
+120 characters and an unrelated bot. In the shared-file reference/example
+fixture, selected-bot reads fell from 361 to 31, unrelated-bot reads from one
+to zero, and pixel reads from 240 to one. A separate fixture with 120 distinct
+images still reads all 120 files, with 31 selected-bot reads. The tests also
+hold the first file, verify later thumbnails appear, replace its roster hash,
+and ensure the old image never enters the identity cache or UI event stream.
+These are source/mock-host work counts, not installed PocketRisu timings.
+
+The character tab uses a separate display path: all roster tiles queue their
+images on opening, with bounded workers, cached Blob bytes and form-owned object
+URLs. The 16MiB byte cache survives redraws; object URLs are revoked when the
+form is replaced or removed. Display URLs never enter saved records or the
+API's base64 caches. Fresh hash/revision validation still runs before display.
+The tab's initial hydration uses `warm:false` (automatic missing-reference
+seeding is preserved); standalone/API hydration retains its existing behavior.
+
+`node tools/check-character-loading.mjs` runs the built plugin with 120 people,
+two costumes and 120 distinct images shared by reference/example. Opening issues
+zero per-character example GETs, instead of 120. All 120 images load without
+scrolling, including when a character is edited while image reads are pending;
+redraw reuses image bytes. The obsolete whole-form input listener was removed:
+it replaced the roster with form-only fields, dropping every row's image hashes
+before the delegated row writer could preserve them.
+It also verifies URL cleanup and the current-chat button: clicking the same
+bot skips roster reload, while a host selection change follows the new bot.
+`--break-eager` restores the per-card requests and must fail the zero-GET check.
+`--break-edit-metadata` restores the obsolete listener and must fail the image
+identity check during typing.
+This complements the service-only tests above with the complete built UI.

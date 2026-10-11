@@ -5,6 +5,7 @@ import {
   clearAllCharRefModuleAssets,
   getCharRefAssetBytes,
   putCharRefAsset,
+  refreshCharRefAssetIndex,
   resetCharRefModuleState,
   setKnownCharRefCount,
 } from '../.test-build/char-ref-module.mjs';
@@ -73,6 +74,7 @@ test('char ref module keeps the new path but does not commit an unloaded list', 
     assert.deepEqual(host.setDatabaseCalls, [], 'the empty list must not be written back');
     assert.deepEqual(host.db.modules[0].assets, []);
     // The roster gets a usable hash either way, resolved from memory this session.
+    await refreshCharRefAssetIndex();
     const bytes = await getCharRefAssetBytes(saved.hash);
     assert.deepEqual(new Uint8Array(bytes), webpBytes);
   } finally {

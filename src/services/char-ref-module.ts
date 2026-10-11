@@ -7,7 +7,7 @@ import { serializeModuleWrite } from '../storage/module-write';
 import type { ApiResult } from '../core/types';
 import { dbg } from '../core/debug';
 import { hostHas, risuHost } from '../core/host';
-import { asU8, sniffImageMime, u8ToArrayBuffer, sha256Hex, type BytesLike } from '../core/util/bytes';
+import { asU8, sniffImageMime, u8ToArrayBuffer, sha256Hex, bytesToDataUrlAsync, type BytesLike } from '../core/util/bytes';
 import { encodeCharRefWebp } from '../core/util/image';
 import { cleanText } from '../core/util/text';
 import {
@@ -34,6 +34,11 @@ type ModuleRow = {
 
 const MIN_IMAGE_BYTES = 32;
 let assetIndex = new Map<string, string>();
+let indexRefresh: Promise<Map<string, string>> | null = null;
+const previews = new Map<string, string>();
+const previewReads = new Map<string, Promise<string>>();
+let previewSize = 0;
+const PREVIEW_BUDGET = 8 * 1024 * 1024;
 
 function hostOrThrow(): NonNullable<ReturnType<typeof risuHost>> {
   const host = risuHost();
@@ -105,10 +110,13 @@ export function resetCharRefModuleState(): void {
   knownCharRefCount = () => 0;
 }
 
-export async function refreshCharRefAssetIndex(): Promise<Map<string, string>> {
-  const mod = await ensureCharRefModule();
-  rebuildIndex(parseCharRefModuleAssets(mod.assets));
-  return assetIndex;
+export function refreshCharRefAssetIndex(): Promise<Map<string, string>> {
+  if (!indexRefresh) {
+    // ensureCharRefModule also preserves known paths when PocketRisu returns
+    // an unloaded asset list. Reindexing that empty response loses those paths.
+    indexRefresh = ensureCharRefModule().then(() => assetIndex).finally(() => { indexRefresh = null; });
+  }
+  return indexRefresh;
 }
 
 export async function ensureCharRefModule(): Promise<ModuleRow> {
@@ -379,6 +387,36 @@ export async function getCharRefAssetBytes(hash: unknown): Promise<ArrayBuffer |
   }
   if (!path) return null;
   return readAssetBytes(path);
+}
+
+/** Content hashes let reference/example tiles share one read and one encode. */
+export function getCharRefAssetPreviewUrl(hash: unknown): Promise<string> {
+  const h = sanitizeHash(hash);
+  if (!h) return Promise.resolve('');
+  const cached = previews.get(h);
+  if (cached) {
+    previews.delete(h); previews.set(h, cached);
+    return Promise.resolve(cached);
+  }
+  const pending = previewReads.get(h);
+  if (pending) return pending;
+  const read = (async () => {
+    const bytes = await getCharRefAssetBytes(h);
+    if (!bytes || bytes.byteLength < MIN_IMAGE_BYTES) return '';
+    const url = await bytesToDataUrlAsync(bytes, sniffImageMime(bytes));
+    const size = url.length * 2;
+    if (size <= PREVIEW_BUDGET) {
+      while (previewSize + size > PREVIEW_BUDGET && previews.size) {
+        const oldest = previews.keys().next().value!;
+        previewSize -= previews.get(oldest)!.length * 2;
+        previews.delete(oldest);
+      }
+      previews.set(h, url); previewSize += size;
+    }
+    return url;
+  })().finally(() => { previewReads.delete(h); });
+  previewReads.set(h, read);
+  return read;
 }
 
 export async function clearAllCharRefModuleAssets(): Promise<number> {

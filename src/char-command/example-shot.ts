@@ -32,6 +32,7 @@ export interface ExampleShotOpts {
   character?: () => Partial<CharacterRecord>;
   prefix?: FormPrefix;
   fallbackUrl?: () => string;
+  loadInitial?: boolean;
   onToast?: (text: string, ok?: boolean) => void;
 }
 
@@ -210,7 +211,7 @@ export function bindCharacterExampleShot(root: ParentNode, opts: ExampleShotOpts
 
   const id = owner.id;
   const scope = owner.scope;
-  if (id && scope) {
+  if (id && scope && opts.loadInitial !== false) {
     const own=revision;
     void fetchFn()(
       `/v1/characters/example-shot?character_id=${encodeURIComponent(id)}&scope=${encodeURIComponent(scope)}&session_id=${encodeURIComponent(owner.sessionId)}`,
