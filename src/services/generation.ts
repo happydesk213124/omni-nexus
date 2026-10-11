@@ -13,6 +13,7 @@ import { insertCharacterPlaceholders } from '../domain/prompt/character-placehol
  */
 
 import { QUALITY_TAGS, UC_PRESETS } from '../config/defaults';
+import { weightLocationTags } from '../domain/prompt/location-weight';
 import { normalizeFocusCharacterMode, normalizeFocusPromptMode, normalizeFocusWeight, normalizeNaturalBaseMode } from '../config/schema';
 import { API_URL, IMAGE_KEY, charRefScopeForCharacter } from '../core/constants';
 import { dbg } from '../core/debug';
@@ -313,7 +314,7 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
   let fixedNeg = '';
   // Cut foreign person-count tags from body, then prepend our ONE wrapped block.
   // joinTags must not split N::1girl, 1boy:: (see splitTagTokens).
-  const location = cleanText(shot.location, 800);
+  const location = weightLocationTags(shot.location, card.location_tag_weight);
   let body = joinTags(stylePos, location, natural, setup, fixedPos);
   if (personMode !== 'off') {
     body = stripPersonCountTags(body);
@@ -445,11 +446,11 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
   const lead = cleanText(card.fixed_prompt_prefix, 8000);
   const trail = cleanText(card.fixed_prompt_suffix, 8000);
   // Author note is comic-LLM instruction only (callComicLlm). NAI main uses prefix/suffix.
-  const location = cleanText(page.location || shot.location, 800);
+  const location = weightLocationTags(page.location || shot.location, card.location_tag_weight);
   let body = joinTags(
     stylePos,
     location,
-    `${koma}::${koma}koma::`,
+    `${koma}koma`,
     layout,
   );
   // Cut bases come from the LLM, which is told never to write counts — strip

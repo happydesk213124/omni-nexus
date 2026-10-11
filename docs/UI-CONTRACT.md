@@ -234,6 +234,14 @@ and the canvas; on means the tagger aspect trio. Empty comic NAI overrides (`com
 style preset. `card.comic_prompt_prefix` / `comic_prompt_suffix` wrap the
 comic main like the gen-option fixed prompts. Legacy `comic_prompt` copies
 into prefix when prefix is absent; `comic_uc` is no longer shown.
+Comic main uses plain `Nkoma`. Upperbody cut bases use bare `upperbody`, and
+parsing unwraps legacy `2::upperbody::` (also `upper_body` / `upper body`).
+Other cut-kind emphasis is unchanged.
+Generation options expose `nx-location-tag-weight` (“장소태그 강조 조절”) for
+`card.location_tag_weight` (default 1, range 0–5, decimals accepted). One leaves
+location tags unchanged; other values wrap the complete location in one flat
+`N::tags::` group in illustration and comic main prompts. Empty locations stay
+empty, and shot/session location metadata remains unweighted.
 `card.comic_author_note` is tone/world for the comic LLM, not an artist
 stack. Comic pages always use V5. Dashboard/tab save keeps stored comic
 fields when those controls are absent (`Ct()` + `assertOnce`).

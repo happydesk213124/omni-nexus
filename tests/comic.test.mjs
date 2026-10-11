@@ -237,6 +237,16 @@ test("parseComicPages synthesises layout from cut bases", () => {
   assert.match(pages[0].layout, /cut 3 is scenery\. 2::no humans::, empty hallway, dusk/);
 });
 
+test("upperbody drops only its 2x emphasis while other cut weights remain", () => {
+  for (const tag of ['upperbody', 'upper_body', 'upper body']) {
+    const [page] = parseComicPages({ pages: [{ cuts: [{ cut_kind: tag,
+      base: `2::${tag}::, 2::close-up::, 2::no humans::, 1.4::warm light::`, characters: [] }] }] });
+    assert.equal(page.cuts[0].cut_kind, 'upperbody');
+    assert.equal(page.cuts[0].base, `${tag}, 2::close-up::, 2::no humans::, 1.4::warm light::`);
+    assert.ok(!page.layout.includes(`2::${tag}::`));
+  }
+});
+
 test("parseComicPages caps cuts at 6 and slots at 6", () => {
   const cuts = Array.from({ length: 8 }, (_, i) => ({
     cut_kind: "normal",

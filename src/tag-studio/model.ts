@@ -1,4 +1,4 @@
-import { composeCharacterCaptionTags } from '../domain/character/tags.ts';
+import { composeCharacterCaptionTags, personCountTagsForShot } from '../domain/character/tags.ts';
 import { resolveCharacter } from '../domain/character/roster.ts';
 import { normalizeGender, type CharacterInput } from '../domain/character/identity.ts';
 import { formatAgeCaption, formatHeightCaption, lookSlotMissingFromAppearance, normalizeEyeColorSlot, normalizeHairColorSlot } from '../domain/character/looks-fields.ts';
@@ -269,7 +269,7 @@ export function applyStudioWearState(c: StudioChar, stored: CharacterInput | nul
   c.slim.wear_state = next;
 }
 
-function personTag(state: StudioState): string {
+function personTag(state: StudioState, roster: CharacterInput[]): string {
   const m = state.main;
   if (!m.autoPerson || m.personMode === 'off' || !m.personMode) return '';
   const list = charList(state).filter((c) => c.rosterId || String(c.tags || '').trim() || String(c.post || '').trim());
@@ -282,7 +282,19 @@ function personTag(state: StudioState): string {
   if (m.personSolo && n === 1) return wrap('solo');
   if (m.personMode === 'people') return wrap(`${n}people`);
   if (m.personMode === 'girls') return wrap(n === 1 ? '1girl' : `${n}girls`);
-  return wrap(n === 1 ? '1girl' : `${n}people`);
+  const cast = list.map(c => {
+    const scope = cleanText(c.slim.scope, 200);
+    const stored = (c.rosterId ? roster.find(row => cleanText(row.id, 80) === c.rosterId
+      && (!scope || cleanText(row.scope, 200) === scope)) : undefined)
+      || resolveCharacter(c.charName, roster);
+    return {
+      name: c.charName,
+      gender: normalizeGender(c.slim.gender ?? stored?.gender ?? stored?.sex) || undefined,
+      appearance: stripCharacterEmphasis(joinTags(stored?.appearance, c.tags, peelSpeechTail(c.post).body)),
+    };
+  });
+  const tags = personCountTagsForShot(cast, [], 'gender');
+  return tags ? wrap(tags) : '';
 }
 
 /** One filled field is the file text — do not retokenize it. */
@@ -308,7 +320,7 @@ function qualityTail(state: StudioState): string {
 
 export function assemble(state: StudioState, roster: CharacterInput[]): Assembled {
   const quality = qualityTail(state);
-  const main = joinOrRaw(personTag(state), state.main.presetPrompt, state.main.post, quality);
+  const main = joinOrRaw(personTag(state, roster), state.main.presetPrompt, state.main.post, quality);
   const chars = charList(state).map((c) => {
     const prompt = joinOrRaw(c.halfWeight ? weightCharacterPrompt(c.tags, c.appearanceWeight) : c.tags,
       c.costumeTags, c.costumeBottoms, c.post);
