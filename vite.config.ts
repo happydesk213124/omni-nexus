@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.10';
+const PLUGIN_VERSION = '1.1.11';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -979,6 +979,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.11 · 장소태그 강조 조절·샷태그 성별 계산 수정</strong>
+          <div class="muted" style="margin-top:8px">2026.10.12 · 장소태그 가중치를 조절하고 샷태그 수정의 성별 인원수 계산을 바로잡았습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>생성옵션에 장소태그 강조 조절을 추가했습니다. 기본값 1은 기존 그대로이며, 0~5 사이 소수를 입력할 수 있습니다. 0.5를 입력하면 삽화·만화 메인에 0.5::indoor, hotel, bed::처럼 장소 전체를 한 번 감쌉니다. 설정은 저장·복원되며 세션의 원래 장소 태그는 유지합니다.</li>
+            <li>샷태그 수정에서 gender를 선택해도 여러 캐릭터가 people로 들어가던 계산을 수정했습니다. 일반 생성과 같은 성별 계산을 사용해 1boy, 2girls, 1girl, 1boy 등을 넣고, 로스터 연결이 없으면 이미지 캐릭터 프롬프트의 성별 태그를 읽습니다.</li>
+            <li>만화 총 컷 수 태그와 상반신 태그의 숫자 강조만 제거했습니다. 2::2koma::는 2koma로, 2::upperbody::는 upperbody로 들어갑니다. upper_body·upper body 표기도 처리하며 close-up·cross-section·no humans와 캐릭터 외형·의상 강조는 유지합니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.10 · 캐릭터 저장·이미지 로딩·플로팅 뷰어 개선</strong>
@@ -14947,7 +14956,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.10 · 캐릭터 일괄 저장과 참고·예시 이미지 로딩을 개선했습니다. 로딩 중 수정해도 사진 연결을 유지하고, 탭을 다시 열면 이미지 캐시를 재사용합니다. 플로팅 뷰어 버튼을 이미지 위에 배치하고 이미지 크게보기 중에는 뷰어를 숨깁니다."
+    body: "1.1.11 · 생성옵션에 장소태그 강조 조절(0~5)을 추가했습니다. 샷태그 수정의 gender는 실제 성별 인원수를 계산합니다. 만화 총 컷 수·upperbody 태그의 강조만 제거하고 다른 컷·외형·의상 강조는 유지합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
