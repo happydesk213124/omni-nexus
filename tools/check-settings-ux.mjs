@@ -240,6 +240,23 @@ try {
       await page.locator('[data-backend="nai"]').click();
     }
     if (tab === 'comic_gen') {
+      const weight = page.locator('#nx-comic-character-weight');
+      assert.equal(await weight.evaluate(el => el.tagName), 'TEXTAREA');
+      for (const value of ['0.4', '0.3', '0.2', '0.1', '0', '0.6', '0.7', '0.5']) {
+        await weight.fill(value);
+        await weight.dispatchEvent('change');
+        await page.evaluate(() => globalThis.uxTestRuntime.flush());
+        assert.equal(await page.evaluate(() => globalThis.uxTestRuntime.t.backendSettings.card.comic_closeup_character_weight), Number(value));
+        await page.evaluate(async () => { await globalThis.uxTestRuntime.paint(); });
+        assert.equal(await weight.inputValue(), value, 'weight survives a real settings repaint, including zero');
+      }
+      for (const enabled of [true, false]) {
+        const half = page.locator('#nx-comic-character-half');
+        assert.equal(await half.isVisible(), true);
+        await half.setChecked(enabled);
+        await page.evaluate(() => globalThis.uxTestRuntime.flush());
+        assert.equal(await page.evaluate(() => globalThis.uxTestRuntime.t.backendSettings.card.comic_closeup_character_half), enabled);
+      }
       const toggle = page.locator('#nx-comic-natural-supplement');
       assert.equal(await toggle.isVisible(), true, 'comic natural toggle must be visible');
       for (const enabled of [true, false]) {

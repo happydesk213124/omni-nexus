@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { installHost, PNG_NAI_1X1 } from '../tools/parity/host.mjs';
+import { emptyState, hydrateFromNai } from '../.test-build/tag-studio-model.mjs';
+import { sessionIdHash } from '../.test-build/text-util.mjs';
 let serial=0;
 async function fixture() {
   installHost({promptsDir:'prompts'});
@@ -106,4 +108,91 @@ test('studio filenames carry the edited roster cast and keep each history revisi
     characters:[{id:'missing',scope:'owner',name:local.name,prompt:'girl'}]});
   assert.deepEqual((await f.api.shotCastIds(unknown.card.id)).ids,[],
     'unknown roster IDs do not mint an unresolvable identity or match a namesake');
+});
+
+test('studio and reroll images reopen with scoped identity, costume and nude state; dropped files do too', async () => {
+  const f = await fixture();
+  const stored = await f.api.upsertCharacter('owner', { id: 'a', name: 'A', gender: 'girl', appearance: '2::black hair::',
+    costumes: [{ name: 'school', attire: 'shirt', bottoms: 'skirt' }] });
+  const prompt = '0.5::girl, black hair, completely nude, nipples, pussy, smile::';
+  const result = await f.api.studioGenerate('root', { characters: [{ id: stored.id, scope: stored.scope, name: stored.name,
+    costume: 'school', wear_state: 'completely', prompt }] });
+  assert.equal(result.ok, true);
+  const verify = async id => {
+    const reopened = await f.api.readCardNaiPrompts(id);
+    assert.equal(reopened.characters[0].id, stored.id);
+    assert.equal(reopened.characters[0].scope, 'risu_'+sessionIdHash('owner|__unified__'));
+    assert.equal(reopened.characters[0].costume, 'school');
+    assert.equal(reopened.characters[0].wear_state, 'completely');
+    assert.equal(reopened.characters[0].prompt, prompt);
+  };
+  await verify(result.card.id);
+  const reroll = await f.api.rerollCard(result.card.id);
+  assert.equal(reroll.ok, true);
+  await verify(reroll.card.id);
+  const bytes = (await f.api.idbGet('images', reroll.card.id)).png;
+  const imported = await f.api.readImageNaiPrompts({ image_b64: Buffer.from(bytes).toString('base64') });
+  assert.equal(imported.characters[0].id, stored.id);
+  assert.equal(imported.characters[0].wear_state, 'completely');
+});
+
+test('studio restores filename cast across bot/chat scopes ahead of stale image identities', async () => {
+  const f = await fixture();
+  await risuai.setDatabase({modules:[...(await risuai.getDatabase(['modules'])).modules,
+    {id:'inlay-inray-display',namespace:'inlay.inray_display',lorebook:[]}]});
+  const appearance = '1boy, otoko no ko, {pale skin}, {white skin}, {{shiny skin}}, white hair, very long hair, blunt bangs, high ponytail, blunt ends, red eyes, tsurime';
+  const prompt = 'boy, otoko no ko, {pale skin}, {white skin}, {{shiny skin}}, white hair, very long hair, blunt bangs, high ponytail, blunt ends, red eyes, tsurime, 2.5::completely nude::, small penis, kneeling, looking up, cold smile, upperbody, speechbubble, korean text:주인님... 페퍼의 표정을 보십시오.';
+  const local = await f.api.upsertCharacter('owner',{id:'pepper',name:'페퍼',gender:'boy',appearance,penis_size:'small penis'});
+  const shared = await f.api.upsertCharacter('__global__',{id:'shared',name:'페퍼',appearance:'girl, blue hair'});
+  const ids = await f.api.ensureStudioCastIds([local,shared],'owner');
+  const cardId = 'cast_probe_s1';
+  const location = {session_id:'session',character_id:'owner',chat_id:'chat',char_index:0,chat_index:0,message_index:-1,cast_ids:ids};
+  const recipe = {...f.recipe,characters:[{...f.recipe.characters[0],prompt,uc:''},
+    {...f.recipe.characters[1],prompt:'girl, blue hair, smile',uc:''}]};
+  await f.api.publishImage(cardId,PNG_NAI_1X1.buffer.slice(PNG_NAI_1X1.byteOffset,PNG_NAI_1X1.byteOffset+PNG_NAI_1X1.byteLength),location,
+    {recipe,characters:[{id:'stale',scope:'wrong',name:'Wrong',wear_state:'completely'},
+      {id:local.id,scope:'owner',name:local.name}]});
+  await f.api.idbPut('cards',{...await f.api.idbGet('cards','root'),id:cardId});
+  await risuai.setCharacterToIndex(1,{chaId:'other',name:'Other',chats:[]});
+  risuai.getCurrentCharacterIndex = async () => 1;
+  const nai = await f.api.readCardNaiPrompts(cardId);
+  assert.equal(nai.ok,true,JSON.stringify(nai));
+  assert.deepEqual(nai.characters.map(row => row.id),[local.id,shared.id]);
+  assert.deepEqual(nai.characters.map(row => row.cast_id),ids,'filename order must survive the roster lookup');
+  const sid = 'risu_'+sessionIdHash('owner|chat');
+  const payload = await f.api.getCharactersPayload(sid,'owner');
+  const state = emptyState();
+  hydrateFromNai({state,nai,settings:{},rosterPayload:payload,card:{}});
+  const [first,second] = Object.values(state.chars);
+  assert.equal(first.charName,'페퍼');
+  assert.equal(first.rosterId,local.id);
+  assert.equal(first.tags,'boy, otoko no ko, {pale skin}, {white skin}, {{shiny skin}}, white hair, very long hair, blunt bangs, high ponytail, blunt ends, red eyes, tsurime, small penis');
+  assert.equal(first.costumeTags,'2.5::completely nude::');
+  assert.equal(first.post,'kneeling, looking up, cold smile, upperbody, speechbubble, korean text:주인님... 페퍼의 표정을 보십시오.');
+  assert.equal(second.rosterId,shared.id);
+  assert.equal(second.tags,'girl, blue hair');
+  const repeatedId = 'comic_probe_s1';
+  const repeatedRecipe = {...recipe,characters:[...recipe.characters,
+    {...recipe.characters[0],prompt:'0.5::boy, white hair, red eyes::, 2.5::completely nude::, looking up'},
+    {...recipe.characters[0],prompt:'boy, white hair, looking down'}]};
+  await f.api.publishImage(repeatedId,PNG_NAI_1X1.buffer.slice(PNG_NAI_1X1.byteOffset,PNG_NAI_1X1.byteOffset+PNG_NAI_1X1.byteLength),location,
+    {recipe:repeatedRecipe,characters:[local,shared,{...local,scope:sid},{id:'stale',scope:'wrong',name:'Wrong'}]});
+  await f.api.idbPut('cards',{...await f.api.idbGet('cards','root'),id:repeatedId});
+  const repeated = await f.api.readCardNaiPrompts(repeatedId);
+  assert.deepEqual(repeated.characters.map(row => row.id),[local.id,shared.id,local.id,undefined],
+    'repeated comic slots may only reuse the filename cast, not revive an extra metadata identity');
+  const comic = emptyState();
+  hydrateFromNai({state:comic,nai:repeated,settings:{},rosterPayload:payload,card:{kind:'comic'}});
+  assert.equal(Object.values(comic.chars)[2].rosterId,local.id);
+  assert.equal(Object.values(comic.chars)[2].halfWeight,true);
+  assert.equal(Object.values(comic.chars)[3].charName,'');
+  // A removed filename identity must not revive through stale image metadata.
+  await f.api.deleteCharacter('owner',local.id);
+  const missing = await f.api.readCardNaiPrompts(cardId);
+  assert.equal(missing.characters[0].id,undefined);
+  const reopened = emptyState();
+  hydrateFromNai({state:reopened,nai:missing,settings:{},rosterPayload:await f.api.getCharactersPayload(sid,'owner'),card:{}});
+  assert.equal(Object.values(reopened.chars)[0].charName,'');
+  assert.equal(Object.values(reopened.chars)[0].post,prompt);
+  assert.equal(Object.values(reopened.chars)[1].rosterId,shared.id,'unknown slots must not shift a later character into c1');
 });

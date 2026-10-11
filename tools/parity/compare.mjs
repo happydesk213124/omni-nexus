@@ -457,6 +457,12 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // Closeup half captions are opt-in; the scenario asserts persistence/export,
+  // all three tagger modes, wardrobe continuity and reopened image metadata.
+  if (/\.value\.(?:settings|json)\.card\.comic_closeup_character_half$/.test(at)) return a === undefined && b === false;
+  // Numeric closeup weight defaults to 0.5; the closeup scenario verifies zero,
+  // decimal generation, settings persistence/export and the reopened recipe.
+  if (/\.value\.(?:settings|json)\.card\.comic_closeup_character_weight$/.test(at)) return a === undefined && b === 0.5;
   // New overlay preference; its scenario asserts on/off persistence and export.
   // Keep every addition visible and reject values other than the restored default.
   if (/\.value\.(?:settings|json)\.card\.studio_coords_visible$/.test(at)) return a === undefined && b === true;
@@ -976,7 +982,7 @@ const NEW_ONLY_STEPS = new Map([
   ],
   [
     'cards.nai_prompt',
-    (v) => (v?.ok === true && v?.matches_generated_input===true
+      (v) => (v?.ok === true && v?.matches_generated_input===true && v?.filename_cast_matching===true
       ? null
       : `Omni image recipe must match an actual generation request, got ${JSON.stringify(v)}`),
   ],

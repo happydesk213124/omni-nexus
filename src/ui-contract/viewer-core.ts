@@ -10,6 +10,7 @@ export { progressToastView, progressToastStyles, aggregateStreamLineProgress } f
  */
 
 export { matchCharactersInText } from '../domain/character/roster';
+export { castFromShotAssetName } from '../domain/gallery/shot-assets';
 import {
   bakeTokenForCard,
   htmlHasBakeWrapForCard,

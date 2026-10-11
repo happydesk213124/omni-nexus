@@ -1452,7 +1452,9 @@ async function runJob(jobId: string): Promise<void> {
         await publishImage(cardId, raw, location, {
           warmUrl: true,
           recipe,
-          characters:(meta.characters || []).map(c=>({scope:String(c.scope || ''),id:String(c.id || ''),name:String(c.name || '')})),
+          characters:(meta.characters || []).map(c=>({scope:String(c.scope || ''),id:String(c.id || ''),name:String(c.name || ''),
+            ...(c.raw.costume ? {costume:String(c.raw.costume)} : {}),
+            ...(c.raw.wear_state ? {wear_state:String(c.raw.wear_state)} : {})})),
           generatedAt:Date.now(),
           ...(durableSpinners || deferred?.lineAttachments ? { onPreview: async (url: string) => {
             if (!isJobCurrent(jobId)) return;

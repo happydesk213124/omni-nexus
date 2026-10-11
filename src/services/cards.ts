@@ -75,7 +75,7 @@ import { busyReplyForRequest, jobKey } from './job-locks';
 import { createJob } from './jobs';
 import { getPrompt } from './settings';
 import { bytesToDataUrlAsync, base64ToAb } from '../core/util/bytes';
-import { ensureStudioCastIds, shotCastIds } from './cast-ids';
+import { ensureStudioCastIds, resolveCastCharacters, shotCastIds } from './cast-ids';
 import { allocateImageRevision, imageRevisionLock, locateImageRevision } from './image-history';
 import { imageHistoryRoot } from '../domain/gallery/image-history';
 
@@ -110,15 +110,30 @@ export async function readCardNaiPrompts(cardId: string): Promise<ApiResult> {
     const scene = requireNaiReplayScene(await extractNaiMetadata(bytes));
     const embedded = readGenerationImageData(bytes);
     const slim = embedded?.characters?.length
-      ? embedded.characters.map(c=>({scope:c.scope,id:c.id,name:c.name}))
+      ? embedded.characters.map(c=>({...c}))
       : slimCardCharacters(parseJsonOr(row.characters_json || '[]', []));
-    const characters = scene.characters.map((c, i) => ({
-      ...(slim[i] || {}),
-      prompt: c.prompt,
-      uc: c.uc,
-      center_x: c.center_x,
-      center_y: c.center_y,
-    }));
+    const { ids } = await shotCastIds(id);
+    const location = await readImageLocation(id);
+    const cast = (await resolveCastCharacters(ids, cleanText(location.character_id || row.session_id, 200))).characters;
+    const byCast = new Map(cast.map(c => [c.cast_id, c]));
+    const characters = scene.characters.map((c, i) => {
+      // Comic filenames deduplicate a character repeated across cuts. Slot
+      // hints may align only that filename's resolved cast, never add identity.
+      const matches = cast.filter(row => row.id === cleanText(slim[i]?.id, 80));
+      const hint = matches.length === 1 ? matches[0]
+        : matches.find(row => (row.scope === '__global__') === (slim[i]?.scope === '__global__'));
+      const castId = ids.length === scene.characters.length ? ids[i] : hint?.cast_id;
+      return {
+        ...(slim[i]?.costume ? { costume: slim[i].costume } : {}),
+        ...(slim[i]?.wear_state ? { wear_state: slim[i].wear_state } : {}),
+        ...(castId ? byCast.get(castId) : {}),
+        ...(castId ? { cast_id: castId } : {}),
+        prompt: c.prompt,
+        uc: c.uc,
+        center_x: c.center_x,
+        center_y: c.center_y,
+      };
+    });
     return {
       ...naiPromptFromScene(scene),
       characters,
@@ -263,11 +278,15 @@ export async function readImageNaiPrompts(body: Record<string, unknown> = {}): P
   try {
     const naiMeta = await extractNaiMetadata(bytes);
     if (!naiMeta) throw new Error('이미지에서 NovelAI 메타데이터를 읽지 못했습니다.');
-    const scene = sceneFromNaiMetadata(naiMeta);
+    const embedded = readGenerationImageData(bytes);
+    const scene = embedded ? requireNaiReplayScene(embedded.recipe) : sceneFromNaiMetadata(naiMeta);
     if (!cleanText(scene.main) && !scene.characters.length) {
       throw new Error('메타데이터에 프롬프트가 없습니다.');
     }
-    return naiPromptFromScene(scene);
+    return { ...naiPromptFromScene(scene), characters: scene.characters.map((c, i) => ({
+      ...(embedded?.characters[i] || {}), prompt: c.prompt, uc: c.uc,
+      center_x: c.center_x, center_y: c.center_y,
+    })) };
   } catch (err) {
     return {
       ok: false,
@@ -405,7 +424,9 @@ async function commitStudioRevision(cardId: string, body: Record<string, unknown
   const source = readGenerationImageData(await getImageBytes(id) || new ArrayBuffer(0));
   const characters = Array.isArray(body.characters)
     ? body.characters.filter((value): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value))
-      .map(c => ({ scope: cleanText(c.scope, 200), id: cleanText(c.id, 80), name: cleanText(c.name, 200) }))
+      .map(c => ({ scope: cleanText(c.scope, 200), id: cleanText(c.id, 80), name: cleanText(c.name, 200),
+        ...(c.costume ? { costume: cleanText(c.costume, 4000) } : {}),
+        ...(c.wear_state ? { wear_state: cleanText(c.wear_state, 40) } : {}) }))
     : embedded?.characters || source?.characters || [];
   await publishImage(newId, bytes, location, { recipe, characters, generatedAt: Date.now() });
   const slimCast = slimCardCharacters(parseJsonOr(row.characters_json || '[]', []));

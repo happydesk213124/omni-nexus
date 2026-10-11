@@ -4,9 +4,11 @@ import { normalizeGender, type CharacterInput } from '../domain/character/identi
 import { formatAgeCaption, formatHeightCaption, lookSlotMissingFromAppearance, normalizeEyeColorSlot, normalizeHairColorSlot } from '../domain/character/looks-fields.ts';
 import { QUALITY_TAGS } from '../config/defaults.ts';
 import { GLOBAL_SCOPE } from '../core/constants.ts';
-import { cleanText, joinTags } from '../core/util/text.ts';
-import { peelMain, peelStudioCharFields, splitStudioCostume } from './peel.ts';
+import { cleanText, joinTags, splitTagTokens } from '../core/util/text.ts';
+import { peelMain, peelStudioCharFields, peelSpeechTail, splitStudioCostume, splitLookAndCostume } from './peel.ts';
 import { resolveCostumeWear } from '../domain/character/costume.ts';
+import { weightCharacterPrompt, stripCharacterEmphasis, readCharacterWeightGroup, normalizeCharacterWeight } from '../domain/prompt/character-weight';
+import { parseWearState, wearTagsForWearState, wrapWearCatalogTags, type WearState } from '../domain/character/wear-state';
 
 export const CHAR_SLOTS: Array<[number, number]> = [
   [0.3, 0.5], [0.7, 0.5], [0.5, 0.28], [0.22, 0.78], [0.78, 0.78], [0.5, 0.55],
@@ -27,6 +29,9 @@ export interface StudioChar {
   y: number;
   auto: boolean;
   lock: boolean;
+  halfWeight?: boolean;
+  appearanceWeight?: number;
+  wearState?: WearState;
   slim: Record<string, unknown>;
 }
 
@@ -183,6 +188,87 @@ export function studioCharacterLookTags(stored: CharacterInput | null | undefine
   );
 }
 
+/** The leading image group signals half mode; wardrobe stays image-derived. */
+export function studioCharacterCaptionFields(input: {
+  caption: unknown;
+  stored?: CharacterInput | null;
+  costume?: unknown;
+  slim?: Record<string, unknown> | null;
+}): { tags: string; costumeTags: string; post: string; halfWeight: boolean; appearanceWeight?: number } {
+  const { stored, costume, slim } = input;
+  const group = readCharacterWeightGroup(input.caption);
+  const body = group?.body;
+  const halfWeight = group !== null;
+  if (!stored) return { tags: '', costumeTags: '', post: body ?? String(input.caption || ''), halfWeight, appearanceWeight: group?.weight };
+  const wear = resolveCostumeWear(stored, costume);
+  const look = composeCharacterCaptionTags(stored, {
+    costume,
+    wear_state: studioCaptionWearState(body ?? input.caption, slim?.wear_state ?? asRecord(slim?.raw).wear_state),
+  });
+  const fields = peelStudioCharFields({
+    // A state token is staging data, not a literal positive tag such as `clothed`.
+    slim: halfWeight || !slim ? null : { ...slim, wear_state: undefined },
+    caption: body ?? input.caption,
+    lookTags: joinTags(look, stripCharacterEmphasis(look)),
+    costumeAttire: joinTags(wear.attire, wear.bottoms, stripCharacterEmphasis(joinTags(wear.attire, wear.bottoms))),
+  });
+  // An older image may wear clothes no longer in the roster. Keep those in the
+  // wardrobe column so an explicit complete-undress selection can remove them.
+  const tail = peelSpeechTail(fields.post);
+  const extra = splitLookAndCostume(tail.body, joinTags(wear.attire, wear.bottoms));
+  fields.costumeTags = joinTags(fields.costumeTags, extra.costumeTags);
+  fields.post = [extra.tags, tail.speech].filter(Boolean).join(', ');
+  if (halfWeight) {
+    const weighted = new Map(splitTagTokens(look).map(tag => [stripCharacterEmphasis(tag).toLowerCase(), tag]));
+    const restore = (text: string) => splitTagTokens(text).map(tag => weighted.get(tag.toLowerCase()) || tag).join(', ');
+    const originalLook = splitLookAndCostume(studioCharacterLookTags(stored, cleanText(costume)),
+      joinTags(wear.attire, wear.bottoms)).tags;
+    const keys = new Set(splitTagTokens(stripCharacterEmphasis(originalLook)).map(tag => tag.toLowerCase()));
+    fields.tags = joinTags(originalLook, restore(splitTagTokens(fields.tags).filter(tag => !keys.has(tag.toLowerCase())).join(', ')));
+  }
+  return { ...fields, halfWeight, appearanceWeight: group?.weight };
+}
+
+export function studioCaptionWearState(caption: unknown, saved?: unknown): WearState {
+  const explicit = parseWearState(saved);
+  if (explicit) return explicit;
+  const tags = new Set(splitTagTokens(stripCharacterEmphasis(caption)).map(tag => tag.toLowerCase()));
+  if (tags.has('completely nude')) return 'completely';
+  if (tags.has('topless')) return 'topless';
+  if (tags.has('bottomless')) return 'bottomless';
+  if (tags.has('nude') || (tags.has('nsfw') && [...tags].some(tag => /^(?:nipples|pussy|(?:\w+ )?penis)$/.test(tag)))) return 'nude';
+  return tags.has('torn clothes') ? 'torn' : 'clothed';
+}
+
+/** Only an explicit wardrobe selection rebuilds wear tags; opening/toggling never does. */
+export function applyStudioWearState(c: StudioChar, stored: CharacterInput | null | undefined, value: unknown): void {
+  const next = parseWearState(value) || 'clothed';
+  const normalized = normalizeGender(stored?.gender || stored?.sex);
+  const gender = normalized === 'girl' ? 'f' : normalized === 'boy' ? 'm' : null;
+  const generated = new Set(['clothed', 'torn', 'completely', ...splitTagTokens(stripCharacterEmphasis(
+    ['torn', 'topless', 'bottomless', 'nude', 'completely'].map(state => wearTagsForWearState('', state as WearState, gender, stored?.penis_size)).join(', '),
+  )).map(tag => tag.toLowerCase())]);
+  const removeState = (text: string): string => splitTagTokens(text).flatMap(tag => {
+    const match = /^(-?\d+(?:\.\d+)?)::([\s\S]*)::$/.exec(tag);
+    if (match) {
+      const body = removeState(match[2]!);
+      return body ? [`${match[1]}::${body}::`] : [];
+    }
+    return generated.has(stripCharacterEmphasis(tag).toLowerCase()) ? [] : [tag];
+  }).join(', ');
+  c.tags = removeState(c.tags);
+  c.post = removeState(c.post);
+  let upper = removeState(c.costumeTags), lower = removeState(c.costumeBottoms);
+  if (!upper && !lower && next !== 'completely') {
+    const wear = resolveCostumeWear(stored, c.costume);
+    upper = wear.attire; lower = wear.bottoms;
+  }
+  c.costumeTags = wearTagsForWearState(upper, next, gender, stored?.penis_size);
+  c.costumeBottoms = wrapWearCatalogTags(lower, next);
+  c.wearState = next;
+  c.slim.wear_state = next;
+}
+
 function personTag(state: StudioState): string {
   const m = state.main;
   if (!m.autoPerson || m.personMode === 'off' || !m.personMode) return '';
@@ -224,7 +310,8 @@ export function assemble(state: StudioState, roster: CharacterInput[]): Assemble
   const quality = qualityTail(state);
   const main = joinOrRaw(personTag(state), state.main.presetPrompt, state.main.post, quality);
   const chars = charList(state).map((c) => {
-    const prompt = joinOrRaw(c.tags, c.costumeTags, c.costumeBottoms, c.post);
+    const prompt = joinOrRaw(c.halfWeight ? weightCharacterPrompt(c.tags, c.appearanceWeight) : c.tags,
+      c.costumeTags, c.costumeBottoms, c.post);
     if (!prompt && !String(c.uc || '').trim()) return null;
     const stored = c.rosterId ? roster.find((row) => cleanText(row.id, 80) === c.rosterId) : undefined;
     return {
@@ -241,6 +328,7 @@ export function assemble(state: StudioState, roster: CharacterInput[]): Assemble
         name: c.charName || undefined,
         costume: c.costume || c.costumeName || undefined,
         action: c.post || undefined,
+        wear_state: c.wearState || c.slim.wear_state || asRecord(c.slim.raw).wear_state || undefined,
         center_x: c.x,
         center_y: c.y,
       },
@@ -271,6 +359,7 @@ export function assembleOverrides(state: StudioState, roster: CharacterInput[]):
       center_x: state.coordMode === 'ai' ? undefined : c.center_x,
       center_y: state.coordMode === 'ai' ? undefined : c.center_y,
       costume: c.slim.costume || undefined,
+      wear_state: c.slim.wear_state || undefined,
       action: c.slim.action || undefined,
     })),
     seed: state.gen.seedLock && state.gen.seed > 0 ? state.gen.seed : undefined,
@@ -370,24 +459,19 @@ export function hydrateFromNai(args: {
     slotNo += 1;
     const rosterId = cleanText(ch.id, 80);
     const scope = cleanText(ch.scope, 200);
-    const stored = rosterId
+    const castId = cleanText(ch.cast_id, 80);
+    // cast_id is globally unique, unlike the bot/chat aliases of row.scope.
+    const stored = castId
+      ? roster.find(row => cleanText(row.cast_id, 80) === castId)
+      : rosterId
       ? roster.find((row) => cleanText(row.id, 80) === rosterId && (!scope || cleanText(row.scope, 200) === scope))
       : rawName ? resolveCharacter(rawName, roster) : null;
     const name = stored ? (stored.name || rawName) : '';
     const costumePick = ch.costume ?? asRecord(ch.raw).costume;
-    const look = stored ? composeCharacterCaptionTags(stored, { costume: costumePick }) : '';
     const costumes = Array.isArray(stored?.costumes) ? stored.costumes : [];
-    const cos = costumes.find((c) => cleanText(c.name, 200) === cleanText(costumePick, 200))
-      || costumes[0];
     const wear = resolveCostumeWear(stored, costumePick);
-    const peeledChar = stored
-        ? peelStudioCharFields({
-          slim: ch,
-          caption: ch.prompt,
-          lookTags: look,
-          costumeAttire: joinTags(wear.attire, wear.bottoms),
-        })
-        : { tags: '', costumeTags: '', post: caption };
+    const cos = costumes.find((c) => cleanText(c.name, 200) === wear.name) || costumes[wear.index];
+    const peeledChar = studioCharacterCaptionFields({ caption, stored, costume: costumePick, slim: ch });
     state.chars[id] = {
       rosterId: cleanText(stored?.id || stored?.name, 80),
       charName: name,
@@ -402,6 +486,9 @@ export function hydrateFromNai(args: {
       y: Number(ch.center_y ?? slot[1]),
       auto: false,
       lock: false,
+      halfWeight: peeledChar.halfWeight,
+      appearanceWeight: peeledChar.appearanceWeight ?? normalizeCharacterWeight(cardCfg.comic_closeup_character_weight),
+      wearState: studioCaptionWearState(caption, ch.wear_state ?? asRecord(ch.raw).wear_state),
       slim: { ...ch, prompt: undefined },
     };
     state.tabs.push({

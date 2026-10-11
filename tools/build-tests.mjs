@@ -26,6 +26,7 @@ const MODULES = {
   'stream-lines': 'src/domain/prompt/stream-lines.ts',
   'stream-services': ['src/services/jobs.ts','src/services/stream-jobs.ts','src/services/context.ts','src/storage/stores.ts','src/services/settings.ts','src/services/chat-bake.ts','src/storage/omni-helper-module.ts','src/storage/inray-display-module.ts','src/storage/shot-module.ts'],
   'character-placeholders': 'src/domain/prompt/character-placeholders.ts',
+  'character-weight': 'src/domain/prompt/character-weight.ts',
   'viewer-core': 'src/ui-contract/viewer-core.ts',
   'inline-chat': 'src/domain/inline-chat.ts',
   'object-util': 'src/core/util/object.ts',

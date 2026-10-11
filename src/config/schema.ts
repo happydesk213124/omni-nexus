@@ -15,6 +15,7 @@ import { normalizeInlineChatTextSide } from '../domain/inline-chat.ts';
 import { streamLineImageLimits } from '../domain/prompt/stream-lines';
 import { normalizeInlineMsgActions } from '../domain/inline-msg-actions.ts';
 import { normalizeImagePressInspect, normalizeToastAnchor } from '../domain/toast-press.ts';
+import { normalizeCharacterWeight } from '../domain/prompt/character-weight';
 
 /** NovelAI base natural-language mode (replaces the old boolean toggle). */
 export type NaturalBaseMode = 'off' | 'short' | 'detailed' | 'supplement';
@@ -390,6 +391,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     : flagOn(card.nai_use_coords, true);
   card.comic_gen = comicGenOn(card) ? 'on' : 'off';
   card.comic_natural_supplement = flagOn(card.comic_natural_supplement, false);
+  card.comic_closeup_character_half = flagOn(card.comic_closeup_character_half, false);
+  card.comic_closeup_character_weight = normalizeCharacterWeight(card.comic_closeup_character_weight);
   card.comic_author_note = String(card.comic_author_note ?? '').trim().slice(0, 8000);
   card.comic_llm_batch = normalizeComicLlmBatch(card.comic_llm_batch);
   card.comic_schedule = normalizeComicSchedule(card.comic_schedule);

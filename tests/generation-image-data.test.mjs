@@ -21,6 +21,15 @@ test('recipe, ordered scoped associations, timestamp and image chunks survive ro
   assert.equal(out.byteLength % 2, 0);
 });
 
+test('image associations retain costume and clothing state without a half-mode snapshot', async () => {
+  const wardrobe = { ...metadata, characters: [{ ...metadata.characters[0], costume: 'school', wear_state: 'completely' }] };
+  for (const bytes of [webp, png]) {
+    const out = api.writeGenerationImageData(bytes, wardrobe);
+    assert.deepEqual(api.readGenerationImageData(out), wardrobe);
+    assert.deepEqual(Object.keys(api.readGenerationImageData(out).characters[0]).sort(), ['costume', 'id', 'name', 'scope', 'wear_state']);
+  }
+});
+
 test('reattachment replaces one owned chunk; existing WebP wrapper preserves association order', async () => {
   const first = api.writeGenerationImageData(webp, metadata);
   const second = await api.encodeGenerationWebp(first);

@@ -244,21 +244,28 @@ function seedWearByName(chars: readonly ShotCharacter[] | null | undefined): Map
   return running;
 }
 
-/** Slot wear wins; omitted copies the last state for that name (cast or earlier slot). */
+/** Explicit wardrobe wins; omitted costume/state inherit the cast or earlier slot. */
 function slotsWithInheritedWear(
   prevChars: readonly ShotCharacter[] | null | undefined,
   slots: readonly ComicSlot[],
 ): ComicSlot[] {
   const running = seedWearByName(prevChars);
+  const costumes = new Map<string, string>();
+  for (const ch of prevChars || []) {
+    const name = cleanText(ch.name, 200).toLowerCase(), costume = cleanText(ch.costume, 4000);
+    if (name && costume) costumes.set(name, costume);
+  }
   return slots.map((slot) => {
     const key = cleanText(slot.name, 200).toLowerCase();
+    const costume = cleanText(slot.costume, 4000) || costumes.get(key) || '';
+    if (key && costume) costumes.set(key, costume);
     const parsed = parseWearState(slot.wear_state);
     if (parsed) {
       if (key) running.set(key, parsed);
-      return { ...slot, wear_state: parsed };
+      return { ...slot, costume, wear_state: parsed };
     }
     const prev = key ? running.get(key) : undefined;
-    return prev ? { ...slot, wear_state: prev } : slot;
+    return { ...slot, costume, ...(prev ? { wear_state: prev } : {}) };
   });
 }
 

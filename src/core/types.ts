@@ -208,6 +208,9 @@ export interface CardSettings {
   comic_author_note?: string;
   /** Append a natural-language description after each cut's base tags. */
   comic_natural_supplement?: boolean;
+  /** Close-up captions keep the current look/outfit with all positive tags at 0.5. */
+  comic_closeup_character_half?: boolean;
+  comic_closeup_character_weight?: number;
   /** one JSON for all comic shots, one call per shot, or page JSON on the main tagger. */
   comic_llm_batch?: 'once' | 'per_shot' | 'with_main';
   /** illustration NAI while comic LLM runs, or wait for both taggers. */

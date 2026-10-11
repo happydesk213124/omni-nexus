@@ -108,6 +108,10 @@ export async function runScenario(N, handles) {
   // ── boot ────────────────────────────────────────────────────────────────
   await rec('ready', () => N.ready());
   const supportsComicNatural = typeof (await get('/v1/settings'))?.settings?.card?.comic_natural_supplement === 'boolean';
+  const halfDefault = (await get('/v1/settings'))?.settings?.card?.comic_closeup_character_half;
+  const supportsComicHalf = typeof halfDefault === 'boolean';
+  if (supportsComicHalf && halfDefault !== false) throw new Error('closeup half must default off');
+  if (supportsComicHalf && (await get('/v1/settings')).settings.card.comic_closeup_character_weight !== 0.5) throw new Error('closeup weight must default to 0.5');
   await rec('settings.character_fields', async () => {
     const initial = (await get('/v1/settings'))?.settings?.card || {};
     await post('/v1/settings', { card: { character_height:false, character_age:false } });
@@ -761,8 +765,23 @@ export async function runScenario(N, handles) {
 
   await rec('cards.nai_prompt', async () => {
     const recipe=await get(`/v1/cards/${cardId}/nai-prompt`);
+    const filename=await get(`/v1/shots/cast?card_id=${encodeURIComponent(cardId)}`);
+    const host=globalThis.risuai,current=host.getCurrentCharacterIndex;
+    const db=await host.getDatabase(['characters']);
+    host.getCurrentCharacterIndex=async()=>db.characters.findIndex(c=>c.chaId==='char_main');
+    let resolved;
+    try { resolved=await post('/v1/shots/resolve-cast',{ids:filename.ids,details:true}); }
+    finally { host.getCurrentCharacterIndex=current; }
+    if (!filename.ids?.length || !recipe.characters?.length) throw new Error('filename cast fixture is empty');
+    const byCast=new Map(resolved.characters.map(row=>[row.cast_id,row]));
+    for (const [i,char] of recipe.characters.entries()) {
+      const identity=byCast.get(filename.ids[i]);
+      if (char.cast_id!==filename.ids[i] || char.id!==identity?.id || char.scope!==identity?.scope || char.name!==identity?.name) {
+        throw new Error('studio identity must follow filename cast in slot order: '+JSON.stringify({char,identity,filename}));
+      }
+    }
     const sent=handles.naiRequests.filter(r=>r.kind==='generate').map(r=>r.body);
-    return {...recipe,matches_generated_input:sent.some(body=>body.input===recipe.main_prompt && body.parameters?.width===recipe.width && body.parameters?.height===recipe.height)};
+    return {...recipe,filename_cast_matching:true,matches_generated_input:sent.some(body=>body.input===recipe.main_prompt && body.parameters?.width===recipe.width && body.parameters?.height===recipe.height)};
   });
   await rec('asset_only.contract',()=>({
     no_fabricated_message:imageJson?.message_index===-1 && imageJson?.content_hash==='',
@@ -1530,6 +1549,53 @@ export async function runScenario(N, handles) {
     handles.setLlmReply?.(DEFAULT_LLM_REPLY);
     await put('/v1/settings', { card: { comic_gen: 'off', comic_llm_batch: 'once', comic_gen_ratio: 50, comic_natural_supplement: false } });
     return { persistence: true, batches: ['once', 'per_shot', 'with_main'] };
+  });
+
+  await rec('comic.closeup_character_half', async () => {
+    for (const batch of ['once', 'per_shot', 'with_main']) for (const enabled of [true, false]) {
+      const weight = {once:0, per_shot:0.3, with_main:0.7}[batch];
+      await put('/v1/settings', { card: { comic_gen: 'on', comic_llm_batch: batch, comic_gen_ratio: 100, comic_closeup_character_half: enabled, comic_closeup_character_weight: weight } });
+      if ((await get('/v1/settings')).settings.card.comic_closeup_character_half !== enabled) throw new Error('closeup half setting did not persist');
+      const exported = JSON.parse((await get('/v1/settings/export')).json || '{}');
+      if (exported.card.comic_closeup_character_half !== enabled) throw new Error('closeup half setting did not export');
+      if (exported.card.comic_closeup_character_weight !== weight || (await get('/v1/settings')).settings.card.comic_closeup_character_weight !== weight) throw new Error('closeup weight did not persist/export');
+      if (!supportsComicHalf) continue;
+      const cuts = COMIC_CUTS.map((cut, i) => ({ ...cut, characters: cut.characters.map(ch =>
+        i === 0 && ch.name === '테아' ? { ...ch, wear_state: 'topless' } : ch) }));
+      const page = { shot_index: 0, aspect: 'portrait', coords: 'ai_choice', cuts };
+      handles.setLlmReply?.(JSON.stringify({ new_characters: COMIC_NEW_CHARACTERS,
+        scenes: [{ place: 'hallway', shots: [comicShot(batch === 'with_main' ? { comic_page: page } : {})] }], pages: [page] }));
+      const before = handles.naiRequests.filter(r => r.kind === 'generate').length;
+      const job = await comicJob(`half_${batch}_${enabled}`);
+      const result = await waitForJob(job?.job_id);
+      const sent = handles.naiRequests.filter(r => r.kind === 'generate').slice(before);
+      if (result?.state !== 'done' || !sent.length) throw new Error('closeup half generation failed');
+      const body = sent.at(-1).body;
+      const captions = body.parameters.v4_prompt.caption.char_captions.map(c => c.char_caption);
+      const closeup = captions.find(c => c.includes('teary eyes'));
+      if (!closeup || closeup.startsWith(`${weight}::`) !== enabled) throw new Error(`closeup half wire mismatch: ${batch}/${enabled}`);
+      for (const tag of ['black hair', 'coat', 'topless']) {
+        if (closeup.includes(tag) !== enabled) throw new Error(`closeup wardrobe mismatch: ${batch}/${enabled}/${tag}`);
+      }
+      if (enabled) {
+        const group=/^[\d.]+::([^]*?)::/.exec(closeup);
+        if (!group || /coat|topless|teary eyes/.test(group[1]) || !closeup.slice(group[0].length).includes('teary eyes')) {
+          throw new Error('closeup half must apply to appearance only: '+JSON.stringify({batch,closeup}));
+        }
+      }
+      if (captions.find(c => c.includes('silhouette'))?.includes('brown hair')) throw new Error('cross-section roster leaked');
+      const card = result.result.cards.at(-1);
+      const reopened = await get(`/v1/cards/${card.id}/nai-prompt`);
+      const closeSlot = reopened.characters.find(c => c.prompt.includes('teary eyes'));
+      if (closeSlot?.costume !== 'coat' || closeSlot?.wear_state !== 'topless' || !closeSlot?.id) {
+        const filename=await get(`/v1/shots/cast?card_id=${encodeURIComponent(card.id)}`);
+        const resolved=await post('/v1/shots/resolve-cast',{ids:filename.ids,details:true});
+        throw new Error('closeup image lost identity or wardrobe: '+JSON.stringify({batch,enabled,closeSlot,filename,resolved}));
+      }
+    }
+    handles.setLlmReply?.(DEFAULT_LLM_REPLY);
+    await put('/v1/settings', { card: { comic_gen: 'off', comic_llm_batch: 'once', comic_gen_ratio: 50, comic_closeup_character_half: false, comic_closeup_character_weight: 0.5 } });
+    return { persistence: true, export: true, batches: ['once', 'per_shot', 'with_main'] };
   });
 
   await rec('chars.delete_cascade', () => post('/v1/characters', {

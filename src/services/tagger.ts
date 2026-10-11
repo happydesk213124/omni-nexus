@@ -3,6 +3,7 @@ import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-
 import { TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 import { comicNaturalInstruction } from '../domain/comic/natural';
+import { comicCloseupCharacterInstruction } from '../domain/comic/caption';
 /**
  * The tagging request: prose in, a scene/shot plan out.
  *
@@ -514,6 +515,7 @@ export async function buildTaggerMessages(
       comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain) : '',
       comicPack,
       withMain ? comicNaturalInstruction(card.comic_natural_supplement === true) : '',
+      withMain ? comicCloseupCharacterInstruction(card.comic_closeup_character_half === true, card.comic_closeup_character_weight) : '',
       assetHow,
       placement,
       formatPrevLocationLine(

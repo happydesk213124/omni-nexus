@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.8';
+const PLUGIN_VERSION = '1.1.9';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -412,6 +412,8 @@ const VENDOR_NATURAL_BASE_CT_PATCH =
       auto_aspect: document.getElementById("nx-auto-aspect") ? ee("nx-auto-aspect") : !!e.auto_aspect,
       comic_gen: document.getElementById("nx-comic-gen") ? (N("nx-comic-gen") === "on" ? "on" : "off") : (e.comic_gen === "on" || e.comic_gen === !0 ? "on" : "off"),
       comic_natural_supplement: document.getElementById("nx-comic-natural-supplement") ? ee("nx-comic-natural-supplement") : e.comic_natural_supplement === !0,
+      comic_closeup_character_half: document.getElementById("nx-comic-character-half") ? ee("nx-comic-character-half") : e.comic_closeup_character_half === !0,
+      comic_closeup_character_weight: document.getElementById("nx-comic-character-weight") ? (() => { const r = N("nx-comic-character-weight"), n = r == null || String(r).trim() === "" ? 0.5 : Number(r); return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5; })() : (e.comic_closeup_character_weight ?? 0.5),
       comic_llm_batch: document.getElementById("nx-comic-llm-batch") ? (N("nx-comic-llm-batch") === "per_shot" ? "per_shot" : N("nx-comic-llm-batch") === "with_main" ? "with_main" : "once") : (e.comic_llm_batch === "per_shot" ? "per_shot" : e.comic_llm_batch === "with_main" ? "with_main" : "once"),
       comic_schedule: document.getElementById("nx-comic-schedule") ? (N("nx-comic-schedule") === "wait_taggers" ? "wait_taggers" : "overlap") : (e.comic_schedule === "wait_taggers" ? "wait_taggers" : "overlap"),
       comic_max_pages: e.comic_max_pages ?? 2,
@@ -976,6 +978,17 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.9 · 캐릭터 연결 복원·외형 가중치 조절</strong>
+          <div class="muted" style="margin-top:8px">2026.10.11 · 저장 이미지의 캐릭터 연결을 바로잡고 만화·샷태그 수정의 선행 외형 가중치를 직접 조절합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>샷태그 수정으로 저장하거나 리롤한 이미지를 더블클릭했을 때 캐릭터 칩이 빠지던 파일명 해석을 수정했습니다.</li>
+            <li>샷태그 수정은 파일명의 캐릭터 ID로 해당 이미지의 로스터와 전역 로스터를 연결합니다. 캐릭터 이름과 선행 외형을 복원하며, nude 상태나 봇·채팅 구분 때문에 외형이 전부 후행으로 밀리던 문제를 수정했습니다.</li>
+            <li>만화 생성옵션에 close-up 캐릭터 태그 약화 토글과 숫자 입력칸을 추가했습니다. 기본값은 0.5이며 0~1 값을 직접 입력할 수 있습니다. 기존 강조를 제거한 선행 외형만 입력한 값으로 감싸고 의상·옷 상태·동작·대사·UC의 강조는 유지합니다.</li>
+            <li>샷태그 수정의 캐릭터 선행 헤더에서도 가중치를 직접 바꿀 수 있습니다. 이미지에 적용된 숫자와 켜짐 상태를 읽어 복원하고, 꺼진 상태에서는 로스터의 원래 외형 강조를 사용합니다.</li>
+            <li>코스튬 헤더에 옷 상태 선택을 추가했습니다. 의상을 바꾸어도 현재 옷 상태를 유지하며, 완전 탈의 상태를 열거나 약화 토글을 바꿨다는 이유로 옷을 다시 입히지 않습니다. 만화의 이어지는 컷에도 현재 코스튬·옷 상태를 이어갑니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.8 · 줄 단위 선행생성·샷태그 캐릭터 외형 개선</strong>
@@ -3143,6 +3156,9 @@ const VENDOR_CARD_TAB_SPLIT_CLOSE_PATCH = `            <input id="nx-preset-file
               </select>
             </label>
             <label class="toggle-row"><input type="checkbox" id="nx-comic-natural-supplement" \${i.comic_natural_supplement === !0 ? "checked" : ""}><span>자연어 보충 설명</span></label>
+            <label class="toggle-row"><input type="checkbox" id="nx-comic-character-half" \${i.comic_closeup_character_half === !0 ? "checked" : ""}><span>close-up 캐릭터 태그 약화</span></label>
+            <textarea id="nx-comic-character-weight" rows="1" inputmode="decimal" aria-label="close-up 외형 가중치">\${h(i.comic_closeup_character_weight ?? 0.5)}</textarea>
+            <div class="muted">선행 외형의 강조를 제거하고 입력한 가중치(0~1)로 감쌉니다. 코스튬·옷 상태·후행의 강조는 유지합니다. 기본 끄기.</div>
             <label data-nx-help-id="nx-comic-schedule"><span>생성 순서</span>
               <select id="nx-comic-schedule">
                 <option value="overlap" \${comicSched === "overlap" ? "selected" : ""}>겹쳐 생성</option>
@@ -5721,8 +5737,7 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
             assetName = String(found?.name || "");
           }
           if (!current()) return;
-          const segment = String(assetName || "").split(".").find(part => part.startsWith("c") && part.slice(1).split("-").every(id => /^[0-9a-f]{4}$/i.test(id)));
-          const ids = segment ? segment.slice(1).toLowerCase().split("-") : [];
+          const ids = globalThis.__INLAY_VIEWER_CORE__.castFromShotAssetName(assetName);
           const names = ids.length ? await K("/v1/shots/resolve-cast", { method: "POST", body: { ids } }, 1.5e4) : {};
           if (!current()) return;
           view.characters = ids.map(id => ({ name: String(names[id] || ""), cast_id: id }));
@@ -14918,7 +14933,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.8 · 줄 단위 선행생성의 재태깅·시작 지연·완료 토스트를 수정했습니다. 이미지와 스피너를 단계별로 넣고 최종 등록 후 완료 알림음을 재생합니다. 샷태그 캐릭터 추가에 머리·눈·나이·키를 함께 넣습니다."
+    body: "1.1.9 · 저장 이미지의 캐릭터 칩·이름·선행 외형 연결을 수정했습니다. 만화와 샷태그 수정에서 선행 외형 가중치를 0~1로 조절하며 이미지의 값을 복원합니다. 코스튬·옷 상태·후행 강조는 유지하고 옷 상태 선택을 추가했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

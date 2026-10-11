@@ -4,9 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 import { repairInspectFullscreen } from '../tools/vendor-patches/inspect.mjs';
+import { castFromShotAssetName } from '../.test-build/shot-assets.mjs';
 
 const config = await readFile('vite.config.ts', 'utf8');
 function opener(context) {
+  context.__INLAY_VIEWER_CORE__ = { castFromShotAssetName };
   context.nxCloneInspectImage ||= async card => ({cardId:card.id});
   context.nxDropInspectImage = async () => {};
   context.nxInspectMirroredImage = null;
@@ -28,6 +30,17 @@ test('inspect fills resolved names without querying chip DOM', async () => {
   assert.deepEqual(painted.characters.map(row=>row.name), ['First','Second']);
   assert.equal(painted._nxImage.cardId,'card');
   assert.equal(card.characters[0].name,'Old');
+});
+test('studio and reroll filenames show every character chip in filename order', async () => {
+  for (const revision of ['_s1', '_s12', '_r1', '_r24']) {
+    let painted;
+    const c = { t: {}, K: async () => ({9396:'페퍼',1234:'전역 캐릭터'}),
+      showStickyInspect: async () => {}, updateStickyInspect: async view => { painted = structuredClone(view); }, y: () => {} };
+    await opener(c)({id:'card'+revision}, 'inxshot_card.sroom.c9396-1234'+revision+'.webp');
+    await c.t._inspectLoad;
+    assert.deepEqual(painted.characters.map(row => row.name), ['페퍼','전역 캐릭터']);
+    assert.deepEqual(painted.characters.map(row => row.cast_id), ['9396','1234']);
+  }
 });
 test('a missing file replaces loading with an explicit error in the open inspect', async () => {
   let opened=0,last; const errors=[];
