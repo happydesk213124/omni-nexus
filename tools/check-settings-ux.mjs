@@ -307,7 +307,17 @@ try {
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),1,'setting secondary marks the tile without reopening settings');
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
+  const locationWeight = page.locator('#nx-location-tag-weight');
+  assert.equal(await locationWeight.inputValue(), '1');
+  for (const value of ['0.5', '0', '2', '1']) {
+    await locationWeight.fill(value);
+    await page.evaluate(()=>uxTestRuntime.flush());
+    assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.location_tag_weight), Number(value));
+    await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
+    assert.equal(await locationWeight.inputValue(), value, 'location weight survives tab changes');
+  }
   const preset = page.locator('#nx-llm-guardrail-preset');
+  await locationWeight.locator('..').screenshot({path:'.test-build/settings-ux/location-weight.png'});
   assert.deepEqual(await preset.locator('option').evaluateAll(rows=>rows.map(row=>row.value)),['none','auto','gemini','deepseek','glm']);
   assert.equal(await preset.inputValue(),'none','fresh settings start without a preset');
   assert.equal(await page.locator('#nx-llm-reverse-bar').isDisabled(),false);

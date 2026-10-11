@@ -12,6 +12,44 @@ import {
   studioRowIsGlobal,
 } from '../.test-build/tag-studio-model.mjs';
 
+describe('studio gender person counts', () => {
+  const male = { id: 'm', scope: 'owner', name: 'M', gender: 'boy', appearance: 'boy, short hair' };
+  const female = { id: 'f', scope: 'owner', name: 'F', gender: 'girl', appearance: 'girl, long hair' };
+  const mainFor = (rows, linked = true) => {
+    const state = emptyState();
+    hydrateFromNai({ state, nai: { characters: rows.map(row => ({
+      ...(linked ? { id: row.id, scope: row.scope } : {}), prompt: row.appearance,
+    })) }, settings: {}, rosterPayload: { characters: linked ? rows : [] }, card: {} });
+    state.main.autoPerson = true;
+    state.main.personMode = 'gender';
+    state.main.personWeight = '2';
+    state.main.personSolo = false;
+    state.main.quality = false;
+    return { state, roster: linked ? rows : [] };
+  };
+  it('counts male-only and mixed slots instead of people', () => {
+    for (const [rows, expected] of [[[male], '2::1boy::'], [[female, male], '2::1girl, 1boy::'],
+      [[male, { ...male, id: 'm2', name: 'M2' }], '2::2boys::']]) {
+      const { state, roster } = mainFor(rows);
+      assert.equal(assembleOverrides(state, roster).main_prompt, expected);
+    }
+  });
+  it('uses exact caption gender tags when no roster is linked', () => {
+    const { state, roster } = mainFor([female, { ...male, appearance: '0.5::boy, short hair::' }], false);
+    assert.equal(assembleOverrides(state, roster).main_prompt, '2::1girl, 1boy::');
+  });
+  it('keeps people, girls, solo and off controls working', () => {
+    const { state, roster } = mainFor([female, male]);
+    for (const [mode, expected] of [['people', '2::2people::'], ['girls', '2::2girls::'], ['off', '']]) {
+      state.main.personMode = mode;
+      assert.equal(assembleOverrides(state, roster).main_prompt, expected);
+    }
+    const one = mainFor([male]);
+    one.state.main.personSolo = true;
+    assert.equal(assembleOverrides(one.state, one.roster).main_prompt, '2::solo::');
+  });
+});
+
 describe('image-derived half mode and clothing state', () => {
   const stored = { id: 'a', scope: 'owner', name: 'A', gender: 'girl', appearance: 'girl, 2::black hair::, 1.7::blue eyes::',
     costumes: [{ name: 'default', attire: 'hoodie', bottoms: 'jeans' }, { name: 'school', attire: '2::white shirt::', bottoms: 'skirt' }] };

@@ -1460,7 +1460,7 @@ export async function runScenario(N, handles) {
     return {
       cards: jobResult?.result?.cards?.length ?? -1,
       sent: sent.length,
-      koma3: wire.includes('3::3koma::'),
+      koma3: wire.includes('3koma') && !wire.includes('3::3koma::'),
       layout: wire.includes('cut 1 is scene.') && wire.includes(', cut 2 is close-up scene.'),
       closeup: wire.includes('2::close-up::'),
       xray: wire.includes('2::cross-section::'),
@@ -1920,6 +1920,13 @@ export async function runScenario(N, handles) {
     return {persisted:restored.effort_v5==='medium',models:restored.model_v5===nai.model_v5&&restored.model_v4===nai.model_v4,
       steps:restored.steps_v5===21&&restored.steps_v4===27,comfyKept:comfy.effort_v5==='medium'&&comfy.steps_v5===21,
       exported:exported.effort_v5==='medium'&&exported.model_v4===nai.model_v4};
+  });
+  await rec('settings.location_weight', async () => {
+    await put('/v1/settings', {card:{location_tag_weight:0.5}});
+    const saved = (await get('/v1/settings'))?.settings?.card?.location_tag_weight;
+    const exported = JSON.parse((await get('/v1/settings/export'))?.json || '{}')?.card?.location_tag_weight;
+    await put('/v1/settings', {card:{location_tag_weight:1}});
+    return {saved, exported};
   });
   return transcript;
 }

@@ -141,7 +141,8 @@ function readCut(raw: unknown): ComicCut | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;
   const cut_kind = normalizeComicCutKind(row.cut_kind ?? row.kind ?? row.type);
-  const base = cleanText(row.base ?? row.place ?? row.scene, 2000);
+  const base = cleanText(row.base ?? row.place ?? row.scene, 2000)
+    .replace(/\b2::\s*(upper(?:_|\s+)?body)\s*::/gi, '$1');
   const charsRaw = Array.isArray(row.characters) ? row.characters : Array.isArray(row.slots) ? row.slots : [];
   const characters: ComicCutCharacter[] = [];
   // Background cuts never hold people — drop strays so the caption list stays clean.

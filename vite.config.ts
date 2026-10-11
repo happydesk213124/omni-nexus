@@ -533,6 +533,7 @@ const VENDOR_PERSON_TAG_WEIGHT_CT_NEEDLE =
 const VENDOR_PERSON_TAG_WEIGHT_CT_PATCH =
   `      include_max: Number(N("nx-include-max") || e.include_max || 0),
       person_tag_weight: document.getElementById("nx-person-tag-weight") ? re(N("nx-person-tag-weight"), 0, 5, re(e.person_tag_weight, 0, 5, 3)) : re(e.person_tag_weight, 0, 5, 3),
+      location_tag_weight: document.getElementById("nx-location-tag-weight") ? (() => { const r = N("nx-location-tag-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.location_tag_weight ?? 1),
 `;
 
 /**

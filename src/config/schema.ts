@@ -16,6 +16,7 @@ import { streamLineImageLimits } from '../domain/prompt/stream-lines';
 import { normalizeInlineMsgActions } from '../domain/inline-msg-actions.ts';
 import { normalizeImagePressInspect, normalizeToastAnchor } from '../domain/toast-press.ts';
 import { normalizeCharacterWeight } from '../domain/prompt/character-weight';
+import { normalizeLocationWeight } from '../domain/prompt/location-weight';
 
 /** NovelAI base natural-language mode (replaces the old boolean toggle). */
 export type NaturalBaseMode = 'off' | 'short' | 'detailed' | 'supplement';
@@ -258,6 +259,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     || card.no_humans_when_no_char === 'on';
   // person_tag_weight: NAI emphasis on Inlay person-count tags (0 = plain, 1–5 = N::…::)
   card.person_tag_weight = normalizePersonTagWeight(card.person_tag_weight);
+  card.location_tag_weight = normalizeLocationWeight(card.location_tag_weight);
   card.message_select_gesture = normalizeMessageSelectGesture(card.message_select_gesture);
   // costume: main-tagger catalog inject (char_looks always builds costumes[])
   card.costume =

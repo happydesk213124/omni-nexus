@@ -457,6 +457,9 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // Neutral place weighting adds a saved default without changing old prompts;
+  // settings.location_weight asserts decimal persistence and export explicitly.
+  if (/\.value\.(?:settings|json)\.card\.location_tag_weight$/.test(at)) return a === undefined && b === 1;
   // Closeup half captions are opt-in; the scenario asserts persistence/export,
   // all three tagger modes, wardrobe continuity and reopened image metadata.
   if (/\.value\.(?:settings|json)\.card\.comic_closeup_character_half$/.test(at)) return a === undefined && b === false;
@@ -665,6 +668,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],
   // Revisions intentionally keep the original entity; assert identity and the complete family.

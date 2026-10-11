@@ -146,6 +146,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   // These controls moved out of the vendor dashboard. Its generation form has
   // no matching nodes, so the preview defaults must never become saved values.
   const card = settings?.card;
+  const locationWeight = out.querySelector<HTMLInputElement>('#nx-location-tag-weight');
+  if (locationWeight) locationWeight.setAttribute('value', String(card?.location_tag_weight ?? 1));
   if (card) for (const [id, key, defaultOn] of [
     ['nx-appearance', 'char_appearance', true],
     ['nx-llm-json-retry', 'llm_json_retry', false],
