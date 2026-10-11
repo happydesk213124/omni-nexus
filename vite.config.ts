@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.9';
+const PLUGIN_VERSION = '1.1.10';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -978,6 +978,18 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.10 · 캐릭터 저장·이미지 로딩·플로팅 뷰어 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.12 · 대형 캐릭터 명단의 저장과 사진 로딩을 개선하고 플로팅 뷰어 버튼을 이미지 위에 배치했습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>캐릭터 일괄 저장을 묶어서 처리하고, 저장 중 추가 수정이 들어오면 이어서 반영합니다. 저장 상태를 표시하며 변경이 없는 명단은 다시 저장하지 않습니다.</li>
+            <li>참고·예시 이미지의 중복 읽기를 줄이고 캐시를 재사용합니다. 캐릭터 탭을 다시 열 때 읽어 둔 사진을 활용하며, 전체 사진은 스크롤 없이 순차적으로 불러옵니다.</li>
+            <li>사진 로딩 중 캐릭터를 수정하면 명단의 사진 식별값이 사라져 이후 사진이 뜨지 않던 중복 입력 처리를 제거했습니다.</li>
+            <li>현재 캐릭터 챗 버튼은 같은 캐릭터를 다시 불러오지 않고, 실제로 선택한 챗이 바뀌면 새 캐릭터 명단으로 이동합니다.</li>
+            <li>플로팅 뷰어의 생성 버튼은 좌상단 한 줄, 접기·전체화면은 우상단, 세션 작가의 노트·프리셋·캐릭터·생성 장수는 좌하단에 배치했습니다. 마우스를 올리면 버튼을 표시해 이미지 영역을 넓혔습니다.</li>
+            <li>이미지 크게보기를 열면 플로팅 뷰어를 숨기고, 크게보기를 닫으면 복원합니다. 늦게 끝난 화면 갱신 때문에 뷰어가 다시 나타나 이미지를 가리던 문제도 수정했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.9 · 캐릭터 연결 복원·외형 가중치 조절</strong>
@@ -7952,7 +7964,7 @@ const VENDOR_LOREFILTER_TAB_LOAD_PATCH =
         t._charRefHydratingFor = sid;
         (async () => {
           try {
-            const res = await K("/v1/characters/ref/hydrate", { method: "POST", body: { session_id: sid } }, 6e4);
+            const res = await K("/v1/characters/ref/hydrate", { method: "POST", body: { session_id: sid, warm: false } }, 6e4);
             if (refGen !== t._charRefHydrateGen || String(t.lastScope?.sessionId || "") !== sid || !t.uiOpen || t.uiTab !== "characters") return;
             t._charRefHydratedFor = sid;
           } catch {
@@ -8326,6 +8338,7 @@ const VENDOR_CHAR_REF_TAB_EVT_PATCH =
             scope: () => asRefScope(card),
             sessionId: sid,
             prefix: "char",
+            loadInitial: false,
             fallbackUrl: () => String(card.querySelector("[data-char-ref-preview] img")?.src || "")
           });
         } catch {}
@@ -14933,7 +14946,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.9 · 저장 이미지의 캐릭터 칩·이름·선행 외형 연결을 수정했습니다. 만화와 샷태그 수정에서 선행 외형 가중치를 0~1로 조절하며 이미지의 값을 복원합니다. 코스튬·옷 상태·후행 강조는 유지하고 옷 상태 선택을 추가했습니다."
+    body: "1.1.10 · 캐릭터 일괄 저장과 참고·예시 이미지 로딩을 개선했습니다. 로딩 중 수정해도 사진 연결을 유지하고, 탭을 다시 열면 이미지 캐시를 재사용합니다. 플로팅 뷰어 버튼을 이미지 위에 배치하고 이미지 크게보기 중에는 뷰어를 숨깁니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

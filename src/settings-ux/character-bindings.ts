@@ -4,6 +4,7 @@ import type { CharacterRecord } from '../core/types';
 import { mutateCharacterRoster } from '../storage/character-roster';
 import { pickCharacterAsset } from './asset-picker';
 import { bindCostumeEditor } from './costume-editor';
+import { loadCharacterPreviews } from './character-preview-loading';
 import { connectCharacterImages, paintReferenceProgress, syncCharacterTilePreviews } from './reference-progress';
 import { listCharacters, upsertCharacter, deleteCharacter } from '../services/characters';
 import { resetCharacterPreviewIndex, registerCharacterPreview, unregisterCharacterPreview, characterCardForTile } from './character-preview-index';
@@ -19,6 +20,7 @@ export function bindCharacterSheet(): void {
   if (!sheet || !bar || sheet.dataset.nxBound) return;
   sheet.dataset.nxBound = '1';
   resetCharacterPreviewIndex();
+  const previews = loadCharacterPreviews(sheet);
   bindCharacterPaste();
   // oe(scope) treats EVERY data-char-scope node as a record, including navigation buttons.
   bar.querySelectorAll<HTMLElement>('[data-char-scope]').forEach(button => {
@@ -55,12 +57,12 @@ export function bindCharacterSheet(): void {
         element.disabled = !source;
         element.value = source && isField(source) ? source.value : '';
         if (element instanceof HTMLSelectElement && source instanceof HTMLSelectElement) {
-          element.innerHTML = source.innerHTML;
+          if (element.innerHTML !== source.innerHTML) element.innerHTML = source.innerHTML;
           element.value = source.value;
         }
         if (element instanceof HTMLInputElement && element.type === 'checkbox') element.checked = source instanceof HTMLInputElement && source.checked;
       } else if (element instanceof HTMLButtonElement) element.disabled = !source;
-      else element.innerHTML = source?.innerHTML || '';
+      else if (element.innerHTML !== (source?.innerHTML || '')) element.innerHTML = source?.innerHTML || '';
     }
     const name = current?.querySelector<HTMLInputElement>('[data-char-name]')?.value || '캐릭터 없음';
     for (const id of ['nx-char-current', 'nx-char-edit-title']) {
@@ -100,6 +102,7 @@ export function bindCharacterSheet(): void {
   }
   const choose = (card: HTMLElement | undefined) => {
     current = card;
+    if (card) previews.request(card);
     selectPasteCharacter(card);
     sheet.dataset.selectedId = card?.dataset.charId || '';
     selectedId = card?.dataset.charId || '';
@@ -168,6 +171,7 @@ export function bindCharacterSheet(): void {
     });
     card.before(tile);
     registerCharacterPreview(card, tile);
+    previews.request(card);
   };
   cards.forEach(registerCard);
   syncCharacterTilePreviews();

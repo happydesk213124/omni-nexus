@@ -9,7 +9,7 @@ import { base64ToBytes, bytesToBase64, u8ToArrayBuffer } from '../core/util/byte
 import { cleanText } from '../core/util/text';
 import { sanitizeHash } from '../domain/character/char-ref-store';
 import { pngToDataUrl } from '../storage/image-urls';
-import { getCharRefAssetBytes, putCharRefAsset } from './char-ref-module';
+import { getCharRefAssetPreviewUrl, putCharRefAsset } from './char-ref-module';
 import { generateCharacterPreview } from './character-preview';
 import { listCharacters, upsertCharacter } from './characters';
 import { getExamplePreviewUrl, setExamplePreviewUrl } from './context';
@@ -46,9 +46,8 @@ export async function getCharacterExample(scope: unknown, characterId: unknown):
   }
   let preview = getExamplePreviewUrl(sid, cid);
   if (!preview) {
-    const bytes = await getCharRefAssetBytes(hash);
-    if (bytes && bytes.byteLength >= MIN_IMAGE_BYTES) {
-      preview = pngToDataUrl(bytes);
+    preview = await getCharRefAssetPreviewUrl(hash);
+    if (preview) {
       setExamplePreviewUrl(sid, cid, preview);
     }
   }

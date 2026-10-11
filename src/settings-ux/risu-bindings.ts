@@ -93,14 +93,23 @@ async function mountRailTiles(
         const select = document.querySelector<HTMLSelectElement>('#nx-scope-char');
         const bar = document.getElementById('nx-char-scope-bar');
         if (!select) return;
+        const own = ++switchGeneration;
+        // "Current chat" can change in the host while this picker stays open.
+        if (row.value === 'live') {
+          let index;
+          try { index = await host?.getCurrentCharacterIndex?.(); }
+          catch (error) { if (own === switchGeneration) window.alert(`현재 캐릭터 확인 실패: ${String(error)}`); return; }
+          if (own !== switchGeneration || disposed || !button.isConnected) return;
+          liveIndex = index == null ? '' : String(index);
+        }
         // Same-selection no-op: clicking the already-active tile only repaints.
         const alreadyGlobal = bar?.dataset.uxSelectedScope === 'global';
-        const alreadyChosen = select?.value === 'live' ? liveIndex : select?.value;
+        const currentIndex = (globalThis as typeof globalThis & {__OMNI_CHARACTER_INDEX__?: () => unknown}).__OMNI_CHARACTER_INDEX__?.();
+        const alreadyChosen = currentIndex == null ? (select.value === 'live' ? liveIndex : select.value) : String(currentIndex);
         const alreadyOn = alreadyGlobal
           ? row.value === '__global__'
-          : row.value !== 'live' && row.value === alreadyChosen;
+          : (row.value === 'live' ? liveIndex : row.value) === alreadyChosen;
         if (alreadyOn && !pendingSelection) { paint(); return; }
-        const own=++switchGeneration;
         const previousScope=bar?.dataset.uxSelectedScope || 'session';
         const scope = row.value === '__global__' ? 'global' : 'session';
         const value = row.value === 'live' ? liveIndex : row.value;

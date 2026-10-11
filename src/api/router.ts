@@ -626,6 +626,7 @@ const WRITE_ROUTES: readonly Route[] = [
     handler: async ({ body, query }) =>
       ok(
         await naiAssets.hydrateCharRefs({
+          warm: body.warm !== false,
           sessionId: cleanText(body.session_id || q(query, 'session_id'), 200),
           characterId: cleanText(body.character_id || body.characterId || q(query, 'character_id'), 200),
           scope: cleanText(body.scope || q(query, 'scope'), 200),

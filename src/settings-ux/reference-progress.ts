@@ -8,9 +8,9 @@ function scheduleProgress():void {
   if(progressFrame)return;
   progressFrame=requestAnimationFrame(()=>{progressFrame=0;paintReferenceProgress();});
 }
-function applyImage(change:CharacterImageChange):void {
+export function applyImage(change:CharacterImageChange, cache = true):void {
   const bridge=Reflect.get(globalThis,'__OMNI_PATCH_CHARACTER__') as ((scope:string,id:string,patch:Record<string,unknown>)=>void)|undefined;
-  bridge?.(change.scope,change.id,characterImagePatch(change));
+  if (cache) bridge?.(change.scope,change.id,characterImagePatch(change));
   for(const {card} of characterPreviewPairs(change.scope,change.id)) {
     const slot=card.querySelector<HTMLElement>(change.kind==='ref'?'[data-char-ref-preview]':'[data-char-ex-preview]');
     if(slot) {

@@ -454,7 +454,9 @@ and stored as webp quality 0.8 when the host can encode it; otherwise PNG or the
 original bytes. The roster row keeps only `ref_hash`; the Risu module asset tuple
 keeps the exact path returned by `saveAsset`. A same-hash upload reuses a
 readable tuple, but replaces a stale tuple after the new path passes readback.
-`POST /v1/characters/ref/hydrate` refreshes the module list, seeds any empty
+`POST /v1/characters/ref/hydrate` reads the requested bot/global roster (all
+rosters only when no scope/session is supplied). It refreshes the image-module
+index on a path miss, seeds any empty
 ref slot from a name-triggered Risu asset (WebP into the module, roster
 `ref_hash` only), and fills `ref_preview_url` when the character tab, edit
 popup, or 새로고침 runs — not at boot. Lorebook import-fill, asset looks
@@ -829,7 +831,8 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 ### Character editor and asset explorer (0.0.3 follow-up)
 
 - `현재 캐릭터 챗` navigates to the actual current bot; only the bot tile carries
-  selection. The shared roster stays a separate destination.
+  selection. It resolves the host's current selection on click and skips a
+  reload when already on that bot. The shared roster stays a separate destination.
 - Character deletion removes local tiles/selection immediately, flushes prior edits
   and serializes the roster mutation. Failure restores only the deleted rows;
   pending reads cannot resurrect them. The sheet heading carries name/status.
@@ -839,6 +842,12 @@ live paragraphs/scrollers after host remounts and yields to user scrolling.
 - Reference/example completion publishes a scope + character ID change to the
   runtime cache, hidden compatibility form, tile and open sheet. Reference wins
   over example fallback. Stale reads cannot overwrite a newer image operation.
+- Initial character-tab previews queue every roster image without waiting for
+  scrolling; bounded workers continue loading while characters are edited.
+  Editing merges form fields into the existing row, preserving image hashes.
+  Display-only Blob URLs belong to the mounted form and are released
+  on removal; cached bytes survive redraws. The tab binds example controls without
+  issuing a GET for every hidden card. API preview responses remain base64 URLs.
 - Command rewrite keeps results in the dialog until Save; Cancel does not autosave.
   All costume appearance fields, bottoms, empty strings and `[base]` round-trip.
   Same-name `new_costumes` update existing sets. Identical duplicate names merge;

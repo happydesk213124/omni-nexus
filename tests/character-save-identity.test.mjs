@@ -8,7 +8,7 @@ const bundle = await build({
   bundle: true, write: false, format: 'esm', platform: 'node', loader: { '.txt': 'text' },
   define: { __PLUGIN_ID__: '"omni-nexus"', __PLUGIN_VERSION__: '"test"' },
   plugins: process.env.BREAK_COSTUME_SAVE_GUARD ? [{ name:'break-costume-preservation', setup(builder) {
-    builder.onLoad({filter:/services[\\/]characters\.ts$/}, args=>({loader:'ts',contents:readFileSync(args.path,'utf8').replace('const survivor = sameRow || dup || rec;', 'const survivor = rec;')}));
+    builder.onLoad({filter:/domain[\\/]character[\\/]save-record\.ts$/}, args=>({loader:'ts',contents:readFileSync(args.path,'utf8').replace('const survivor = sameRow || dup || rec;', 'const survivor = rec;')}));
   }}] : [],
 });
 const api = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
@@ -22,6 +22,64 @@ beforeEach(() => {
   };
 });
 const row = (id, given_name, given_name_variants = []) => ({ id, name: id, given_name, given_name_variants, aliases: ['shared trigger'], surname: '김', appearance: 'blue eyes' });
+
+test('a 120-person import commits the full roster only once and preserves unrelated bot data', async () => {
+  bots[0].globalLore.push({comment:'user lore', content:'keep this'});
+  bots[0].chats.push({id:'chat', message:[{role:'char', data:'keep this too'}]});
+  const before = structuredClone(bots[0]);
+  let writes = 0;
+  const write = risuai.setCharacterToIndex;
+  risuai.setCharacterToIndex = async (...args) => { writes++; await write(...args); };
+  const people = Array.from({length:120}, (_,i)=>({...row('person-'+i, 'given-'+i), costumes:[{name:'default',attire:'shirt'},{name:'winter',attire:'coat'}]}));
+  const saved = await api.replaceCharacters('a', people, {prune:true});
+  assert.equal(saved.length,120);
+  assert.equal(writes,1,'an import must not write the full bot once per person');
+  assert.deepEqual(bots[0].chats,before.chats);
+  assert.deepEqual(bots[0].globalLore[0],before.globalLore[0]);
+  assert.ok(saved.every(person=>person.costumes.length===2));
+});
+
+test('edits queued during a slow save fold against the last committed record', async () => {
+  await api.upsertCharacter('a',row('one','유나'));
+  let started, release;
+  const writing = new Promise(resolve=>{started=resolve;});
+  const held = new Promise(resolve=>{release=resolve;});
+  const write = risuai.setCharacterToIndex;
+  let writes = 0;
+  risuai.setCharacterToIndex = async (...args) => {
+    if (++writes===1) { started(); await held; }
+    await write(...args);
+  };
+  const first = api.upsertCharacter('a',{id:'one',name:'one',appearance:'green eyes'});
+  await writing;
+  const second = api.upsertCharacter('a',{id:'one',name:'one',attire:'coat'});
+  // Let the second request reach the storage queue before the old save completes.
+  await new Promise(resolve=>setImmediate(resolve));
+  release();
+  await Promise.all([first,second]);
+  const saved=(await api.listCharacters('a'))[0];
+  assert.equal(saved.appearance,'green eyes','a later clothing edit cannot restore an old appearance');
+  assert.equal(saved.attire,'coat');
+});
+
+test('a failed roster import leaves every prior person intact', async () => {
+  await api.replaceCharacters('a',[row('old','유나')],{prune:true});
+  const before=structuredClone(bots[0]);
+  // The host rejects the one complete write, rather than leaving a partial import.
+  risuai.setCharacterToIndex=async()=>{throw new Error('host save failed');};
+  await assert.rejects(()=>api.replaceCharacters('a',[row('new','민아'),row('next','지호')],{prune:true}),/host save failed/);
+  assert.deepEqual(bots[0],before);
+});
+
+test('batch responses use stored roster fields and single edits preserve other legacy records', async () => {
+  const legacy={id:'legacy',name:'Legacy',appearance:'boy',costumes:[{name:'default',attire:'shirt'}]};
+  await api.mutateCharacterRoster('a',()=>[legacy,row('one','유나')]);
+  await api.upsertCharacter('a',{...row('one','유나'),appearance:'green eyes'});
+  const stored=JSON.parse(bots[0].globalLore.find(entry=>entry.comment==='omni.nexus.data.global').content).roster;
+  assert.deepEqual(stored.find(person=>person.id==='legacy'),legacy,'editing one person cannot materialize defaults on every other person');
+  const saved=await api.replaceCharacters('a',[{...row('one','유나'),wear_state:'nude'}]);
+  assert.equal(saved[0].wear_state,undefined,'batch responses retain the existing scene/roster boundary');
+});
 
 test('new tagger character preserves identity in the default costume used by the editor', async () => {
   const looks = { appearance: 'boy, pale skin', hair_color: 'silver hair, white hair', hair_style: 'short hair, messy hair, bangs', eye_color: 'orange eyes, amber eyes' };
