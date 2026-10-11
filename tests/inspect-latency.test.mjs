@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {runInNewContext} from 'node:vm';
+import {castFromShotAssetName} from '../.test-build/shot-assets.mjs';
 const config=await readFile('vite.config.ts','utf8');
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
 function runtime(K, clone=async card=>({id:card.id})) {
   const paints=[],updates=[],errors=[],dropped=[];
-  const c={t:{},K,nxCloneInspectImage:clone,nxInspectMirroredImage:null,
+  const c={t:{},K,__INLAY_VIEWER_CORE__:{castFromShotAssetName},nxCloneInspectImage:clone,nxInspectMirroredImage:null,
     nxDropInspectImage:async image=>dropped.push(image),y:(...args)=>errors.push(args),
     showStickyInspect:async view=>paints.push({...view}),
     updateStickyInspect:async view=>{updates.push({...view});if(view._nxImage)c.nxInspectMirroredImage=view._nxImage;}};

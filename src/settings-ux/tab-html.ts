@@ -65,6 +65,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   if (tab === 'comic_gen') {
     const anchor = out.querySelector('#nx-comic-llm-batch')?.closest('label, .row');
     anchor?.insertAdjacentHTML('afterend', '<label class="row"><span class="row-text"><b>자연어 보충 설명</b></span><span class="sw"><input id="nx-comic-natural-supplement" type="checkbox"></span></label>');
+    out.querySelector('#nx-comic-natural-supplement')?.closest('label')?.insertAdjacentHTML('afterend', '<div class="row"><span class="row-text"><b>close-up 캐릭터 태그 약화</b><small>선행 외형만 입력한 가중치(0~1)로 감쌉니다. 코스튬·옷 상태·후행의 강조는 유지합니다.</small></span><textarea id="nx-comic-character-weight" rows="1" inputmode="decimal" aria-label="close-up 외형 가중치" style="width:48px;min-height:0;height:28px;resize:none;padding:3px 6px">0.5</textarea><label class="sw"><input id="nx-comic-character-half" type="checkbox" aria-label="close-up 캐릭터 태그 약화"></label></div>');
   }
   if (tab === 'models') {
     const bar = out.querySelector('#nx-llm-role-tabs');

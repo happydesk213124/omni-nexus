@@ -8,7 +8,7 @@ import { randomCastId, sanitizeCastId, seedCastId } from '../domain/gallery/cast
 import { castFromShotAssetName } from '../domain/gallery/shot-assets.ts';
 import { GLOBAL_SCOPE } from '../core/constants';
 import { cleanText } from '../core/util/text';
-import { allCharacterRosters, viewerCharacterRosters } from '../storage/character-roster';
+import { allCharacterRosters, readCharacterRoster, viewerCharacterRosters } from '../storage/character-roster';
 import { readShotAssetBytes } from '../storage/shot-character.ts';
 import { findInspectAsset } from '../storage/inspect-assets';
 import { dbg } from '../core/debug';
@@ -103,9 +103,12 @@ export async function resolveCastNames(ids: readonly unknown[], onReadError?: Ro
 }
 
 /** Identity travels with the name so a global cast never opens a session namesake. */
-export async function resolveCastCharacters(ids: readonly unknown[]): Promise<{ characters: Array<{cast_id: string; id: string; scope: string; name: string}> }> {
+export async function resolveCastCharacters(ids: readonly unknown[], ownerScope = ''): Promise<{ characters: Array<{cast_id: string; id: string; scope: string; name: string}> }> {
   const want = new Set(ids.map(sanitizeCastId).filter(Boolean));
-  const rows = want.size ? await readViewerCastRosters() : [];
+  // Gallery edits belong to the image's bot even if another bot is now open.
+  const rows = !want.size ? [] : ownerScope
+    ? (await Promise.all([readCharacterRoster(ownerScope), readCharacterRoster(GLOBAL_SCOPE)])).flat()
+    : await readViewerCastRosters();
   return { characters: rows.filter(row => want.has(sanitizeCastId(row.cast_id))).map(row => ({
     cast_id: sanitizeCastId(row.cast_id), id: String(row.id), scope: String(row.scope || GLOBAL_SCOPE), name: cleanText(row.name, 200),
   })) };

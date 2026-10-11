@@ -14,11 +14,15 @@ import {
   mergedRoster,
   nextId,
   studioCharacterLookTags,
+  applyStudioWearState,
+  studioCaptionWearState,
+  studioCharacterCaptionFields,
   studioRowIsGlobal,
   studioUsesV5Full,
   type StudioChar,
   type StudioTab,
 } from './model.ts';
+import { readCharacterWeightGroup, normalizeCharacterWeight } from '../domain/prompt/character-weight';
 import {
   commandRewrite,
   loadNaiFromImage,
@@ -759,7 +763,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         saveAct: 'charSave',
         delAct: 'charDel',
       }),
-      sec('ap', `<span class="name">${esc(tab?.label || 'C')}</span>`,
+      sec('ap', `<span class="name">${esc(tab?.label || 'C')}</span><textarea class="t" rows="1" inputmode="decimal" data-c="appearanceWeight" data-tab="${esc(tabId)}" aria-label="선행 외형 가중치" style="width:48px;min-height:0;height:28px;resize:none;padding:3px 6px">${normalizeCharacterWeight(c.appearanceWeight)}</textarea><button class="btn sm ${c.halfWeight ? 'on' : ''}" data-act="charHalfWeight" type="button" aria-pressed="${c.halfWeight === true}" title="선행 외형 태그의 기존 강조를 제거하고 입력한 가중치로 감쌉니다">약화</button>`,
         `<textarea class="t big" data-c="tags" data-tab="${esc(tabId)}" placeholder="1girl, long hair, blue eyes …">${esc(c.tags)}</textarea>`),
       sec('po', `<span class="name">${esc((tab?.label || 'C').split(' ')[0] || 'C')} 후행</span>`,
         `<textarea class="t" data-c="post" data-tab="${esc(tabId)}" placeholder="이 샷에서만 더할 것. 표정·상태 같은 것.">${esc(c.post)}</textarea>
@@ -767,7 +771,10 @@ export async function openTagStudio(card: unknown): Promise<void> {
           <textarea class="t" data-c="uc" data-tab="${esc(tabId)}" style="min-height:56px">${esc(c.uc)}</textarea>
          </label>`),
       sec('costume',
-        `<span class="name">코스튬</span>`,
+        `<span class="name">코스튬</span><select class="t" style="width:auto;max-width:150px;padding:3px 6px" data-c="wearState" data-tab="${esc(tabId)}" aria-label="옷 상태">${opts([
+          ['clothed', 'clothed · 입음'], ['torn', 'torn · 찢어짐'], ['topless', 'topless · 상의 노출'],
+          ['bottomless', 'bottomless · 하의 노출'], ['nude', 'nude · 노출'], ['completely', 'completely · 완전 탈의'],
+        ], c.wearState || 'clothed')}</select>`,
         `${optionBar({
           nameAttr: `data-c="costumeName" data-tab="${esc(tabId)}"`,
           nameValue: c.costumeName || costume.name || '',
@@ -1365,6 +1372,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       c.costumeBottoms = first?.bottoms || '';
       c.costumeNote = first?.note || '';
       c.tags = studioCharacterLookTags(r, c.costume);
+      applyStudioWearState(c, r, c.wearState || 'clothed');
       relabel();
       renderAll();
       return;
@@ -1388,6 +1396,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       c.costumeTags = slot?.attire || '';
       c.costumeBottoms = slot?.bottoms || '';
       c.costumeNote = slot?.note || '';
+      applyStudioWearState(c, r, c.wearState || 'clothed');
       renderPanel();
       renderPeek();
     }
@@ -1415,7 +1424,18 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const prompt = cleanText(row.prompt, 4000);
       if ('uc' in row) ch.uc = cleanText(row.uc, 2000);
       if (row.name) ch.charName = cleanText(row.name, 200);
-      const stored = ch.charName ? resolveCharacter(ch.charName, roster) : null;
+      const stored = rosterById(ch.rosterId) || (ch.charName ? resolveCharacter(ch.charName, roster) : null);
+      if (readCharacterWeightGroup(prompt) !== null) {
+        const fields = studioCharacterCaptionFields({ caption: prompt, stored, costume: ch.costume,
+          slim: { wear_state: row.wear_state || ch.wearState } });
+        ch.tags = fields.tags;
+        Object.assign(ch, splitStudioCostume(fields.costumeTags, ch.costumeBottoms));
+        ch.post = fields.post;
+        ch.halfWeight = true;
+        ch.appearanceWeight = fields.appearanceWeight;
+        ch.wearState = studioCaptionWearState(prompt, row.wear_state || ch.wearState);
+        return;
+      }
       const look = joinTags(stored?.appearance, ch.tags, ch.costumeTags, ch.costumeBottoms);
       const peeled = peelStudioCharFields({
         slim: null,
@@ -1603,8 +1623,11 @@ export async function openTagStudio(card: unknown): Promise<void> {
       y: slot[1],
       auto: true,
       lock: false,
+      appearanceWeight: normalizeCharacterWeight(cardSettings.comic_closeup_character_weight),
+      wearState: studioCaptionWearState('', r?.wear_state),
       slim: {},
     };
+    if (state.chars[id]!.wearState !== 'clothed') applyStudioWearState(state.chars[id]!, r, state.chars[id]!.wearState);
     state.tabs.push({ id, kind: 'char', label: '' });
     relabel();
     state.active = id;
@@ -1614,6 +1637,14 @@ export async function openTagStudio(card: unknown): Promise<void> {
 
   function act(name: string): void {
     switch (name) {
+      case 'charHalfWeight': {
+        const c = liveChar(state.active);
+        if (!c) return;
+        c.halfWeight = !c.halfWeight;
+        renderPanel();
+        renderPeek();
+        break;
+      }
       case 'grid':
         if (state.coordMode !== 'manual') {
           state.coordMode = 'manual';
@@ -1768,6 +1799,18 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const c = liveChar(tabId);
       if (!c) return;
       const k = el.dataset.c;
+      if (k === 'appearanceWeight') {
+        c.appearanceWeight = normalizeCharacterWeight(el.value);
+        if (e.type === 'change') el.value = String(c.appearanceWeight);
+        renderPeek();
+        return;
+      }
+      if (k === 'wearState') {
+        const stored = rosterById(c.rosterId) || (c.charName ? resolveCharacter(c.charName, roster) : null);
+        applyStudioWearState(c, stored, el.value);
+        renderPanel(); renderPeek();
+        return;
+      }
       if ((k === 'lock' || k === 'auto') && el instanceof HTMLInputElement) {
         if (k === 'lock') c.lock = el.checked;
         else c.auto = el.checked;
@@ -1799,7 +1842,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const t = e.target;
       if (!(t instanceof Element)) return;
       const fold = t.closest('[data-foldhit]');
-      if (fold instanceof HTMLElement && !t.closest('[data-foldhit] select, [data-foldhit] button')) {
+      if (fold instanceof HTMLElement && !t.closest('[data-foldhit] select, [data-foldhit] button, [data-foldhit] textarea')) {
         const id = fold.dataset.foldhit || '';
         state.fold[id] = !state.fold[id];
         fold.parentElement?.classList.toggle('fold', !!state.fold[id]);

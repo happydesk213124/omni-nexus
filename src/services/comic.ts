@@ -21,6 +21,7 @@ import { authorNoteSystemContent } from '../domain/tagging/session-note.ts';
 import { getSessionAuthorNote, rosterWithSessionOutfits, sessionAuthorNoteLlmContent } from './session-author-note.ts';
 import { getPrompt } from './settings.ts';
 import { comicNaturalInstruction } from '../domain/comic/natural.ts';
+import { comicCloseupCharacterInstruction } from '../domain/comic/caption';
 
 function rosterBlock(
   names: string[],
@@ -56,7 +57,7 @@ async function callComicLlm(user: string, extraNote: string, sessionId: unknown,
   const note = cleanText(extraNote, 8000);
   const sessMsg = await sessionAuthorNoteLlmContent(sessionId);
   const messages = [
-    { role: 'system' as const, content: `${sys}\n\n${comicNaturalInstruction(getConfig().card.comic_natural_supplement === true)}` },
+    { role: 'system' as const, content: `${sys}\n\n${comicNaturalInstruction(getConfig().card.comic_natural_supplement === true)}\n${comicCloseupCharacterInstruction(getConfig().card.comic_closeup_character_half === true, getConfig().card.comic_closeup_character_weight)}` },
     ...(globalNote ? [{ role: 'system' as const, content: globalNote }] : []),
     ...(note
       ? [{

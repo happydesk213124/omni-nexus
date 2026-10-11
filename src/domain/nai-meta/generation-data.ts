@@ -3,7 +3,11 @@ import { pngChunks, PNG_GENERATION_CHUNK, writePngGenerationChunk } from './png-
 import { safeGenerationRecipe } from './safe-recipe.ts';
 
 /** Array position corresponds to the generation recipe's character slot. */
-export interface GenerationCharacterAssociation { scope: string; id: string; name: string }
+export interface GenerationCharacterAssociation {
+  scope: string; id: string; name: string;
+  costume?: string;
+  wear_state?: string;
+}
 export interface GenerationImageData {
   version: 1;
   recipe: unknown;
@@ -39,7 +43,9 @@ function validate(raw: unknown): GenerationImageData {
   const v = raw as GenerationImageData;
   if (v.version !== 1 || !Object.prototype.hasOwnProperty.call(v, 'recipe') || !Array.isArray(v.characters)
     || !(v.generatedAt === null || (Number.isFinite(v.generatedAt) && v.generatedAt >= 0))
-    || v.characters.some(c => !c || typeof c.scope !== 'string' || typeof c.id !== 'string' || typeof c.name !== 'string')) {
+    || v.characters.some(c => !c || typeof c.scope !== 'string' || typeof c.id !== 'string' || typeof c.name !== 'string'
+      || (c.costume !== undefined && (typeof c.costume !== 'string' || c.costume.length > 4000))
+      || (c.wear_state !== undefined && (typeof c.wear_state !== 'string' || c.wear_state.length > 40)))) {
     throw new Error('Invalid generation metadata schema');
   }
   return v;
@@ -64,7 +70,8 @@ export function writeGenerationImageData(bytes: BytesLike, metadata: GenerationI
   // Reject a future version instead of replacing data we do not understand.
   readGenerationImageData(src);
   metadata = { version: 1, recipe: safeGenerationRecipe(metadata.recipe),
-    characters: metadata.characters.map(({ scope, id, name }) => ({ scope, id, name })), generatedAt: metadata.generatedAt };
+    characters: metadata.characters.map(({ scope, id, name, costume, wear_state }) => ({ scope, id, name,
+      ...(costume !== undefined ? { costume } : {}), ...(wear_state !== undefined ? { wear_state } : {}) })), generatedAt: metadata.generatedAt };
   const body = encoder.encode(JSON.stringify(metadata));
   if (body.length > maxPayload) throw new Error('Generation metadata too large');
   if (isPngBytes(src)) {

@@ -8,8 +8,134 @@ import {
   mergeStudioRosterPayloads,
   studioModelChoice,
   studioCharacterLookTags,
+  applyStudioWearState,
   studioRowIsGlobal,
 } from '../.test-build/tag-studio-model.mjs';
+
+describe('image-derived half mode and clothing state', () => {
+  const stored = { id: 'a', scope: 'owner', name: 'A', gender: 'girl', appearance: 'girl, 2::black hair::, 1.7::blue eyes::',
+    costumes: [{ name: 'default', attire: 'hoodie', bottoms: 'jeans' }, { name: 'school', attire: '2::white shirt::', bottoms: 'skirt' }] };
+  const load = (prompt, wear_state, costume = 'school') => {
+    const state = emptyState();
+    hydrateFromNai({ state, nai: { characters: [{ id: stored.id, scope: stored.scope, prompt, costume, wear_state }] },
+      settings: {}, rosterPayload: { characters: [stored] }, card: {} });
+    return { state, char: Object.values(state.chars)[0] };
+  };
+
+  it('recognizes nude by scoped identity, restores roster looks and keeps the image outfit', () => {
+    const { state, char } = load('0.5::girl, black hair, blue eyes::, 2::white shirt::, skirt, nsfw, nipples, pussy, breasts out, 1.7::smile::', 'nude');
+    assert.equal(char.rosterId, stored.id);
+    assert.equal(char.costume, 'school');
+    assert.equal(char.wearState, 'nude');
+    assert.equal(char.halfWeight, true);
+    assert.match(char.tags, /2::black hair::/);
+    assert.match(char.tags, /1.7::blue eyes::/);
+    const request = () => assembleOverrides(state, [stored]).characters[0];
+    assert.equal(request().wear_state, 'nude');
+    assert.match(request().prompt, /^0\.5::girl, black hair, blue eyes, nsfw, nipples, pussy, breasts out::, 2::white shirt::/);
+    assert.match(request().prompt, /1\.7::smile::$/);
+    for (const tag of ['white shirt', 'skirt', 'nsfw', 'nipples', 'pussy']) assert.ok(request().prompt.includes(tag));
+    assert.doesNotMatch(request().prompt, /hoodie|jeans|2::black hair::|1\.7::blue eyes::/);
+    char.halfWeight = false;
+    assert.match(request().prompt, /2::black hair::/);
+    assert.match(request().prompt, /2::white shirt::/);
+    assert.match(request().prompt, /nsfw/);
+    assert.equal(request().costume, 'school');
+  });
+
+  it('weakens only appearance and leaves outfit, state, action and negative weights intact', () => {
+    const { state, char } = load('girl, 2::black hair::, 1.7::blue eyes::, 2::white shirt::, skirt, 2::topless::, nipples, 1.4::smile::', 'topless');
+    char.uc = '2::bad hands::';
+    char.halfWeight = true;
+    const request = assembleOverrides(state, [stored]).characters[0];
+    assert.match(request.prompt, /^0\.5::girl, black hair, blue eyes, nipples::,/);
+    for (const tag of ['2::white shirt::', '2::topless::', '1.4::smile::']) assert.ok(request.prompt.includes(tag));
+    assert.equal(request.uc,'2::bad hands::');
+    char.halfWeight = false;
+    assert.match(assembleOverrides(state,[stored]).characters[0].prompt,/2::black hair::, 1\.7::blue eyes::/);
+  });
+
+  it('restores image weight over the comic default and regenerates edited weights', () => {
+    for (const weight of [0, 0.1, 0.2, 0.3, 0.4, 0.6, 0.7]) {
+      const { state, char } = load(`${weight}::girl, black hair, blue eyes::, 2::white shirt::, skirt, 1.7::smile::`, 'clothed');
+      assert.equal(char.appearanceWeight, weight);
+      assert.equal(char.halfWeight, true);
+      assert.ok(assembleOverrides(state, [stored]).characters[0].prompt.startsWith(`${weight}::girl, black hair, blue eyes::`));
+      char.appearanceWeight = 0.4;
+      const edited = assembleOverrides(state, [stored]).characters[0].prompt;
+      assert.ok(edited.startsWith('0.4::girl, black hair, blue eyes::'));
+      assert.match(edited, /2::white shirt::.*1\.7::smile::/);
+      char.halfWeight = false;
+      assert.match(assembleOverrides(state, [stored]).characters[0].prompt, /2::black hair::/);
+    }
+    const state = emptyState();
+    hydrateFromNai({ state, nai: { characters: [{ id: stored.id, prompt: 'girl, black hair, blue eyes, smile' }] },
+      settings: { card: { comic_closeup_character_weight: 0 } }, rosterPayload: { characters: [stored] }, card: {} });
+    const char = Object.values(state.chars)[0];
+    assert.equal(char.appearanceWeight, 0);
+    assert.equal(char.halfWeight, false);
+    char.halfWeight = true;
+    assert.ok(assembleOverrides(state, [stored]).characters[0].prompt.startsWith('0::'));
+  });
+
+  it('does not replace the image clothing when its roster costume has since changed', () => {
+    const { state, char } = load('0.5::girl, black hair, blue eyes, red dress, smile::', 'clothed');
+    assert.equal(char.costumeTags, 'red dress');
+    for (const half of [true, false]) {
+      char.halfWeight = half;
+      const prompt = assembleOverrides(state, [stored]).characters[0].prompt;
+      assert.match(prompt, /red dress/);
+      assert.doesNotMatch(prompt, /white shirt|skirt|hoodie|jeans/);
+    }
+    applyStudioWearState(char, stored, 'completely');
+    const prompt = assembleOverrides(state, [stored]).characters[0].prompt;
+    assert.match(prompt, /completely nude.*smile/);
+    assert.doesNotMatch(prompt, /red dress|white shirt|skirt/);
+  });
+
+  it('opening a completely nude image and toggling weight never dresses it', () => {
+    const { state, char } = load('0.5::girl, black hair, blue eyes, completely nude, nipples, pussy, smile::', 'completely');
+    assert.equal(char.wearState, 'completely');
+    for (const half of [true, false]) {
+      char.halfWeight = half;
+      assert.doesNotMatch(assembleOverrides(state, [stored]).characters[0].prompt, /white shirt|skirt|hoodie|jeans/);
+    }
+    applyStudioWearState(char, stored, 'clothed');
+    const request = assembleOverrides(state, [stored]).characters[0];
+    assert.match(request.prompt, /white shirt.*skirt/);
+    assert.doesNotMatch(request.prompt, /completely nude|nipples|pussy/);
+    assert.equal(request.wear_state, 'clothed');
+  });
+
+  it('ordinary image staging does not inject bare state words into the prompt', () => {
+    for (const [stateValue, caption] of [
+      ['clothed', 'girl, 2::black hair::, 1.7::blue eyes::, white shirt, skirt, smile'],
+      ['topless', 'girl, 2::black hair::, 1.7::blue eyes::, white shirt, skirt, 2::topless::, nipples, smile'],
+      ['completely', 'girl, 2::black hair::, 1.7::blue eyes::, 2::completely nude::, nipples, pussy, smile'],
+    ]) {
+      const { state, char } = load(caption, stateValue, 1);
+      const prompt = assembleOverrides(state, [stored]).characters[0].prompt;
+      assert.equal(char.costume, 'school', 'numeric costume picks use the same resolver as generation');
+      assert.equal(char.halfWeight, false);
+      assert.doesNotMatch(prompt, /(?:^|, )clothed(?:,|$)|(?:^|, )topless(?:,|$)|(?:^|, )completely(?:,|$)/);
+      assert.deepEqual(prompt.split(', ').sort(), caption.split(', ').sort());
+    }
+  });
+
+  it('state selection preserves an edited outfit and clears old exposure tags', () => {
+    const { state, char } = load('girl, 2::black hair::, 1.7::blue eyes::, white shirt, skirt, 2::topless::, nipples, smile', 'topless');
+    char.costumeTags = 'sweater'; char.costumeBottoms = 'shorts';
+    applyStudioWearState(char, stored, 'bottomless');
+    let prompt = assembleOverrides(state, [stored]).characters[0].prompt;
+    assert.match(prompt, /sweater, 2::bottomless::, pussy, shorts/);
+    assert.doesNotMatch(prompt, /topless|nipples|white shirt|skirt/);
+    applyStudioWearState(char, stored, 'completely');
+    prompt = assembleOverrides(state, [stored]).characters[0].prompt;
+    assert.match(prompt, /completely nude/);
+    assert.doesNotMatch(prompt, /sweater|shorts|bottomless/);
+    assert.match(prompt, /smile/);
+  });
+});
 
 it('picker looks resolve costume slots and retain weighted appearance without duplicate colors', () => {
   const stored = { gender: 'girl', appearance: 'girl, 2::black hair::, freckles', hair_color: 'black',

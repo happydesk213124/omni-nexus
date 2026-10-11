@@ -116,3 +116,66 @@ test('studio costume columns edit, save, switch and clear upper/lower tags', asy
     }
   } finally { await browser.close(); }
 });
+
+test('studio headers restore half mode and nude state, and costume picking respects complete undress', async () => {
+  const bundle = await build({ entryPoints: ['src/tag-studio/mount.ts'], bundle: true,
+    write: false, format: 'iife', globalName: 'Studio' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    for (const width of [375, 1440]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.setContent('<body></body>');
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      await page.evaluate(() => {
+        const character = { id: 'hana', scope: 'owner', name: 'Hana', gender: 'girl', appearance: 'girl, 2::black hair::',
+          costumes: [{ name: 'default', attire: 'hoodie', bottoms: 'jeans' }, { name: 'school', attire: 'white shirt', bottoms: 'skirt' }] };
+        globalThis.__INLAY_NATIVE__ = { fetch: async path => {
+          if (path.endsWith('/nai-prompt')) return { characters: [{ id: character.id, scope: character.scope,
+            costume: 'school', wear_state: 'completely', prompt: '0.3::girl, black hair::, completely nude, nipples, pussy, smile' }] };
+          if (path === '/v1/settings') return { settings: { card: {} } };
+          if (path.startsWith('/v1/characters')) return { ok: true, characters: [character], global: [] };
+          return { ok: true };
+        } };
+        void Studio.openTagStudio({ id: 'card1', session_id: 'session1', kind: 'comic' });
+      });
+      await page.locator('#charTabsBar .tab').first().click();
+      const half = page.locator('[data-sec="ap"] .h [data-act="charHalfWeight"]');
+      const weight = page.locator('[data-sec="ap"] .h [data-c="appearanceWeight"]');
+      const wear = page.locator('[data-sec="costume"] .h [data-c="wearState"]');
+      assert.equal(await half.getAttribute('aria-pressed'), 'true');
+      assert.equal(await weight.inputValue(), '0.3');
+      assert.equal(await weight.evaluate(el => el.tagName), 'TEXTAREA');
+      assert.equal(await wear.inputValue(), 'completely');
+      assert.equal(await page.locator('[data-opt="costume"]').inputValue(), 'school');
+      assert.match(await page.locator('[data-c="tags"]').inputValue(), /2::black hair::/);
+      const caption = () => page.locator('#assembled').textContent();
+      assert.match(await caption(), /0\.3::girl, black hair, nipples, pussy::,.*completely nude.*smile/);
+      for (const value of ['0.4', '0.2', '0.1', '0', '0.6', '0.7', '0.5']) {
+        await weight.click();
+        await weight.fill(value);
+        await weight.dispatchEvent('change');
+        assert.ok((await caption()).includes(`${value}::girl, black hair, nipples, pussy::`));
+        assert.equal(await page.locator('[data-sec="ap"]').evaluate(el => el.classList.contains('fold')), false);
+      }
+      assert.doesNotMatch(await caption(), /white shirt|skirt|hoodie|jeans/);
+      await half.click();
+      assert.equal(await half.getAttribute('aria-pressed'), 'false');
+      assert.equal(await page.locator('[data-sec="ap"]').evaluate(el => el.classList.contains('fold')), false);
+      assert.match(await caption(), /2::black hair::/);
+      assert.doesNotMatch(await caption(), /white shirt|skirt|hoodie|jeans/);
+      await page.locator('[data-opt="costume"]').selectOption('default');
+      assert.equal(await wear.inputValue(), 'completely');
+      assert.doesNotMatch(await caption(), /hoodie|jeans/);
+      await wear.selectOption('topless');
+      assert.match(await caption(), /hoodie.*topless.*jeans/);
+      assert.doesNotMatch(await caption(), /completely nude|pussy/);
+      assert.equal(await page.locator('[data-sec="costume"]').evaluate(el => el.classList.contains('fold')), false);
+      await half.click();
+      assert.match(await caption(), /0\.5::girl, black hair::,.*2::topless::.*jeans.*smile/);
+      await wear.selectOption('clothed');
+      assert.doesNotMatch(await caption(), /topless|nipples|pussy|completely nude/);
+      await page.evaluate(() => Studio.closeTagStudio());
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});

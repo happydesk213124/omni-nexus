@@ -4,16 +4,23 @@ import { resolveCostumeWear } from '../character/costume';
  * Dialogue uses the same `korean text:문장` form as illustration speech — quoted
  * `korean text, "문장"` is what V5 garbles on the first comic page.
  *
- * closeup / cross_section cuts carry visible detail only: the prompt forbids
- * costume and wear_state there, and the roster looks (hair, clothes) must not
- * leak back in — auto-attire is what breaks close-ups.
+ * Closeup normally omits roster looks; the opt-in half caption preserves the
+ * looks at low strength and actual wardrobe unchanged. Cross-section keeps the original exclusion.
  */
 import type { CharacterRecord, ShotCharacter } from '../../core/types.ts';
-import { cleanText } from '../../core/util/text.ts';
-import { composeCharacterCaptionTags } from '../character/tags.ts';
+import { cleanText, splitTagTokens } from '../../core/util/text.ts';
+import { composeCharacterCaptionTags, isClothingTag } from '../character/tags.ts';
 import { speechCaptionTag } from '../nai/speech.ts';
-import { comicCutHidesLooks } from './page.ts';
+import { comicCutHidesLooks, normalizeComicCutKind } from './page.ts';
 import { resolveComicSlotCostume } from './costume.ts';
+import { weightCharacterPrompt, stripCharacterEmphasis, normalizeCharacterWeight } from '../prompt/character-weight';
+import { parseWearState } from '../character/wear-state';
+
+export function comicCloseupCharacterInstruction(enabled: boolean, weight: unknown = 0.5): string {
+  return enabled
+    ? `Close-up character tags ON: for closeup cuts, include costume and wear_state as continuity data even if earlier rules omit them. Preserve now_wearing and the latest clothing state unless the prose explicitly changes them; do not dress or undress a character just because the camera zooms. Do not copy roster looks into action/base; the application adds only character appearance at weight ${normalizeCharacterWeight(weight)}, preserving costume, clothing-state, action and speech weights. Cross_section exclusions remain unchanged.`
+    : '';
+}
 
 export function comicSpeechCaption(bubble: unknown, text: unknown): string {
   const tag = speechCaptionTag(text);
@@ -31,11 +38,13 @@ export function comicSpeechCaption(bubble: unknown, text: unknown): string {
 export function composeComicSlotCaption(
   stored: Partial<CharacterRecord> | null | undefined,
   slot: ShotCharacter & { bubble?: unknown },
-  options: { character_height?: unknown; character_age?: unknown } = {},
+  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown } = {},
 ): string {
+  const half = options.comic_closeup_character_half === true
+    && normalizeComicCutKind((slot as { cut_kind?: unknown }).cut_kind) === 'closeup';
   // Zoomed cuts: action + interaction + speech only. Passing null roster drops
   // looks, costume, and wear — the prompt already forbids them per cut.
-  if (comicCutHidesLooks((slot as { cut_kind?: unknown }).cut_kind)) {
+  if (!half && comicCutHidesLooks((slot as { cut_kind?: unknown }).cut_kind)) {
     const looks = composeCharacterCaptionTags(null, {
       action: slot.action,
       source: slot.source,
@@ -74,7 +83,20 @@ export function composeComicSlotCaption(
     nude: slot.nude,
   }, options);
   const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text);
+  if (half) {
+    const appearance = composeCharacterCaptionTags({ ...fakeStored, costumes: [{
+      ...resolveCostumeWear(fakeStored, '_comic'), attire: '', bottoms: '', accessories: '',
+    }] }, { costume: '_comic', appearance: slot.appearance, sex: slot.sex }, options);
+    const keys = new Set(splitTagTokens(appearance).filter(tag => {
+      const plain = stripCharacterEmphasis(tag);
+      return !parseWearState(plain) && !isClothingTag(plain);
+    }).map(tag => tag.toLowerCase()));
+    const tags = splitTagTokens(looks);
+    const leading = tags.filter(tag => keys.has(tag.toLowerCase())).join(', ');
+    const tail = tags.filter(tag => !keys.has(tag.toLowerCase())).join(', ');
+    return [weightCharacterPrompt(leading, options.comic_closeup_character_weight), tail, speech].filter(Boolean).join(', ');
+  }
   // Dialogue commas must survive; joinTags would split `korean text:안돼, 가지마`.
-  if (!speech) return looks;
-  return looks ? `${looks}, ${speech}` : speech;
+  const caption = speech ? (looks ? `${looks}, ${speech}` : speech) : looks;
+  return caption;
 }

@@ -512,6 +512,49 @@ test("composeComicSlotCaption hides roster looks on cross_section cuts", () => {
   assert.match(caption, /cross-section/);
 });
 
+test('closeup half option includes the selected costume and every clothing state without nested weights', () => {
+  const stored = { name: 'A', gender: 'girl', appearance: 'girl, 2::black hair::, 1.7::blue eyes::',
+    costumes: [{ name: 'default', attire: 'coat', bottoms: 'jeans' }, { name: 'school', attire: '2::white shirt::', bottoms: 'skirt' }], active_costume: 0 };
+  for (const wear_state of ['clothed', 'torn', 'topless', 'bottomless', 'nude', 'completely']) {
+    const slot = { name: 'A', cut_kind: 'closeup', costume: 'school', wear_state, action: 'smile', text: '안녕, 친구', bubble: 'speech' };
+    const caption = composeComicSlotCaption(stored, slot, { comic_closeup_character_half: true });
+    assert.match(caption, /^0\.5::girl, black hair, blue eyes/);
+    assert.match(caption, /^0\.5::girl, black hair, blue eyes::,/);
+    assert.match(caption, /smile.*korean text:안녕, 친구$/);
+    assert.doesNotMatch(caption, /coat|jeans/);
+    if (wear_state === 'completely') {
+      assert.match(caption, /completely nude/);
+      assert.doesNotMatch(caption, /white shirt|skirt/);
+    } else assert.match(caption, /2::white shirt::.*skirt/);
+    const off = composeComicSlotCaption(stored, slot, { comic_closeup_character_half: false });
+    assert.doesNotMatch(off, /black hair|white shirt|nude|0\.5::/);
+    const cross = composeComicSlotCaption(stored, { ...slot, cut_kind: 'cross_section' }, { comic_closeup_character_half: true });
+    assert.doesNotMatch(cross, /black hair|white shirt|nude|0\.5::/);
+  }
+});
+
+test('closeup half keeps misplaced clothing-state tags outside the appearance group', () => {
+  const stored = {gender:'girl',appearance:'girl, 2::black hair::, topless, nipples',attire:'2::white shirt::'};
+  const caption = composeComicSlotCaption(stored,{cut_kind:'closeup',wear_state:'topless',action:'1.4::smile::'},
+    {comic_closeup_character_half:true});
+  const group = /^0\.5::(.*?)::,/.exec(caption);
+  assert.ok(group);
+  assert.doesNotMatch(group[1],/topless|white shirt|smile/);
+  assert.match(caption.slice(group[0].length),/2::white shirt::.*topless.*1\.4::smile::/);
+});
+
+test('closeup slots inherit the latest selected costume as well as clothing state', () => {
+  const pages = parseComicPages({ pages: [{ cuts: [
+    { cut_kind: 'normal', base: 'hallway', characters: [{ name: 'A', costume: 'school', wear_state: 'topless' }] },
+    { cut_kind: 'closeup', base: 'face', characters: [{ name: 'A', action: 'smile' }] },
+    { cut_kind: 'closeup', base: 'eyes', characters: [{ name: 'A', costume: 'party', wear_state: 'completely' }] },
+  ] }] });
+  const shots = [{ kind: 'comic', characters: [{ name: 'A', costume: 'default', wear_state: 'clothed' }] }];
+  assignComicPagesToShots(shots, pages);
+  assert.deepEqual(shots[0].characters.map(c => [c.costume, c.wear_state]),
+    [['school', 'topless'], ['school', 'topless'], ['party', 'completely']]);
+});
+
 test("composeComicSlotCaption applies wear_state like illustration", () => {
   const caption = composeComicSlotCaption(
     {
@@ -534,6 +577,17 @@ test("composeComicSlotCaption applies wear_state like illustration", () => {
   assert.equal(caption.includes("0.6::"), false);
   assert.match(caption, /2::bottomless::/);
   assert.match(caption, /pussy/);
+});
+
+test('closeup uses the selected appearance weight including zero and keeps tail emphasis', () => {
+  const stored = { gender: 'girl', appearance: 'girl, 2::black hair::',
+    costumes: [{name: 'school', attire: '2::white shirt::', bottoms: 'skirt'}] };
+  for (const weight of [0, 0.1, 0.2, 0.3, 0.4, 0.6, 0.7]) {
+    const caption = composeComicSlotCaption(stored, {cut_kind:'closeup', costume:'school', action:'1.7::smile::'},
+      {comic_closeup_character_half:true, comic_closeup_character_weight:weight});
+    assert.ok(caption.startsWith(`${weight}::girl, black hair::`),caption);
+    assert.match(caption,/2::white shirt::.*1\.7::smile::/);
+  }
 });
 
 test("appendNoHumansWhenNoCast skips when a weighted no-humans group is present", () => {

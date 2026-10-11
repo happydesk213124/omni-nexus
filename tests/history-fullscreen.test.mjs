@@ -20,7 +20,7 @@ async function setup(page) {
       DOMPurify.addHook('uponSanitizeAttribute',(_n,data)=>{if(data.attrName==='class')data.attrValue=data.attrValue.split(' ').map(v=>v.startsWith('x-risu-')?v:'x-risu-'+v).join(' ');});
       window.risuSanitize=html=>DOMPurify.sanitize(html,{FORCE_BODY:true});
     });
-    const ui=await build({entryPoints:['src/domain/gallery/history-overlay.ts'],bundle:true,write:false,format:'iife',globalName:'HistoryUi'});
+    const ui=await build({entryPoints:['src/ui-contract/viewer-core.ts'],bundle:true,write:false,format:'iife',globalName:'HistoryUi'});
     await page.setContent('<div x-inlay-inline-shot="shot_r2"><img width="832" height="1216" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'832\' height=\'1216\'%3E%3C/svg%3E"></div>');
     await page.addScriptTag({content:ui.outputFiles[0].text});
     await page.evaluate(({inspect,opener,history})=>{
