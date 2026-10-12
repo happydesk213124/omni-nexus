@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.12';
+const PLUGIN_VERSION = '1.1.12.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -979,6 +979,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.12.1 · 캐릭터 작업 버튼 2열·색상 통일</strong>
+          <div class="muted" style="margin-top:8px">2026.10.13 · PC·모바일 모두 작업 버튼을 2열로 맞췄습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>캐릭터 탭의 작업 버튼을 2열로 고정하고, JSON 내보내기·불러오기를 한 칸 안에 반씩 나눠 배치했습니다.</li>
+            <li>PC와 모바일의 배경색·테두리·34px 버튼 높이를 통일했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.12 · 모바일 캐릭터 화면 공간 개선</strong>
@@ -14964,7 +14972,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.12 · 모바일 캐릭터 탭의 작업 버튼을 작은 3열로 배치했습니다. 캐릭터 수정 버튼과 캐릭터 로어북의 높이를 줄여 캐릭터 목록 공간을 확보했습니다."
+    body: "1.1.12.1 · 캐릭터 작업 버튼을 PC·모바일 모두 2열로 고정했습니다. JSON 내보내기·불러오기는 한 칸을 반으로 나누고, 버튼 배경색·테두리·높이를 통일했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

@@ -316,22 +316,47 @@
     }
     #characters .preset-top { flex: 0 0 auto; }
     #characters .preset-mid { flex: 1; min-height: 0; overflow: auto; }
-    #characters .preset-dock {
-      display: flex;
-      flex-wrap: wrap;
+    #nx-shell.nx-ux #characters .preset-dock {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       flex: 0 0 auto;
       margin-top: auto;
     }
-    #characters .preset-dock .dock-btn:not(.dock-up) {
-      flex: 1 1 148px;
-      min-height: 44px;
-      padding: 10px 12px;
-      font-size: 13px;
-      white-space: nowrap;
+    #nx-shell.nx-ux #characters .preset-dock button.dock-btn {
+      min-width: 0;
+      min-height: 34px;
+      padding: 5px 6px;
+      font-size: 12px;
+      white-space: normal;
+      border: 1px solid var(--accent-dark);
+      border-radius: 12px;
+      background: var(--surface);
+      color: #c4b5fd;
     }
     #characters .preset-dock .dock-up {
       flex: 1 1 100%;
       width: 100%;
+    }
+    #characters .char-json-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      min-width: 0;
+      min-height: 34px;
+      border: 1px solid var(--accent-dark);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    #nx-shell.nx-ux #characters .preset-dock .char-json-actions > button.dock-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    #nx-shell.nx-ux #characters .preset-dock .char-json-actions > button.dock-btn[id^="nx-import-"] {
+      border-left: 1px solid var(--accent-dark);
     }
     #characters .preset-scope { padding: 10px 12px; }
     .risu-pick-bg {
@@ -910,13 +935,19 @@
         min-height:34px; padding:5px 3px; font-size:10px; letter-spacing:-.04em;
       }
       #nx-shell.nx-ux #characters .preset-dock {
-        display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+        display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
         gap:3px; padding:7px 8px;
       }
-      #nx-shell.nx-ux #characters .preset-dock > button.dock-btn {
+      #nx-shell.nx-ux #characters .preset-dock button.dock-btn {
         min-width:0; min-height:34px; padding:5px 3px;
         font-size:10px; letter-spacing:-.04em; white-space:normal;
         border-radius:12px; background:var(--surface);
+      }
+      #nx-shell.nx-ux #characters .char-json-actions > button.dock-btn {
+        min-height:0; border-radius:0; background:transparent;
+      }
+      #nx-shell.nx-ux #characters .char-json-actions {
+        min-height:34px;
       }
       #nx-shell.nx-ux #characters .preset-dock > .dock-up {
         grid-column:1 / -1;
@@ -1335,10 +1366,12 @@
             <button class="dock-btn" type="button" id="nx-char-look-gen">참고컷 생성</button>
 
             <button class="dock-btn" type="button" id="nx-char-import-session">로어북에서</button><button class="dock-btn" type="button" id="nx-char-import-global">페르소나에서</button><button class="dock-btn" type="button" id="nx-char-create-llm">LLM한테 시키기</button>
-            <button class="dock-btn" type="button" id="nx-export-session-chars">JSON 내보내기</button>
-            <button class="dock-btn" type="button" id="nx-export-global-chars" hidden>JSON 내보내기</button>
-            <button class="dock-btn" type="button" id="nx-import-session-chars">JSON 불러오기</button>
-            <button class="dock-btn" type="button" id="nx-import-global-chars" hidden>JSON 불러오기</button>
+            <div class="char-json-actions" role="group" aria-label="캐릭터 JSON">
+              <button class="dock-btn" type="button" id="nx-export-session-chars" aria-label="JSON 내보내기">내보내기</button>
+              <button class="dock-btn" type="button" id="nx-export-global-chars" aria-label="JSON 내보내기" hidden>내보내기</button>
+              <button class="dock-btn" type="button" id="nx-import-session-chars" aria-label="JSON 불러오기">불러오기</button>
+              <button class="dock-btn" type="button" id="nx-import-global-chars" aria-label="JSON 불러오기" hidden>불러오기</button>
+            </div>
             <input id="nx-import-session-chars-file" type="file" accept=".json,application/json,text/plain" hidden>
             <input id="nx-import-global-chars-file" type="file" accept=".json,application/json,text/plain" hidden>
             <input id="nx-char-look-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
