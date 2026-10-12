@@ -318,7 +318,7 @@
     #characters .preset-mid { flex: 1; min-height: 0; overflow: auto; }
     #nx-shell.nx-ux #characters .preset-dock {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       flex: 0 0 auto;
       margin-top: auto;
     }
@@ -935,7 +935,7 @@
         min-height:34px; padding:5px 3px; font-size:10px; letter-spacing:-.04em;
       }
       #nx-shell.nx-ux #characters .preset-dock {
-        display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+        display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
         gap:3px; padding:7px 8px;
       }
       #nx-shell.nx-ux #characters .preset-dock button.dock-btn {
@@ -967,6 +967,14 @@
       }
       #nx-lorefilter-slot #nx-lorefilter > summary button {
         min-height:28px !important; padding:3px 6px !important; font-size:10px;
+      }
+    }
+    @media (max-width: 1024px) {
+      #nx-shell.nx-ux #characters .preset-dock button.dock-btn {
+        font-size:10px; padding:5px 1px; letter-spacing:-.04em; white-space:nowrap;
+      }
+      #nx-shell.nx-ux #characters .preset-dock .char-json-actions > button.dock-btn {
+        font-size:9px; padding:5px 0;
       }
     }
       .row:has(input:disabled) { opacity: .6; cursor: default; }
