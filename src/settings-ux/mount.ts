@@ -13,7 +13,7 @@ import { installSearchClear } from './search-clear';
 import { bindPresetSheet } from './preset-bindings';
 import { fillRisuTiles } from './risu-bindings';
 import { replaceMain } from './character-render';
-import { speakText } from '../services/tts';
+import { mountTts } from '../tts-ui/mount';
 import { settingsUxCss } from './styles';
 import { previewChrome, tabHtml, previewHelp } from './tab-html';
 
@@ -84,36 +84,6 @@ function syncModelWarning(): void {
   const ready = Boolean(nai.api_keys_v4_configured || nai.api_keys_v5_configured || nai.api_key_configured || String(nai.comfy_workflow_json || '').trim());
   const dot = document.querySelector<HTMLElement>('#nx-tabs [data-nx-tab="models"] .alarm');
   if (dot) { dot.hidden = ready; dot.style.display = ready ? 'none' : ''; dot.title = 'NAI 키 또는 ComfyUI workflow를 설정하세요'; }
-}
-
-function fillTtsVoices(select: HTMLSelectElement, current: string): void {
-  const voices = globalThis.speechSynthesis?.getVoices?.() || [];
-  const keep = select.value || current;
-  select.innerHTML = '<option value="">기본</option>';
-  for (const v of voices) {
-    const opt = document.createElement('option');
-    opt.value = v.voiceURI || v.name;
-    opt.textContent = `${v.name}${v.lang ? ` (${v.lang})` : ''}`;
-    if (opt.value === keep) opt.selected = true;
-    select.appendChild(opt);
-  }
-}
-
-function mountTts(): void {
-  const sel = document.querySelector('#nx-tts-voice') as HTMLSelectElement | null;
-  if (sel && !sel.dataset.nxUxVoices) {
-    sel.dataset.nxUxVoices = '1';
-    fillTtsVoices(sel, sel.value);
-    globalThis.speechSynthesis?.addEventListener?.('voiceschanged', () => fillTtsVoices(sel, sel.value));
-  }
-  const test = document.querySelector('#nx-tts-test') as HTMLButtonElement | null;
-  if (test && !test.dataset.nxUxTest) {
-    test.dataset.nxUxTest = '1';
-    test.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      speakText('안녕하세요. 옴니 넥서스 읽기 시험입니다.');
-    });
-  }
 }
 
 function bindSheet(openId: string, sheetId: string, bgId: string, closeId: string, openLabel: string, closeLabel: string): void {
@@ -283,11 +253,6 @@ function bindMenu(): void {
   document.getElementById('nx-tabs')?.addEventListener('click', event => {
     if ((event.target as Element).closest('[data-nx-tab]')) document.documentElement.classList.remove('nx-nav-open');
   });
-  document.getElementById('nx-tabs')?.addEventListener('click', event => {
-    if ((event.target as Element).closest('[data-nx-tab="curation"]')) {
-      event.preventDefault(); event.stopImmediatePropagation();
-    }
-  }, true);
   document.getElementById('drawerBg')?.addEventListener('click', () => document.documentElement.classList.remove('nx-nav-open'));
 }
 
@@ -326,15 +291,7 @@ export function replaceShell(): void {
     const on = btn.getAttribute('data-nx-tab') === tab;
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-current', on ? 'page' : 'false');
-    if (btn.getAttribute('data-nx-tab') === 'curation') {
-      btn.setAttribute('aria-disabled', 'true');
-      btn.setAttribute('tabindex', '-1');
-      btn.setAttribute('title', '다음 업데이트에서 지원합니다');
-      btn.classList.add('nx-tab-disabled');
-      if (btn instanceof HTMLButtonElement) btn.disabled = true;
-      (btn as HTMLElement).style.opacity = '0.45';
-      (btn as HTMLElement).style.cursor = 'not-allowed';
-    }
+
   });
 }
 
@@ -389,7 +346,7 @@ export function afterPaint(): void {
       });
     });
   }
-  if (tab === 'curation') mountTts();
+  if (tab === 'curation') void mountTts().catch(error => markLive('TTS 초기화 실패: ' + String(error)));
   if (tab === 'style_presets' || tab === 'card') {
     bindPresetSheet();
     bindSheet('nx-preset-edit-btn', 'nx-preset-sheet', 'nx-preset-sheet-bg', 'nx-preset-sheet-close', '▲ 프리셋 수정', '▼ 프리셋 수정');

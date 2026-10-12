@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.12.2';
+const PLUGIN_VERSION = '1.2.0';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -979,6 +979,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.2.0 · 독립 TTS 업데이트</strong>
+          <div class="muted" style="margin-top:8px">2026.10.13 · TTS 탭에서 Fish API, 음성 목록·폴더, 캐릭터, LLM·JEV, 번역을 설정합니다. 삽화 전원 OFF에서도 사용할 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>OmniTTS 모듈이 대사 뒤 재생 버튼을 표시합니다. 플러그인이 요청·캐시·재생을 담당합니다.</li>
+            <li>화면 주변 양방향 미리 만들기, 최대 5개 요청 공유, 마지막 클릭 우선 재생과 음성 캐시 재사용.</li>
+            <li>소형 플로팅 플레이어, 나레이션·이어 읽기·배속·볼륨 저장, 삽화 대사 별도 재생.</li>
+            <li>외부 표시 정규식 다음에 Omni 삽화·메시지 버튼을 렌더링하도록 순서를 분리했습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.12.2 · 캐릭터 작업 버튼 행 배치 조정</strong>
@@ -14976,7 +14986,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.12.2 · 캐릭터 작업 버튼을 모바일은 3칸씩 2행, PC는 6칸을 1행으로 배치했습니다. JSON 내보내기·불러오기 분할 칸과 통일된 색상을 유지합니다."
+    body: "1.2.0 · 삽화 전원과 독립된 Fish TTS, OmniTTS 표시 모듈, 음성 목록·캐릭터 배정·번역·캐시·플로팅 플레이어를 추가했습니다. TTS 탭에서 API와 음성을 설정하고 음성 재생을 활성화하세요."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

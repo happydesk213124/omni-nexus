@@ -443,8 +443,8 @@ try {
   assert.equal(await page.locator('#nx-llm-autotag-model').inputValue(),'omni-autotag-test');
   await page.locator('[data-llm-role="comic"]').click();
   assert.equal(await page.locator('#nx-llm-comic-source').isVisible(),true);
-  await page.locator('[data-llm-role="curator"]').click();
-  assert.equal(await page.locator('[data-ux-llm-role="curator"]').isVisible(),true);
+  // TTS owns its model connection in the independent tab (covered by tts-ui.test).
+  assert.equal(await page.locator('[data-llm-role="curator"]').count(),0);
   await page.locator('[data-backend="comfy"]').click();
   assert.equal(await page.locator('#nx-comfy-url').isVisible(),true);
   await page.locator('[data-backend="nai"]').click();

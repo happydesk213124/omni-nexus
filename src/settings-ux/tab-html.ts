@@ -1,3 +1,4 @@
+import { ttsSettingsHtml, ttsHelp } from '../tts-ui/mount';
 import preview from './preview-panes.json';
 
 type PreviewPack = { panes: Record<string, string>; overlays: string; chrome: string; help?: {tips:Record<string,{title:string;body:string}>;aliases:Record<string,string>} };
@@ -45,6 +46,7 @@ function copyNode(dst: Element, src: Element): void {
 }
 
 export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Record<string, unknown>; nai?: Record<string, unknown>}): string {
+  if (tab === 'curation') return ttsSettingsHtml();
   const pane = pack.panes[tab];
   if (!pane || typeof vendorHtml !== 'string') return vendorHtml;
   const vendor = document.createElement('div');
@@ -81,11 +83,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
         body.dataset.llmPrefix = prefix;
         stack.appendChild(body);
       }
-      const fish = document.createElement('div');
-      fish.dataset.uxLlmRole = 'curator';
-      fish.className = 'block'; fish.textContent = 'FISHTTS 연결은 다음 업데이트에서 지원합니다.';
-      fish.hidden = !(vendor.querySelector('[data-llm-role="curator"]')?.classList.contains('active'));
-      stack.appendChild(fish);
+
     }
   }
   const overlays = document.createElement('div');
@@ -218,7 +216,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     el.title = label.textContent;
     el.setAttribute('aria-label', label.textContent);
   });
-  out.querySelectorAll('[data-llm-role="curator"]').forEach(el => { el.textContent = 'FISHTTS'; });
+  out.querySelectorAll('[data-llm-role="curator"], [data-ux-llm-role="curator"], [data-llm-pane="curator"]').forEach(el => el.remove());
   out.querySelectorAll('#nx-img-backend-bar button,#nx-llm-role-tabs button').forEach(el => el.classList.add('btn-ghost'));
   const grid = vendor.querySelector('.explorer-grid, .explorer-win');
   const ex = out.querySelector('#nx-explorer-grid');
@@ -258,6 +256,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
 }
 
 export function previewHelp(id: string): {title:string;body:string} | undefined {
+  if (id === 'curation' || id.startsWith('tts-')) return ttsHelp;
   const help=pack.help;
   return help?.tips[help.aliases[id] || id];
 }

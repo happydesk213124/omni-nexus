@@ -1,5 +1,5 @@
 import { serializeModuleWrite } from './module-write';
-import { messageControlsTrigger, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
+import { messageControlsDisplayScript, messageControlsTrigger, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
 import { measureWrite } from '../core/write-metrics';
 /**
  * Ensures the Inray display-modify module exists and is enabled.
@@ -60,6 +60,11 @@ function scriptComment(row: unknown): string {
   return cleanText((row as { comment?: unknown }).comment, 80);
 }
 
+const displayOrders: Record<string, number> = { 'omni-image-history-display': -10010, 'omni-framed-asset-display': -10020, 'inray-shot-display': -10030, 'omni-spinner-display': -10040 };
+function afterExternalRules<T extends {comment: string; flag: string}>(script: T): T {
+  return { ...script, flag: `g<order ${displayOrders[script.comment]}>` };
+}
+
 let displayTail:Promise<unknown>=Promise.resolve();
 const displayPending=new Map<string,Promise<boolean>>();
 export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: { enabled: boolean; userchat: boolean }): Promise<boolean> {
@@ -85,7 +90,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
     const db = await host.getDatabase!(['modules', 'enabledModules']);
     if (!db) return false;
     const modules = readModules(db);
-    const wanted = inrayDisplayRegexScript(folded, scalePct);
+    const wanted = afterExternalRules(inrayDisplayRegexScript(folded, scalePct));
     let idx = findModuleIndex(modules);
     let changed = false;
     if (idx < 0) {
@@ -145,18 +150,23 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       modules[idx] = { ...modules[idx], lorebook };
       changed = true;
     }
-    const spinner=spinnerDisplayRegexScript(scalePct);
+    const spinner=afterExternalRules(spinnerDisplayRegexScript(scalePct));
     const regex=[...(modules[idx]!.regex || [])];
     const spinnerIndex=regex.findIndex(row=>scriptComment(row)===spinner.comment);
     if(spinnerIndex<0 || JSON.stringify(regex[spinnerIndex])!==JSON.stringify(spinner)) {
       if(spinnerIndex<0)regex.push(spinner);else regex[spinnerIndex]=spinner;
       modules[idx]={...modules[idx],regex};changed=true;
     }
-    const pair = framedAssetDisplayRegexScript(folded,scalePct);
-    const history = historyDisplayRegexScript(folded, scalePct);
+    const pair = afterExternalRules(framedAssetDisplayRegexScript(folded,scalePct));
+    const history = afterExternalRules(historyDisplayRegexScript(folded, scalePct));
     const paired = [history, pair,...(modules[idx]!.regex || []).filter(row=>scriptComment(row)!==pair.comment && scriptComment(row)!==history.comment)];
-    if(JSON.stringify(paired)!==JSON.stringify(modules[idx]!.regex)) {
-      modules[idx]={...modules[idx],regex:paired};changed=true;
+    const late = paired.filter(row => scriptComment(row) !== 'omni-message-controls-display').map(row => {
+      const order = displayOrders[scriptComment(row)];
+      return order === undefined ? row : { ...(row as Record<string, unknown>), ableFlag: true, flag: `g<order ${order}>` };
+    });
+    late.push(messageControlsDisplayScript());
+    if(JSON.stringify(late)!==JSON.stringify(modules[idx]!.regex)) {
+      modules[idx]={...modules[idx],regex:late};changed=true;
     }
     const triggers = [...(modules[idx]!.trigger || [])];
     const controlIndex = triggers.findIndex(row => scriptComment(row) === MESSAGE_CONTROLS_COMMENT);
