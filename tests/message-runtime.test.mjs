@@ -4,16 +4,19 @@ import {readFileSync} from 'node:fs';
 import {build} from 'esbuild';
 import {chromium} from 'playwright';
 const compiled=await build({entryPoints:['src/domain/message-controls.ts'],bundle:true,write:false,format:'esm'});
-const {messageControlsTrigger}=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
+const {messageControlsTrigger,messageControlsDisplayScript}=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const lua=messageControlsTrigger(true,false).effect[0].code;
-const buttons=lua.match(/<button[\s\S]*?<\/button>(?=<\/div>)/)?.[0];
-const css=lua.match(/<style>(.*?)<\/style>/s)[1];
+const display=messageControlsDisplayScript();
+const buttons=display.out.match(/<button[\s\S]*?<\/button>(?=<\/div>)/)?.[0];
+const css=display.out.match(/<style>(.*?)<\/style>/s)[1];
 const runtime=readFileSync('tools/vendor-patches/message-runtime.js','utf8');
 
 test('module controls are display-only and preserve the seven actions',()=>{
  assert.match(lua,/listenEdit\("editDisplay"/);
  assert.doesNotMatch(lua,/getFullChat|setChat|setChatVar|request\(/);
  assert.equal((buttons.match(/data-omni-action=/g)||[]).length,7);
+ assert.doesNotMatch(lua, /<button|<style/);
+ assert.match(display.flag, /<order -10090>/);
  assert.match(messageControlsTrigger(false,false).effect[0].code,/if not false/);
  assert.match(messageControlsTrigger(true,true).effect[0].code,/true and role == "user"/);
 });

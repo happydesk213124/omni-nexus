@@ -50,11 +50,11 @@ try {
  const source=readFileSync('dist/omninexus.js','utf8');
  await checkSpinnerPreview(page,source,render);
  const controlsBundle=await build({entryPoints:['src/domain/message-controls.ts'],bundle:true,write:false,format:'esm'});
- const {messageControlsTrigger}=await import('data:text/javascript;base64,'+Buffer.from(controlsBundle.outputFiles[0].text).toString('base64'));
- const lua=messageControlsTrigger(true,false).effect[0].code;
- const buttons=lua.match(/<button[\s\S]*?<\/button>(?=<\/div>)/)[0];
- const css=lua.match(/<style>(.*?)<\/style>/s)[1];
- const bar=edge=>'<div data-omni-footer="0:14:0" data-omni-edge="'+edge+'">'+buttons+'</div>';
+ const {messageControlsDisplayScript}=await import('data:text/javascript;base64,'+Buffer.from(controlsBundle.outputFiles[0].text).toString('base64'));
+ const controls=messageControlsDisplayScript();
+ const rendered=edge=>`OMNI0${edge}`.replace(new RegExp(controls.in,'g'),controls.out);
+ const css=rendered('top').match(/<style>(.*?)<\/style>/s)[1];
+ const bar=edge=>rendered(edge).replace(/<style>.*?<\/style>/s,'');
  for(const width of [320,1440,3440]) {
    await page.setViewportSize({width,height:900});
    await page.setContent('<style>'+css+'</style><div class="default-chat-screen"><div class="risu-chat" data-chat-index="0"><div class="chattext">'+bar('top')+'<p>Reading anchor</p>'+bar('bottom')+'</div></div></div>');

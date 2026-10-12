@@ -104,7 +104,6 @@ import {
   jobMatchesMessageIdentity,
 } from '../ui-contract/viewer-core';
 import { stripBakeTokens } from '../domain/chat-bake';
-import { speakAfterBake } from './tts';
 import {
   bakeCardsIntoChatMessage,
   jobChatTarget,
@@ -1626,7 +1625,6 @@ async function runJob(jobId: string): Promise<void> {
     // done. 2.5.8 skips painting on done on purpose.
     if (!durableSpinners) await waitForLastGeneratingPoll(jobId);
     if(durableSpinners) await finishCompletedSpinners();
-    if (durableSpinners && bakedSpinnerShots.size) speakAfterBake(request);
     if (persistChatImagesOn() && !durableSpinners) {
       try {
         await enqueueBakeWrite(async () => {
@@ -1635,7 +1633,6 @@ async function runJob(jobId: string): Promise<void> {
             cards: finalCards,
           });
         });
-        speakAfterBake(request);
       } catch (err) {
         dbg('job.bake.fail', { message: String((err as Error)?.message || err) }, 'warn');
       }

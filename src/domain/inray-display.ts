@@ -11,7 +11,8 @@ export const INRAY_DISPLAY_MODULE_NAME = '⚛️Omni Nexus 디스플레이';
 export const INRAY_DISPLAY_SCRIPT_COMMENT = 'inray-shot-display';
 
 /** Capture card id, asset name and optional intrinsic width/height (legacy compatible). */
-export const INRAY_DISPLAY_IN = '\\[\\[@inray::([^:\\]]+)::(inxshot_[^:\\]]+)(?:::([0-9]+)::([0-9]+))?(?:_[rs][0-9]+)?(?:_pin)?\\]\\]';
+// Generated token fields are bounded, and never cross another '[' while incomplete.
+export const INRAY_DISPLAY_IN = '\\[\\[@inray::([^:\\[\\]]{1,256})::(inxshot_[^:\\[\\]]{1,2048})(?:::([0-9]{1,6})::([0-9]{1,6}))?(?:_[rs][0-9]{1,9})?(?:_pin)?\\]\\]';
 
 /**
  * `$1` = card id, `$2` = gallery asset name, `$3`/`$4` = intrinsic width/height.
@@ -78,7 +79,7 @@ export function inrayDisplayRegexScript(folded = false, scalePct: unknown = 100)
 } {
   return {
     comment: INRAY_DISPLAY_SCRIPT_COMMENT,
-    in: '(?<!\\[\\[@inrayspinner::[^\\]]+\\]\\]\\s*)' + INRAY_DISPLAY_IN,
+    in: '(?<!\\[\\[@inrayspinner::[^\\[\\]]{1,2304}\\]\\]\\s{0,128})' + INRAY_DISPLAY_IN,
     out: inrayDisplayOut(folded, scalePct),
     type: 'editdisplay',
     ableFlag: true,
@@ -90,7 +91,7 @@ export function inrayDisplayRegexScript(folded = false, scalePct: unknown = 100)
 export function spinnerDisplayRegexScript(scalePct:unknown=100) {
   const frame=chatImageFrameStyle('$2','$3',scalePct);
   const css=inrayDisplayOut(false,scalePct).split('</style>')[0]+'</style>';
-  return {comment:'omni-spinner-display',in:'\\[\\[@inrayspinner::([a-zA-Z0-9_-]+)::([0-9]+)::([0-9]+)\\]\\](?!\\s*\\[\\[@inray::)',out:css+
+  return {comment:'omni-spinner-display',in:'\\[\\[@inrayspinner::([a-zA-Z0-9_-]{1,256})::([0-9]{1,6})::([0-9]{1,6})\\]\\](?!\\s{0,128}\\[\\[@inray::)',out:css+
     '<br><div class="omni-spinner" data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1" style="position:relative;display:block;text-align:center;margin:10px auto;overflow:hidden;overflow-anchor:none;border-radius:10px;'+frame+'">'+
     '<svg x-inray-spinner-wheel="$1" viewBox="0 0 $2 $3" width="$2" height="$3" style="display:block;width:100%;height:auto;border-radius:10px;background:#101620" role="img" aria-label="이미지 슬롯 · 다시 생성 가능"><circle cx="50%" cy="50%" r="54" fill="none" stroke="#7132f5" stroke-width="10" stroke-dasharray="180 160"></circle></svg>'+
     '</div><br>',type:'editdisplay' as const,ableFlag:true,flag:'g'};
@@ -106,18 +107,18 @@ export function framedAssetDisplayRegexScript(folded = false, scalePct: unknown 
   out = out.replace('class="inray-shot-img"', 'class="inray-shot-img" style="position:absolute;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain"');
   return {
     comment:'omni-framed-asset-display',
-    in: spinnerDisplayRegexScript(scalePct).in.replace(/\(\?!.*$/, '') + '\\s*' + INRAY_DISPLAY_IN,
+    in: spinnerDisplayRegexScript(scalePct).in.replace(/\(\?!.*$/, '') + '\\s{0,128}' + INRAY_DISPLAY_IN,
     out, type:'editdisplay' as const, ableFlag:true, flag:'g',
   };
 }
 
 /** Consume one family's adjacent revisions and render its final selection once. */
 export function historyDisplayRegexScript(folded = false, scalePct: unknown = 100) {
-  const frame = '\\[\\[@inrayspinner::([a-zA-Z0-9_-]+)::([0-9]+)::([0-9]+)\\]\\]\\s*';
-  const head = '(?=\\[\\[@inray::([^:\\]]+?)(?:_[rs][0-9]+)?::)';
-  const earlier = '(?:\\[\\[@inray::\\4(?:_[rs][0-9]+)?::[^\\]]+\\]\\]\\s*)+';
+  const frame = '\\[\\[@inrayspinner::([a-zA-Z0-9_-]{1,256})::([0-9]{1,6})::([0-9]{1,6})\\]\\]\\s{0,128}';
+  const head = '(?=\\[\\[@inray::([^:\\[\\]]{1,256}?)(?:_[rs][0-9]{1,9})?::)';
+  const earlier = '(?:\\[\\[@inray::\\4(?:_[rs][0-9]{1,9})?::[^\\[\\]]{1,2304}\\]\\]\\s{0,128})+';
   const map: Record<string, string> = { '1':'5', '2':'6', '3':'7', '4':'8' };
-  return { comment: 'omni-image-history-display', in: '(?:' + frame + ')?' + head + earlier + '(?=\\[\\[@inray::\\4(?:_[rs][0-9]+)?::)' + INRAY_DISPLAY_IN,
+  return { comment: 'omni-image-history-display', in: '(?:' + frame + ')?' + head + earlier + '(?=\\[\\[@inray::\\4(?:_[rs][0-9]{1,9})?::)' + INRAY_DISPLAY_IN,
     out: inrayDisplayOut(folded, scalePct).replace(/\$([1-4])/g, (_, key: string) => '$' + map[key]),
     type: 'editdisplay' as const, ableFlag: true, flag: 'g' };
 }

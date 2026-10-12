@@ -500,7 +500,7 @@ test('paid images finish in background with no chat writes until exact committed
   assert.equal((await f.commit(created.job_id)).ok,true);
   await f.wait(created.job_id,j=>j.state==='done');
   const result=(await f.chat()).message[0].data;
-  assert.equal(tts.length,1);
+  assert.equal(tts.length,0,'image completion must not start the retired browser speech lane; independent OmniTTS owns playback');
   assert.match(result,/\[\[@inray::/);
   assert.ok(result.indexOf('[[@inrayspinner')>result.indexOf('First narrative'));
   assert.ok(result.indexOf('[[@inrayspinner')<result.indexOf('Second dialogue'));
