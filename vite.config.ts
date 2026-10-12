@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.12.1';
+const PLUGIN_VERSION = '1.1.12.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -979,6 +979,10 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.12.2 · 캐릭터 작업 버튼 행 배치 조정</strong>
+          <div class="muted" style="margin-top:8px">2026.10.13 · 모바일은 3칸씩 2행, PC는 6칸을 1행으로 배치했습니다. JSON 내보내기·불러오기 분할 칸과 통일된 버튼 색상을 유지합니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.12.1 · 캐릭터 작업 버튼 2열·색상 통일</strong>
@@ -14972,7 +14976,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.12.1 · 캐릭터 작업 버튼을 PC·모바일 모두 2열로 고정했습니다. JSON 내보내기·불러오기는 한 칸을 반으로 나누고, 버튼 배경색·테두리·높이를 통일했습니다."
+    body: "1.1.12.2 · 캐릭터 작업 버튼을 모바일은 3칸씩 2행, PC는 6칸을 1행으로 배치했습니다. JSON 내보내기·불러오기 분할 칸과 통일된 색상을 유지합니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

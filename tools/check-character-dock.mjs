@@ -43,10 +43,15 @@ try {
       };
     });
     assert.equal(layout.cells.length, 6, `six work cells @${width}`);
-    for (let row = 0; row < 3; row++) {
-      const [left, right] = layout.cells.slice(row * 2, row * 2 + 2);
-      assert.ok(Math.abs(left.y - right.y) < 1 && right.x > left.x, `two columns in row ${row} @${width}`);
-      assert.ok(Math.abs(left.width - right.width) < 1, `equal cell widths @${width}`);
+    const columns = width <= 768 ? 3 : 6;
+    const rows = width <= 768 ? 2 : 1;
+    for (let row = 0; row < rows; row++) {
+      const cells = layout.cells.slice(row * columns, (row + 1) * columns);
+      assert.equal(cells.length, columns);
+      for (let col = 1; col < columns; col++) {
+        assert.ok(Math.abs(cells[col].y - cells[0].y) < 1 && cells[col].x > cells[col - 1].x, `same row @${width}`);
+        assert.ok(Math.abs(cells[col].width - cells[0].width) < 1, `equal cells @${width}`);
+      }
     }
     for (const cell of layout.cells) {
       assert.equal(cell.height, 34, `compact button height @${width}`);
@@ -62,7 +67,7 @@ try {
     assert.ok(layout.overflow <= 1, `no horizontal overflow @${width}`);
     await page.locator('#characters .preset-dock').screenshot({ path: `.test-build/character-dock/${width}.png` });
   }
-  console.log('Character dock: real bundle uses two columns, equal JSON halves, 34px buttons and matching colors at 320/360/812/1440px.');
+  console.log('Character dock: real bundle uses two mobile rows and one desktop row, equal JSON halves, 34px buttons and matching colors at 320/360/812/1440px.');
 } finally {
   await browser.close();
 }
