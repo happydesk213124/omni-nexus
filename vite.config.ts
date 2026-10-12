@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.1.11';
+const PLUGIN_VERSION = '1.1.12';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -979,6 +979,14 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.1.12 · 모바일 캐릭터 화면 공간 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.13 · 모바일에서 아래 버튼이 캐릭터 목록을 밀어 없애던 배치를 개선했습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>모바일 캐릭터 탭의 작업 버튼을 작은 3열로 배치해 캐릭터 목록 공간을 확보했습니다.</li>
+            <li>캐릭터 수정 버튼 높이를 34px로 줄이고, 캐릭터 로어북의 글자와 여백을 줄였습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.1.11 · 장소태그 강조 조절·샷태그 성별 계산 수정</strong>
@@ -14956,7 +14964,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.1.11 · 생성옵션에 장소태그 강조 조절(0~5)을 추가했습니다. 샷태그 수정의 gender는 실제 성별 인원수를 계산합니다. 만화 총 컷 수·upperbody 태그의 강조만 제거하고 다른 컷·외형·의상 강조는 유지합니다."
+    body: "1.1.12 · 모바일 캐릭터 탭의 작업 버튼을 작은 3열로 배치했습니다. 캐릭터 수정 버튼과 캐릭터 로어북의 높이를 줄여 캐릭터 목록 공간을 확보했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
