@@ -10,8 +10,10 @@ test('production settings persist independently, edit voice tiles and survive re
     const page=await browser.newPage({viewport:{width:1360,height:900}}),errors=[];
     page.setDefaultTimeout(8000);page.setDefaultNavigationTimeout(8000);page.on('pageerror',error=>errors.push(error.message));page.on('dialog',d=>d.dismiss());
     await page.route('https://tts.test/',route=>route.fulfill({contentType:'text/html',body:'<html><head></head><body style="background:#0b0f18;color:#eee;font:14px sans-serif"></body></html>'}));await page.goto('https://tts.test/');
-    await page.evaluate(()=>{const save=new Map(),local=new Map();window.risuai={pluginStorage:{getItem:async k=>save.get(k),setItem:async(k,v)=>save.set(k,v)},getLocalPluginStorage:async()=>({getItem:async k=>local.get(k),setItem:async(k,v)=>local.set(k,v),removeItem:async k=>local.delete(k)}),requestPluginPermission:async()=>true,getDatabase:async()=>({modules:[],enabledModules:[]}),setDatabase:async()=>{},getCharacter:async()=>{if(window.delayCharacter){window.delayCharacter=false;await new Promise(resolve=>window.resumeCharacter=resolve);}return {chaId:'test-char',chatPage:0,chats:[{id:'test-chat',message:[]}]};},runLLMModel:async()=>({success:true,content:'OK'}),nativeFetch:async url=>url.includes('translate.googleapis.com')?{ok:true,json:async()=>[[['こんにちは。']]]}:url.includes('decisions')?{ok:true,json:async()=>({answers:{0:{choice:'1',probabilities:{1:1}}}})}:{ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer}};window.Audio=class{play(){return Promise.resolve();}pause(){}load(){}removeAttribute(){}};window.AudioContext=class{state='running';destination={};resume(){return Promise.resolve();}createGain(){return {gain:{value:1},connect(){return this;}};}createMediaElementSource(){return {connect(n){return n;}};}};});
-    await page.evaluate(()=>{window.crypto.randomUUID=undefined;});
+    await page.evaluate(()=>{const save=new Map(),local=new Map();window.risuai={pluginStorage:{getItem:async k=>save.get(k),setItem:async(k,v)=>save.set(k,v)},getLocalPluginStorage:async()=>({getItem:async k=>local.get(k),setItem:async(k,v)=>local.set(k,v),removeItem:async k=>local.delete(k)}),requestPluginPermission:async()=>true,getDatabase:async()=>({modules:[],enabledModules:[]}),setDatabase:async()=>{},getCharacter:async()=>{if(window.delayCharacter){window.delayCharacter=false;await new Promise(resolve=>window.resumeCharacter=resolve);}return {chaId:'test-char',chatPage:0,chats:[{id:'test-chat',message:[]}]};},runLLMModel:async()=>({success:true,content:'OK'}),nativeFetch:async url=>url.includes('translate.googleapis.com')?{ok:true,json:async()=>[[['こんにちは。']]]}:url.includes('decisions')?{ok:true,json:async()=>({answers:{0:{choice:'1',probabilities:{1:1}}}})}:window.holdFish?new Promise(resolve=>{window.releaseFish=()=>resolve({ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer});}):{ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer}};window.Audio=class{play(){return Promise.resolve();}pause(){}load(){}removeAttribute(){}};window.AudioContext=class{state='running';destination={};resume(){return Promise.resolve();}createGain(){return {gain:{value:1},connect(){return this;}};}createMediaElementSource(){return {connect(n){return n;}};}};});
+    // Risu's plugin frame is sandboxed without allow-forms and allow-popups:
+    // submit events never fire and window.open returns null.
+    await page.evaluate(()=>{window.crypto.randomUUID=undefined;document.addEventListener('submit',e=>{e.preventDefault();e.stopImmediatePropagation();},true);window.open=()=>null;});
     await page.addScriptTag({content:built.outputFiles[0].text});
     await page.evaluate(async()=>{document.documentElement.classList.add('nx-ux-on');document.documentElement.dataset.theme='dark';const style=document.createElement('style');style.textContent=window.settingsUxCss;document.head.append(style);document.body.innerHTML='<div id="nx-shell" class="nx-ux">'+window.previewChrome()+'</div>';document.getElementById('nx-main').innerHTML=window.ttsSettingsHtml();await window.mountTts();});
     assert.equal(await page.locator('#speed').isDisabled(),true);
@@ -51,10 +53,33 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.locator('#clear-voice-selection').click();await page.locator('#voice-multiselect').click();
     await page.locator('#voice-list .voice-row').nth(0).click();await page.locator('#voice-list .voice-row').nth(0).click();
     assert.equal(await page.locator('#voice-dialog').isVisible(),true);
-    await page.locator('#v-name').fill('수정 테스트');await page.locator('#voice-form button[type=submit]').click();
+    assert.equal(await page.locator('#voice-submit').textContent(),'저장');
+    await page.locator('#v-name').fill('수정 테스트');await page.locator('#voice-submit').click();
     assert.equal(await page.evaluate(()=>window.ttsData().voices[0].name),'수정 테스트');
-    await page.locator('#new-voice-folder').click();await page.locator('#voice-folder-name').fill('폴더 테스트');await page.locator('#voice-folder-form button[type=submit]').click();
+    const before=await page.evaluate(()=>window.ttsData().voices.length);
+    await page.locator('#add-voice').click();
+    assert.equal(await page.locator('#voice-submit').textContent(),'추가','a new voice is added, not applied');
+    await page.locator('#v-name').fill('새 음성');await page.locator('#v-id').fill('https://fish.audio/ko/m/0123456789abcdef0123456789abcdef/');await page.locator('#voice-submit').click();
+    await page.waitForFunction(n=>window.ttsData().voices.length===n+1,before);
+    assert.equal(await page.evaluate(()=>window.ttsData().voices.at(-1).fishId),'0123456789abcdef0123456789abcdef','adding works without a submit event');
+    assert.equal(await page.locator('#voice-dialog').isVisible(),false);
+    await page.locator('#add-voice').click();await page.locator('#v-name').fill('');await page.locator('#voice-submit').click();
+    assert.equal(await page.locator('#voice-dialog').isVisible(),true,'required fields still block an incomplete voice');
+    await page.locator('#voice-dialog [data-close]').last().click();
+    await page.locator('#new-voice-folder').click();await page.locator('#voice-folder-name').fill('폴더 테스트');await page.locator('#voice-folder-form .primary').click();
     assert.deepEqual(await page.evaluate(()=>window.ttsData().folders),['폴더 테스트']);
+    await page.locator('#tts-voices a[href*="fish.audio"]').click();
+    assert.match(await page.locator('#tts-voices .fish-link-status').textContent(),/새 탭/,'a blocked new tab explains itself instead of doing nothing');
+    await page.evaluate(()=>{window.ttsData().settings.fish.key='listen-key';window.holdFish=true;});
+    await page.locator('#voice-folder-list .folder-item').first().click();
+    const listen=page.locator('#voice-list .voice-row .tts-listen').first();
+    assert.equal(await listen.textContent(),'▶ 듣기');
+    await listen.click();
+    await page.waitForFunction(()=>!!document.querySelector('#voice-list .tts-listen.is-loading')&&typeof window.releaseFish==='function');
+    assert.equal(await page.locator('#voice-list .tts-listen.is-loading .tts-listen-icon').evaluate(n=>getComputedStyle(n).animationName),'tts-listen-spin','▶ spins while Fish synthesizes');
+    await page.evaluate(()=>{window.holdFish=false;window.releaseFish();});
+    await page.waitForFunction(()=>!document.querySelector('.tts-listen.is-loading'));
+    await page.evaluate(()=>{window.ttsData().settings.fish.key='';window.omniTts.stop();});
     await page.locator('#tab-characters').click();
     const toolbar=await page.locator('.character-command-bar').boundingBox();
     for(const id of ['char-search','char-scope-filter','command-characters','batch-jev-characters','add-character']){const box=await page.locator('#'+id).boundingBox();assert.ok(box&&box.x>=toolbar.x&&box.x+box.width<=toolbar.x+toolbar.width+1,id+' stays inside the actual settings window');}
@@ -100,6 +125,15 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.locator('#jev-key').fill('fake-jev-key');await page.locator('#jev-key').dispatchEvent('change');
     await page.locator('#tts-test-jev').click();await page.waitForFunction(()=>document.getElementById('tts-test-jev-result').textContent.startsWith('연결 성공'));
     await page.locator('#tab-settings').click();await page.locator('#translation').selectOption('google-free');
+    await page.locator('#narration-language').selectOption('original');
+    await page.waitForFunction(()=>window.ttsData().settings.translation.narrationLanguage==='original');
+    await page.locator('#narration-language').selectOption('custom');assert.equal(await page.locator('#narration-custom-lang').isVisible(),true);
+    await page.locator('#narration-custom-lang').fill('fr');await page.locator('#narration-custom-lang').dispatchEvent('change');
+    await page.waitForFunction(()=>window.ttsData().settings.translation.narrationLanguage==='fr'&&window.ttsData().settings.translation.language==='ja');
+    await page.locator('#tts-exclude-text').fill('상태창, 체력\n[시스템]');
+    await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, 체력\n[시스템]';});
+    assert.equal(await page.locator('#speed').evaluate(n=>n.closest('[data-nx-help-id]')?.dataset.nxHelpId),'speed','each TTS row resolves to its own help tip');
+    assert.equal(await page.locator('#tts-exclude-text').evaluate(n=>n.tagName),'TEXTAREA');
     await page.locator('#tts-test-translation').click();await page.waitForFunction(()=>document.getElementById('tts-test-translation-result').textContent.startsWith('연결 성공'));
     await page.locator('#tts-power').uncheck();await page.waitForFunction(()=>document.getElementById('tts-controls').disabled,undefined,{timeout:8000});
     assert.equal(await page.evaluate(()=>window.ttsData().settings.enabled),false);
@@ -107,6 +141,8 @@ test('production settings persist independently, edit voice tiles and survive re
     assert.equal(await page.locator('#speed').isDisabled(),true);
     assert.deepEqual(await page.evaluate(()=>window.ttsData().settings.rates),[1,2,2.5,3.5]);
     assert.equal(await page.locator('#tts-skip-chars').inputValue(),'3','length limit restores when settings reopen');
+    assert.equal(await page.locator('#narration-language').inputValue(),'custom');assert.equal(await page.locator('#narration-custom-lang').inputValue(),'fr');
+    assert.equal(await page.locator('#tts-exclude-text').inputValue(),'상태창, 체력\n[시스템]');
     await page.evaluate(()=>{document.getElementById('tts-settings-root').remove();window.delayCharacter=true;document.body.insertAdjacentHTML('beforeend',window.ttsSettingsHtml());window.oldMount=window.mountTts();});
     await page.waitForFunction(()=>typeof window.resumeCharacter==='function');
     await page.evaluate(async()=>{document.getElementById('tts-settings-root').remove();document.body.insertAdjacentHTML('beforeend',window.ttsSettingsHtml());await window.mountTts();window.newDialogs=document.getElementById('tts-dialogs');window.resumeCharacter();await window.oldMount;});
@@ -115,6 +151,7 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.screenshot({path:'.tts-ui-check.png',fullPage:true});
     await page.evaluate(async()=>{document.getElementById('nx-main').innerHTML=window.tabHtml('dashboard','');await window.bindTtsExclusions();});
     assert.equal(await page.locator('#dashboard #nx-tts-exclude-text').count(),1,'the exclusions field lives on the dashboard');
+    assert.equal(await page.locator('#nx-tts-exclude-text').evaluate(n=>n.tagName),'TEXTAREA','the dashboard exclusion list is a textarea');
     await page.locator('#nx-tts-exclude-text').fill('상태창, [시스템]');
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, [시스템]';});
     await page.evaluate(async()=>{document.getElementById('nx-main').innerHTML=window.tabHtml('dashboard','');await window.bindTtsExclusions();});

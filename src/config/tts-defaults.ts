@@ -17,7 +17,7 @@ export function ttsDefaults(): TtsSettings {
     prefetch: 50, concurrency: 5, background: 5, cacheMb: 100,
     fish: { url: 'https://api.fish.audio/v1/tts', key: '', model: 's2.1-pro' },
     llm: ttsLlmDefaults(),
-    translation: { provider: 'off', language: 'ja', url: '', key: '', llm: ttsLlmDefaults() },
+    translation: { provider: 'off', language: 'ja', narrationLanguage: '', url: '', key: '', llm: ttsLlmDefaults() },
     jev: { url: 'https://openrouter.ai/api/alpha/decisions', key: '', model: 'typesafe/jev-1.13', format: 'openrouter' },
   };
 }

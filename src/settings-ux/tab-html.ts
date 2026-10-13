@@ -1,4 +1,5 @@
 import { ttsSettingsHtml, ttsHelp } from '../tts-ui/mount';
+import { ttsHelpTip } from '../tts-ui/help';
 import preview from './preview-panes.json';
 
 type PreviewPack = { panes: Record<string, string>; overlays: string; chrome: string; help?: {tips:Record<string,{title:string;body:string}>;aliases:Record<string,string>} };
@@ -258,6 +259,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
 }
 
 export function previewHelp(id: string): {title:string;body:string} | undefined {
+  const tts = ttsHelpTip(id);
+  if (tts) return tts;
   if (id === 'curation' || id.startsWith('tts-')) return ttsHelp;
   const help=pack.help;
   return help?.tips[help.aliases[id] || id];

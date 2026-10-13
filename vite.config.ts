@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.2.0';
+const PLUGIN_VERSION = '1.2.1';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -980,6 +980,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.2.1 · TTS 버튼 모듈 호환·설정 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.13 · 다른 표시 모듈(상태창·대사 상자 정규식 등)이 원문 그대로 동작하도록 TTS 버튼을 모든 정규식 다음에 붙입니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>채팅 원문·줄바꿈을 바꾸지 않고, 버튼은 폭 0으로 붙어 글자 배치가 그대로입니다. 재생 중인 버튼은 움직이는 막대로 표시됩니다.</li>
+            <li>나레이션 도착 언어를 번역 설정에서 따로 고를 수 있습니다. 제외 텍스트는 대시보드·TTS 탭 모두 여러 줄 입력칸입니다.</li>
+            <li>플로팅 목록에서 줄을 눌러도 스크롤이 유지되고, 배속이 새 음성마다 항상 적용됩니다. 재생 실패 이유를 알림으로 보여 줍니다.</li>
+            <li>음성 추가 버튼, ▶ 듣기 로딩 표시, Fish 탐색 링크 안내, TTS 설정 항목별 도움말(모바일 포함)을 고쳤습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.2.0 · 독립 TTS 업데이트</strong>
@@ -14988,7 +14998,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.2.0 · 삽화 전원과 독립된 Fish TTS, OmniTTS 표시 모듈, 음성 목록·캐릭터 배정·번역·캐시·플로팅 플레이어를 추가했습니다. TTS 탭에서 API와 음성을 설정하고 음성 재생을 활성화하세요."
+    body: "1.2.1 · TTS 재생 버튼이 다른 표시 모듈 정규식을 깨지 않도록 모든 정규식 다음에 붙고, 글자 배치도 바꾸지 않습니다. 나레이션 번역 언어, 여러 줄 제외 텍스트, 항목별 TTS 도움말을 추가했습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

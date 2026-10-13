@@ -158,18 +158,21 @@ export class OmniTtsRuntime {
     });
     if (!prepared.length) throw new Error('캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
-    const cacheKey = (p: Prepared) => JSON.stringify([settings.translation.provider, settings.translation.language, settings.translation.url, settings.translation.llm.source, settings.translation.llm.endpoint, settings.translation.llm.model, p.request.segment.speaker, p.request.segment.tone, p.text]);
+    const target = (p: Prepared) => ttsTargetLanguage(p.request.segment, settings);
+    const cacheKey = (p: Prepared) => JSON.stringify([settings.translation.provider, target(p), settings.translation.url, settings.translation.llm.source, settings.translation.llm.endpoint, settings.translation.llm.model, p.request.segment.speaker, p.request.segment.tone, p.text]);
     for (const p of prepared) {
-      if (p.request.segment.kind === 'audition' || settings.translation.provider === 'off') continue;
+      if (p.request.segment.kind === 'audition' || settings.translation.provider === 'off' || target(p) === 'original') continue;
       const text = this.translations.get(cacheKey(p));
       if (text !== undefined) p.text = text; else missing.push(p);
     }
     if (missing.length) {
       this.stage = '번역'; this.emit();
       const fresh = [...new Map(missing.filter(p=>!this.translating.has(cacheKey(p))).map(p=>[cacheKey(p),p])).values()];
-      if (fresh.length) {
-        const batch = translateTts(fresh.map(p=>p.request.segment),settings);
-        fresh.forEach((p,i)=>{const key=cacheKey(p), row=batch.then(values=>values[i]);this.translating.set(key,row);void row.finally(()=>{if(this.translating.get(key)===row)this.translating.delete(key);}).catch(()=>{});});
+      // Narration may have its own target language, so batch per language.
+      for (const language of new Set(fresh.map(target))) {
+        const group = fresh.filter(p => target(p) === language);
+        const batch = translateTts(group.map(p=>p.request.segment),{ ...settings, translation: { ...settings.translation, language } });
+        group.forEach((p,i)=>{const key=cacheKey(p), row=batch.then(values=>values[i]);this.translating.set(key,row);void row.finally(()=>{if(this.translating.get(key)===row)this.translating.delete(key);}).catch(()=>{});});
       }
       const translated=await Promise.all(missing.map(p=>this.translating.get(cacheKey(p))!));
       if (!valid()) return [];
@@ -226,5 +229,9 @@ export class OmniTtsRuntime {
       }));
     } catch (error) { if (valid()) this.report(error); }
   }
+}
+export function ttsTargetLanguage(segment: Pick<TtsSegment, 'kind'>, settings: Pick<TtsSettings, 'translation'>): string {
+  const narration = settings.translation.narrationLanguage.trim();
+  return segment.kind === 'narration' && narration ? narration : settings.translation.language;
 }
 export const omniTts = new OmniTtsRuntime();

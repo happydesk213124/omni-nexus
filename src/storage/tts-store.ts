@@ -21,6 +21,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     jev: { ...defaults.jev, ...raw.jev } };
   for (const field of Object.keys(defaults) as (keyof TtsSettings)[]) if (typeof defaults[field] === 'boolean' && typeof result[field] !== 'boolean') Object.assign(result, { [field]: defaults[field] });
   if (typeof result.excludeText !== 'string') result.excludeText = '';
+  if (typeof result.translation.narrationLanguage !== 'string') result.translation.narrationLanguage = '';
   const clamp = (n: number, min: number, max: number, fallback: number) => Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   result.rate = clamp(result.rate, .25, 4, 1);
   result.skipChars = Math.floor(clamp(result.skipChars, 1, 8000, 1));

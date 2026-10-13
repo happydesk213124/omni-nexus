@@ -4,7 +4,7 @@ import { ttsData, updateTtsSettings } from '../storage/tts-store';
 import { fishVoiceId, matchesVoiceSearch, parseVoiceImport } from '../domain/tts/library';
 import { fetchFishVoice as fishVoiceMetadata } from '../providers/tts/fish';
 import { numberedVoices } from '../providers/tts/selection';
-import { el, input, val, set, text, list, gender, genderLabel, esc, on, dialog, button, persist, audition, download, readJson } from './common';
+import { el, input, val, set, text, list, gender, genderLabel, esc, on, onForm, dialog, button, persist, listenButton, auditionButton, openExternal, download, readJson } from './common';
 
 export class TtsLibrary {
   selected = new Set<string>();
@@ -27,7 +27,7 @@ export class TtsLibrary {
     for (const voice of visible) {
       const tile = document.createElement('div'); tile.className = 'voice-row' + (this.selected.has(voice.key) ? ' selected' : ''); tile.tabIndex = 0; tile.setAttribute('role', 'option'); tile.setAttribute('aria-selected', String(this.selected.has(voice.key)));
       tile.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(voice.name)} 선택" ${this.selected.has(voice.key) ? 'checked' : ''}><small>${numbers.get(voice.key)}</small>${data.settings.narrationVoice === voice.key ? '<small class="voice-narrator-badge">나레이션</small>' : ''}</div><strong>${esc(voice.name)}</strong><p class="voice-tags">${esc(voice.tags.join(', '))}</p><small class="voice-folder-label">▱ ${esc(voice.folder || '미분류')}</small>`;
-      const listen = button('▶ 듣기', () => audition(voice.fishId)); listen.className = 'tile-audition'; tile.append(listen);
+      const listen = listenButton(() => ({ fishId: voice.fishId })); listen.classList.add('tile-audition'); tile.append(listen);
       const select = (event: MouseEvent | KeyboardEvent) => {
         if (!ttsData().settings.enabled) return;
         if (event.target instanceof Element && event.target.closest('.tile-audition')) return;
@@ -49,7 +49,7 @@ export class TtsLibrary {
     for (const [key, label] of [['*','전체 음성'], ['', '미분류'], ...data.folders.map(f => [f,f])]) { const b = button(`${label} ${data.voices.filter(v => key === '*' || v.folder === key).length}`, () => { this.folder = key; this.selected.clear(); this.render(); }); b.className = 'folder-item' + (key === this.folder ? ' active' : ''); folders.append(b); }
     input('edit-voice-folder').disabled = !this.folder || this.folder === '*';
   }
-  private edit(voice?: TtsVoice): void { this.editing = voice?.key || '';text('voice-dialog-title',voice?'음성 수정':'음성 추가'); set('v-name', voice?.name); set('v-id', voice?.fishId); set('v-tags', voice?.tags.join(', ')); set('v-gender', genderLabel(voice?.gender || 'unknown')); dialog('voice-dialog'); }
+  private edit(voice?: TtsVoice): void { this.editing = voice?.key || '';text('voice-dialog-title',voice?'음성 수정':'음성 추가');text('voice-submit',voice?'저장':'추가'); set('v-name', voice?.name); set('v-id', voice?.fishId); set('v-tags', voice?.tags.join(', ')); set('v-gender', genderLabel(voice?.gender || 'unknown')); dialog('voice-dialog'); }
   bind(): void {
     for (const id of ['voice-search', 'gender-filter', 'voice-sort']) on(id, () => this.render(), id === 'voice-search' ? 'input' : 'change');
     on('clear-voice-search', () => { set('voice-search',''); this.render(); });
@@ -60,15 +60,18 @@ export class TtsLibrary {
     on('cancel-picked-voice', () => { this.pick = undefined; text('tab-voices','음성 목록'); this.tab('tts-characters'); dialog('character-dialog'); this.render(); });
     on('add-voice', () => this.edit()); on('edit-selected-voice', () => this.edit(ttsData().voices.find(v => this.selected.has(v.key))));
     on('selected-narrator', async () => { await updateTtsSettings({ narrationVoice: [...this.selected][0] }); this.render(); });
-    on('test-voice-editor', () => audition(fishVoiceId(val('v-id'))));
+    auditionButton(el<HTMLButtonElement>('test-voice-editor'), () => ({ fishId: fishVoiceId(val('v-id')) }));
+    el('voice-form').querySelector<HTMLButtonElement>('button[type="submit"]')?.setAttribute('id','voice-submit');
+    const fishLink = el('tts-voices')?.querySelector<HTMLAnchorElement>('a[href*="fish.audio"]');
+    if (fishLink) { const status = document.createElement('small'); status.setAttribute('role','status'); status.className = 'fish-link-status'; status.hidden = true; fishLink.after(status); let timer: ReturnType<typeof setTimeout> | undefined; openExternal(fishLink, message => { status.textContent = message; status.hidden = false; clearTimeout(timer); timer = setTimeout(() => { status.hidden = true; }, 8000); }); }
     on('v-fetch', async () => { const metadata = await fishVoiceMetadata(val('v-id'), ttsData().settings); set('v-id', metadata.fishId); set('v-name', metadata.name); set('v-tags', metadata.tags.join(', ')); set('v-gender', genderLabel(metadata.gender)); });
-    on('voice-form', async () => {
+    onForm('voice-form', async () => {
       const fishId = fishVoiceId(val('v-id')), name = val('v-name').trim(); if (!fishId || !name) throw new Error('이름과 올바른 Fish ID 또는 링크를 입력해 주세요.');
       const old = ttsData().voices.find(v => v.key === this.editing);
       const voice: TtsVoice = { key: old?.key || uuid(), name, fishId, tags: list(val('v-tags')), gender: gender(val('v-gender')), folder: old?.folder || (this.folder === '*' ? '' : this.folder) };
       if (old) Object.assign(old, voice); else ttsData().voices.push(voice);
       await persist(); dialog('voice-dialog', false); this.render();
-    }, 'submit');
+    });
     on('delete-selected-voices', () => { text('voice-delete-message', `선택한 음성 ${this.selected.size}개를 삭제할까요? 캐릭터의 직접 Fish ID는 유지됩니다.`); text('voice-delete-names', ttsData().voices.filter(v => this.selected.has(v.key)).map(v => v.name).join(', ')); dialog('voice-delete-dialog'); });
     on('confirm-voice-delete', async () => { ttsData().voices = ttsData().voices.filter(v => !this.selected.has(v.key)); if (this.selected.has(ttsData().settings.narrationVoice)) ttsData().settings.narrationVoice = ''; await persist(); dialog('voice-delete-dialog',false); this.render(); });
     const folderOptions = () => ['', ...ttsData().folders].map(f => `<option value="${esc(f)}">${esc(f || '미분류')}</option>`).join('');
@@ -77,14 +80,14 @@ export class TtsLibrary {
     let oldFolder = '';
     on('new-voice-folder', () => { oldFolder = ''; set('voice-folder-name',''); el('remove-voice-folder').hidden = true; dialog('voice-folder-dialog'); });
     on('edit-voice-folder', () => { oldFolder = this.folder; set('voice-folder-name', oldFolder); el('remove-voice-folder').hidden = false; dialog('voice-folder-dialog'); });
-    on('voice-folder-form', async () => { const name = val('voice-folder-name').trim(); if (!name || (name !== oldFolder && ttsData().folders.includes(name))) throw new Error('중복되지 않는 폴더 이름을 입력해 주세요.'); if (oldFolder) { ttsData().folders = ttsData().folders.map(f => f === oldFolder ? name : f); ttsData().voices.filter(v => v.folder === oldFolder).forEach(v => v.folder = name); } else ttsData().folders.push(name); this.folder = name; await persist(); dialog('voice-folder-dialog',false); this.render(); }, 'submit');
+    onForm('voice-folder-form', async () => { const name = val('voice-folder-name').trim(); if (!name || (name !== oldFolder && ttsData().folders.includes(name))) throw new Error('중복되지 않는 폴더 이름을 입력해 주세요.'); if (oldFolder) { ttsData().folders = ttsData().folders.map(f => f === oldFolder ? name : f); ttsData().voices.filter(v => v.folder === oldFolder).forEach(v => v.folder = name); } else ttsData().folders.push(name); this.folder = name; await persist(); dialog('voice-folder-dialog',false); this.render(); });
     on('remove-voice-folder', async () => { if (!confirm('폴더를 삭제하고 안의 음성은 미분류로 옮길까요?')) return; ttsData().voices.filter(v => v.folder === oldFolder).forEach(v => v.folder = ''); ttsData().folders = ttsData().folders.filter(f => f !== oldFolder); this.folder = '*'; await persist(); dialog('voice-folder-dialog',false); this.render(); });
     on('export-voice', () => download({ voices: ttsData().voices }, 'omnitts-voices.json'));
     on('export-voice-folder', () => download({ name: this.folder === '*' ? '전체 음성' : this.folder || '미분류', voices: ttsData().voices.filter(v => this.folder === '*' || v.folder === this.folder) }, 'omnitts-folder.json'));
     on('import-voice', () => input('voice-file').click()); on('import-voice-folder', () => input('voice-folder-file').click());
     on('voice-file', async () => { const file = input('voice-file').files?.[0]; if (!file) return; const rows = parseVoiceImport(await readJson(file), this.folder === '*' ? '' : this.folder); ttsData().voices.push(...rows); await persist(); input('voice-file').value = ''; this.render(); }, 'change');
     on('voice-folder-file', async () => { const file = input('voice-folder-file').files?.[0]; if (!file) return; this.pendingImport = await readJson(file); parseVoiceImport(this.pendingImport); set('folder-import-name', file.name.replace(/\.json$/i,'')); dialog('folder-import-dialog'); input('voice-folder-file').value = ''; }, 'change');
-    on('folder-import-form', async () => { const name = val('folder-import-name').trim(); if (!name || ttsData().folders.includes(name)) throw new Error('새 폴더 이름을 입력해 주세요.'); const voices = parseVoiceImport(this.pendingImport, name); ttsData().folders.push(name); ttsData().voices.push(...voices); this.folder = name; await persist(); dialog('folder-import-dialog',false); this.render(); }, 'submit');
+    onForm('folder-import-form', async () => { const name = val('folder-import-name').trim(); if (!name || ttsData().folders.includes(name)) throw new Error('새 폴더 이름을 입력해 주세요.'); const voices = parseVoiceImport(this.pendingImport, name); ttsData().folders.push(name); ttsData().voices.push(...voices); this.folder = name; await persist(); dialog('folder-import-dialog',false); this.render(); });
     on('voice-folder-toggle', () => { el('voice-folder-list').closest('.voice-folders')?.classList.toggle('folders-open'); });
     this.render();
   }

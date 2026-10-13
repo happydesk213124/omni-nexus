@@ -81,7 +81,8 @@ export const TTS_IGNORED_RANGES: readonly (readonly [number, number])[] = [
   [0x1e8d0,0x1e8d6], [0x1e944,0x1e94a], [0x1e95e,0x1e95f], [0xe0100,0xe01ef],
 ];
 export function ttsExcludeTerms(value: string): string[] {
-  return [...new Set(value.split(',').map(term => term.trim()).filter(Boolean))];
+  // A textarea invites one term per line as well as comma lists.
+  return [...new Set(value.split(/[,\n]/).map(term => term.trim()).filter(Boolean))];
 }
 export function hasTtsSpeech(text: string, skipChars = 1): boolean {
   let count = 0;

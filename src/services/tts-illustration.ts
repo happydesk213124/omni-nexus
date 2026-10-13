@@ -15,13 +15,13 @@ export async function illustrationTtsRequests(id: string, context: TtsChatContex
   const requests: TtsRequest[] = [];
   const excluded = ttsExcludeTerms(ttsData().settings.excludeText);
   for (const [index, character] of (scene?.characters || []).entries()) {
-    const marker = /korean\s+text\s*:/i.exec(character.prompt);
+    const marker = /(?:korean|japanese|english)\s+text\s*:/i.exec(character.prompt);
     const name = cast[index]?.name;
     if (!marker || !name) continue;
     // Dialogue is appended to the caption by Omni after the other tags.
     const text = character.prompt.slice(marker.index + marker[0].length).trim();
     if (text.length <= 8000 && allowedTtsText(text,excluded,ttsData().settings.skipChars)) requests.push({ context, messageId:`illustration:${id}`, segment:{ id:String(index), speaker:name, text, tone:'', kind:'illustration', start:0,end:0 } });
   }
-  if (!requests.length) throw new Error('이 삽화에 이름과 korean text 대사가 함께 저장되어 있지 않습니다.');
+  if (!requests.length) throw new Error('이 삽화에는 읽을 대사가 없습니다. NAI5 대사삽입으로 만든 삽화만 캐릭터 이름과 대사가 함께 저장됩니다.');
   return requests;
 }

@@ -313,6 +313,12 @@ export function repairOmniUi(source) {
         return ordered.slice(Math.max(0,index-4),index+5);
       }
       const A = galleryFocusOf(), order = globalThis.__INLAY_VIEWER_CORE__?.galleryForMessage;`);
+  // A touch tap ends with pointerout after pointerup, which cleared the tip the
+  // tap had just shown. On touch the tip stays until another row is tapped.
+  replace(`    }), e.addEventListener("pointerout", (a) => {
+      const r = resolveHeadHelpTarget(a.target);`, `    }), e.addEventListener("pointerout", (a) => {
+      if (a.pointerType === "touch") return;
+      const r = resolveHeadHelpTarget(a.target);`);
   replace('    return o && HEAD_HELP[o] ? { id: o, tip: HEAD_HELP[o], host: n } : null;', `    const tip = globalThis.__INLAY_SETTINGS_UX__?.previewHelp?.(o) || HEAD_HELP[o];
     return o && tip ? {id:o,tip,host:n} : null;`);
   replace('  async function runMsgChipAction(', `  async function openOmniNote(msg,resolveTarget) {
