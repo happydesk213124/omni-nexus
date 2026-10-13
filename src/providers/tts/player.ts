@@ -65,7 +65,8 @@ export class TtsPlayer {
     this.rate = Math.max(.25, Math.min(4, rate));
     this.volume = Math.max(0, Math.min(1, volume));
     this.decibels = Math.max(-24, Math.min(12, gain));
-    if (this.audio) { this.audio.playbackRate = this.rate; this.audio.preservesPitch = true; }
+    // Assigning src resets playbackRate to defaultPlaybackRate, so set both.
+    if (this.audio) { this.audio.defaultPlaybackRate = this.rate; this.audio.playbackRate = this.rate; this.audio.preservesPitch = true; }
     if (this.gain) this.gain.gain.value = this.volume * 10 ** (this.decibels / 20);
   }
   stop(): void {
@@ -98,9 +99,12 @@ export class TtsPlayer {
       this.configure(this.rate, this.volume, gain ?? this.decibels);
       this.url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
       audio.src = this.url;
+      this.configure(this.rate, this.volume, gain ?? this.decibels);
       audio.onended = () => { if (ticket === this.epoch) { this.stop(); this.onEnded(key); } };
       audio.onerror = () => { if (ticket === this.epoch) { this.stop(); this.emit('error', '음성 파일을 재생하지 못했습니다.'); } };
       await audio.play();
+      // Some engines settle the rate only once media is playing.
+      if (audio.playbackRate !== this.rate) audio.playbackRate = this.rate;
       if (ticket === this.epoch) this.emit('playing');
     } catch (error) {
       if (ticket !== this.epoch) return;

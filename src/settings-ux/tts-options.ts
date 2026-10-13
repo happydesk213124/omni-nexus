@@ -1,7 +1,7 @@
 import { loadTtsData, updateTtsSettings } from '../storage/tts-store';
 
 export async function bindTtsExclusions(): Promise<void> {
-  const input = document.getElementById('nx-tts-exclude-text') as HTMLInputElement | null;
+  const input = document.getElementById('nx-tts-exclude-text') as HTMLInputElement | HTMLTextAreaElement | null;
   if (!input || input.dataset.bound) return;
   input.dataset.bound = '1';
   const data = await loadTtsData();

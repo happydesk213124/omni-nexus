@@ -26,4 +26,64 @@ export async function audition(fishId: string, gain = 0): Promise<void> {
   if (!omniTts.player.ready) return;
   const context = await currentTtsContext().catch(()=>({scope:'audition',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
   await omniTts.play([{ context, messageId: 'audition', fishId, gain, segment: { id: fishId, text: '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
+  if (omniTts.player.status === 'error' || omniTts.player.status === 'blocked') throw new Error(omniTts.notice || '미리 듣기를 재생하지 못했습니다.');
+}
+const LISTEN_LABEL = '듣기';
+// Fish has to synthesize before anything is heard, so the ▶ turns into a spinner.
+export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number }): HTMLButtonElement {
+  node.classList.add('tts-listen');
+  node.innerHTML = `<span class="tts-listen-icon" aria-hidden="true">▶</span> ${LISTEN_LABEL}`;
+  node.addEventListener('click', event => {
+    event.preventDefault(); event.stopPropagation();
+    if (node.getAttribute('aria-busy') === 'true') return;
+    const { fishId, gain } = read();
+    node.setAttribute('aria-busy', 'true'); node.classList.add('is-loading');
+    const done = () => { node.removeAttribute('aria-busy'); node.classList.remove('is-loading'); };
+    run(async () => { try { await audition(fishId, gain ?? 0); } finally { done(); } });
+  });
+  return node;
+}
+export function listenButton(read: () => { fishId: string; gain?: number }): HTMLButtonElement { const node = document.createElement('button'); node.type = 'button'; return auditionButton(node, read); }
+export const LISTEN_CSS = '.tts-listen-icon{display:inline-block;width:1em;text-align:center}.tts-listen.is-loading .tts-listen-icon{width:.85em;height:.85em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;font-size:0;vertical-align:-.1em;animation:tts-listen-spin .8s linear infinite}@keyframes tts-listen-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.tts-listen.is-loading .tts-listen-icon{animation-duration:2s}}';
+/**
+ * Risu sandboxes the plugin frame without allow-forms, so a submit button never
+ * fires "submit". Validate and run the action from the button itself instead.
+ */
+export function onForm(formId: string, action: () => void | Promise<unknown>): void {
+  const form = el<HTMLFormElement>(formId); if (!form) return;
+  const submit = () => { if (form.reportValidity()) run(action); };
+  for (const b of form.querySelectorAll<HTMLButtonElement>('button[type="submit"],button:not([type])')) {
+    if (b.dataset.close) continue;
+    b.type = 'button'; b.addEventListener('click', event => { event.preventDefault(); submit(); });
+  }
+  form.addEventListener('submit', event => { event.preventDefault(); submit(); });
+  form.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing && event.target instanceof HTMLInputElement) { event.preventDefault(); submit(); }
+  });
+}
+/**
+ * The plugin frame also lacks allow-popups: a target=_blank click is silently
+ * dropped (only a middle click escapes). Try a real window, otherwise copy the
+ * address and say so instead of failing quietly.
+ */
+export function openExternal(link: HTMLAnchorElement, status: (message: string) => void): void {
+  link.addEventListener('click', event => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    let opened: Window | null = null;
+    try { opened = window.open(link.href, '_blank', 'noopener,noreferrer'); } catch { opened = null; }
+    if (opened) return;
+    const copied = copyText(link.href);
+    status(copied ? '새 탭이 막혀 있어 주소를 복사했어요. 새 탭 주소창에 붙여 넣거나 링크를 휠 클릭(모바일은 길게 눌러 새 탭)해 주세요.' : `새 탭이 막혀 있어요. 링크를 휠 클릭(모바일은 길게 눌러 새 탭)하거나 ${link.href} 로 이동해 주세요.`);
+  });
+}
+function copyText(value: string): boolean {
+  const field = document.createElement('textarea');
+  field.value = value; field.setAttribute('readonly', ''); field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.append(field); field.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  field.remove();
+  if (!ok) void navigator.clipboard?.writeText(value).catch(() => {});
+  return ok;
 }

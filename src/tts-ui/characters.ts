@@ -12,7 +12,7 @@ import { unifiedSessionIdForCharacter } from '../core/util/text';
 import { getCharRefAssetPreviewUrl } from '../services/char-ref-module';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import type { CharacterRecord } from '../core/types';
-import { el, input, val, set, text, list, gender, genderLabel, esc, on, dialog, button, persist, audition } from './common';
+import { el, input, val, set, text, list, gender, genderLabel, esc, on, dialog, button, persist, listenButton, auditionButton } from './common';
 import type { TtsLibrary } from './library';
 
 export class TtsCharacters {
@@ -42,7 +42,7 @@ export class TtsCharacters {
       const tile = document.createElement('div'); tile.className = 'char-card' + (selected ? ' tile-selected' : ''); tile.tabIndex = 0; tile.setAttribute('role','button');tile.setAttribute('aria-pressed',String(selected));tile.setAttribute('aria-label',`${c.name} · ${this.batch?'음성 배정 대상 선택':'선택 후 다시 누르면 편집'}`);
       const voiceName=voice?.name || (c.fishId ? '직접 지정 음성' : '음성 미지정');
       tile.innerHTML = `${this.batch?`<span class="char-batch-check">${selected?'✓':''}</span>`:''}<div class="char-triggers">${c.triggers.map(t => `<span>${esc(t)}</span>`).join('')}</div><div class="char-head"><div>${c.scope==='global'?'<small class="scope-label">글로벌</small>':''}<b>${esc(c.name)}</b><span class="char-voice-label" title="${esc(voiceName)}">${esc(voiceName)}</span></div></div>`;
-      const listen = button('▶ 듣기', () => audition(c.fishId || voice?.fishId || '', c.gain)); listen.className = 'tile-audition'; tile.append(listen);
+      const listen = listenButton(() => ({ fishId: c.fishId || voice?.fishId || '', gain: c.gain })); listen.classList.add('tile-audition'); tile.append(listen);
       const match = resolveTtsSpeaker(c.name,refRoster,'global') || c.triggers.map(t => resolveTtsSpeaker(t,refRoster,'global')).find(Boolean);
       const reference = match && this.references.find(r=>r.id===match.id);
       if (reference) { tile.dataset.ref = reference.example_hash || reference.ref_hash || ''; tile.style.backgroundSize='cover'; tile.style.backgroundPosition='center'; this.visibility.observe(tile); }
@@ -110,7 +110,7 @@ export class TtsCharacters {
     on('character-form',done,'submit'); on('character-done',done);
     el('character-dialog').addEventListener('close',()=>{void this.flushSave();});
     on('delete-character', async () => { if (!this.draft || !confirm(`${this.draft.name} 캐릭터를 삭제할까요?`)) return; ttsData().characters = ttsData().characters.filter(c => c.id !== this.draft!.id); await persist(); dialog('character-dialog',false); this.render(); });
-    on('test-character-editor', () => audition(fishVoiceId(val('c-id')),Number(val('c-gain'))));
+    auditionButton(el<HTMLButtonElement>('test-character-editor'), () => ({ fishId: fishVoiceId(val('c-id')), gain: Number(val('c-gain')) }));
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
     on('choose-character-voice', () => { this.draft = this.read(); dialog('character-dialog',false); this.library.pickVoice(voice => { this.tab('tts-characters'); dialog('character-dialog'); this.choose(voice); }); });
     for (const engine of ['llm','jev'] as const) on(`recommend-${engine}`, async () => {

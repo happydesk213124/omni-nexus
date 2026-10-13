@@ -68,6 +68,8 @@ export interface TtsSettings {
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';
     language: string;
+    /** '' follows dialogue, 'original' keeps narration untranslated. */
+    narrationLanguage: string;
     url: string;
     key: string;
     llm: LlmSettings;

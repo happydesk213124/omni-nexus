@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 test('restricted SafeDOM host binds module buttons, honors five slots, stop interlock and cross-message cache',async()=>{
-  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';Object.assign(window,{cueLineKey,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
+  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';Object.assign(window,{cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage(),errors=[];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
@@ -54,13 +54,18 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(await page.locator('[x-omnitts-viewer]').isVisible(),true,'existing chat works on startup without leaving and reopening it');
     assert.equal(await page.evaluate(()=>window.omniTts.notice),'','temporarily unavailable chat IDs are normal startup state');
     assert.equal(await page.locator('[x-omnitts-toast]').isVisible(),false,'no toast is shown before a real synthesis request');
-    await page.evaluate(()=>{document.querySelector('.default-chat-screen').innerHTML=DOMPurify.sanitize(window.messages.map((m,i)=>`<div class="regex-quote-block" style="height:50px"><span>“대사 ${i}.”</span><button data-omnitts-message="${i}" data-omnitts-line="1" data-omnitts-source="${window.cueLineKey(m.data)}" data-omnitts-kind="dialogue" data-omnitts-play="1">▶</button></div>`).join(''));});
+    // Module output: no ids, only a zero-width control after each rendered line.
+    const tail=kind=>`<span data-omnitts-tail="1"><button type="button" data-omnitts-play="1" data-omnitts-kind="${kind}" title="재생" aria-label="재생"></button></span>`;
+    await page.evaluate(([dialogue,narration])=>{const style=document.createElement('style');style.textContent=window.TTS_MODULE_CSS;document.head.append(style);document.querySelector('.default-chat-screen').innerHTML=DOMPurify.sanitize(window.messages.map((m,i)=>`<div class="risu-chat" data-chat-index="${i}" data-chat-id="${m.chatId}"><div class="regex-quote-block" style="height:50px">“${m.data.match(/"(.*)"/)[1]}”${dialogue}</div>${i===2?`<div>[상태] 체력 99${narration}</div>`:''}</div>`).join(''));},[tail('dialogue'),tail('narration')]);
     await page.waitForFunction(()=>window.requests.length===5,undefined,{timeout:12000});
+    await page.waitForFunction(()=>document.querySelector('[data-chat-index="2"] [data-omnitts-kind="narration"]').getAttribute('x-omnitts-dead')==='1');
+    assert.equal(await page.locator('[data-chat-index="2"] [data-omnitts-kind="narration"]').isVisible(),false,'a line without a source segment keeps no visible control');
+    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('[data-omnitts-kind="dialogue"]')].every(n=>n.getAttribute('x-omnitts-dead')==='0')),true,'every rendered cue binds to its own source line');
     assert.equal(await page.evaluate(()=>window.omniTts.list.length),1,'the viewer knows the visible message before a dialogue is clicked');
     await page.locator('[data-tts-control="play"]').click();
     await page.waitForFunction(()=>window.omniTts.player.status==='loading');
     const controlsBefore=await page.evaluate(()=>({narration:window.ttsData().settings.narration,continuous:window.ttsData().settings.continuous,volume:window.ttsData().settings.volume,minimized:window.ttsData().settings.minimized}));
-    await page.locator('[data-omnitts-play]').nth(0).click();await page.locator('[data-omnitts-play]').nth(1).click();
+    await page.locator('[data-omnitts-kind="dialogue"]').nth(0).click();await page.locator('[data-omnitts-kind="dialogue"]').nth(1).click();
     await page.evaluate(()=>window.omniTts.stop());
     await page.evaluate(()=>{window.pending.splice(0).forEach(resolve=>resolve());});
     await page.waitForFunction(()=>window.requests.length>=7,undefined,{timeout:12000});
@@ -72,7 +77,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.evaluate(()=>window.omniTts.report(''));
     assert.equal(await page.evaluate(()=>window.peak),5);assert.deepEqual(await page.evaluate(()=>window.played),[]);
     const before=await page.evaluate(()=>window.requests.length);
-    await page.locator('[data-omnitts-play]').nth(7).click();await page.waitForFunction(()=>window.played.length===1,undefined,{timeout:12000});
+    await page.locator('[data-omnitts-kind="dialogue"]').nth(7).click();await page.waitForFunction(()=>window.played.length===1,undefined,{timeout:12000});
     assert.equal(await page.evaluate(()=>window.requests.length),before);
     assert.deepEqual(await page.evaluate(()=>({narration:window.ttsData().settings.narration,continuous:window.ttsData().settings.continuous,volume:window.ttsData().settings.volume,minimized:window.ttsData().settings.minimized})),controlsBefore,'chat clicks must not execute viewer controls registered on the document');
     assert.ok(await page.evaluate(()=>window.apiEvents.length)<15,'listeners must not grow with dialogue count or viewer repaint');
@@ -106,6 +111,13 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.deepEqual(await page.locator('[data-tts-header]').boundingBox(),beforeWheel,'list scrolling leaves the header in place');
     assert.equal(await page.locator('[x-omnitts-viewer]').evaluate(n=>n.scrollTop),0,'the viewer itself does not scroll with its list');
     assert.equal(await page.evaluate(()=>document.scrollingElement.scrollTop),0,'list wheel does not scroll chat');
+    const scrolled=await scroll.evaluate(n=>n.scrollTop);
+    await page.locator('[data-tts-list-scroll] [data-tts-control="line-12"]').click();
+    await page.waitForFunction(()=>window.omniTts.current?.segment.id==='12');
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('[data-tts-list-scroll]').evaluate(n=>n.scrollTop),scrolled,'picking a line keeps the list where it was');
+    assert.equal(await page.locator('[data-tts-control="line-12"]').evaluate(n=>n.style.background),'rgba(113, 50, 245, 0.6)','the picked line is highlighted in place');
+    await page.evaluate(()=>window.omniTts.stop());
     await page.locator('[data-tts-control="list"]').click();
     const oldRect=await page.locator('[x-omnitts-viewer]').boundingBox();
     const header=await page.locator('[data-tts-header]').boundingBox();
@@ -125,33 +137,38 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.locator('[data-tts-control="minimize"]').click();
     await page.waitForFunction(()=>!window.ttsData().settings.minimized);
     const moduleWrites=await page.evaluate(()=>window.moduleWrites);
-    await page.evaluate(async()=>{
+    await page.evaluate(async tail=>{
       await window.updateTtsSettings({prefetch:0,narration:false,narrationVoice:window.ttsData().voices[0].key});
       const m={role:'char',chatId:'narration',data:'햇빛이 도서관을 비추었다.'};window.messages.push(m);
-      const parent=document.createElement('div');parent.innerHTML=DOMPurify.sanitize(`<button data-omnitts-message="8" data-omnitts-line="1" data-omnitts-source="${window.cueLineKey(m.data)}" data-omnitts-kind="narration" data-omnitts-play="1">▶</button>`);
-      document.querySelector('.default-chat-screen').append(parent);window.narrationNode=parent.firstElementChild;
-    });
-    const narrationButton=page.locator('[data-omnitts-kind="narration"]');
-    await page.waitForFunction(()=>window.narrationNode.style.display==='none');
+      const parent=document.createElement('div');parent.innerHTML=DOMPurify.sanitize(`<div class="risu-chat" data-chat-index="8"><p><em>햇빛이</em> 도서관을 비추었다.${tail}</p></div>`);
+      document.querySelector('.default-chat-screen').append(parent);window.narrationNode=parent.querySelector('[data-omnitts-play]');
+    },tail('narration'));
+    const narrationButton=page.locator('[data-omnitts-kind="narration"]:not([x-omnitts-dead="1"])');
+    const shown=()=>window.narrationNode.getAttribute('x-omnitts-bound')&&getComputedStyle(window.narrationNode).display!=='none';
+    await page.waitForFunction(()=>document.body.getAttribute('x-omnitts-narration')==='off'&&window.narrationNode.getAttribute('x-omnitts-bound'));
+    assert.equal(await page.evaluate(()=>getComputedStyle(window.narrationNode).display),'none','OFF hides narration with one root attribute');
     assert.equal(await narrationButton.count(),1,'OFF retains the module button in DOM on its first scan');
     await page.evaluate(()=>window.updateTtsSettings({narration:true}));
-    await page.waitForFunction(()=>window.narrationNode.style.display==='inline-flex');
+    await page.waitForFunction(shown);
     assert.equal(await narrationButton.evaluate(n=>n===window.narrationNode),true,'ON restores the same button without rerendering chat');
     await narrationButton.click();await page.waitForFunction(()=>window.omniTts.player.status==='loading');
     await page.evaluate(()=>window.updateTtsSettings({narration:false}));
-    await page.waitForFunction(()=>window.narrationNode.style.display==='none'&&window.omniTts.player.status==='idle');
+    await page.waitForFunction(()=>getComputedStyle(window.narrationNode).display==='none'&&window.omniTts.player.status==='idle');
     const playedBefore=await page.evaluate(()=>window.played.length);
     await page.evaluate(()=>window.pending.splice(0).forEach(resolve=>resolve()));
     await page.waitForFunction(()=>window.omniTts.queue.status.active===0);
     assert.equal(await page.evaluate(()=>window.played.length),playedBefore,'OFF cancels narration waiting for Fish bytes');
     await page.evaluate(async()=>{await window.updateTtsSettings({narration:true});await window.updateTtsSettings({narration:false});await window.updateTtsSettings({narration:true});});
-    await page.waitForFunction(()=>window.narrationNode.style.display==='inline-flex');
+    await page.waitForFunction(shown);
     await narrationButton.click();await page.waitForFunction(()=>window.omniTts.player.status==='playing');
+    await page.waitForFunction(()=>window.narrationNode.getAttribute('x-omnitts-state')==='playing');
+    assert.equal(await page.evaluate(()=>getComputedStyle(window.narrationNode).animationName),'omnitts-pulse','the line being read visibly plays');
     await page.locator('[data-tts-control="narration"]').click();
-    await page.waitForFunction(()=>window.narrationNode.style.display==='none'&&window.omniTts.player.status==='idle');
+    await page.waitForFunction(()=>getComputedStyle(window.narrationNode).display==='none'&&window.omniTts.player.status==='idle');
+    await page.waitForFunction(()=>window.narrationNode.getAttribute('x-omnitts-state')==='');
     assert.equal(await page.locator('[data-omnitts-kind="dialogue"]').first().isVisible(),true,'dialogue controls stay visible');
     await page.evaluate(()=>window.updateTtsSettings({narration:true}));
-    await page.waitForFunction(()=>window.narrationNode.style.display==='inline-flex');
+    await page.waitForFunction(shown);
     assert.equal(await page.evaluate(()=>window.moduleWrites),moduleWrites,'narration toggles never write or reinstall the module');
     await page.evaluate(()=>{document.querySelector('.default-chat-screen').remove();});
     await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');

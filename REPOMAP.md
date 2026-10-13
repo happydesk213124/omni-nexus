@@ -134,6 +134,9 @@ main.ts                     entry: builds the bridge, publishes globals
 | 설정창 크롬 / TTS 탭 afterPaint | `src/settings-ux/` — CSS inject + `__INLAY_SETTINGS_UX__.afterPaint` |
 | 대시보드 설정 프리셋 | `src/services/settings-presets.ts`, `src/domain/settings-preset.ts`, `src/settings-ux/settings-presets.ts` — 일반 설정 + 노트 4종, 기존 스타일/연결 유지 |
 | 박제 후 읽기 | `src/services/tts.ts` (`card.tts_*`) |
+| TTS 채팅 재생 버튼 (OmniTTS 모듈) | `src/domain/tts/module.ts` — display regexes only, all ordered after every other module; never edit the reply before other modules see it. Controls are zero-width so wrapping never changes |
+| TTS 버튼 ↔ 원문 줄 연결 | `src/domain/tts/anchors.ts` (rendered line text → parsed segment), `src/tts-ui/host-chat.ts` (bind, dead/narration/playing attributes) |
+| TTS 설정 도움말 | `src/tts-ui/help.ts` — keyed by control id, served through `previewHelp` |
 | 캐릭터 LLM 명령수정 / 헤더 참고 | `src/char-command/` — `mount.ts`, `src/domain/character/command-edit.ts` |
 | 이 세션 작가 노트 | `src/services/session-author-note.ts`, tagger inject in `src/services/tagger.ts` |
 | Reaching the Risu host API | `src/core/host.ts` — the only place that touches `globalThis.risuai` |
