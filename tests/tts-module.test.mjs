@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 import { chromium } from 'playwright';
 
-const compiled = await build({stdin:{contents:"export * from './src/domain/tts/module';export * from './src/domain/tts/anchors';export * from './src/domain/tts/segment';export * from './src/domain/tts/filter';export * from './src/storage/tts-module';export * from './src/domain/message-controls';export * from './src/domain/inray-display';export * from './src/config/tts-defaults';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
+const compiled = await build({stdin:{contents:"export * from './src/domain/tts/module';export * from './src/domain/tts/anchors';export * from './src/domain/tts/segment';export * from './src/domain/tts/filter';export * from './src/storage/tts-module';export * from './src/domain/message-controls';export * from './src/domain/inray-display';export * from './src/config/tts-defaults';export {normalizeTtsSettings} from './src/storage/tts-store';export * from './src/domain/tts/illustration';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const external = JSON.parse(readFileSync('tests/fixtures/tts-external-display.json','utf8'));
 const status = JSON.parse(readFileSync('tests/fixtures/tts-dd-status.json','utf8')).data;
@@ -116,6 +116,50 @@ test('single spoken characters and literal exclusions never play, and excluded l
   assert.deepEqual(bound(html,source,terms).filter(Boolean).map(s=>[s.id,s.text]),[['2','안녕.'],['4','나무가 흔들렸다.'],['5','Hello.']]);
   const escaped=api.ttsModule({...api.ttsDefaults(),excludeText:'[[note]], ]=], "quoted", a|b, (x)'});
   assert.deepEqual(kinds(apply('하린: “[[note]] 안내.”\n그는 a|b 를 봤다.\n하린: “다른 말.”',escaped.regex)),['dialogue'],'regex metacharacters in terms are literal');
+});
+
+test('a spoken line split into several quote boxes binds once, to the box that ends it',()=>{
+  const sources=[`Jet (curious): "어디 보자... '드릴 히어로 신선했다 ㅋㅋㅋ', '맥스 덤프트럭 등장은 솔직히 반칙 아님?', '저 하얀 애는 누구임? 신캐임? 멍때리는 거 개귀엽네'..."`,`하린: "나무, '피떡', "행복", "분영" "`,`하린: '행복, "라면", '치킨', 피자'`];
+  for(const source of sources){
+    const [segment]=api.parseTtsMessage(source);
+    assert.equal(segment?.kind,'dialogue',source);
+    assert.match(segment.text,/^[^"'“”]/,'the outermost quotes are the speech boundary');
+    for(const toggles of [{toggle_ban_CSS:0,toggle_cuevisible:0},{toggle_ban_CSS:1,toggle_cuevisible:1}]){
+      const html=apply(source,[...external,...module.regex],toggles);
+      const bound2=bound(html,source);
+      assert.deepEqual(bound2.filter(Boolean).map(s=>s.text),[segment.text],'exactly one control plays the whole line: '+source);
+      assert.ok(bound2.at(-1),'the final box carries the playable control');
+    }
+  }
+});
+
+test('symbol-only lines are never voiced; brackets are stripped only from what Fish hears',()=>{
+  for(const text of ['[00:10… 00:09… 00:08…]','12:30 - 13:45','!!! ??? ...','[1/3] (2)']){
+    assert.deepEqual(api.parseTtsMessage(text),[],text);
+    assert.deepEqual(kinds(apply(text,module.regex)),[],text);
+  }
+  assert.equal(api.parseTtsMessage('[00:00 - SHOOTING FINISHED]').length,1,'letters keep the line');
+  assert.equal(api.ttsSpokenText('[00:00 - SHOOTING FINISHED]',true),'00:00 - SHOOTING FINISHED');
+  assert.equal(api.ttsSpokenText('[00:00 - SHOOTING FINISHED]',false),'[00:00 - SHOOTING FINISHED]');
+  assert.equal(api.ttsSpokenText('【시스템】 안내 [끝]',true),'시스템 안내 끝');
+});
+
+test('status-panel exclusions are default, merged once into older saves, then left to the user',()=>{
+  const terms=['┣','§','::','DD_','✨Upcoming'];
+  assert.deepEqual(api.ttsExcludeTerms(api.ttsDefaults().excludeText),terms);
+  const old=api.normalizeTtsSettings({excludeText:'상태창'});
+  assert.deepEqual(api.ttsExcludeTerms(old.excludeText),['상태창',...terms],'existing terms stay first');
+  assert.equal(old.excludeSeed,1);
+  assert.equal(api.normalizeTtsSettings({...old,excludeText:'상태창'}).excludeText,'상태창','a user who removed the defaults keeps them removed');
+  assert.deepEqual(api.ttsExcludeTerms('a,\nb\nc, a'),['a','b','c'],'one term per line works in the textarea too');
+  for(const line of ['┣ 체력 99','JET::120','DD_STATUS 표시','✨Upcoming: 다음 화'])assert.deepEqual(api.parseTtsMessage(line,terms),[],line);
+});
+
+test('illustration speech is read from the caption tail like the shot-tag editor',()=>{
+  assert.equal(api.illustrationSpeech('1girl, smile, speechbubble, korean text:안녕, 반가워!'),'안녕, 반가워!','commas inside the line are kept');
+  assert.equal(api.illustrationSpeech('boy, thought bubble, japanese text:こんにちは'),'こんにちは');
+  assert.equal(api.illustrationSpeech('girl, 1.2::speechbubble, english text:Stop.::'),'Stop.');
+  assert.equal(api.illustrationSpeech('girl, smile, looking at viewer'),'');
 });
 
 test('changed active module refreshes cached display code without touching other modules or chat',async()=>{
@@ -232,7 +276,7 @@ test('incomplete delimiters and long streaming tails do not run expanding backtr
   assert.ok(performance.now()-before<4000);
 });
 
-test('narration OFF and dead controls are hidden by CSS alone; the module output does not change',async()=>{
+test('narration OFF does not change the module; hiding is left to the plugin',async()=>{
   const off=api.ttsModule({...api.ttsDefaults(),narration:false});
   assert.deepEqual(off,module,'narration visibility must not be baked into module output');
   const html=apply('도서관에 햇빛이 내려앉았다.\n하린 (happy): "안녕하세요."',off.regex);
@@ -244,11 +288,11 @@ test('narration OFF and dead controls are hidden by CSS alone; the module output
     assert.equal(await button.evaluate(n=>getComputedStyle(n).color),'rgb(147, 197, 253)');
     const normal=await button.evaluate(n=>getComputedStyle(n).backgroundColor);await button.hover();
     assert.notEqual(await button.evaluate(n=>getComputedStyle(n).backgroundColor),normal,'blue button has hover feedback');
-    await page.evaluate(()=>document.body.setAttribute('x-omnitts-narration','off'));
-    assert.equal(await button.isVisible(),false,'one root attribute hides narration across re-renders');
+    // Visibility is the plugin's job (inline style on each control), never a module rule.
+    assert.doesNotMatch(off.backgroundEmbedding,/x-omnitts-narration|x-omnitts-dead|display:none/);
+    await button.evaluate(n=>n.style.display='none');
+    assert.equal(await button.isVisible(),false,'a plugin-set inline style hides the control');
     assert.equal(await page.locator('[data-omnitts-kind="dialogue"]').isVisible(),true);
-    await page.locator('[data-omnitts-kind="dialogue"]').evaluate(n=>n.setAttribute('x-omnitts-dead','1'));
-    assert.equal(await page.locator('[data-omnitts-kind="dialogue"]').isVisible(),false,'unbound controls are hidden');
   } finally {await browser.close();}
 });
 

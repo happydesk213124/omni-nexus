@@ -180,6 +180,8 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_session_author_note_presets` | reusable session-note phrases |
 | `onx_char_command_presets` | LLM 명령수정 phrase presets (legacy device row; live list is `card.command_presets`) |
 | `onx_settings_presets` | Dashboard settings presets, hidden examples and last applied id; no style collections or credentials. |
+| `omnitts.data` | TTS settings, voice library, folders and **global** TTS characters (`src/storage/tts-store.ts`). |
+| bot lorebook entry `omni.nexus.tts` | A bot's own TTS characters (`src/storage/tts-roster.ts`): disabled, empty key, never injected; same write queue as `omni.nexus.data.global`. 1.2.0 per-chat rows migrate here when the bot is opened. |
 
 **Keys are frozen.** Renaming one silently orphans every existing user's data.
 The same is true of `//@name omni-nexus` in `vite.config.ts` — Risu

@@ -61,7 +61,7 @@ test('automatic JEV assignment uses lore directly, persists once and reuses the 
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[{key:'Sora',comment:'Sora',content:'Sora is a calm young man.'}],getDatabase:async()=>({personas:[]}),runLLMModel:async()=>{throw Error('JEV must not require LLM credentials');},nativeFetch:async(_url,options)=>{calls++;const body=JSON.parse(options.body);assert.match(JSON.stringify(body.questions[0].instructions.sources),/calm young man/);return {ok:true,json:async()=>({answers:{0:{choice:'1001'}}})};}};
   try{
     const data=await api.loadTtsData();data.settings.enabled=true;data.settings.selector='jev';data.settings.jev.key='fake';data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male','calm'],folder:''}];data.characters=[];
-    const context={scope:'jev-auto',characterId:'auto-char',chatId:'auto-chat',sessionId:'auto-session',character:{},chat:{},messages:[]};
+    const context={scope:'jev-auto',rosterScope:'bot:auto-char',characterId:'auto-char',chatId:'auto-chat',sessionId:'auto-session',character:{},chat:{},messages:[]};
     await api.ensureTtsSpeakers(context,['Sora'],()=>true);
     assert.equal(data.characters.length,1);assert.equal(data.characters[0].fishId,voiceId);assert.equal(data.characters[0].name,'Sora');assert.ok(saved.has('omnitts.data'));
     await api.ensureTtsSpeakers(context,['Sora'],()=>true);assert.equal(calls,1);
@@ -74,7 +74,7 @@ test('LLM auto-fill assigns a supplied preset and known speakers require no repe
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[{key:'하린',content:'하린은 차분한 청년 여성이다.'}],getDatabase:async()=>({personas:[]}),runLLMModel:async options=>{calls++;const data=JSON.parse(options.messages.at(-1).content);assert.deepEqual(data.requested_names,['하린']);assert.match(JSON.stringify(data.sources),/차분한/);return {success:true,content:'[[-1,"하린","","하린",["Harin"],["청년","차분한"],"female",1]]'};}};
   try{
     const data=api.ttsData();data.settings.selector='llm';data.settings.enabled=true;data.characters=[];data.voices=[{key:'female',name:'voice',fishId:voiceId,gender:'female',tags:['female','calm'],folder:''}];
-    const context={scope:'llm-auto',characterId:'llm-char',chatId:'llm-chat',sessionId:'llm-session',character:{},chat:{},messages:[]};
+    const context={scope:'llm-auto',rosterScope:'bot:llm-char',characterId:'llm-char',chatId:'llm-chat',sessionId:'llm-session',character:{},chat:{},messages:[]};
     await api.ensureTtsSpeakers(context,['하린'],()=>true);assert.equal(data.characters[0].fishId,voiceId);assert.deepEqual(data.characters[0].tags,['청년','차분한']);
     await api.ensureTtsSpeakers(context,['하린'],()=>true);assert.equal(calls,1);
   }finally{delete globalThis.risuai;}

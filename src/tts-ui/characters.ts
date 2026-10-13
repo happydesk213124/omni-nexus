@@ -1,6 +1,6 @@
 import type { TtsCharacter, TtsVoice } from '../core/tts-types';
 import { ttsData, saveTtsData } from '../storage/tts-store';
-import { blankTtsCharacter } from '../services/tts-characters';
+import { blankTtsCharacter, deleteTtsCharacters } from '../services/tts-characters';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { mergeTtsCharacter } from '../domain/tts/identity';
 import { fishVoiceId } from '../domain/tts/library';
@@ -28,7 +28,7 @@ export class TtsCharacters {
   private saveRevision = 0;
   constructor(private library: TtsLibrary, private tab: (name: string) => void) {}
   dispose(): void { this.visibility?.disconnect(); void this.flushSave(); }
-  visible(): TtsCharacter[] { const q = val('char-search').toLocaleLowerCase(); return ttsData().characters.filter(c => (c.scope === 'global' || c.scope === this.context?.scope) && (val('char-scope-filter') === 'all' || c.scope === (val('char-scope-filter') === 'global' ? 'global' : this.context?.scope)) && [c.name, ...c.triggers, ...c.tags].some(s => s.toLocaleLowerCase().includes(q))); }
+  visible(): TtsCharacter[] { const q = val('char-search').toLocaleLowerCase(); return ttsData().characters.filter(c => (c.scope === 'global' || c.scope === this.context?.rosterScope) && (val('char-scope-filter') === 'all' || c.scope === (val('char-scope-filter') === 'global' ? 'global' : this.context?.rosterScope)) && [c.name, ...c.triggers, ...c.tags].some(s => s.toLocaleLowerCase().includes(q))); }
   render(): void {
     const root = el('character-list'); if (!root) return; root.replaceChildren();
     this.visibility?.disconnect();
@@ -45,15 +45,19 @@ export class TtsCharacters {
       const listen = listenButton(() => ({ fishId: c.fishId || voice?.fishId || '', gain: c.gain })); listen.classList.add('tile-audition'); tile.append(listen);
       const match = resolveTtsSpeaker(c.name,refRoster,'global') || c.triggers.map(t => resolveTtsSpeaker(t,refRoster,'global')).find(Boolean);
       const reference = match && this.references.find(r=>r.id===match.id);
-      if (reference) { tile.dataset.ref = reference.example_hash || reference.ref_hash || ''; tile.style.backgroundSize='cover'; tile.style.backgroundPosition='center'; this.visibility.observe(tile); }
+      // The reference image identifies the character best; an example look is the fallback.
+      if (reference) { tile.dataset.ref = reference.ref_hash || reference.example_hash || ''; tile.style.backgroundSize='cover'; tile.style.backgroundPosition='center'; this.visibility.observe(tile); }
       const act = (event:MouseEvent|KeyboardEvent) => { if (!ttsData().settings.enabled) return; if (this.batch) {const from=visible.findIndex(c=>c.id===this.anchor),to=visible.indexOf(c);if(event.shiftKey&&from>=0)visible.slice(Math.min(from,to),Math.max(from,to)+1).forEach(c=>this.selected.add(c.id));else{if (this.selected.has(c.id)) this.selected.delete(c.id); else this.selected.add(c.id);this.anchor=c.id;}this.render();} else if(this.picked===c.id)this.edit(c);else{this.picked=c.id;this.render();} };
       tile.addEventListener('click', event => { if (!(event.target as Element).closest('.tile-audition')) act(event); }); tile.addEventListener('keydown', event => { if (event.target===tile&&['Enter',' '].includes(event.key)){event.preventDefault();act(event);} }); root.append(tile);
     }
-    el('character-jev-bar').hidden = !this.batch; text('character-jev-count',`선택 중 · ${this.selected.size}명`); input('character-jev-apply').disabled = !this.selected.size;
-    el('batch-jev-characters').setAttribute('aria-pressed',String(this.batch));input('character-jev-clear').disabled=!this.selected.size;
+    el('character-batch-tools').hidden = !this.batch;
+    text('character-jev-count',this.batch?`선택 ${this.selected.size}명`:`캐릭터 ${visible.length}명`);
+    text('batch-jev-characters',this.batch?'선택 끝내기':'선택 모드');
+    for (const id of ['character-jev-apply','character-delete-selected','character-jev-clear']) input(id).disabled = !this.selected.size;
+    el('batch-jev-characters').setAttribute('aria-pressed',String(this.batch));
   }
   edit(character?: TtsCharacter): void {
-    this.draft = structuredClone(character || blankTtsCharacter(this.context?.scope || 'global'));
+    this.draft = structuredClone(character || blankTtsCharacter(this.context?.rosterScope || 'global'));
     const c = this.draft;
     for (const [id, value] of Object.entries({ 'c-name':c.name, 'c-gender':genderLabel(c.gender), 'c-triggers':c.triggers.join(', '), 'c-tags':c.tags.join(', '), 'c-surname':c.surname, 'c-given_name':c.givenName, 'c-surname_variants':c.surnameAliases.join(', '), 'c-given_name_variants':c.givenAliases.join(', '), 'c-id':c.fishId, 'c-scope':c.scope === 'global' ? 'global' : 'chat', 'c-gain':c.gain, 'c-lock':String(c.fixed) })) set(id,value);
     text('c-gain-value',`${c.gain} dB`); el('character-voice-suggestions').replaceChildren(); el('character-voice-suggestions').hidden = true;
@@ -64,7 +68,7 @@ export class TtsCharacters {
   private read(): TtsCharacter {
     if (!this.draft) throw new Error('편집할 캐릭터가 없습니다.');
     const fishId=fishVoiceId(val('c-id')),voice=ttsData().voices.find(v=>v.key===this.draft?.voiceKey&&v.fishId===fishId)||ttsData().voices.find(v=>v.fishId===fishId);
-    return { ...this.draft, name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:gender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.scope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true' };
+    return { ...this.draft, name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:gender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true' };
   }
   private save(commitIdentity = false): boolean {
     if (!this.draft || !ttsData().settings.enabled) return false;
@@ -109,7 +113,7 @@ export class TtsCharacters {
     const done = () => { if (this.save(true)) { dialog('character-dialog',false); void this.flushSave(); } };
     on('character-form',done,'submit'); on('character-done',done);
     el('character-dialog').addEventListener('close',()=>{void this.flushSave();});
-    on('delete-character', async () => { if (!this.draft || !confirm(`${this.draft.name} 캐릭터를 삭제할까요?`)) return; ttsData().characters = ttsData().characters.filter(c => c.id !== this.draft!.id); await persist(); dialog('character-dialog',false); this.render(); });
+    on('delete-character', async () => { if (!this.draft || !confirm(`${this.draft.name} 캐릭터를 삭제할까요?`)) return; clearTimeout(this.saveTimer); this.saveTimer = undefined; deleteTtsCharacters([this.draft]); this.draft = undefined; await persist(); dialog('character-dialog',false); this.render(); });
     auditionButton(el<HTMLButtonElement>('test-character-editor'), () => ({ fishId: fishVoiceId(val('c-id')), gain: Number(val('c-gain')) }));
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
     on('choose-character-voice', () => { this.draft = this.read(); dialog('character-dialog',false); this.library.pickVoice(voice => { this.tab('tts-characters'); dialog('character-dialog'); this.choose(voice); }); });
@@ -122,7 +126,12 @@ export class TtsCharacters {
     on('batch-jev-characters', () => { this.batch = !this.batch; this.selected.clear(); el('character-jev-folder').innerHTML = `<option value="*">전체 폴더</option><option value="">미분류</option>${ttsData().folders.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}`; this.render(); });
     on('character-jev-all', () => { this.visible().forEach(c => this.selected.add(c.id)); this.render(); });
     on('character-jev-clear', () => { this.selected.clear(); this.render(); });
-    on('character-jev-cancel', () => { this.batch = false; this.selected.clear(); this.render(); });
+    on('character-delete-selected', async () => {
+      const doomed = ttsData().characters.filter(c => this.selected.has(c.id));
+      if (!doomed.length || !confirm(`선택한 캐릭터 ${doomed.length}명을 삭제할까요?\n${doomed.map(c => c.name).join(', ')}`)) return;
+      deleteTtsCharacters(doomed);
+      this.selected.clear(); this.batch = false; await persist(); this.render();
+    });
     on('character-jev-apply', async () => { const chars = ttsData().characters.filter(c => this.selected.has(c.id)), before = JSON.stringify(chars), folder = val('character-jev-folder');
       text('character-jev-count',`${chars.length}명 추천 중…`);
       const result = await selectTtsVoices(chars,ttsData().voices.filter(v => folder === '*' || v.folder === folder),ttsData().settings,'jev');

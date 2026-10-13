@@ -12,7 +12,7 @@ import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type H
 import { withTtsAudio } from './activation';
 import { installTtsViewer } from './host-viewer';
 
-interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; kind?: string; state?: string }
+interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; state?: string }
 function requests(context: TtsChatContext, index: number): TtsRequest[] {
   const message = context.messages[index]; if (!message || message.role !== 'char') return [];
   const source = String(message.data || '');
@@ -34,13 +34,20 @@ export async function installTtsHost(): Promise<void> {
   // Lines a module control is actually shown for; status panels other modules
   // turned into markup never get a control and so never join the playlist.
   const anchored = new Map<number,TtsRequest[]>();
-  const body = await doc.querySelector('body');
-  let narrationShown: boolean | undefined, stateTail: Promise<void> = Promise.resolve();
-  // One root attribute survives every chat re-render, so OFF never flashes buttons.
-  const syncNarration = async () => {
-    const shown = ttsData().settings.narration;
-    if (narrationShown === shown || disposed) return;
-    narrationShown = shown; await body?.setAttribute('x-omnitts-narration', shown ? 'on' : 'off');
+  let visibilityTail: Promise<void> = Promise.resolve(), stateTail: Promise<void> = Promise.resolve();
+  // The plugin owns visibility: unbound controls and narration while it is OFF
+  // are hidden on the node itself, never by a module rule.
+  const hidden = (b: Binding) => !b.illustration && (!!b.dead || (b.narration && !ttsData().settings.narration));
+  const syncVisibility = (only?: Binding): Promise<void> => {
+    visibilityTail = visibilityTail.catch(() => {}).then(async () => {
+      for (const b of only ? [only] : bindings.values()) {
+        if (disposed) return;
+        const hide = hidden(b);
+        if (b.hidden === hide) continue;
+        b.hidden = hide; await b.node.setStyle('display', hide ? 'none' : '');
+      }
+    });
+    return visibilityTail;
   };
   const syncState = (): Promise<void> => {
     stateTail = stateTail.catch(() => {}).then(async () => {
@@ -97,7 +104,7 @@ export async function installTtsHost(): Promise<void> {
   const scanOnce = async () => {
     try {
       if (disposed || !ttsData().settings.enabled) return;
-      await refreshViewer(); await syncNarration();
+      await refreshViewer();
       const context = await currentTtsContext().catch(()=>null); if(!context){bootstrap();return;} omniTts.setContext(context);
       if (context.scope !== lastScope) { lastScope = context.scope; lastPrefetch = ''; }
       const live = new Set<string>(), nearby: {distance:number;request:TtsRequest}[] = [];
@@ -122,13 +129,15 @@ export async function installTtsHost(): Promise<void> {
             const key = await bind(nodes[j]!, false), b = bindings.get(key)!, request = list[matches[j] ?? -1];
             live.add(key);
             b.message = index; b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.source = request?.sourceKey || ''; b.narration = request?.segment.kind === 'narration';
-            const dead = !request, kind = b.narration ? 'narration' : 'dialogue';
-            if (b.dead !== dead) { b.dead = dead; await b.node.setAttribute('x-omnitts-dead', dead ? '1' : '0'); }
-            if (request && b.kind !== kind) { b.kind = kind; await b.node.setAttribute('x-omnitts-kind', kind); }
-            if (!request) continue;
+            b.dead = !request;
+            await syncVisibility(b);
+            if (!request || b.hidden) continue;
+            // A control inside a folded block (closed <details>, hidden pane)
+            // has no box: that line is not on screen and stays out of the list.
+            const rect = await b.node.getBoundingClientRect();
+            if (!rect.width || !rect.height) continue;
             shown.push(request);
-            if (b.narration && !ttsData().settings.narration) continue;
-            const rect = await b.node.getBoundingClientRect(); if (rect.width && rect.height) nearby.push({distance:Math.abs(rect.top+rect.height/2-height/2),request});
+            nearby.push({distance:Math.abs(rect.top+rect.height/2-height/2),request});
           }
           if (shown.length) anchored.set(index, shown);
         } finally { await releaseHost(chat); }
@@ -158,7 +167,7 @@ export async function installTtsHost(): Promise<void> {
     return scanTask;
   };
   const schedule = (delay=400) => { if (disposed || timer || !ttsData().settings.enabled) return; timer=setTimeout(()=>{timer=undefined;void requestScan();},delay); };
-  const observer = await host.createMutationObserver(records => { void (async()=>{try{ for (const record of await safeArray(records)) { const target=await record.getTarget();try{if (await target.matches('[x-omnitts-viewer],[x-omnitts-viewer] *,[x-omnitts-toast],[x-omnitts-toast] *')) continue; schedule();}finally{await releaseHost(target);await releaseHost(record);} } }finally{await releaseHost(records);} })().catch(error=>console.warn('OmniTTS observer',error)); });
+  const observer = await host.createMutationObserver(records => { void (async()=>{try{ for (const record of await safeArray(records)) { const target=await record.getTarget();try{if (await target.matches('[x-omnitts-viewer],[x-omnitts-viewer] *,[x-omnitts-toast],[x-omnitts-toast] *,[x-omnitts-shield]')) continue; schedule(200);}finally{await releaseHost(target);await releaseHost(record);} } }finally{await releaseHost(records);} })().catch(error=>console.warn('OmniTTS observer',error)); });
   await observer.observe(doc,{childList:true,subtree:true});
   const events:{type:string;id:string;options?:AddEventListenerOptions}[]=[];
   const listen=async(type:string,fn:(e:HostPoint)=>void,options?:AddEventListenerOptions)=>{events.push({type,id:await doc.addEventListener(type,fn,options),options});};
@@ -166,7 +175,7 @@ export async function installTtsHost(): Promise<void> {
     if(!allowed())return;
     const viewer=await doc.querySelector('[x-omnitts-viewer]');
     try{if(viewer&&await hitHost(viewer,e))return;}finally{await releaseHost(viewer);}
-    const rows=[...bindings.entries()].filter(([,b])=>!b.dead&&(!b.narration||ttsData().settings.narration)).flatMap(([key,b])=>[
+    const rows=[...bindings.entries()].filter(([,b])=>!hidden(b)).flatMap(([key,b])=>[
       ...(!hover||!b.illustration?[{key,node:b.node,play:b.play,illustration:b.illustration}]:[]),
       ...(!hover?b.chips.map((c,i)=>({key:key+':'+i,node:c.node,play:c.play,illustration:true})):[])
     ]);
@@ -181,7 +190,7 @@ export async function installTtsHost(): Promise<void> {
     void findHit(e,true).then(row=>{if(epoch!==inputEpoch)return;if(!row){hovered='';return;}if(hovered!==row.key){hovered=row.key;return row.play();}}).catch(report);
   });
   await listen('scroll',()=>schedule(),{capture:true,passive:true});
-  const unsubscribe=subscribeTts(()=>{void syncNarration().catch(error=>console.warn('OmniTTS narration visibility',error));lastPrefetch='';bootAttempts=0;schedule();});
+  const unsubscribe=subscribeTts(()=>{void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));lastPrefetch='';bootAttempts=0;schedule();});
   const unsubscribeState=omniTts.subscribe(()=>{void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
   const seen = new Map<string,string>();
   const output: (arg:ChatOutputListenerArg)=>Promise<void> = async arg=>{
@@ -198,5 +207,5 @@ export async function installTtsHost(): Promise<void> {
   };
   if (host.addRisuChatListener) await host.addRisuChatListener('output',output);
   const viewer=await installTtsViewer(doc);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
-  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeState();omniTts.stop();await disconnectHost(observer);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(body);await releaseHost(doc);});
+  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeState();omniTts.stop();await disconnectHost(observer);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
 }

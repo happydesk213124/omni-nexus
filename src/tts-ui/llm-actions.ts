@@ -25,7 +25,7 @@ export function bindTtsLlmActions(refresh: () => void): void {
   on('source-extract', () => busy('source-extract',async () => {
     text('source-status','자료 확인 · 캐릭터 제안 중…');
     const context = await currentTtsContext();
-    proposals = await proposeTtsCharacters(context,val('source-command') || '자료에서 등장인물을 정리하고 캐릭터와 음성을 배정하세요.',{ lore:checked('source-lore'), persona:checked('source-persona'), illustration:checked('source-illustration') },val('source-scope') === 'global' ? 'global' : context.scope);
+    proposals = await proposeTtsCharacters(context,val('source-command') || '자료에서 등장인물을 정리하고 캐릭터와 음성을 배정하세요.',{ lore:checked('source-lore'), persona:checked('source-persona'), illustration:checked('source-illustration') },val('source-scope') === 'global' ? 'global' : context.rosterScope);
     proposals = proposals.filter(p => p.previous ? checked('source-update-existing') : checked('source-add-new'));
     if (!checked('source-assign-voice')) for (const p of proposals) { const old = ttsData().characters.find(c => c.id === p.draft.id); p.draft.voiceKey = old?.voiceKey || ''; p.draft.fishId = old?.fishId || ''; }
     review('source-results',proposals.map(p => `${p.previous ? '수정' : '추가'} · ${esc(p.draft.name)} · ${esc(p.draft.tags.join(', '))} · ${esc(ttsData().voices.find(v => v.key === p.draft.voiceKey)?.name || '음성 미지정')}`));

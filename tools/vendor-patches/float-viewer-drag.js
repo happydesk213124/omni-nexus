@@ -3,6 +3,27 @@ let nxFloatDragListeners = [], nxFloatDragStarting = false, nxFloatPointer = nul
 let nxFloatMovePainting = null, nxFloatMoveDirty = false, nxFloatSuppressClick = 0;
 const nxFloatMoveWrites = new Set();
 let nxFloatMoveDone = null;
+// A transparent page cover under the viewer while it moves: a fast pointer that
+// leaves the header crosses no chat element, so hover work never competes.
+let nxFloatShield = null, nxFloatShielded = false;
+async function nxFloatCover(on) {
+  if (nxFloatShielded === on || !nxFloatDoc || !nxFloatChatRoot) return;
+  nxFloatShielded = on;
+  try {
+    if (!nxFloatShield) {
+      nxFloatShield = await H(nxFloatDoc, 'div', {style:'position:fixed;inset:0;z-index:99989;display:none;background:transparent;cursor:grabbing;touch-action:none;'});
+      await nxFloatShield.setAttribute('x-nx-float-shield', '1');
+      await nxFloatChatRoot.appendChild(nxFloatShield);
+    }
+    await nxFloatShield.setStyle('display', nxFloatShielded ? 'block' : 'none');
+  } catch (e) { nxFloatLog('drag', String(e)); }
+}
+async function nxFloatDropShield() {
+  nxFloatShielded = false;
+  const shield = nxFloatShield; nxFloatShield = null;
+  try { await shield?.remove(); } catch {}
+  await omniRelease(shield);
+}
 function nxFloatEvPos(ev) {
   const x = ev?.clientX ?? ev?.pageX, y = ev?.clientY ?? ev?.pageY;
   return Number.isFinite(x) && Number.isFinite(y) ? {x, y} : null;
@@ -13,6 +34,7 @@ function nxFloatMoveDrag(ev) {
   if (!p || !d || d.ending) return;
   if (Math.hypot(p.x-d.sx,p.y-d.sy)>4) d.moved=true;
   if (!d.moved) return;
+  void nxFloatCover(true);
   d.pos=p; nxFloatMoveDirty=true;
   void nxFloatPaintMove();
 }
@@ -71,6 +93,7 @@ async function nxFloatEndDrag(cancel=false) {
   return d.ending=(async()=>{
     await nxFloatPaintMove();
     nxFloatDrag=null;nxFloatMoveDirty=false;
+    void nxFloatCover(false);
     if(d.moved)nxFloatSuppressClick=Date.now()+400;
     nxFloatStyleCache.delete(nxFloatRoot); // Commit left/top after all transforms have reached the host.
     await nxFloatApply();

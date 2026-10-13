@@ -48,7 +48,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.2.1';
+const PLUGIN_VERSION = '1.2.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -980,6 +980,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.2.2 · TTS 플레이어·캐릭터 저장 개선</strong>
+          <div class="muted" style="margin-top:8px">2026.10.13 · TTS 캐릭터를 봇 로어북(omni.nexus.tts)에 저장합니다. 글로벌 캐릭터는 그대로 플러그인에 남고, 이전 채팅별 캐릭터는 봇을 열 때 옮겨집니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>플로팅 뷰어: 한 줄 「캐릭터: 대사」 목록과 억양 칩, 지금 줄 찾기·다시 만들기 버튼, 재생바를 버튼 바로 아래로 고정했습니다.</li>
+            <li>대사 상자 모듈이 '…' 인용을 나눠도 한 줄로 읽습니다. 숫자·기호만 있는 줄은 만들지 않고, [ ] 괄호는 빼고 읽을 수 있습니다(토글).</li>
+            <li>제외 텍스트 기본값(┣, §, ::, DD_, ✨Upcoming), 접힌 블록 안 버튼 목록 제외, 나레이션 숨김은 플러그인이 처리합니다.</li>
+            <li>캐릭터 탭: 타일만 스크롤, 아래 선택 모드(전체 선택·해제·삭제·JEV 배정), 레퍼런스 이미지 우선. 삽화 대사 읽기와 뷰어 드래그를 고쳤습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.2.1 · TTS 버튼 모듈 호환·설정 개선</strong>
@@ -14998,7 +15008,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.2.1 · TTS 재생 버튼이 다른 표시 모듈 정규식을 깨지 않도록 모든 정규식 다음에 붙고, 글자 배치도 바꾸지 않습니다. 나레이션 번역 언어, 여러 줄 제외 텍스트, 항목별 TTS 도움말을 추가했습니다."
+    body: "1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */

@@ -18,7 +18,7 @@ Never label code, thoughts, images or status panels as spoken dialogue. Preserve
 // line break, no rewritten name. We only append a zero-width control to lines
 // that are still plain prose once every other module has finished.
 export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, hideTone: -10220, hideName: -10221, unguard: -10230 } as const;
-const GUARD_OPEN = '', GUARD_CLOSE = '';
+const GUARD_OPEN = '\uf8f0', GUARD_CLOSE = '\uf8f1';
 const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
 const OPEN = `<(?:${TAGS})(?:\\s[^<>\\n]*)?/?>`;
 const CLOSE = `</(?:${TAGS})\\s*>`;
@@ -28,7 +28,8 @@ const TAG = `(?:${OPEN}|${CLOSE})`;
 const GUARDED = '(\\uF8F0[^\\uF8F1]*\\uF8F1)';
 // Markdown would turn indented lines into code and #/| lines into headings or tables.
 const PROSE_START = '(?=[ \\t]{0,3}[^\\s#|>`~!])';
-const HAS_WORD = '(?=(?:[^\\n<>]|<[^<>\\n]*>)*?[\\p{L}\\p{N}])';
+// Digits and symbols alone ([00:10… 00:09…]) are never read aloud.
+const HAS_WORD = '(?=(?:[^\\n<>]|<[^<>\\n]*>)*?\\p{L})';
 const LINE_END = `((?:${CLOSE}[ \\t]*)*)([ \\t\\r]*)(?=\\n|$)`;
 const HEADER_PREFIX = `([ \\t]*(?:${OPEN}[ \\t]*)*)((?:[\\p{Extended_Pictographic}\\uFE0F\\u200D*][ \\t]*)*)`;
 const SPEAKER = '([^\\n<>:："“”‘’「」『』(){}\\[\\]|#!*]{1,80}?)\\**';
@@ -52,8 +53,6 @@ export const TTS_MODULE_CSS = [
   '[data-omnitts-play][data-omnitts-kind]::before{content:"";display:block;box-sizing:border-box;width:0;height:0;margin-left:2px;border-style:solid;border-width:5px 0 5px 8px;border-color:transparent transparent transparent currentColor}',
   '[data-omnitts-tail]>[data-omnitts-play]:hover{background:#7132f5aa;border-color:#a483fb}[data-omnitts-tail]>[data-omnitts-play]:active{background:#7132f5}',
   '[data-omnitts-tail]>[data-omnitts-play][data-omnitts-kind="narration"]{background:#142b46d9;border-color:#60a5fa77;color:#93c5fd}[data-omnitts-tail]>[data-omnitts-play][data-omnitts-kind="narration"]:hover{background:#2563ebaa;border-color:#93c5fd}',
-  '[data-omnitts-play][x-omnitts-dead="1"]{display:none!important}',
-  'body[x-omnitts-narration="off"] [data-omnitts-play][data-omnitts-kind="narration"]:not([x-omnitts-kind="dialogue"]),body[x-omnitts-narration="off"] [data-omnitts-play][x-omnitts-kind="narration"]{display:none!important}',
   // The line being read keeps moving, so the button visibly reads as live.
   '[data-omnitts-play][x-omnitts-state="loading"],[data-omnitts-play][x-omnitts-state="playing"],[data-omnitts-play][x-omnitts-state="paused"]{background:#7132f5;border-color:#d8c8ff;color:#fff}',
   '[data-omnitts-play][data-omnitts-kind="narration"][x-omnitts-state]:not([x-omnitts-state=""]){background:#2563eb;border-color:#bfdbfe;color:#fff}',

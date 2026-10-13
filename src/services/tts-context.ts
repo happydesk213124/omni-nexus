@@ -3,9 +3,13 @@ import { GLOBAL_SCOPE } from '../core/constants';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { objectValue } from '../providers/tts/http';
 import { listCharacters } from './characters';
+import { ensureBotTtsCharacters } from '../storage/tts-store';
+import { ttsBotScope } from '../storage/tts-roster';
 
 export interface TtsChatContext {
   scope: string;
+  /** Where this bot's TTS characters live: `bot:<characterId>` (or 'global'). */
+  rosterScope: string;
   characterId: string;
   chatId: string;
   sessionId: string;
@@ -21,7 +25,8 @@ export async function currentTtsContext(): Promise<TtsChatContext> {
   const chat = objectValue(chats[Number(character.chatPage) || 0]);
   const characterId = String(character.chaId || character.id || ''), chatId = String(chat.id || chat.chatId || '');
   if (!characterId || !chatId) throw new Error('안정적인 ID가 있는 Risu 채팅을 먼저 열어 주세요.');
-  return { scope: JSON.stringify([characterId, chatId]), characterId, chatId, sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, character, chat, messages: Array.isArray(chat.message) ? chat.message.map(objectValue) : [] };
+  await ensureBotTtsCharacters(characterId);
+  return { scope: JSON.stringify([characterId, chatId]), rosterScope: ttsBotScope(characterId), characterId, chatId, sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, character, chat, messages: Array.isArray(chat.message) ? chat.message.map(objectValue) : [] };
 }
 export interface TtsSourceOptions { lore: boolean; persona: boolean; illustration: boolean }
 export async function ttsCharacterSources(context: TtsChatContext, options: TtsSourceOptions, names: string[] = []): Promise<Record<string, unknown>> {
@@ -31,7 +36,7 @@ export async function ttsCharacterSources(context: TtsChatContext, options: TtsS
     const rows = Array.isArray(raw) ? raw.map(objectValue) : [];
     result.lore = rows.filter(row => {
       const name = String(row.comment || '');
-      if (name.includes('omni.nexus.data') || name.includes('omnitts.data') || name === 'omnitts-cues') return false;
+      if (name.includes('omni.nexus.data') || name.startsWith('omni.nexus.tts') || name.includes('omnitts.data') || name === 'omnitts-cues') return false;
       if (!names.length) return true;
       const keys = String(row.key || '').split(',').map(k => k.trim()).filter(Boolean);
       return row.alwaysActive === true || keys.some(key => names.some(n => key.includes(n) || n.includes(key)));

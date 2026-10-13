@@ -15,6 +15,7 @@ export const TTS_HELP: Record<string, Tip> = {
   continuous: { title: '다음 구간 이어 읽기', body: '한 줄이 끝나면 같은 메시지의 다음 줄을 이어서 읽습니다.' },
   narration: { title: '나레이션 읽기', body: '대사가 아닌 서술 줄에도 파란 ▶ 버튼을 보여 주고 읽습니다. 나레이션 음성은 음성 목록에서 지정합니다.' },
   'tts-skip-chars': { title: '생성에서 제외할 글자 수', body: '공백·문장부호를 뺀 글자가 이 수 이하인 줄은 버튼과 목록에서 빠지고 음성도 만들지 않습니다.' },
+  'strip-brackets': { title: '[ ] 괄호 빼고 읽기', body: '켜면 [ ] 【 】 괄호를 빼고 Fish에 보냅니다. 예: [00:00 - SHOOTING FINISHED] → 00:00 - SHOOTING FINISHED. 숫자·기호만 있는 줄([00:10… 00:09…])은 이 설정과 상관없이 버튼도 음성도 만들지 않습니다.' },
   'tts-exclude-text': { title: '이 텍스트 포함하면 생성 안 함', body: '쉼표로 구분한 글자 중 하나라도 들어간 대사·나레이션은 재생 버튼, 목록, 음성 생성에서 모두 빠집니다. 대시보드의 같은 칸과 연결되어 있습니다.' },
   'nx-tts-exclude-text': { title: 'TTS 생성 제외 텍스트', body: '쉼표로 구분한 글자 중 하나라도 들어간 대사·나레이션은 TTS 재생 버튼, 목록, 음성 생성에서 빠집니다. TTS 설정의 같은 칸과 연결되어 있습니다.' },
   floating: { title: 'TTS 플로팅 뷰어', body: '채팅 화면에 재생·배속·목록을 다루는 작은 창을 띄웁니다. 머리 부분을 끌어서 옮길 수 있습니다.' },

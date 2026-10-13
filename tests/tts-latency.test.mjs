@@ -8,7 +8,7 @@ const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {
 const tick=()=>new Promise(r=>setImmediate(r));
 async function completes(promise,label){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>timer=setTimeout(()=>reject(Error(label)),1000))]);}finally{clearTimeout(timer);}}
 const voiceId='4e118bfbb83e401c84699c09b5f08257';
-const context={scope:'latency',characterId:'c',chatId:'chat',sessionId:'session',character:{},chat:{},messages:[]};
+const context={scope:'latency',rosterScope:'bot:c',characterId:'c',chatId:'chat',sessionId:'session',character:{},chat:{},messages:[]};
 const request=(text,speaker='Ready')=>({context,messageId:text,segment:{id:'1',kind:'dialogue',speaker,tone:'happy',text,start:0,end:text.length}});
 
 test('ready playback bypasses unrelated voice assignment, audio writes and translation writes',async()=>{

@@ -33,7 +33,7 @@ async function setup(page,code=runtime){
       const rect={left:10,top:10,width:240,height:100,right:250,bottom:110};
       const header={getBoundingClientRect:async()=>({...rect,height:40,bottom:50}),querySelectorAll:async()=>[]};
       const viewer={querySelector:async()=>header,getBoundingClientRect:async()=>rect,setStyle:(key,value)=>new Promise(resolve=>{const id=++serial;pending.set(id,resolve);parent.postMessage({type:'style',id,key,value},'*');})};
-      const doc={clientWidth:async()=>2000,clientHeight:async()=>2000,addEventListener:async(type,fn)=>{events.set(type,fn);return type;},removeEventListener:async()=>{}};
+      const shield={setAttribute:async()=>{},setStyleAttribute:async()=>{},setStyle:async(key,value)=>{window.shieldDisplay=value;},remove:async()=>{}};const doc={querySelectorAll:async()=>[],querySelector:async()=>({appendChild:async()=>{}}),createElement:async()=>shield,clientWidth:async()=>2000,clientHeight:async()=>2000,addEventListener:async(type,fn)=>{events.set(type,fn);return type;},removeEventListener:async()=>{}};
       window.addEventListener('message',event=>{
         const m=event.data;
         if(m.type==='ack'){pending.get(m.id)?.();pending.delete(m.id);}

@@ -49,6 +49,10 @@ export interface TtsSettings {
   hideTone: boolean;
   passageLine: boolean;
   excludeText: string;
+  /** 1 once the default status-panel terms were merged into excludeText. */
+  excludeSeed: number;
+  /** Read [bracketed] lines without the brackets. */
+  stripBrackets: boolean;
   skipChars: number;
   toast: boolean;
   viewer: boolean;
