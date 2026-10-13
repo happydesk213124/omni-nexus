@@ -1,6 +1,7 @@
 import type { TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
 import { synthesisSignature } from '../domain/tts/segment';
+import { allowedTtsText, ttsExcludeTerms } from '../domain/tts/filter';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
@@ -32,13 +33,14 @@ export class OmniTtsRuntime {
   private standalone = false;
   private sequence: TtsRequest[] = [];
   private messageSequence: TtsRequest[] = [];
+  private readingSequence: TtsRequest[] = [];
   private sequenceIndex = -1;
   private moduleSignature = '';
   private settingsSignature = '';
   notice = '';
   stage = '';
   get current(): TtsRequest | undefined { return this.sequence[this.sequenceIndex]; }
-  get list(): readonly TtsRequest[] { return this.messageSequence; }
+  get list(): readonly TtsRequest[] { return this.messageSequence.filter(request => this.eligible(request)); }
   subscribe(callback: () => void): () => void { this.listeners.add(callback); return () => this.listeners.delete(callback); }
   private emit(): void { for (const callback of this.listeners) callback(); }
   report(error: unknown): void { this.notice = String((error as Error)?.message || error); this.emit(); }
@@ -65,21 +67,31 @@ export class OmniTtsRuntime {
     const s = ttsData().settings;
     this.queue.configure(s.concurrency, s.background);
     this.player.configure(s.rate, s.volume);
-    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize]);
+    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
     }
     if (!s.enabled) { this.stop(); this.queue.cancelPending(); }
+    if (this.current && !this.eligible(this.current) && ['playing', 'loading', 'paused'].includes(this.player.status)) this.stop();
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.narration, s.illustration, s.passageLine]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.illustration, s.passageLine, s.excludeText, s.skipChars]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
   setContext(context: TtsChatContext): void {
     if (this.scope === context.scope) return;
-    this.scope = context.scope; this.viewport++; this.stop(); this.sequence = []; this.messageSequence = []; this.sequenceIndex = -1; this.queue.cancelPending();
+    this.scope = context.scope; this.viewport++; this.stop(); this.sequence = []; this.messageSequence = []; this.readingSequence = []; this.sequenceIndex = -1; this.queue.cancelPending();
+  }
+  reading(requests:TtsRequest[]):void {
+    this.readingSequence=requests;
+    if(this.player.status==='playing'||this.player.status==='loading'||this.player.status==='paused')return;
+    const current=this.current,index=requests.findIndex(r=>r.messageId===current?.messageId&&r.segment.id===current.segment.id&&this.eligible(r));
+    const next=index>=0?index:requests.findIndex(r=>this.eligible(r));
+    const changed=this.sequenceIndex!==next||JSON.stringify(this.messageSequence.map(r=>[r.messageId,r.segment.id,r.segment.text]))!==JSON.stringify(requests.map(r=>[r.messageId,r.segment.id,r.segment.text]));
+    this.sequence=requests;this.sequenceIndex=next;this.messageSequence=requests;this.standalone=false;
+    if(changed)this.emit();
   }
   async power(enabled: boolean): Promise<void> {
     if (!enabled) { this.viewport++; this.stop(); this.queue.cancelPending(); }
@@ -88,9 +100,13 @@ export class OmniTtsRuntime {
   }
   stop(): void { this.intent++; this.queue.cancelWaitingPlayback(); this.player.stop(); }
   reservePlayback(): number { this.stop(); return this.intent; }
+  playbackReserved(reservation: number): boolean { return reservation === this.intent && ttsData().settings.enabled; }
   pause(): void { this.intent++; this.queue.cancelWaitingPlayback(); this.player.pause(); }
   async clearCache(): Promise<void> { this.viewport++; this.queue.cancelPending(); await this.cache.clear(); await this.translations.clear(); this.emit(); }
-  private eligible(request: TtsRequest): boolean { return request.segment.kind !== 'narration' || ttsData().settings.narration; }
+  private eligible(request: TtsRequest): boolean {
+    const s = ttsData().settings;
+    return (request.segment.kind !== 'narration' || s.narration) && allowedTtsText(request.segment.text, ttsExcludeTerms(s.excludeText), s.skipChars);
+  }
   async play(requests: TtsRequest[], index: number, reservation?: number): Promise<void> {
     await this.init();
     if (reservation !== undefined && reservation !== this.intent) return;
@@ -106,7 +122,7 @@ export class OmniTtsRuntime {
     if (request.segment.kind === 'dialogue' || request.segment.kind === 'narration') this.messageSequence = requests;
     this.standalone = request.segment.kind === 'audition';
     this.notice = '';
-    const valid = () => ticket === this.intent && request.context.scope === this.scope && ttsData().settings.enabled;
+    const valid = () => ticket === this.intent && request.context.scope === this.scope && ttsData().settings.enabled && this.eligible(request);
     await this.player.play(key, async () => {
       const prepared = await this.prepare([request], valid);
       if (!valid() || !prepared[0]) throw new Error('재생 요청이 변경되었습니다.');
@@ -114,7 +130,13 @@ export class OmniTtsRuntime {
       return this.audio(prepared[0], 0, valid);
     });
   }
-  async replay(): Promise<void> { await this.play(this.sequence, this.sequenceIndex); }
+  async replay(): Promise<void> {
+    const requests=this.readingSequence.length?this.readingSequence:this.sequence;
+    const current=requests.findIndex(r=>r.messageId===this.current?.messageId&&r.segment.id===this.current.segment.id);
+    const index=current>=0&&this.eligible(requests[current])?current:requests.findIndex(r=>this.eligible(r));
+    if(index<0){this.report(new Error('현재 화면에 재생할 대사가 없습니다.'));return;}
+    await this.play(requests,index);
+  }
   async next(delta: number): Promise<void> {
     let index = this.sequenceIndex + delta;
     while (index >= 0 && index < this.sequence.length && !this.eligible(this.sequence[index])) index += delta;
@@ -151,7 +173,8 @@ export class OmniTtsRuntime {
       }
       const translated=await Promise.all(missing.map(p=>this.translating.get(cacheKey(p))!));
       if (!valid()) return [];
-      missing.forEach((p,i)=>{this.translations.put(cacheKey(p),translated[i]);p.text=translated[i];});await this.translations.flush();
+      missing.forEach((p,i)=>{this.translations.put(cacheKey(p),translated[i]);p.text=translated[i];});
+      void this.translations.flush().catch(error => this.report(error));
     }
     for (const p of prepared) p.signature = synthesisSignature(p.text, p.request.segment.tone, p.fishId, settings);
     return prepared;
@@ -170,7 +193,9 @@ export class OmniTtsRuntime {
       try { bytes = await synthesizeFish(p.text, p.request.segment.tone, p.fishId, p.settings); }
       catch(error) { this.failedAudio.set(p.signature,Date.now()); if(this.failedAudio.size>100)this.failedAudio.delete(this.failedAudio.keys().next().value!); throw error; }
       this.failedAudio.delete(p.signature);
-      await this.cache.put(p.signature, bytes, generation).catch(error => this.report(error));
+      // Publish bytes immediately; persistent storage must not hold a Fish slot
+      // or delay playback. The cache exposes pending writes for deduplication.
+      void this.cache.put(p.signature, bytes, generation).catch(error => this.report(error));
       return bytes;
     }, priority);
   }
@@ -184,9 +209,21 @@ export class OmniTtsRuntime {
     this.queue.retainBackground(new Set());
     const valid = () => ticket === this.viewport && ttsData().settings.enabled;
     try {
-      const prepared = await this.prepare(requests.filter(r => this.eligible(r)).slice(0, s.prefetch), valid);
-      if (!valid()) return;
-      prepared.forEach((p, index) => { if (this.cache.has(p.signature)) return; void this.audio(p, index + 1, valid).catch(error => { if (valid()) this.report(error); }); });
+      const selected = requests.filter(r => this.eligible(r)).slice(0, s.prefetch);
+      const ready: TtsRequest[] = [], unassigned: TtsRequest[] = [];
+      for (const request of selected) {
+        const character = resolveTtsSpeaker(request.segment.speaker, ttsData().characters, request.context.scope);
+        const voiceKey = request.segment.kind === 'narration' ? s.narrationVoice : character?.voiceKey;
+        const assigned = request.fishId || character?.fishId || ttsData().voices.find(v => v.key === voiceKey)?.fishId;
+        (assigned ? ready : unassigned).push(request);
+      }
+      // Preparing unknown speakers can take a model round trip; known voices
+      // are independent and should start warming the cache during that call.
+      await Promise.all([ready, unassigned].filter(group => group.length).map(async group => {
+        const prepared = await this.prepare(group, valid);
+        if (!valid()) return;
+        prepared.forEach(p => { if (this.cache.has(p.signature)) return; void this.audio(p, selected.indexOf(p.request) + 1, valid).catch(error => { if (valid()) this.report(error); }); });
+      }));
     } catch (error) { if (valid()) this.report(error); }
   }
 }

@@ -3,7 +3,8 @@ import { ANLAS_URL, USER_DATA_URL, USER_PRIORITY_URL } from '../../core/constant
 import { parseJsonBody, parseNaiQuota, type NaiQuotaParsed } from '../../domain/nai/quota.ts';
 import { dbg, dbgSpan } from '../../core/debug.ts';
 import { Mutex } from '../../core/util/async.ts';
-import { isPngBytes } from '../../core/util/bytes.ts';
+import { isPngBytes, abToBase64 } from '../../core/util/bytes.ts';
+import { imageDimensions, upscaleAnlas } from '../../domain/nai/image-output';
 import { unzipFirstEntry } from '../../core/util/zip.ts';
 import { naiPost, networkFetch, readResponseBytes, type NaiPostOptions } from './http.ts';
 import { buildBaseParameters, resolveModel, type T2iRequest } from './payload.ts';
@@ -39,6 +40,24 @@ export interface T2iResult {
 }
 
 export type AnlasBalance = NaiQuotaParsed;
+
+/** Same standalone request as novelai.net/image, including its current V5 upscaler.
+ * Keep the shared token lane; an upscale must not overlap a generation on that key.
+ */
+export async function upscaleNaiImage(token: string, bytes: ArrayBuffer): Promise<ArrayBuffer> {
+  const dims = imageDimensions(bytes);
+  if (!dims || !upscaleAnlas(dims.width, dims.height)) throw new Error('NAI 업스케일은 3,145,728픽셀 이하의 PNG/WebP 이미지에서 사용할 수 있습니다.');
+  if (!token.trim()) throw new Error('NAI API 키가 설정되지 않았습니다.');
+  const zip = await laneForToken(token).run(() => naiPost(token, {
+    image: abToBase64(bytes), model: 'nai-diffusion-5-curated', declared_blur_sigma: 0,
+  }, 'https://image.novelai.net/ai/upscale', { timeoutMs: 120000, maxPayloadBytes: 24_000_000 }));
+  const result = await unzipFirstEntry(new Uint8Array(zip));
+  const out = imageDimensions(result);
+  if (!out || out.width !== dims.width * 2 || out.height !== dims.height * 2) {
+    throw new Error('NAI 업스케일 결과의 해상도가 올바르지 않습니다. 원본을 유지합니다.');
+  }
+  return result;
+}
 
 /**
  * Runs one text-to-image generation and unzips the single image NAI returns.

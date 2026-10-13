@@ -265,6 +265,8 @@ export interface CardSettings {
   /** Screen corner for progress / selection / host / attach toasts. */
   toast_anchor?: 'tl' | 'bl' | 'tr' | 'br' | 'tc';
   /** Play a one-shot completion sound when an image generation job completes. */
+  image_webp_quality?: number;
+  nai_auto_upscale?: boolean;
   image_done_sound?: boolean;
   image_done_sound_type?: 'ding' | 'soft' | 'bell' | 'loud';
   /** How a long-press on an inline/sticky shot opens the enlarge sheet. */

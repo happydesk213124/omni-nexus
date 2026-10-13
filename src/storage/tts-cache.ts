@@ -12,6 +12,9 @@ export class TtsAudioCache {
   private tail: Promise<unknown> = Promise.resolve();
   private epoch = 0;
   private budget = 100 * 1024 * 1024;
+  private memory = new Map<string, ArrayBuffer>();
+  private memoryBytes = 0;
+  private pending = new Map<string, { audio: ArrayBuffer; generation: number }>();
   get bytes(): number { return Object.values(this.index).reduce((sum, row) => sum + row.bytes, 0); }
   get count(): number { return Object.keys(this.index).length; }
   private init(): Promise<void> {
@@ -29,34 +32,63 @@ export class TtsAudioCache {
     return result;
   }
   async get(signature: string): Promise<ArrayBuffer | null> {
+    const warm = this.memory.get(signature) || this.pending.get(signature)?.audio;
+    if (warm) {
+      const meta = this.index[compactHash(signature)];
+      if (meta?.signature === signature) meta.used = Date.now();
+      this.remember(signature, warm); return warm;
+    }
     await this.init();
-    return this.serial(async () => {
-      const key = compactHash(signature), meta = this.index[key];
-      if (!meta || meta.signature !== signature) return null;
-      const row = await this.api!.getItem<AudioRow>(PREFIX + key);
-      if (!row || row.signature !== signature) { delete this.index[key]; return null; }
-      meta.used = Date.now();
-      const bytes = base64ToBytes(row.base64);
-      return bytes.slice().buffer as ArrayBuffer;
-    });
+    const generation = this.epoch, key = compactHash(signature), meta = this.index[key];
+    if (!meta || meta.signature !== signature) return null;
+    // IndexedDB reads need not queue behind unrelated slow audio writes.
+    const row = await this.api!.getItem<AudioRow>(PREFIX + key);
+    if (generation !== this.epoch || this.index[key] !== meta) return null;
+    if (!row || row.signature !== signature) { delete this.index[key]; return null; }
+    meta.used = Date.now();
+    const audio = base64ToBytes(row.base64).slice().buffer as ArrayBuffer;
+    this.remember(signature, audio);
+    return audio;
   }
-  has(signature: string): boolean { return this.index[compactHash(signature)]?.signature === signature; }
+  private remember(signature: string, audio: ArrayBuffer): void {
+    const previous = this.memory.get(signature);
+    if (previous) { this.memoryBytes -= previous.byteLength; this.memory.delete(signature); }
+    const limit = Math.min(this.budget, 8 * 1024 * 1024);
+    if (audio.byteLength <= limit) { this.memory.set(signature, audio); this.memoryBytes += audio.byteLength; }
+    this.trimMemory();
+  }
+  private trimMemory(): void {
+    const limit = Math.min(this.budget, 8 * 1024 * 1024);
+    for (const [key, bytes] of this.memory) {
+      if (this.memoryBytes <= limit) break;
+      this.memory.delete(key); this.memoryBytes -= bytes.byteLength;
+    }
+  }
+  has(signature: string): boolean { return this.memory.has(signature) || this.pending.has(signature) || this.index[compactHash(signature)]?.signature === signature; }
   async put(signature: string, audio: ArrayBuffer, generation = this.epoch): Promise<void> {
-    await this.init();
-    const base64 = await bytesToBase64Async(audio);
-    await this.serial(async () => {
-      if (generation !== this.epoch) return;
-      const bytes = base64.length + signature.length * 2;
-      if (bytes > this.budget) return;
-      const key = compactHash(signature);
-      await this.api!.setItem(PREFIX + key, { signature, base64 });
-      this.index[key] = { signature, bytes, used: Date.now() };
-      await this.trim();
-    });
+    if (generation !== this.epoch) return;
+    const pending = { audio, generation };
+    this.pending.set(signature, pending);
+    this.remember(signature, audio);
+    try {
+      await this.init();
+      const base64 = await bytesToBase64Async(audio);
+      await this.serial(async () => {
+        if (generation !== this.epoch) return;
+        const bytes = base64.length + signature.length * 2;
+        if (bytes > this.budget) return;
+        const key = compactHash(signature);
+        await this.api!.setItem(PREFIX + key, { signature, base64 });
+        if (generation !== this.epoch) return;
+        this.index[key] = { signature, bytes, used: Date.now() };
+        await this.trim();
+      });
+    } finally { if (this.pending.get(signature) === pending) this.pending.delete(signature); }
   }
   get generation(): number { return this.epoch; }
   async configure(megabytes: number): Promise<void> {
     this.budget = megabytes * 1024 * 1024;
+    this.trimMemory();
     await this.init();
     await this.serial(() => this.trim());
   }
@@ -71,6 +103,8 @@ export class TtsAudioCache {
   }
   async clear(): Promise<void> {
     this.epoch++;
+    this.memory.clear(); this.memoryBytes = 0; this.pending.clear();
+    this.index = {};
     await this.init();
     await this.serial(async () => {
       // Only our namespace: never clear another feature's storage.

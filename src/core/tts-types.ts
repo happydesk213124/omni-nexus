@@ -48,6 +48,8 @@ export interface TtsSettings {
   hideName: boolean;
   hideTone: boolean;
   passageLine: boolean;
+  excludeText: string;
+  skipChars: number;
   toast: boolean;
   viewer: boolean;
   minimized: boolean;

@@ -1,9 +1,10 @@
   let nxRerollToastSequence = 0;
   async function withImageRerollToast(e, n, opts = {}) {
+    const upscale = opts.kind === 'upscale';
     const toastRun = 'reroll-' + (++nxRerollToastSequence);
     let total = Math.max(1, Math.floor(Number(opts.shotCount) || 1)), done = 0;
     const owns = () => t.jobProgress?.toastRun === toastRun;
-    const base = () => ({ jobId: 'reroll', kind: 'reroll', toastRun, shot_count: total, shot_done: done, shot_index: done });
+    const base = () => ({ jobId: 'reroll', kind: upscale ? 'upscale' : 'reroll', toastRun, shot_count: total, shot_done: done, shot_index: done });
     t.jobProgress = { ...base(), state: 'generating', message: String(e || '이미지 재생성 중'), progress: 0 };
     await Se();
     const finish = async (state, message, failed = 0) => {
@@ -30,7 +31,7 @@
       else if (result?.ok !== false && !result?.stopped) done = total;
       if (result?.stopped) await finish('cancelled', '사용자 중단', failed);
       else if (result?.ok === false) await finish('error', z(result?.error?.message || '재생성하지 못했습니다.', 180), failed);
-      else await finish('done', '리롤 완료', failed);
+      else await finish('done', upscale ? '업스케일 완료' : '리롤 완료', failed);
       return result;
     } catch (error) {
       await finish('error', z(error?.message || error, 180));

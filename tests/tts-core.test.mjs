@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const compiled=await build({stdin:{contents:"export * from './src/domain/tts/queue';export * from './src/domain/tts/identity';export * from './src/domain/tts/library';export * from './src/domain/tts/segment';export * from './src/config/tts-defaults';export * from './src/providers/tts/player';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
+const compiled=await build({stdin:{contents:"export * from './src/domain/tts/queue';export * from './src/domain/tts/identity';export * from './src/domain/tts/library';export * from './src/domain/tts/segment';export * from './src/config/tts-defaults';export * from './src/providers/tts/player';export * from './src/tts-ui/host-utils';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const deferred=()=>{let resolve,reject;const promise=new Promise((y,n)=>{resolve=y;reject=n;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -42,6 +42,9 @@ test('Kim/Lee Minji remain distinct; ambiguous given name cannot merge them thro
   const global=person('김민지','김','global');
   assert.equal(api.resolveTtsSpeaker('김민지',[kim,global],'chat')?.id,kim.id);
   assert.equal(api.mergeTtsCharacter([kim],{...person('김민지','김'),id:'new',voiceKey:'other'}).length,1);
+  const edited=api.mergeTtsCharacter([kim],{...kim,surname:'',givenName:''});
+  assert.equal(edited[0].surname,'','clearing an existing identity field must not restore its old value');
+  assert.equal(edited[0].givenName,'');
 });
 
 test('voice URLs, literal boolean search, and import validation preserve stable voice IDs',()=>{
@@ -87,4 +90,21 @@ test('a late generation cannot play after a newer click or stop',async()=>{
     const late=deferred();const third=player.play('pending',()=>late.promise);player.stop();late.resolve(new ArrayBuffer(32));await third;
     assert.equal(playCalls.length,1);assert.equal(player.status,'idle');
   } finally {globalThis.Audio=originalAudio;globalThis.AudioContext=originalContext;}
+});
+
+
+test('SafeDOM accepts native arrays without calling the wrapped-array helper',async()=>{
+  const previous=globalThis.risuai;
+  globalThis.risuai={unwarpSafeArray:async a=>{const result=[];for(let i=0,n=await a.length();i<n;i++)result.push(await a.at(i));return result;}};
+  try {assert.deepEqual(await api.safeArray([1,2]),[1,2]);assert.deepEqual(await api.safeArray({length:async()=>2,at:async i=>i+1}),[1,2]);}
+  finally {globalThis.risuai=previous;}
+});
+
+test('stopping pending activation absorbs the browser AbortError',async()=>{
+  const originalAudio=globalThis.Audio,originalContext=globalThis.AudioContext,plays=[];
+  class AudioMock {pause(){plays.splice(0).forEach(p=>p.reject(new DOMException('The fetching process was aborted','AbortError')));}load(){}removeAttribute(){}play(){const d=deferred();plays.push(d);return d.promise;}}
+  class ContextMock {state='running';destination={};resume(){return Promise.resolve();}createGain(){return {gain:{value:0},connect(){return this;}};}createMediaElementSource(){return {connect(node){return node;}};}}
+  globalThis.Audio=AudioMock;globalThis.AudioContext=ContextMock;
+  try {const p=new api.TtsPlayer();const pending=p.unlock();p.stop();await assert.doesNotReject(pending);assert.equal(p.ready,false);}
+  finally {globalThis.Audio=originalAudio;globalThis.AudioContext=originalContext;}
 });

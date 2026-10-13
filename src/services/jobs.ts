@@ -1,3 +1,6 @@
+import { upscaleImage } from './image-upscale';
+import { imageDimensions } from '../domain/nai/image-output';
+import { bytesToDataUrlAsync, sniffImageMime } from '../core/util/bytes';
 import { analysisBody } from '../domain/prompt/message-body';
 import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-lines';
 import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage, runStreamImageTask } from './stream-jobs';
@@ -1201,6 +1204,7 @@ async function runJob(jobId: string): Promise<void> {
     // parallel across shots — do not serialize behind an earlier shot's idb.
     // Next NAI still overlaps those reveals. Drain before done/cancel/discard.
     const shotSaveTasks: Promise<void>[] = [];
+    const upscaleWarnings: string[] = [];
     shotSaveFailed = null;
     const drainSaves = async (): Promise<void> => {
       pendingShotSave = Promise.allSettled(shotSaveTasks).then(results => {
@@ -1294,6 +1298,7 @@ async function runJob(jobId: string): Promise<void> {
       let raw: ArrayBuffer | undefined;
       let recipe: import('../providers/nai/payload').T2iRequest | undefined;
       let seed = 0;
+      let generatedToken = '';
       try {
         // Not cancelled mid-flight on purpose: the image is already being paid
         // for, so let it land and discard afterwards if the job went stale.
@@ -1324,6 +1329,7 @@ async function runJob(jobId: string): Promise<void> {
         for (const token of tryKeys) {
           try {
             ({ bytes: raw, seed, recipe } = await runGenerate(token));
+            generatedToken = token;
             lastErr = null;
             break;
           } catch (err) {
@@ -1365,6 +1371,7 @@ async function runJob(jobId: string): Promise<void> {
           for (const token of v4Keys) {
             try {
               ({ bytes: raw, seed, recipe } = await runGenerate(token));
+              generatedToken = token;
               lastErr = null;
               break;
             } catch (err) {
@@ -1398,6 +1405,29 @@ async function runJob(jobId: string): Promise<void> {
       // Reveal as soon as PNG bytes exist — do not wait on another shot's persist.
       // Next loop iteration may already be on NovelAI while this runs.
       const saveP = (async () => {
+        let upscaledDims: { width:number; height:number } | null = null;
+        if (card.nai_auto_upscale === true && imageBackendKind(nai) !== 'comfy' && !jobRunMeta.get(jobId)?.userStop) {
+          const preview = Reflect.get(globalThis, '__OMNI_SPINNER_PREVIEW__');
+          if (typeof preview === 'function' && isJobCurrent(jobId)) {
+            try { await preview({ jobId, shot:idx, cardId, characterId:request.character_id, chatId:request.chat_id,
+              messageIndex:request.message_index, url:await bytesToDataUrlAsync(raw!, sniffImageMime(raw!)),
+              deferPaint:deferred?.lineAttachments && !deferred.lineAttachments.inserted }); }
+            catch { dbg('job.preview.fail', {shot:idx}, 'warn'); }
+          }
+          await setJob(jobId, 'generating', progressPayload({ shot_count:shots.length, shot_index:idx, shot_done:cardsDone(),
+            phase:'upscaling', message:`업스케일 중… ${idx + 1}/${shots.length}`, pending_inline:pendingInline, pending_message_index:pendingMessageIndex }));
+          try {
+            raw = await upscaleImage(raw!, generatedToken);
+            upscaledDims = imageDimensions(raw);
+            if (recipe && upscaledDims) recipe = { ...recipe, ...upscaledDims };
+          } catch (err) {
+            // Keep the already paid generation. Never rerun generation on upscale failure.
+            upscaleWarnings.push(`${idx + 1}번 이미지: ${String((err as Error)?.message || err)}`);
+            dbg('job.upscale.fail', { shot:idx, message:String((err as Error)?.message || err) }, 'warn');
+            await setJob(jobId, 'generating', progressPayload({ phase:'upscale_failed', message:`업스케일 실패 · 원본 저장: ${String((err as Error)?.message || err)}` }));
+          }
+        }
+        if (!isJobCurrent(jobId) && !jobRunMeta.get(jobId)?.userStop) return;
         await setJob(
           jobId,
           'generating',
@@ -1449,6 +1479,7 @@ async function runJob(jobId: string): Promise<void> {
         }
         if (castIds.length) location.cast_ids = castIds;
         await publishImage(cardId, raw, location, {
+          qualityPercent: card.image_webp_quality,
           warmUrl: true,
           recipe,
           characters:(meta.characters || []).map(c=>({scope:String(c.scope || ''),id:String(c.id || ''),name:String(c.name || ''),
@@ -1468,7 +1499,7 @@ async function runJob(jobId: string): Promise<void> {
         });
         const runMeta = jobRunMeta.get(jobId);
         if (runMeta) runMeta.publishedIds.push(cardId);
-        const canvas = canvasDimsForShot(
+        const canvas = upscaledDims || canvasDimsForShot(
           shot.aspect,
           nai,
           Boolean(card.auto_aspect),
@@ -1605,7 +1636,8 @@ async function runJob(jobId: string): Promise<void> {
       progress: 100,
       phase: 'done',
       ...(deferred?.lineAttachments ? {line_group:deferred.lineAttachments.stats()} : {}),
-      message: `이미지 ${shots.length}/${shots.length} 완료`,
+      message: `이미지 ${shots.length}/${shots.length} 완료${upscaleWarnings.length ? ` · 업스케일 실패 ${upscaleWarnings.length}장 원본 저장` : ""}`,
+      ...(upscaleWarnings.length ? { warnings:upscaleWarnings } : {}),
       // Done = no spinners. Leaving pending_inline here kept circles on finished bubbles.
     };
     if (deferred && !deferred.committed && !deferred.cancelled) {

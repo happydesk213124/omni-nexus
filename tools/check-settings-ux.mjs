@@ -231,6 +231,14 @@ try {
     assert.deepEqual(live.duplicates, [], `${tab}: duplicate mounted ids`);
     assert.ok(live.pane, `${tab}: preview pane missing`);
     assert.equal(live.shadow,'none');
+    if (tab === 'dashboard') {
+      const excluded=page.locator('#nx-tts-exclusions #nx-tts-exclude-text');
+      assert.equal(await excluded.isVisible(),true,'the real built dashboard displays the TTS exclusions control');
+      await excluded.fill('상태창, 시스템 안내');await excluded.dispatchEvent('change');
+      await page.waitForFunction(async()=>{const d=await risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, 시스템 안내';});
+      await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='gen_options';await paint();t.uiTab='dashboard';await paint();});
+      assert.equal(await excluded.inputValue(),'상태창, 시스템 안내','dashboard exclusions survive a real vendor repaint');
+    }
     if (tab === 'models') {
       await page.locator('[data-backend="comfy"]').click();
       await page.locator('#nx-comfy-help-open').click();
@@ -307,6 +315,16 @@ try {
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),1,'setting secondary marks the tile without reopening settings');
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
+  await page.locator('#nx-nai-auto-upscale').setChecked(true);
+  await page.evaluate(()=>uxTestRuntime.flush());
+  assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.nai_auto_upscale),true);
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
+  const quality=page.locator('#nx-image-webp-quality');
+  await quality.fill('73'); await quality.dispatchEvent('change');
+  await page.evaluate(()=>uxTestRuntime.flush());
+  assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_webp_quality),73);
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
+  assert.equal(await page.locator('#nx-nai-auto-upscale').isChecked(),true);
   const locationWeight = page.locator('#nx-location-tag-weight');
   assert.equal(await locationWeight.inputValue(), '1');
   for (const value of ['0.5', '0', '2', '1']) {

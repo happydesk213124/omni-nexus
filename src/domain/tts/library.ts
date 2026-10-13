@@ -1,4 +1,5 @@
 import type { TtsGender, TtsVoice } from '../../core/tts-types';
+import { uuid } from '../../core/util/text';
 
 export function fishVoiceId(input: string): string {
   const value = input.trim();
@@ -38,7 +39,7 @@ export function parseVoiceImport(input: unknown, folder = ''): TtsVoice[] {
     if (seen.has(signature)) return [];
     seen.add(signature);
     const gender: TtsGender = ['female','male','unknown'].includes(String(row.gender)) ? row.gender as TtsGender : voiceGender(tags);
-    return [{ key: crypto.randomUUID(), name, fishId, tags, gender, folder }];
+    return [{ key: uuid(), name, fishId, tags, gender, folder }];
   });
 }
 export function parseRates(value: string, defaults: number[]): number[] {

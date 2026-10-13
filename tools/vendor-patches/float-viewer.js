@@ -52,6 +52,12 @@ function nxFloatViewport() { return nxFloatViewportSize; }
 function nxFloatBlocked() {
   return t.unloading || t.uiOpen || t._nxHostInspectOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings || t.backendSettings?.card?.floating_viewer === false;
 }
+// TTS shares screen visibility, but never the illustration power/viewer setting.
+globalThis.__OMNI_TTS_HOST_BLOCKED__ = () => !!(t.unloading || t.uiOpen || t._nxHostInspectOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings);
+function nxNotifyTtsVisibility() {
+  const refresh = globalThis.__OMNI_TTS_REFRESH_VISIBILITY__;
+  if (typeof refresh === 'function') refresh();
+}
 async function nxFloatSetTarget(card, bubbleHtml, valid = () => true) {
   const scope = await omniReadScope().catch(() => null);
   if (!valid() || scope?.sessionId !== nxFloatSession) return;
@@ -366,12 +372,14 @@ async function nxFloatSetCollapsed(next) {
   nxFloatFoldWrites=nxFloatFoldWrites.catch(()=>{}).then(()=>saveViewerMinimized(value)).catch(error=>nxFloatLog('fold.save',String(error)));
 }
 async function nxFloatHide() {
+  nxNotifyTtsVisibility();
   nxFloatHidden = true;
   nxFloatHovered = false;
   await nxFloatEndDrag(true);
   await nxFloatApply();
 }
 async function nxFloatShow() {
+  nxNotifyTtsVisibility();
   nxFloatHidden = !!nxFloatBlocked();
   await nxFloatEnsure();
 }

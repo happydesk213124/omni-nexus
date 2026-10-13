@@ -380,3 +380,14 @@ test('reroll completion uses reported batch totals, distinguishes partial failur
   assert.equal(t.jobProgress.message, 'API 키 없음');
   assert.ok(snapshots.length >= 6);
 });
+
+
+test('automatic, manual and line-batch upscales are visibly distinct from generation',()=>{
+  assert.equal(progressToastView({state:'generating',phase:'upscaling',shot_count:2,shot_done:0}).title,'업스케일 중…');
+  assert.equal(progressToastView({state:'generating',kind:'upscale',jobId:'reroll'}).title,'업스케일 중…');
+  assert.equal(progressToastView({state:'done',kind:'upscale',jobId:'reroll'}).title,'업스케일 완료');
+  assert.equal(progressToastView({state:'error',kind:'upscale',jobId:'reroll'}).title,'업스케일 실패');
+  const group=aggregateStreamLineProgress([{state:'generating',progress:{phase:'upscaling',shot_count:1,shot_done:0}}],{batchCount:1,outputComplete:true,committed:true});
+  assert.match(progressToastView(group).detail,/업스케일 중/);
+  assert.match(progressToastView({state:'done',message:'업스케일 실패 1장 원본 저장',shot_count:1}).detail,/원본 저장/);
+});

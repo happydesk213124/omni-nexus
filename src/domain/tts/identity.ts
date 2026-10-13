@@ -27,7 +27,7 @@ export function mergeTtsCharacter(roster: TtsCharacter[], draft: TtsCharacter): 
   const previous = original || candidates[0];
   const merged = { ...draft, id: previous?.id || draft.id, triggers: [...new Set([...draft.triggers, ...candidates.flatMap(c => c.triggers)])] };
   if (!original && previous) Object.assign(merged, { voiceKey: previous.voiceKey, fishId: previous.fishId, fixed: previous.fixed, gain: previous.gain });
-  for (const field of ['surname', 'givenName'] as const) merged[field] ||= previous?.[field] || '';
+  if (!original) for (const field of ['surname', 'givenName'] as const) merged[field] ||= previous?.[field] || '';
   merged.surnameAliases = [...new Set([...merged.surnameAliases, ...candidates.flatMap(c => c.surnameAliases)])];
   merged.givenAliases = [...new Set([...merged.givenAliases, ...candidates.flatMap(c => c.givenAliases)])];
   const removed = new Set([draft.id, ...candidates.map(c => c.id)]);

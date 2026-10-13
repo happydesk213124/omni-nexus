@@ -52,6 +52,8 @@ const MODULES = {
   'command-char-edit': 'src/domain/character/command-edit.ts',
   'session-note': 'src/domain/tagging/session-note.ts',
   'session-location': 'src/domain/tagging/location.ts',
+  'nai-image-output': 'src/domain/nai/image-output.ts',
+  'nai-upscale': ['src/providers/nai/client.ts','src/services/image-upscale.ts','src/domain/nai-meta/encode-generation.ts'],
   'nai-payload': 'src/providers/nai/payload.ts',
   'nai-to-comfy': 'src/domain/prompt/nai-to-comfy.ts',
   'comfy-client': 'src/providers/comfy/client.ts',

@@ -1,4 +1,5 @@
 import type { TtsCharacter } from '../core/tts-types';
+import { uuid } from '../core/util/text';
 import { mergeTtsCharacter, resolveTtsSpeaker } from '../domain/tts/identity';
 import { numberedVoices, selectTtsVoices } from '../providers/tts/selection';
 import { parseLlmJson } from '../providers/tts/translation';
@@ -7,7 +8,7 @@ import { ttsData, saveTtsData } from '../storage/tts-store';
 import { ttsCharacterSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
 
 export function blankTtsCharacter(scope: string, name = ''): TtsCharacter {
-  return { id: crypto.randomUUID(), scope, name, surname: '', givenName: '', surnameAliases: [], givenAliases: [], triggers: name ? [name] : [], tags: [], gender: 'unknown', voiceKey: '', fishId: '', fixed: false, gain: 0 };
+  return { id: uuid(), scope, name, surname: '', givenName: '', surnameAliases: [], givenAliases: [], triggers: name ? [name] : [], tags: [], gender: 'unknown', voiceKey: '', fishId: '', fixed: false, gain: 0 };
 }
 export interface TtsCharacterProposal { draft: TtsCharacter; previous?: string }
 export async function proposeTtsCharacters(context: TtsChatContext, request: string, options: TtsSourceOptions, scope: string, names: string[] = []): Promise<TtsCharacterProposal[]> {
@@ -51,6 +52,14 @@ const scopeTails = new Map<string, Promise<void>>();
 const failed = new Map<string, number>();
 export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean): Promise<void> {
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
+  const data = ttsData();
+  // A ready voice must not join the scope-wide queue for unrelated new people.
+  names = [...new Set(names)].filter(name => {
+    const character = resolveTtsSpeaker(name, data.characters, context.scope);
+    if (character) return !character.fixed && !character.fishId && !data.voices.some(v => v.key === character.voiceKey && v.fishId);
+    return !data.characters.some(c => (c.scope === context.scope || c.scope === 'global') && (c.name === name || c.triggers.includes(name)));
+  });
+  if (!names.length) return Promise.resolve();
   const key=JSON.stringify([context.scope,[...new Set(names)].sort()]);
   const existing=assignments.get(key);if(existing)return existing;
   const task=(scopeTails.get(context.scope)||Promise.resolve()).catch(()=>{}).then(async()=>{
@@ -70,10 +79,15 @@ async function assignSpeakers(context: TtsChatContext, names: string[]): Promise
     return !data.characters.some(c => (c.scope === context.scope || c.scope === 'global') && (c.name === name || c.triggers.includes(name)));
   }).sort();
   if (unknown.length) {
-    const proposals = await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true }, context.scope, unknown);
+    const engine=data.settings.selector;
+    // Names already came from the parser. JEV can select from lore directly;
+    // it must not require a second, independently configured LLM connection.
+    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.scope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true }, context.scope, unknown);
+    for(const name of unknown)if(!proposals.some(p=>p.draft.name===name))proposals.push({draft:blankTtsCharacter(context.scope,name)});
     if (!ttsData().settings.enabled) return;
-    if (ttsData().settings.selector === 'jev' && proposals.length) {
-      const selected = await selectTtsVoices(proposals.map(p => p.draft), ttsData().voices, ttsData().settings, 'jev');
+    if (engine === 'jev' && proposals.length) {
+      const sources=await ttsCharacterSources(context,{lore:true,persona:true,illustration:true},unknown);
+      const selected = await selectTtsVoices(proposals.map(p => p.draft), ttsData().voices, ttsData().settings, 'jev',sources);
       for (const proposal of proposals) { const voice = selected.get(proposal.draft.id)![0]; proposal.draft.voiceKey = voice.key; proposal.draft.fishId = voice.fishId; }
     }
     if (!ttsData().settings.enabled) return;
