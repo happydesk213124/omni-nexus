@@ -1,3 +1,4 @@
+import { NAI_SIZE_PRESETS, upscaleAnlas } from '../domain/nai/image-output';
 import { shareableJson } from '../services/export';
 import { cleanText, joinTags } from '../core/util/text.ts';
 import { resolveCharacter } from '../domain/character/roster.ts';
@@ -35,6 +36,7 @@ import {
   saveSettings,
   studioCommit,
   studioGenerate,
+  studioPost,
 } from './api.ts';
 import { formatStudioQuota, studioQuotaFillPct } from './quota.ts';
 import { replaceInlinePhotoAfterSave } from './replace-inline.ts';
@@ -170,6 +172,7 @@ const SHELL = `
         <button class="btn sm" data-act="grid" type="button">좌표보기</button>
         <button class="btn sm" data-act="fit" type="button">화면맞춤</button>
         <button class="btn sm" data-act="peek" type="button">조립</button>
+        <button class="btn sm" data-act="upscale" type="button" title="NAI 업스케일 · Anlas 소모">🆙 업스케일</button>
       </div>
       <div class="viewport" id="viewport">
         <div class="frame" id="frame"><canvas id="cv"></canvas></div>
@@ -205,6 +208,7 @@ const SHELL = `
       <button class="btn sm" data-act="grid" type="button">좌표보기</button>
       <button class="btn sm" data-act="fit" type="button">화면맞춤</button>
       <button class="btn sm" data-act="peek" type="button">조립</button>
+      <button class="btn sm" data-act="upscale" type="button" title="NAI 업스케일 · Anlas 소모">🆙 업스케일</button>
       <button class="btn sm" data-act="history" type="button">히스토리</button>
       <button class="btn sm loop" id="loop" type="button"><b>연속생성</b> <span class="hint">꺼짐</span></button>
     </nav>
@@ -623,6 +627,8 @@ export async function openTagStudio(card: unknown): Promise<void> {
   function genSettings(): string {
     const g = state.gen;
     const ratio = `${g.w}x${g.h}`;
+    const preset = Object.entries(NAI_SIZE_PRESETS).find(([, sizes]) => sizes.some(([w,h]) => w === g.w && h === g.h))?.[0] || 'Custom';
+    const sizes = NAI_SIZE_PRESETS[preset as keyof typeof NAI_SIZE_PRESETS] || NAI_SIZE_PRESETS.Normal;
     const v5Full = studioUsesV5Full(state);
     const medium = v5Full && g.effort === 'medium';
     return `<div class="seg">
@@ -631,11 +637,8 @@ export async function openTagStudio(card: unknown): Promise<void> {
         )).join('')}
         <button class="${g.model === '' ? 'on' : ''}" data-model="" type="button">이미지 값</button>
       </div>
-      <div class="seg">
-        <button class="${ratio === '1216x832' ? 'on' : ''}" data-size="1216x832" type="button">가로</button>
-        <button class="${ratio === '832x1216' ? 'on' : ''}" data-size="832x1216" type="button">세로</button>
-        <button class="${ratio === '1024x1024' ? 'on' : ''}" data-size="1024x1024" type="button">정사각</button>
-      </div>
+      <div class="inline"><label class="k">해상도<select data-resolution-preset aria-label="해상도 프리셋">${opts([...Object.keys(NAI_SIZE_PRESETS), 'Custom'].map(v => [v, v === 'Custom' ? '직접 입력' : v] as [string,string]), preset)}</select></label></div>
+      <div class="seg">${sizes.map(([w,h], i) => `<button class="${ratio === `${w}x${h}` ? 'on' : ''}" data-size="${w}x${h}" type="button">${['가로','세로','정사각'][i]}</button>`).join('')}</div>
       <div class="inline">
         <input type="number" data-g="w" value="${esc(g.w)}" />
         <span class="hint">×</span>
@@ -1517,7 +1520,38 @@ export async function openTagStudio(card: unknown): Promise<void> {
     }
   }
 
+  async function upscale(): Promise<void> {
+    if (state.busy || !loaded) return;
+    const cost = upscaleAnlas(loaded.naturalWidth, loaded.naturalHeight);
+    if (!cost) { toast('업스케일은 3,145,728픽셀 이하에서 가능합니다.'); return; }
+    stopLoop();
+    setBusy(true);
+    const buttons = $$<HTMLButtonElement>('[data-act="upscale"]');
+    buttons.forEach(b => { b.textContent = `업스케일 중… (${cost} Anlas)`; });
+    try {
+      const res = await studioPost(`/v1/cards/${encodeURIComponent(state.cardId)}/upscale`, {
+        ...assembleOverrides(state, roster), image_data_url:canvasDataUrl(),
+        source_id:state.history[state.historySel]?.id, history_only:true,
+      });
+      if (res.ok === false) throw new Error(errMsg(res, '업스케일 실패'));
+      const saved = asRecord(res.card);
+      const id = cleanText(saved.id, 80);
+      const url = await resolveCardUrl(id, cleanText(saved.image_url, 40_000_000));
+      if (!url) throw new Error('업스케일 이미지를 불러오지 못했습니다.');
+      state.gen.w = Number(saved.width) || cv.width * 2;
+      state.gen.h = Number(saved.height) || cv.height * 2;
+      state.history.unshift({ url, id, seed:Number(saved.seed) || 0 });
+      state.historySel = 0;
+      await showImage(url);
+      renderAll();
+      toast('업스케일 완료 · 저장하면 채팅 이미지가 교체됩니다.');
+      void refreshQuota();
+    } catch (err) { toast(String((err as Error).message || err)); }
+    finally { setBusy(false); buttons.forEach(b => { b.textContent = '🆙 업스케일'; }); }
+  }
+
   async function commitAndClose(): Promise<void> {
+    if (state.busy) return;
     setBusy(true);
     try {
       const canvasUrl = canvasDataUrl();
@@ -1661,6 +1695,9 @@ export async function openTagStudio(card: unknown): Promise<void> {
       case 'fit':
         fitView();
         break;
+      case 'upscale':
+        void upscale();
+        return;
       case 'peek':
         state.peek = !state.peek;
         renderPeek();
@@ -1911,6 +1948,16 @@ export async function openTagStudio(card: unknown): Promise<void> {
     on(root, 'change', (e) => {
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
+      if (t instanceof HTMLSelectElement && t.hasAttribute('data-resolution-preset')) {
+        const sizes = NAI_SIZE_PRESETS[t.value as keyof typeof NAI_SIZE_PRESETS];
+        if (sizes) {
+          const orientation = state.gen.w === state.gen.h ? 2 : state.gen.w > state.gen.h ? 0 : 1;
+          const [w,h] = sizes[orientation] || sizes[1]!;
+          state.gen.w = w; state.gen.h = h;
+          drawStage(); renderPanel();
+        }
+        return;
+      }
       const opt = t.closest('[data-opt]');
       if (opt instanceof HTMLSelectElement) {
         onOptPick(opt.dataset.opt || '', opt.value, opt.dataset.tab || '');

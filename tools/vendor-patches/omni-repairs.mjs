@@ -18,7 +18,7 @@ export function repairOmniUi(source) {
     out = out.split(needle).join(patch);
   };
   replace('        R && (R.innerHTML = u);', '        if (R) globalThis.__INLAY_SETTINGS_UX__.replaceMain(R, u, t.uiTab);');
-  replace('  async function openSettingsTab(tab) {', '  globalThis.__OMNI_OPEN_TTS__ = () => openSettingsTab("curation");\n  async function openSettingsTab(tab) {');
+  replace('  async function openSettingsTab(tab) {', '  globalThis.__OMNI_TTS_SETTINGS_OPEN__ = () => !!t.uiOpen;\n  globalThis.__OMNI_OPEN_TTS__ = () => openSettingsTab("curation");\n  async function openSettingsTab(tab) {');
   replace('if (next !== "characters" && next !== "style_presets" && next !== "gen_options") return;', 'if (next !== "characters" && next !== "style_presets" && next !== "gen_options" && next !== "curation") return;');
   replace('  async function Tt(e, n) {', `  globalThis.__OMNI_AUTOTAG_CARD__ = Tt;
   globalThis.__OMNI_RENDER_CHARACTER_CARD__ = (row, scope) => wt([row], scope, "");

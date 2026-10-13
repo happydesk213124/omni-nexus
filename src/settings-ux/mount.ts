@@ -4,6 +4,7 @@ import { bindCharacterOptions } from './character-options';
 import { bindCharacterCreate } from './character-create';
 import { bindModels } from './model-bindings';
 import { bindGuardrailPreset } from './guardrail-preset';
+import { bindTtsExclusions } from './tts-options';
 /**
  * Preview HTML is the settings window. Vendor values/handlers bind by #nx-* id.
  */
@@ -308,7 +309,7 @@ export function afterPaint(): void {
   syncModelWarning();
   void bindPromptUpdates();
   const tab = activeTab();
-  if (tab === 'dashboard') bindSettingsPresets();
+  if (tab === 'dashboard') { bindSettingsPresets(); void bindTtsExclusions(); }
   if (tab === 'gen_options') bindGuardrailPreset();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');

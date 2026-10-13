@@ -144,6 +144,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   // These controls moved out of the vendor dashboard. Its generation form has
   // no matching nodes, so the preview defaults must never become saved values.
   const card = settings?.card;
+  out.querySelector<HTMLInputElement>('#nx-image-webp-quality')?.setAttribute('value', String(card?.image_webp_quality ?? 90));
+  out.querySelector<HTMLInputElement>('#nx-nai-auto-upscale')?.toggleAttribute('checked', card?.nai_auto_upscale === true);
   const locationWeight = out.querySelector<HTMLInputElement>('#nx-location-tag-weight');
   if (locationWeight) locationWeight.setAttribute('value', String(card?.location_tag_weight ?? 1));
   if (card) for (const [id, key, defaultOn] of [

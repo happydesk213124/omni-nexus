@@ -47,6 +47,8 @@ export interface ReadBytesOptions {
 export interface NaiPostOptions {
   timeoutMs?: number;
   signal?: AbortSignal | null;
+  /** Upscale sends full-resolution pixels rather than small generation references. */
+  maxPayloadBytes?: number;
 }
 
 interface NaiBodyControl {
@@ -393,7 +395,7 @@ export async function naiPost(
     url: String(apiUrl || API_URL).slice(0, 100),
     has_nativeFetch: hostHas('nativeFetch'),
   });
-  if (bodyStr.length > 2_500_000) {
+  if (bodyStr.length > (opts.maxPayloadBytes ?? 2_500_000)) {
     dbg('nai.payload', { message: 'too large', bytes: bodyStr.length }, 'error');
     throw new Error(`NAI 페이로드가 너무 큼 (${Math.round(bodyStr.length / 1024)}KB). 참조 이미지/프롬프트를 줄이세요.`);
   }
@@ -433,7 +435,7 @@ export async function naiPost(
   let lastError: string | null = null;
   try {
     try {
-      dbg('nai.fetch.start', { message: 'POST generate-image', timeout_ms: timeoutMs, focus: true });
+      dbg('nai.fetch.start', { message: apiUrl.endsWith('/upscale') ? 'POST upscale' : 'POST generate-image', timeout_ms: timeoutMs, focus: true });
       const resp = await networkFetch(apiUrl || API_URL, {
         method: 'POST',
         headers,

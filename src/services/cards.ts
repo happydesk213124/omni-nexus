@@ -1,3 +1,4 @@
+import { upscaleImage, upscaleDimensions } from './image-upscale';
 import { messageAssetIds } from '../storage/asset-message';
 /**
  * Edits to a single already-generated card.
@@ -303,6 +304,31 @@ function decodeStudioImage(body: Record<string, unknown>): ArrayBuffer | null {
   return b64 ? base64ToAb(b64) : null;
 }
 
+/** Upscale existing pixels; publish a revision only after the paid request succeeds. */
+export function upscaleCard(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
+  return imageRevisionLock.run(async () => {
+    const row = await idbGet('cards', cardId);
+    if (!row) return { ok: false, error: { code: 'not_found', message: 'card not found' } };
+    const loc = await readImageLocation(cardId);
+    const busy = await busyReplyForRequest({ ...loc, session_id: row.session_id }, row.session_id);
+    if (busy) return busy;
+    const sourceId = cleanText(body.source_id, 80) || cardId;
+    if (imageHistoryRoot(sourceId) !== imageHistoryRoot(cardId)) throw new Error('같은 이미지의 히스토리만 업스케일할 수 있습니다.');
+    const bytes = decodeStudioImage(body) || await getImageBytes(sourceId);
+    if (!bytes) throw new Error('이미지를 읽지 못했습니다.');
+    const scene = await loadCardImageScene(sourceId);
+    applyScenePromptOverrides(scene, body);
+    const output = await upscaleImage(bytes);
+    const dims = upscaleDimensions(output);
+    const seed = Number(scene.seed) || Number(row.seed);
+    const recipe = { ...t2iRequestFromScene(scene, seed), ...dims };
+    const saved = await commitStudioRevision(cardId, { ...body, revision_id: '', recipe, seed, ...dims,
+      image_data_url: await bytesToDataUrlAsync(output, 'image/png') }) as Record<string, unknown>;
+    if (saved.ok === false) return saved;
+    return { ...saved, card:{ ...(saved.card as Record<string, unknown>), seed, ...dims } };
+  });
+}
+
 /** Replay and persist a studio revision without adding it to the message. */
 export function studioGenerate(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
   return imageRevisionLock.run(() => generateStudioRevision(cardId, body));
@@ -428,7 +454,7 @@ async function commitStudioRevision(cardId: string, body: Record<string, unknown
         ...(c.costume ? { costume: cleanText(c.costume, 4000) } : {}),
         ...(c.wear_state ? { wear_state: cleanText(c.wear_state, 40) } : {}) }))
     : embedded?.characters || source?.characters || [];
-  await publishImage(newId, bytes, location, { recipe, characters, generatedAt: Date.now() });
+  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, recipe, characters, generatedAt: Date.now() });
   const slimCast = slimCardCharacters(parseJsonOr(row.characters_json || '[]', []));
   const genMetaExtra: Record<string, unknown> = {
     kind: cleanText(meta.kind, 20) || 'illustration',
@@ -700,7 +726,7 @@ async function createRerollRevision(
     content_hash: cleanText(prevLoc.content_hash || '', 128),
     assistant_preview: cleanText(prevLoc.assistant_preview || meta.assistant_preview || '', ASSISTANT_PREVIEW_LIMIT),
   };
-  await publishImage(newId, bytes, location, {recipe:recipe || replayRequest,characters:replayCast,generatedAt:Date.now()});
+  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, recipe:recipe || replayRequest,characters:replayCast,generatedAt:Date.now()});
 
   const genMeta = cardMetaFromLocation({ ...meta, ...genMetaExtra }, location, bytes.byteLength);
   // The old card's y position lives under three historical key names; drop all

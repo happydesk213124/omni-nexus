@@ -1112,11 +1112,16 @@
         </div>
         </div>
         <div class="dash-right">
+        <div class="group" id="nx-tts-exclusions">
+          <h3>TTS 항목 생성 제외</h3>
+          <label class="block"><span>이 텍스트 포함하면 제외 · 쉼표로 구분</span><input id="nx-tts-exclude-text" type="text" placeholder="예: 상태창, 시스템 안내"><small>포함된 대사·나레이션은 음성 생성, 재생 버튼과 목록에서 제외합니다.</small></label>
+        </div>
         <div class="group" id="nx-asset-tag-controls"></div>
         <div class="group">
           <h3>채팅 그림</h3>
           <div class="stack">
             <label class="row"><span class="row-text"><b>이미지 채팅에</b><small>생성 중에만 스피너·겹침</small></span><span class="sw"><input id="nx-inline-chat" type="checkbox" checked disabled></span></label>
+            <div class="row"><label class="row-text" for="nx-image-webp-quality"><b>이미지 WebP 품질 (%)</b><small>새로 저장하는 이미지에 적용 · 기본 90%</small></label><input class="ctrl" id="nx-image-webp-quality" type="number" min="1" max="100" step="1" value="90"></div>
             <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked disabled></span></label>
             <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>채팅안에 바로가기툴 추가</b></span><span class="sw"><input id="nx-inline-msg-fan" type="checkbox"></span></label>
@@ -1204,6 +1209,7 @@
               <select class="ctrl" id="nx-person-tag-mode"><option value="gender" selected>성별 분리</option><option value="girls">인원수 → girls</option><option value="people">인원수 → people</option><option value="off">안 넣기</option></select>
             </div>
             <div class="row"><span class="row-text"><b>사람 태그 강조 (0–5)</b></span><input class="ctrl" id="nx-person-tag-weight" type="number" min="0" max="5" value="3"></div>
+            <label class="row"><span class="row-text"><b>Anlas 소모해서 업스케일 하기</b><small>NAI 이미지 가로·세로 2배 · 장당 1~4 Anlas · 업스케일 후 저장</small></span><span class="sw"><input id="nx-nai-auto-upscale" type="checkbox"></span></label>
             <div class="row"><span class="row-text"><b>장소태그 강조 조절</b><small>1은 기존 그대로 · 0.5는 약하게 · 2는 강하게</small></span><input class="ctrl" id="nx-location-tag-weight" type="number" min="0" max="5" step="0.1" value="1" aria-label="장소태그 강조 조절"></div>
             <div class="row"><span class="row-text"><b>lb-xnai.lb.extra</b></span>
               <select class="ctrl" id="nx-lore-extra"><option value="tags" selected>캐릭터 태그만</option><option value="full">전체</option><option value="off">넣지 않음</option></select>

@@ -1,3 +1,4 @@
+import { getConfig } from './context';
 import { shareableJson } from './export';
 /**
  * Session gallery compatibility and character-asset explorer actions.
@@ -598,7 +599,7 @@ export async function importGalleryZip(body: Record<string, unknown> = {}): Prom
       reattach: decision.status,
     };
     const bytes = u8ToArrayBuffer(png);
-    await publishImage(newId, bytes, location);
+    await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality });
     const meta = cardMetaFromLocation(
       {
         ...(item.meta || {}),

@@ -11,6 +11,7 @@ export interface ProgressToastJob {
   batch_count?: unknown;
   batch_done?: unknown;
   batch_failed?: unknown;
+  upscale_count?: unknown;
 }
 
 const count = (n: unknown): number => Number.isFinite(Number(n)) ? Math.max(0, Math.floor(Number(n))) : 0;
@@ -20,6 +21,7 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
   const state = String(job.state || '');
   const message = String(job.message || '').trim();
   const reroll = job.kind === 'reroll' || job.jobId === 'reroll';
+  const upscale = job.kind === 'upscale' || job.phase === 'upscaling';
   const terminal = ['done', 'error', 'cancelled'].includes(state);
   const total = count(job.shot_count);
   const done = Math.min(total, count(job.shot_done));
@@ -33,20 +35,20 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
       : /캐릭터.*룩|외형/.test(message) ? '캐릭터 외형 확인 중'
       : /만화.*레이아웃/.test(message) ? '만화 구성 중' : '장면 분석 중';
   } else if (state === 'generating' || state === 'running') {
-    title = /반영 중/.test(message) ? '이미지 반영 중'
+    title = upscale ? '업스케일 중…' : /반영 중/.test(message) ? '이미지 반영 중'
       : /nai\.read_bytes/.test(message) ? '이미지 받는 중'
       : /생성 준비/.test(message) ? '이미지 생성 준비 중'
       : reroll ? '이미지 재생성 중' : '이미지 생성 중';
     if (total) detail = done >= total ? `${done}장 생성됨 · 마무리 중` : `${current} / ${total}장 · ${done}장 완료`;
   } else if (state === 'done') {
     const stopped = /사용자.*중단/.test(message);
-    title = failed ? '일부 이미지 재생성 실패' : stopped ? '생성 중단됨' : reroll ? '재생성 완료' : '생성 완료';
+    title = upscale ? '업스케일 완료' : failed ? '일부 이미지 재생성 실패' : stopped ? '생성 중단됨' : reroll ? '재생성 완료' : '생성 완료';
     if (total) detail = failed ? `${done}장 완료 · ${failed}장 실패` : `${stopped ? done : total}장 ${stopped ? '유지' : '완료'}`;
   } else if (state === 'cancelled') {
     title = /사용자.*중단/.test(message) ? (reroll ? '재생성 중단됨' : '생성 중단됨') : '생성 취소됨';
     if (done) detail = `${done} / ${total}장 완료`;
   } else if (state === 'error') {
-    title = reroll ? '재생성 실패' : '생성 실패';
+    title = upscale ? '업스케일 실패' : reroll ? '재생성 실패' : '생성 실패';
     detail = message.split('\n')[0].slice(0, 180) || '설정을 확인한 뒤 다시 시도해 주세요.';
   }
   const elapsed = Math.max(0, Math.floor(elapsedMs / 5000) * 5);
@@ -65,7 +67,9 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
     detail=`태깅 ${tagged}/${batches}구간 · 이미지 ${done}/${total}장`;
     if(phase==='streaming')detail+=' · 응답 출력 중';
     if(errors)detail+=` · ${errors}구간 실패`;
+    if(count(job.upscale_count))detail+=' · 업스케일 중…';
   }
+  if (state === 'done' && /업스케일 실패/.test(message)) detail += ' · 업스케일 실패: 원본 저장';
   const success = state === 'done' && !failed && !/사용자.*중단/.test(message);
   const measured = success || (total > 0 && (state === 'generating' || state === 'running') && (!lineMode || ['generating','finalizing'].includes(String(job.phase))));
   const ratio = success ? 1 : measured ? done / total : 0;
@@ -85,7 +89,8 @@ export function aggregateStreamLineProgress(rows: Array<{state?:unknown;progress
   const failed=Math.max(max('failed'),rows.filter(row=>row.state==='error').length);
   const finished=flags.outputComplete && flags.committed && rows.length>=batches && rows.every(row=>['done','error','cancelled'].includes(String(row.state)));
   const phase=!flags.outputComplete ? 'streaming' : tagged<batches ? 'waiting_tags' : !flags.committed ? 'waiting_insert' : done<total ? 'generating' : 'finalizing';
-  return {kind:'stream-lines',state:finished ? failed?'error':'done' : 'generating',phase,batch_count:batches,batch_done:tagged,batch_failed:failed,shot_count:total,shot_done:done};
+  const upscales=rows.filter(row=>row.progress?.phase==='upscaling' && !['done','error','cancelled'].includes(String(row.state))).length;
+  return {...(upscales ? {upscale_count:upscales} : {}),kind:'stream-lines',state:finished ? failed?'error':'done' : 'generating',phase,batch_count:batches,batch_done:tagged,batch_failed:failed,shot_count:total,shot_done:done};
 }
 
 // High background opacity preserves white-text contrast over bright images.

@@ -7,7 +7,7 @@ export const input = (id: string) => el<HTMLInputElement>(id);
 export const val = (id: string) => input(id)?.value || '';
 export const checked = (id: string) => !!input(id)?.checked;
 export const set = (id: string, value: unknown) => { if (input(id)) input(id).value = String(value ?? ''); };
-export const text = (id: string, value: string) => { if (el(id)) el(id).textContent = value; };
+export const text = (id: string, value: string) => { const node=el(id); if (node && node.textContent !== value) node.textContent = value; };
 export const list = (value: string) => [...new Set(value.split(',').map(s => s.trim()).filter(Boolean))];
 export const gender = (value: string) => value === '여성' ? 'female' : value === '남성' ? 'male' : 'unknown';
 export const genderLabel = (value: string) => value === 'female' ? '여성' : value === 'male' ? '남성' : '미지정';
@@ -23,6 +23,7 @@ export async function audition(fishId: string, gain = 0): Promise<void> {
   if (!fishId) throw new Error('Fish 음성을 먼저 선택해 주세요.');
   const reservation = omniTts.reservePlayback();
   await omniTts.player.unlock();
+  if (!omniTts.player.ready) return;
   const context = await currentTtsContext().catch(()=>({scope:'audition',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
   await omniTts.play([{ context, messageId: 'audition', fishId, gain, segment: { id: fishId, text: '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
 }

@@ -20,8 +20,10 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     translation: { ...defaults.translation, ...raw.translation, llm: { ...defaults.translation.llm, ...raw.translation?.llm } },
     jev: { ...defaults.jev, ...raw.jev } };
   for (const field of Object.keys(defaults) as (keyof TtsSettings)[]) if (typeof defaults[field] === 'boolean' && typeof result[field] !== 'boolean') Object.assign(result, { [field]: defaults[field] });
+  if (typeof result.excludeText !== 'string') result.excludeText = '';
   const clamp = (n: number, min: number, max: number, fallback: number) => Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   result.rate = clamp(result.rate, .25, 4, 1);
+  result.skipChars = Math.floor(clamp(result.skipChars, 1, 8000, 1));
   result.volume = clamp(result.volume, 0, 1, .8);
   result.concurrency = Math.floor(clamp(result.concurrency, 1, 5, 5));
   result.background = Math.floor(clamp(result.background, 1, result.concurrency, 5));

@@ -69,7 +69,7 @@ showFullscreen = async (f) => {
     const [sheet, chipRow, castRow, actRow, closeRow, status] = await Promise.all([
       H(e, "div", { style: "position:relative;width:min(440px,100%);box-sizing:border-box;flex-shrink:0;background:rgba(18,22,32,.9);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px;display:grid;gap:8px;pointer-events:auto;" }),
       H(e, "div", { style: rowStyle + "height:72px;min-height:72px;" }), H(e, "div", { style: rowStyle + "width:100%;height:72px;min-height:72px;overflow:auto;align-content:flex-start;" }),
-      H(e, "div", { style: "display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:3px;" }), H(e, "div", { style: "position:relative;display:flex;min-width:0;" }),
+      H(e, "div", { style: "display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;" }), H(e, "div", { style: "position:relative;display:flex;min-width:0;" }),
       H(e, "div", { style: "position:absolute;inset:10px 10px auto;pointer-events:none;color:#cbd5e1;text-align:center;font:12px Segoe UI,sans-serif;" })
     ]);
     const chipStyle = "border:0;border-radius:999px;padding:7px 11px;font:700 11px/18px Segoe UI,sans-serif;height:32px;box-sizing:border-box;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;touch-action:manipulation;pointer-events:auto";
@@ -85,10 +85,11 @@ showFullscreen = async (f) => {
       [actRow, "🔃", "regen", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
       [actRow, "🎲", "reroll", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
       [actRow, "🔮", "base", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
+      [actRow, "🆙", "upscale", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
       [closeRow, "닫기", "close", `${actStyle};font-size:14px;background:rgba(255,255,255,.08);color:#fff`]
     ];
     const buttons = await Promise.all(specs.map(([, text, , style]) => H(e, "button", { text, style })));
-    const names = ['태그 생성','메시지 이미지 재생성','이 이미지 리롤','샷 태그 수정','닫기'];
+    const names = ['태그 생성','메시지 이미지 재생성','이 이미지 리롤','샷 태그 수정','NAI 업스케일 (Anlas 소모)','닫기'];
     await Promise.all(buttons.map((button, i) => button.setInnerHTML(`<span data-inray-inspect-action="1" role="img" aria-label="${names[i]}">${specs[i][1]}</span>`)));
     // Keep action identity beside its node for coordinate hit testing.
     await Promise.all(buttons.map((button, i) => specs[i][0].appendChild(button)));

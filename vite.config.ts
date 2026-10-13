@@ -533,6 +533,7 @@ const VENDOR_PERSON_TAG_WEIGHT_CT_NEEDLE =
 const VENDOR_PERSON_TAG_WEIGHT_CT_PATCH =
   `      include_max: Number(N("nx-include-max") || e.include_max || 0),
       person_tag_weight: document.getElementById("nx-person-tag-weight") ? re(N("nx-person-tag-weight"), 0, 5, re(e.person_tag_weight, 0, 5, 3)) : re(e.person_tag_weight, 0, 5, 3),
+      nai_auto_upscale: document.getElementById("nx-nai-auto-upscale") ? !!document.getElementById("nx-nai-auto-upscale").checked : (e.nai_auto_upscale ?? false),
       location_tag_weight: document.getElementById("nx-location-tag-weight") ? (() => { const r = N("nx-location-tag-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.location_tag_weight ?? 1),
 `;
 
@@ -9633,6 +9634,7 @@ const VENDOR_INLINE_SAVE_PATCH =
       inline_chat_scale_pct: Math.max(25, Math.min(200, Math.round(Ne(N("nx-inline-chat-scale"), 100)) || 100)),
       inline_chat_dom_radius: Math.max(3, Math.min(20, Math.round(Ne(N("nx-inline-dom-radius"), 4)) || 4)),
       progress_toast: ee("nx-progress-toast"),
+      image_webp_quality: document.getElementById("nx-image-webp-quality") ? Math.min(100, Math.max(1, Number(N("nx-image-webp-quality")) || 90)) : (t.backendSettings?.card?.image_webp_quality ?? 90),
       image_done_sound: document.getElementById("nx-image-done-sound") ? N("nx-image-done-sound") !== "off" : !!t.backendSettings?.card?.image_done_sound,
       image_done_sound_type: document.getElementById("nx-image-done-sound") && N("nx-image-done-sound") !== "off" ? N("nx-image-done-sound") : (t.backendSettings?.card?.image_done_sound_type || "ding"),
       toast_anchor: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeToastAnchor == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeToastAnchor(N("nx-toast-anchor")) : String(N("nx-toast-anchor") || "tc")),
@@ -15893,19 +15895,19 @@ const VENDOR_INSPECT_REROLL_INLINE_NEEDLE =
         return;
       }`;
 const VENDOR_INSPECT_REROLL_INLINE_PATCH =
-  `      if (act === "reroll") {
+  `      if (act === "reroll" || act === "upscale") {
         await hideInspect();
         try {
           let rolled = null;
-          await withImageRerollToast("이미지 리롤 중…", async () => {
-            rolled = await K(\`/v1/cards/\${encodeURIComponent(card.id)}/reroll\`, {
+          await withImageRerollToast(act === "upscale" ? "업스케일 중… (Anlas 소모)" : "이미지 리롤 중…", async () => {
+            rolled = await K(\`/v1/cards/\${encodeURIComponent(card.id)}/\${act === "upscale" ? "upscale" : "reroll"}\`, {
               method: "POST",
               body: {
                 mode: "nai"
               }
             }, 18e4);
             return rolled;
-          });
+          }, {kind: act === "upscale" ? "upscale" : "reroll"});
           const W = await Z({
             useOverride: !1
           }).catch(() => null);

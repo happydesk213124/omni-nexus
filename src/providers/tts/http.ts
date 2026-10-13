@@ -23,7 +23,10 @@ export async function ttsFetch(url: string, options: RequestInit = {}): Promise<
   const finish = () => { clearTimeout(timer); options.signal?.removeEventListener('abort', relay); };
   try {
     // No race that releases a Fish slot before the transport has actually settled.
-    const response: TtsResponse = await host.nativeFetch(url, { ...options, signal: controller.signal });
+    // Risu nativeFetch defaults to POST, unlike browser fetch. Metadata and free
+    // translation must explicitly use GET or Risu rejects the missing body.
+    const request:RequestInit & {requestTimeoutMs:number}={method:'GET',...options,signal:controller.signal,requestTimeoutMs:90_000};
+    const response: TtsResponse = await host.nativeFetch(url, request);
     if (response.ok === false || (response.status != null && response.status >= 400)) throw new Error(`음성 API 요청 실패 (${response.status || 'network'})`);
     return { ok:response.ok, status:response.status, data:response.data, headers:response.headers,
       json:response.json ? () => response.json!() : undefined, arrayBuffer:response.arrayBuffer ? () => response.arrayBuffer!() : undefined, finish };

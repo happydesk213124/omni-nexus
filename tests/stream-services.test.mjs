@@ -1,6 +1,7 @@
+import { png } from './fixtures/upscale-image.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {installHost,PNG_1X1} from '../tools/parity/host.mjs';
+import {installHost,PNG_1X1,zipStore} from '../tools/parity/host.mjs';
 import {analysisBody} from '../.test-build/message-body.mjs';
 let instance=0;
 const sleep=()=>new Promise(r=>setTimeout(r,10));
@@ -568,4 +569,39 @@ test('helper module toggles only itself, hides the marker only in display, and s
   await f.api.ensureOmniHelperModule(true);const wrapped=await read();
   assert.equal(wrapped.modules.length,4);assert.ok(wrapped.enabledModules.includes('user'));
   assert.ok(wrapped.modules.find(m=>m.id===helper.id).lorebook.some(l=>l.comment==='custom'));
+});
+
+
+test('automatic upscale previews raw pixels before upscale and bakes only the doubled result',async()=>{
+  const f=await fixture();f.api.getConfig().card.nai_auto_upscale=true;
+  const nativeFetch=risuai.nativeFetch;let release;const gate=new Promise(r=>release=r);let calls=0,previewed=false;
+  globalThis.__OMNI_SPINNER_PREVIEW__=async args=>{assert.match(args.url,/^data:image/);previewed=true;};
+  risuai.nativeFetch=async(url,opts)=>{
+    if(String(url).endsWith('/upscale')){calls++;assert.equal(previewed,true);await gate;return new Response(zipStore('image.png',png(2,2)));}
+    return nativeFetch(url,opts);
+  };
+  try {
+    const created=await f.api.createJob({...f.request,stream_line_start:1,stream_line_end:2});
+    await f.wait(created.job_id,j=>j.progress.phase==='upscaling');
+    assert.doesNotMatch((await f.chat()).message[0].data,/\[\[@inray::/,'no final bake before upscale');
+    release();await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
+    await f.commit(created.job_id);await assertRuntimeReleased(f,created.job_id);
+    const done=await f.api.getJob(created.job_id);
+    assert.equal(calls,1);assert.equal(done.state,'done');
+    assert.deepEqual([done.result.cards[0].width,done.result.cards[0].height],[2,2]);
+    assert.match((await f.chat()).message[0].data,/\[\[@inray::/);
+  } finally {release();delete globalThis.__OMNI_SPINNER_PREVIEW__;}
+});
+
+test('automatic upscale failure saves the original once without regenerating or retrying',async()=>{
+  const f=await fixture();f.api.getConfig().card.nai_auto_upscale=true;
+  const nativeFetch=risuai.nativeFetch;let calls=0;
+  risuai.nativeFetch=async(url,opts)=>String(url).endsWith('/upscale')?(calls++,new Response('busy',{status:429})):nativeFetch(url,opts);
+  const created=await f.api.createJob({...f.request,stream_line_start:1,stream_line_end:2});
+  await f.wait(created.job_id,j=>j.progress.phase==='waiting_output');
+  await f.commit(created.job_id);await assertRuntimeReleased(f,created.job_id);
+  const done=await f.api.getJob(created.job_id);
+  assert.equal(calls,1);assert.equal(done.state,'done');assert.equal(done.result.cards.length,1);
+  assert.equal(f.host.naiRequests.filter(r=>r.kind==='generate').length,1);
+  assert.equal(done.result.warnings.length,1);assert.match(done.result.message,/원본 저장/);
 });

@@ -68,6 +68,11 @@ test('wrapper encodes at 0.9 and attaches metadata after canvas alpha is lost', 
     const out = await api.encodeGenerationWebp(source, metadata);
     assert.equal(quality, 0.9);
     assert.deepEqual(api.readGenerationImageData(out), metadata);
+    for (const value of [1, 73, 100]) {
+      const adjusted = await api.encodeGenerationWebp(source, { ...metadata, qualityPercent:value });
+      assert.equal(quality, value / 100);
+      assert.deepEqual(api.readGenerationImageData(adjusted), metadata);
+    }
   } finally { globalThis.createImageBitmap = prevBitmap; globalThis.OffscreenCanvas = prevCanvas; }
 });
 

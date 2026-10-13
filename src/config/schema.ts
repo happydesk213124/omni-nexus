@@ -1,3 +1,4 @@
+import { webpQualityPercent } from '../domain/nai/image-output';
 import { sanitizeForExport } from '../core/util/export-secrets';
 /** Settings migration + export/import. Pure: no storage, no I/O. */
 
@@ -259,6 +260,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
     || card.no_humans_when_no_char === 'on';
   // person_tag_weight: NAI emphasis on Inlay person-count tags (0 = plain, 1–5 = N::…::)
   card.person_tag_weight = normalizePersonTagWeight(card.person_tag_weight);
+  card.image_webp_quality = webpQualityPercent(card.image_webp_quality);
+  card.nai_auto_upscale = card.nai_auto_upscale === true;
   card.location_tag_weight = normalizeLocationWeight(card.location_tag_weight);
   card.message_select_gesture = normalizeMessageSelectGesture(card.message_select_gesture);
   // costume: main-tagger catalog inject (char_looks always builds costumes[])

@@ -433,6 +433,7 @@ const WRITE_ROUTES: readonly Route[] = [
     handler: async ({ param, body }) => ok(await cards.updateCardTags(param, body)),
   },
   { match: wrapped('/v1/cards/', '/pin'), handler: async ({ param }) => ok(await pinImageRevision(param)) },
+  { match: wrapped('/v1/cards/', '/upscale'), handler: async ({ param, body }) => ok(await cards.upscaleCard(param, body)) },
   {
     match: wrapped('/v1/cards/', '/studio-generate'),
     handler: async ({ param, body }) => ok(await cards.studioGenerate(param, body)),

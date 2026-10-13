@@ -21,7 +21,7 @@ export function bindTtsLlmActions(refresh: () => void): void {
     voices = parseVoiceImport(answer); review('bulk-results',voices.map(v => `${esc(v.name)} · ${esc(v.tags.join(', '))}`)); input('bulk-apply').disabled = false; text('bulk-status',`${voices.length}개 확인 후 적용`);
   }));
   on('bulk-apply', async () => { ttsData().voices.push(...selected('bulk-results').map(i => voices[i])); await persist(); refresh(); dialog('bulk-dialog',false); });
-  on('command-characters', () => { proposals = []; el('source-results').replaceChildren(); input('source-apply').disabled = true; dialog('character-source-dialog'); });
+  on('command-characters', () => { proposals = []; el('source-results').replaceChildren(); el('source-command-fields').hidden=false; input('source-apply').disabled = true; dialog('character-source-dialog'); });
   on('source-extract', () => busy('source-extract',async () => {
     text('source-status','자료 확인 · 캐릭터 제안 중…');
     const context = await currentTtsContext();

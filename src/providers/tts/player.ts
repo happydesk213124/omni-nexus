@@ -8,6 +8,7 @@ export class TtsPlayer {
   private current = '';
   private state: PlaybackState = 'idle';
   private unlocked = false;
+  private unlocking?: Promise<void>;
   private rate = 1;
   private volume = .8;
   private decibels = 0;
@@ -29,8 +30,11 @@ export class TtsPlayer {
     }
     return this.audio;
   }
-  async unlock(): Promise<void> {
-    if (this.ready) return;
+  unlock(): Promise<void> {
+    if (this.ready) return Promise.resolve();
+    return this.unlocking ||= this.activate().finally(() => { this.unlocking = undefined; });
+  }
+  private async activate(): Promise<void> {
     const audio = this.ensure();
     // Both calls happen synchronously inside the iframe's own click handler.
     // No permission or activation flag is assumed before they resolve.
@@ -52,7 +56,10 @@ export class TtsPlayer {
       this.unlocked = this.context!.state === 'running';
       if (!this.unlocked) throw new Error('음성 재생 활성화 버튼을 다시 눌러 주세요.');
       this.stop();
-    } catch (error) { if (ticket === this.epoch) { this.unlocked = false; this.stop(); this.emit('blocked'); } throw error; }
+    } catch (error) {
+      if (ticket !== this.epoch) return;
+      this.unlocked = false; this.stop(); this.emit('blocked'); throw error;
+    }
   }
   configure(rate: number, volume: number, gain = this.decibels): void {
     this.rate = Math.max(.25, Math.min(4, rate));

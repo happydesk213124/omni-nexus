@@ -1,4 +1,5 @@
 import type { TtsVoice } from '../core/tts-types';
+import { uuid } from '../core/util/text';
 import { ttsData, updateTtsSettings } from '../storage/tts-store';
 import { fishVoiceId, matchesVoiceSearch, parseVoiceImport } from '../domain/tts/library';
 import { fetchFishVoice as fishVoiceMetadata } from '../providers/tts/fish';
@@ -48,7 +49,7 @@ export class TtsLibrary {
     for (const [key, label] of [['*','전체 음성'], ['', '미분류'], ...data.folders.map(f => [f,f])]) { const b = button(`${label} ${data.voices.filter(v => key === '*' || v.folder === key).length}`, () => { this.folder = key; this.selected.clear(); this.render(); }); b.className = 'folder-item' + (key === this.folder ? ' active' : ''); folders.append(b); }
     input('edit-voice-folder').disabled = !this.folder || this.folder === '*';
   }
-  private edit(voice?: TtsVoice): void { this.editing = voice?.key || ''; set('v-name', voice?.name); set('v-id', voice?.fishId); set('v-tags', voice?.tags.join(', ')); set('v-gender', genderLabel(voice?.gender || 'unknown')); dialog('voice-dialog'); }
+  private edit(voice?: TtsVoice): void { this.editing = voice?.key || '';text('voice-dialog-title',voice?'음성 수정':'음성 추가'); set('v-name', voice?.name); set('v-id', voice?.fishId); set('v-tags', voice?.tags.join(', ')); set('v-gender', genderLabel(voice?.gender || 'unknown')); dialog('voice-dialog'); }
   bind(): void {
     for (const id of ['voice-search', 'gender-filter', 'voice-sort']) on(id, () => this.render(), id === 'voice-search' ? 'input' : 'change');
     on('clear-voice-search', () => { set('voice-search',''); this.render(); });
@@ -64,7 +65,7 @@ export class TtsLibrary {
     on('voice-form', async () => {
       const fishId = fishVoiceId(val('v-id')), name = val('v-name').trim(); if (!fishId || !name) throw new Error('이름과 올바른 Fish ID 또는 링크를 입력해 주세요.');
       const old = ttsData().voices.find(v => v.key === this.editing);
-      const voice: TtsVoice = { key: old?.key || crypto.randomUUID(), name, fishId, tags: list(val('v-tags')), gender: gender(val('v-gender')), folder: old?.folder || (this.folder === '*' ? '' : this.folder) };
+      const voice: TtsVoice = { key: old?.key || uuid(), name, fishId, tags: list(val('v-tags')), gender: gender(val('v-gender')), folder: old?.folder || (this.folder === '*' ? '' : this.folder) };
       if (old) Object.assign(old, voice); else ttsData().voices.push(voice);
       await persist(); dialog('voice-dialog', false); this.render();
     }, 'submit');

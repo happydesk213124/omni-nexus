@@ -1,9 +1,11 @@
+import { webpQualityPercent } from '../nai/image-output';
 import { encodeWebpQuality } from '../../core/util/image.ts';
 import { type BytesLike } from '../../core/util/bytes.ts';
 import { extractNaiMetadata } from './index.ts';
 import { readGenerationImageData, writeGenerationImageData, type GenerationCharacterAssociation, type GenerationImageData } from './generation-data.ts';
 
 export interface GenerationEncodingOptions {
+  qualityPercent?: number;
   /** Omit to extract from original PNG text/stealth or WebP EXIF. */
   recipe?: unknown;
   characters?: readonly GenerationCharacterAssociation[];
@@ -35,11 +37,11 @@ export async function preserveImageMetadata(
   return writeGenerationImageData(encoded, await generationData(original, context));
 }
 
-/** Full-resolution WebP 0.9; unavailable encoding returns a metadata-bearing
+/** Full-resolution WebP at the selected quality; unavailable encoding returns a metadata-bearing
  * original PNG. Unsupported fallback formats throw instead of losing cast.
  */
 export async function encodeGenerationWebp(bytes: BytesLike, options: GenerationEncodingOptions = {}): Promise<ArrayBuffer> {
   const metadata = await generationData(bytes, options);
-  const encoded = await encodeWebpQuality(bytes, 0.9, encoded => writeGenerationImageData(encoded, metadata));
+  const encoded = await encodeWebpQuality(bytes, webpQualityPercent(options.qualityPercent) / 100, encoded => writeGenerationImageData(encoded, metadata));
   return encoded ?? writeGenerationImageData(bytes, metadata);
 }

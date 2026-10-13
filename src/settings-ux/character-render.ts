@@ -3,6 +3,8 @@ import { releaseCharacterPreviews } from './character-preview-loading';
 
 /** Keep navigation mounted while the vendor replaces the selected bot's form. */
 export function replaceMain(main: HTMLElement, html: string, tab: string): void {
+  // Vendor refreshes its image/settings state while this independently owned tab is open.
+  if (tab === 'curation' && main.querySelector('#tts-settings-root') && html.includes('id="tts-settings-root"')) return;
   releaseCharacterPreviews();
   resetCharacterPreviewIndex();
   if (tab !== 'characters' || main.dataset.nxUxTab !== 'characters') {

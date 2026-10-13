@@ -457,6 +457,9 @@ const normalize = (root) => {
 // exact new contract, keep them visible in the report, and compare all other fields.
 const expectedAssetChanges=[];
 function expectedAssetChange(a,b,at) {
+  // New defaults keep prior image storage quality and leave paid upscale opt-in; image_output asserts persistence/export.
+  if (/\.value\.(?:settings|json)\.card\.image_webp_quality$/.test(at)) return a === undefined && b === 90;
+  if (/\.value\.(?:settings|json)\.card\.nai_auto_upscale$/.test(at)) return a === undefined && b === false;
   // Neutral place weighting adds a saved default without changing old prompts;
   // settings.location_weight asserts decimal persistence and export explicitly.
   if (/\.value\.(?:settings|json)\.card\.location_tag_weight$/.test(at)) return a === undefined && b === 1;
@@ -668,6 +671,8 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
+  ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale persistence failed'],
+  ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],

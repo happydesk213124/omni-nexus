@@ -1,6 +1,7 @@
+import { png } from './fixtures/upscale-image.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { installHost, PNG_NAI_1X1 } from '../tools/parity/host.mjs';
+import { installHost, PNG_NAI_1X1, zipStore } from '../tools/parity/host.mjs';
 import { emptyState, hydrateFromNai } from '../.test-build/tag-studio-model.mjs';
 import { sessionIdHash } from '../.test-build/text-util.mjs';
 let serial=0;
@@ -195,4 +196,32 @@ test('studio restores filename cast across bot/chat scopes ahead of stale image 
   assert.equal(Object.values(reopened.chars)[0].charName,'');
   assert.equal(Object.values(reopened.chars)[0].post,prompt);
   assert.equal(Object.values(reopened.chars)[1].rosterId,shared.id,'unknown slots must not shift a later character into c1');
+});
+
+
+test('manual upscale replaces the displayed revision with doubled geometry and preserves tags and cast',async()=>{
+  const f=await fixture();
+  const local=await f.api.upsertCharacter('owner',{id:'upscale-cast',name:'A',appearance:'red hair'});
+  const saved=await f.api.studioCommit('root',{image_data_url:'data:image/png;base64,'+png(832,1216).toString('base64'),
+    recipe:{...f.recipe,seed:777},seed:777,width:832,height:1216,characters:[{id:local.id,scope:local.scope,name:local.name,prompt:'girl, red hair'}]});
+  const sourceId=saved.card.id;
+  const cast=await f.api.shotCastIds(sourceId);
+  const before=(await f.chat()).message[0].data;
+  let release;const gate=new Promise(r=>release=r);let calls=0;
+  risuai.nativeFetch=async(url)=>{assert.ok(url.endsWith('/upscale'));calls++;await gate;return new Response(zipStore('image.png',png(1664,2432)));};
+  const work=f.api.upscaleCard('root',{source_id:sourceId,characters:[{id:local.id,scope:local.scope,name:local.name,prompt:'girl, red hair'}]});
+  for(let i=0;i<100 && !calls;i++)await new Promise(r=>setTimeout(r,5));
+  assert.equal(calls,1);assert.equal((await f.chat()).message[0].data,before,'no replacement while upscale is pending');
+  release();const result=await work;
+  assert.equal(result.ok,true);assert.notEqual(result.card.id,sourceId);
+  assert.deepEqual([result.card.width,result.card.height],[1664,2432]);
+  assert.deepEqual((await f.api.shotCastIds(result.card.id)).ids,cast.ids);
+  const recipe=await f.api.readCardNaiPrompts(result.card.id);
+  assert.equal(recipe.main_prompt,f.recipe.prompt);assert.equal(recipe.width,1664);assert.equal(recipe.height,2432);assert.equal(recipe.seed,777);assert.equal(result.card.seed,777);
+  assert.match((await f.chat()).message[0].data,/::1664::2432/);
+  assert.ok(await f.api.idbGet('cards',sourceId),'original revision remains recoverable');
+  const current=(await f.chat()).message[0].data;
+  risuai.nativeFetch=async()=>new Response('Not enough Anlas',{status:402});
+  await assert.rejects(f.api.upscaleCard(sourceId),/402/);
+  assert.equal((await f.chat()).message[0].data,current,'failure cannot replace the existing image');
 });
