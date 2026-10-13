@@ -4,7 +4,7 @@ import { ttsData, updateTtsSettings } from '../storage/tts-store';
 import { fishVoiceId, matchesVoiceSearch, parseVoiceImport } from '../domain/tts/library';
 import { fetchFishVoice as fishVoiceMetadata } from '../providers/tts/fish';
 import { numberedVoices } from '../providers/tts/selection';
-import { el, input, val, set, text, list, gender, genderLabel, esc, on, onForm, dialog, button, persist, listenButton, auditionButton, openExternal, download, readJson } from './common';
+import { el, input, val, set, text, list, gender, genderLabel, esc, on, onForm, dialog, button, persist, listenButton, auditionButton, openExternal, download, readJson, notify } from './common';
 
 export class TtsLibrary {
   selected = new Set<string>();
@@ -63,7 +63,7 @@ export class TtsLibrary {
     auditionButton(el<HTMLButtonElement>('test-voice-editor'), () => ({ fishId: fishVoiceId(val('v-id')) }));
     el('voice-form').querySelector<HTMLButtonElement>('button[type="submit"]')?.setAttribute('id','voice-submit');
     const fishLink = el('tts-voices')?.querySelector<HTMLAnchorElement>('a[href*="fish.audio"]');
-    if (fishLink) { const status = document.createElement('small'); status.setAttribute('role','status'); status.className = 'fish-link-status'; status.hidden = true; fishLink.after(status); let timer: ReturnType<typeof setTimeout> | undefined; openExternal(fishLink, message => { status.textContent = message; status.hidden = false; clearTimeout(timer); timer = setTimeout(() => { status.hidden = true; }, 8000); }); }
+    if (fishLink) openExternal(fishLink, notify);
     on('v-fetch', async () => { const metadata = await fishVoiceMetadata(val('v-id'), ttsData().settings); set('v-id', metadata.fishId); set('v-name', metadata.name); set('v-tags', metadata.tags.join(', ')); set('v-gender', genderLabel(metadata.gender)); });
     onForm('voice-form', async () => {
       const fishId = fishVoiceId(val('v-id')), name = val('v-name').trim(); if (!fishId || !name) throw new Error('이름과 올바른 Fish ID 또는 링크를 입력해 주세요.');

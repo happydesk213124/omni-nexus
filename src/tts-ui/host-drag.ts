@@ -7,12 +7,23 @@ export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()
   let starting:Promise<void>|undefined,ending:Promise<void>|undefined,dirty=false,suppress=0;
   const writes=new Set<Promise<void>>();
   const listeners:{type:string;id:string}[]=[];
+  // While dragging, a transparent page cover sits just under the viewer. A fast
+  // pointer that leaves the header then crosses no chat element, so no hover
+  // handler or style recalculation competes with the move writes.
+  for(const old of await safeArray(await doc.querySelectorAll('[x-omnitts-shield]'))){await old.remove();await releaseHost(old);}
+  const shield=await doc.createElement('div'),body=await doc.querySelector('body');
+  await shield.setAttribute('x-omnitts-shield','1');
+  await shield.setStyleAttribute('position:fixed;inset:0;z-index:2147483099;display:none;background:transparent;cursor:grabbing;touch-action:none');
+  await body?.appendChild(shield);await releaseHost(body);
+  let shielded=false;
+  const cover=(on:boolean)=>{if(shielded===on)return;shielded=on;void shield.setStyle('display',on?'block':'none').catch(()=>{});};
   const move=()=>{
     if(!drag||!start||!latest||writes.size>=16||!dirty)return;
     dirty=false;
     const dx=latest.clientX-start.clientX,dy=latest.clientY-start.clientY;
     drag.moved ||= Math.hypot(dx,dy)>4;
     if(!drag.moved)return;
+    cover(true);
     drag.left=Math.max(0,Math.min(drag.w-drag.rect.width,drag.rect.left+dx));
     drag.top=Math.max(0,Math.min(drag.h-drag.rect.height,drag.rect.top+dy));
     // Risu applies ordered writes before acknowledging them. As in the image
@@ -23,7 +34,7 @@ export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()
   const end=(cancel=false):Promise<void>=>ending||=(async()=>{
     held=false;await starting;move();
     while(writes.size){await Promise.all([...writes]);move();}
-    const finished=drag;drag=undefined;dirty=false;
+    const finished=drag;drag=undefined;dirty=false;cover(false);
     if(finished?.moved){suppress=Date.now()+400;if(!cancel)await updateTtsSettings({viewerAnchor:{right:Math.max(8,finished.w-finished.left-finished.rect.width),top:finished.top}});}
     await refresh();await viewer.setStyle('transform','');
   })().finally(()=>{ending=undefined;});
@@ -49,5 +60,5 @@ export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()
   await listen('pointermove',e=>{latest=e;if(drag&&held){dirty=true;move();}});
   await listen('pointerup',e=>{if(!held)return;latest=e;dirty=true;move();void end();});
   await listen('pointercancel',()=>{if(held)void end(true);});
-  return {get busy(){return !!drag;},get suppressClick(){return Date.now()<suppress;},cancel:()=>end(true),dispose:async()=>{await end(true);for(const l of listeners)await doc.removeEventListener(l.type,l.id,{capture:true});}};
+  return {get busy(){return !!drag;},get suppressClick(){return Date.now()<suppress;},cancel:()=>end(true),dispose:async()=>{await end(true);for(const l of listeners)await doc.removeEventListener(l.type,l.id,{capture:true});await shield.remove();await releaseHost(shield);}};
 }

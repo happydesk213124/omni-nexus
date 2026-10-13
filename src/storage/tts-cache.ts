@@ -85,6 +85,20 @@ export class TtsAudioCache {
       });
     } finally { if (this.pending.get(signature) === pending) this.pending.delete(signature); }
   }
+  /** Drops one clip so the next request synthesizes it again. */
+  async remove(signature: string): Promise<void> {
+    const previous = this.memory.get(signature);
+    if (previous) { this.memoryBytes -= previous.byteLength; this.memory.delete(signature); }
+    this.pending.delete(signature);
+    await this.init();
+    await this.serial(async () => {
+      const key = compactHash(signature);
+      if (this.index[key]?.signature !== signature) return;
+      delete this.index[key];
+      await this.api!.removeItem(PREFIX + key);
+      await this.api!.setItem(PREFIX + 'index', this.index);
+    });
+  }
   get generation(): number { return this.epoch; }
   async configure(megabytes: number): Promise<void> {
     this.budget = megabytes * 1024 * 1024;

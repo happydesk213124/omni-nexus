@@ -24,7 +24,7 @@ export async function audition(fishId: string, gain = 0): Promise<void> {
   const reservation = omniTts.reservePlayback();
   await omniTts.player.unlock();
   if (!omniTts.player.ready) return;
-  const context = await currentTtsContext().catch(()=>({scope:'audition',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
+  const context = await currentTtsContext().catch(()=>({scope:'audition',rosterScope:'global',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
   await omniTts.play([{ context, messageId: 'audition', fishId, gain, segment: { id: fishId, text: '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
   if (omniTts.player.status === 'error' || omniTts.player.status === 'blocked') throw new Error(omniTts.notice || '미리 듣기를 재생하지 못했습니다.');
 }
@@ -61,6 +61,18 @@ export function onForm(formId: string, action: () => void | Promise<unknown>): v
     if (event.key === 'Enter' && !event.isComposing && event.target instanceof HTMLInputElement) { event.preventDefault(); submit(); }
   });
 }
+/** A short notice floating at the bottom of the settings window; never reflows the form. */
+export function notify(message: string): void {
+  let node = document.getElementById('tts-notice');
+  if (!node) {
+    node = document.createElement('div'); node.id = 'tts-notice'; node.setAttribute('role', 'status');
+    node.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483000;width:max-content;max-width:min(520px,calc(100vw - 32px));box-sizing:border-box;padding:10px 14px;border:1px solid #fcd34d55;border-radius:12px;background:#1f2533f2;color:#fde68a;font:13px/1.5 sans-serif;box-shadow:0 8px 24px #0008;overflow-wrap:anywhere;pointer-events:none';
+    document.body.append(node);
+  }
+  node.textContent = message; node.hidden = false;
+  clearTimeout(Number(node.dataset.timer));
+  node.dataset.timer = String(setTimeout(() => { if (node) node.hidden = true; }, 6000));
+}
 /**
  * The plugin frame also lacks allow-popups: a target=_blank click is silently
  * dropped (only a middle click escapes). Try a real window, otherwise copy the
@@ -74,7 +86,7 @@ export function openExternal(link: HTMLAnchorElement, status: (message: string) 
     try { opened = window.open(link.href, '_blank', 'noopener,noreferrer'); } catch { opened = null; }
     if (opened) return;
     const copied = copyText(link.href);
-    status(copied ? '새 탭이 막혀 있어 주소를 복사했어요. 새 탭 주소창에 붙여 넣거나 링크를 휠 클릭(모바일은 길게 눌러 새 탭)해 주세요.' : `새 탭이 막혀 있어요. 링크를 휠 클릭(모바일은 길게 눌러 새 탭)하거나 ${link.href} 로 이동해 주세요.`);
+    status(copied ? 'Risu가 새 탭을 막아 주소를 복사했어요 · 휠 클릭(모바일은 길게 누르기)으로도 열 수 있어요' : 'Risu가 새 탭을 막았어요 · 링크를 휠 클릭(모바일은 길게 누르기)해 주세요');
   });
 }
 function copyText(value: string): boolean {

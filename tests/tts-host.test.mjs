@@ -58,9 +58,9 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     const tail=kind=>`<span data-omnitts-tail="1"><button type="button" data-omnitts-play="1" data-omnitts-kind="${kind}" title="재생" aria-label="재생"></button></span>`;
     await page.evaluate(([dialogue,narration])=>{const style=document.createElement('style');style.textContent=window.TTS_MODULE_CSS;document.head.append(style);document.querySelector('.default-chat-screen').innerHTML=DOMPurify.sanitize(window.messages.map((m,i)=>`<div class="risu-chat" data-chat-index="${i}" data-chat-id="${m.chatId}"><div class="regex-quote-block" style="height:50px">“${m.data.match(/"(.*)"/)[1]}”${dialogue}</div>${i===2?`<div>[상태] 체력 99${narration}</div>`:''}</div>`).join(''));},[tail('dialogue'),tail('narration')]);
     await page.waitForFunction(()=>window.requests.length===5,undefined,{timeout:12000});
-    await page.waitForFunction(()=>document.querySelector('[data-chat-index="2"] [data-omnitts-kind="narration"]').getAttribute('x-omnitts-dead')==='1');
+    await page.waitForFunction(()=>document.querySelector('[data-chat-index="2"] [data-omnitts-kind="narration"]').style.display==='none');
     assert.equal(await page.locator('[data-chat-index="2"] [data-omnitts-kind="narration"]').isVisible(),false,'a line without a source segment keeps no visible control');
-    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('[data-omnitts-kind="dialogue"]')].every(n=>n.getAttribute('x-omnitts-dead')==='0')),true,'every rendered cue binds to its own source line');
+    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('[data-omnitts-kind="dialogue"]')].every(n=>n.getAttribute('x-omnitts-bound')&&n.style.display!=='none')),true,'every rendered cue binds to its own source line');
     assert.equal(await page.evaluate(()=>window.omniTts.list.length),1,'the viewer knows the visible message before a dialogue is clicked');
     await page.locator('[data-tts-control="play"]').click();
     await page.waitForFunction(()=>window.omniTts.player.status==='loading');
@@ -143,10 +143,10 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
       const parent=document.createElement('div');parent.innerHTML=DOMPurify.sanitize(`<div class="risu-chat" data-chat-index="8"><p><em>햇빛이</em> 도서관을 비추었다.${tail}</p></div>`);
       document.querySelector('.default-chat-screen').append(parent);window.narrationNode=parent.querySelector('[data-omnitts-play]');
     },tail('narration'));
-    const narrationButton=page.locator('[data-omnitts-kind="narration"]:not([x-omnitts-dead="1"])');
+    const narrationButton=page.locator('[data-chat-index="8"] [data-omnitts-kind="narration"]');
     const shown=()=>window.narrationNode.getAttribute('x-omnitts-bound')&&getComputedStyle(window.narrationNode).display!=='none';
-    await page.waitForFunction(()=>document.body.getAttribute('x-omnitts-narration')==='off'&&window.narrationNode.getAttribute('x-omnitts-bound'));
-    assert.equal(await page.evaluate(()=>getComputedStyle(window.narrationNode).display),'none','OFF hides narration with one root attribute');
+    await page.waitForFunction(()=>window.narrationNode.getAttribute('x-omnitts-bound')&&window.narrationNode.style.display==='none');
+    assert.equal(await page.evaluate(()=>document.body.hasAttribute('x-omnitts-narration')),false,'the plugin hides the control itself, not through a module rule');
     assert.equal(await narrationButton.count(),1,'OFF retains the module button in DOM on its first scan');
     await page.evaluate(()=>window.updateTtsSettings({narration:true}));
     await page.waitForFunction(shown);

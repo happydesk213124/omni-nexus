@@ -1,7 +1,7 @@
 import type { TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
 import { synthesisSignature } from '../domain/tts/segment';
-import { allowedTtsText, ttsExcludeTerms } from '../domain/tts/filter';
+import { allowedTtsText, ttsExcludeTerms, ttsSpokenText } from '../domain/tts/filter';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
@@ -67,7 +67,7 @@ export class OmniTtsRuntime {
     const s = ttsData().settings;
     this.queue.configure(s.concurrency, s.background);
     this.player.configure(s.rate, s.volume);
-    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars]);
+    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
@@ -137,6 +137,21 @@ export class OmniTtsRuntime {
     if(index<0){this.report(new Error('현재 화면에 재생할 대사가 없습니다.'));return;}
     await this.play(requests,index);
   }
+  /** Asks Fish for a new take of the current line instead of the cached clip. */
+  async regenerate(): Promise<void> {
+    const requests = this.sequence.length ? this.sequence : this.readingSequence;
+    const index = this.sequence.length ? this.sequenceIndex : requests.findIndex(r => this.eligible(r));
+    const request = requests[index];
+    if (!request || !this.eligible(request)) { this.report(new Error('다시 만들 대사가 없습니다. 목록에서 줄을 먼저 골라 주세요.')); return; }
+    this.stop();
+    const ticket = this.intent;
+    const prepared = await this.prepare([request], () => ticket === this.intent && ttsData().settings.enabled);
+    if (ticket !== this.intent || !prepared[0]) return;
+    this.failedAudio.delete(prepared[0].signature);
+    await this.cache.remove(prepared[0].signature);
+    if (ticket !== this.intent) return;
+    await this.play(requests, index, ticket);
+  }
   async next(delta: number): Promise<void> {
     let index = this.sequenceIndex + delta;
     while (index >= 0 && index < this.sequence.length && !this.eligible(this.sequence[index])) index += delta;
@@ -150,11 +165,12 @@ export class OmniTtsRuntime {
     if (!valid()) return [];
     const settings = JSON.parse(JSON.stringify(ttsData().settings)) as TtsSettings;
     const prepared = requests.flatMap(request => {
-      const character = request.segment.speaker ? resolveTtsSpeaker(request.segment.speaker, ttsData().characters, context.scope) : null;
-      const voiceKey = request.segment.kind === 'narration' ? settings.narrationVoice : character?.voiceKey;
+      const character = request.segment.speaker ? resolveTtsSpeaker(request.segment.speaker, ttsData().characters, context.rosterScope) : null;
+      // An illustration line without a named speaker falls back to the narrator.
+      const voiceKey = request.segment.kind === 'narration' || (request.segment.kind === 'illustration' && !request.segment.speaker) ? settings.narrationVoice : character?.voiceKey;
       const voice = ttsData().voices.find(v => v.key === voiceKey);
       const fishId = request.fishId || character?.fishId || voice?.fishId || '';
-      return fishId ? [{ request, text: request.segment.text, signature: '', fishId, gain: request.gain ?? character?.gain ?? 0, settings }] : [];
+      return fishId ? [{ request, text: ttsSpokenText(request.segment.text, settings.stripBrackets), signature: '', fishId, gain: request.gain ?? character?.gain ?? 0, settings }] : [];
     });
     if (!prepared.length) throw new Error('캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
@@ -215,7 +231,7 @@ export class OmniTtsRuntime {
       const selected = requests.filter(r => this.eligible(r)).slice(0, s.prefetch);
       const ready: TtsRequest[] = [], unassigned: TtsRequest[] = [];
       for (const request of selected) {
-        const character = resolveTtsSpeaker(request.segment.speaker, ttsData().characters, request.context.scope);
+        const character = resolveTtsSpeaker(request.segment.speaker, ttsData().characters, request.context.rosterScope);
         const voiceKey = request.segment.kind === 'narration' ? s.narrationVoice : character?.voiceKey;
         const assigned = request.fishId || character?.fishId || ttsData().voices.find(v => v.key === voiceKey)?.fishId;
         (assigned ? ready : unassigned).push(request);

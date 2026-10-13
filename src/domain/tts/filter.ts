@@ -100,5 +100,10 @@ export function hasTtsSpeech(text: string, skipChars = 1): boolean {
   return false;
 }
 export function allowedTtsText(text: string, terms: readonly string[], skipChars = 1): boolean {
-  return hasTtsSpeech(text, skipChars) && !terms.some(term => text.includes(term));
+  // Countdowns and timestamps ([00:10… 00:09…]) carry no word in any language.
+  return hasTtsSpeech(text, skipChars) && /\p{L}/u.test(text) && !terms.some(term => text.includes(term));
+}
+/** `[00:00 - SHOOTING FINISHED]` is read as `00:00 - SHOOTING FINISHED`. */
+export function ttsSpokenText(text: string, stripBrackets: boolean): string {
+  return stripBrackets ? text.replace(/[[\]【】〔〕]/g, ' ').replace(/\s{2,}/g, ' ').trim() : text;
 }

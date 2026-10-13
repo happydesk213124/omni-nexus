@@ -89,13 +89,14 @@ async function nxFloatUnbindInputs() {
   clearTimeout(nxFloatScanTimer); nxFloatScanTimer = 0;
   if(nxFloatPointer)nxFloatPointer.held=false;
   await nxFloatEndDrag(true);
+  await nxFloatDropShield();
   nxFloatPointer=null;
   await nxFloatObserver?.disconnect();await omniRelease(nxFloatObserver);nxFloatObserver = null;
   await nxFloatDropPosition();
   await omniRelease(nxFloatWatchRoot);nxFloatWatchRoot=null;
   if (nxFloatDoc) {
     const refs=omniDomScope();
-    try {for (const node of await refs.all(await nxFloatDoc.querySelectorAll('[x-nx-float-watch]'))) await node.remove();}finally{await refs.close();}
+    try {for (const node of await refs.all(await nxFloatDoc.querySelectorAll('[x-nx-float-watch],[x-nx-float-shield]'))) await node.remove();}finally{await refs.close();}
   }
   for (const {node, kind, id, options} of nxFloatInputs.splice(0)) {
     try { await node.removeEventListener(kind, id, options); } catch {}

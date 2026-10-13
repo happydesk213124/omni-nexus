@@ -99,7 +99,7 @@ export async function fetchCharacterLorebookEntries(characterId: string): Promis
     ...(Array.isArray(chat?.localLore) ? chat.localLore : []),
     ...(db?.modules || []).filter(m => enabled.has(m.id)).flatMap(m => m.lorebook || []),
   ] as LoreEntry[];
-  return entries.filter(entry => !String(entry.comment || '').startsWith('omni.nexus.data.') && !String(entry.comment || '').startsWith('inlay.nexus.data.'));
+  return entries.filter(entry => !String(entry.comment || '').startsWith('omni.nexus.data.') && !String(entry.comment || '').startsWith('omni.nexus.tts') && !String(entry.comment || '').startsWith('inlay.nexus.data.'));
 }
 
 async function seedSelectedFromLlm(catalog: LoreCatalogItem[]): Promise<string[]> {
