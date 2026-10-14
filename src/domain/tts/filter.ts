@@ -99,11 +99,15 @@ export function hasTtsSpeech(text: string, skipChars = 1): boolean {
   }
   return false;
 }
-export function allowedTtsText(text: string, terms: readonly string[], skipChars = 1): boolean {
+export function allowedTtsText(text: string, terms: readonly string[], skipChars = 1, requireLetter = true): boolean {
   // Countdowns and timestamps ([00:10… 00:09…]) carry no word in any language.
-  return hasTtsSpeech(text, skipChars) && /\p{L}/u.test(text) && !terms.some(term => text.includes(term));
+  return hasTtsSpeech(text, skipChars) && (!requireLetter || /\p{L}/u.test(text)) &&!terms.some(term => text.includes(term));
 }
-/** `[00:00 - SHOOTING FINISHED]` is read as `00:00 - SHOOTING FINISHED`. */
-export function ttsSpokenText(text: string, stripBrackets: boolean): string {
-  return stripBrackets ? text.replace(/[[\]【】〔〕]/g, ' ').replace(/\s{2,}/g, ' ').trim() : text;
+export function ttsSpokenText(text: string, omissions: string | boolean): string {
+  // Keep the old boolean call contract for integrations, while new settings
+  // treat every list entry literally (including regular-expression symbols).
+  const terms = ttsExcludeTerms(typeof omissions === 'boolean' ? (omissions ? '[, ], 【, 】, 〔, 〕' : '') : omissions);
+  if (!terms.length) return text;
+  for (const term of terms.sort((a, b) => b.length - a.length)) text = text.split(term).join(' ');
+  return text.replace(/\s{2,}/g, ' ').trim();
 }

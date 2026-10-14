@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const compiled=await build({stdin:{contents:"export * from './src/domain/tts/queue';export * from './src/domain/tts/identity';export * from './src/domain/tts/library';export * from './src/domain/tts/segment';export * from './src/config/tts-defaults';export * from './src/providers/tts/player';export * from './src/tts-ui/host-utils';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
+const compiled=await build({stdin:{contents:"export * from './src/domain/tts/queue';export {hasTtsSpeech} from './src/domain/tts/filter';export * from './src/domain/tts/identity';export * from './src/domain/tts/library';export * from './src/domain/tts/segment';export * from './src/config/tts-defaults';export * from './src/providers/tts/player';export * from './src/tts-ui/host-utils';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const deferred=()=>{let resolve,reject;const promise=new Promise((y,n)=>{resolve=y;reject=n;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -107,4 +107,72 @@ test('stopping pending activation absorbs the browser AbortError',async()=>{
   globalThis.Audio=AudioMock;globalThis.AudioContext=ContextMock;
   try {const p=new api.TtsPlayer();const pending=p.unlock();p.stop();await assert.doesNotReject(pending);assert.equal(p.ready,false);}
   finally {globalThis.Audio=originalAudio;globalThis.AudioContext=originalContext;}
+});
+
+test('illustration speakers map to TTS characters by trigger words, then surname and given name',()=>{
+  const tts=(id,name,o={})=>({id,name,surname:'',givenName:'',surnameAliases:[],givenAliases:[],triggers:[name],tags:[],gender:'unknown',scope:'bot:b',voiceKey:'',fishId:'',fixed:false,gain:0,...o});
+  const roster=[tts('1','Bomin'),tts('2','Mashal',{triggers:['Mashal','마샬']}),tts('3','Zet Kim',{surname:'Kim',givenName:'Zet',triggers:['Zet']}),tts('4','Zet Park',{surname:'Park',givenName:'Zet',triggers:['Zet']})];
+  const m=(person)=>api.matchIllustrationSpeaker(person,roster,'bot:b')?.id||null;
+  assert.equal(m({name:'보민',aliases:['Bomin','보민']}),'1','an English trigger word links the Korean display name');
+  assert.equal(m({name:'마샬',aliases:[]}),'2','a Korean trigger on the TTS side works too');
+  assert.equal(m({name:'제트',aliases:['Zet'],surname:'박',surname_variants:['Park'],given_name:'제트',given_name_variants:['Zet']}),'4','a shared trigger is settled by surname');
+  assert.equal(m({name:'민지',aliases:[],surname:'김',surname_variants:['Kim'],given_name:'민지',given_name_variants:['Minji']}),null,'a surname alone never picks someone');
+  assert.equal(m({name:'제트',aliases:[],surname:'김',surname_variants:['Kim'],given_name:'제트',given_name_variants:['Zet']}),'3','without a trigger, given name plus surname finds the person');
+});
+
+test('per-character gain applies only when automatic loudness is switched off',()=>{
+  assert.equal(api.ttsCharacterGain({gain:-6,autoGain:true}),0,'auto ignores a stored correction');
+  assert.equal(api.ttsCharacterGain({gain:-6,autoGain:false}),-6);
+  assert.equal(api.ttsCharacterGain({gain:4}),4,'older rows with a correction keep it');
+  assert.equal(api.ttsCharacterGain({gain:0}),0);
+});
+
+test('a JEV pick fills only an empty tag list and an unknown gender',()=>{
+  const c={tags:[],gender:'unknown'};api.adoptVoiceTags(c,{tags:['calm'],gender:'female'});assert.deepEqual(c,{tags:['calm'],gender:'female'});
+  const set={tags:['bright'],gender:'male'};api.adoptVoiceTags(set,{tags:['calm'],gender:'female'});assert.deepEqual(set,{tags:['bright'],gender:'male'},'known values stay');
+  const vague={tags:[],gender:'unknown'};api.adoptVoiceTags(vague,{tags:[],gender:'unknown'});assert.deepEqual(vague,{tags:[],gender:'unknown'});
+});
+
+
+test('role cards: narrator and monologue always exist, bot cards follow the global ones until switched off',()=>{
+  const voices=[{key:'v1',fishId:'f1'}];
+  let roster=api.ensureTtsRoleCards([],'global',voices,'v1');
+  assert.deepEqual(roster.map(c=>[c.role,c.scope]),[['narrator','global'],['monologue','global']]);
+  assert.equal(roster[0].fishId,'f1','the saved narration voice moves onto the global narrator card');
+  assert.equal(api.ensureTtsRoleCards(roster,'global'),roster,'nothing is added twice');
+  roster=api.ensureTtsRoleCards(roster,'bot:a');
+  assert.equal(roster.length,4);
+  const bot=roster.find(c=>c.role==='monologue'&&c.scope==='bot:a'),global=roster.find(c=>c.role==='monologue'&&c.scope==='global');
+  assert.equal(api.resolveTtsRole('monologue',roster,'bot:a').id,global.id,'following the global card by default');
+  bot.followGlobal=false;
+  assert.equal(api.resolveTtsRole('monologue',roster,'bot:a').id,bot.id,'its own card once following is off');
+  assert.equal(api.resolveTtsRole('monologue',roster,'bot:b').id,global.id,'other bots keep the global card');
+  const person={...bot,id:'p',role:undefined,name:'Jet',triggers:['Jet'],voiceKey:'v9',fishId:'f9',gain:3};
+  bot.followId='p';roster.push(person);
+  assert.equal(api.resolveTtsRole('monologue',roster,'bot:a').fishId,'f9','a role card can borrow an ordinary character voice');
+  assert.equal(api.resolveTtsSpeaker('나레이션',roster,'bot:a'),null,'role cards are never matched by speaker name');
+  assert.equal(api.ttsSegmentOwner({kind:'dialogue',speaker:'',monologue:true},roster,'bot:a').fishId,'f9');
+  assert.equal(api.ttsSegmentOwner({kind:'narration',speaker:''},roster,'bot:a').role,'narrator');
+});
+
+test('a whole line in single quotes without a speaker is a monologue; emphasis inside prose is not',()=>{
+  const line="'반사적으로 속마음이 튀어나왔잖아 바보야! don't panic!'";
+  const parsed=api.parseCueLine(line,'a');
+  assert.equal(parsed.kind,'dialogue');assert.equal(parsed.monologue,true);assert.equal(parsed.speaker,'');
+  assert.equal(parsed.text,"반사적으로 속마음이 튀어나왔잖아 바보야! don't panic!");
+  assert.equal(api.parseCueLine("그는 '이건 아니야' 하고 생각했다.",'a').kind,'narration');
+  assert.equal(api.parseCueLine("Jet: 'Thought'",'a').speaker,'Jet');
+  assert.equal(api.parseCueLine("'a' and 'b'",'a'),null,'several quoted parts are not one thought');
+});
+
+test('a voice pick fills the gender only while it is unknown; 기타 characters keep theirs',()=>{
+  const fill=gender=>{const c={tags:[],gender};api.adoptVoiceTags(c,{tags:['calm'],gender:'female'});return c;};
+  assert.equal(fill('unknown').gender,'female');assert.deepEqual(fill('unknown').tags,['calm']);
+  assert.equal(fill('other').gender,'other');assert.equal(fill('male').gender,'male');
+});
+
+test('a limit of 0 keeps every line that has at least one spoken character',()=>{
+  assert.equal(api.hasTtsSpeech('네',1),false);assert.equal(api.hasTtsSpeech('네',0),true);
+  assert.equal(api.hasTtsSpeech('…!?',0),false,'punctuation alone is still not speech');
+  assert.equal(api.hasTtsSpeech('',0),false);
 });

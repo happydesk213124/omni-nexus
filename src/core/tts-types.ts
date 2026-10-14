@@ -1,6 +1,8 @@
 import type { LlmSettings } from './types';
 
 export type TtsGender = 'female' | 'male' | 'unknown';
+/** Characters may also be 'other' (non-human, genderless): any voice may speak for them. */
+export type TtsCharacterGender = TtsGender | 'other';
 export interface TtsVoice {
   key: string;
   name: string;
@@ -8,6 +10,9 @@ export interface TtsVoice {
   tags: string[];
   gender: TtsGender;
   folder: string;
+  /** Language codes the voice speaks (Fish metadata, else guessed from its title). */
+  languages?: string[];
+  error?: { count: number; lastAt: number; status: number };
 }
 export interface TtsCharacter {
   id: string;
@@ -19,11 +24,23 @@ export interface TtsCharacter {
   givenAliases: string[];
   triggers: string[];
   tags: string[];
-  gender: TtsGender;
+  gender: TtsCharacterGender;
   voiceKey: string;
   fishId: string;
   fixed: boolean;
   gain: number;
+  /** true: leave loudness to automatic normalization and ignore gain. Absent on older rows (nonzero gain = manual). */
+  autoGain?: boolean;
+  /** Own translation target: '' follows the settings, 'original' never translates. */
+  language?: string;
+  /** Narrator / monologue cards always exist (global, plus one per bot) and are never matched by name. */
+  role?: 'narrator' | 'monologue';
+  /** Bot-scoped role card only: true (default) defers to the global card. */
+  followGlobal?: boolean;
+  /** Role card only: borrow the voice of this ordinary character. */
+  followId?: string;
+  /** Own playback speed; absent follows the player speed. */
+  rate?: number;
 }
 export interface TtsSegment {
   id: string;
@@ -31,6 +48,8 @@ export interface TtsSegment {
   speaker: string;
   tone: string;
   kind: 'dialogue' | 'narration' | 'illustration' | 'audition';
+  /** A whole line in single quotes with no speaker: spoken by the monologue card. */
+  monologue?: boolean;
   start: number;
   end: number;
 }
@@ -51,14 +70,22 @@ export interface TtsSettings {
   excludeText: string;
   /** 1 once the default status-panel terms were merged into excludeText. */
   excludeSeed: number;
-  /** Read [bracketed] lines without the brackets. */
+  /** Legacy preference, used only when migrating to omitCharacters. */
   stripBrackets: boolean;
+  /** Comma-separated literal text omitted from speech, never from the chat. */
+  omitCharacters: string;
+  /** Skip lines that hold only digits and symbols ([00:10… 00:09…]). */
+  skipSymbolOnly: boolean;
   skipChars: number;
   toast: boolean;
   viewer: boolean;
   minimized: boolean;
   viewerAnchor: { right: number; top: number } | null;
   panel: '' | 'audio' | 'cache' | 'list';
+  /** Character tab scope filter, remembered like the other view choices. */
+  characterFilter: 'all' | 'chat' | 'global';
+  /** Voice folder searched by LLM / JEV assignment: '*' all, '' unfiled, else the folder name. */
+  characterFolder: string;
   rate: number;
   rates: number[];
   volume: number;

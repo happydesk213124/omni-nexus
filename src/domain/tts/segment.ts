@@ -41,10 +41,15 @@ export function parseCueLine(line: string, id: string): TtsSegment | null {
   const quotes=['"','“',"'",'‘','「','『'].map(q=>value.indexOf(q)).filter(n=>n>0).sort((a,b)=>a-b);
   for(const quote of quotes){const header=cueHeader(value.slice(0,quote)),speech=quotedCue(value.slice(quote));if(header&&speech)return {id,...header,text:speech,kind:'dialogue',start:0,end:line.length};}
   if(/[:：]\s*$/.test(value)&&cueHeader(value))return null;
-  if (/[()"“‘「『]/.test(value) || /[:：]\s*'/.test(value)) return null;
+  // `'혼잣말'` with nobody named: the monologue card speaks it. Apostrophes inside words (don't) don't count as quotes.
+  const whole=/^['‘]/.test(value)?quotedCue(value):null;
+  if(whole&&!/['‘’]/.test(whole.replace(/(?<=\p{L})['’](?=\p{L})/gu,'')))return {id,speaker:'',tone:'',text:whole,kind:'dialogue',monologue:true,start:0,end:line.length};
+  // A short single-quoted word inside prose ('디지털 데이터') is emphasis, not speech.
+  const prose=value.replace(/(?<=\S[ \t]?)['‘][^'‘’\n]{1,30}['’](?=[ \t]?[\p{L}\p{N}])/gu,'');
+  if (/[()"“‘「『']/.test(prose) || /[:：]\s*'/.test(value)) return null;
   return { id, speaker: '', tone: '', text: value, kind: 'narration', start: 0, end: line.length };
 }
-export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1): TtsSegment[] {
+export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1, requireLetter = true): TtsSegment[] {
   const lines = text.split('\n');
   const response = /^#[*\t ]*(?:Response|응답|応答|响应|OOC)[*\t ]*$/;
   const beginning = lines.findIndex(line => response.test(line.trim()));
@@ -67,12 +72,12 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
       if(!html && /[:：]\s*$/.test(trimmed)){
         const header=cueHeader(trimmed),next=lines[index+1],speech=next===undefined?null:quotedCue(next);
         if(header&&speech&&!/[<>]/.test(speech)){
-          if (allowedTtsText(speech, excludeTerms, skipChars)) result.push({id:String(index+1),...header,text:speech,kind:'dialogue',start:offset,end:offset+line.length+1+next.length});
+          if (allowedTtsText(speech, excludeTerms, skipChars, requireLetter)) result.push({id:String(index+1),...header,text:speech,kind:'dialogue',start:offset,end:offset+line.length+1+next.length});
           offset+=line.length+1+next.length+1;index++;continue;
         }
       }
       const segment = !html ? parseCueLine(line, String(index + 1)) : null;
-      if (segment && allowedTtsText(segment.text, excludeTerms, skipChars)) result.push({ ...segment, start: offset, end: offset + line.length });
+      if (segment && allowedTtsText(segment.text, excludeTerms, skipChars, requireLetter)) result.push({ ...segment, start: offset, end: offset + line.length });
     }
     offset += line.length + 1;
   }

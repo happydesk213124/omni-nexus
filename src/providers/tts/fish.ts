@@ -17,11 +17,22 @@ export async function synthesizeFish(text: string, tone: string, voice: string, 
   if (audio.byteLength < 16 || audio.byteLength > 30 * 1024 * 1024) throw new Error('Fish 음성 응답의 크기가 올바르지 않습니다.');
   return audio;
 }
+/** Fallback when Fish lists no language: the script of the voice's title and description. */
+export function guessVoiceLanguages(text: string): string[] {
+  const found: string[] = [];
+  if (/[\u3040-\u30ff]/.test(text)) found.push('ja');
+  if (/[\uac00-\ud7a3]/.test(text)) found.push('ko');
+  if (!found.length && /[\u4e00-\u9fff]/.test(text)) found.push('zh');
+  if (!found.length && /[a-z]/i.test(text)) found.push('en');
+  return found;
+}
 export async function fetchFishVoice(input: string, settings: TtsSettings) {
   const id = fishVoiceId(input);
   if (!id) throw new Error('Fish 음성 ID 또는 fish.audio 링크를 입력해 주세요.');
   const origin = new URL(settings.fish.url).origin;
   const data = objectValue(await ttsJson(await ttsFetch(`${origin}/model/${id}`, { headers: { Authorization: `Bearer ${settings.fish.key.trim()}` } })));
   const tags = (Array.isArray(data.tags) ? data.tags : []).filter((v): v is string => typeof v === 'string');
-  return { fishId: id, name: typeof data.title === 'string' ? data.title : '', tags, gender: voiceGender(tags) };
+  const name = typeof data.title === 'string' ? data.title : '';
+  const listed = (Array.isArray(data.languages) ? data.languages : []).filter((v): v is string => typeof v === 'string' && !!v.trim()).map(v => v.trim().toLowerCase());
+  return { fishId: id, name, tags, gender: voiceGender(tags), languages: listed.length ? [...new Set(listed)] : guessVoiceLanguages(`${name} ${typeof data.description === 'string' ? data.description : ''}`) };
 }

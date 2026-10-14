@@ -9,7 +9,8 @@ const compiled = await build({stdin:{contents:"export * from './src/domain/tts/m
 const api = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const external = JSON.parse(readFileSync('tests/fixtures/tts-external-display.json','utf8'));
 const status = JSON.parse(readFileSync('tests/fixtures/tts-dd-status.json','utf8')).data;
-const module = api.ttsModule(api.ttsDefaults());
+const hidden = {...api.ttsDefaults(),hideName:true,hideTone:true};
+const module = api.ttsModule(hidden);
 const visible = {...api.ttsDefaults(),hideName:false,hideTone:false};
 const plain = api.ttsModule(visible);
 
@@ -60,7 +61,9 @@ test('module display name and first-person speech instructions preserve module i
   assert.equal(module.name,'⚛️ omni tts');assert.equal(module.id,'omni-tts');
   assert.match(api.TTS_CUE_PROMPT,/first-person story/);
   assert.match(api.TTS_CUE_PROMPT,/actual name and delivery/);
-  assert.match(api.TTS_CUE_PROMPT,/actions, descriptions and unspoken narration remain plain prose/);
+  assert.match(api.TTS_CUE_PROMPT,/actions and descriptions remain plain prose/);
+  assert.match(api.TTS_CUE_PROMPT,/inner thoughts use the same cue with single quotes: Name \(delivery\): 'Thought'/);
+  assert.equal(api.ttsDefaults().hideName,false);assert.equal(api.ttsDefaults().translation.provider,'google-free');
 });
 
 test('the module never edits the reply before other modules: no Lua display trigger and every rule runs last',()=>{
@@ -139,6 +142,9 @@ test('symbol-only lines are never voiced; brackets are stripped only from what F
     assert.deepEqual(kinds(apply(text,module.regex)),[],text);
   }
   assert.equal(api.parseTtsMessage('[00:00 - SHOOTING FINISHED]').length,1,'letters keep the line');
+  const loose=api.ttsModule({...api.ttsDefaults(),skipSymbolOnly:false});
+  assert.deepEqual(kinds(apply('[00:10… 00:09…]',loose.regex)),['narration'],'turning the toggle off gives symbol-only lines a control');
+  assert.equal(api.parseTtsMessage('[00:10… 00:09…]',[],1,false).length,1,'and they become playable');
   assert.equal(api.ttsSpokenText('[00:00 - SHOOTING FINISHED]',true),'00:00 - SHOOTING FINISHED');
   assert.equal(api.ttsSpokenText('[00:00 - SHOOTING FINISHED]',false),'[00:00 - SHOOTING FINISHED]');
   assert.equal(api.ttsSpokenText('【시스템】 안내 [끝]',true),'시스템 안내 끝');
@@ -277,7 +283,7 @@ test('incomplete delimiters and long streaming tails do not run expanding backtr
 });
 
 test('narration OFF does not change the module; hiding is left to the plugin',async()=>{
-  const off=api.ttsModule({...api.ttsDefaults(),narration:false});
+  const off=api.ttsModule({...hidden,narration:false});
   assert.deepEqual(off,module,'narration visibility must not be baked into module output');
   const html=apply('도서관에 햇빛이 내려앉았다.\n하린 (happy): "안녕하세요."',off.regex);
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});

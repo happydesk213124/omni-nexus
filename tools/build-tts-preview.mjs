@@ -76,7 +76,9 @@ try{
   settings.append(tabBar,offNotice,controls);
   original.getElementById('tts').replaceChildren(settings);
   original.querySelector('.app').id='settings-stage';
-  original.querySelector('[data-llm-role="curator"]').remove();
+  const curator=original.querySelector('[data-llm-role="curator"]');
+  if(curator.previousSibling?.nodeType===3&&!curator.previousSibling.textContent.trim())curator.previousSibling.remove();
+  curator.remove();
   original.getElementById('nx-power').removeAttribute('checked');
   const chat=original.createElement('div');chat.id='tts-chat-stage';chat.className='tts-demo';chat.hidden=true;
   chat.innerHTML='<header class="risu-top"><b>RisuAI <small>· 채팅 화면 검수</small></b><button id="back-settings">Omni TTS 설정</button></header><div class="risu-layout"><aside class="risu-sidebar"><div class="risu-avatar">하린</div><b>도서관의 오후</b><p>샘플 캐릭터 · 가상 채팅</p><div class="risu-chat-title">늦은 오후의 이야기</div><small>실제 Risu 데이터는 연결되지 않았습니다.</small></aside><main class="risu-messages"><div class="chat-demo-note">대사 버튼 · 옅은 세로선 · 플로팅 플레이어를 시험하는 별도 메시지 화면입니다. 실제 음성은 나오지 않습니다.</div><article class="user-bubble"><small>사용자</small><p>오늘은 어떤 이야기를 들려줄 거야?</p></article><article class="bot-bubble"><div class="speaker-head"><span>하</span><b>하린</b><small>샘플 메시지</small></div><div id="chat-reader-slot"></div></article><div class="chat-compose"><span>메시지를 입력하세요 · 검수용 화면</span><button disabled>보내기</button></div></main></div>';
@@ -157,7 +159,9 @@ const overrides=`
 #tts-settings-root .voice-selection-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 0 10px}
 #tts-settings-root .voice-selection-bar button{min-height:40px;padding:8px 11px;font-size:12px}
 #tts-settings-root #voice-selected-count{font-size:12px;min-width:68px}
-#tts-settings-root #delete-selected-voices{margin-left:auto;border-color:#b6505066;color:#f0aaaa}
+#tts-settings-root #delete-selected-voices{border-color:#b6505066;color:#f0aaaa}
+#tts-settings-root .voice-error{color:#f0aaaa;font-size:11px}
+#tts-dialogs #v-visit{display:block;margin-top:6px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;text-align:center;text-decoration:none;color:var(--text);background:var(--surface)}
 #tts-settings-root #voice-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:9px;align-content:start;padding:8px 4px;max-height:none;overflow:visible}
 .main:has(#tts.active #tts-voices:not([hidden])),.main:has(#tts.active #tts-characters:not([hidden])){overflow:hidden;display:flex;flex-direction:column}
 #tts.active:has(#tts-voices:not([hidden])),#tts.active:has(#tts-characters:not([hidden])){flex:1;min-height:0;display:flex;flex-direction:column}

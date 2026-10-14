@@ -45,13 +45,16 @@ async function nxFloatBindInputs(h) {
   await nxFloatListen(h.body, 'pointerdown', async e => {
     const pos = nxFloatEvPos(e);
     const pointer=nxFloatPointer={held:true,pos};
-    if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden || !nxFloatContains(nxFloatBounds,pos.x,pos.y)) return;
+    const slack=12,near=nxFloatBounds&&{left:nxFloatBounds.left-slack,right:nxFloatBounds.right+slack,top:nxFloatBounds.top-slack,bottom:nxFloatBounds.bottom+slack,width:nxFloatBounds.width,height:nxFloatBounds.height};
+    if (!pos || t._nxHostInspectOpen || nxFloatBlocked() || nxFloatHidden || !nxFloatContains(near,pos.x,pos.y)) return;
     if(nxFloatTouchOnly()) {
       nxFloatTouchReveal=nxFloatIdle;nxFloatHovered=false;nxFloatNudgeIdle();
     }
     const handles=[[nxFloatResize,'resize'],[nxFloatIcon,'bubble-move'],[nxFloatHead,'move'],[nxFloatFoldGrip,'move'],[nxFloatStage,'move']];
     const hits=await Promise.all(handles.map(([handle])=>hitEl(handle,pos.x,pos.y)));
-    const found=handles[hits.indexOf(true)];
+    // Just outside the frame (a fast grab that misses by a few px) still moves it.
+    const outside=!nxFloatContains(nxFloatBounds,pos.x,pos.y);
+    const found=handles[hits.indexOf(true)] || (outside ? [null, nxFloatIcon && await hitEl(nxFloatIcon,Math.min(Math.max(pos.x,nxFloatBounds.left),nxFloatBounds.right),Math.min(Math.max(pos.y,nxFloatBounds.top),nxFloatBounds.bottom)) ? 'bubble-move' : 'move'] : undefined);
     if(found)await nxFloatMaybeDrag(e,found[1],pointer);
   });
   await nxFloatListen(h.body, 'pointermove', e => {

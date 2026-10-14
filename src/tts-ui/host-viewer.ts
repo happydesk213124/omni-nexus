@@ -6,9 +6,9 @@ import { esc } from './common';
 import { withTtsAudio } from './activation';
 import type { TtsSegment } from '../core/tts-types';
 
-const LINE_STYLE='display:block;width:100%;box-sizing:border-box;margin:0 0 3px;padding:5px 8px;min-height:30px;border:1px solid #ffffff18;border-radius:8px;color:#eee;text-align:left;font:inherit;cursor:pointer;';
+const LINE_STYLE='backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none;text-shadow:none;transition:none;display:block;width:100%;box-sizing:border-box;margin:0 0 3px;padding:5px 8px;min-height:30px;border:1px solid #ffffff18;border-radius:8px;color:#eee;text-align:left;font:inherit;cursor:pointer;';
 
-export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>Promise<void>;dispose:()=>Promise<void>;flash:(message:string)=>void}> {
+export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Promise<void> = async () => {}): Promise<{refresh:()=>Promise<void>;dispose:()=>Promise<void>;flash:(message:string)=>void}> {
   const body = await doc.querySelector('body'); if (!body) return {refresh:async()=>{},dispose:async()=>{},flash:()=>{}};
   for(const node of await safeArray(await doc.querySelectorAll('[x-omnitts-viewer],[x-omnitts-toast]'))){await node.remove();await releaseHost(node);}
   const viewer = await doc.createElement('div'), toast = await doc.createElement('div');
@@ -22,7 +22,7 @@ export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>
   let painting=false, again=false, signature='', toastSignature='', stateSignature='', notice='', noticeUntil=0, noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let currentLine = -1, locating = false;
   const act = (f:()=>unknown) => { try { Promise.resolve(f()).catch(error=>omniTts.report(error)); } catch(error) { omniTts.report(error); } };
-  const control = (id:string,label:string,title:string,active=false) => `<button data-tts-control="${id}" title="${title}" aria-label="${title}" style="color:#eee;background:${active?'#7132f599':'#11182780'};border:1px solid #ffffff18;border-radius:8px;min-width:36px;min-height:36px;padding:5px;cursor:pointer">${label}</button>`;
+  const control = (id:string,label:string,title:string,active=false) => `<button data-tts-control="${id}" title="${title}" aria-label="${title}" style="backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none;text-shadow:none;transition:none;color:#eee;background:${active?'#7132f599':'#11182780'};border:1px solid #ffffff18;border-radius:8px;min-width:36px;min-height:36px;padding:5px;cursor:pointer">${label}</button>`;
   const paint=async()=>{
     if(disposed)return;
     if(painting){again=true;return;} painting=true;
@@ -37,7 +37,7 @@ export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>
       await toast.setStyleAttribute(`position:fixed;right:16px;top:18px;z-index:2147483200;width:min(290px,calc(100vw - 32px));${failing?'min-height:44px;max-height:120px':'height:44px'};box-sizing:border-box;padding:12px;border:1px solid ${failing?'#f8717188':'#ffffff24'};border-radius:12px;color:#eee;background:${failing?'rgba(69,20,28,.95)':'rgba(23,32,49,.93)'};font:12px/18px sans-serif;overflow:hidden;overflow-wrap:anywhere;pointer-events:none;display:${shown?'block':'none'}`);}
       if(drag?.busy)return;
       const placement=s.viewerAnchor?`right:min(${Math.max(8,s.viewerAnchor.right)}px,calc(100vw - ${s.minimized?46:310}px));top:min(${Math.max(8,s.viewerAnchor.top)}px,calc(100dvh - 64px));max-height:calc(100dvh - min(${Math.max(8,s.viewerAnchor.top)}px,calc(100dvh - 64px)) - 8px)`:'right:16px;bottom:16px;max-height:80vh';
-      await viewer.setStyleAttribute(`position:fixed;${placement};z-index:2147483100;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.65);color:#eee;text-shadow:0 1px 3px #000;font:12px/1.5 sans-serif;display:${s.enabled&&s.viewer&&allowed()?'block':'none'}`);
+      await viewer.setStyleAttribute(`position:fixed;${placement};z-index:2147483100;will-change:transform;contain:layout style;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.82);color:#eee;text-shadow:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none;user-select:none;-webkit-user-select:none;font:12px/1.5 sans-serif;display:${s.enabled&&s.viewer&&allowed()?'block':'none'}`);
       // Playback state is painted in place below: re-rendering would reset the list scroll.
       const next=JSON.stringify([s.minimized,s.panel,s.narration,s.continuous,s.rate,s.volume,s.rates,omniTts.list.map(r=>[r.messageId,r.segment.id,r.segment.text]),s.panel==='cache'?[q,omniTts.cache.count,omniTts.cache.bytes]:null]); if(next===signature){await paintState();return;} signature=next;stateSignature='';currentLine=-1;
       for(const action of actions.values())await releaseHost(action.node);actions.clear();
@@ -58,7 +58,7 @@ export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>
       if(s.minimized)return;
       await bind('settings',openTtsSettings);await bind('narration',()=>updateTtsSettings({narration:!ttsData().settings.narration}));await bind('continuous',()=>updateTtsSettings({continuous:!ttsData().settings.continuous}));
       for(const name of ['audio','cache','list'] as const)await bind(name,()=>updateTtsSettings({panel:ttsData().settings.panel===name?'':name}));
-      await bind('locate',async()=>{locating=true;if(ttsData().settings.panel!=='list')await updateTtsSettings({panel:'list'});else{stateSignature='';await paintState();}});
+      await bind('locate',async()=>{locating=true;void revealInChat().catch(error=>omniTts.report(error));if(ttsData().settings.panel!=='list')await updateTtsSettings({panel:'list'});else{stateSignature='';await paintState();}});
       await bind('regenerate',()=>withTtsAudio(()=>omniTts.regenerate()));
       await bind('stop',()=>omniTts.stop());await bind('previous',()=>withTtsAudio(()=>omniTts.next(-1)));await bind('next',()=>withTtsAudio(()=>omniTts.next(1)));
       await bind('play',()=>{if(omniTts.player.status==='playing')return omniTts.pause();if(omniTts.player.status==='paused'&&omniTts.player.ready)return omniTts.player.resume();return withTtsAudio(()=>omniTts.replay());});
@@ -95,11 +95,11 @@ export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>
     }
   }
   function stateIcon(state:string):string{return state==='playing'?'◉':state==='loading'?'◌':state==='paused'?'Ⅱ':'○';}
-  function lineLabel(segment:TtsSegment):string{return segment.speaker?`${segment.speaker}: ${segment.text}`:segment.text;}
+  function lineLabel(segment:TtsSegment):string{return segment.speaker?`${segment.speaker}: ${segment.text}`:segment.monologue?`혼잣말: ${segment.text}`:segment.text;}
   // One line per entry: "speaker: text", narration without a colon, tone as a chip.
   function lineHtml(segment:TtsSegment):string{
     const tone=segment.tone?`<span style="flex:none;padding:0 6px;border:1px solid #ffffff38;border-radius:6px;background:#ffffff12;color:#d8c8ff;font-size:10px;line-height:16px">${esc(segment.tone)}</span>`:'';
-    return `<span style="display:flex;align-items:center;gap:6px;min-width:0;width:100%"><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${segment.speaker?`<b>${esc(segment.speaker)}</b>: `:''}${esc(segment.text)}</span>${tone}</span>`;
+    return `<span style="display:flex;align-items:center;gap:6px;min-width:0;width:100%"><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${segment.speaker?`<b>${esc(segment.speaker)}</b>: `:segment.monologue?'<b>혼잣말</b>: ':''}${esc(segment.text)}</span>${tone}</span>`;
   }
   const render=()=>{void paint().catch(error=>console.warn('OmniTTS viewer',error));};
   const unsubscribeRuntime=omniTts.subscribe(render),unsubscribeSettings=subscribeTts(render);
@@ -115,7 +115,9 @@ export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>
     const epoch=++clickEpoch;act(async()=>{const row=await hit(e);if(epoch===clickEpoch&&row&&!drag?.busy)await row[1].run();});
   })});
   events.push({type:'pointerdown',id:await doc.addEventListener('pointerdown',(e:HostPoint)=>act(async()=>{
-    const row=await hit(e);if(!row||!['volume','seek'].includes(row[0]))return;
+    if(!allowed()||drag?.busy||!await hitHost(viewer,e))return;
+    const sliders=(['volume','seek'] as const).flatMap(id=>{const a=actions.get(id);return a?[[id,a] as const]:[];});
+    const hits=await Promise.all(sliders.map(([,a])=>hitHost(a.node,e))),row=sliders[hits.indexOf(true)];if(!row)return;
     const rect=await row[1].node.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
     if(row[0]==='volume')await updateTtsSettings({volume:fraction});else omniTts.player.seek(fraction*omniTts.player.progress.duration);
   }))});
@@ -135,7 +137,10 @@ export async function installTtsViewer(doc: SafeDocument): Promise<{refresh:()=>
   Reflect.set(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__',refreshSignal);
   await refreshVisibility();
   let ticking=false;
-  const interval=setInterval(()=>{const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
+  // The chat watcher cannot see its own screen leave the page, so check once a
+  // second (never during a drag) whether the chat is still on screen.
+  let checking=false,tick=0;
+  const interval=setInterval(()=>{if(++tick%2===0&&!checking&&!drag?.busy&&!painting){checking=true;void refreshVisibility().catch(()=>{}).finally(()=>{checking=false;});}const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
   const flash=(message:string)=>{
     notice=message.slice(0,240);noticeUntil=Date.now()+5000;clearTimeout(noticeTimer);
     noticeTimer=setTimeout(()=>{noticeUntil=0;render();},5100);render();

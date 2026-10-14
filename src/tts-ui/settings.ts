@@ -6,7 +6,7 @@ import { omniTts } from '../services/tts-runtime';
 import { el, input, val, set, text, on, run } from './common';
 import { promptAudioActivation } from './activation';
 
-const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'strip-brackets': 'stripBrackets' };
+const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'skip-symbol-only': 'skipSymbolOnly' };
 const numbers: Record<string, keyof TtsSettings> = { speed: 'rate', volume: 'volume', 'tts-skip-chars': 'skipChars', prefetch: 'prefetch', concurrency: 'concurrency', 'background-concurrency': 'background', 'cache-limit': 'cacheMb' };
 const source: Record<string, LlmSettings['source']> = { model: 'main', submodel: 'aux', emotion: 'emotion', translate: 'translate', memory: 'memory', otherAx: 'other' };
 function llmChoice(model: LlmSettings): string { return Object.entries(source).find(([,v]) => v === model.source)?.[0] || (model.provider === 'google' ? 'Gemini' : model.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 호환'); }
@@ -22,11 +22,11 @@ export function syncPower(): void {
   text('audio-enable-settings', omniTts.player.ready ? '음성 활성화됨 ♪' : '음성 재생 활성화 ♪');
   text('cache-usage', `캐시 ${omniTts.cache.count}개 · ${(omniTts.cache.bytes / 1024 / 1024).toFixed(1)} MB`);
 }
-function bindExcludeText(): void {
-  const field = el<HTMLTextAreaElement>('tts-exclude-text'); if (!field) return;
-  field.value = ttsData().settings.excludeText;
+function bindTextSetting(id: string, key: 'excludeText' | 'omitCharacters'): void {
+  const field = el<HTMLInputElement | HTMLTextAreaElement>(id); if (!field) return;
+  field.value = ttsData().settings[key];
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const save = () => { clearTimeout(timer); timer = undefined; if (ttsData().settings.excludeText !== field.value) run(() => updateTtsSettings({ excludeText: field.value })); };
+  const save = () => { clearTimeout(timer); timer = undefined; if (ttsData().settings[key] !== field.value) run(() => updateTtsSettings({ [key]: field.value })); };
   field.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(save, 400); });
   field.addEventListener('change', save);
 }
@@ -37,9 +37,12 @@ export function bindTtsSettings(): void {
     set(id, Number(s[key]) * (id === 'volume' ? 100 : 1));
     on(id, async () => { await updateTtsSettings({ [key]: Number(val(id)) / (id === 'volume' ? 100 : 1) }); text('speed-value', `${ttsData().settings.rate.toFixed(2)}×`); text('volume-value', `${Math.round(ttsData().settings.volume * 100)}%`); }, 'change');
   }
-  input('speed').min = '.25'; input('speed').max = '4';
+  // The speed choices are exactly the custom rate list (plus the current rate if it was removed).
+  const speedOptions = () => { const node = el<HTMLSelectElement>('speed'); if (!node) return; const { rate, rates } = ttsData().settings; node.innerHTML = [...new Set([...rates, rate])].sort((a, b) => a - b).map(r => `<option value="${r}">${r}×</option>`).join(''); node.value = String(rate); };
+  speedOptions();
+  el('volume')?.addEventListener('input', () => text('volume-value', `${Math.round(Number(val('volume')))}%`));
   text('speed-value', `${s.rate.toFixed(2)}×`); text('volume-value', `${Math.round(s.volume * 100)}%`);
-  set('speed-presets', s.rates.join(', ')); on('speed-presets', () => updateTtsSettings({ rates: parseRates(val('speed-presets'), s.rates) }), 'change');
+  set('speed-presets', s.rates.join(', ')); on('speed-presets', async () => { await updateTtsSettings({ rates: parseRates(val('speed-presets'), ttsData().settings.rates) }); speedOptions(); }, 'change');
   set('voice-selector-engine', s.selector); on('voice-selector-engine', () => updateTtsSettings({ selector: val('voice-selector-engine') as 'llm' | 'jev' }), 'change');
   on('tts-power', async () => { await omniTts.power(input('tts-power').checked); if(input('tts-power').checked)promptAudioActivation(); }, 'change');
   on('audio-enable-settings', promptAudioActivation);
@@ -57,14 +60,12 @@ export function bindTtsSettings(): void {
   set('tts-google-key', s.translation.provider === 'google' ? s.translation.key : ''); set('tts-deepl-key', s.translation.provider === 'deepl' ? s.translation.key : ''); set('tts-deepl-plan', s.translation.url.includes('api-free') ? 'API Free' : 'API Pro');
   set('translation-model', Object.entries(source).find(([,v]) => v === s.translation.llm.source)?.[0] || 'separate');
   set('tts-translation-url', s.translation.llm.endpoint); set('tts-translation-model', s.translation.llm.model); set('tts-translation-key', s.translation.llm.api_key);
-  const narration = s.translation.narrationLanguage;
-  set('narration-language', ['', 'original', 'ko', 'ja', 'en'].includes(narration) ? narration : 'custom'); set('narration-custom-lang', ['', 'original'].includes(narration) ? '' : narration);
-  const translationUi = () => { el('custom-lang-wrap').hidden = val('language') !== 'custom'; el('narration-custom-lang-wrap').hidden = val('narration-language') !== 'custom'; };
-  for (const id of ['translation', 'language', 'custom-lang', 'narration-language', 'narration-custom-lang', 'translation-model', 'tts-google-key', 'tts-deepl-key', 'tts-deepl-plan', 'tts-translation-url', 'tts-translation-model', 'tts-translation-key']) on(id, () => {
+  const translationUi = () => { el('custom-lang-wrap').hidden = val('language') !== 'custom'; };
+  for (const id of ['translation', 'language', 'custom-lang', 'translation-model', 'tts-google-key', 'tts-deepl-key', 'tts-deepl-plan', 'tts-translation-url', 'tts-translation-model', 'tts-translation-key']) on(id, () => {
     translationUi(); const choice = val('translation-model'), provider = val('translation') === 'custom' ? 'llm' : val('translation');
-    return updateTtsSettings({ translation: { provider: provider as TtsSettings['translation']['provider'], language: val('language') === 'custom' ? val('custom-lang') : val('language'), narrationLanguage: val('narration-language') === 'custom' ? val('narration-custom-lang').trim() : val('narration-language'), key: provider === 'google' ? val('tts-google-key') : val('tts-deepl-key'), url: provider === 'deepl' ? (val('tts-deepl-plan') === 'API Free' ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate') : '', llm: choice === 'shared' ? { ...ttsData().settings.llm } : llmFrom(choice, ttsData().settings.translation.llm, 'tts-translation') } });
+    return updateTtsSettings({ translation: { provider: provider as TtsSettings['translation']['provider'], language: val('language') === 'custom' ? val('custom-lang') : val('language'), narrationLanguage: ttsData().settings.translation.narrationLanguage, key: provider === 'google' ? val('tts-google-key') : val('tts-deepl-key'), url: provider === 'deepl' ? (val('tts-deepl-plan') === 'API Free' ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate') : '', llm: choice === 'shared' ? { ...ttsData().settings.llm } : llmFrom(choice, ttsData().settings.translation.llm, 'tts-translation') } });
   }, 'change');
-  translationUi(); bindExcludeText(); syncPower();
+  translationUi(); bindTextSetting('tts-exclude-text', 'excludeText'); bindTextSetting('tts-omit-characters', 'omitCharacters'); syncPower();
   const unsubscribe = omniTts.subscribe(syncPower);
   const root = el('tts-settings-root');
   const observer = new MutationObserver(() => { if (!root.isConnected) { unsubscribe(); observer.disconnect(); } }); observer.observe(document.body, { childList: true, subtree: true });

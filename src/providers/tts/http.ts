@@ -10,6 +10,12 @@ export interface TtsResponse {
   headers?: { get: (key: string) => string | null };
   finish?: () => void;
 }
+export class TtsHttpError extends Error {
+  constructor(readonly status: number | undefined) {
+    super(`음성 API 요청 실패 (${status || 'network'})`);
+    this.name = 'TtsHttpError';
+  }
+}
 export async function ttsFetch(url: string, options: RequestInit = {}): Promise<TtsResponse> {
   const endpoint = new URL(url);
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password) throw new Error('API 주소는 인증 정보가 없는 HTTPS URL이어야 합니다.');
@@ -27,7 +33,7 @@ export async function ttsFetch(url: string, options: RequestInit = {}): Promise<
     // translation must explicitly use GET or Risu rejects the missing body.
     const request:RequestInit & {requestTimeoutMs:number}={method:'GET',...options,signal:controller.signal,requestTimeoutMs:90_000};
     const response: TtsResponse = await host.nativeFetch(url, request);
-    if (response.ok === false || (response.status != null && response.status >= 400)) throw new Error(`음성 API 요청 실패 (${response.status || 'network'})`);
+    if (response.ok === false || (response.status != null && response.status >= 400)) throw new TtsHttpError(response.status);
     return { ok:response.ok, status:response.status, data:response.data, headers:response.headers,
       json:response.json ? () => response.json!() : undefined, arrayBuffer:response.arrayBuffer ? () => response.arrayBuffer!() : undefined, finish };
   } catch(error) { finish(); throw error; }

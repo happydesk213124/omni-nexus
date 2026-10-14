@@ -9,6 +9,10 @@ let nxFloatShield = null, nxFloatShielded = false;
 async function nxFloatCover(on) {
   if (nxFloatShielded === on || !nxFloatDoc || !nxFloatChatRoot) return;
   nxFloatShielded = on;
+  // TTS defers its chat scans while any floating viewer is dragged.
+  globalThis.__OMNI_VIEWER_DRAGGING__ = on;
+  // Bursty bridge input: glide between moves while dragging; cleared before commit.
+  if (nxFloatRoot) void nxFloatRoot.setStyle('transition', on ? 'transform 8ms linear' : '').catch(() => {});
   try {
     if (!nxFloatShield) {
       nxFloatShield = await H(nxFloatDoc, 'div', {style:'position:fixed;inset:0;z-index:99989;display:none;background:transparent;cursor:grabbing;touch-action:none;'});
@@ -83,6 +87,9 @@ async function nxFloatMaybeDrag(ev, kind, pointer=nxFloatPointer) {
     if(!pointer?.held || pointer!==nxFloatPointer || nxFloatBlocked())return;
     const geo=nxFloatGeo || {left:60,top:60,w:360,h:560};
     nxFloatDrag={kind,sx:pos.x,sy:pos.y,left:rect.left,top:rect.top,w:geo.w,h:geo.h,geo,visibleW:rect.width,visibleH:rect.height,moved:false,pos};
+    // From the grab on, the whole screen is the handle (the cover sits just
+    // under the viewer), so outrunning the frame never drops onto the chat.
+    void nxFloatCover(true);
     clearTimeout(nxFloatIdleTimer);
     nxFloatMoveDrag({clientX:pointer.pos.x,clientY:pointer.pos.y});
   } finally {nxFloatDragStarting=false;}
@@ -91,6 +98,7 @@ async function nxFloatEndDrag(cancel=false) {
   const d=nxFloatDrag; if(!d)return;
   if(d.ending)return d.ending;
   return d.ending=(async()=>{
+    if(d.moved)nxFloatMoveDirty=true;
     await nxFloatPaintMove();
     nxFloatDrag=null;nxFloatMoveDirty=false;
     void nxFloatCover(false);

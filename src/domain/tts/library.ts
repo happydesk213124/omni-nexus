@@ -23,6 +23,9 @@ export function matchesVoiceSearch(voice: TtsVoice, query: string): boolean {
   const groups = query.normalize('NFKC').toLowerCase().split('|').map(g => g.split('&').map(s => s.trim()).filter(Boolean)).filter(g => g.length);
   return !groups.length || groups.some(group => group.every(term => text.includes(term)));
 }
+export function compareVoiceErrors(a: TtsVoice, b: TtsVoice): number {
+  return (b.error?.count || 0) - (a.error?.count || 0) || (b.error?.lastAt || 0) - (a.error?.lastAt || 0);
+}
 export function parseVoiceImport(input: unknown, folder = ''): TtsVoice[] {
   const root = input && typeof input === 'object' ? input as Record<string, unknown> : {};
   const rows: unknown = Array.isArray(input) ? input : root.voices;
@@ -49,4 +52,9 @@ export function parseRates(value: string, defaults: number[]): number[] {
     throw new Error('배속은 0.25~4 사이 숫자를 쉼표로 구분해 주세요.');
   }
   return [...new Set(pieces.map(Number))].sort((a, b) => a - b);
+}
+/** A JEV pick fills only what the character lacks: mood tags, and gender while unknown. */
+export function adoptVoiceTags(character: { tags: string[]; gender?: string }, voice: { tags: string[]; gender?: string }): void {
+  if (!character.tags.length && voice.tags.length) character.tags = [...voice.tags];
+  if (character.gender === 'unknown' && (voice.gender === 'female' || voice.gender === 'male')) character.gender = voice.gender;
 }

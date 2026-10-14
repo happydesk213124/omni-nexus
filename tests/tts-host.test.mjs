@@ -24,12 +24,13 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
         async getAttribute(k){if(!k.startsWith('x-'))throw Error('Forbidden attribute read '+k);return this.node.getAttribute(k);}
         async setAttribute(k,v){if(!k.startsWith('x-'))throw Error('Forbidden attribute write '+k);this.node.setAttribute(k,v);}
         async setTextContent(v){this.node.textContent=v;}
-        async getOuterHTML(){return this.node.outerHTML;}
+        async getOuterHTML(){window.outerReads=(window.outerReads||0)+1;return this.node.outerHTML;}
         async setInnerHTML(v){this.node.innerHTML=DOMPurify.sanitize(v);}
         async setStyle(k,v){this.node.style[k]=v;}
         async setStyleAttribute(v){this.node.style.cssText=v;}
         async appendChild(child){this.node.append(child.node);}
         async remove(){this.node.remove();}
+        async scrollIntoView(o){window.scrolled=(window.scrolled||[]).concat(this.node.getAttribute('data-omnitts-kind')||this.node.tagName);this.node.scrollIntoView(o);}
         async clientHeight(){return this.node.clientHeight;}
         async clientWidth(){return this.node.clientWidth;}
         async getBoundingClientRect(){return this.node.getBoundingClientRect().toJSON();}
@@ -48,7 +49,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     },blockedSource);
     await page.evaluate(()=>{window.crypto.randomUUID=undefined;});
     await page.addScriptTag({content:built.outputFiles[0].text});
-    await page.evaluate(async()=>{await window.loadTtsData();const d=window.ttsData();d.settings.enabled=true;d.settings.autoAssign=false;d.settings.fish.key='test-key';d.settings.continuous=false;d.characters=[{id:'h',scope:'global',name:'하린',surname:'',givenName:'하린',surnameAliases:[],givenAliases:[],triggers:['하린'],tags:[],gender:'female',voiceKey:d.voices[0].key,fishId:d.voices[0].fishId,fixed:false,gain:0}];await window.installTtsHost();await window.omniTts.player.unlock();window.played=[];});
+    await page.evaluate(async()=>{await window.loadTtsData();const d=window.ttsData();d.settings.translation.provider='off';d.settings.enabled=true;d.settings.autoAssign=false;d.settings.fish.key='test-key';d.settings.continuous=false;d.characters=[{id:'h',scope:'global',name:'하린',surname:'',givenName:'하린',surnameAliases:[],givenAliases:[],triggers:['하린'],tags:[],gender:'female',voiceKey:d.voices[0].key,fishId:d.voices[0].fishId,fixed:false,gain:0}];await window.installTtsHost();await window.omniTts.player.unlock();window.played=[];});
     await page.evaluate(()=>window.contextReady=true);
     await page.waitForFunction(()=>window.omniTts.list.length===1);
     assert.equal(await page.locator('[x-omnitts-viewer]').isVisible(),true,'existing chat works on startup without leaving and reopening it');
@@ -100,6 +101,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
       await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='block');
     }
     assert.equal(await page.evaluate(()=>window.omniTts.notice),'','native observer arrays must not cause a repeated error toast');
+    await page.waitForTimeout(700); // let pending chat scans settle before faking a long list
     await page.evaluate(()=>{window.omniTts.stop();const first=window.omniTts.list[0];window.omniTts.reading(Array.from({length:30},(_,i)=>({...first,segment:{...first.segment,id:String(i)}})));});
     await page.locator('[data-tts-control="list"]').click();
     await page.waitForFunction(()=>!!document.querySelector('[data-tts-list-scroll]'));
@@ -122,7 +124,8 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     const oldRect=await page.locator('[x-omnitts-viewer]').boundingBox();
     const header=await page.locator('[data-tts-header]').boundingBox();
     await page.mouse.move(header.x+10,header.y+18);await page.mouse.down();
-    await page.waitForTimeout(80);await page.mouse.move(header.x-70,header.y-62,{steps:6});await page.mouse.up();
+    await page.waitForTimeout(80);await page.mouse.move(header.x-70,header.y-62,{steps:6});
+    await page.mouse.up();
     await page.waitForFunction(()=>window.ttsData().settings.viewerAnchor!==null);
     const movedRect=await page.locator('[x-omnitts-viewer]').boundingBox();
     assert.ok(movedRect.x<oldRect.x-60&&movedRect.y<oldRect.y-60,'header drag moves the actual host viewer');
@@ -131,7 +134,16 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.locator('[data-tts-control="continuous"]').click();
     await page.waitForFunction(()=>window.ttsData().settings.continuous);
     assert.deepEqual(await page.evaluate(()=>window.ttsData().settings.viewerAnchor),anchor,'header controls do not drag the viewer');
-    await page.locator('[data-tts-control="minimize"]').click();
+    // A drag may start on a header button or a little outside the header; a still press stays a click.
+    await page.waitForTimeout(450);const panelBefore=await page.evaluate(()=>window.ttsData().settings.panel);
+    const cache=await page.locator('[data-tts-control="cache"]').boundingBox();
+    await page.mouse.move(cache.x+cache.width/2,cache.y+cache.height/2);await page.mouse.down();await page.waitForTimeout(80);await page.mouse.move(cache.x-30,cache.y+40,{steps:6});await page.mouse.up();
+    await page.waitForFunction(a=>JSON.stringify(window.ttsData().settings.viewerAnchor)!==JSON.stringify(a),anchor);
+    await page.waitForTimeout(450);assert.equal(await page.evaluate(()=>window.ttsData().settings.panel),panelBefore,'dragging from a button does not also press it');
+    const head=await page.locator('[data-tts-header]').boundingBox(),moved2=await page.evaluate(()=>window.ttsData().settings.viewerAnchor);
+    await page.mouse.move(head.x+head.width/2,head.y-8);await page.mouse.down();await page.waitForTimeout(80);await page.mouse.move(head.x+head.width/2-40,head.y+30,{steps:6});await page.mouse.up();
+    await page.waitForFunction(a=>JSON.stringify(window.ttsData().settings.viewerAnchor)!==JSON.stringify(a),moved2);
+    await page.waitForTimeout(450);await page.locator('[data-tts-control="minimize"]').click();
     await page.waitForFunction(()=>window.ttsData().settings.minimized);
     assert.equal(await page.locator('[x-omnitts-viewer] button').count(),1);
     await page.locator('[data-tts-control="minimize"]').click();
@@ -161,6 +173,10 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.evaluate(async()=>{await window.updateTtsSettings({narration:true});await window.updateTtsSettings({narration:false});await window.updateTtsSettings({narration:true});});
     await page.waitForFunction(shown);
     await narrationButton.click();await page.waitForFunction(()=>window.omniTts.player.status==='playing');
+    await page.evaluate(()=>{window.scrolled=[];});await page.locator('[data-tts-control="locate"]').click();
+    await page.waitForFunction(()=>window.scrolled.includes('narration'),undefined,{timeout:3000});
+    assert.ok(await page.evaluate(()=>window.scrolled.includes('narration')),'⌖ also scrolls the chat to the line being read');
+    assert.deepEqual(await page.evaluate(()=>[document.scrollingElement.scrollTop,document.scrollingElement.scrollLeft]),[0,0],'centering never leaves the whole page pushed');
     await page.waitForFunction(()=>window.narrationNode.getAttribute('x-omnitts-state')==='playing');
     assert.equal(await page.evaluate(()=>getComputedStyle(window.narrationNode).animationName),'omnitts-pulse','the line being read visibly plays');
     await page.locator('[data-tts-control="narration"]').click();
@@ -170,6 +186,31 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.evaluate(()=>window.updateTtsSettings({narration:true}));
     await page.waitForFunction(shown);
     assert.equal(await page.evaluate(()=>window.moduleWrites),moduleWrites,'narration toggles never write or reinstall the module');
+    // Lines inside a folded <details> are off screen: not listed, not read on.
+    await page.evaluate(async tail=>{
+      const lines=['펼쳐진 첫 줄입니다.','접힌 둘째 줄입니다.','접힌 셋째 줄입니다.','펼쳐진 넷째 줄입니다.'];
+      window.messages.push({role:'char',chatId:'folded',data:lines.join('\n')});
+      const parent=document.createElement('div');
+      parent.innerHTML=DOMPurify.sanitize(`<div class="risu-chat" data-chat-index="${window.messages.length-1}"><p>${lines[0]}${tail}</p><details><summary>접힘</summary><p>${lines[1]}${tail}</p><p>${lines[2]}${tail}</p></details><p>${lines[3]}${tail}</p></div>`);
+      document.querySelector('.default-chat-screen').append(parent);
+    },tail('narration'));
+    const folded=page.locator('[data-chat-index="9"] [data-omnitts-play]');
+    await page.waitForFunction(()=>[...document.querySelectorAll('[data-chat-index="9"] [data-omnitts-play]')].every(n=>n.getAttribute('x-omnitts-bound')));
+    await folded.first().click();
+    await page.waitForFunction(()=>window.omniTts.current?.segment.text==='펼쳐진 첫 줄입니다.');
+    assert.deepEqual(await page.evaluate(()=>window.omniTts.list.map(r=>r.segment.text)),['펼쳐진 첫 줄입니다.','펼쳐진 넷째 줄입니다.'],'folded lines stay out of the list and continuous reading');
+    await page.evaluate(()=>window.omniTts.stop());
+    await page.locator('[data-chat-index="9"] summary').click();
+    await page.waitForTimeout(700);
+    await folded.first().click();
+    await page.waitForFunction(()=>window.omniTts.list.length===4,undefined,{timeout:4000});
+    // No chat scan competes with a viewer drag; the change is picked up on drop.
+    await page.waitForTimeout(600);
+    await page.evaluate(()=>{window.__OMNI_VIEWER_DRAGGING__=true;window.outerReads=0;const p=document.createElement('p');p.textContent='드래그 중 추가';document.querySelector('.default-chat-screen').append(p);});
+    await page.waitForTimeout(700);
+    assert.equal(await page.evaluate(()=>window.outerReads),0,'chat changes during a drag wait');
+    await page.evaluate(()=>{window.__OMNI_VIEWER_DRAGGING__=false;});
+    await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
     await page.evaluate(()=>{document.querySelector('.default-chat-screen').remove();});
     await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');
     await page.evaluate(()=>window.updateTtsSettings({enabled:false}));await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none',undefined,{timeout:12000});

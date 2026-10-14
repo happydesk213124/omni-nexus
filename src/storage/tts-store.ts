@@ -1,6 +1,7 @@
-import type { TtsData, TtsSettings } from '../core/tts-types';
+import type { TtsData, TtsSettings, TtsVoice } from '../core/tts-types';
 import { ttsDefaults, TTS_DEFAULT_EXCLUDES } from '../config/tts-defaults';
 import { parseVoiceImport } from '../domain/tts/library';
+import { ensureTtsRoleCards } from '../domain/tts/identity';
 import { psGet, psSet } from './device-store';
 import presets from '../config/tts-presets.json';
 import { ttsExcludeTerms } from '../domain/tts/filter';
@@ -23,6 +24,8 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     jev: { ...defaults.jev, ...raw.jev } };
   for (const field of Object.keys(defaults) as (keyof TtsSettings)[]) if (typeof defaults[field] === 'boolean' && typeof result[field] !== 'boolean') Object.assign(result, { [field]: defaults[field] });
   if (typeof result.excludeText !== 'string') result.excludeText = '';
+  // An empty list is intentional; only older saves inherit the bracket setting.
+  if (typeof raw.omitCharacters !== 'string') result.omitCharacters = raw.stripBrackets === false ? '' : defaults.omitCharacters;
   // Older saves predate the default terms. Merge them once; later edits win.
   if (raw.excludeSeed !== 1) {
     const missing = TTS_DEFAULT_EXCLUDES.filter(term => !ttsExcludeTerms(result.excludeText).includes(term));
@@ -32,7 +35,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   if (typeof result.translation.narrationLanguage !== 'string') result.translation.narrationLanguage = '';
   const clamp = (n: number, min: number, max: number, fallback: number) => Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   result.rate = clamp(result.rate, .25, 4, 1);
-  result.skipChars = Math.floor(clamp(result.skipChars, 1, 8000, 1));
+  result.skipChars = Math.floor(clamp(result.skipChars, 0, 8000, 1));
   result.volume = clamp(result.volume, 0, 1, .8);
   result.concurrency = Math.floor(clamp(result.concurrency, 1, 5, 5));
   result.background = Math.floor(clamp(result.background, 1, result.concurrency, 5));
@@ -40,8 +43,16 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.cacheMb = clamp(result.cacheMb, 1, 2000, 100);
   result.rates = Array.isArray(result.rates) ? [...new Set(result.rates.filter(v => Number.isFinite(v) && v >= .25 && v <= 4))].sort((a, b) => a - b).slice(0, 32) : defaults.rates;
   if (!result.rates.length) result.rates = defaults.rates;
+  if (!['all', 'chat', 'global'].includes(result.characterFilter)) result.characterFilter = 'all';
+  if (typeof result.characterFolder !== 'string') result.characterFolder = '*';
   if (result.viewerAnchor && (!Number.isFinite(result.viewerAnchor.right) || !Number.isFinite(result.viewerAnchor.top))) result.viewerAnchor = null;
   return result;
+}
+/** Voices the assignment engines may pick from: the folder chosen in the character tab (all voices if it is empty). */
+export function ttsCandidateVoices(): TtsVoice[] {
+  const { voices, settings } = ttsData(), folder = settings.characterFolder;
+  const pool = folder === '*' ? voices : voices.filter(v => v.folder === folder);
+  return pool.length ? pool : voices;
 }
 export function loadTtsData(): Promise<TtsData> {
   if (state) return Promise.resolve(state);
@@ -59,8 +70,14 @@ export function loadTtsData(): Promise<TtsData> {
       // 1.2.0 scoped characters to one chat. They now belong to the bot and
       // move into its lorebook the first time that bot is opened.
       const characters = value.characters.map(c => { const bot = legacyChatBot(c.scope); return bot ? { ...c, scope: ttsBotScope(bot) } : c; });
-      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices: value.voices, characters, folders: value.folders };
+      const voices = value.voices.map(voice => {
+        const error = voice.error;
+        if (!error || Number.isInteger(error.count) && error.count > 0 && Number.isFinite(error.lastAt) && error.lastAt >= 0 && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) return voice;
+        const clean = { ...voice }; delete clean.error; return clean;
+      });
+      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders };
     }
+    state.characters = ensureTtsRoleCards(state.characters, 'global', state.voices, state.settings.narrationVoice, state.settings.translation.narrationLanguage);
     return state;
   })().finally(() => { loading = undefined; });
   return loading;

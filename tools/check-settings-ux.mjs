@@ -232,12 +232,9 @@ try {
     assert.ok(live.pane, `${tab}: preview pane missing`);
     assert.equal(live.shadow,'none');
     if (tab === 'dashboard') {
-      const excluded=page.locator('#nx-tts-exclusions #nx-tts-exclude-text');
-      assert.equal(await excluded.isVisible(),true,'the real built dashboard displays the TTS exclusions control');
-      await excluded.fill('상태창, 시스템 안내');await excluded.dispatchEvent('change');
-      await page.waitForFunction(async()=>{const d=await risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, 시스템 안내';});
-      await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='gen_options';await paint();t.uiTab='dashboard';await paint();});
-      assert.equal(await excluded.inputValue(),'상태창, 시스템 안내','dashboard exclusions survive a real vendor repaint');
+      assert.equal(await page.locator('#nx-tts-exclusions,#nx-tts-exclude-text').count(),0,'TTS options are not on the illustration dashboard');
+      assert.equal(await page.locator('#nx-tabs .nx-nav-label').allTextContents().then(t=>t.join('|')),'삽화 쓰기|삽화 연결|TTS|보기');
+      assert.equal(await page.locator('#nx-tabs [data-nx-tab="curation"]').textContent(),'TTS 설정(beta)');
     }
     if (tab === 'models') {
       await page.locator('[data-backend="comfy"]').click();
