@@ -10,9 +10,20 @@ export interface TtsResponse {
   headers?: { get: (key: string) => string | null };
   finish?: () => void;
 }
+/** Fish's own reading of the common failures, so the toast says what to fix. */
+function ttsStatusHint(status: number | undefined): string {
+  const hints: Record<number, string> = {
+    401: ' · API 키를 확인해 주세요',
+    402: ' · Fish API 잔액이 없습니다. 웹 구독(Plus 등)과 별개로 API 크레딧을 충전해야 합니다. 무료로 쓰려면 모델을 s2.1-pro-free로 바꿔 주세요',
+    403: ' · 이 키로는 쓸 수 없는 요청입니다',
+    429: ' · 동시 요청 한도에 걸렸습니다. 잠시 뒤 다시 시도됩니다',
+    503: ' · Fish 서버가 바쁩니다. 잠시 뒤 다시 시도해 주세요',
+  };
+  return status ? hints[status] || '' : '';
+}
 export class TtsHttpError extends Error {
   constructor(readonly status: number | undefined) {
-    super(`음성 API 요청 실패 (${status || 'network'})`);
+    super(`음성 API 요청 실패 (${status || 'network'})${ttsStatusHint(status)}`);
     this.name = 'TtsHttpError';
   }
 }

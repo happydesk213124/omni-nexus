@@ -47,7 +47,7 @@ export const TTS_HELP: Record<string, Tip> = {
   'clear-cache': { title: '캐시 비우기', body: '저장된 음성과 번역 결과를 모두 지웁니다.' },
   'tts-fish-key': { title: 'Fish API Key', body: 'fish.audio에서 발급한 API 키입니다. 음성 생성에 꼭 필요합니다.' },
   'tts-fish-url': { title: 'Fish API URL', body: '보통 기본값을 그대로 둡니다. 프록시를 쓸 때만 바꿉니다.' },
-  'tts-fish-model': { title: '음성 생성 모델', body: 'Fish 음성 모델입니다. 바꾸면 새로 만드는 음성부터 적용됩니다.' },
+  'tts-fish-model': { title: '음성 생성 모델', body: 'Fish 음성 모델입니다. 바꾸면 새로 만드는 음성부터 적용됩니다. 목록에 없는 새 모델은 「직접 입력」으로 이름을 적어 쓰세요.' },
   'tts-test-fish': { title: '연결 테스트', body: '입력한 키와 주소로 Fish에 실제로 접속되는지 확인합니다.' },
   'helper-model': { title: '보조 LLM 제공자', body: '새 화자의 음성 고르기와 LLM 작업에 쓸 모델입니다. Risu 모델을 그대로 쓸 수도 있습니다.' },
   'tts-llm-model': { title: '모델 이름', body: '보조 LLM 모델 이름입니다.' },
