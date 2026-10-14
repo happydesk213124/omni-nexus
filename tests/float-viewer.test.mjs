@@ -489,6 +489,8 @@ test('mobile header drag updates immediately and stores geometry exactly once on
     for(let i=1;i<=20;i++)await page.locator('body').dispatchEvent('pointermove',{clientX:x+i*4,clientY:y+i*3,pointerType:'touch'});
     await page.evaluate(()=>fixture.api.finishMove());
     assert.equal(await page.evaluate(()=>fixture.calls.filter(c=>c[0]==='geo').length),0);
+    // A one-frame glide smooths bursty input; it still moves before release.
+    await page.waitForTimeout(120);
     const moving=await page.locator('[x-nx-float]').boundingBox();assert.ok(moving.x>60&&moving.y>50);
     await page.locator('body').dispatchEvent('pointerup',{clientX:x+80,clientY:y+60,pointerType:'touch'});
     await page.waitForFunction(()=>fixture.calls.filter(c=>c[0]==='geo').length===1);

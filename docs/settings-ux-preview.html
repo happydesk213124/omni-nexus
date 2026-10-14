@@ -1060,16 +1060,17 @@
     </div>
 
     <nav class="nav" id="nav">
-      <div class="nav-label">쓰기</div>
+      <div class="nav-label">삽화 쓰기</div>
       <button type="button" data-tab="dashboard" data-title="대시보드" aria-current="page">대시보드</button>
       <button type="button" data-tab="gen_options" data-title="생성 옵션">생성 옵션</button>
       <button type="button" data-tab="comic_gen" data-title="만화 생성">만화 생성</button>
       <button type="button" data-tab="style_presets" data-title="스타일 프리셋">스타일 프리셋</button>
       <button type="button" data-tab="characters" data-title="캐릭터">캐릭터</button>
-      <div class="nav-label">연결</div>
+      <div class="nav-label">삽화 연결</div>
       <button type="button" data-tab="models" data-title="모델 설정">모델 설정 <i class="alarm" title="nai 키 없음"></i></button>
-      <button type="button" data-tab="tts" data-title="TTS">TTS</button>
       <button type="button" data-tab="prompts" data-title="프롬프트">프롬프트</button>
+      <div class="nav-label">TTS</div>
+      <button type="button" data-tab="tts" data-title="TTS 설정(beta)">TTS 설정(beta)</button>
       <div class="nav-label">보기</div>
       <button type="button" data-tab="explorer" data-title="이미지 탐색">이미지 탐색</button>
       <button type="button" data-tab="changelog" data-title="업데이트 내역">업데이트 내역</button>
@@ -1112,10 +1113,6 @@
         </div>
         </div>
         <div class="dash-right">
-        <div class="group" id="nx-tts-exclusions">
-          <h3>TTS 항목 생성 제외</h3>
-          <label class="block" data-nx-help-id="nx-tts-exclude-text"><span>이 텍스트 포함하면 생성 안 함 · 쉼표로 구분</span><textarea id="nx-tts-exclude-text" rows="3" maxlength="4000" placeholder="예: 상태창, 시스템 안내" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></label>
-        </div>
         <div class="group" id="nx-asset-tag-controls"></div>
         <div class="group">
           <h3>채팅 그림</h3>

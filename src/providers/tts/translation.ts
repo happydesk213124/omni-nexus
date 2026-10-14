@@ -2,9 +2,39 @@ import type { TtsSegment, TtsSettings } from '../../core/tts-types';
 import { callLlm } from '../llm/client';
 import { objectValue, ttsFetch, ttsJson } from './http';
 
+/**
+ * Reasoning models wrap answers in <Thoughts>/<think> blocks, code fences or
+ * prose, and some write JS-style keys ({0:[1,2]}). Strip the wrapping, take the
+ * first balanced JSON value, and quote bare keys outside strings.
+ */
 export function parseLlmJson(text: string): unknown {
-  const clean = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  return JSON.parse(clean);
+  let clean = String(text).replace(/<(thoughts?|think|thinking|reasoning|analysis)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '').trim();
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(clean);
+  if (fenced) clean = fenced[1]!.trim();
+  try { return JSON.parse(clean); } catch { /* fall through to extraction */ }
+  const start = clean.search(/[[{]/);
+  if (start < 0) throw new Error('LLM 응답에서 JSON을 찾지 못했습니다.');
+  let depth = 0, quoted = false, escaped = false, end = -1;
+  for (let i = start; i < clean.length; i++) {
+    const c = clean[i];
+    if (quoted) { if (escaped) escaped = false; else if (c === '\\') escaped = true; else if (c === '"') quoted = false; continue; }
+    if (c === '"') quoted = true;
+    else if (c === '[' || c === '{') depth++;
+    else if ((c === ']' || c === '}') && --depth === 0) { end = i; break; }
+  }
+  if (end < 0) throw new Error('LLM 응답의 JSON이 끝나지 않았습니다.');
+  const body = clean.slice(start, end + 1);
+  try { return JSON.parse(body); } catch { /* try bare keys */ }
+  let out = '', inString = false, escape = false;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!;
+    if (inString) { out += c; if (escape) escape = false; else if (c === '\\') escape = true; else if (c === '"') inString = false; continue; }
+    if (c === '"') { inString = true; out += c; continue; }
+    const key = /^([A-Za-z_$][\w$]*|\d+)(\s*:)/.exec(body.slice(i));
+    if (key && /[{,]\s*$/.test(out)) { out += `"${key[1]}"${key[2]}`; i += key[0].length - 1; continue; }
+    out += c;
+  }
+  return JSON.parse(out.replace(/,\s*([}\]])/g, '$1'));
 }
 export async function translateTts(segments: TtsSegment[], settings: TtsSettings): Promise<string[]> {
   const config = settings.translation;

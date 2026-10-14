@@ -18,7 +18,7 @@ export function validTtsCharacter(value: unknown): value is TtsCharacter {
   const c = object(value);
   return !!c && ['id', 'scope', 'name', 'surname', 'givenName', 'voiceKey', 'fishId'].every(k => typeof c[k] === 'string')
     && strings(c.triggers) && strings(c.tags) && strings(c.surnameAliases) && strings(c.givenAliases)
-    && ['female', 'male', 'unknown'].includes(String(c.gender)) && typeof c.fixed === 'boolean' && Number.isFinite(c.gain);
+    && ['female', 'male', 'unknown', 'other'].includes(String(c.gender)) && typeof c.fixed === 'boolean' && Number.isFinite(c.gain) && (c.language === undefined || typeof c.language === 'string') && (c.autoGain === undefined || typeof c.autoGain === 'boolean');
 }
 
 async function locate(characterId: string): Promise<{ index: number; char: Row } | null> {

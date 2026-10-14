@@ -1,3 +1,4 @@
+import type { TtsCharacterGender } from '../core/tts-types';
 import { omniTts } from '../services/tts-runtime';
 import { currentTtsContext } from '../services/tts-context';
 import { saveTtsData } from '../storage/tts-store';
@@ -10,7 +11,9 @@ export const set = (id: string, value: unknown) => { if (input(id)) input(id).va
 export const text = (id: string, value: string) => { const node=el(id); if (node && node.textContent !== value) node.textContent = value; };
 export const list = (value: string) => [...new Set(value.split(',').map(s => s.trim()).filter(Boolean))];
 export const gender = (value: string) => value === '여성' ? 'female' : value === '남성' ? 'male' : 'unknown';
-export const genderLabel = (value: string) => value === 'female' ? '여성' : value === 'male' ? '남성' : '미지정';
+export const genderLabel = (value: string) => value === 'female' ? '여성' : value === 'male' ? '남성' : value === 'other' ? '기타' : '미지정';
+/** Character gender has a fourth value, 기타, that voices do not. */
+export const characterGender = (value: string): TtsCharacterGender => value === '기타' ? 'other' : gender(value);
 export const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 export function run(action: () => void | Promise<unknown>): void { try { Promise.resolve(action()).catch(error => { omniTts.report(error); alert(String((error as Error)?.message || error)); }); } catch (error) { omniTts.report(error); alert(String((error as Error)?.message || error)); } }
 export function on(id: string, action: (event: Event) => void | Promise<unknown>, type = 'click'): void { el(id)?.addEventListener(type, event => { event.preventDefault(); run(() => action(event)); }); }

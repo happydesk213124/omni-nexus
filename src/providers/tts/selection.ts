@@ -11,7 +11,7 @@ export function numberedVoices(voices: TtsVoice[]): VoiceCandidate[] {
 export async function selectTtsVoices(characters: TtsCharacter[], voices: TtsVoice[], settings: TtsSettings, engine: 'llm' | 'jev', sources?: Record<string, unknown>): Promise<Map<string, TtsVoice[]>> {
   if (!voices.length) throw new Error('선택할 음성이 없습니다.');
   const candidates = numberedVoices(voices);
-  const allowed = characters.map(character => candidates.filter(c => character.gender === 'unknown' || c.voice.gender === character.gender || c.voice.gender === 'unknown'));
+  const allowed = characters.map(character => candidates.filter(c => character.gender === 'unknown' || character.gender === 'other' || c.voice.gender === character.gender || c.voice.gender === 'unknown'));
   if (allowed.some(v => !v.length)) throw new Error('캐릭터 성별에 맞는 음성이 후보 폴더에 없습니다.');
   let answer: unknown;
   if (engine === 'jev') {

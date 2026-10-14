@@ -13,17 +13,17 @@ const request=(text,speaker='Ready')=>({context,messageId:text,segment:{id:'1',k
 
 test('ready playback bypasses unrelated voice assignment, audio writes and translation writes',async()=>{
   const originalAudio=globalThis.Audio,originalContext=globalThis.AudioContext;
-  const local=new Map(),saved=new Map(),played=[],fish=[],held=[],jev=deferred();let blockWrites=false,reads=0,jevCalls=0;
+  const local=new Map(),saved=new Map(),played=[],fish=[],held=[],jev=deferred();const translateCalls=[];let blockWrites=false,reads=0,jevCalls=0;
   globalThis.Audio=class{src='';pause(){}load(){}removeAttribute(){}async play(){played.push(this.src);}};
   globalThis.AudioContext=class{state='running';destination={};createGain(){return {gain:{value:1},connect(){return this;}};}createMediaElementSource(){return {connect(node){return node;}};}};
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},
     getLocalPluginStorage:async()=>({getItem:async k=>{if(k!=='omnitts.cache.index')reads++;return local.get(k);},setItem:async(k,v)=>{if(blockWrites){const wait=deferred();held.push(wait);await wait.promise;}local.set(k,v);},removeItem:async k=>local.delete(k),keys:async()=>[...local.keys()]}),
     getDatabase:async()=>({modules:[],enabledModules:[],personas:[]}),setDatabase:async()=>{},getCurrentLorebookEntries:async()=>[],
-    nativeFetch:async(_url,options)=>{const body=JSON.parse(options.body);if(body.questions){jevCalls++;await jev.promise;return {ok:true,json:async()=>({answers:{0:{choice:'1'}}})};}fish.push(body.text);return {ok:true,data:new Uint8Array(32)};},
+    nativeFetch:async(_url,options)=>{if(String(_url).includes('translate.googleapis.com')){translateCalls.push(String(_url));return {ok:true,json:async()=>[[['こんにちは']]]};}const body=JSON.parse(options.body);if(body.questions){jevCalls++;await jev.promise;return {ok:true,json:async()=>({answers:{0:{choice:'1'}}})};}fish.push(body.text);return {ok:true,data:new Uint8Array(32)};},
     runLLMModel:async()=>({success:true,content:'[[0,"Hello"]]'})};
   let assigning;
   try{
-    const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'jev',continuous:false});data.settings.fish.key='fake';data.settings.jev.key='fake';
+    const data=await api.loadTtsData();data.settings.translation.provider='off';Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'jev',continuous:false});data.settings.fish.key='fake';data.settings.jev.key='fake';
     data.voices=[{key:'voice',name:'voice',fishId:voiceId,gender:'female',tags:[],folder:''}];
     data.characters=[{...api.blankTtsCharacter('global','Ready'),fishId:voiceId,voiceKey:'voice'}];
     const runtime=new api.OmniTtsRuntime();await runtime.init();
@@ -46,6 +46,13 @@ test('ready playback bypasses unrelated voice assignment, audio writes and trans
     data.settings.translation.provider='llm';
     await completes(runtime.play([request('translated')],0),'translation persistence blocked synthesis/playback');
     assert.ok(fish.includes('[happy]Hello'));assert.equal(runtime.player.status,'playing');
+    // Translation OFF, but this character has its own language: only its lines are translated.
+    data.settings.translation.provider='off';data.characters[0].language='ja';
+    await completes(runtime.play([request('per character')],0),'per-character translation blocked playback');
+    assert.ok(fish.includes('[happy]こんにちは'),'the character language translates through key-free Google');
+    assert.ok(translateCalls.some(u=>u.includes('tl=ja')),'its own target language is used');
+    data.characters[0].language='';await completes(runtime.play([request('untranslated line')],0),'plain line');
+    assert.ok(fish.includes('[happy]untranslated line'),'without a character language, OFF means no translation');
     const beforeExcluded=fish.length;
     await runtime.play([request('응.')],0);
     await runtime.prefetch([request('A.'),request('え？')]);
@@ -56,7 +63,7 @@ test('ready playback bypasses unrelated voice assignment, audio writes and trans
     runtime.stop();runtime.reading([request('응.'),request('[차단] 문장입니다.'),request('읽을 문장입니다.')]);
     assert.deepEqual(runtime.list.map(r=>r.segment.text),['읽을 문장입니다.']);data.settings.excludeText='';
     runtime.stop();blockWrites=false;held.splice(0).forEach(wait=>wait.resolve());await tick();
-    assert.equal(played.length,4);
+    assert.equal(played.length,6);
   }finally{jev.resolve();blockWrites=false;held.forEach(wait=>wait.resolve());await assigning?.catch(()=>{});delete globalThis.risuai;globalThis.Audio=originalAudio;globalThis.AudioContext=originalContext;}
 });
 

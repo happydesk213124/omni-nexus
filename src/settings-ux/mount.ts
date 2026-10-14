@@ -4,7 +4,6 @@ import { bindCharacterOptions } from './character-options';
 import { bindCharacterCreate } from './character-create';
 import { bindModels } from './model-bindings';
 import { bindGuardrailPreset } from './guardrail-preset';
-import { bindTtsExclusions } from './tts-options';
 /**
  * Preview HTML is the settings window. Vendor values/handlers bind by #nx-* id.
  */
@@ -32,7 +31,7 @@ const TAB_LABELS: Record<string, string> = {
   characters: '캐릭터',
   models: '모델 설정',
   explorer: '이미지 탐색',
-  curation: 'TTS',
+  curation: 'TTS 설정(beta)',
   prompts: '프롬프트',
   changelog: '업데이트 내역',
   debug: '디버그',
@@ -309,7 +308,7 @@ export function afterPaint(): void {
   syncModelWarning();
   void bindPromptUpdates();
   const tab = activeTab();
-  if (tab === 'dashboard') { bindSettingsPresets(); void bindTtsExclusions(); }
+  if (tab === 'dashboard') bindSettingsPresets();
   if (tab === 'gen_options') bindGuardrailPreset();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');

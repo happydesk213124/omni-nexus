@@ -26,12 +26,12 @@ try {
     root.querySelector('#line-mark')?.closest('.row')?.remove();
     const activation=root.querySelector('#audio-enable-settings'),reading=root.querySelector('#tts-help-4');
     if(activation&&reading){const row=doc.createElement('div');row.className='row';row.innerHTML='<div class="copy"><b>음성 재생</b></div>';row.append(activation);reading.querySelector('h3').after(row);}
-    reading?.insertAdjacentHTML('beforeend','<label class="row"><div class="copy"><b>생성에서 제외할 글자 수</b></div><div class="control"><input id="tts-skip-chars" type="number" min="1" max="8000" step="1" aria-label="TTS 생성에서 제외할 글자 수" style="width:76px"><span>자 이하</span></div></label>');
+    reading?.insertAdjacentHTML('beforeend','<label class="row"><div class="copy"><b>생성에서 제외할 글자 수</b></div><div class="control"><input id="tts-skip-chars" type="number" min="0" max="8000" step="1" aria-label="TTS 생성에서 제외할 글자 수" style="width:76px"><span>자 이하</span></div></label>');
     // Same comma list as the dashboard field; both write settings.excludeText.
     reading?.insertAdjacentHTML('beforeend','<div class="row tts-exclude-row" style="flex-direction:column;align-items:stretch;gap:6px"><div class="copy"><b>이 텍스트 포함하면 생성 안 함</b></div><textarea id="tts-exclude-text" rows="3" maxlength="4000" aria-label="이 텍스트 포함하면 TTS 생성 안 함 · 쉼표로 구분" placeholder="예: 상태창, 시스템 안내" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>');
     // Descriptions live in the ? help panel, not under the controls.
-    reading?.insertAdjacentHTML('beforeend','<div class="row"><div class="copy"><b>[ ] 괄호 빼고 읽기</b></div><label class="switch"><input id="strip-brackets" type="checkbox" checked aria-label="대괄호 빼고 읽기 · 예: [00:00 - SHOOTING FINISHED] → 00:00 - SHOOTING FINISHED"></label></div>');
-    root.querySelector('#custom-lang-wrap')?.insertAdjacentHTML('afterend','<label class="field"><span>나레이션 도착 언어</span><select id="narration-language" aria-label="나레이션 도착 언어"><option value="">대사와 같음</option><option value="original">번역 안 함 · 원문</option><option value="ko">한국어</option><option value="ja">일본어</option><option value="en">영어</option><option value="custom">직접 입력</option></select></label><label class="field full" id="narration-custom-lang-wrap" hidden><span>나레이션 언어 코드</span><input id="narration-custom-lang" placeholder="예: fr, de, zh" aria-label="나레이션 언어 코드"></label>');
+    reading?.insertAdjacentHTML('beforeend','<div class="row"><div class="copy"><b>숫자·기호만 있는 줄 건너뛰기</b></div><label class="switch"><input id="skip-symbol-only" type="checkbox" checked aria-label="숫자·기호만 있는 줄 건너뛰기"></label></div>');
+    reading?.insertAdjacentHTML('beforeend','<label class="row" style="flex-direction:column;align-items:stretch;gap:6px"><div class="copy"><b>생략할 문자들</b></div><input id="tts-omit-characters" type="text" maxlength="4000" aria-label="생략할 문자들 · 쉼표로 구분" placeholder="예: [, ], 【, 】" style="width:100%;box-sizing:border-box"></label>');
     const fish=root.querySelector('#tts-fish-key');
     fish?.closest('.field')?.insertAdjacentHTML('afterend','<label class="field"><span>Fish API URL</span><input id="tts-fish-url" type="url" aria-label="Fish API URL"></label>');
     const fishModel=root.querySelector('#tts-fish-model');
@@ -45,7 +45,10 @@ try {
     if(selectBar&&selectToggle){
       selectBar.removeAttribute('hidden');selectToggle.textContent='선택 모드';
       const tools=doc.createElement('span');tools.id='character-batch-tools';tools.className='character-batch-tools';tools.hidden=true;
-      for(const node of [selectBar.querySelector('#character-jev-folder')?.closest('label'),selectBar.querySelector('#character-jev-all'),selectBar.querySelector('#character-jev-clear')])if(node)tools.append(node);
+      // The exploration folder is a standing choice for every assignment, so it lives in the command bar.
+      const folderSelect=selectBar.querySelector('#character-jev-folder');
+      if(folderSelect){selectBar.querySelector('label:has(#character-jev-folder)')?.remove();folderSelect.setAttribute('aria-label','음성 탐색 폴더');folderSelect.title='LLM·JEV가 음성을 고를 때 살펴볼 폴더';folderSelect.style.cssText='width:auto;max-width:115px';root.querySelector('#char-scope-filter')?.after(folderSelect);}
+      for(const node of [selectBar.querySelector('#character-jev-all'),selectBar.querySelector('#character-jev-clear')])if(node)tools.append(node);
       const clear=tools.querySelector('#character-jev-clear');if(clear)clear.textContent='전체 해제';
       tools.insertAdjacentHTML('beforeend','<button id="character-delete-selected" class="danger" disabled>삭제</button>');
       const apply=selectBar.querySelector('#character-jev-apply');if(apply){apply.textContent='JEV 음성 배정';tools.append(apply);}
@@ -56,6 +59,28 @@ try {
     // Non-global TTS characters belong to the bot (its lorebook), not one chat.
     for(const option of [...root.querySelectorAll('#char-scope-filter option[value="chat"]'),...dialogs.querySelectorAll('#c-scope option[value="chat"],#source-scope option[value="chat"]')])option.textContent='현재 봇';
     for(const option of dialogs.querySelectorAll('#c-scope option[value="global"],#source-scope option[value="global"]'))option.textContent='글로벌 · 모든 봇';
+    // Per-character translation target, next to the storage scope.
+    dialogs.querySelector('#c-scope')?.closest('label')?.insertAdjacentHTML('beforebegin','<label class="field"><span>번역 언어</span><select id="c-language"><option value="">설정에 따름 · 기본</option><option value="original">번역 안 함</option><option value="en">영어</option><option value="ja">일본어</option><option value="ko">한국어</option><option value="custom">직접 입력</option></select></label><label class="field" id="c-language-custom-wrap" hidden><span>언어 코드</span><input id="c-language-custom" placeholder="예: fr, de, zh"></label>');
+    // Characters (not voices) may also be 기타: non-human or genderless.
+    dialogs.querySelector('#c-gender')?.insertAdjacentHTML('beforeend','<option>기타</option>');
+    // The free grid cell beside the tags: languages the voice speaks (from Fish).
+    dialogs.querySelector('#v-tags')?.closest('label')?.insertAdjacentHTML('afterend','<label class="field"><span>예측 언어 · 쉼표로 구분</span><input id="v-languages" placeholder="ko, ja, en" maxlength="60" aria-label="예측 언어"></label>');
+    // Speed is picked from the custom rate list, not a free slider.
+    const speed=root.querySelector('#speed');
+    if(speed){const select=doc.createElement('select');select.id='speed';select.setAttribute('aria-label','음성 배속');speed.replaceWith(select);root.querySelector('#speed-value')?.remove();}
+    // Per-character gain sits behind an "auto" switch in the label's top-right corner.
+    const gainLabel=dialogs.querySelector('#c-gain')?.closest('label')?.querySelector('span');
+    if(gainLabel){gainLabel.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px';gainLabel.insertAdjacentHTML('beforeend','<span class="switch" style="display:inline-flex;align-items:center;gap:6px;font-weight:400">지정<input id="c-gain-manual" type="checkbox" aria-label="음량 직접 지정 (끄면 목소리 크기 자동 조절에 맡김)"></span>');}
+    // Own speed per character, and the role-card (narrator / monologue) controls.
+    dialogs.querySelector('#c-gain')?.closest('label')?.insertAdjacentHTML('afterend','<label class="field"><span style="display:flex;align-items:center;justify-content:space-between;gap:8px">개별 속도<span class="switch" style="display:inline-flex;align-items:center;gap:6px;font-weight:400">지정<input id="c-rate-on" type="checkbox" aria-label="개별 속도 사용"></span></span><select id="c-rate" aria-label="개별 속도" disabled></select></label>');
+    dialogs.querySelector('#c-scope')?.closest('label')?.insertAdjacentHTML('beforebegin','<label class="field" id="c-follow-global-wrap" hidden><span style="display:flex;align-items:center;justify-content:space-between;gap:8px">글로벌 따라가기<span class="switch" style="display:inline-flex;align-items:center;gap:6px;font-weight:400"><input id="c-follow-global" type="checkbox" checked aria-label="글로벌 카드 따라가기"></span></span><small>끄면 이 봇에서만 이 카드의 설정을 씁니다.</small></label><label class="field" id="c-follow-char-wrap" hidden><span>따라갈 캐릭터 카드</span><select id="c-follow-char" aria-label="따라갈 캐릭터 카드"></select></label>');
+    // The follow-global switch leads the form: while it is on, everything below is greyed out.
+    {const lead=dialogs.querySelector('#c-follow-global-wrap'),fields=dialogs.querySelector('#character-form .fields'),borrow=dialogs.querySelector('#c-follow-char-wrap');if(lead&&fields){lead.classList.add('full');fields.prepend(lead);}
+    // Borrowing another card's voice belongs with the voice presets.
+    const presets=dialogs.querySelector('#choose-character-voice')?.closest('.field');if(borrow&&presets){borrow.classList.add('full');presets.after(borrow);}}
+    // Share the TTS setup without keys: export/import next to the other settings.
+    const lastColumn=[...root.querySelectorAll('#tts-settings .tts-settings-column')].at(-1);
+    lastColumn?.insertAdjacentHTML('beforeend','<div class="group" id="tts-settings-file"><h3>설정 파일</h3><div class="actions"><button type="button" id="tts-settings-export">설정 내보내기</button><button type="button" id="tts-settings-import">설정 불러오기</button><input type="file" id="tts-settings-file-input" accept=".json,application/json" hidden></div></div>');
     const characterForm=dialogs.querySelector('#character-form');
     if(characterForm){
       characterForm.querySelector('#c-triggers')?.removeAttribute('required');

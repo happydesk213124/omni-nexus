@@ -1,20 +1,22 @@
-import type { TtsSegment, TtsSettings } from '../core/tts-types';
+import type { TtsCharacter, TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
 import { synthesisSignature } from '../domain/tts/segment';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText } from '../domain/tts/filter';
-import { resolveTtsSpeaker } from '../domain/tts/identity';
+import { ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
 import { loadTtsData, ttsData, subscribeTts, updateTtsSettings } from '../storage/tts-store';
 import { ensureTtsModule } from '../storage/tts-module';
 import { synthesizeFish } from '../providers/tts/fish';
+import { TtsHttpError } from '../providers/tts/http';
 import { TtsPlayer } from '../providers/tts/player';
 import { translateTts } from '../providers/tts/translation';
 import { ensureTtsSpeakers } from './tts-characters';
 import type { TtsChatContext } from './tts-context';
+import { recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
 
 export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number }
-interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; settings: TtsSettings }
+interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string }
 export class OmniTtsRuntime {
   readonly player = new TtsPlayer();
   readonly cache = new TtsAudioCache();
@@ -22,6 +24,7 @@ export class OmniTtsRuntime {
   private translations = new TtsTranslationCache();
   private translating = new Map<string, Promise<string>>();
   private failedAudio = new Map<string, number>();
+  private recovery = new TtsVoiceRecovery();
   private listeners = new Set<() => void>();
   private started?: Promise<void>;
   private subscribed = false;
@@ -67,7 +70,7 @@ export class OmniTtsRuntime {
     const s = ttsData().settings;
     this.queue.configure(s.concurrency, s.background);
     this.player.configure(s.rate, s.volume);
-    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets]);
+    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.skipSymbolOnly]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
@@ -76,7 +79,7 @@ export class OmniTtsRuntime {
     if (this.current && !this.eligible(this.current) && ['playing', 'loading', 'paused'].includes(this.player.status)) this.stop();
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.illustration, s.passageLine, s.excludeText, s.skipChars]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
@@ -105,7 +108,7 @@ export class OmniTtsRuntime {
   async clearCache(): Promise<void> { this.viewport++; this.queue.cancelPending(); await this.cache.clear(); await this.translations.clear(); this.emit(); }
   private eligible(request: TtsRequest): boolean {
     const s = ttsData().settings;
-    return (request.segment.kind !== 'narration' || s.narration) && allowedTtsText(request.segment.text, ttsExcludeTerms(s.excludeText), s.skipChars);
+    return (request.segment.kind !== 'narration' || s.narration) && allowedTtsText(request.segment.text, ttsExcludeTerms(s.excludeText), s.skipChars, s.skipSymbolOnly);
   }
   async play(requests: TtsRequest[], index: number, reservation?: number): Promise<void> {
     await this.init();
@@ -126,7 +129,7 @@ export class OmniTtsRuntime {
     await this.player.play(key, async () => {
       const prepared = await this.prepare([request], valid);
       if (!valid() || !prepared[0]) throw new Error('재생 요청이 변경되었습니다.');
-      this.player.configure(ttsData().settings.rate, ttsData().settings.volume, prepared[0].gain);
+      this.player.configure(prepared[0].rate ?? ttsData().settings.rate, ttsData().settings.volume, prepared[0].gain);
       return this.audio(prepared[0], 0, valid);
     });
   }
@@ -165,19 +168,24 @@ export class OmniTtsRuntime {
     if (!valid()) return [];
     const settings = JSON.parse(JSON.stringify(ttsData().settings)) as TtsSettings;
     const prepared = requests.flatMap(request => {
-      const character = request.segment.speaker ? resolveTtsSpeaker(request.segment.speaker, ttsData().characters, context.rosterScope) : null;
-      // An illustration line without a named speaker falls back to the narrator.
-      const voiceKey = request.segment.kind === 'narration' || (request.segment.kind === 'illustration' && !request.segment.speaker) ? settings.narrationVoice : character?.voiceKey;
+      // Narration, unnamed illustration lines and monologues use their role cards (the bot's own, or the global one).
+      const character = ttsSegmentOwner(request.segment, ttsData().characters, context.rosterScope);
+      const role = ttsSegmentRole(request.segment);
+      const voiceKey = role === 'narrator' ? character?.voiceKey || settings.narrationVoice : character?.voiceKey;
       const voice = ttsData().voices.find(v => v.key === voiceKey);
       const fishId = request.fishId || character?.fishId || voice?.fishId || '';
-      return fishId ? [{ request, text: ttsSpokenText(request.segment.text, settings.stripBrackets), signature: '', fishId, gain: request.gain ?? character?.gain ?? 0, settings }] : [];
+      const recoverable = !request.fishId && character && request.segment.kind !== 'audition' && !role;
+      return fishId ? [{ request, text: ttsSpokenText(request.segment.text, settings.omitCharacters), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings, language: (character?.language || '').trim(), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error('캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
-    const target = (p: Prepared) => ttsTargetLanguage(p.request.segment, settings);
-    const cacheKey = (p: Prepared) => JSON.stringify([settings.translation.provider, target(p), settings.translation.url, settings.translation.llm.source, settings.translation.llm.endpoint, settings.translation.llm.model, p.request.segment.speaker, p.request.segment.tone, p.text]);
+    // A character's own language wins over the setting; with translation OFF
+    // it still translates through the key-free Google service.
+    const target = (p: Prepared) => p.language || ttsTargetLanguage(p.request.segment, settings);
+    const provider = (p: Prepared): TtsSettings['translation']['provider'] => settings.translation.provider === 'off' && p.language && p.language !== 'original' ? 'google-free' : settings.translation.provider;
+    const cacheKey = (p: Prepared) => JSON.stringify([provider(p), target(p), settings.translation.url, settings.translation.llm.source, settings.translation.llm.endpoint, settings.translation.llm.model, p.request.segment.speaker, p.request.segment.tone, p.text]);
     for (const p of prepared) {
-      if (p.request.segment.kind === 'audition' || settings.translation.provider === 'off' || target(p) === 'original') continue;
+      if (p.request.segment.kind === 'audition' || provider(p) === 'off' || target(p) === 'original') continue;
       const text = this.translations.get(cacheKey(p));
       if (text !== undefined) p.text = text; else missing.push(p);
     }
@@ -185,9 +193,10 @@ export class OmniTtsRuntime {
       this.stage = '번역'; this.emit();
       const fresh = [...new Map(missing.filter(p=>!this.translating.has(cacheKey(p))).map(p=>[cacheKey(p),p])).values()];
       // Narration may have its own target language, so batch per language.
-      for (const language of new Set(fresh.map(target))) {
-        const group = fresh.filter(p => target(p) === language);
-        const batch = translateTts(group.map(p=>p.request.segment),{ ...settings, translation: { ...settings.translation, language } });
+      for (const route of new Set(fresh.map(p => JSON.stringify([provider(p), target(p)])))) {
+        const [via, language] = JSON.parse(route) as [TtsSettings['translation']['provider'], string];
+        const group = fresh.filter(p => provider(p) === via && target(p) === language);
+        const batch = translateTts(group.map(p=>p.request.segment),{ ...settings, translation: { ...settings.translation, provider: via, language } });
         group.forEach((p,i)=>{const key=cacheKey(p), row=batch.then(values=>values[i]);this.translating.set(key,row);void row.finally(()=>{if(this.translating.get(key)===row)this.translating.delete(key);}).catch(()=>{});});
       }
       const translated=await Promise.all(missing.map(p=>this.translating.get(cacheKey(p))!));
@@ -195,28 +204,46 @@ export class OmniTtsRuntime {
       missing.forEach((p,i)=>{this.translations.put(cacheKey(p),translated[i]);p.text=translated[i];});
       void this.translations.flush().catch(error => this.report(error));
     }
-    for (const p of prepared) p.signature = synthesisSignature(p.text, p.request.segment.tone, p.fishId, settings);
+    for (const p of prepared) {
+      p.text = ttsSpokenText(p.text, settings.omitCharacters);
+      p.signature = synthesisSignature(p.text, p.request.segment.tone, p.fishId, settings);
+    }
     return prepared;
   }
-  private async audio(p: Prepared, priority: number, valid: () => boolean): Promise<ArrayBuffer> {
+  private async audio(p: Prepared, priority: number, valid: () => boolean, canRecover = true): Promise<ArrayBuffer> {
     const cached = await this.cache.get(p.signature);
     if (cached) return cached;
     if (!valid()) throw new Error('TTS 요청이 변경되었습니다.');
     if (priority > 0 && (this.failedAudio.get(p.signature) || 0) > Date.now() - 30_000) throw new Error('음성 생성 재시도 대기 중입니다.');
     const generation = this.cache.generation;
-    return this.queue.request(p.signature, async () => {
+    try { return await this.queue.request(p.signature, async () => {
       const again = await this.cache.get(p.signature); if (again) return again;
       if (!ttsData().settings.enabled) throw new Error('TTS가 꺼져 있습니다.');
-      this.stage = '음성 생성'; this.emit();
+      this.stage = canRecover ? '음성 생성' : '대체 음성 생성'; this.emit();
       let bytes: ArrayBuffer;
       try { bytes = await synthesizeFish(p.text, p.request.segment.tone, p.fishId, p.settings); }
-      catch(error) { this.failedAudio.set(p.signature,Date.now()); if(this.failedAudio.size>100)this.failedAudio.delete(this.failedAudio.keys().next().value!); throw error; }
+      catch (error) {
+        this.failedAudio.set(p.signature, Date.now());
+        if (this.failedAudio.size > 100) this.failedAudio.delete(this.failedAudio.keys().next().value!);
+        if (error instanceof TtsHttpError && error.status) await recordTtsVoiceError(p.fishId, error.status);
+        throw error;
+      }
       this.failedAudio.delete(p.signature);
       // Publish bytes immediately; persistent storage must not hold a Fish slot
       // or delay playback. The cache exposes pending writes for deduplication.
       void this.cache.put(p.signature, bytes, generation).catch(error => this.report(error));
       return bytes;
-    }, priority);
+    }, priority); }
+    catch (error) {
+      if (!canRecover || !(error instanceof TtsHttpError) || error.status !== 400 || !p.character || p.character.fixed || !valid()) throw error;
+      // Bytes can be shared across characters, but their replacement choices
+      // and cancellation intents cannot. Release the original queue slot first.
+      this.stage = '대체 음성 선택'; this.emit();
+      const fishId = await this.recovery.select(p.character, p.fishId, p.settings, valid);
+      if (!fishId || !valid()) throw error;
+      const signature = synthesisSignature(p.text, p.request.segment.tone, fishId, p.settings);
+      return this.audio({ ...p, fishId, signature }, priority, valid, false);
+    }
   }
   async prefetch(requests: TtsRequest[]): Promise<void> {
     await this.init();
@@ -231,8 +258,8 @@ export class OmniTtsRuntime {
       const selected = requests.filter(r => this.eligible(r)).slice(0, s.prefetch);
       const ready: TtsRequest[] = [], unassigned: TtsRequest[] = [];
       for (const request of selected) {
-        const character = resolveTtsSpeaker(request.segment.speaker, ttsData().characters, request.context.rosterScope);
-        const voiceKey = request.segment.kind === 'narration' ? s.narrationVoice : character?.voiceKey;
+        const character = ttsSegmentOwner(request.segment, ttsData().characters, request.context.rosterScope);
+        const voiceKey = ttsSegmentRole(request.segment) === 'narrator' ? character?.voiceKey || s.narrationVoice : character?.voiceKey;
         const assigned = request.fishId || character?.fishId || ttsData().voices.find(v => v.key === voiceKey)?.fishId;
         (assigned ? ready : unassigned).push(request);
       }
@@ -247,7 +274,7 @@ export class OmniTtsRuntime {
   }
 }
 export function ttsTargetLanguage(segment: Pick<TtsSegment, 'kind'>, settings: Pick<TtsSettings, 'translation'>): string {
-  const narration = settings.translation.narrationLanguage.trim();
-  return segment.kind === 'narration' && narration ? narration : settings.translation.language;
+  void segment;
+  return settings.translation.language;
 }
 export const omniTts = new OmniTtsRuntime();

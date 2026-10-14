@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 
-const built=await build({stdin:{contents:`export * from './src/config/tts-defaults';export * from './src/providers/tts/fish';export * from './src/providers/tts/translation';export * from './src/providers/tts/selection';export * from './src/services/tts-characters';export * from './src/storage/tts-store';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
+const built=await build({stdin:{contents:`export * from './src/config/tts-defaults';export * from './src/providers/tts/fish';export * from './src/providers/tts/translation';export * from './src/providers/tts/selection';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export {resolveTtsSpeaker,mergeTtsCharacter} from './src/domain/tts/identity';export * from './src/tts-ui/settings-transfer';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api=await import('data:text/javascript;base64,'+Buffer.from(built.outputFiles[0].text+'\n//# sourceURL=tts-provider-check.mjs').toString('base64'));
 const voiceId='4e118bfbb83e401c84699c09b5f08257';
 
@@ -17,7 +17,7 @@ test('Fish metadata and free Google translation explicitly use GET on Risu nativ
   }};
   try{
     const voice=await api.fetchFishVoice('https://fish.audio/ko/app/m/'+voiceId+'/',settings);
-    assert.equal(voice.gender,'female');assert.deepEqual(voice.tags,['female','calm']);
+    assert.equal(voice.gender,'female');assert.deepEqual(voice.tags,['female','calm']);assert.deepEqual(voice.languages,['ko'],'a Korean title predicts ko when Fish lists no language');
     const result=await api.translateTts([{id:'1',kind:'narration',text:'안녕하세요.',speaker:'',tone:'',start:0,end:6}],settings);
     assert.deepEqual(result,['こんにちは。']);
     assert.ok(calls.every(([,o])=>o.method==='GET'&&o.requestTimeoutMs===90000));
@@ -63,7 +63,7 @@ test('automatic JEV assignment uses lore directly, persists once and reuses the 
     const data=await api.loadTtsData();data.settings.enabled=true;data.settings.selector='jev';data.settings.jev.key='fake';data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male','calm'],folder:''}];data.characters=[];
     const context={scope:'jev-auto',rosterScope:'bot:auto-char',characterId:'auto-char',chatId:'auto-chat',sessionId:'auto-session',character:{},chat:{},messages:[]};
     await api.ensureTtsSpeakers(context,['Sora'],()=>true);
-    assert.equal(data.characters.length,1);assert.equal(data.characters[0].fishId,voiceId);assert.equal(data.characters[0].name,'Sora');assert.ok(saved.has('omnitts.data'));
+    assert.equal(data.characters.length,1);assert.equal(data.characters[0].fishId,voiceId);assert.equal(data.characters[0].name,'Sora');assert.deepEqual(data.characters[0].tags,['male','calm'],'an empty mood-tag field takes the JEV preset tags');assert.equal(data.characters[0].gender,'male','an unknown gender takes the JEV preset gender');assert.ok(saved.has('omnitts.data'));
     await api.ensureTtsSpeakers(context,['Sora'],()=>true);assert.equal(calls,1);
   }finally{delete globalThis.risuai;}
 });
@@ -77,5 +77,52 @@ test('LLM auto-fill assigns a supplied preset and known speakers require no repe
     const context={scope:'llm-auto',rosterScope:'bot:llm-char',characterId:'llm-char',chatId:'llm-chat',sessionId:'llm-session',character:{},chat:{},messages:[]};
     await api.ensureTtsSpeakers(context,['하린'],()=>true);assert.equal(data.characters[0].fishId,voiceId);assert.deepEqual(data.characters[0].tags,['청년','차분한']);
     await api.ensureTtsSpeakers(context,['하린'],()=>true);assert.equal(calls,1);
+  }finally{delete globalThis.risuai;}
+});
+
+test('speaker names are case-insensitive, and a deleted speaker is assigned again on the next play',async()=>{
+  let calls=0;const saved=new Map();
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),runLLMModel:async()=>{calls++;return {success:true,content:'[[-1,"Jet","","Jet",["jet"],["calm"],"male",1001]]'};}};
+  try{
+    const data=api.ttsData();data.settings.selector='llm';data.settings.enabled=true;data.settings.autoAssign=true;data.characters=[];data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male'],folder:''}];
+    const context={scope:'case',rosterScope:'bot:case-char',characterId:'case-char',chatId:'case-chat',sessionId:'case-session',character:{},chat:{},messages:[]};
+    await api.ensureTtsSpeakers(context,['JET'],()=>true);
+    assert.equal(data.characters.length,1,'the model may answer "Jet" for the requested "JET"');
+    assert.equal(api.resolveTtsSpeaker('jet',data.characters,context.rosterScope)?.name,'Jet');
+    await api.ensureTtsSpeakers(context,['jet','JET'],()=>true);assert.equal(calls,1,'other spellings reuse the same person');
+    const merged=api.mergeTtsCharacter(data.characters,{...data.characters[0],id:'other',name:'JET',triggers:['JET']});
+    assert.equal(merged.length,1,'JET and Jet merge into one record');
+    api.deleteTtsCharacters([data.characters[0]]);assert.equal(data.characters.length,0);
+    await api.ensureTtsSpeakers(context,['Jet'],()=>true);
+    assert.equal(data.characters.length,1,'playing a deleted speaker assigns a voice again instead of failing');assert.equal(calls,2);
+  }finally{delete globalThis.risuai;}
+});
+
+test('LLM JSON survives reasoning blocks, fences, prose and bare keys',()=>{
+  assert.deepEqual(api.parseLlmJson('<Thoughts>\n\n**Exploring Voice Candidates**\n{not json}\n</Thoughts>\n\n{0:[1022,1041,1001]}'),{0:[1022,1041,1001]});
+  assert.deepEqual(api.parseLlmJson('```json\n[[0,"a, b: c"]]\n```'),[[0,'a, b: c']]);
+  assert.deepEqual(api.parseLlmJson('결과입니다: {voices:[{name:"x:y",fishId:"1",tags:[],}],} 끝'),{voices:[{name:'x:y',fishId:'1',tags:[]}]});
+  assert.throws(()=>api.parseLlmJson('<think>[1]</think> no json here'),/JSON/);
+});
+
+test('voice language guess follows Fish, else the title script',()=>{
+  assert.deepEqual(api.guessVoiceLanguages('さくら 優しい声'),['ja']);
+  assert.deepEqual(api.guessVoiceLanguages('하린 voice'),['ko']);
+  assert.deepEqual(api.guessVoiceLanguages('Calm narrator'),['en']);
+  assert.deepEqual(api.guessVoiceLanguages('123'),[]);
+});
+
+test('settings files never carry API keys, and importing keeps the device keys',async()=>{
+  globalThis.risuai={pluginStorage:{getItem:async()=>null,setItem:async()=>{}}};
+  try{
+    const data=await api.loadTtsData();Object.assign(data.settings,{rate:1.5,hideName:true});data.settings.fish.key='fish-secret';data.settings.llm.api_key='llm-secret';data.settings.jev.key='jev-secret';data.settings.translation.key='tr-secret';
+    const file=api.exportableTtsSettings(data.settings),text=JSON.stringify(file);
+    for(const secret of ['fish-secret','llm-secret','jev-secret','tr-secret'])assert.ok(!text.includes(secret),'no '+secret+' in the file');
+    assert.equal(file.settings.rate,1.5);
+    data.settings.rate=1;data.settings.hideName=false;
+    await api.importTtsSettings(JSON.parse(text));
+    assert.equal(data.settings.rate,1.5);assert.equal(data.settings.hideName,true);
+    assert.equal(data.settings.fish.key,'fish-secret');assert.equal(data.settings.llm.api_key,'llm-secret');assert.equal(data.settings.jev.key,'jev-secret');
+    await assert.rejects(api.importTtsSettings({foo:1}),/TTS 설정 파일/);
   }finally{delete globalThis.risuai;}
 });

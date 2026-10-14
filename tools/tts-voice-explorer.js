@@ -3,6 +3,15 @@ const selectedVoices=new Set(),voiceFolders=[];
 let voicePickerActive=false;
 let activeVoiceFolder='all',voiceAnchor=null,nextFolder=1,editingFolder=null,multiSelectVoices=false;
 let deletionSnapshot=[],movingSnapshot=[],organizationSnapshot=[],organizationProposal=[];
+function updateVoiceFishLink(){
+  const link=$('v-visit'),value=$('v-id').value.trim();let id=value;
+  if(!/^[a-f\d]{32}$/i.test(id)){
+    try{const url=new URL(value),parts=url.pathname.split('/').filter(Boolean);id=url.protocol==='https:'&&/(^|\.)fish\.audio$/i.test(url.hostname)&&parts.at(-2)==='m'?parts.at(-1):'';}catch{id='';}
+  }
+  const valid=/^[a-f\d]{32}$/i.test(id);link.hidden=!valid;
+  if(valid)link.href=`https://fish.audio/ko/m/${id.toLowerCase()}/`;else link.removeAttribute('href');
+}
+$('v-id').addEventListener('input',updateVoiceFishLink);
 function updateCharacterVoiceChoice(){
   const voice=voices.find(v=>v.id===$('c-id').value);
   $('character-voice-choice').textContent=voice?voice.name:$('c-id').value?'직접 지정한 음성':'지정된 음성 없음';
@@ -38,7 +47,7 @@ function visibleVoices(){
   const groups=query.split('|').map(group=>group.split('&').map(term=>term.trim()).filter(Boolean)).filter(group=>group.length);
   return voices.filter(v=>(activeVoiceFolder==='all'||(v.folderId||'')===activeVoiceFolder)&&
     (gender==='all'||gender===v.gender)&&(!groups.length||groups.some(group=>group.every(term=>`${v.name} ${v.tag} ${v.id}`.normalize('NFKC').toLocaleLowerCase().includes(term)))))
-    .sort((a,b)=>$('voice-sort').value==='name'?a.name.localeCompare(b.name,'ko'):a.number-b.number);
+    .sort((a,b)=>$('voice-sort').value==='errors'?((b.error?.count||0)-(a.error?.count||0)||(b.error?.lastAt||0)-(a.error?.lastAt||0)||a.number-b.number):$('voice-sort').value==='name'?a.name.localeCompare(b.name,'ko'):a.number-b.number);
 }
 function paintVoiceSelection(){
   document.querySelectorAll('.voice-row').forEach(tile=>{
@@ -96,6 +105,7 @@ function renderVoices(){
     if(v.id===narratorVoice)top.append(node('span','나레이션','voice-narrator-badge'));
     tile.append(top,node('span',v.name,'voice-name'),node('span',v.tag||'태그 없음','voice-tags'),node('span',v.id,'voice-id'));
     if(duplicate.get(v.id)>1)tile.append(node('span','중복 Fish ID','duplicate'));
+    if(v.error?.count)tile.append(node('small',`HTTP ${v.error.status} 오류 · ${v.error.count}회`,'voice-error'));
     tile.append(node('span','▱ '+folderName(v.folderId),'voice-folder-label'));
     tile.append(voiceListenButton(v.name,v.id));
     tile.onclick=event=>{if(!event.target.closest('.tile-audition'))pickVoice(v.key,event);};

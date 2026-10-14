@@ -16,7 +16,7 @@ interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:Safe
 function requests(context: TtsChatContext, index: number): TtsRequest[] {
   const message = context.messages[index]; if (!message || message.role !== 'char') return [];
   const source = String(message.data || '');
-  return parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
+  return parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
 }
 function findLine(list: TtsRequest[], key: string, line: string): number {
   if (!key) return list.findIndex(r => r.segment.id === line);
@@ -88,12 +88,16 @@ export async function installTtsHost(): Promise<void> {
           b.messageId = `illustration:${id}`;
           const list = await illustrationTtsRequests(id,current); const cast = await bar?.querySelector('[data-omnitts-cast]');
           try {
-            if (cast) { for (const chip of b.chips.splice(0)) await releaseHost(chip.node); await cast.setTextContent(''); for (let i=0;i<list.length;i++) { const chip = await doc.createElement('button'); await chip.setTextContent(list[i].segment.speaker); await chip.setStyleAttribute('padding:8px;border-radius:8px;background:#137448;color:#e4ffec;min-height:36px'); b.chips.push({node:chip,play:()=>requestPlay([list[i]],0,omniTts.reservePlayback())}); await cast.appendChild(chip); } }
+            if (cast) { for (const chip of b.chips.splice(0)) await releaseHost(chip.node); await cast.setTextContent(''); for (let i=0;i<list.length;i++) { const chip = await doc.createElement('button'); await chip.setTextContent(list[i].segment.speaker); await chip.setStyleAttribute('box-sizing:border-box;height:36px;padding:0 12px;display:inline-flex;align-items:center;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e4ffec;line-height:1'); b.chips.push({node:chip,play:()=>requestPlay([list[i]],0,omniTts.reservePlayback())}); await cast.appendChild(chip); } }
           } finally { await releaseHost(cast); }
           await requestPlay(list,0,reservation);
         } finally { await releaseHost(image); await releaseHost(bar); }
       } else {
-        const list = requests(current,b.message), index = findLine(list,b.source,b.line);
+        // Play within the lines actually on screen: a folded <details> or a
+        // panel another module drew never joins the list or continuous reading.
+        const full = requests(current,b.message), shown = new Set((anchored.get(b.message) || []).map(r => `${r.segment.id}\t${r.sourceKey}`));
+        const visible = full.filter(r => shown.has(`${r.segment.id}\t${r.sourceKey}`));
+        const list = findLine(visible,b.source,b.line) >= 0 ? visible : full, index = findLine(list,b.source,b.line);
         if (index < 0) throw new Error('이 줄의 원문을 찾지 못했습니다. 메시지가 바뀌었다면 잠시 후 다시 눌러 주세요.');
         await requestPlay(list,index,reservation);
       }
@@ -104,6 +108,8 @@ export async function installTtsHost(): Promise<void> {
   const scanOnce = async () => {
     try {
       if (disposed || !ttsData().settings.enabled) return;
+      // A remounted chat screen (another bot or chat) gets its own watcher.
+      await watchChat();
       await refreshViewer();
       const context = await currentTtsContext().catch(()=>null); if(!context){bootstrap();return;} omniTts.setContext(context);
       if (context.scope !== lastScope) { lastScope = context.scope; lastPrefetch = ''; }
@@ -132,8 +138,10 @@ export async function installTtsHost(): Promise<void> {
             b.dead = !request;
             await syncVisibility(b);
             if (!request || b.hidden) continue;
-            // A control inside a folded block (closed <details>, hidden pane)
-            // has no box: that line is not on screen and stays out of the list.
+            // A line inside a folded <details> is not on screen and stays out of
+            // the list. Our absolutely placed control still reports a box there,
+            // so ask about the fold itself; a zero box covers other hidden panes.
+            if (await b.node.matches('details:not([open]) > :not(summary), details:not([open]) > :not(summary) *')) continue;
             const rect = await b.node.getBoundingClientRect();
             if (!rect.width || !rect.height) continue;
             shown.push(request);
@@ -166,9 +174,21 @@ export async function installTtsHost(): Promise<void> {
     scanTask = (async () => { try { do { again = false; await scanOnce(); } while (again && !disposed); } finally { scanTask = undefined; } })();
     return scanTask;
   };
-  const schedule = (delay=400) => { if (disposed || timer || !ttsData().settings.enabled) return; timer=setTimeout(()=>{timer=undefined;void requestScan();},delay); };
-  const observer = await host.createMutationObserver(records => { void (async()=>{try{ for (const record of await safeArray(records)) { const target=await record.getTarget();try{if (await target.matches('[x-omnitts-viewer],[x-omnitts-viewer] *,[x-omnitts-toast],[x-omnitts-toast] *,[x-omnitts-shield]')) continue; schedule(200);}finally{await releaseHost(target);await releaseHost(record);} } }finally{await releaseHost(records);} })().catch(error=>console.warn('OmniTTS observer',error)); });
-  await observer.observe(doc,{childList:true,subtree:true});
+  // While either floating viewer is dragged no scan runs; it waits for the drop.
+  const dragging = () => Reflect.get(globalThis,'__OMNI_VIEWER_DRAGGING__') === true;
+  const schedule = (delay=400) => { if (disposed || timer || !ttsData().settings.enabled) return; timer=setTimeout(()=>{timer=undefined;if(dragging()){schedule(250);return;}void requestScan();},delay); };
+  // Like the illustration viewer: watch only the chat screen, and never ask the
+  // host about each record. The old whole-page watcher made 2-3 bridge calls per
+  // DOM change and then re-read every message, which competed with a drag.
+  const watchers: SafeMutationObserver[] = [];
+  const onChange = (records: unknown) => { void releaseHost(records).catch(()=>{}); schedule(200); };
+  const watchChat = async () => {
+    const screen = await doc.querySelector('.default-chat-screen:not([x-omnitts-watched])');
+    if (!screen) return;
+    try { await screen.setAttribute('x-omnitts-watched','1'); const watcher = await host.createMutationObserver!(onChange); await watcher.observe(screen,{childList:true,subtree:true}); watchers.push(watcher); }
+    finally { await releaseHost(screen); }
+  };
+  await watchChat();
   const events:{type:string;id:string;options?:AddEventListenerOptions}[]=[];
   const listen=async(type:string,fn:(e:HostPoint)=>void,options?:AddEventListenerOptions)=>{events.push({type,id:await doc.addEventListener(type,fn,options),options});};
   const findHit=async(e:HostPoint,hover:boolean)=>{
@@ -182,6 +202,9 @@ export async function installTtsHost(): Promise<void> {
     const hits=await Promise.all(rows.map(r=>hitHost(r.node,e)));return rows[hits.indexOf(true)];
   };
   await listen('click',e=>{
+    // Opening or folding a <details> changes no DOM nodes, so no mutation
+    // arrives. A chat click may have done it: re-check which lines are on screen.
+    void (async()=>{const viewer=await doc.querySelector('[x-omnitts-viewer]');try{if(!viewer||!await hitHost(viewer,e))schedule(150);}finally{await releaseHost(viewer);}})().catch(()=>{});
     const epoch=++inputEpoch;
     void findHit(e,false).then(row=>{if(epoch===inputEpoch&&row&&(row.illustration||ttsData().settings.clickPlay))return row.play();}).catch(report);
   });
@@ -206,6 +229,25 @@ export async function installTtsHost(): Promise<void> {
     } catch(error) { report(error); }
   };
   if (host.addRisuChatListener) await host.addRisuChatListener('output',output);
-  const viewer=await installTtsViewer(doc);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
-  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeState();omniTts.stop();await disconnectHost(observer);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
+  // ⌖ also centers the line being read in the chat. Near the end of a chat the
+  // chat cannot scroll that far, and the browser would push the whole page
+  // instead; that shift is detected on the chat screen and undone at once.
+  const revealInChat = async () => {
+    const current = omniTts.current; if (!current) return;
+    const b = [...bindings.values()].find(row => !row.hidden && row.messageId === current.messageId && (row.illustration || row.line === current.segment.id));
+    if (!b) return;
+    const screen = await doc.querySelector('.default-chat-screen');
+    try {
+      const page = await doc.getBoundingClientRect(), before = screen ? await screen.getBoundingClientRect() : null;
+      await b.node.scrollIntoView({ block: 'center', inline: 'nearest' });
+      const after = screen ? await screen.getBoundingClientRect() : null;
+      if (!screen || !before || !after || (Math.abs(after.top - before.top) <= 1 && Math.abs(after.left - before.left) <= 1)) return;
+      // Risu's page normally sits at 0,0: return it there exactly. Otherwise
+      // keep the whole chat screen in view.
+      if (Math.abs(page.top) <= 1 && Math.abs(page.left) <= 1) await doc.scrollIntoView({ block: 'start', inline: 'start' });
+      else await screen.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } finally { await releaseHost(screen); }
+  };
+  const viewer=await installTtsViewer(doc,revealInChat);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
+  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeState();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
 }
