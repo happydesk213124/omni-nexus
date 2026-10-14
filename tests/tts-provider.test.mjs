@@ -126,3 +126,9 @@ test('settings files never carry API keys, and importing keeps the device keys',
     await assert.rejects(api.importTtsSettings({foo:1}),/TTS 설정 파일/);
   }finally{delete globalThis.risuai;}
 });
+
+test('a 402 from Fish explains that API credit is separate from the web plan', async () => {
+  const { TtsHttpError } = await import('data:text/javascript;base64,' + Buffer.from((await build({ stdin: { contents: "export * from './src/providers/tts/http';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' })).outputFiles[0].text).toString('base64'));
+  assert.match(new TtsHttpError(402).message, /402.*API 크레딧.*s2\.1-pro-free/);
+  assert.equal(new TtsHttpError(400).message, '음성 API 요청 실패 (400)');
+});

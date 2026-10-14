@@ -195,6 +195,10 @@ test('production settings persist independently, edit voice tiles and survive re
     assert.equal(await page.locator('#tts-fish-model').evaluate(n=>n.tagName),'SELECT');
     await page.locator('#tts-fish-model').selectOption('s2.1-pro-free');
     await page.locator('#tts-fish-key').fill('fake-test-key');await page.locator('#tts-fish-key').dispatchEvent('change');
+    await page.locator('#tts-fish-model').selectOption('custom');assert.equal(await page.locator('#tts-fish-model-custom').isVisible(),true);
+    await page.locator('#tts-fish-model-custom').fill('s9-test');await page.locator('#tts-fish-model-custom').dispatchEvent('change');
+    await page.waitForFunction(()=>window.ttsData().settings.fish.model==='s9-test');
+    await page.locator('#tts-fish-model').selectOption('s2.1-pro');await page.waitForFunction(()=>window.ttsData().settings.fish.model==='s2.1-pro');
     await page.locator('#tts-test-fish').click();await page.waitForFunction(()=>document.getElementById('tts-test-fish-result').textContent.startsWith('연결 성공'));
     await page.locator('#tts-test-llm').click();await page.waitForFunction(()=>document.getElementById('tts-test-llm-result').textContent.startsWith('연결 성공'));
     await page.locator('#jev-key').fill('fake-jev-key');await page.locator('#jev-key').dispatchEvent('change');

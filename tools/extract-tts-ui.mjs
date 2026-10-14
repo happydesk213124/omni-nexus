@@ -35,7 +35,8 @@ try {
     const fish=root.querySelector('#tts-fish-key');
     fish?.closest('.field')?.insertAdjacentHTML('afterend','<label class="field"><span>Fish API URL</span><input id="tts-fish-url" type="url" aria-label="Fish API URL"></label>');
     const fishModel=root.querySelector('#tts-fish-model');
-    if(fishModel)fishModel.innerHTML=['s2.1-pro','s2.1-pro-free','s2-pro','s1','drama-3-preview'].map(model=>`<option value="${model}">${model}</option>`).join('');
+    if(fishModel){fishModel.innerHTML=[...['s2.1-pro','s2.1-pro-free','s2-pro','s1','drama-3'].map(model=>`<option value="${model}">${model}</option>`),'<option value="custom">직접 입력</option>'].join('');
+      fishModel.closest('.field')?.insertAdjacentHTML('afterend','<label class="field" id="tts-fish-model-custom-wrap" hidden><span>음성 생성 모델 이름</span><input id="tts-fish-model-custom" maxlength="80" placeholder="예: s2.2-pro" aria-label="음성 생성 모델 직접 입력"></label>');}
     for(const id of ['character-list','voice-list','voice-folder-list'])root.querySelector('#'+id)?.replaceChildren();
     root.querySelector('#cache-usage').textContent='';
     dialogs.querySelector('#source-intro')?.remove();

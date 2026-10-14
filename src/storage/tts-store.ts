@@ -45,6 +45,8 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   if (!result.rates.length) result.rates = defaults.rates;
   if (!['all', 'chat', 'global'].includes(result.characterFilter)) result.characterFilter = 'all';
   if (typeof result.characterFolder !== 'string') result.characterFolder = '*';
+  // The preview name was never a real model id; Fish documents it as drama-3.
+  if (result.fish.model === 'drama-3-preview') result.fish.model = 'drama-3';
   if (result.viewerAnchor && (!Number.isFinite(result.viewerAnchor.right) || !Number.isFinite(result.viewerAnchor.top))) result.viewerAnchor = null;
   return result;
 }

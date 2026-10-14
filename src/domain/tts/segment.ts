@@ -49,6 +49,10 @@ export function parseCueLine(line: string, id: string): TtsSegment | null {
   if (/[()"“‘「『']/.test(prose) || /[:：]\s*'/.test(value)) return null;
   return { id, speaker: '', tone: '', text: value, kind: 'narration', start: 0, end: line.length };
 }
+const VOID_TAG = /^<(?:img|br|hr|input|source|meta|link|wbr|audio|video)\b[^>]*>$/i;
+function oneLineTag(line: string): boolean {
+  return VOID_TAG.test(line) || /^<[a-z][\w-]*\b[^>]*\/>$/i.test(line) || /^<!--.*-->$/.test(line) || /^<([a-z][\w-]*)\b[^>]*>.*<\/\1\s*>$/i.test(line);
+}
 export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1, requireLetter = true): TtsSegment[] {
   const lines = text.split('\n');
   const response = /^#[*\t ]*(?:Response|응답|応答|响应|OOC)[*\t ]*$/;
@@ -67,7 +71,9 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
     }
     if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) fenced = !fenced;
     else if (!fenced) {
-      if (trimmed.startsWith('<')) html = true;
+      // Only a tag that opens a block (<div>, <details>…) hides the lines after it;
+      // a one-line tag such as <img …> or <span>…</span> hides just its own line.
+      if (trimmed.startsWith('<') && !html && !oneLineTag(trimmed)) html = true;
       if (!trimmed) html = false;
       if(!html && /[:：]\s*$/.test(trimmed)){
         const header=cueHeader(trimmed),next=lines[index+1],speech=next===undefined?null:quotedCue(next);

@@ -335,3 +335,12 @@ test('controls never change wrapping and sit right after the last glyph; the pla
     assert.equal(await button.evaluate(n=>getComputedStyle(n,'::before').animationName),'omnitts-spin');
   }finally{await browser.close();}
 });
+
+test('a one-line tag hides only its own line; a block tag still hides its block', () => {
+  const kinds = text => api.parseTtsMessage(text).map(s => [s.kind, s.speaker]);
+  const img = '<img src=(Kuromiya_hina.exhausted.webp)>\nHina (exhausted): "하아... 하... 여보... 진짜... 사랑해..."\n태양은 숨을 고르며 소파 옆 협탁에서 티슈와 물티슈를 집어 들었다.';
+  assert.deepEqual(kinds(img), [['dialogue', 'Hina'], ['narration', '']], 'an image line right above dialogue');
+  assert.deepEqual(kinds('<span class="x">장면</span>\n그녀가 웃었다.'), [['narration', '']]);
+  assert.deepEqual(kinds('<br/>\n그녀가 웃었다.'), [['narration', '']]);
+  assert.deepEqual(kinds('<div class="panel">\n상태 패널 안의 글\n<img src=a.webp>\n여전히 패널 안\n</div>\n\n바깥 나레이션이다.'), [['narration', '']], 'lines inside a <div> block stay hidden');
+});
