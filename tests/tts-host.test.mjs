@@ -164,6 +164,22 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.evaluate(()=>{window.toggledBgm=0;window.omniSound.toggleBgm=async()=>{window.toggledBgm++;};});
     await page.locator('[data-tts-control="bgm-play"]').click();
     await page.waitForFunction(()=>window.toggledBgm===1);
+    // The track name opens the BGM list by folder; a pick plays it and closes the list.
+    await page.evaluate(()=>{const d=window.soundData();d.folders.bgm=['일상'];d.bgm.push({key:'cafe',kind:'bgm',name:'카페',tags:['calm','cafe'],folder:'일상',source:'url',url:'https://snd.test/cafe.mp3'},{key:'rain',kind:'bgm',name:'빗소리',tags:['rain'],folder:'',source:'url',url:'https://snd.test/rain.mp3'});
+      window.omniSound.play=async item=>{window.pickedBgm=item.key;};});
+    await page.locator('[data-tts-control="bgm-pick"]').click();
+    await page.waitForFunction(()=>document.querySelectorAll('[data-tts-control^="bgm-item-"]').length===2);
+    assert.match(await page.locator('[x-omnitts-viewer]').textContent(),/일상[\s\S]*카페[\s\S]*미분류[\s\S]*빗소리/,'by folder, then the unfiled ones');
+    assert.equal(Math.abs((await page.locator('[data-tts-header]').boundingBox()).y-headOpen.y)<=2,true,'the list opens below the player, never moving it');
+    await page.locator('[data-tts-control="bgm-item-1"]').click();
+    await page.waitForFunction(()=>window.pickedBgm==='rain'&&!document.querySelector('[data-tts-control^="bgm-item-"]'));
+    // The seek bar on top of the BGM bar moves the music like the voice bar.
+    await page.evaluate(()=>{const p=window.omniSound.player;Object.defineProperty(p,'bgmProgress',{configurable:true,get:()=>({current:30,duration:120})});p.seekBgm=s=>{window.seekedBgm=s;};});
+    const seekBar=await page.locator('[data-tts-control="bgm-seek"]').boundingBox();
+    assert.ok(seekBar.y<(await page.locator('[data-tts-control="bgm-play"]').boundingBox()).y,'the time and seek bar sit on top');
+    await page.mouse.click(seekBar.x+seekBar.width/2,seekBar.y+seekBar.height/2);
+    await page.waitForFunction(()=>Math.abs((window.seekedBgm??-1)-60)<3);
+    await page.evaluate(()=>{delete window.omniSound.player.bgmProgress;});
     // Dragging with the bar open stores the header's top, so the viewer does not creep upward.
     await page.waitForTimeout(450);
     const grab=await page.locator('[data-tts-header]').boundingBox(),anchorBefore=await page.evaluate(()=>window.ttsData().settings.viewerAnchor);

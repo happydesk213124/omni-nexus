@@ -30,6 +30,10 @@ export class SoundPlayer {
     return { current: audio?.currentTime || 0, duration: audio && Number.isFinite(audio.duration) ? audio.duration : 0 };
   }
   pauseBgm(): void { const deck = this.decks[this.live]; if (deck?.key && !deck.audio.paused) { deck.audio.pause(); this.onChange(); } }
+  seekBgm(seconds: number): void {
+    const audio = this.decks[this.live]?.audio;
+    if (audio && this.decks[this.live]!.key && Number.isFinite(audio.duration)) audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
+  }
   async resumeBgm(): Promise<boolean> {
     const deck = this.decks[this.live];
     if (!deck?.key || !deck.audio.paused) return !!deck?.key;
