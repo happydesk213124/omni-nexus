@@ -273,6 +273,20 @@ try {
       }
     }
   }
+  // The three sound entries share one slot: moving between them must move the mark and the title too,
+  // even when the vendor does not repaint (the slot is already open).
+  await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
+  const marked = () => page.evaluate(() => [[...document.querySelectorAll('#nx-tabs [data-nx-tab].active')].map(b => b.textContent.trim()), document.getElementById('nx-version-line')?.textContent]);
+  // The vendor opens the slot on pointerdown and paints at once; that first paint is already the chosen page (no flash of another).
+  await page.locator('#nx-tabs [data-sound-page="models"]').dispatchEvent('pointerdown');
+  await page.waitForFunction(() => document.querySelector('#nx-main')?.getAttribute('data-nx-ux-tab') === 'curation', null, { timeout: 3000 });
+  assert.deepEqual(await marked(), [['소리 모델 설정'], '소리 모델 설정'], 'pointerdown alone already opens the chosen sound page');
+  await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
+  for (const [name, label] of [['sound','BGM·효과음'],['models','소리 모델 설정'],['tts','TTS 설정(beta)'],['sound','BGM·효과음']]) {
+    await page.locator(`#nx-tabs [data-sound-page="${name}"]`).click();
+    await page.waitForFunction(label => document.querySelector('#nx-tabs [data-nx-tab].active')?.textContent.trim() === label, label, { timeout: 3000 }).catch(() => {});
+    assert.deepEqual(await marked(), [[label], label], `${name}: only the open sound page is marked`);
+  }
   await page.evaluate(async () => {
     await globalThis.__OMNI_SETTINGS_ACTIONS__.save({card:{presets:[{id:'rename-probe',name:'Before rename',positive:'probe',negative:''}],active_preset_id:'rename-probe'}});
     const {t,paint}=globalThis.uxTestRuntime;t.uiTab='style_presets';await paint();

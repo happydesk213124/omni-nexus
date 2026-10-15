@@ -15,6 +15,20 @@ let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
 export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models') page = next; }
 
+/**
+ * Marks the open page in the menu and the header. The vendor marks every entry
+ * of the open slot, which here is all three.
+ */
+export function markSoundNav(slot: string): void {
+  document.querySelectorAll('#nx-tabs [data-nx-tab]').forEach(btn => {
+    const on = btn.getAttribute('data-nx-tab') === slot && (slot !== 'curation' || (btn.getAttribute('data-sound-page') || 'tts') === page);
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-current', on ? 'page' : 'false');
+  });
+  const line = document.getElementById('nx-version-line');
+  if (line && slot === 'curation') line.textContent = SOUND_PAGE_TITLES[page];
+}
+
 let applier: (() => void) | undefined;
 /** The mounted root registers how to switch its panels; the nav calls it. */
 export function setSoundApplier(apply: (() => void) | undefined): void { applier = apply; }
@@ -22,11 +36,14 @@ export function setSoundApplier(apply: (() => void) | undefined): void { applier
 export function bindSoundNav(): void {
   if (document.documentElement.dataset.soundNav) return;
   document.documentElement.dataset.soundNav = '1';
-  document.addEventListener('click', event => {
+  const choose = (event: Event) => {
     const target = (event.target as Element | null)?.closest?.('[data-sound-page]');
     if (!target) return;
     setSoundPage(target.getAttribute('data-sound-page'));
     // The tab may already be open (same slot): switch panels without a reload.
     queueMicrotask(() => applier?.());
-  }, true);
+  };
+  // The vendor switches tabs on pointerdown and paints right away: the page has to be chosen before that.
+  document.addEventListener('pointerdown', choose, true);
+  document.addEventListener('click', choose, true);
 }
