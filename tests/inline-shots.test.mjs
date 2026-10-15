@@ -23,6 +23,16 @@ test('blocks are found in order; each sits after the line it illustrates', () =>
   assert.equal(api.inlineShotBlocks('[[inx1]]{"a":1}[[/inx1]] [[inx1]]{"b":2}[[/inx1]]').length, 1, 'a repeated number is the model restarting: the first one owns it');
 });
 
+test('a shot drafted in <Thoughts>/<think> is never a slot, and never takes a story block\'s number', () => {
+  const draft = '<Thoughts>\nplan: [[inx1]]{"place":"draft"}[[/inx1]]\n</Thoughts>\n본문 첫 줄.\n[[inx1]]{"place":"story","characters":[]}[[/inx1]]\n<think>[[inx2]]{"x":1}[[/inx2]]</think>\n끝.';
+  const blocks = api.inlineShotBlocks(draft);
+  assert.deepEqual(blocks.map(b => [b.n, JSON.parse(b.body).place]), [[1, 'story']]);
+  const streaming = '<Thoughts>\n아직 생각 중 [[inx1]]{"place":"draft"}[[/inx1]]';
+  assert.equal(api.inlineShotBlocks(streaming, { live: true }).length, 0, 'while streaming, an unclosed <Thoughts> is reasoning');
+  assert.equal(api.inlineShotBlocks(streaming).length, 1, 'a finished reply that never closed it keeps the analysis rule');
+  assert.ok(api.replaceInlineShotBlock(draft, 1, 'SLOT').includes('본문 첫 줄.\nSLOT'), 'the slot replaces the story block, not the draft');
+});
+
 test('a block is never prose: L lines, analysis text and a still-streaming block', () => {
   assert.equal(api.analysisBody(reply), '하린이 문을 열었다.\n하린 (calm): "누구야?"\n복도는 조용했다.\n그리고');
   assert.equal(api.analysisBody('본문\n[[inx1]]{"place":"ro'), '본문', 'an unfinished block never leaks JSON into L lines');

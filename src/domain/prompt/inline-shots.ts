@@ -14,10 +14,36 @@ export const INLINE_SHOT_MAX_BLOCKS = 20;
 
 export interface InlineShotBlock { n: number; start: number; end: number; body: string }
 
-export function inlineShotBlocks(raw: unknown): InlineShotBlock[] {
+const THOUGHT_TAG = /<(\/)?(thoughts|think)\b[^>]*>/gi;
+/**
+ * Reasoning spans (`<Thoughts>`, `<think>`). A shot the model drafts while it
+ * thinks is not in the story. `live`: the reply is still streaming, so an open
+ * span counts too (it may close later). A finished reply that never closed its
+ * tag keeps the analysis rule: only paired spans are reasoning.
+ */
+export function thoughtRanges(raw: unknown, live = false): Array<[number, number]> {
+  const text = String(raw ?? ''), ranges: Array<[number, number]> = [], open: Array<{ name: string; at: number }> = [];
+  for (const tag of text.matchAll(THOUGHT_TAG)) {
+    const name = tag[2]!.toLowerCase();
+    if (!tag[1]) { open.push({ name, at: tag.index! }); continue; }
+    for (let i = open.length - 1; i >= 0; i--) {
+      if (open[i]!.name !== name) continue;
+      ranges.push([open[i]!.at, tag.index! + tag[0].length]);
+      open.splice(i);
+      break;
+    }
+  }
+  if (live) for (const row of open) ranges.push([row.at, text.length]);
+  return ranges;
+}
+
+export function inlineShotBlocks(raw: unknown, opts: { live?: boolean } = {}): InlineShotBlock[] {
   const text = String(raw ?? '');
   const found: InlineShotBlock[] = [], seen = new Set<number>();
+  const thinking = thoughtRanges(text, opts.live === true);
   for (const hit of text.matchAll(new RegExp(CLOSED_SOURCE, 'g'))) {
+    // Before numbering: a draft in the thoughts must not take a story block's number.
+    if (thinking.some(([from, to]) => hit.index! >= from && hit.index! < to)) continue;
     const n = Number(hit[1]);
     // A repeated number is the model restarting its count; the first one owns it.
     if (!n || seen.has(n)) continue;

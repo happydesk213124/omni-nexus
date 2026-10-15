@@ -14,7 +14,8 @@ function omniScanInlineRun(run, final=false) {
   if(parked && !final)return run;
   run.inlineSeen ||= new Set();
   // Only text that arrived since the last tick can close a new block.
-  const fresh=SK.inlineShotBlocks(run.text).filter(block=>!run.inlineSeen.has(block.n));
+  // Reasoning is never a slot; while streaming, an unclosed <Thoughts> counts as reasoning.
+  const fresh=SK.inlineShotBlocks(run.text,{live:!final}).filter(block=>!run.inlineSeen.has(block.n));
   if(!fresh.length)return run;
   if(!final && !run.identity) {
     if(!run.target) {

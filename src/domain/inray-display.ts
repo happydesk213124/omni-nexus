@@ -127,6 +127,11 @@ export function inlineShotDisplayScripts(scalePct: unknown = 100, pending = fals
   const slot = (w: number, h: number) => frame.replaceAll('$2', String(w)).replaceAll('$3', String(h)).replaceAll('$1', 'inxslot$1')
     .replace('data-inray-spinner=', 'data-inx-slot="$1" data-inray-spinner=');
   return [
+    // A shot drafted inside <Thoughts>/<think> is never drawn: an opening reasoning
+    // tag before it with no closing tag in between (closed later, or still streaming).
+    // The literal opens the pattern so the lookbehind only runs at a block.
+    { comment: `${INLINE_SHOT_DISPLAY_COMMENT}-thoughts`, type: 'editdisplay' as const, ableFlag: true, flag: 'gi<order -10040>',
+      in: String.raw`\[\[inx\d{1,3}\]\](?<=<(?:thoughts|think)\b[^>]*>(?:(?!<\/(?:thoughts|think)\s*>)[\s\S])*)(?:${INLINE_BODY}\[\[\/inx\d{1,3}\]\]|(?:(?!<\/(?:thoughts|think)\s*>)[\s\S]){0,12000})`, out: '' },
     ...INLINE_ASPECTS.map(([aspect, w, h, order]) => ({
       comment: `${INLINE_SHOT_DISPLAY_COMMENT}-${aspect || 'portrait'}`, type: 'editdisplay' as const, ableFlag: true, flag: `g<order ${order}>`,
       in: String.raw`\[\[inx(\d{1,3})\]\]` + (aspect ? String.raw`(?=${INLINE_BODY}"aspect"\s*:\s*"${aspect}")` : '') + INLINE_BODY + String.raw`\[\[\/inx\1\]\]`,

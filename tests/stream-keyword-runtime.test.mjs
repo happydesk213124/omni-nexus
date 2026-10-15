@@ -170,6 +170,19 @@ test('streaming tags: each closed block starts one tagger-free job at its line, 
   assert.equal(creates().length,2,'completion adds no tagger job for a reply that carries blocks');
   assert.deepEqual(Array.from(f.calls.at(-1).body.job_ids),['j1','j2']);
 });
+test('streaming tags: a shot drafted in the thoughts never starts a job, while streaming or at completion',async()=>{
+  const f=fixture({stream_inline_tags:true});
+  const thinking=['<Thoughts>','Plan the scene. '+shot(1),'Still thinking.'];
+  f.onScriptOutput(thinking.join('\n'));await f.fire();
+  assert.equal(f.calls.length,0,'an unclosed <Thoughts> is reasoning while it streams');
+  const reply=[...thinking,'</Thoughts>','First narrative line, long enough to depict.',shot(1),'Last line.'].join('\n');
+  f.onScriptOutput(reply);await f.fire();
+  const creates=()=>f.calls.filter(c=>c.path.endsWith('/create'));
+  assert.equal(creates().length,1,'only the story block');
+  assert.equal(creates()[0].body.assistant_text,'First narrative line, long enough to depict.');
+  f.msg.data=reply;f.scope.chat.isStreaming=false;f.omniCommitStreamReply(f.arg(),f.msg,reply);await tick();
+  assert.equal(creates().length,1,'completion adds nothing for the draft');
+});
 test('streaming tags with 이미지 바로 생성 off: nothing starts while streaming; completion parks every block in one call',async()=>{
   const f=fixture({stream_inline_tags:true,stream_inline_autogen:false});
   const reply=['First narrative line, long enough to depict.',shot(1),'Second line of the scene.','[[inx2]]{"place":"bro[[/inx2]]','Last line.'].join('\n');
