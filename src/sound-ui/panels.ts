@@ -36,7 +36,7 @@ ${row('BGM 사용', sw('snd-bgm-enabled', 'BGM 사용'), '켜면 ⚛️ omni bgm
 ${row('BGM 볼륨', range('snd-bgm-volume', 'BGM 볼륨'))}
 ${row('TTS 재생 중 BGM', range('snd-duck', 'TTS 재생 중 BGM 크기'), 'TTS가 말하는 동안 이만큼으로 줄입니다.')}
 ${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number" min="0" max="10" step="0.5" aria-label="크로스페이드 초" style="width:72px"><span>초 크로스페이드</span></div>`)}
-${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'), '답변 첫 줄에 [[bgm:분위기,장소,템포]] 세 개를 쓰게 하고, 중간에 분위기가 확 바뀌면 그 자리에 새 줄을 넣게 합니다(답변당 최대 3개). 곡 목록은 보내지 않습니다.')}
+${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'), '곡이 바뀔 만할 때만(이 채팅의 첫 장면, 분위기·장소가 확 바뀔 때) 그 부분의 첫 나레이션·대사 바로 앞 줄에 [[bgm:분위기,장소,템포]]를 쓰게 합니다. 같은 분위기가 이어지면 쓰지 않고 곡이 계속 흐릅니다(답변당 최대 3개). 곡 목록은 보내지 않습니다.')}
 ${row('TTS 목록·이어 읽기에 BGM', sw('snd-list-bgm', 'TTS 목록·이어 읽기에 BGM'), 'TTS 뷰어 목록에 ♪ 줄이 생기고, 이어 읽다가 그 줄에 오면 곡이 바뀝니다. 끄면 새 답변이 올 때 첫 태그로만 바뀝니다.')}
 ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
 <label class="field full"><span>BGM 태그 목록 · 쉼표로 구분 (LLM은 이 안에서만 고릅니다)</span><textarea id="snd-bgm-tags" rows="3" maxlength="1200"></textarea></label>
