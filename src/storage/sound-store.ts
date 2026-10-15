@@ -44,10 +44,12 @@ function term(raw: unknown): SfxTerm | null {
 }
 export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettings {
   const d = soundDefaults(), s = { ...d, ...raw };
-  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
+  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
   s.bgmVolume = clamp(s.bgmVolume, 0, 1, d.bgmVolume); s.sfxVolume = clamp(s.sfxVolume, 0, 1, d.sfxVolume);
   s.duck = clamp(s.duck, 0, 1, d.duck); s.crossfadeMs = Math.round(clamp(s.crossfadeMs, 0, 10_000, d.crossfadeMs));
   s.maxFileMb = clamp(s.maxFileMb, 1, 50, d.maxFileMb);
+  s.sfxDuration = clamp(s.sfxDuration, 0, 30, 0);
+  s.elevenKey = text(s.elevenKey, 200); s.sfxPrompt = text(s.sfxPrompt, 400) || d.sfxPrompt;
   for (const key of ['bgmMatcher', 'sfxMatcher'] as const) if (!MATCHERS.includes(s[key])) s[key] = d[key];
   if (s.sfxAutoPlay !== 'reply' && s.sfxAutoPlay !== 'button') s.sfxAutoPlay = d.sfxAutoPlay;
   s.bgmTags = soundTags(Array.isArray(s.bgmTags) ? s.bgmTags : d.bgmTags); if (!s.bgmTags.length) s.bgmTags = d.bgmTags;
