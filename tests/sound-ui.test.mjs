@@ -282,6 +282,30 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.equal(await page.evaluate(() => window.jevAsked.length), jevNow, 'the LLM setting never asks JEV');
     await page.evaluate(() => { window.llmAnswer = '{"n":999}'; });
     assert.match(await page.evaluate(text => window.omniSound.guessBgm(text).then(() => 'played', error => error.message), reply), /고르지 못했습니다/, 'an answer naming no listed track plays nothing');
+    // 「곡을 고르는 근거」: the tags (the text when a reply has none), always the text, or the text with its tags.
+    await page.locator('#snd-bgm-matcher').selectOption('jev'); await page.waitForFunction(() => window.soundData().settings.bgmMatcher === 'jev');
+    await page.evaluate(() => { window.jevChoice = '1'; window.soundData().settings.bgmEnabled = true; });
+    assert.equal(await page.locator('#snd-bgm-basis').inputValue(), 'tags', 'the tags by default');
+    const bgmAsks = () => page.evaluate(() => window.jevAsked.length), bgmLast = () => page.evaluate(() => window.jevAsked.at(-1).questions[0].instructions);
+    let bgmCount = await bgmAsks();
+    await page.evaluate(() => window.omniSound.playBgmForReply('비 오는 카페.', ['calm', 'cafe', 'slow']));
+    assert.equal(await bgmAsks(), bgmCount, 'a tagged reply needs no request');
+    await page.evaluate(() => window.omniSound.playBgmForReply('조용한 밤 거리.', []));
+    assert.equal(await bgmAsks(), ++bgmCount, 'no tag: the text picks');
+    assert.equal((await bgmLast()).scene, '조용한 밤 거리.');
+    await page.locator('#snd-bgm-basis').selectOption('message'); await page.waitForFunction(() => window.soundData().settings.bgmBasis === 'message');
+    await page.evaluate(() => window.omniSound.playBgmForReply('다른 장면.', ['tense']));
+    assert.equal(await bgmAsks(), ++bgmCount, 'always the text');
+    assert.equal((await bgmLast()).bgm_tags, undefined, 'without the tags');
+    await page.locator('#snd-bgm-basis').selectOption('both'); await page.waitForFunction(() => window.soundData().settings.bgmBasis === 'both');
+    await page.evaluate(() => window.omniSound.playBgmForReply('세 번째 장면.', ['tense', 'chase', 'fast']));
+    assert.equal(await bgmAsks(), ++bgmCount);
+    assert.deepEqual([(await bgmLast()).scene, (await bgmLast()).bgm_tags], ['세 번째 장면.', 'tense, chase, fast'], 'the text with its tags as a hint');
+    await page.evaluate(() => window.omniSound.playBgmForReply('세 번째 장면.', ['tense', 'chase', 'fast']));
+    assert.equal(await bgmAsks(), bgmCount, 'the same reply is asked once');
+    await page.evaluate(() => { window.soundData().settings.bgmEnabled = false; });
+    assert.equal(await page.evaluate(() => window.omniSound.playBgmForReply('네 번째 장면.', [])), '', 'BGM off: nothing picks or plays');
+    assert.equal(await bgmAsks(), bgmCount);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

@@ -89,7 +89,7 @@ export function bindSoundSettings(): void {
   el('snd-sfx-max').addEventListener('change', () => run(async () => { await updateSoundSettings({ sfxMaxSec: Number(val('snd-sfx-max')) }); set('snd-sfx-max', soundData().settings.sfxMaxSec); }));
   set('snd-max-mb', s.maxFileMb);
   el('snd-max-mb').addEventListener('change', () => run(() => updateSoundSettings({ maxFileMb: Number(val('snd-max-mb')) })));
-  for (const [id, key] of [['snd-bgm-matcher', 'bgmMatcher'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const) {
+  for (const [id, key] of [['snd-bgm-matcher', 'bgmMatcher'], ['snd-bgm-basis', 'bgmBasis'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const) {
     set(id, s[key]);
     el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: val(id) } as Partial<SoundSettings>)));
   }

@@ -141,6 +141,12 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
     await page.evaluate(() => { window.messages[0] = { ...window.messages[0], data: '[[bgm:tense,chase,fast]]\n하린 (calm): "도망쳐!"' }; window.log = []; });
     await page.evaluate(() => window.output({ char: { chaId: 'c' }, chat: { id: 'chat' }, messageIndex: 0 }));
     await page.waitForFunction(() => window.log.includes('bgm:chase'));
+    // A reply with no [[bgm:…]] tag hands its own text to the BGM picker (JEV or the LLM).
+    await page.evaluate(() => { window.realReplyPick = window.omniSound.playBgmForReply; window.omniSound.playBgmForReply = async (text, tags) => { window.replyPick = [text, tags ?? null]; return ''; };
+      window.messages[0] = { ...window.messages[0], data: '하린 (calm): "태그 없는 응답."' }; });
+    await page.evaluate(() => window.output({ char: { chaId: 'c' }, chat: { id: 'chat' }, messageIndex: 0 }));
+    await page.waitForFunction(() => window.replyPick?.[0].includes('태그 없는 응답') && window.replyPick[1] === null);
+    await page.evaluate(() => { window.omniSound.playBgmForReply = window.realReplyPick; });
 
     // TTS off: the sound buttons still work, on the effect channel (the chat shows the first reply again).
     await page.evaluate(async () => { window.messages[0] = { ...window.messages[0], data: window.firstReply }; await window.updateTtsSettings({ enabled: false }); document.querySelector('.risu-chat').append(document.createComment('re-render')); window.log = []; });
