@@ -12,7 +12,7 @@ import {
   resolveComicSlotCostume,
 } from '../domain/comic/costume.ts';
 import { comicProseBlockForLlm } from '../domain/comic/llm-prose.ts';
-import { normalizeComicLlmBatch } from '../domain/comic/params.ts';
+import { effectiveComicLlmBatch } from '../domain/comic/params.ts';
 import { assignComicPagesToShots, attachInlineComicPages, parseComicPages, type ComicPage } from '../domain/comic/page.ts';
 import { resolveShotAspect } from '../domain/nai-meta/aspect.ts';
 import { callLlm } from './llm-call.ts';
@@ -85,7 +85,7 @@ export async function fillComicPagesForShots(args: {
   const sessionId = args.chatSessionId ?? args.sessionId;
   const card = getConfig().card || {};
   const note = cleanText(card.comic_author_note, 8000);
-  const batch = normalizeComicLlmBatch(card.comic_llm_batch);
+  const batch = effectiveComicLlmBatch(card);
   const already = batch === 'with_main' ? attachInlineComicPages(shots) : new Set<number>();
   const comicIdx: number[] = [];
   for (let i = 0; i < shots.length; i += 1) {

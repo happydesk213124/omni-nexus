@@ -353,6 +353,9 @@ const normalize = (root) => {
         // Separate per-line image budgets are new; the API roundtrip, zero and
         // preservation of general counts are asserted by stream_line_images_contract.
         if (k === 'stream_lines_image_min' || k === 'stream_lines_image_max') continue;
+        // Streaming tag generation (the chat model writes [[inxN]] shots) has no 1.x
+        // equivalent; settings.stream_inline_contract asserts defaults, saving and coercion.
+        if (k === 'stream_inline_tags' || k === 'stream_inline_autogen') continue;
         // 2.4 NAI5/4 routing, 1st/2nd preset, multi-key lists. No 1.x fields;
         // schema + nai-routing unit tests assert defaults and family pick.
         // Legacy `api_key` / `api_key_configured` still compared.
@@ -701,6 +704,7 @@ const NEW_ONLY_STEPS = new Map([
   ['job.commit_output_unknown', v => v?.ok === false && v.error?.code === 'not_pending' ? null : 'unknown stream attached'],
   ['settings.stream_lines_contract', v => v?.defaultOff===true && v.defaultCount===30 && v.saved===true && v.disabledRetainsCount===true && v.bounds?.[0]===2 && v.bounds?.[1]===100 ? null : 'line batching settings contract failed'],
   ['job.commit_output_group_unknown', v => v?.ok===false && v.error?.code==='not_pending' ? null : 'unknown line group attached'],
+  ['settings.stream_inline_contract', v => v?.unsupported===true || (v?.defaultOff===true && v.defaultAutogen===true && v.saved===true && v.coerced===true && v.restored===true) ? null : 'streaming tag settings contract failed'],
   ['settings.stream_line_images_contract', v=>v?.defaultRange?.[0]===0 && v.defaultRange?.[1]===2 && v.saved===true && v.exported===true && v.zeroPreserved===true && v.bounded===true && v.ordered===true && v.generalUnchanged===true ? null : 'per-line image budget contract failed'],
   ['job.line_placement_contract', v => v?.line === 1 && v.percent === null && v.count === 1 ? null : 'L-number placement contract failed'],
   // Intentional fix: 1.x requires a nonempty SA form for deletion and lacks role

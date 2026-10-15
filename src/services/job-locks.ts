@@ -30,7 +30,9 @@ export type TargetRequest = Partial<JobRequest> & Record<string, unknown>;
 export function jobKey(request: TargetRequest = {}, sessionId = ''): string {
   const sid = cleanText(sessionId || request.session_id || '', 200) || '_';
   const range=streamLineRange(request);
-  if(range && request.defer_attachment && request.stream_id) return `${sid}::stream:${request.stream_id}:${range.start}-${range.end}`;
+  // Two streaming-tag blocks can follow the same line; each block is its own job.
+  const block = Number.isInteger(request.inline_block) ? `:inx${request.inline_block}` : '';
+  if(range && request.defer_attachment && request.stream_id) return `${sid}::stream:${request.stream_id}:${range.start}-${range.end}${block}`;
   const hash = cleanText(request.content_hash || '', 128);
   if (hash) return `${sid}::h:${hash}`;
   const mi = toInt(request.message_index, -1);

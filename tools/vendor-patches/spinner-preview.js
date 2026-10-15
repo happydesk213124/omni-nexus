@@ -15,7 +15,9 @@
   function nxPreviewFrameSelector(key,row) {
     const message='.risu-chat[data-chat-index="'+row.messageIndex+'"] ';
     const missing=':not(:has([x-omni-preview="'+row.cardId+'"]))';
-    return ['.x-risu-omni-spinner[data-shot="'+key+'"]','.omni-spinner[data-shot="'+key+'"]','[data-inray-spinner="'+key+'"]']
+    // A streaming-tag slot exists only on screen until the reply is saved; then it is an ordinary frame.
+    const inline=Number.isInteger(row.inlineSlot) ? ['[data-inx-slot="'+row.inlineSlot+'"]'] : [];
+    return ['.x-risu-omni-spinner[data-shot="'+key+'"]','.omni-spinner[data-shot="'+key+'"]','[data-inray-spinner="'+key+'"]',...inline]
       .map(selector=>message+selector+missing).join(',');
   }
   async function nxPaintSpinnerPreviewPass() {
@@ -35,16 +37,17 @@
         // frames, so their small opening tag gives us the parser-owned token.
         const opening=String(await frame.getOuterHTML()).split('>')[0];
         const key=/\bdata-(?:shot|inray-spinner)="([a-zA-Z0-9_-]+)"/.exec(opening)?.[1];
-        const row=rows.get(key);
-        if(!row || nxSpinnerPreviews.get(key)!==row || t.unloading)continue;
+        const slot=/\bdata-inx-slot="(\d+)"/.exec(opening)?.[1];
+        const row=slot ? [...rows.values()].find(value=>String(value.inlineSlot)===slot) : rows.get(key);
+        if(!row || nxSpinnerPreviews.get(row.jobId+'_'+row.shot)!==row || t.unloading)continue;
         try {
           const old=refs.own(await frame.querySelector('[x-omni-preview]'));
           const layer=refs.own(await H(doc,'div',{html:'<img alt="" src="'+row.url+'" style="display:block;width:100%;height:100%;max-width:100%;max-height:100%;margin:0;object-fit:contain;border-radius:10px">'}));
           await layer.setAttribute('x-omni-preview',row.cardId);
           await layer.setStyleAttribute('position:absolute;inset:0;overflow:hidden;border-radius:10px;pointer-events:none;background:#101620');
-          if(nxSpinnerPreviews.get(key)!==row || t.unloading){await layer.remove();continue;}
+          if(nxSpinnerPreviews.get(row.jobId+"_"+row.shot)!==row || t.unloading){await layer.remove();continue;}
           if(old)await old.remove();
-          if(nxSpinnerPreviews.get(key)!==row || t.unloading){await layer.remove();continue;}
+          if(nxSpinnerPreviews.get(row.jobId+"_"+row.shot)!==row || t.unloading){await layer.remove();continue;}
           await frame.appendChild(layer);
           row.painted=true;row.failureStage='';
         } catch {
@@ -75,7 +78,7 @@
   }
   globalThis.__OMNI_SPINNER_PREVIEW__=async row=>{
     if(t.unloading || nxClosedSpinnerPreviews.has(row.jobId))return;
-    if(!/^[a-zA-Z0-9_-]+$/.test(row.jobId) || !/^[a-zA-Z0-9_-]+$/.test(row.cardId) || !Number.isInteger(row.shot) || row.shot<0 || !Number.isInteger(row.messageIndex) || row.messageIndex<0 || !/^data:image[/](png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(row.url)) {
+    if(!/^[a-zA-Z0-9_-]+$/.test(row.jobId) || !/^[a-zA-Z0-9_-]+$/.test(row.cardId) || !Number.isInteger(row.shot) || row.shot<0 || !Number.isInteger(row.messageIndex) || row.messageIndex<0 || !/^data:image[/](png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(row.url) || (row.inlineSlot!==undefined && !(Number.isInteger(row.inlineSlot) && row.inlineSlot>0))) {
       y('warn','spinner.preview','invalid payload');return;
     }
     const first=!nxSpinnerPreviews.size;

@@ -100,6 +100,25 @@ try {
   });
   assert.deepEqual(lineControls,{defaults:{on:false,count:'30',images:['0','2']},on:true,count:'6',images:['1','2'],help:true,beta:'줄 단위 선행생성(beta)'});
 
+  // Streaming tags: off by default; while on, keywords and line batches grey out
+  // (their saved values stay) and "이미지 바로 생성" becomes usable.
+  const inlineModule = await build({ entryPoints:['src/settings-ux/inline-tags.ts'], bundle:true, write:false, format:'iife', globalName:'SettingsInline' });
+  await page.addScriptTag({content:inlineModule.outputFiles[0].text});
+  const inlineControls=await page.evaluate(()=>{
+    const read=()=>({on:document.getElementById('nx-stream-inline-on').checked,auto:document.getElementById('nx-stream-inline-autogen').checked,autoDisabled:document.getElementById('nx-stream-inline-autogen').disabled,linesDisabled:document.getElementById('nx-stream-lines-on').disabled,keywordsDisabled:document.getElementById('nx-stream-keywords-on').disabled});
+    document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{}});
+    SettingsInline.bindInlineTagToggles();
+    const defaults=read();
+    const on=document.getElementById('nx-stream-inline-on');on.checked=true;on.dispatchEvent(new Event('change'));
+    const turnedOn=read();
+    document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{stream_inline_tags:true,stream_inline_autogen:false,stream_lines_enabled:true}});
+    SettingsInline.bindInlineTagToggles();
+    return {defaults,turnedOn,saved:{...read(),linesKept:document.getElementById('nx-stream-lines-on').checked},help:!!document.querySelector('[data-nx-help-id="nx-stream-inline"]'),label:document.querySelector('label[for="nx-stream-inline-on"] b').textContent};
+  });
+  assert.deepEqual(inlineControls,{defaults:{on:false,auto:true,autoDisabled:true,linesDisabled:false,keywordsDisabled:false},
+    turnedOn:{on:true,auto:true,autoDisabled:false,linesDisabled:true,keywordsDisabled:true},
+    saved:{on:true,auto:false,autoDisabled:false,linesDisabled:true,keywordsDisabled:true,linesKept:true},help:true,label:'Risu 메인 모델 메시지 스트리밍 중에 태그 생성'});
+
   await mkdir('.test-build/settings-ux', { recursive: true });
   for (const width of [320, 375, 425, 768, 1440, 3440]) {
     await page.setViewportSize({ width, height: 900 });

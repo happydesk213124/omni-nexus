@@ -156,6 +156,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-preprocess', 'preprocessing', false],
     ['nx-stream-keywords-on', 'stream_keywords_enabled', false],
     ['nx-stream-lines-on', 'stream_lines_enabled', false],
+    ['nx-stream-inline-on', 'stream_inline_tags', false],
+    ['nx-stream-inline-autogen', 'stream_inline_autogen', true],
     ['nx-omni-helper', 'omni_helper_prompt', false],
     ['nx-auto-gen-char-limit-on', 'auto_gen_char_limit_enabled', false],
   ] as const) {

@@ -563,6 +563,8 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Ap
     merged.llm_anchor_percent = false;
     merged.omni_helper_prompt = merged.omni_helper_prompt === true;
     if ('stream_lines_enabled' in card) merged.stream_lines_enabled = ['true','1','on'].includes(String(card.stream_lines_enabled));
+    if ('stream_inline_tags' in card) merged.stream_inline_tags = ['true','1','on'].includes(String(card.stream_inline_tags));
+    if ('stream_inline_autogen' in card) merged.stream_inline_autogen = !['false','0','off'].includes(String(card.stream_inline_autogen));
     if ('stream_lines_count' in card) merged.stream_lines_count = Math.max(2,Math.min(100,Math.floor(Number(card.stream_lines_count)) || 30));
     if ('stream_lines_image_min' in card || 'stream_lines_image_max' in card) {
       const limits=streamLineImageLimits(merged);

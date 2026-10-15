@@ -7,8 +7,9 @@ import {retirePercentPlacement} from '../tools/vendor-patches/runtime-rebuild.mj
 import {parseStreamKeywords} from '../.test-build/stream-keywords.mjs';
 import {createStreamSignalScanner} from '../.test-build/stream-signal.mjs';
 import {createStreamLineBatcher} from '../.test-build/stream-lines.mjs';
+import {inlineShotBlocks,inlineShotLine,inlineShotTagged} from '../.test-build/inline-shots.mjs';
 import {aggregateStreamLineProgress,progressToastView} from '../.test-build/viewer-core.mjs';
-const source=readFileSync('tools/vendor-patches/stream-keyword-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-lines-runtime.js','utf8');
+const source=readFileSync('tools/vendor-patches/stream-keyword-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-lines-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-inline-runtime.js','utf8');
 const replySource=readFileSync('tools/vendor-patches/reply-runtime.js','utf8');
 const tick=()=>new Promise(r=>setImmediate(r));
 function fixture(card={},syncProgressToast,readScope) {
@@ -20,7 +21,7 @@ function fixture(card={},syncProgressToast,readScope) {
   const context={t,console,Promise,Date:class extends Date {static now(){return now;}},Math,setTimeout:(fn,ms)=>{timerWrites++;timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),
     clearInterval:id=>timers.delete(id),ce:async id=>galleries.push(id),onSelectionChanged:async()=>{},Se:async()=>{},syncProgressToast,
     __INLAY_VIEWER_CORE__:{aggregateStreamLineProgress},
-    __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,
+    __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,inlineShotBlocks,inlineShotLine,inlineShotTagged,
       createStreamSignalScanner:()=>{const scanner=createStreamSignalScanner();return {scan:(...args)=>{scans++;return scanner.scan(...args);}};}},
     Z:async()=>{reads++;return readScope?readScope(scope,reads):scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},
     omniStreamOutput:()=>{},scheduleHashRelinkAfterReply:()=>{},D:async(_name,read)=>read(),w:value=>String(value),
@@ -148,6 +149,40 @@ test('line mode sends 1-10 and 11-20 during streaming, then commits both without
   f.jobStates.set('j1','done');await f.fire();
   assert.equal(f.galleries.length,2);assert.equal(f.t.pollTimer,null);
 });
+const shot=(n,extra='')=>`[[inx${n}]]{"place":"room, indoor","aspect":"portrait","characters":[{"name":"Harin","action":"waving"}]${extra}}[[/inx${n}]]`;
+test('streaming tags: each closed block starts one tagger-free job at its line, once; line batches and keywords stay off',async()=>{
+  const f=fixture({stream_inline_tags:true,stream_lines_enabled:true,stream_lines_count:2,stream_keywords_enabled:true});
+  const reply=['First narrative line, long enough to depict.',shot(1),'Second line of the scene.','Third line here. RP-Guide','[[inx2]]{"place":"ro'];
+  for(let n=1;n<=reply.length;n++){f.onScriptOutput(reply.slice(0,n).join('\n'));await f.fire();}
+  const creates=()=>f.calls.filter(c=>c.path.endsWith('/create'));
+  assert.equal(creates().length,1,'a block still being written starts nothing; no line batch or keyword job');
+  const body=creates()[0].body;
+  assert.deepEqual([body.stream_line_start,body.stream_line_end,body.inline_block],[1,1,1]);
+  assert.equal(body.assistant_text,'First narrative line, long enough to depict.','the job sees exactly the prose before its block');
+  assert.deepEqual(body.inline_tagged.scenes[0].shots[0].characters,[{name:'Harin',action:'waving'}]);
+  assert.equal(body.lorebook.length,0,'no tagger, so no lorebook read');
+  const full=[...reply.slice(0,4),shot(2,',"new_characters":[{"name":"Minsu"}]'),'Last line.'];
+  f.onScriptOutput(full.join('\n'));await f.fire();f.onScriptOutput(full.join('\n')+' ');await f.fire();
+  assert.deepEqual(creates().map(c=>[c.body.inline_block,c.body.stream_line_start]),[[1,1],[2,3]],'block 2 follows line 3; nothing repeats');
+  assert.equal(creates()[1].body.inline_tagged.new_characters[0].name,'Minsu');
+  f.msg.data=full.join('\n');f.scope.chat.isStreaming=false;
+  assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data),true);await tick();
+  assert.equal(creates().length,2,'completion adds no tagger job for a reply that carries blocks');
+  assert.deepEqual(Array.from(f.calls.at(-1).body.job_ids),['j1','j2']);
+});
+test('streaming tags: a broken block keeps its slot and asks the tagger; a reply with no block yields to auto-generation',async()=>{
+  const f=fixture({stream_inline_tags:true,auto_gen_on_reply:true});
+  const text='Opening line of prose here.\n[[inx1]]{"place":"room"[[/inx1]]\nMore prose.';
+  f.msg.data=text;f.scope.chat.isStreaming=false;
+  assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,text),true);await tick();
+  const create=f.calls.find(c=>c.path.endsWith('/create')).body;
+  assert.equal(create.inline_block,1);assert.equal(create.inline_tagged,undefined,'no shot: the job runs the tagger for this one slot');
+  const g=fixture({stream_inline_tags:true,auto_gen_on_reply:true});
+  g.msg.data='Plain reply without any block, long enough.';g.scope.chat.isStreaming=false;
+  assert.equal(g.omniCommitStreamReply(g.arg(),g.msg,g.msg.data),false,'the ordinary reply listener owns a reply with no block');
+  await tick();assert.equal(g.calls.length,0);
+});
+
 test('line mode handles a final short reply and a final burst without streaming callbacks',async()=>{
   for(const count of [8,25]) {
     const f=fixture({stream_lines_enabled:true,stream_lines_count:10,auto_gen_on_reply:true});

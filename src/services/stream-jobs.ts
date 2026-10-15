@@ -73,8 +73,10 @@ export function streamOwnsMessage(request: Partial<JobRequest>): string | undefi
     row.request.character_id === request.character_id && row.request.chat_id === request.chat_id &&
     row.request.host_message_id === request.host_message_id && request.host_message_id) {
       const a=streamLineRange(row.request), b=streamLineRange(request);
+      // Streaming-tag blocks after the same line are separate slots.
+      const blocks=Number.isInteger(row.request.inline_block) && Number.isInteger(request.inline_block) && row.request.inline_block!==request.inline_block;
       if (a && b && row.request.stream_id===request.stream_id &&
-          row.request.session_id===request.session_id && (a.end<b.start || b.end<a.start)) continue;
+          row.request.session_id===request.session_id && (a.end<b.start || b.end<a.start || blocks)) continue;
       return id;
     }
 }

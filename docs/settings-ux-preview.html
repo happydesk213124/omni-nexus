@@ -1249,6 +1249,10 @@
                 <input class="ctrl" id="nx-stream-lines-image-max" type="number" min="0" max="20" step="1" value="2" aria-label="줄 구간당 최대 이미지 수" style="width:48px;min-width:48px;padding:4px 6px"><span>개</span>
               </div>
             </div>
+            <div data-nx-help-id="nx-stream-inline">
+              <div class="row"><label class="row-text" for="nx-stream-inline-on"><b>Risu 메인 모델 메시지 스트리밍 중에 태그 생성</b></label><label class="sw" aria-label="Risu 메인 모델 메시지 스트리밍 중에 태그 생성 켜기"><input id="nx-stream-inline-on" type="checkbox"></label></div>
+              <div class="row"><label class="row-text" for="nx-stream-inline-autogen">이미지 바로 생성</label><label class="sw" aria-label="이미지 바로 생성 켜기"><input id="nx-stream-inline-autogen" type="checkbox" checked></label></div>
+            </div>
           </div>
         </div>
         <div class="group">
@@ -2728,6 +2732,7 @@
     "body": "켜면 태그 글자 사이에 %%를 넣으라고 하고, 응답에서 %를 지운 뒤 wfsn을 nsfw로 되돌립니다. 연결 테스트 호출에는 적용하지 않습니다."
   },
   "nx-omni-helper": {"title":"⚛️ omni 보조 프롬","body":"같은 이름의 Risu 모듈을 켜거나 끕니다. 이야기·대사 뒤, 상태창 등 부가 내용 전에 [[imgstart]]를 출력하도록 요청합니다. 표식은 화면에서 숨기며, 감지 시 그 앞까지 이미지 생성을 시작합니다. Gemini 생각 스트리밍과 PocketRisu 최적화 안내는 스트리밍 키워드 도움말을 확인하세요."},
+  "nx-stream-inline": {"title":"Risu 메인 모델 메시지 스트리밍 중에 태그 생성","body":"기본 OFF. 켜면 ⚛️ omni 스트리밍태그 모듈이 켜지고, 메인 모델이 답장 안 삽화 자리에 [[inxN]]{샷 JSON}[[/inxN]]을 직접 씁니다. 블록이 닫히는 즉시 그 자리에 스피너가 생기고 생성을 시작해, 별도 태거 호출이 없습니다. 새 인물도 블록 안에서 등록하고, 만화 샷은 페이지까지 블록에 씁니다. 블록이 깨지면 그 칸만 태거로 만들고, 블록이 하나도 없는 답장은 「응답 후 자동 생성」 설정대로 처리합니다. 켜져 있는 동안 스트리밍 키워드와 줄 단위 선행생성은 쓰지 않습니다. 이미지 바로 생성을 끄면 칸만 남고, 눌러서 만듭니다. 메인 모델이 노골적인 태그를 순화하거나 블록을 빼먹을 수 있습니다."},
   "nx-stream-lines": {"title":"줄 단위 선행생성(beta)","body":"기본 OFF. 켜면 완성된 본문 L줄이 설정한 수만큼 쌓일 때마다 태깅·이미지 생성을 미리 시작합니다. 기본 30줄, 2~100줄 설정. 아직 베타 기능입니다. 생각 내용과 빈 줄은 세지 않습니다. 앞 구간은 참고하고 새 구간에서만 장면을 고릅니다. 응답과 모든 구간 태깅이 끝나면 완성된 이미지와 남은 스피너를 한 번에 붙입니다. 이후 도착하는 이미지는 base64 미리보기로 표시하고, 전체 이미지 작업이 끝나면 최종 결과를 한 번 저장합니다. 토스트에서 전체 구간 태깅·이미지 생성·삽입 대기·최종 반영 진행을 확인할 수 있습니다. 마지막 남은 구간이 설정 줄 수의 80% 이상이면 응답 완료 후 추가 생성하고, 미만이면 생략합니다. 10줄 기준은 8줄 이상, 30줄 기준은 24줄 이상이며 소수점은 올림합니다. 앞에서 생성한 묶음이 없고 전체 답변이 짧을 때도 같은 기준을 적용합니다. 옆의 이미지 개수는 줄 구간 전용 최소~최대 범위이며 기본 0~2개, 0~20개까지 설정할 수 있습니다. 0~1개면 장면이 없을 때 생략하고 최대 1개, 1~2개면 최소 1개·최대 2개를 고릅니다. 마지막 구간이 80% 기준을 만족해 생성하는 경우에도 이 범위를 씁니다. 줄 단위 태깅을 한 번도 요청하지 못한 짧은 응답은 기존 응답 후 자동생성의 ON/OFF와 글자 수 조건을 따르고 일반 이미지 개수 설정으로 생성합니다. 이미 줄 단위 태깅을 요청했다면 일반 자동생성은 추가하지 않습니다. 태깅 요청·토큰·이미지 비용이 늘어납니다. 키워드와 함께 켜면 줄 단위 생성을 우선합니다."},
   "nx-stream-keywords": {
     "title": "스트리밍 키워드",
@@ -2825,6 +2830,8 @@
     const HELP_ALIAS = {
       "nx-stream-keywords-on": "nx-stream-keywords",
       "nx-stream-lines-on": "nx-stream-lines",
+      "nx-stream-inline-on": "nx-stream-inline",
+      "nx-stream-inline-autogen": "nx-stream-inline",
       "nx-stream-lines-count": "nx-stream-lines",
       "nx-stream-lines-image-min": "nx-stream-lines",
       "nx-stream-lines-image-max": "nx-stream-lines",

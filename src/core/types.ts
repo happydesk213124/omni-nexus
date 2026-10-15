@@ -284,6 +284,14 @@ export interface CardSettings {
   stream_lines_count: number;
   stream_lines_image_min: number;
   stream_lines_image_max: number;
+  /**
+   * Streaming tag generation: the Risu chat model writes shots inline
+   * (`[[inxN]]…[[/inxN]]`) while it streams. Replaces the reply tagger, the
+   * stream keywords and line batches for replies that carry blocks.
+   */
+  stream_inline_tags?: boolean;
+  /** Generate each block's image at once; off leaves a pink slot to tap. */
+  stream_inline_autogen?: boolean;
   /** Speak the character line after bake. Stored under existing onx_* card blob. */
   tts_on?: boolean;
   /** speechSynthesis rate, typically 0.5–2. */
@@ -592,6 +600,10 @@ export interface JobRequest {
   analysis_lines?: boolean;
   stream_line_start?: number;
   stream_line_end?: number;
+  /** Streaming tag generation: the shot the chat model wrote in `[[inxN]]…[[/inxN]]`; no tagger call. */
+  inline_tagged?: TaggerResult;
+  /** That block's N, so the slot replaces the block itself. */
+  inline_block?: number;
   session_id: string;
   character_id?: string;
   character_name?: string;

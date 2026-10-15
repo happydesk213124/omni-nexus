@@ -1,4 +1,5 @@
 import { insertAtAnalysisLine, analysisBody } from '../domain/prompt/message-body';
+import { replaceInlineShotBlock, stripInlineShotBlocks } from '../domain/prompt/inline-shots';
 import { streamLineRange } from '../domain/prompt/stream-lines';
 import { measureWrite } from '../core/write-metrics';
 /**
@@ -278,7 +279,7 @@ export async function readStoredMessageBody(
 /** One durable placeholder per job/shot; completion never recomputes its paragraph. */
 export type LineBakeBatch = {
   jobId: string;
-  shots: Array<{line?:unknown;shot_index:number;width?:number;height?:number}>;
+  shots: Array<{line?:unknown;shot_index:number;width?:number;height?:number;inline_block?:number}>;
   completed: Map<number,string>;
 };
 
@@ -291,7 +292,10 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
   const previousBody=messageBody(msg);
   if(target.expectedPrefix && !analysisBody(previousBody).startsWith(target.expectedPrefix))throw new Error('Message body changed');
   if(!final)await ensureInrayDisplayModule(getConfig().card.persist_chat_images_folded===true,getConfig().card.inline_chat_scale_pct,{enabled:getConfig().card.inline_msg_fan===true,userchat:getConfig().card.userchat===true});
-  let next=final ? previousBody : stripBakeTokens(previousBody);
+  // A streaming-tag slot replaced its block on the first placement: that frame is
+  // the only record of where the image goes, so later placements keep it.
+  const inlineJobs=batches.filter(batch=>batch.shots.some(shot=>Number.isInteger(shot.inline_block))).map(batch=>batch.jobId);
+  let next=final ? previousBody : stripBakeTokensExceptJobs(previousBody,inlineJobs);
   const groups=new Map<number,string[]>(),lines=chatBodyLineCount(next);
   for(const batch of batches) {
     for(const shot of batch.shots) {
@@ -308,6 +312,9 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
           if(replaced===next && !next.includes(token))throw new Error('Spinner slot changed');
           next=replaced;
         }
+      } else if(Number.isInteger(shot.inline_block)) {
+        if(spinnerDimensions(next,batch.jobId,shot.shot_index))continue;
+        next=replaceInlineShotBlock(next,shot.inline_block!,cardId ? spinnerToken(batch.jobId,shot.shot_index,shot.width,shot.height)+token : token);
       } else {
         const line=Math.floor(Number(shot.line)||lines),list=groups.get(line)||[];
         // The frame is also the reroll-history anchor; an attached image hides loading.
@@ -317,6 +324,8 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
     if(final)next=removeJobSpinners(next,batch.jobId);
   }
   if(!final)for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0]))next=insertAtAnalysisLine(next,line,normalizeInlineChatTextSide(getConfig().card.inline_chat_text_side),tokens.join(''));
+  // Blocks no job placed (broken, cancelled) never stay in the saved reply.
+  if(final)next=stripInlineShotBlocks(next);
   if(next===previousBody)return;
   setMessageBody(msg,next);
   await writeChat(loaded.host,target.charIndex,target.chatIndex,loaded.chat,{messageIndex:target.messageIndex,previousBody});
