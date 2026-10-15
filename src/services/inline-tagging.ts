@@ -136,9 +136,15 @@ export function placeInlineTagPrompts(messages: OpenAIChat[], rules: string, sta
 
 async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<OpenAIChat[]> {
   try {
+    if (!inlineTagsOn()) return messages;
     // Only the chat model's own reply; never our tagger borrowing that model.
-    if (mode !== 'model' || !inlineTagsOn() || !Array.isArray(messages) || !messages.length || isOwnLlmRequest(messages)) return messages;
-    const placed = placeInlineTagPrompts(messages, await inlineTagRules(), lastScope && state.key === scopeKey(lastScope) ? state.text : '');
+    const skip = mode !== 'model' ? `mode ${mode}` : !Array.isArray(messages) || !messages.length ? 'no messages' : isOwnLlmRequest(messages) ? 'own tagger call' : '';
+    // Shown in 디버그: whether Risu called us at all, and what was sent. A provider
+    // plugin that rebuilds the prompt from its own preset can still drop it later.
+    if (skip) { dbg('inline-tags.request', { message: `skipped · ${skip}` }); return messages; }
+    const rules = await inlineTagRules(), stateText = lastScope && state.key === scopeKey(lastScope) ? state.text : '';
+    const placed = placeInlineTagPrompts(messages, rules, stateText);
+    dbg('inline-tags.request', { message: placed === messages ? 'already present' : `inserted · rules ${rules.length} chars after message 1, chat state ${stateText.length} chars`, msgs: placed.length });
     // People registered by this reply's blocks show up from the next request on.
     void refreshInlineTagState();
     return placed;
@@ -154,5 +160,8 @@ export async function installInlineTags(): Promise<void> {
   installed = true;
   Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); } });
   const host = risuHost();
-  if (typeof host?.addRisuReplacer === 'function') await host.addRisuReplacer('beforeRequest', beforeRequest);
+  if (typeof host?.addRisuReplacer !== 'function') { dbg('inline-tags.replacer', { message: 'unavailable on this Risu' }, 'warn'); return; }
+  // Risu asks for the 'replacer' permission here; a refusal registers nothing, silently.
+  await host.addRisuReplacer('beforeRequest', beforeRequest);
+  dbg('inline-tags.replacer', { message: 'registered' });
 }
