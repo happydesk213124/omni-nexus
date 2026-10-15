@@ -4,8 +4,14 @@
 function omniStreamMode(card) {
   return card?.stream_inline_tags === true ? 'inline' : card?.stream_lines_enabled ? 'lines' : 'keywords';
 }
+// A tapped waiting slot is an ordinary job; the frozen poller shows its toast.
+function omniTrackJob(sessionId,jobId) {if(!jobId || t.unloading)return;t.activeJobId=jobId;ua(sessionId,jobId,'');}
+function omniInlineAutogen(card) { return card?.stream_inline_autogen!==false; }
 function omniScanInlineRun(run, final=false) {
   const SK=globalThis.__INLAY_STREAM_KW__;
+  // 「이미지 바로 생성」 off: nothing starts while streaming; completion parks every block.
+  const parked=!omniInlineAutogen(t.backendSettings?.card);
+  if(parked && !final)return run;
   run.inlineSeen ||= new Set();
   // Only text that arrived since the last tick can close a new block.
   const fresh=SK.inlineShotBlocks(run.text).filter(block=>!run.inlineSeen.has(block.n));
@@ -32,9 +38,26 @@ function omniScanInlineRun(run, final=false) {
     if(!text)continue;
     // A broken block keeps its slot: the job asks the tagger for that one shot.
     const tagged=SK.inlineShotTagged(block.body,line);
-    const batch={start:line,end:line,text,task:null,payload:null,jobId:'',inline:{n:block.n,tagged}};
+    const batch={start:line,end:line,text,task:null,payload:null,jobId:'',inline:{n:block.n,tagged},parked};
     run.batches.push(batch);run.fired=true;
-    batch.task=omniStartKeywordJob(run,text,batch).catch(error=>{y('error','stream.inline.start',String(error));return null;});
+    if(!parked)batch.task=omniStartKeywordJob(run,text,batch).catch(error=>{y('error','stream.inline.start',String(error));return null;});
   }
   return run;
+}
+// Every block becomes a waiting (pink) slot in one write; a tap generates it later.
+function omniParkInlineReply(run,arg,text,key) {
+  omniKeywordSeen.add(key);
+  if(omniKeywordSeen.size>128)omniKeywordSeen.delete(omniKeywordSeen.values().next().value);
+  run.committing=true;clearTimeout(run.expiry);
+  void Promise.resolve(run.target).then(async target=>{
+    if(!target || run.cancelled || t.unloading)return;
+    const scope=target.scope;
+    const result=await K('/v1/inline-tags/park',{method:'POST',body:{character_id:scope.characterId,chat_id:scope.chatId,char_index:scope.charIndex,chat_index:scope.chatIndex,
+      host_message_id:target.id,message_index:arg.messageIndex,assistant_text:text,blocks:run.batches.map(batch=>({n:batch.inline.n,line:batch.start,tagged:batch.inline.tagged || null}))}});
+    if(!result?.ok)throw Error(result?.error?.message || '대기 칸을 만들지 못했습니다.');
+    run.committed=true;
+    globalThis.__OMNI_WAIT_TAPS__?.sync?.();
+  }).catch(error=>{y('error','stream.inline.park',String(error));})
+    .finally(()=>{if(omniKeywordRun===run)omniKeywordRun=null;});
+  return true;
 }

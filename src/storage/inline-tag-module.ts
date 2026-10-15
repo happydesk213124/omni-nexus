@@ -16,7 +16,7 @@ const ours = (row: Row) => /^omni-inline-shot-/.test(String(row.comment || ''));
  * entry that large without a word, so `beforeRequest` places them instead.
  * Switched off, the module stays installed but disabled.
  */
-export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100): Promise<boolean> {
+export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100, pending = false): Promise<boolean> {
   return serializeModuleWrite(async () => {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) return false;
@@ -28,7 +28,7 @@ export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100)
     if (index < 0 && !enabled) return true;
     const previous = index < 0 ? {} : modules[index]!;
     // A user's own rules in this module stay; ours are rewritten.
-    const regex = [...inlineShotDisplayScripts(scalePct), inlineShotRequestScript(), ...rows(previous.regex).filter(row => !ours(row))];
+    const regex = [...inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), ...rows(previous.regex).filter(row => !ours(row))];
     const module = { ...previous, id: INLINE_TAG_MODULE_ID, namespace: INLINE_TAG_MODULE_ID, name: INLINE_TAG_MODULE_NAME,
       description: 'Risu 메인 모델이 답장 안에 쓴 [[inxN]] 샷을 스피너 칸으로 그립니다. 생성은 Omni Nexus 플러그인이 합니다.',
       hideIcon: false, lowLevelAccess: false, lorebook: rows(previous.lorebook), trigger: rows(previous.trigger), assets: rows(previous.assets), regex };

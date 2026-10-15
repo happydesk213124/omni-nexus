@@ -240,6 +240,16 @@ export async function runScenario(N, handles) {
     if(saved.stream_inline_tags!==true || saved.stream_inline_autogen!==false)throw Error('streaming tag settings did not save');
     return {defaultOff:true,defaultAutogen:true,saved:true,coerced:coerced.stream_inline_tags===true && coerced.stream_inline_autogen===false,restored:restored.stream_inline_tags===false && restored.stream_inline_autogen===true};
   });
+  // Streaming tags with 「이미지 바로 생성」 off: a reply that is not the stored one is
+  // never parked, and a slot that does not exist cannot start a paid job.
+  await rec('inline.park_mismatch', async () => {
+    if(!('stream_inline_tags' in (await get('/v1/settings')).settings.card))return {unsupported:true};
+    return post('/v1/inline-tags/park',{character_id:'missing',chat_id:'missing',char_index:0,chat_index:0,host_message_id:'missing',message_index:0,assistant_text:'x',blocks:[{n:1,line:1,tagged:null}]});
+  });
+  await rec('inline.generate_unknown', async () => {
+    if(!('stream_inline_tags' in (await get('/v1/settings')).settings.card))return {unsupported:true};
+    return post('/v1/inline-tags/generate',{wait_id:'missing',char_index:0,chat_index:0,message_index:0});
+  });
   await rec('job.commit_output_group_unknown', async () => {
     const result=await post('/v1/jobs/commit-output',{job_ids:['missing-a','missing-b'],stream_id:'missing'});
     if(result.ok!==false || result.error?.code!=='not_pending')throw Error('unknown line group must not attach');

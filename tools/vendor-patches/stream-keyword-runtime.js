@@ -76,7 +76,12 @@ function onScriptOutput(content) {
 function omniKeywordScope(scope) {
   // Streaming tags send this chat's registered people with the next request; the
   // request hook itself never asks the host, so the state is refreshed here.
-  if(t.backendSettings?.card?.stream_inline_tags===true)globalThis.__OMNI_INLINE_TAGS__?.scope?.({sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId});
+  if(t.backendSettings?.card?.stream_inline_tags===true) {
+    globalThis.__OMNI_INLINE_TAGS__?.scope?.({sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId});
+    // Pink slots left from earlier replies become tappable once the chat is known.
+    globalThis.__OMNI_TRACK_JOB__=omniTrackJob;
+    globalThis.__OMNI_WAIT_TAPS__?.sync?.();
+  }
   const run=omniKeywordRun, target=run?.identity;
   if(!target || run.committing)return;
   // Viewer scopes cache identity only; their message rows may predate this reply.

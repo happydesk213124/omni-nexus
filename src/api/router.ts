@@ -30,6 +30,7 @@ import * as diagnostics from '../services/diagnostics';
 import * as gallery from '../services/gallery';
 import * as generation from '../services/generation';
 import * as jobs from '../services/jobs';
+import * as inlineWaits from '../services/inline-waits';
 import * as naiAssets from '../services/nai-assets';
 import * as presetLook from '../services/preset-look';
 import * as chatChrome from '../services/chat-chrome';
@@ -332,6 +333,14 @@ const WRITE_ROUTES: readonly Route[] = [
   {
     match: exact('/v1/jobs/commit-output'),
     handler: async ({ body }) => ok(await jobs.commitStreamOutput(body)),
+  },
+  {
+    match: exact('/v1/inline-tags/park'),
+    handler: async ({ body }) => ok(await inlineWaits.parkInlineShots(body)),
+  },
+  {
+    match: exact('/v1/inline-tags/generate'),
+    handler: async ({ body }) => ({ status: 202, data: await inlineWaits.generateInlineWait(body) }),
   },
   {
     match: exact('/v1/jobs/retarget-hash'),

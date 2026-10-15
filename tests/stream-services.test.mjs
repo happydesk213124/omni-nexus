@@ -116,6 +116,50 @@ test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still bein
   assert.ok(!db.enabledModules.includes('omni-inline-tags'));assert.ok(db.modules.some(m=>m.id==='omni-inline-tags'),'off keeps it installed, disabled');
 });
 
+test('이미지 바로 생성 off: blocks park as pink slots; a tap draws one in place, a failed one turns pink again',async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,stream_inline_autogen:false,llm_json_retry:false});
+  const first='First narrative paragraph long enough for generating images.';
+  const reply=`${first}\n[[inx1]]{"place":"garden","aspect":"landscape","characters":[]}[[/inx1]]\nSecond dialogue in the scene.\n[[inx2]]{"place":"bro[[/inx2]]\nLast line.`;
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',message:[{role:'char',chatId:'m',data:reply}]}]});
+  const target={character_id:'c',chat_id:'chat',char_index:0,chat_index:0,host_message_id:'m',message_index:0};
+  const tagged={new_characters:[],scenes:[{place:'garden',shots:[{aspect:'landscape',characters:[],line:1,paragraph:0}]}]};
+  assert.equal((await f.api.parkInlineShots({...target,assistant_text:reply+' changed',blocks:[{n:1,line:1,tagged}]})).ok,false,'a changed reply is never rewritten');
+  const parked=await f.api.parkInlineShots({...target,assistant_text:reply,blocks:[{n:1,line:1,tagged},{n:2,line:2,tagged:null}]});
+  assert.equal(parked.ok,true);assert.equal(parked.wait_ids.length,2);
+  const [good,broken]=parked.wait_ids;
+  let saved=(await f.chat()).message[0].data;
+  assert.equal(saved,`${first}\n[[@inraywait::${good}::1216::832]]\nSecond dialogue in the scene.\n[[@inraywait::${broken}::832::1216]]\nLast line.`,'each block became its waiting slot, sized by its aspect; no JSON stays in the chat');
+  assert.equal(f.host.naiRequests.length,0);assert.equal(f.host.llmRequests.length,0,'parking costs nothing');
+  assert.ok((await risuai.getDatabase()).modules.find(m=>m.id==='inlay-inray-display').regex.some(r=>r.comment==='omni-wait-display'),'the pink frame is drawn by the display module');
+  const tap=async id=>f.api.generateInlineWait({...target,session_id:'session',wait_id:id});
+  const job=await tap(good);assert.equal(job.accepted,true);
+  await f.wait(job.job_id,j=>j.state==='done');
+  saved=(await f.chat()).message[0].data;
+  assert.match(saved,new RegExp(`^${first}\\n\\[\\[@inrayspinner::${job.job_id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]\\nSecond dialogue`),'the image sits where the slot was');
+  assert.ok(saved.includes(`[[@inraywait::${broken}::`),'the other slot is untouched');
+  assert.equal(f.host.llmRequests.length,0,'a saved shot needs no tagger');assert.equal(await f.api.getInlineWait(good),undefined,'a drawn slot leaves the save');
+  assert.equal((await tap(good)).ok,false,'a slot already drawn cannot be generated twice');
+  f.host.setLlmReply('not json');
+  const retry=await tap(broken);await f.wait(retry.job_id,j=>j.state==='error');
+  for(let i=0;i<100 && !(await f.chat()).message[0].data.includes(`[[@inraywait::${broken}::`);i++)await sleep();
+  saved=(await f.chat()).message[0].data;
+  assert.ok(saved.includes(`[[@inraywait::${broken}::832::1216]]`),'a failed slot is pink again, ready for another tap');
+  assert.doesNotMatch(saved,new RegExp(`inrayspinner::${retry.job_id}`));
+  assert.match(f.host.llmRequests.at(-1).messages.map(m=>m.content).join('\n'),/ONLY from L2 through L2/,'a broken block is drawn by the tagger from its own line');
+  assert.ok(await f.api.getInlineWait(broken),'its row stays for the retry');
+  // Generation fails after the slot became a spinner: the frame turns pink again, not a dead spinner.
+  f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[{place:'garden',shots:[{line:2,composition:'flowers'}]}]}));
+  const nativeFetch=risuai.nativeFetch;
+  risuai.nativeFetch=async(url,opts)=>String(url).includes('generate-image')?new Response('down',{status:500}):nativeFetch(url,opts);
+  try {
+    const failed=await tap(broken);await f.wait(failed.job_id,j=>j.state==='error');
+    for(let i=0;i<200 && (await f.chat()).message[0].data.includes(`inrayspinner::${failed.job_id}`);i++)await sleep();
+    saved=(await f.chat()).message[0].data;
+    assert.ok(saved.includes(`[[@inraywait::${broken}::`),'the slot is waiting again after a failed generation');
+    assert.doesNotMatch(saved,new RegExp(`inrayspinner::${failed.job_id}`));
+  } finally {risuai.nativeFetch=nativeFetch;}
+});
+
 test('zero-shot line batches wait for output without NAI, spinners, errors or JSON retries',async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{image_min:5,image_max:5,stream_lines_image_min:0,stream_lines_image_max:1,llm_json_retry:true,preprocessing:true});
   f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[]}));

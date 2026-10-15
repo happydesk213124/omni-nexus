@@ -170,6 +170,19 @@ test('streaming tags: each closed block starts one tagger-free job at its line, 
   assert.equal(creates().length,2,'completion adds no tagger job for a reply that carries blocks');
   assert.deepEqual(Array.from(f.calls.at(-1).body.job_ids),['j1','j2']);
 });
+test('streaming tags with 이미지 바로 생성 off: nothing starts while streaming; completion parks every block in one call',async()=>{
+  const f=fixture({stream_inline_tags:true,stream_inline_autogen:false});
+  const reply=['First narrative line, long enough to depict.',shot(1),'Second line of the scene.','[[inx2]]{"place":"bro[[/inx2]]','Last line.'].join('\n');
+  for(let n=1;n<=reply.length;n+=40){f.onScriptOutput(reply.slice(0,n));await f.fire();}
+  assert.equal(f.calls.length,0,'no job, no target read while the reply streams');
+  f.msg.data=reply;f.scope.chat.isStreaming=false;
+  assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,reply),true,'the reply is handled: no ordinary auto-generation on top');await tick();
+  assert.deepEqual(f.calls.map(c=>c.path),['/v1/inline-tags/park']);
+  const body=f.calls[0].body;
+  assert.equal(body.assistant_text,reply);assert.equal(body.host_message_id,'m');
+  assert.equal(JSON.stringify(body.blocks.map(b=>[b.n,b.line,!!b.tagged])),'[[1,1,true],[2,2,false]]','a broken block parks too; its tap asks the tagger');
+  f.omniCommitStreamReply(f.arg(),f.msg,reply);await tick();assert.equal(f.calls.length,1,'one park per reply');
+});
 test('streaming tags: a broken block keeps its slot and asks the tagger; a reply with no block yields to auto-generation',async()=>{
   const f=fixture({stream_inline_tags:true,auto_gen_on_reply:true});
   const text='Opening line of prose here.\n[[inx1]]{"place":"room"[[/inx1]]\nMore prose.';
