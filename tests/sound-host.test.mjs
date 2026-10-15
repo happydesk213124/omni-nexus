@@ -81,6 +81,7 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
       s.bgm.push({ key: 'cafe', kind: 'bgm', name: '카페', tags: ['calm', 'cafe', 'slow'], folder: '', source: 'url', url: 'https://snd.test/cafe.mp3' }, { key: 'chase', kind: 'bgm', name: '추격', tags: ['tense', 'chase', 'fast'], folder: '', source: 'url', url: 'https://snd.test/chase.mp3' });
       s.sfx.push({ key: 'bang', kind: 'sfx', name: '쾅', tags: ['쾅'], folder: '', source: 'url', url: 'https://snd.test/bang.mp3' });
       await window.updateSoundSettings({ bgmEnabled: true, sfxEnabled: true, sfxMatcher: 'tag', bgmMatcher: 'tag' });
+      const prepare = window.omniSound.prepareEffects.bind(window.omniSound); window.omniSound.prepareEffects = async words => { window.prepared = words.map(w => w.text); return prepare(words); };
       await window.installTtsHost(); await window.omniTts.player.unlock();
       const player = window.omniSound.player, bgm = player.playBgm.bind(player), sfx = player.playSfx.bind(player);
       player.playBgm = (key, ...rest) => { window.log.push('bgm:' + key); return bgm(key, ...rest); };
@@ -88,6 +89,7 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
       let last = '';
       window.omniTts.subscribe(() => { const now = window.omniTts.player.status === 'playing' ? 'tts:' + window.omniTts.current?.segment.id : ''; if (now && now !== last) window.log.push(now); last = now; });
     });
+    await page.waitForFunction(() => window.prepared?.includes('쾅'), undefined, { timeout: 5000 });
     // The viewer list: ♪ row, the lines, the ▶ row between them. The effect-only line is not read.
     await page.waitForFunction(() => window.omniTts.list.length === 4);
     assert.deepEqual(await page.evaluate(() => window.omniTts.list.map(r => r.segment.kind)), ['bgm', 'dialogue', 'sfx', 'dialogue']);

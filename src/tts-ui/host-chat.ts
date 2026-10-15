@@ -221,6 +221,9 @@ export async function installTtsHost(): Promise<void> {
           if (shown.length) anchored.set(index, list.filter(r => visible.has(r) || isSoundSegment(r.segment)));
         } finally { await releaseHost(chat); }
       }
+      // The effects on screen are matched and cut ahead, all unknown parts in one request.
+      const effects = [...perMessage.values()].flat().filter(r => r.segment.kind === 'sfx');
+      if (effects.length) void omniSound.prepareEffects(effects.map(r => ({ text: r.segment.text, context: r.segment.context || '' }))).catch(error => console.warn('OmniSound prepare', error));
       for (const node of await safeArray(await doc.querySelectorAll('[data-omnitts-image] [data-omnitts-play],[x-omnitts-image] [x-omnitts-play]'))) live.add(await bind(node, true));
       for (const [key,b] of bindings) if (!live.has(key)) { await releaseHost(b.node);for (const chip of b.chips) await releaseHost(chip.node); bindings.delete(key); }
       nearby.sort((a,b)=>a.distance-b.distance);

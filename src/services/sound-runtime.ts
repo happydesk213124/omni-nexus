@@ -225,6 +225,38 @@ export class OmniSoundRuntime {
    * says none fits. Only that answer (or an empty list) makes ElevenLabs generate
    * one — without it every spelling variant would be a new paid effect.
    */
+  // Words JEV or the LLM already answered "nothing fits" for, so playing them
+  // never asks again. Kept per effect list and generation setting: a new effect may
+  // fit after all, and with generation on the answer makes one.
+  private unmatched = { list: '', words: new Set<string>() };
+  private noMatch(): Set<string> {
+    const s = soundData().settings, list = [s.sfxAutoCreate && !!s.elevenKey.trim(), ...soundData().sfx.map(item => item.key)].join(',');
+    if (this.unmatched.list !== list) this.unmatched = { list, words: new Set() };
+    return this.unmatched.words;
+  }
+  private prepared = new Set<string>();
+  /**
+   * The effects of the messages on screen, ahead of time: every unknown part of
+   * every effect word goes to JEV or the LLM in one request (as the matcher
+   * setting says), then each clip is cut and levelled, so a tap or continuous
+   * reading never waits for either.
+   */
+  async prepareEffects(words: ReadonlyArray<{ text: string; context: string }>): Promise<void> {
+    if (!soundReady() || !soundData().settings.sfxEnabled || !soundData().sfx.length) return;
+    const fresh = words.filter(word => word.text && !this.prepared.has(word.text));
+    if (!fresh.length) return;
+    for (const word of fresh) this.prepared.add(word.text);
+    while (this.prepared.size > 500) this.prepared.delete(this.prepared.values().next().value!);
+    const data = soundData(), ask = new Map<string, string>();
+    for (const word of fresh) {
+      if (exactSfx(word.text, data.glossary, data.sfx)) continue;
+      const parts = sfxParts(word.text);
+      for (const part of parts.length > 1 ? parts : [word.text]) if (!pickSfx(part, data.glossary, data.sfx) && !this.noMatch().has(normalizeSoundTag(part)) && !ask.has(part)) ask.set(part, word.context);
+    }
+    const unknown = [...ask.keys()].slice(0, 20);
+    if (unknown.length) await this.resolveSfx(unknown, ask.get(unknown[0]!) || '');
+    for (const word of fresh) { const plan = await this.sfxPlan(word.text, word.context); if (plan.length) await this.planClip(plan).catch(() => {}); }
+  }
   private async resolveSfx(words: readonly string[], context: string, anyEngine = false): Promise<Array<SoundItem | null>> {
     const s = soundData().settings, tts = ttsData().settings, items = soundData().sfx;
     // anyEngine: asked for on purpose (⚡), so a word-only matcher setting still uses JEV or the LLM.
@@ -235,6 +267,7 @@ export class OmniSoundRuntime {
     return Promise.all(words.map(async (word, i) => {
       const choice = choices[i] ?? null;
       if (choice && 'key' in choice) { const item = items.find(row => row.key === choice.key); if (item) { await this.learn(word, item.key); return item; } }
+      if (choice) this.noMatch().add(normalizeSoundTag(word));
       const create = !items.length || (!!choice && 'create' in choice);
       if (!create || !s.sfxAutoCreate || !s.elevenKey.trim()) return null;
       const id = normalizeSoundTag(word);
@@ -286,7 +319,8 @@ export class OmniSoundRuntime {
     if (parts.length <= 1 || exact) { const item = exact || await this.sfxFor(word, context); return item ? [{ item }] : []; }
     const found: Array<SoundItem | null> = parts.map(part => pickSfx(part, data.glossary, data.sfx));
     const missing = parts.flatMap((_, i) => found[i] ? [] : [i]);
-    if (missing.length) { const resolved = await this.resolveSfx(missing.map(i => parts[i]!), context); missing.forEach((i, k) => { found[i] = resolved[k] ?? null; }); }
+    const ask = missing.filter(i => !this.noMatch().has(normalizeSoundTag(parts[i]!)));
+    if (ask.length) { const resolved = await this.resolveSfx(ask.map(i => parts[i]!), context); ask.forEach((i, k) => { found[i] = resolved[k] ?? null; }); }
     const unknown = parts.filter((part, i) => !found[i] && !data.unknownTerms.includes(part));
     if (unknown.length) { data.unknownTerms = [...new Set(unknown), ...data.unknownTerms].slice(0, 200); await saveSoundData(); }
     const kept = parts.flatMap((part, i) => found[i] ? [{ part, item: found[i]! }] : []);
@@ -315,7 +349,7 @@ export class OmniSoundRuntime {
     return job;
   }
   private async sfxFor(word: string, context: string): Promise<SoundItem | null> {
-    const item = pickSfx(word, soundData().glossary, soundData().sfx) || (await this.resolveSfx([word], context))[0];
+    const item = pickSfx(word, soundData().glossary, soundData().sfx) || (this.noMatch().has(normalizeSoundTag(word)) ? null : (await this.resolveSfx([word], context))[0]);
     if (item) return item;
     const data = soundData(), clean = word.trim().slice(0, 60);
     if (clean && !data.unknownTerms.includes(clean)) { data.unknownTerms = [clean, ...data.unknownTerms].slice(0, 200); await saveSoundData(); }
