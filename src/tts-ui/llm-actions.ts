@@ -8,11 +8,14 @@ import { proposeTtsCharacters, applyTtsCharacterProposals, type TtsCharacterProp
 import { currentTtsContext } from '../services/tts-context';
 import { el, input, val, text, checked, esc, on, dialog, persist } from './common';
 
+// Each LLM dialog may borrow one of Risu's own models instead of the TTS helper.
+export const LLM_MODEL_CHOICES: [string, string][] = [['shared','TTS 보조 LLM 설정 사용'],['main','Risu 메인 모델'],['aux','Risu 보조 모델'],['emotion','Risu 보조 · 감정'],['translate','Risu 보조 · 번역'],['memory','Risu 보조 · 메모리'],['other','Risu 보조 · 기타']];
+export const llmForChoice = (choice: string): LlmSettings => choice && choice !== 'shared' ? { ...ttsData().settings.llm, source: choice as LlmSettings['source'] } : ttsData().settings.llm;
+
 export function bindTtsLlmActions(refresh: () => void): void {
-  // Each LLM dialog may borrow one of Risu's own models instead of the TTS helper.
-  const MODELS: [string, string][] = [['shared','TTS 보조 LLM 설정 사용'],['main','Risu 메인 모델'],['aux','Risu 보조 모델'],['emotion','Risu 보조 · 감정'],['translate','Risu 보조 · 번역'],['memory','Risu 보조 · 메모리'],['other','Risu 보조 · 기타']];
+  const MODELS = LLM_MODEL_CHOICES;
   for (const id of ['bulk-model','source-model','organize-model']) el(id).innerHTML = MODELS.map(([value,label]) => `<option value="${value}">${label}</option>`).join('');
-  const model = (id: string): LlmSettings => { const choice = val(id); return choice && choice !== 'shared' ? { ...ttsData().settings.llm, source: choice as LlmSettings['source'] } : ttsData().settings.llm; };
+  const model = (id: string): LlmSettings => llmForChoice(val(id));
   let voices: TtsVoice[] = [], proposals: TtsCharacterProposal[] = [];
   let organization: { key: string; previous: string; name: string; folder: string }[] = [];
   const review = (target: string, rows: string[]) => { el(target).innerHTML = rows.map((row,i) => `<label style="display:flex;gap:10px;padding:10px;border-bottom:1px solid #ffffff18"><input type="checkbox" data-row="${i}" checked>${row}</label>`).join(''); };

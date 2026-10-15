@@ -306,6 +306,33 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.evaluate(() => { window.soundData().settings.bgmEnabled = false; });
     assert.equal(await page.evaluate(() => window.omniSound.playBgmForReply('네 번째 장면.', [])), '', 'BGM off: nothing picks or plays');
     assert.equal(await bgmAsks(), bgmCount);
+    // 「LLM에게 시키기」 on the effect list: one request proposes renames, folders, tags and adds; only ticked rows apply.
+    await page.locator('#tab-sound-sfx').click();
+    const sfxBefore = await page.evaluate(() => window.soundData().sfx.map(item => ({ key: item.key, name: item.name, folder: item.folder })));
+    await page.evaluate(() => { window.llmAnswer = JSON.stringify({ folders: ['타격'], edit: [[1, '문 세게 닫힘', '타격', ['쾅', '문']], [2, null, '타격', null]], add: [{ name: '총소리', folder: '타격', tags: ['탕'], url: 'https://snd.test/gun.mp3' }] }); });
+    await page.locator('#snd-sfx-llm').click();
+    await page.locator('#llm-command-request').fill('타격음 폴더로 정리해 줘');
+    await page.locator('#llm-command-source').fill('총소리 https://snd.test/gun.mp3');
+    await page.locator('#llm-command-run').click();
+    await page.waitForFunction(() => document.querySelectorAll('#llm-command-results input[data-row]').length === 3);
+    assert.ok(await page.evaluate(() => JSON.stringify(window.llmAsked.at(-1)).includes('타격음 폴더로 정리해 줘')), 'the request goes to the model');
+    assert.equal(await page.evaluate(() => window.soundData().sfx[0].name), sfxBefore[0].name, 'a proposal changes nothing by itself');
+    await page.locator('#llm-command-results input[data-row]').nth(1).uncheck();
+    await page.locator('#llm-command-apply').click();
+    await page.waitForFunction(() => window.soundData().sfx[0].name === '문 세게 닫힘' && window.soundData().sfx.some(item => item.url === 'https://snd.test/gun.mp3'));
+    assert.deepEqual(await page.evaluate(() => [window.soundData().sfx[0].folder, window.soundData().sfx[0].tags, window.soundData().folders.sfx.includes('타격')]), ['타격', ['쾅', '문'], true]);
+    assert.equal(await page.evaluate(() => window.soundData().sfx[1].folder), sfxBefore[1].folder, 'the unticked row is left alone');
+    assert.equal(await page.locator('#llm-command-dialog').isVisible(), false);
+    // The glossary: which words go in which tile, the unknown words included.
+    await page.evaluate(() => { window.soundData().unknownTerms = ['콰당']; window.llmAnswer = JSON.stringify({ tiles: [[null, 1, ['콰당', '쿵']]] }); });
+    await page.locator('#tab-sound-glossary').click();
+    await page.locator('#snd-term-llm').click();
+    await page.locator('#llm-command-request').fill('미등록 용어를 알맞은 타일에 넣어 줘');
+    assert.equal(await page.locator('#llm-command-source-wrap').isVisible(), false, 'nothing to paste for the glossary');
+    await page.locator('#llm-command-run').click();
+    await page.waitForFunction(() => document.querySelectorAll('#llm-command-results input[data-row]').length === 1);
+    await page.locator('#llm-command-apply').click();
+    await page.waitForFunction(() => window.soundData().glossary.some(row => row.sfxKey === window.soundData().sfx[0].key && row.terms.includes('콰당')) && !window.soundData().unknownTerms.includes('콰당'));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

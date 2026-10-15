@@ -9,7 +9,7 @@ const effectOptions = (selected: string, empty = '효과음 선택') => [`<optio
 const effectName = (key: string) => soundData().sfx.find(item => item.key === key)?.name || '';
 
 /** One word means one effect: a word given to a row leaves every other row and the unknown list. */
-function giveWords(row: SfxTerm, words: readonly string[]): void {
+export function giveWords(row: SfxTerm, words: readonly string[]): void {
   const data = soundData(), keys = new Set(words.map(word => word.toLowerCase()));
   for (const other of data.glossary) if (other !== row) other.terms = other.terms.filter(term => !keys.has(term.toLowerCase()));
   row.terms = soundTags([...row.terms, ...words]);
