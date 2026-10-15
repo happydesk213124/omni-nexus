@@ -406,6 +406,14 @@ try {
     await page.evaluate(async()=>{const {t,paint}=globalThis.uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='gen_options';await paint();});
     for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on','nx-stream-lines-on']) assert.equal(await page.locator('#'+id).isChecked(),checked,`${id}: moved habit restores persisted value`);
   }
+  // Streaming tags: the switch must reach the backend, which is what the request hook reads.
+  for (const checked of [true,false]) {
+    await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();});
+    await page.locator('#nx-stream-inline-on').setChecked(checked);
+    await page.evaluate(()=>globalThis.uxTestRuntime.flush());
+    const backend=await page.evaluate(async()=>(await globalThis.__INLAY_NATIVE__.fetch('/v1/settings',{method:'GET'})).settings.card.stream_inline_tags);
+    assert.equal(backend,checked,`streaming tags ${checked?'on':'off'}: the backend settings follow the switch`);
+  }
   await page.locator('#nx-stream-lines-count').fill('6');
   await page.evaluate(()=>globalThis.uxTestRuntime.flush());
   await page.waitForFunction(()=>uxTestRuntime.t.backendSettings.card.stream_lines_count===6);

@@ -15,7 +15,8 @@ export function inlineTagStatusText(status: Status | undefined): string {
   if (!status.lastAt) return '요청 연결됨 · 아직 메인 모델 요청이 없습니다. 메시지를 보낸 뒤에도 그대로면 Risu가 이 플러그인의 replacer 권한을 막은 것입니다.';
   const at = new Date(status.lastAt).toLocaleTimeString('ko-KR', { hour12: false });
   const what = status.last.startsWith('inserted') ? '규칙을 넣었습니다'
-    : status.last.startsWith('off') ? '설정이 꺼진 것으로 읽혔습니다'
+    : status.last.startsWith('off · power') ? 'Omni 전원(Power)이 꺼져 있어 넣지 않았습니다'
+    : status.last.startsWith('off') ? `이 토글이 꺼진 것으로 읽혔습니다 (${status.last.replace(/^off · switch /, '')}) · 켠 직후 보낸 요청이면 한 번 더 보내 보세요`
     : status.last.startsWith('already') ? '이미 들어 있었습니다'
     : `건너뜀 (${status.last.replace(/^skipped · /, '')})`;
   return `마지막 메인 모델 요청 ${at} · ${what}`;

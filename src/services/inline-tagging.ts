@@ -147,9 +147,22 @@ function noteRequest(text: string): void {
   dbg('inline-tags.request', { message: text });
 }
 
+// Original Risu keeps a plugin's request hooks across a plugin reload (it clears
+// providers and edit hooks, not replacers), so an earlier instance of this plugin
+// may still be called. Once unloaded it must step aside.
+let disposed = false;
+// Settings load lazily (the UI's first request boots the bridge). A chat request
+// can come first; it must not read the defaults as the user's switch.
+let settingsReady: () => Promise<unknown> = async () => {};
+
 async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<OpenAIChat[]> {
   try {
-    if (!inlineTagsOn()) { if (mode === 'model') noteRequest('off · setting reads off here'); return messages; }
+    if (disposed) return messages;
+    await settingsReady().catch(() => {});
+    if (!inlineTagsOn()) {
+      if (mode === 'model') noteRequest(getConfig().card?.power === false ? 'off · power' : `off · switch (${String(getConfig().card?.stream_inline_tags)})`);
+      return messages;
+    }
     // Only the chat model's own reply; never our tagger borrowing that model.
     const skip = mode !== 'model' ? `mode ${mode}` : !Array.isArray(messages) || !messages.length ? 'no messages' : isOwnLlmRequest(messages) ? 'own tagger call' : '';
     // A provider plugin that rebuilds the prompt from its own preset, or the
@@ -168,9 +181,10 @@ async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<Open
 }
 
 let installed = false;
-export async function installInlineTags(): Promise<void> {
+export async function installInlineTags(opts: { ready?: () => Promise<unknown> } = {}): Promise<void> {
   if (installed) return;
   installed = true;
+  if (opts.ready) settingsReady = opts.ready;
   Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); }, status: inlineTagStatus });
   const host = risuHost();
   if (typeof host?.addRisuReplacer !== 'function') { status.registered = 'no'; dbg('inline-tags.replacer', { message: 'unavailable on this Risu' }, 'warn'); return; }
@@ -178,5 +192,6 @@ export async function installInlineTags(): Promise<void> {
   // says nothing. The call itself resolving is all we can observe.
   try { await host.addRisuReplacer('beforeRequest', beforeRequest); status.registered = 'yes'; }
   catch (error) { status.registered = 'no'; throw error; }
+  if (typeof host.onUnload === 'function') await host.onUnload(() => { disposed = true; void Promise.resolve(host.removeRisuReplacer?.('beforeRequest', beforeRequest)).catch(() => {}); });
   dbg('inline-tags.replacer', { message: 'registered' });
 }

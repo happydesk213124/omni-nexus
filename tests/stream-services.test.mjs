@@ -97,6 +97,18 @@ test('streaming tag rules reach only the chat model: after the first message, on
   assert.deepEqual(f.api.placeInlineTagPrompts(chat,rules,'# state').map(m=>m.content===rules?'RULES':m.content),['main prompt','RULES','hi','hello','# state','go'],'the chat state goes last, before the newest user turn');
 });
 
+test('a chat request that comes before the settings load waits for them, instead of reading the switch as off',async()=>{
+  const f=await fixture();
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  let loads=0;
+  // Stands in for the bridge's lazy boot: only after it does the saved switch exist.
+  await f.api.installInlineTags({ready:async()=>{loads++;const c=f.api.getConfig();c.card.stream_inline_tags=true;f.api.setConfig(c);}});
+  const chat=[{role:'system',content:'main prompt'},{role:'user',content:'go'}];
+  const sent=await replacer(chat,'model');
+  assert.equal(loads,1);assert.equal(sent.length,3,'the rules went out on the first request');
+  assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
+});
+
 test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still being written, and keeps them out of requests',async()=>{
   const f=await fixture();
   await risuai.setDatabase({modules:[],enabledModules:[]});
