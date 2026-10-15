@@ -42,6 +42,8 @@ export interface SoundSettings {
   sfxAutoPlay: 'reply' | 'button';
   listBgm: boolean;
   listSfx: boolean;
+  /** The TTS viewer shows its BGM bar (opened from the header ♪). */
+  viewerBgm: boolean;
   /** Upper bound for a file stored in a module (megabytes). */
   maxFileMb: number;
 }

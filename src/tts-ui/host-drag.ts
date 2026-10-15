@@ -1,7 +1,8 @@
 import { safeArray, releaseHost, type HostPoint } from './host-utils';
 import { updateTtsSettings } from '../storage/tts-store';
 
-export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()=>boolean,refresh:()=>Promise<void>) {
+/** headerOffset: height of a bar shown above the header; the stored anchor is the header's top. */
+export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()=>boolean,refresh:()=>Promise<void>,headerOffset:()=>number=()=>0) {
   let held=false,start:HostPoint|undefined,latest:HostPoint|undefined;
   let drag:{rect:DOMRect;w:number;h:number;left:number;top:number;moved:boolean}|undefined;
   let starting:Promise<void>|undefined,ending:Promise<void>|undefined,dirty=false,suppress=0;
@@ -38,7 +39,7 @@ export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()
     held=false;await starting;move();
     while(writes.size){await Promise.all([...writes]);move();}
     const finished=drag;drag=undefined;dirty=false;cover(false);
-    if(finished?.moved){suppress=Date.now()+400;if(!cancel)await updateTtsSettings({viewerAnchor:{right:Math.max(8,finished.w-finished.left-finished.rect.width),top:finished.top}});}
+    if(finished?.moved){suppress=Date.now()+400;if(!cancel)await updateTtsSettings({viewerAnchor:{right:Math.max(8,finished.w-finished.left-finished.rect.width),top:finished.top+headerOffset()}});}
     await refresh();await viewer.setStyle('transform','');
   })().finally(()=>{ending=undefined;});
   const listen=async(type:string,fn:(e:HostPoint)=>void)=>listeners.push({type,id:await doc.addEventListener(type,fn,{capture:true,passive:true})});

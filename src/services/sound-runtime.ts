@@ -45,6 +45,17 @@ export class OmniSoundRuntime {
   private moduleTimer?: ReturnType<typeof setTimeout>;
   private lastModule = '';
   notice = '';
+  /** The track the BGM bar resumes when nothing is loaded. */
+  private lastBgm = '';
+  bgmName(): string { const key = this.player.bgmKey || this.lastBgm; return soundData().bgm.find(item => item.key === key)?.name || ''; }
+  /** BGM bar play button: pause, resume, or start the last (else first) track. */
+  async toggleBgm(): Promise<void> {
+    if (this.player.bgmPlaying) { this.player.pauseBgm(); return; }
+    if (await this.player.resumeBgm()) return;
+    const item = soundData().bgm.find(row => row.key === this.lastBgm) || soundData().bgm[0];
+    if (!item) throw new Error('등록된 BGM이 없습니다. BGM·효과음 설정에서 추가해 주세요.');
+    await this.play(item);
+  }
   init(): Promise<void> {
     return this.started ||= (async () => {
       await loadSoundData();
@@ -99,7 +110,7 @@ export class OmniSoundRuntime {
   }
   async play(item: SoundItem): Promise<void> {
     const audio = await audioOf(item);
-    if (item.kind === 'bgm') await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs);
+    if (item.kind === 'bgm') { this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs); }
     else await this.player.playSfx(audio.bytes, audio.mime);
   }
   /** BGM for a reply's tags; free word matching first. Returns the key that plays. */

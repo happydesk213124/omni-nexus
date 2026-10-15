@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 test('restricted SafeDOM host binds module buttons, honors five slots, stop interlock and cross-message cache',async()=>{
-  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';Object.assign(window,{cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
+  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';import {omniSound} from './src/services/sound-runtime';import {soundData} from './src/storage/sound-store';Object.assign(window,{cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings,omniSound,soundData});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage(),errors=[];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
@@ -148,6 +148,33 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(await page.locator('[x-omnitts-viewer] button').count(),1);
     await page.locator('[data-tts-control="minimize"]').click();
     await page.waitForFunction(()=>!window.ttsData().settings.minimized);
+    // BGM bar: the header ♪ opens it above the header, which stays where it was.
+    await page.waitForTimeout(450);
+    const headBefore=await page.locator('[data-tts-header]').boundingBox();
+    await page.locator('[data-tts-control="bgm"]').click();
+    await page.waitForFunction(()=>window.soundData().settings.viewerBgm&&document.querySelector('[data-tts-bgm]'));
+    const bar=await page.locator('[data-tts-bgm]').boundingBox(),headOpen=await page.locator('[data-tts-header]').boundingBox();
+    assert.ok(Math.abs(headOpen.y-headBefore.y)<=2,'opening the BGM bar keeps the header in place');
+    assert.ok(Math.abs(bar.y+bar.height-headOpen.y)<=2,'the bar sits right above the header');
+    assert.equal(await page.locator('[data-tts-control="bgm-power"]').textContent(),'OFF');
+    await page.locator('[data-tts-control="bgm-power"]').click();
+    await page.waitForFunction(()=>window.soundData().settings.bgmEnabled&&document.querySelector('[data-tts-control="bgm-power"]')?.textContent==='ON');
+    await page.evaluate(()=>{window.toggledBgm=0;window.omniSound.toggleBgm=async()=>{window.toggledBgm++;};});
+    await page.locator('[data-tts-control="bgm-play"]').click();
+    await page.waitForFunction(()=>window.toggledBgm===1);
+    // Dragging with the bar open stores the header's top, so the viewer does not creep upward.
+    await page.waitForTimeout(450);
+    const grab=await page.locator('[data-tts-header]').boundingBox(),anchorBefore=await page.evaluate(()=>window.ttsData().settings.viewerAnchor);
+    await page.mouse.move(grab.x+grab.width/2,grab.y+grab.height/2);await page.mouse.down();await page.waitForTimeout(80);await page.mouse.move(grab.x+grab.width/2-20,grab.y+grab.height/2+40,{steps:6});await page.mouse.up();
+    await page.waitForFunction(a=>JSON.stringify(window.ttsData().settings.viewerAnchor)!==JSON.stringify(a),anchorBefore);
+    await page.waitForTimeout(150);
+    const dropped=await page.locator('[data-tts-header]').boundingBox(),stored=await page.evaluate(()=>window.ttsData().settings.viewerAnchor);
+    assert.ok(Math.abs(dropped.y-(grab.y+40))<=4,'the header lands where it was dropped');
+    assert.ok(Math.abs(stored.top-dropped.y)<=3,'the stored anchor is the header top, not the bar top');
+    await page.waitForTimeout(450);
+    await page.locator('[data-tts-control="bgm"]').click();
+    await page.waitForFunction(()=>!window.soundData().settings.viewerBgm&&!document.querySelector('[data-tts-bgm]'));
+    assert.ok(Math.abs((await page.locator('[data-tts-header]').boundingBox()).y-dropped.y)<=2,'closing the bar keeps the header too');
     const moduleWrites=await page.evaluate(()=>window.moduleWrites);
     await page.evaluate(async tail=>{
       await window.updateTtsSettings({prefetch:0,narration:false,narrationVoice:window.ttsData().voices[0].key});

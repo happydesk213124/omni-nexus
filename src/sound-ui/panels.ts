@@ -12,12 +12,21 @@ export const SOUND_TABS = [
   ['sound-settings', '설정'], ['sound-bgm', 'BGM 목록'], ['sound-sfx', '효과음 목록'], ['sound-glossary', '효과음 용어집'],
 ] as const;
 
+/** Same structure and classes as the TTS voice list, so its rules (copied by id) apply. */
 function library(kind: 'bgm' | 'sfx', title: string): string {
+  const id = (part: string) => `snd-${kind}-${part}`;
   return `<section class="panel" id="sound-${kind}" role="tabpanel" hidden>
-<div class="voice-command-bar"><div class="voice-search-wrap"><input id="snd-${kind}-search" placeholder="이름·태그 검색" aria-label="${title} 검색" maxlength="200"></div>
-<span id="snd-${kind}-count"></span><div class="actions voice-tools"><button type="button" id="snd-${kind}-delete" class="danger" disabled>선택 삭제</button><button type="button" class="primary" id="snd-${kind}-add">+ ${title}</button></div></div>
-<div class="voice-explorer"><aside class="voice-folders"><div class="folder-heading"><b>폴더</b><button type="button" id="snd-${kind}-folder-add" title="폴더 만들기">+</button></div><div id="snd-${kind}-folders"></div></aside>
-<div class="voice-list" id="snd-${kind}-list" role="listbox" aria-multiselectable="true"></div></div></section>`;
+<div class="voice-command-bar"><div class="voice-search-wrap"><input id="${id('search')}" placeholder="이름·태그 검색 ( | 또는, &amp; 모두 )" aria-label="${title} 검색" maxlength="500"><button id="${id('search-clear')}" type="button" hidden aria-label="검색 비우기" title="검색 비우기">×</button></div>
+<select id="${id('filter')}" aria-label="등록 방식 필터"><option value="all">전체</option><option value="url">주소</option><option value="asset">파일</option></select>
+<select id="${id('sort')}" aria-label="${title} 정렬"><option value="added">추가순</option><option value="name">이름순</option><option value="size">크기순</option></select>
+<span id="${id('count')}"></span><span class="badge" id="${id('total')}" hidden></span>
+<div class="actions voice-tools"><button class="primary" id="${id('add')}">+ ${title}</button><details class="file-menu"><summary>파일 ⋯</summary><div><button id="${id('import')}">JSON 가져오기</button><button id="${id('export')}">JSON 내보내기</button></div></details></div>
+<input type="file" id="${id('file')}" accept=".json,application/json" hidden></div>
+<div class="voice-explorer"><aside class="voice-folders"><div class="folder-heading"><b>폴더</b><button id="${id('folder-toggle')}" type="button" aria-expanded="false">폴더 ▾</button><button id="${id('folder-add')}" title="폴더 만들기" aria-label="폴더 만들기">＋</button></div>
+<nav id="${id('folders')}" aria-label="${title} 폴더"></nav><button id="${id('folder-edit')}" disabled>폴더 관리</button></aside>
+<div class="voice-browser"><div class="voice-selection-bar"><button id="${id('multi')}" type="button" aria-pressed="false">다중선택</button><span id="${id('selected-count')}" role="status">선택 없음</span>
+<button id="${id('select-all')}">전체 선택</button><button id="${id('clear')}" disabled>선택 해제</button><button id="${id('edit')}" disabled>수정</button><button id="${id('move')}" disabled>폴더 이동</button><button id="${id('delete')}" class="danger" disabled>삭제</button></div>
+<div id="${id('list')}" class="voice-list" role="listbox" aria-label="${title} 선택" aria-multiselectable="true"></div></div></div></section>`;
 }
 
 export const SOUND_PANELS = `<div class="workspace" id="sound-controls">
@@ -49,7 +58,7 @@ ${library('sfx', '효과음')}
 <div class="group"><h3>미등록 용어</h3><small>규칙에 걸렸지만 용어집에 없는 말이 여기에 모입니다. 효과음을 고르면 용어집에 추가됩니다.</small><div id="snd-unknown"></div></div>
 </section></div>`;
 
-export const SOUND_DIALOG = `<dialog id="snd-item-dialog" class="editor-sheet"><form id="snd-item-form"><div class="dialog-head"><span id="snd-item-title">추가</span></div><div class="editor-scroll"><div class="fields">
+export const SOUND_DIALOG = `<dialog id="snd-move-dialog"><h2>폴더 이동</h2><label class="field"><span>옮길 폴더</span><select id="snd-move-target"></select></label><div class="dialog-actions"><button type="button" id="snd-move-cancel">취소</button><button type="button" id="snd-move-confirm" class="primary">이동</button></div></dialog><dialog id="snd-item-dialog" class="editor-sheet"><form id="snd-item-form"><div class="dialog-head"><span id="snd-item-title">추가</span></div><div class="editor-scroll"><div class="fields">
 <label class="field full"><span>이름</span><input id="snd-item-name" maxlength="120"></label>
 <label class="field full"><span>태그 · 쉼표로 구분</span><input id="snd-item-tags" maxlength="500" placeholder="tense, chase, fast"></label>
 <label class="field"><span>폴더</span><select id="snd-item-folder"></select></label>

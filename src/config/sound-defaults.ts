@@ -7,7 +7,7 @@ export function soundDefaults(): SoundSettings {
     bgmMatcher: 'auto', sfxMatcher: 'auto', bgmTags: [...BGM_TAGS], bgmPrompt: true,
     // The common `§덜컹§` style; more rules can be added in settings.
     sfxRules: [{ id: 'section-sign', name: '§ 효과음 §', pattern: '§([^§\\n]{1,60})§', flags: '', enabled: true }],
-    sfxAutoPlay: 'reply', listBgm: true, listSfx: true, maxFileMb: 8,
+    sfxAutoPlay: 'reply', listBgm: true, listSfx: true, viewerBgm: false, maxFileMb: 8,
   };
 }
 export function emptySoundData(): SoundData {
