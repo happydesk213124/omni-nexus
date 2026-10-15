@@ -36,7 +36,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
         async getBoundingClientRect(){return this.node.getBoundingClientRect().toJSON();}
         async addEventListener(type,fn,options){if(!['click','pointerenter','pointerdown','pointermove','pointerup','pointercancel','mouseover','keydown','scroll'].includes(type))throw Error('Unsupported host event '+type);const id=hostUUID();const cb=e=>fn({clientX:e.clientX,clientY:e.clientY,button:e.button,buttons:e.buttons,key:e.key});this.listeners.set(id,[type,cb,options]);document.addEventListener(type,cb,options);window.apiEvents.push(type);return id;}
         async removeEventListener(type,id){const x=this.listeners.get(id);if(x){document.removeEventListener(type,x[1],x[2]);this.listeners.delete(id);}}
-        async createElement(tag){if(!['div','button'].includes(tag))throw Error('Unsupported host element '+tag);return new Safe(document.createElement(tag));}
+        async createElement(tag){if(!['div','button','style'].includes(tag))throw Error('Unsupported host element '+tag);return new Safe(document.createElement(tag));}
       }
       const messages=Array.from({length:7},(_,i)=>({role:'char',chatId:'m'+i,data:`하린 (happy): "대사 ${i}."`}));messages.push({...messages[0],chatId:'duplicate'});
       window.messages=messages;window.contextReady=false;document.body.innerHTML='<div class="default-chat-screen">'+messages.map(m=>'<p>'+m.data+'</p>').join('')+'</div>';
@@ -186,11 +186,20 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     },tail('narration'));
     const narrationButton=page.locator('[data-chat-index="8"] [data-omnitts-kind="narration"]');
     const shown=()=>window.narrationNode.getAttribute('x-omnitts-bound')&&getComputedStyle(window.narrationNode).display!=='none';
-    await page.waitForFunction(()=>window.narrationNode.getAttribute('x-omnitts-bound')&&window.narrationNode.style.display==='none');
-    assert.equal(await page.evaluate(()=>document.body.hasAttribute('x-omnitts-narration')),false,'the plugin hides the control itself, not through a module rule');
+    await page.waitForFunction(()=>window.narrationNode.getAttribute('x-omnitts-bound')&&getComputedStyle(window.narrationNode).display==='none');
+    const narrationRules=()=>[...document.querySelectorAll('body > style')].filter(n=>n.textContent.includes('data-omnitts-kind="narration"')).length;
+    assert.equal(await page.evaluate(narrationRules),1,'OFF is one plugin <style> outside the chat');
+    assert.equal(await page.evaluate(()=>document.body.hasAttribute('x-omnitts-narration')),false,'not a module rule or a page attribute');
+    assert.equal(await page.evaluate(()=>window.narrationNode.style.display),'','the control itself is left alone');
     assert.equal(await narrationButton.count(),1,'OFF retains the module button in DOM on its first scan');
+    assert.equal(await page.evaluate(tail=>{
+      // A streamed chunk redraws the line: the new button must be hidden before any scan can run.
+      const p=document.createElement('p');p.innerHTML=DOMPurify.sanitize(`다음 줄.${tail}`);document.querySelector('[data-chat-index="8"]').append(p);
+      const display=getComputedStyle(p.querySelector('[data-omnitts-play]')).display;p.remove();return display;
+    },tail('narration')),'none','a redrawn narration button never flashes');
     await page.evaluate(()=>window.updateTtsSettings({narration:true}));
     await page.waitForFunction(shown);
+    assert.equal(await page.evaluate(narrationRules),0,'ON removes the rule');
     assert.equal(await narrationButton.evaluate(n=>n===window.narrationNode),true,'ON restores the same button without rerendering chat');
     await narrationButton.click();await page.waitForFunction(()=>window.omniTts.player.status==='loading');
     await page.evaluate(()=>window.updateTtsSettings({narration:false}));

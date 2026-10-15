@@ -117,6 +117,22 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#tab-sound-settings').click();
     await page.locator('#snd-rule-test').fill('§덜컹! 덜컹!§');
     assert.match(await page.locator('#snd-rule-result').textContent(), /덜컹! 덜컹!」 → 문 쾅/);
+    // A rule is two marks, no regex: what the user types is what the chat matches.
+    const rule = page.locator('#snd-rules .snd-rule').first();
+    assert.equal(await rule.locator('.snd-rule-pattern, .snd-rule-flags').count(), 0, 'no regex or flag field');
+    await rule.locator('.snd-rule-open').fill('[['); await rule.locator('.snd-rule-open').dispatchEvent('change');
+    await rule.locator('.snd-rule-close').fill(']]'); await rule.locator('.snd-rule-close').dispatchEvent('change');
+    await page.waitForFunction(() => window.soundData().settings.sfxRules[0].open === '[[' && window.soundData().settings.sfxRules[0].close === ']]');
+    await page.locator('#snd-rule-test').fill('[[덜컹! 덜컹!]]');
+    assert.match(await page.locator('#snd-rule-result').textContent(), /덜컹! 덜컹!」 → 문 쾅/, 'the example follows the new marks');
+    await rule.locator('.snd-rule-close').fill(''); await rule.locator('.snd-rule-close').dispatchEvent('change');
+    await page.waitForFunction(() => /모두 넣어/.test(document.querySelector('#snd-rules .snd-rule-error')?.textContent || ''));
+    assert.equal(await page.evaluate(() => window.soundData().settings.sfxRules[0].close), ']]', 'an empty mark is not saved');
+    // Under the instruction switch: whether the chat model's last request carried it.
+    await page.evaluate(() => { Object.assign(window.soundData().settings, { sfxEnabled: true, sfxCue: true }); window.__OMNI_INLINE_TAGS__ = { status: () => ({ registered: 'yes' }), cues: () => ({ at: Date.now(), tts: true, bgm: true, sfx: false }) }; });
+    await page.waitForFunction(() => /효과음 지시가 빠졌습니다[\s\S]*로어북 토큰 한도/.test(document.getElementById('snd-sfx-cue-status')?.textContent || ''), null, { timeout: 5000 });
+    await page.evaluate(() => { window.__OMNI_INLINE_TAGS__.cues = () => ({ at: Date.now(), tts: true, bgm: true, sfx: true }); });
+    await page.waitForFunction(() => /효과음 지시가 들어갔습니다/.test(document.getElementById('snd-sfx-cue-status')?.textContent || ''), null, { timeout: 5000 });
 
     // The shared model page opens on its own and is usable while TTS is off.
     await openPage('models');

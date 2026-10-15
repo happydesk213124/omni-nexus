@@ -9,6 +9,7 @@ import { effectiveComicLlmBatch } from '../domain/comic/params';
 import { formatPrevLocationLine } from '../domain/tagging/location';
 import { authorNoteSystemContent } from '../domain/tagging/session-note';
 import { isOwnLlmRequest } from '../providers/llm/own-requests';
+import { auditCues, lastCueAudit } from './cue-audit';
 import { loadTaggerRoster } from './characters';
 import { getConfig } from './context';
 import { getPrompt } from './settings';
@@ -159,6 +160,8 @@ async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<Open
   try {
     if (disposed) return messages;
     await settingsReady().catch(() => {});
+    // The only hook that sees the chat model's prompt: also note which of our instructions made it in.
+    if (mode === 'model' && Array.isArray(messages) && !isOwnLlmRequest(messages)) auditCues(messages);
     if (!inlineTagsOn()) {
       if (mode === 'model') noteRequest(getConfig().card?.power === false ? 'off · power' : `off · switch (${String(getConfig().card?.stream_inline_tags)})`);
       return messages;
@@ -185,7 +188,7 @@ export async function installInlineTags(opts: { ready?: () => Promise<unknown> }
   if (installed) return;
   installed = true;
   if (opts.ready) settingsReady = opts.ready;
-  Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); }, status: inlineTagStatus });
+  Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); }, status: inlineTagStatus, cues: lastCueAudit });
   const host = risuHost();
   if (typeof host?.addRisuReplacer !== 'function') { status.registered = 'no'; dbg('inline-tags.replacer', { message: 'unavailable on this Risu' }, 'warn'); return; }
   // Risu asks for the 'replacer' permission here; a refusal registers nothing and

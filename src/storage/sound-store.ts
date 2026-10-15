@@ -2,6 +2,7 @@ import type { SfxRule, SfxTerm, SoundData, SoundItem, SoundKind, SoundSettings }
 import { emptySoundData, soundDefaults } from '../config/sound-defaults';
 import { psGet, psSet } from './device-store';
 import { soundTags } from '../domain/sound/tags';
+import { sfxMarksFromPattern, sfxMarksProblem } from '../domain/sound/audio';
 
 /** BGM and effect lists, glossary and settings. Files live in the two sound modules. */
 export const SOUND_DATA_KEY = 'omnisound.data';
@@ -37,7 +38,11 @@ function item(raw: unknown, kind: SoundKind): SoundItem | null {
 function rule(raw: unknown): SfxRule | null {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const id = text(r.id, 80);
-  return id ? { id, name: text(r.name, 80) || '규칙', pattern: text(r.pattern, 500), flags: text(r.flags, 8).replace(/[^imsu]/g, ''), enabled: r.enabled !== false } : null;
+  if (!id) return null;
+  // A rule saved as a regex (before marks) keeps the marks it was written around.
+  const open = typeof r.open === 'string' ? r.open : '', close = typeof r.close === 'string' ? r.close : '';
+  const marks = !sfxMarksProblem(open, close) ? { open, close } : sfxMarksFromPattern(typeof r.pattern === 'string' ? r.pattern : '');
+  return { id, name: text(r.name, 80) || '규칙', ...marks, enabled: r.enabled !== false };
 }
 function term(raw: unknown): SfxTerm | null {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;

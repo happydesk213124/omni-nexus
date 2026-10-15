@@ -145,6 +145,19 @@ test('streaming tag rules reach only the chat model: after the first message, on
   assert.deepEqual(f.api.placeInlineTagPrompts(chat,rules,'# state').map(m=>m.content===rules?'RULES':m.content),['main prompt','RULES','hi','hello','# state','go'],'the chat state goes last, before the newest user turn');
 });
 
+test('the request hook notes which of our lorebook instructions reached the chat model, switch on or off',async()=>{
+  const f=await fixture();f.api.getConfig().card.stream_inline_tags=false;
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();const cues=()=>globalThis.__OMNI_INLINE_TAGS__.cues();
+  assert.equal(cues(),null,'nothing seen yet');
+  await replacer([{role:'system',content:'main'},{role:'system',content:'<OmniTTS>\nx\n</OmniTTS>\n<OmniBGM>\ny\n</OmniBGM>'},{role:'user',content:'go'}],'model');
+  assert.deepEqual({...cues(),at:0},{at:0,tts:true,bgm:true,sfx:false},'the effect instruction was cut: the settings can say so');
+  await replacer([{role:'system',content:[{type:'text',text:'<OmniSFX>\nz\n</OmniSFX>'}]},{role:'user',content:'go'}],'model');
+  assert.equal(cues().sfx,true,'array content counts too');
+  await replacer([{role:'user',content:'translate'}],'submodel');
+  assert.equal(cues().sfx,true,'other model calls are not the chat reply');
+});
+
 test('a chat request that comes before the settings load waits for them, instead of reading the switch as off',async()=>{
   const f=await fixture();
   let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};

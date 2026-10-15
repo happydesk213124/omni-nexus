@@ -31,6 +31,10 @@ const GUARDED = '(\\uF8F0[^\\uF8F1]*\\uF8F1)';
 const PROSE_START = '(?=[ \\t]{0,3}[^\\s#|>`~!])';
 // Digits and symbols alone ([00:10… 00:09…]) are never read aloud.
 const HAS_WORD = '(?=(?:[^\\n<>]|<[^<>\\n]*>)*?\\p{L})';
+// A BGM marker line is never read (segment.ts). The BGM module turns a finished
+// one into ♪ first; one still streaming in (`[[bgm:calm, ca`) would otherwise get
+// a control nobody can bind, which the plugin then hides: a flash on every chunk.
+const NO_BGM_CUE = '(?![^\\n]*\\[\\[[Bb][Gg][Mm]:)';
 const LINE_END = `((?:${CLOSE}[ \\t]*)*)([ \\t\\r]*)(?=\\n|$)`;
 const HEADER_PREFIX = `([ \\t]*(?:${OPEN}[ \\t]*)*)((?:[\\p{Extended_Pictographic}\\uFE0F\\u200D*][ \\t]*)*)`;
 const SPEAKER = '([^\\n<>:："“”‘’「」『』(){}\\[\\]|#!*]{1,80}?)\\**';
@@ -45,6 +49,9 @@ function exclusion(text: string): string {
   const terms = ttsExcludeTerms(text).map(regexLiteral);
   return terms.length ? `(?![^\\n]*?(?:${terms.join('|')}))` : '';
 }
+
+/** Placed outside the chat by the plugin while narration is OFF; never part of the module. */
+export const TTS_NARRATION_OFF_CSS = '[data-omnitts-play][data-omnitts-kind="narration"]{display:none!important}';
 
 export const TTS_MODULE_CSS = [
   // A zero-size inline anchor: wrapping, line height and spacing are exactly
@@ -69,7 +76,7 @@ export const TTS_MODULE_CSS = [
 
 export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly'>>) {
   const excluded = exclusion(settings.excludeText || '');
-  const head = `${GUARDED}|(^|\\n)${PROSE_START}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
+  const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
   const imageCss = `[data-omnitts-image]{display:${settings.illustration ? 'flex' : 'none'};align-items:center;gap:6px;max-width:100%;overflow-x:auto}[data-omnitts-image] [data-omnitts-cast]{display:flex;gap:6px}[data-inlay-inline-shot]:has(>[data-omnitts-image]){display:flex!important;flex-direction:column}[data-omnitts-image]{order:10;justify-content:flex-start;margin-top:8px;min-height:40px}[data-omnitts-image] [data-omnitts-play]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 4px;margin-left:0;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e3fff0;cursor:pointer}[data-omnitts-image] [data-omnitts-play]:hover{background:#219c63;border-color:#9effcc}`;
   const hide = (flags: string, order: number, tone: boolean, out: string) => ({
     comment: tone ? 'omnitts-hide-cue-tone' : 'omnitts-hide-cue-name', type: 'editdisplay', ableFlag: true, flag: `${flags}<order ${order}>`,

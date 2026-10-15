@@ -44,14 +44,14 @@ ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
 <div class="tts-settings-column"><div class="group"><h3>효과음</h3>
 ${row('효과음 사용', sw('snd-sfx-enabled', '효과음 사용'), '켜면 ⚛️ omni 효과음 모듈이 설치되고 규칙에 걸린 말에 회색 ▶ 버튼이 붙습니다.')}
 ${row('효과음 볼륨', range('snd-sfx-volume', '효과음 볼륨'))}
-${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과음 표시 요청'), '소리가 나는 곳에 §쾅§처럼 쓰게 합니다(답변당 최대 5개). 기본 § 규칙이 켜져 있을 때만 보냅니다.')}
+${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과음 표시 요청'), '소리가 나는 곳에 §쾅§처럼 쓰게 합니다(답변당 최대 5개). 켜진 첫 규칙의 앞·뒤 글자로 씁니다.<br><span id="snd-sfx-cue-status"></span>')}
 ${row('TTS 목록·이어 읽기에 효과음', sw('snd-list-sfx', 'TTS 목록·이어 읽기에 효과음'), 'TTS 뷰어 목록에 ▶ 줄이 생기고, 이어 읽다가 그 줄에 오면 효과음을 틀고 끝나면 다음 대사로 넘어갑니다.')}
 ${row('자동 재생', `<select id="snd-sfx-auto" aria-label="효과음 자동 재생"><option value="reply">새 답변 · 이어 읽기 중</option><option value="button">버튼을 눌렀을 때만</option></select>`)}
 ${row('효과음 고르는 방식', matcher('snd-sfx-matcher'))}
 ${row('맞는 효과음이 없으면 ElevenLabs로 만들기', sw('snd-sfx-autocreate', '맞는 효과음이 없으면 ElevenLabs로 만들기'), 'JEV·LLM이 "맞는 게 없다"고 답한 말만 만듭니다(유료). 만든 효과음은 「자동 생성」 폴더와 용어집에 들어갑니다.')}
 <label class="field full"><span>생성 프롬프트 · {word} 자리에 효과음 말(영어)이 들어갑니다</span><input id="snd-sfx-prompt" maxlength="400"></label>
 ${row('생성 길이', `<div class="control"><input id="snd-sfx-duration" type="number" min="0" max="30" step="0.5" aria-label="생성 길이 초" style="width:72px"><span>초 · 0이면 자동</span></div>`)}
-<div class="field full"><span>효과음 규칙 · 정규식 (첫 괄호가 효과음 말)</span><div id="snd-rules"></div><div class="actions"><button type="button" id="snd-rule-add">+ 규칙</button></div></div>
+<div class="field full"><span>효과음 규칙 · 앞 글자와 뒤 글자 사이의 말이 효과음 (예: § 와 § → §쾅§)</span><div id="snd-rules"></div><div class="actions"><button type="button" id="snd-rule-add">+ 규칙</button></div></div>
 <label class="field full"><span>규칙 테스트 · 예시 문장</span><textarea id="snd-rule-test" rows="2" placeholder="§덜컹! 덜컹! 와르르──!§"></textarea><small id="snd-rule-result"></small></label>
 </div><div class="group"><h3>파일</h3>
 ${row('파일 최대 크기', `<div class="control"><input id="snd-max-mb" type="number" min="1" max="50" aria-label="파일 최대 크기 MB" style="width:72px"><span>MB</span></div>`, '파일은 모듈에 저장되어 저장 파일·동기화 크기가 늘어납니다. 큰 곡은 주소로 등록하세요.')}
