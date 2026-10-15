@@ -1,5 +1,5 @@
 import { SOUND_PANELS, SOUND_TABS } from './panels';
-import { SOUND_PAGE_TABS, SOUND_PAGE_TITLES, soundPage } from './page';
+import { SOUND_PAGE_TABS, markSoundNav, soundPage } from './page';
 import { SOUND_PAGE_CSS, voiceListCssFor } from './style';
 import layout from '../tts-ui/layout.json';
 
@@ -59,6 +59,5 @@ export function applySoundPage(root: HTMLElement, tab: (name: string) => void): 
   const open = [...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id;
   markSoundPage(root, open);
   tab([...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)!.id);
-  const line = document.getElementById('nx-version-line');
-  if (line) line.textContent = SOUND_PAGE_TITLES[soundPage()];
+  markSoundNav('curation');
 }
