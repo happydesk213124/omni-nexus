@@ -66,7 +66,7 @@ function renderTest(): void {
 
 export function bindSoundSettings(): void {
   const s = soundData().settings;
-  for (const [id, key] of [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim']] as const) {
+  for (const [id, key] of [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst']] as const) {
     input(id).checked = s[key];
     el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: input(id).checked } as Partial<SoundSettings>)));
   }

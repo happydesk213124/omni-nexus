@@ -85,7 +85,7 @@ export class OmniSoundRuntime {
     this.player.configure({ bgmVolume: s.bgmVolume, sfxVolume: s.sfxVolume, duck: s.duck });
     if (!s.bgmEnabled) this.player.stopBgm();
     // Module writes rewrite the whole Risu module list: only when what they hold changed.
-    const data = soundData(), wanted = JSON.stringify([s.bgmEnabled, s.sfxEnabled, s.bgmPrompt, s.sfxCue, s.bgmTags, s.sfxRules,
+    const data = soundData(), wanted = JSON.stringify([s.bgmEnabled, s.sfxEnabled, s.bgmPrompt, s.sfxCue, s.sfxFirst, s.bgmTags, s.sfxRules,
       data.bgm.filter(i => i.source === 'asset').map(i => i.assetPath), data.sfx.filter(i => i.source === 'asset').map(i => i.assetPath)]);
     if (wanted === this.lastModule) return;
     clearTimeout(this.moduleTimer);

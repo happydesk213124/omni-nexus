@@ -44,6 +44,8 @@ export interface SoundSettings {
   sfxAutoPlay: 'reply' | 'button';
   /** Longest effect in seconds (a longer one fades out there); 0 plays it to the end. */
   sfxMaxSec: number;
+  /** ▶ goes on before any other module restyles the effect marks (see SOUND_DISPLAY_ORDER). */
+  sfxFirst: boolean;
   /** Skip the silence before and after each effect. */
   sfxTrim: boolean;
   /** Level every effect to the same loudness, like TTS's automatic loudness. */
