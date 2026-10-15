@@ -15,7 +15,7 @@ import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type H
 import { withTtsAudio } from './activation';
 import { installTtsViewer } from './host-viewer';
 
-interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; styled?: boolean; state?: string; sound?: boolean }
+interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; styled?: boolean; state?: string; sound?: boolean; effect?: boolean }
 /** BGM markers and effect words become rows of their own while that sound is on. */
 function soundCues(): TtsSoundCues | undefined {
   if (!soundReady()) return undefined;
@@ -84,7 +84,8 @@ export async function installTtsHost(): Promise<void> {
       const active = status === 'loading' || status === 'playing' || status === 'paused' ? status : '';
       for (const b of bindings.values()) {
         if (disposed) return;
-        if (b.sound) continue;
+        // ♪ never plays through the voice player; ▶ does, like a line.
+        if (b.sound && !b.effect) continue;
         const mine = !!active && !!current && !!b.messageId && b.messageId === current.messageId && (b.illustration || b.line === current.segment.id);
         const want = mine ? active : '';
         if ((b.state || '') !== want) { b.state = want; await b.node.setAttribute('x-omnitts-state', want); }
@@ -102,17 +103,30 @@ export async function installTtsHost(): Promise<void> {
     await withTtsAudio(()=>omniTts.play(list,index,reservation),reservation);
     if (['error','blocked'].includes(omniTts.player.status) && omniTts.notice) flash(omniTts.notice);
   };
-  /** A ♪ / ▶ in the chat plays its own cue directly; it never stops or moves TTS reading. */
-  const bindSound = async (node: SafeElement, request: TtsRequest | undefined): Promise<string> => {
+  /**
+   * ♪ changes the music and leaves reading alone (BGM plays under the voice). ▶ is
+   * a line of the TTS list: it plays through the voice player, takes over from what
+   * is playing, shows the same states and continues reading. With TTS off it still
+   * plays, on the effect channel.
+   */
+  const bindSound = async (node: SafeElement, request: TtsRequest | undefined, message: number): Promise<string> => {
     let key = await node.getAttribute('x-omnitts-bound');
     if (!key || !bindings.has(key)) { key = uuid(); await node.setAttribute('x-omnitts-bound',key); bindings.set(key,{node,play:async()=>{},chips:[],message:-1,messageId:'',line:'',source:'',illustration:false,narration:false,sound:true}); }
     else await releaseHost(node);
     const b = bindings.get(key)!;
-    b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.dead = !request;
+    b.message = message; b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.dead = !request; b.effect = request?.segment.kind === 'sfx';
     b.play = async () => {
       const segment = request?.segment; if (!segment) return;
-      if (segment.kind === 'bgm') { if (!await omniSound.playBgmForTags(segment.tags || [])) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); }
-      else if (!await omniSound.playSfxWord(segment.text, segment.context || '')) throw new Error(`「${segment.text}」에 맞는 효과음이 없습니다. 효과음 용어집에서 지정해 주세요.`);
+      if (segment.kind === 'bgm') { if (!await omniSound.playBgmForTags(segment.tags || [])) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); return; }
+      if (ttsData().settings.enabled) {
+        const reservation = omniTts.reservePlayback();
+        const shown = anchored.get(b.message), list = shown?.some(r => r.segment.id === b.line) ? shown : requests(await currentTtsContext(), b.message);
+        const index = list.findIndex(r => r.segment.kind === 'sfx' && r.segment.id === b.line);
+        if (index < 0) throw new Error('이 효과음의 원문을 찾지 못했습니다. 메시지가 바뀌었다면 잠시 후 다시 눌러 주세요.');
+        await withTtsAudio(async () => { if (!await omniTts.playEffect(list, index)) throw new Error(omniTts.notice || `「${segment.text}」에 맞는 효과음이 없습니다.`); }, reservation);
+        return;
+      }
+      if (!await omniSound.playSfxWord(segment.text, segment.context || '')) throw new Error(`「${segment.text}」에 맞는 효과음이 없습니다. 효과음 용어집에서 지정해 주세요.`);
     };
     return key;
   };
@@ -181,7 +195,7 @@ export async function installTtsHost(): Promise<void> {
           const order = { bgm: 0, sfx: 0 };
           for (const node of sounds) {
             const kind = await node.matches('[data-omni-bgm]') ? 'bgm' : 'sfx';
-            live.add(await bindSound(node, cuesOf(kind)[order[kind]++]));
+            live.add(await bindSound(node, cuesOf(kind)[order[kind]++], index));
           }
           if (!nodes.length) continue;
           const matches = matchTtsAnchors(ttsAnchorTexts(html), list.map(r => r.segment));

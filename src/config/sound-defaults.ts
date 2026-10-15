@@ -8,7 +8,7 @@ export function soundDefaults(): SoundSettings {
     // The common `§덜컹§` style; more rules can be added in settings.
     sfxRules: [{ id: 'section-sign', name: '§ 효과음 §', open: '§', close: '§', enabled: true }],
     sfxCue: true,
-    sfxAutoPlay: 'reply', listBgm: true, listSfx: true, viewerBgm: false, maxFileMb: 8,
+    sfxAutoPlay: 'reply', sfxMaxSec: 6, sfxTrim: true, sfxNormalize: true, listBgm: true, listSfx: true, viewerBgm: false, maxFileMb: 8,
     elevenKey: '', sfxAutoCreate: false, sfxPrompt: '{word} sound effect, short and clean, no music, no speech', sfxDuration: 0,
   };
 }

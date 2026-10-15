@@ -42,6 +42,12 @@ export interface SoundSettings {
   sfxCue: boolean;
   /** 'reply': a new reply and continuous reading play effects; 'button': only a tap does. */
   sfxAutoPlay: 'reply' | 'button';
+  /** Longest effect in seconds (a longer one fades out there); 0 plays it to the end. */
+  sfxMaxSec: number;
+  /** Skip the silence before and after each effect. */
+  sfxTrim: boolean;
+  /** Level every effect to the same loudness, like TTS's automatic loudness. */
+  sfxNormalize: boolean;
   /** BGM cues and effects join the TTS viewer list and continuous reading. */
   listBgm: boolean;
   listSfx: boolean;

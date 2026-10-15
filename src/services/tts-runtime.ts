@@ -25,8 +25,14 @@ export interface TtsSoundCuePlayer {
   listed(segment: TtsSegment): boolean;
   /** Played on its own while reading continues; otherwise reading steps over it. */
   automatic(segment: TtsSegment): boolean;
-  /** Resolves once reading may go on (an effect has ended; a BGM change has started). */
+  /** A BGM row: resolves once the change has started (the music plays under the voice). */
   play(request: TtsRequest): Promise<void>;
+  /**
+   * An effect row as a clip. It plays through the voice player like a line: one
+   * sound at a time, stopped by ■, shown on the bar, and reading goes on when it
+   * ends. null: no effect fits the word.
+   */
+  effect(request: TtsRequest): Promise<{ bytes: ArrayBuffer; mime: string; volume: number } | null>;
 }
 interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string }
 export class OmniTtsRuntime {
@@ -149,7 +155,37 @@ export class OmniTtsRuntime {
       return this.audio(prepared[0], 0, valid);
     });
   }
+  /** An effect from its chat ▶: like tapping a line, it takes over from whatever is playing. */
+  async playEffect(requests: TtsRequest[], index: number): Promise<boolean> {
+    await this.init();
+    const request = requests[index];
+    if (!request || request.segment.kind !== 'sfx' || !this.sound) return false;
+    this.setContext(request.context);
+    return this.effect(requests, index);
+  }
+  private async effect(requests: TtsRequest[], index: number): Promise<boolean> {
+    const request = requests[index]!;
+    this.stop();
+    const ticket = this.intent;
+    this.sequence = requests; this.sequenceIndex = index; this.messageSequence = requests; this.standalone = false; this.notice = '';
+    const clip = this.sound!.effect(request).catch(error => { this.report(error); return null; });
+    let missing = false;
+    await this.player.play(JSON.stringify(['sfx', request.context.scope, request.messageId, request.segment.id, request.segment.text]), async () => {
+      const found = await clip;
+      if (ticket !== this.intent) throw new Error('재생 요청이 변경되었습니다.');
+      // Stopping first keeps the player quiet: no effect is not a playback error.
+      if (!found) { missing = true; this.player.stop(); throw new Error('no effect'); }
+      this.player.configure(1, found.volume, 0);
+      return found;
+    }, 0);
+    if (!missing || ticket !== this.intent) return !missing;
+    if (!this.notice) this.report(new Error(`「${request.segment.text}」에 맞는 효과음이 없습니다. 효과음 용어집에서 지정해 주세요.`));
+    // Reading goes on as if it had played.
+    if (ttsData().settings.enabled && ttsData().settings.continuous) await this.next(1, true);
+    return false;
+  }
   private async playCue(requests: TtsRequest[], index: number): Promise<void> {
+    if (requests[index]?.segment.kind === 'sfx') { await this.effect(requests, index); return; }
     this.stop();
     const ticket = this.intent;
     this.sequence = requests; this.sequenceIndex = index; this.messageSequence = requests; this.standalone = false; this.notice = '';

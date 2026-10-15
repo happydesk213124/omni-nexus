@@ -87,17 +87,21 @@ export class TtsPlayer {
     catch { if (ticket === this.epoch) this.emit('blocked', '설정에서 음성 재생을 활성화해 주세요.'); }
   }
   seek(seconds: number): void { if (this.audio && Number.isFinite(this.audio.duration)) this.audio.currentTime = Math.max(0, Math.min(this.audio.duration, seconds)); }
-  async play(key: string, load: () => Promise<ArrayBuffer>, gain?: number): Promise<void> {
+  /** `load` may name its type: sound effects play here too (one voice at a time, the same ■ and bar). */
+  async play(key: string, load: () => Promise<ArrayBuffer | { bytes: ArrayBuffer; mime: string }>, gain?: number): Promise<void> {
     if (this.current === key && (this.state === 'playing' || this.state === 'loading')) return;
     this.stop();
     const ticket = this.epoch;
     this.current = key; this.emit('loading');
     try {
-      const bytes = await load();
+      const loaded = await load();
       if (ticket !== this.epoch) return;
+      // Not instanceof: bytes from the host bridge are another realm's ArrayBuffer.
+      const typed = loaded as { bytes?: ArrayBuffer; mime?: unknown };
+      const { bytes, mime } = typeof typed.mime === 'string' && typed.bytes ? { bytes: typed.bytes, mime: typed.mime } : { bytes: loaded as ArrayBuffer, mime: 'audio/mpeg' };
       const audio = this.ensure();
       this.configure(this.rate, this.volume, gain ?? this.decibels);
-      this.url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+      this.url = URL.createObjectURL(new Blob([bytes], { type: mime }));
       audio.src = this.url;
       this.configure(this.rate, this.volume, gain ?? this.decibels);
       audio.onended = () => { if (ticket === this.epoch) { this.stop(); this.onEnded(key); } };

@@ -17,7 +17,22 @@ export const SOUND_DISPLAY_ORDER = { bgm: -10120, sfx: -10130 } as const;
 // TTS reads and matches against the source) carries no ♪ or ▶ of its own.
 const BUTTON = (selector: string, glyph: string, size: number) => `${selector}{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;box-sizing:border-box;width:22px;height:22px;min-width:0;min-height:0;margin:0 0 0 .3em;padding:0;`
   + `border-radius:50%;border:1px solid #9aa3b5;background:#3b4150;color:#e7eaf0;font-size:${size}px;line-height:1;cursor:pointer;box-shadow:none}${selector}::before{content:"${glyph}"}${selector}:hover{background:#525a6c}`;
-export const SOUND_MODULE_CSS: Record<SoundKind, string> = { bgm: BUTTON('[data-omni-bgm]', '♪', 12), sfx: BUTTON('[data-omni-sfx]', '▶', 9) };
+// An effect plays through the voice player like a line, so its ▶ shows the same
+// states as a TTS control (the plugin sets x-omnitts-state on both).
+const EQ = 'linear-gradient(currentColor,currentColor) 0 100%/3px 40% no-repeat,linear-gradient(currentColor,currentColor) 4.5px 100%/3px 90% no-repeat,linear-gradient(currentColor,currentColor) 9px 100%/3px 60% no-repeat';
+const SFX_STATE_CSS = [
+  '[data-omni-sfx][x-omnitts-state="loading"],[data-omni-sfx][x-omnitts-state="playing"],[data-omni-sfx][x-omnitts-state="paused"]{background:#7132f5;border-color:#d8c8ff;color:#fff}',
+  '[data-omni-sfx][x-omnitts-state="playing"]{animation:omni-sfx-pulse 1.3s ease-out infinite}',
+  '[data-omni-sfx][x-omnitts-state]:not([x-omnitts-state=""])::before{content:"";display:block;box-sizing:border-box}',
+  '[data-omni-sfx][x-omnitts-state="loading"]::before{width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:omni-sfx-spin .8s linear infinite}',
+  `[data-omni-sfx][x-omnitts-state="playing"]::before{width:12px;height:12px;background:${EQ};animation:omni-sfx-eq .9s ease-in-out infinite}`,
+  '[data-omni-sfx][x-omnitts-state="paused"]::before{width:9px;height:10px;border-width:0 3px;border-color:currentColor;border-style:solid}',
+  '@keyframes omni-sfx-spin{to{transform:rotate(360deg)}}',
+  '@keyframes omni-sfx-pulse{0%{box-shadow:0 0 0 0 #b69cffcc}100%{box-shadow:0 0 0 8px #b69cff00}}',
+  '@keyframes omni-sfx-eq{0%,100%{background-size:3px 40%,3px 90%,3px 60%}33%{background-size:3px 100%,3px 35%,3px 80%}66%{background-size:3px 55%,3px 70%,3px 25%}}',
+  '@media (prefers-reduced-motion:reduce){[data-omni-sfx][x-omnitts-state]{animation:none!important}[data-omni-sfx][x-omnitts-state]::before{animation-duration:2s!important}}',
+].join('');
+export const SOUND_MODULE_CSS: Record<SoundKind, string> = { bgm: BUTTON('[data-omni-bgm]', '♪', 12), sfx: BUTTON('[data-omni-sfx]', '▶', 9) + SFX_STATE_CSS };
 const bgmButton = '<span data-omni-bgm-tail="1"><button type="button" data-omni-bgm="1" x-omni-bgm="1" title="BGM 재생" aria-label="BGM 재생"></button></span>';
 const sfxButton = '<span data-omni-sfx-tail="1"><button type="button" data-omni-sfx="1" x-omni-sfx="1" title="효과음 재생" aria-label="효과음 재생"></button></span>';
 /** The built-in rule: § 효과음 §. */

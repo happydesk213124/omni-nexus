@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
+const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const item = (key, tags, kind = 'bgm') => ({ key, kind, name: key, tags, folder: '', source: 'url', url: `https://x.test/${key}.mp3` });
 
@@ -119,4 +119,28 @@ test('stored data is normalised: bad rows dropped, settings clamped', () => {
   const data = api.normalizeSoundData({ settings: { bgmVolume: 7, bgmMatcher: 'nope', bgmTags: [] }, bgm: [item('ok', ['a']), { key: 'x', name: 'no url', source: 'url', url: 'http://insecure' }], sfx: [{ key: 'f', name: 'file', source: 'asset' }] });
   assert.equal(data.settings.bgmVolume, 1); assert.equal(data.settings.bgmMatcher, 'auto'); assert.equal(data.settings.bgmTags.length, 30);
   assert.deepEqual(data.bgm.map(i => i.key), ['ok']); assert.deepEqual(data.sfx, [], 'a file row without its asset path is dropped');
+});
+
+test('effect clips: the silence around a sound is skipped, a long one stops at the limit, every one plays as loud', () => {
+  const rate = 1000, tone = (seconds, level, lead = 0, tail = 0) => {
+    const data = new Float32Array(Math.round((lead + seconds + tail) * rate));
+    for (let i = Math.round(lead * rate); i < Math.round((lead + seconds) * rate); i++) data[i] = level * Math.sin(i / 3);
+    return [data];
+  };
+  const all = { maxSeconds: 0, trim: false, normalize: false };
+  const padded = tone(.5, .5, 1, 2);
+  assert.deepEqual(api.sfxWindow(padded, rate, all), { start: 0, end: 3500, cut: false, gain: 1 }, 'everything off: the file as it is');
+  const trimmed = api.sfxWindow(padded, rate, { ...all, trim: true });
+  assert.ok(trimmed.start >= 980 && trimmed.start <= 1001 && trimmed.end >= 1499 && trimmed.end <= 1551, 'only a breath of the silence stays: ' + JSON.stringify(trimmed));
+  assert.deepEqual(api.sfxWindow([new Float32Array(500)], rate, { ...all, trim: true }), { start: 0, end: 500, cut: false, gain: 1 }, 'a silent file is not cut to nothing');
+  const long = api.sfxWindow(tone(120, .5), rate, { ...all, maxSeconds: 6 });
+  assert.deepEqual([long.end - long.start, long.cut], [6000, true], 'a two-minute ambience stops at six seconds');
+  const loud = api.sfxWindow(tone(1, .9), rate, { ...all, normalize: true }), quiet = api.sfxWindow(tone(1, .05), rate, { ...all, normalize: true });
+  const rms = (channels, w) => { let sum = 0; for (let i = w.start; i < w.end; i++) sum += (channels[0][i] * w.gain) ** 2; return Math.sqrt(sum / (w.end - w.start)); };
+  assert.ok(Math.abs(20 * Math.log10(rms(tone(1, .9), loud) / rms(tone(1, .05), quiet))) < 1, 'a loud and a quiet effect end up within 1 dB');
+  assert.ok(.9 * loud.gain <= .98 + 1e-9 && .05 * quiet.gain <= .98 + 1e-9, 'never past the safe peak');
+  const wav = new DataView(api.encodeSfxWav(padded, rate, { ...trimmed, cut: true }));
+  assert.equal(String.fromCharCode(wav.getUint8(0), wav.getUint8(1), wav.getUint8(2), wav.getUint8(3)), 'RIFF');
+  assert.equal(wav.getUint32(40, true), (trimmed.end - trimmed.start) * 2, 'one 16-bit channel of exactly the window');
+  assert.equal(wav.getInt16(wav.byteLength - 2, true), 0, 'a cut clip fades out to silence');
 });

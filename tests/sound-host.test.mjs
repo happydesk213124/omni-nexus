@@ -48,6 +48,11 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
         + '<p><span data-omni-bgm-tail="1"><button type="button" data-omni-bgm="1"></button></span></p>'
         + `<p>하린 (calm): “문 열어.”${tts('dialogue')}</p><p>§쾅§<span data-omni-sfx-tail="1"><button type="button" data-omni-sfx="1"></button></span>${tts('narration')}</p><p>하린 (happy): “왔다!”${tts('dialogue')}</p></div></div>`;
       const id3 = () => new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).buffer;
+      // A real effect file: 1 s of silence, a quiet 0.3 s hit, 1 s of silence (8 kHz mono).
+      window.paddedWav = () => { const rate = 8000, n = rate * 2.3, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+        w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+        for (let i = rate; i < rate * 1.3; i++) v.setInt16(44 + i * 2, Math.round(1600 * Math.sin(i / 2)), true); return b; };
+      window.blobs = []; const blobUrl = URL.createObjectURL.bind(URL); URL.createObjectURL = blob => { window.blobs.push({ type: blob.type, size: blob.size }); return blobUrl(blob); };
       window.risuai = {
         pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) },
         getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
@@ -56,13 +61,13 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
         createMutationObserver: async fn => { const o = new MutationObserver(() => fn([])); return { observe: async (t, opt) => o.observe(t.node, opt), disconnect: async () => o.disconnect() }; },
         addRisuChatListener: async (_m, fn) => { window.output = fn; }, removeRisuChatListener: async () => {}, onUnload: async () => {},
         getCharacter: async () => ({ chaId: 'c', chatPage: 0, chats: [{ id: 'chat', message: window.messages }] }),
-        nativeFetch: async url => { if (url.includes('snd.test')) return { ok: true, arrayBuffer: async () => id3() }; window.fish++; return { ok: true, arrayBuffer: async () => new Uint8Array(32).buffer }; },
+        nativeFetch: async url => { if (url.includes('snd.test/bang')) return { ok: true, arrayBuffer: async () => window.paddedWav() }; if (url.includes('snd.test')) return { ok: true, arrayBuffer: async () => id3() }; window.fish++; return { ok: true, arrayBuffer: async () => new Uint8Array(32).buffer }; },
       };
       // Every clip ends on its own a moment after it starts, so reading moves on.
       window.Audio = class { src = ''; currentTime = 0; duration = 1; loop = false; paused = true; on = {};
         addEventListener(t, f) { (this.on[t] ||= []).push(f); }
         fire(t) { const list = this.on[t] || []; this.on[t] = []; for (const f of list) f(); if (t === 'ended') this.onended?.(); }
-        async play() { this.paused = false; if (!this.loop) setTimeout(() => this.fire('ended'), 40); }
+        async play() { this.paused = false; if (!this.loop && !window.holdAudio) setTimeout(() => this.fire('ended'), 40); }
         pause() { this.paused = true; } load() {} removeAttribute() { this.src = ''; } };
       window.AudioContext = class { state = 'running'; destination = {}; currentTime = 0; async resume() {} createGain() { return { gain: { value: 1, setTargetAtTime() {}, cancelScheduledValues() {}, setValueAtTime() {}, linearRampToValueAtTime() {} }, connect(n) { return n || this; } }; } createMediaElementSource() { return { connect(n) { return n; } }; } };
     }, blockedSource);
@@ -90,18 +95,39 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
     await page.waitForFunction(() => document.querySelectorAll('[data-tts-control^="line-"]').length === 4);
     assert.deepEqual(await page.locator('[data-tts-control^="line-"]').allTextContents(), ['♪BGM · calm, cafe, slow', '하린: 문 열어.calm', '▶효과음 · 쾅', '하린: 왔다!happy']);
 
-    // Chat buttons play their own cue and leave TTS alone.
+    // ▶ is a line of the TTS list: it plays through the voice player, shows the same state, and ■ stops it.
+    const sfxId = await page.evaluate(() => window.omniTts.list[2].segment.id);
+    const sfxState = () => page.evaluate(() => document.querySelector('[data-omni-sfx]').getAttribute('x-omnitts-state') || '');
+    await page.evaluate(() => { window.holdAudio = true; });
     await page.locator('[data-omni-sfx]').click();
-    await page.waitForFunction(() => window.log.includes('sfx'));
+    await page.waitForFunction(() => document.querySelector('[data-omni-sfx]').getAttribute('x-omnitts-state') === 'playing');
+    assert.equal(await page.evaluate(() => window.omniTts.current?.segment.kind), 'sfx', 'the viewer bar follows the effect');
+    assert.notEqual(await page.evaluate(() => getComputedStyle(document.querySelector('[data-omni-sfx]'), '::before').content), '"▶"', 'the ▶ turns into the playing bars');
+    assert.equal(await page.evaluate(() => window.log.includes('sfx')), false, 'not a second channel beside the voice');
+    const clip = await page.evaluate(() => window.blobs.at(-1));
+    assert.equal(clip.type, 'audio/wav', 'the voice player gets the processed clip');
+    const seconds = (clip.size - 44) / 2 / 44100;
+    assert.ok(seconds > .3 && seconds < .42, 'the silence on both sides is gone: ' + seconds.toFixed(3) + ' s of 2.3 s');
+    await page.evaluate(() => window.omniTts.stop());
+    await page.waitForFunction(() => !document.querySelector('[data-omni-sfx]').getAttribute('x-omnitts-state') && window.omniTts.player.status === 'idle');
     await page.locator('[data-omni-bgm]').click();
     await page.waitForFunction(() => window.log.includes('bgm:cafe'));
     assert.equal(await page.evaluate(() => window.fish), 0, 'a sound button never synthesizes speech');
+    // One voice at a time: a line cuts a playing effect, an effect cuts a playing line.
+    await page.locator('[data-omni-sfx]').click();
+    await page.waitForFunction(() => document.querySelector('[data-omni-sfx]').getAttribute('x-omnitts-state') === 'playing');
+    await page.locator('[data-omnitts-kind="dialogue"]').first().click();
+    await page.waitForFunction(() => window.omniTts.current?.segment.kind === 'dialogue' && window.omniTts.player.status === 'playing');
+    assert.equal(await sfxState(), '', 'the effect stopped for the line');
+    await page.locator('[data-omni-sfx]').click();
+    await page.waitForFunction(() => window.omniTts.current?.segment.kind === 'sfx' && window.omniTts.player.status === 'playing');
+    await page.evaluate(() => { window.holdAudio = false; window.omniTts.stop(); });
 
     // Continuous reading from the ♪ row: the music changes, the line is read, the effect plays to its end, the next line.
     await page.evaluate(() => { window.omniSound.player.stopBgm(); window.log = []; });
     await page.locator('[data-tts-control="line-0"]').click();
     await page.waitForFunction(() => window.log.includes('tts:4'), undefined, { timeout: 8000 });
-    assert.deepEqual(await page.evaluate(() => window.log), ['bgm:cafe', 'tts:2', 'sfx', 'tts:4']);
+    assert.deepEqual(await page.evaluate(() => window.log), ['bgm:cafe', 'tts:2', 'tts:' + sfxId, 'tts:4'], 'the effect plays in its place, through the voice player');
 
     // Effects set to "button only": reading steps over them, a tap still plays.
     await page.evaluate(async () => { await window.updateSoundSettings({ sfxAutoPlay: 'button' }); window.log = []; });
@@ -114,7 +140,7 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
     await page.evaluate(() => window.output({ char: { chaId: 'c' }, chat: { id: 'chat' }, messageIndex: 0 }));
     await page.waitForFunction(() => window.log.includes('bgm:chase'));
 
-    // TTS off: the sound buttons still work (the chat shows the first reply again).
+    // TTS off: the sound buttons still work, on the effect channel (the chat shows the first reply again).
     await page.evaluate(async () => { window.messages[0] = { ...window.messages[0], data: window.firstReply }; await window.updateTtsSettings({ enabled: false }); document.querySelector('.risu-chat').append(document.createComment('re-render')); window.log = []; });
     await page.locator('[data-omni-sfx]').click();
     await page.waitForFunction(() => window.log.includes('sfx'));

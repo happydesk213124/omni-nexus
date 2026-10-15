@@ -8,13 +8,12 @@ import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound } from '../storage/sound-store';
 import { ensureSoundModules, readSoundAsset, storeSoundBytes } from '../storage/sound-module';
 import { omniTts, type TtsSoundCuePlayer } from './tts-runtime';
-import { sleep } from '../core/util/async';
 import { ttsData } from '../storage/tts-store';
 import { generateMusic, generateSoundEffect, englishText } from '../providers/sound/elevenlabs';
 import { chooseSfx, type SfxChoice } from '../providers/sound/choose';
+import { decodeAudio } from '../providers/sound/decode';
+import { encodeSfxWav, sfxWindow } from '../domain/sound/clip';
 
-/** Continuous reading waits for an effect this long at most before the next line. */
-const SFX_WAIT_MS = 4000;
 /** Folder for effects ElevenLabs made on its own, so they are easy to review. */
 export const AUTO_SFX_FOLDER = '자동 생성';
 
@@ -70,8 +69,13 @@ export class OmniSoundRuntime {
       await loadSoundData();
       this.sync();
       subscribeSound(() => this.sync());
-      // TTS speech lowers the music; nothing else listens for it.
-      omniTts.subscribe(() => this.player.duck(omniTts.player.status === 'playing' || omniTts.player.status === 'loading'));
+      // TTS speech lowers the music. An effect is one of the voices: the next one to
+      // speak (a line, or an effect through the voice player) cuts it.
+      omniTts.subscribe(() => {
+        const speaking = omniTts.player.status === 'playing' || omniTts.player.status === 'loading';
+        this.player.duck(speaking);
+        if (speaking) this.player.stopSfx();
+      });
       omniTts.setSoundCues(this.cues);
     })().catch(error => { this.started = undefined; throw error; });
   }
@@ -133,23 +137,52 @@ export class OmniSoundRuntime {
   async play(item: SoundItem): Promise<void> { await this.start(item); }
   /** Starts an item; `ended` settles when an effect has finished (a BGM at once). Wrapped: an async function would wait for a returned promise. */
   private async start(item: SoundItem): Promise<{ ended: Promise<void> }> {
-    const audio = await audioOf(item);
-    if (item.kind === 'bgm') { this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs); return { ended: Promise.resolve() }; }
-    return this.player.playSfx(audio.bytes, audio.mime);
+    if (item.kind === 'bgm') {
+      const audio = await audioOf(item);
+      this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs); return { ended: Promise.resolve() };
+    }
+    const clip = await this.clip(item);
+    // A preview, or ▶ with TTS off: still one voice at a time.
+    if (['playing', 'loading', 'paused'].includes(omniTts.player.status)) omniTts.stop();
+    return this.player.playSfx(clip.bytes, clip.mime);
+  }
+  private clips = new Map<string, Promise<{ bytes: ArrayBuffer; mime: string }>>();
+  /** An effect cut and levelled once per settings (silence, loudness, longest length); the bytes are the played clip. */
+  private clip(item: SoundItem): Promise<{ bytes: ArrayBuffer; mime: string }> {
+    const s = soundData().settings, options = { maxSeconds: s.sfxMaxSec, trim: s.sfxTrim, normalize: s.sfxNormalize };
+    const key = JSON.stringify([item.key, options]);
+    let job = this.clips.get(key);
+    if (!job) {
+      job = (async () => {
+        const audio = await audioOf(item);
+        try {
+          const pcm = await decodeAudio(audio.bytes);
+          return { bytes: encodeSfxWav(pcm.channels, pcm.sampleRate, sfxWindow(pcm.channels, pcm.sampleRate, options)), mime: 'audio/wav' };
+        } catch { return audio; } // This browser cannot decode it: it plays as it is, if it can play it at all.
+      })();
+      this.clips.set(key, job);
+      job.catch(() => this.clips.delete(key));
+      while (this.clips.size > 24) this.clips.delete(this.clips.keys().next().value!);
+    }
+    return job;
   }
   /**
    * Rows of the TTS list. A BGM cue switches the music and reading goes on at
-   * once (the music plays under the voice); an effect plays to its end first.
+   * once (the music plays under the voice); an effect is a clip the voice player
+   * plays like a line.
    */
   private cues: TtsSoundCuePlayer = {
     listed: segment => { if (!soundReady()) return false; const s = soundData().settings; return segment.kind === 'bgm' ? s.bgmEnabled && s.listBgm : s.sfxEnabled && s.listSfx; },
     automatic: segment => segment.kind === 'bgm' || (soundReady() && soundData().settings.sfxAutoPlay === 'reply'),
     play: async request => {
-      const segment = request.segment;
-      if (segment.kind === 'bgm') { await this.playBgmForTags(segment.tags ?? soundTags(segment.text)); return; }
-      if (!soundData().settings.sfxEnabled) return;
-      const item = await this.sfxFor(segment.text, segment.context || '');
-      if (item) await Promise.race([(await this.start(item)).ended, sleep(SFX_WAIT_MS)]);
+      if (request.segment.kind === 'bgm') await this.playBgmForTags(request.segment.tags ?? soundTags(request.segment.text));
+    },
+    effect: async request => {
+      if (!soundReady() || !soundData().settings.sfxEnabled) return null;
+      const item = await this.sfxFor(request.segment.text, request.segment.context || '');
+      if (!item) return null;
+      this.player.stopSfx();
+      return { ...(await this.clip(item)), volume: soundData().settings.sfxVolume };
     },
   };
   /** BGM for a reply's tags; free word matching first. Returns the key that plays. */
