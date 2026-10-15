@@ -40,11 +40,3 @@ export function bindSoundNav(): void {
     queueMicrotask(() => applier?.());
   }, true);
 }
-export const SOUND_PAGE_CSS = '#tts-settings-root[data-sound-page="sound"] #tts-power-controls,#tts-settings-root[data-sound-page="models"] #tts-power-controls,'
-  + '#tts-settings-root[data-sound-page="sound"] #tts-off-notice,#tts-settings-root[data-sound-page="models"] #tts-off-notice{display:none!important}'
-  + '#tts-settings-root .snd-rule,#tts-settings-root .snd-term,#tts-settings-root .snd-unknown{display:flex;gap:6px;align-items:center;flex-wrap:wrap}'
-  + '#tts-settings-root .snd-rule-error{flex-basis:100%;color:#f29da6}'
-  // Same grid and square tiles as the voice list (its rules are keyed to #voice-list).
-  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list){display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));grid-auto-rows:max-content;align-items:start;gap:9px;align-content:start;padding:8px 4px;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}'
-  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-row{width:100%;aspect-ratio:1;min-height:0;gap:4px;overflow:hidden;align-self:start;padding:10px 10px 52px}'
-  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .char-empty{grid-column:1/-1}';

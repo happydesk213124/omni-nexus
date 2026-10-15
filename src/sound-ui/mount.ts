@@ -2,7 +2,9 @@ import { SOUND_DIALOG, SOUND_PANELS, SOUND_TABS } from './panels';
 import { SoundLibrary } from './library';
 import { bindSoundSettings } from './settings';
 import { bindGlossary, renderGlossary } from './glossary';
-import { SOUND_PAGE_CSS, applySoundPage, setSoundApplier } from './page';
+import { applySoundPage, setSoundApplier } from './page';
+import { SOUND_PAGE_CSS, voiceListCssFor } from './style';
+import layout from '../tts-ui/layout.json';
 import { omniSound } from '../services/sound-runtime';
 import { el, run } from '../tts-ui/common';
 
@@ -21,7 +23,7 @@ export function injectSoundPanels(root: HTMLElement): void {
   el('tts-dialogs')?.insertAdjacentHTML('beforeend', SOUND_DIALOG);
   let style = document.getElementById('omnisound-page-style');
   if (!style) { style = document.createElement('style'); style.id = 'omnisound-page-style'; document.head.append(style); }
-  style.textContent = SOUND_PAGE_CSS;
+  style.textContent = SOUND_PAGE_CSS + voiceListCssFor(layout.css);
 }
 
 export async function mountSound(root: HTMLElement, tab: (name: string) => void, live: () => boolean): Promise<void> {
@@ -40,5 +42,10 @@ export async function mountSound(root: HTMLElement, tab: (name: string) => void,
   el('snd-item-source')?.addEventListener('change', () => active.syncSource());
   el('snd-item-save')?.addEventListener('click', () => run(() => libraries.find(l => l.kind === el('snd-item-dialog').dataset.kind)!.save().then(() => renderGlossary())));
   el('snd-item-cancel')?.addEventListener('click', () => el<HTMLDialogElement>('snd-item-dialog').close());
+  el('snd-move-cancel')?.addEventListener('click', () => el<HTMLDialogElement>('snd-move-dialog').close());
+  el('snd-move-confirm')?.addEventListener('click', () => run(async () => {
+    const library = libraries.find(l => l.kind === el('snd-move-dialog').dataset.kind);
+    await library?.moveSelected((el('snd-move-target') as HTMLSelectElement).value); el<HTMLDialogElement>('snd-move-dialog').close();
+  }));
   apply();
 }

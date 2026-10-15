@@ -22,6 +22,19 @@ export class SoundPlayer {
   get bgmKey(): string { return this.decks[this.live]?.key || ''; }
   get bgmPlaying(): boolean { const deck = this.decks[this.live]; return !!deck?.key && !deck.audio.paused; }
   get isMuted(): boolean { return this.muted; }
+  /** Paused, not stopped: the deck keeps its track and position. */
+  get bgmPaused(): boolean { const deck = this.decks[this.live]; return !!deck?.key && deck.audio.paused; }
+  get bgmProgress(): { current: number; duration: number } {
+    const audio = this.decks[this.live]?.audio;
+    return { current: audio?.currentTime || 0, duration: audio && Number.isFinite(audio.duration) ? audio.duration : 0 };
+  }
+  pauseBgm(): void { const deck = this.decks[this.live]; if (deck?.key && !deck.audio.paused) { deck.audio.pause(); this.onChange(); } }
+  async resumeBgm(): Promise<boolean> {
+    const deck = this.decks[this.live];
+    if (!deck?.key || !deck.audio.paused) return !!deck?.key;
+    await this.ensure().resume(); await deck.audio.play(); this.onChange();
+    return true;
+  }
 
   private ensure(): AudioContext {
     if (this.context) return this.context;
