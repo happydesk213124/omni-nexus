@@ -12,8 +12,10 @@ import { download, readJson, notify, run, input } from './common';
 import { bindAudioActivation, cancelAudioActivation, confirmAudioActivation, promptInitialAudioActivation } from './activation';
 import { ttsData } from '../storage/tts-store';
 import { injectSoundPanels, mountSound } from '../sound-ui/mount';
+import { soundAwareHtml } from '../sound-ui/markup';
 
-export const ttsSettingsHtml = () => layout.html;
+/** Built for the open menu page (TTS / BGM·효과음 / models) so the first paint is already right. */
+export const ttsSettingsHtml = () => soundAwareHtml(layout.html);
 export const ttsHelp = layout.help;
 export async function mountTts(): Promise<void> {
   const root = el('tts-settings-root'); if (!root || root.dataset.bound) return; root.dataset.bound = '1';
@@ -36,7 +38,7 @@ export async function mountTts(): Promise<void> {
   injectSoundPanels(root);
   for (const b of el('tts-dialogs').querySelectorAll<HTMLElement>('[data-close]')) b.addEventListener('click',event => { event.preventDefault(); dialog(b.dataset.close!,false); });
   const tab = (name: string) => { for (const panel of root.querySelectorAll<HTMLElement>('section.panel')) panel.hidden = panel.id !== name; for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) { const active = b.dataset.ttsTab === name; b.setAttribute('aria-selected',String(active)); b.tabIndex = active ? 0 : -1; } };
-  for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) b.addEventListener('click', () => tab(b.dataset.ttsTab!)); tab('tts-settings');
+  for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) b.addEventListener('click', () => tab(b.dataset.ttsTab!)); tab([...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id || 'tts-settings');
   attachTtsHelp(root); bindTtsSettings(); bindTtsConnectionTests();
   on('tts-settings-export', () => download(exportableTtsSettings(ttsData().settings), 'omnitts-settings.json'));
   on('tts-settings-import', () => input('tts-settings-file-input').click());
@@ -44,7 +46,7 @@ export async function mountTts(): Promise<void> {
     const file = input('tts-settings-file-input').files?.[0]; if (!file) return;
     await importTtsSettings(await readJson(file)); input('tts-settings-file-input').value = '';
     // Rebuild the tab from the loaded values; API keys on this device are kept.
-    const holder = document.createElement('div'); holder.innerHTML = layout.html; const fresh = holder.firstElementChild as HTMLElement;
+    const holder = document.createElement('div'); holder.innerHTML = ttsSettingsHtml(); const fresh = holder.firstElementChild as HTMLElement;
     fresh.style.cssText = root.style.cssText; root.replaceWith(fresh); await mountTts(); notify('TTS 설정을 불러왔습니다 · API 키는 그대로입니다.');
   })); const library = new TtsLibrary(tab); library.bind(); const characters = new TtsCharacters(library,tab);
   const refresh = () => { if(live()){library.render(); characters.render();} };

@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, links and files register, glossary learns words', async () => {
-  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';import {bindSoundNav} from './src/sound-ui/page';import {soundData} from './src/storage/sound-store';import {omniSound} from './src/services/sound-runtime';Object.assign(window,{mountTts,ttsSettingsHtml,settingsUxCss,previewChrome,bindSoundNav,soundData,omniSound});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', loader: { '.txt': 'text' } });
+  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';import {bindSoundNav,setSoundPage} from './src/sound-ui/page';import {soundData} from './src/storage/sound-store';import {omniSound} from './src/services/sound-runtime';Object.assign(window,{mountTts,ttsSettingsHtml,settingsUxCss,previewChrome,bindSoundNav,setSoundPage,soundData,omniSound});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', loader: { '.txt': 'text' } });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 1360, height: 900 } }), errors = [];
@@ -40,6 +40,16 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
       window.bindSoundNav(); await window.mountTts();
     });
     const tabs = () => page.locator('[data-tts-tab]:visible').allTextContents();
+    // The markup alone (before any mount script) already shows only the open page's tabs: no flash of other tabs.
+    const premount = await page.evaluate(() => ['sound', 'models', 'tts'].map(name => { window.setSoundPage(name); const box = document.createElement('div'); box.innerHTML = window.ttsSettingsHtml(); document.body.append(box);
+      const shown = [...box.querySelectorAll('[data-tts-tab]')].filter(b => b.checkVisibility()).map(b => b.textContent); const panels = [...box.querySelectorAll('section.panel')].filter(p => p.checkVisibility()).map(p => p.id); box.remove(); return [shown, panels]; }));
+    assert.deepEqual(premount, [[['설정', 'BGM 목록', '효과음 목록', '효과음 용어집'], ['sound-settings']], [['모델 설정'], ['tts-models']], [['TTS 설정', '캐릭터', '음성 목록'], ['tts-settings']]]);
+    // On a phone the open list fills the height; a hidden page's container takes none of it.
+    await page.setViewportSize({ width: 412, height: 915 });
+    const fill = async (panel) => page.evaluate(id => { const root = document.getElementById('tts-settings-root').getBoundingClientRect(), box = document.getElementById(id).getBoundingClientRect(); return Math.round(root.bottom - box.bottom); }, panel);
+    await page.locator('#tab-voices').click();
+    assert.ok(await fill('tts-voices') < 40, 'the voice list reaches the bottom of the TTS area');
+    await page.setViewportSize({ width: 1360, height: 900 });
     const openPage = async name => { await page.locator(`#nx-tabs [data-sound-page="${name}"]`).click(); };
     assert.deepEqual(await tabs(), ['TTS 설정', '캐릭터', '음성 목록'], 'the TTS page no longer carries the model tab');
 
@@ -90,6 +100,10 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#tab-sound-glossary').click();
     const unknown = page.locator('#snd-unknown .snd-unknown');
     assert.equal(await unknown.locator('b').textContent(), '덜컹! 덜컹!');
+    await page.setViewportSize({ width: 412, height: 915 });
+    assert.ok(await fill('sound-glossary') < 40, 'the glossary fills the height too');
+    await page.locator('#tab-sound-bgm').click(); assert.ok(await fill('sound-bgm') < 40, 'and the BGM list');
+    await page.locator('#tab-sound-glossary').click(); await page.setViewportSize({ width: 1360, height: 900 });
     await unknown.locator('select').selectOption({ label: '문 쾅' });
     await page.waitForFunction(() => window.soundData().glossary.length === 1 && !window.soundData().unknownTerms.length);
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('덜컹! 덜컹!')), true, 'the learned word now plays its effect');

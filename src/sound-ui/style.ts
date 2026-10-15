@@ -53,6 +53,12 @@ export function voiceListCssFor(css: string): string {
 
 /** Page rules the voice list has no counterpart for. */
 export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[data-sound-page="models"]) :is(#tts-power-controls,#tts-off-notice,#tts-controls){display:none!important}'
+  // The full-height rules give .workspace display:flex; a hidden container must still take no space.
+  + '#tts-settings-root :is(#sound-controls,#tts-controls)[hidden]{display:none!important}'
+  // The glossary fills the height and scrolls inside, like the lists.
+  + '#tts-settings-root:has(#sound-glossary:not([hidden])){display:flex;flex-direction:column;min-height:0;padding-bottom:0}'
+  + '#tts-settings-root:has(#sound-glossary:not([hidden])) #sound-controls{flex:1;min-height:0;display:flex;flex-direction:column}'
+  + '#tts-settings-root #sound-glossary:not([hidden]){flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}'
   + '#tts-settings-root .snd-rule,#tts-settings-root .snd-term,#tts-settings-root .snd-unknown{display:flex;gap:6px;align-items:center;flex-wrap:wrap}'
   + '#tts-settings-root .snd-rule-error{flex-basis:100%;color:#f29da6}'
   + '#tts-settings-root .snd-tile-time{font-size:11px;opacity:.75}';
