@@ -32,14 +32,14 @@ async function hoverAt(page, inside) {
   await page.waitForFunction(want=>fixture.api.hovered()===want,inside);
 }
 
-async function setup(page, width = 1000, cacheGallery = true, runtimeSource = runtime) {
+async function setup(page, width = 1000, cacheGallery = true, runtimeSource = runtime, opts = {}) {
   await page.setViewportSize({width,height:700});
   await page.setContent(`<style>html,body{margin:0;height:100%}.default-chat-screen{height:100vh;overflow:auto}.risu-chat{padding:20px;margin-left:390px}.shot{height:260px;margin-bottom:100px}.shot img{width:80px;height:80px}</style>
     <div class="default-chat-screen"><div class="risu-chat" data-chat-index="4" data-chat-id="message-four"><div class="chattext">
     <div class="shot" x-inlay-inline-shot="a" x-inray-asset="asset-a"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"></div>
     <div class="shot" x-inlay-inline-shot="b" x-inray-asset="asset-b"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='red'/%3E"></div>
     </div></div></div>`);
-  await page.evaluate(({runtime,cacheGallery,inspectHarness}) => {
+  await page.evaluate(({runtime,cacheGallery,inspectHarness,opts}) => {
     const wrap = n => n ? new Safe(n) : null;
     const listeners = new Map(); let serial = 0;
     const stats={bubbleRects:0,bubbleHandles:0,shotQueries:0,galleryLoads:0,floatRects:0,styleWrites:0,textWrites:0};
@@ -82,6 +82,16 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
         record.node.removeEventListener(kind,record.callback,options); listeners.delete(id);
       }
     }
+    if (opts.rounds) {
+      let pending = null; stats.rounds = 0;
+      const hop = () => pending || (stats.rounds++, pending = new Promise(resolve => setTimeout(() => { pending = null; resolve(); }, 0)));
+      for (const name of Object.getOwnPropertyNames(Safe.prototype)) {
+        if (name === 'constructor') continue;
+        const call = Safe.prototype[name];
+        Safe.prototype[name] = async function (...args) { await hop(); return call.apply(this, args); };
+      }
+      window.__hop = hop;
+    }
     const doc = wrap(document.documentElement), calls = [], targets = new Map();
     const t = {hostDoc:doc,backendSettings:{card:{floating_viewer:true,viewer_minimize_mode:'buttons'}},gallery:[]};
     let scope = {sessionId:'s',characterId:'char',chatId:'chat',charIndex:1,chatIndex:2};
@@ -89,6 +99,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
     t.gallery=cards;
     if(cacheGallery)t._galleryCache={sessionId:'s'};
     const H = async(_doc,tag,opts={}) => {
+      if (window.__hop) await window.__hop();
       const n = document.createElement(tag);
       if(opts.text) n.textContent=opts.text;
       if(opts.style) n.style.cssText=opts.style;
@@ -110,7 +121,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
       target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove(),armIdle:nxFloatArmIdle};`)(...Object.values(deps));
     window.fixture = {api,t,calls,targets,listeners,stats,scope:v=>{scope={...scope,...v};},wrap};
-  },{runtime:streamHelpers+countRuntime+runtimeSource,cacheGallery,inspectHarness});
+  },{runtime:streamHelpers+countRuntime+runtimeSource,cacheGallery,inspectHarness,opts});
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
 }
 
@@ -490,8 +501,9 @@ test('mobile header drag updates immediately and stores geometry exactly once on
     await page.evaluate(()=>fixture.api.finishMove());
     assert.equal(await page.evaluate(()=>fixture.calls.filter(c=>c[0]==='geo').length),0);
     // A one-frame glide smooths bursty input; it still moves before release.
-    await page.waitForTimeout(120);
-    const moving=await page.locator('[x-nx-float]').boundingBox();assert.ok(moving.x>60&&moving.y>50);
+    // Wait for the glide frame instead of a fixed sleep: a busy machine may need longer than 120ms.
+    await page.waitForFunction(()=>{const r=document.querySelector('[x-nx-float]').getBoundingClientRect();return r.x>60&&r.y>50;},null,{timeout:3000});
+    assert.equal(await page.evaluate(()=>fixture.calls.filter(c=>c[0]==='geo').length),0,'geometry is still not stored before release');
     await page.locator('body').dispatchEvent('pointerup',{clientX:x+80,clientY:y+60,pointerType:'touch'});
     await page.waitForFunction(()=>fixture.calls.filter(c=>c[0]==='geo').length===1);
     await page.evaluate(()=>fixture.api.dispose());assert.equal(await page.evaluate(()=>fixture.listeners.size),0);
@@ -583,5 +595,18 @@ test('expanded viewer gives the image the whole frame and reveals corner control
       await page.waitForFunction(()=>fixture.calls.some(c=>c[0]==='stop'));
       await page.evaluate(()=>fixture.api.dispose());await page.close();
     }
+  }finally{await browser.close();}
+});
+
+test('building the viewer crosses the bridge in a few rounds, not one per node',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage();await setup(page,1000,true,runtime,{rounds:true});
+    const rounds=await page.evaluate(()=>fixture.stats.rounds);
+    // Each round is one host round trip; on RisuNest one cost ~35ms. Building every
+    // node and listener one after another took ~90 rounds (measured 1.4s there).
+    assert.ok(rounds<=60,'first mount took '+rounds+' rounds');
+    assert.equal(await page.locator('[x-nx-float] [x-nx-float-head] [x-nx-float-headbtns="l"] [x-nx-float-reroll]').count(),1,'the tree is still built in order');
+    await page.evaluate(()=>fixture.api.dispose());
   }finally{await browser.close();}
 });

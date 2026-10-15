@@ -1,5 +1,6 @@
 import { secureJsonExports } from './tools/vendor-patches/export-secrets.mjs';
 import { repairOmniUi } from './tools/vendor-patches/omni-repairs.mjs';
+import { repairHostTraffic } from './tools/vendor-patches/host-traffic.mjs';
 import { compactSettingsMarkup } from './tools/vendor-patches/settings-state-markup.mjs';
 /**
  * Build pipeline for Inlay Nexus 2.0.
@@ -7198,10 +7199,13 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
       const closeEpoch = t._settingsCloseEpoch = (t._settingsCloseEpoch || 0) + 1;
       t.uiOpen = !1, t._debugTabTimer && (clearInterval(t._debugTabTimer), t._debugTabTimer = null), t._hostReaper && (clearInterval(t._hostReaper), t._hostReaper = null), t._settingsWatch && (clearInterval(t._settingsWatch), t._settingsWatch = null);
       if (t.overlayUi) t.overlayUi._stickyEditorOpen = !1;
+      const closeAt = Date.now(), closeSteps = [];
+      const closeMark = (step) => closeSteps.push(step + "=" + (Date.now() - closeAt));
       const hiding = typeof k.hideContainer == "function" ? k.hideContainer() : Promise.resolve();
       // Hiding is dispatched before any asynchronous save or host DOM work.
       setTimeout(() => { void xa({ silent: !0, captured: !0 }); }, 0);
       await hiding;
+      closeMark("hide");
       if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
       invalidateOverlayLayoutCache();
       Promise.resolve().then(async () => {
@@ -7209,6 +7213,7 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
         if (!stayInRisu) {
           try { stayInRisu = await isRisuSettingsOpen(); } catch { stayInRisu = !1; }
         }
+        closeMark("risu");
         if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
         if (stayInRisu) {
           // Back to Risu settings/plugins — do not bring the floating viewer over that UI.
@@ -7224,13 +7229,18 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
         } catch {
         }
         try { await restoreFloatingViewerAfterModal(); } catch {}
+        closeMark("show[" + (omniPerf.lastMount || "") + "]");
         if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
         try { await blockHostChrome(!1); } catch {}
+        closeMark("unblock");
         // it() refetches gallery + remounts overlay shell. Float viewer syncs itself.
         if (!t.overlayUi?.root) {
           try { await it(); } catch {}
+          closeMark("remount");
         }
         try { await nxFloatEnsure(); } catch {}
+        closeMark("ensure[" + (omniPerf.lastMount || "") + "]");
+        y("info", "settings.close.timing", closeSteps.join(" "));
         try {
           typeof nxHostToast == "function" && await nxHostToast("뷰어 복구됨", { ms: 1500 });
         } catch {
@@ -7239,6 +7249,22 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
         y("warn", "settings.close.restore", err?.message || err);
       });
     }),`;
+
+/** Startup timing (debug log only): vendor_boot_timing_start. */
+const VENDOR_BOOT_TIMING_START_NEEDLE = "  async function Qa() {\n    await ve();\n    try {\n      await le();\n    } catch {\n    }\n";
+const VENDOR_BOOT_TIMING_START_PATCH = "  async function Qa() {\n    // Startup timing: each step's elapsed ms, shown in the debug log as boot.timing.\n    t._bootAt = Date.now(), t._bootSteps = [], t._bootCalls = [];\n    const bootMark = (step) => t._bootSteps.push(step + \"=\" + (Date.now() - t._bootAt));\n    await ve();\n    bootMark(\"args\");\n    try {\n      await le();\n    } catch {\n    }\n    bootMark(\"settings\");\n";
+/** Startup timing (debug log only): vendor_boot_timing_button. */
+const VENDOR_BOOT_TIMING_BUTTON_NEEDLE = "\n    const retryHostUi = async (e = 0) => {";
+const VENDOR_BOOT_TIMING_BUTTON_PATCH = "\n    bootMark(\"button\");\n    const retryHostUi = async (e = 0) => {";
+/** Startup timing (debug log only): vendor_boot_timing_hostui. */
+const VENDOR_BOOT_TIMING_HOSTUI_NEEDLE = "\n    startHostUiWatchdog();";
+const VENDOR_BOOT_TIMING_HOSTUI_PATCH = "\n    bootMark(\"hostUi\");\n    startHostUiWatchdog();";
+/** Startup timing (debug log only): vendor_boot_timing_calls. */
+const VENDOR_BOOT_TIMING_CALLS_NEEDLE = "    await N.ready();\n    return N.fetch(e, n, r);";
+const VENDOR_BOOT_TIMING_CALLS_PATCH = "    const callAt = Date.now();\n    await N.ready();\n    try {\n      return await N.fetch(e, n, r);\n    } finally {\n      // Backend calls made before boot finished, with their duration.\n      if (t._bootCalls && !t._bootDone) t._bootCalls.push(String(e).split(\"?\")[0] + \"=\" + (Date.now() - callAt));\n    }";
+/** Startup timing (debug log only): vendor_boot_timing_log. */
+const VENDOR_BOOT_TIMING_LOG_NEEDLE = "globalThis.INLAY_NEXUS_RUNTIME = t, y(\"info\", \"boot\", `v${He}`)";
+const VENDOR_BOOT_TIMING_LOG_PATCH = "globalThis.INLAY_NEXUS_RUNTIME = t, t._bootDone = !0, y(\"info\", \"boot\", `v${He}`), y(\"info\", \"boot.timing\", (t._bootSteps || []).join(\" \") + \" total=\" + (Date.now() - (t._bootAt || Date.now())) + \" | calls \" + (t._bootCalls || []).join(\" \") + \" | backend \" + String(globalThis.__INLAY_NATIVE__?.bootTimings?.() || \"\"))";
 
 /** Viewer 상시 chip: flip overlay_markers in memory + layout first, persist after. */
 const VENDOR_SANGSI_TOGGLE_NEEDLE = `    }, ae = async () => {
@@ -16939,6 +16965,11 @@ const loadVendorUi = (): string => {
     [VENDOR_SHOW_INSPECT_COMMIT_NEEDLE, 'showStickyInspect abort commit'],
     [VENDOR_SETTINGS_CLOSE_STICKY_NEEDLE, 'settings close sticky restore'],
     [VENDOR_BLOCK_HOST_UNBLOCK_NEEDLE, 'blockHostChrome unblock style-only'],
+    [VENDOR_BOOT_TIMING_START_NEEDLE, 'startup timing start'],
+    [VENDOR_BOOT_TIMING_BUTTON_NEEDLE, 'startup timing button'],
+    [VENDOR_BOOT_TIMING_HOSTUI_NEEDLE, 'startup timing hostui'],
+    [VENDOR_BOOT_TIMING_CALLS_NEEDLE, 'startup timing calls'],
+    [VENDOR_BOOT_TIMING_LOG_NEEDLE, 'startup timing log'],
     [VENDOR_SANGSI_TOGGLE_NEEDLE, 'viewer 상시 optimistic toggle'],
     [VENDOR_SETTINGS_WATCH_STICKY_NEEDLE, 'settings watch sticky restore'],
     [VENDOR_BOOT_SETTINGS_STAMP_NEEDLE, 'boot settings fetch stamp'],
@@ -17328,6 +17359,11 @@ const loadVendorUi = (): string => {
     .replace(VENDOR_SHOW_INSPECT_COMMIT_NEEDLE, VENDOR_SHOW_INSPECT_COMMIT_PATCH)
     .replace(VENDOR_SETTINGS_CLOSE_STICKY_NEEDLE, VENDOR_SETTINGS_CLOSE_STICKY_PATCH)
     .replace(VENDOR_BLOCK_HOST_UNBLOCK_NEEDLE, VENDOR_BLOCK_HOST_UNBLOCK_PATCH)
+    .replace(VENDOR_BOOT_TIMING_START_NEEDLE, VENDOR_BOOT_TIMING_START_PATCH)
+    .replace(VENDOR_BOOT_TIMING_BUTTON_NEEDLE, VENDOR_BOOT_TIMING_BUTTON_PATCH)
+    .replace(VENDOR_BOOT_TIMING_HOSTUI_NEEDLE, VENDOR_BOOT_TIMING_HOSTUI_PATCH)
+    .replace(VENDOR_BOOT_TIMING_CALLS_NEEDLE, VENDOR_BOOT_TIMING_CALLS_PATCH)
+    .replace(VENDOR_BOOT_TIMING_LOG_NEEDLE, VENDOR_BOOT_TIMING_LOG_PATCH)
     .replace(VENDOR_SANGSI_TOGGLE_NEEDLE, VENDOR_SANGSI_TOGGLE_PATCH)
     .replace(VENDOR_SETTINGS_WATCH_STICKY_NEEDLE, VENDOR_SETTINGS_WATCH_STICKY_PATCH)
     .replace(VENDOR_CARD_TAG_ROSTER_REFRESH_NEEDLE, VENDOR_CARD_TAG_ROSTER_REFRESH_PATCH)
@@ -18384,7 +18420,7 @@ const loadVendorUi = (): string => {
     if (!out.includes('<option value="bubble"')) {
       throw new Error('[build] float viewer collapse select must offer bubble');
     }
-    const final = repairOmniUi(out);
+    const final = repairHostTraffic(repairOmniUi(out));
     if (!final.includes('await image.cloneNode(false)')) throw new Error('[build] fullscreen must mirror the host image through cloneNode');
     if (!final.includes('async function nxFloatEnsure') || !final.includes('async function nxFloatShowCard')) {
       throw new Error('[build] float viewer runtime missing from bundle');

@@ -237,10 +237,21 @@ async function nxFloatEnsure() {
   return nxFloatEnsuring;
 }
 async function nxFloatMount() {
+  const perfAt = Date.now(), perf = [];
+  const mark = (step) => perf.push(`${step}=${Date.now() - perfAt}`);
+  try { return await nxFloatMountTimed(mark); }
+  finally {
+    const total = Date.now() - perfAt;
+    omniPerf.lastMount = `${perf.join(' ')} total=${total}`;
+    if (total >= 250) nxFloatLog('mount.timing', omniPerf.lastMount);
+  }
+}
+async function nxFloatMountTimed(mark) {
   const on = (t.backendSettings?.card?.floating_viewer) !== !1;
   if (!on) { await nxFloatDispose(); return false; }
   if (nxFloatBlocked()) { await nxFloatHide(); return false; }
   const h = await nxFloatChat();
+  mark('chat');
   if (!h) { await nxFloatHide(); return false; }
   try {
   // SafeDocument already wraps documentElement; its querySelector only searches descendants.
@@ -252,7 +263,9 @@ async function nxFloatMount() {
   const viewport = {w: Math.max(240, vw || rect.width || chatRect.right), h: Math.max(240, vh || chatRect.bottom || rect.height)};
   if (viewport.w !== nxFloatViewportSize.w || viewport.h !== nxFloatViewportSize.h) nxFloatDirty = true;
   nxFloatViewportSize = viewport;
+  mark('rect');
   const scope = await omniReadScope().catch(() => null);
+  mark('scope');
   if (!scope?.sessionId) { await nxFloatHide(); return false; }
   if (nxFloatSession !== scope.sessionId) {
     ++nxFloatEpoch; ++nxFloatGen; ++nxFloatSelecting;
@@ -266,6 +279,7 @@ async function nxFloatMount() {
   if (nxFloatBlocked()) { await nxFloatHide(); return false; }
   // SafeElement wrappers do not preserve JS identity; use a DOM marker for remount detection.
   if(nxFloatRoot){const mounted=await h.doc.querySelector('[x-nx-float]');try{if(!mounted)await nxFloatDispose(false);}finally{await omniRelease(mounted);}}
+  mark(nxFloatRoot ? 'kept' : 'gone');
   if (!nxFloatRoot) {
     const mountEpoch = nxFloatEpoch;
     const [geo,iconGeo,minimized]=await Promise.all([
@@ -273,53 +287,45 @@ async function nxFloatMount() {
       nxFloatCollapsed==null?loadViewerMinimized().catch(()=>false):Promise.resolve(nxFloatCollapsed),
     ]);
     nxFloatGeo=geo;nxFloatIconGeo=iconGeo;nxFloatCollapsed=!!minimized;
-    if (!nxFloatCss) {
+    // Every node crosses the bridge at once and each parent keeps its own child
+    // order. A slow host (RisuNest: ~1.4s) pays a few round trips here, not ~40.
+    const cssReady = nxFloatCss ? Promise.resolve() : (async () => {
       try {
         const st = await H(h.doc, "style", { text: NX_FLOAT_CSS });
         await st.setAttribute("x-nx-float-css", "1");
         await h.body.appendChild(st);
         nxFloatCss = st;
       } catch {}
-    }
-    const root = await H(h.doc, "div", {style:"display:none;"});
-    await root.setAttribute("x-nx-float", "1");
-    const icon = await H(h.doc, "div", { text: "⚛️" });
-    await icon.setAttribute("x-nx-float-icon", "1");
-    const head = await H(h.doc, "div", {});
-    await head.setAttribute("x-nx-float-head", "1");
-    const spanL = await H(h.doc, "span", {});
-    await spanL.setAttribute("x-nx-float-headbtns", "l");
-    const spanR = await H(h.doc, "span", {});
-    await spanR.setAttribute("x-nx-float-headbtns", "r");
-    const stage = await H(h.doc, "div", {});
-    await stage.setAttribute("x-nx-float-body", "1");
-    const pixels = await H(h.doc, 'div', {style:'width:100%;height:100%;min-height:0;display:flex;align-items:center;justify-content:center;'});
-    const reroll = await H(h.doc, "button", { text: "🎲" });
-    await reroll.setAttribute("x-nx-float-reroll", "1");
-    await reroll.setAttribute("x-nx-float-btn", "single");
-    const bar = await H(h.doc, "div", {});
-    await bar.setAttribute("x-nx-float-bar", "1");
-    const resize = await H(h.doc, "div", {});
-    await resize.setAttribute("x-nx-float-resize", "1");
-    const foldGrip = await H(h.doc, "div", {});
-    await foldGrip.setAttribute("x-nx-float-foldgrip", "1");
-    const gripLabel = await H(h.doc, "span", { text: "⋯⋯", style: 'line-height:20px;' });
-    await foldGrip.appendChild(gripLabel);
+    })();
+    const make = async (tag, props, attrs = []) => {
+      const node = await H(h.doc, tag, props);
+      await Promise.all(attrs.map(([name, value]) => node.setAttribute(name, value)));
+      return node;
+    };
+    const [root, icon, head, spanL, spanR, stage, pixels, reroll, bar, resize, foldGrip, gripLabel, foldGrid] = await Promise.all([
+      make("div", {style:"display:none;"}, [["x-nx-float", "1"]]),
+      make("div", { text: "⚛️" }, [["x-nx-float-icon", "1"]]),
+      make("div", {}, [["x-nx-float-head", "1"]]),
+      make("span", {}, [["x-nx-float-headbtns", "l"]]),
+      make("span", {}, [["x-nx-float-headbtns", "r"]]),
+      make("div", {}, [["x-nx-float-body", "1"]]),
+      make('div', {style:'width:100%;height:100%;min-height:0;display:flex;align-items:center;justify-content:center;'}),
+      make("button", { text: "🎲" }, [["x-nx-float-reroll", "1"], ["x-nx-float-btn", "single"]]),
+      make("div", {}, [["x-nx-float-bar", "1"]]),
+      make("div", {}, [["x-nx-float-resize", "1"]]),
+      make("div", {}, [["x-nx-float-foldgrip", "1"]]),
+      make("span", { text: "⋯⋯", style: 'line-height:20px;' }),
+      make("div", {}, [["x-nx-float-foldgrid", "1"]]),
+    ]);
+    const chain = async (parent, kids) => { for (const kid of kids) await parent.appendChild(kid); };
+    await Promise.all([
+      chain(root, [icon, head, stage, bar, resize, foldGrip, foldGrid]),
+      chain(head, [spanL, spanR]), chain(stage, [pixels]), chain(spanL, [reroll]), chain(foldGrip, [gripLabel]),
+    ]);
     await omniRelease(gripLabel);
-    const foldGrid = await H(h.doc, "div", {});
-    await foldGrid.setAttribute("x-nx-float-foldgrid", "1");
-    await root.appendChild(icon);
-    await root.appendChild(head);
-    await head.appendChild(spanL);
-    await head.appendChild(spanR);
-    await root.appendChild(stage);
-    await stage.appendChild(pixels);
     nxFloatImage = pixels;
-    await root.appendChild(bar);
-    await spanL.appendChild(reroll);
-    await root.appendChild(resize);
-    await root.appendChild(foldGrip);
-    await root.appendChild(foldGrid);
+    // The style sheet precedes the viewer, as before, so it never paints unstyled.
+    await cssReady;
     await h.body.appendChild(root);
     nxFloatRoot = root; nxFloatHead = head; nxFloatStage = stage; nxFloatBar = bar;
     nxFloatResize = resize; nxFloatFoldGrip = foldGrip; nxFloatFoldGrid = foldGrid;
@@ -337,8 +343,9 @@ async function nxFloatMount() {
         await host.appendChild(b);
         if (kind === "fold") nxFloatFoldBtn = b;
         if (kind === "compact" && host === foldGrip) nxFloatCompactBtn = b;
-        if(b!==nxFloatFoldBtn && b!==nxFloatCompactBtn)await omniRelease(b);
       }
+      // Handles are released together once the row is in order.
+      await Promise.all(nodes.filter(b=>b!==nxFloatFoldBtn && b!==nxFloatCompactBtn).map(omniRelease));
     };
     await Promise.all([
       wireBtns(NX_FLOAT_HEAD_L,spanL),wireBtns(NX_FLOAT_HEAD_R,spanR),
@@ -353,12 +360,15 @@ async function nxFloatMount() {
     }
     nxFloatArmIdle();
   }
+  mark('built');
   nxFloatHidden = !!nxFloatBlocked();
   // The frame must be visible before position reads; pixels need no gallery.
   await nxFloatApply();
+  mark('shown');
   if (!nxFloatBlocked()) {
     await nxFloatWatchChat(h);
-    if (nxFloatDirty) await nxFloatScan();
+    mark('watch');
+    if (nxFloatDirty) { await nxFloatScan(); mark('scan'); }
   }
   return true;
   } finally {if(h.root!==nxFloatWatchRoot)await omniRelease(h.root);if(h.body!==nxFloatChatRoot)await omniRelease(h.body);}

@@ -23,7 +23,7 @@ import { getDeviceStore } from '../storage/device-store';
 import { ensureBlobUrl, imageUrlStats, pngToDataUrl, resolveImageUrl, subscribeImageUrl, warmImages, warmProgress, warmFocusProgress, onWarmProgress, pinImageUrls, retainImageUrls, dropImageUrl, prioritizeWarmFocus, clearWarmFocus } from '../storage/image-urls';
 import { dropExplorerThumbUrl, ensureExplorerThumbUrl, pinExplorerThumbs, resolveExplorerThumbUrl, retainExplorerThumbs, warmExplorerThumbs } from '../storage/explorer-thumbs';
 import { loadSettingsFromStorage } from '../storage/settings-store';
-import { blobUrlCount, imageMeta, idbGet, imageCacheStats, isStorageMigrated, knownCharRefHashCount, openDb, storeSize } from '../storage/stores';
+import { blobUrlCount, imageMeta, idbGet, imageCacheStats, isStorageMigrated, knownCharRefHashCount, openDb, openDbTimings, storeSize } from '../storage/stores';
 import { setKnownCharRefCount } from '../services/char-ref-module';
 import {
   getConfig,
@@ -55,16 +55,43 @@ import {
 
 let readyPromise: Promise<void> | null = null;
 
+const bootSteps: string[] = [];
+let dataPromise: Promise<void> | null = null;
+/** Image DB and prompt pack. Everything except the settings read waits for it. */
+function dataReady(): Promise<void> {
+  if (!dataPromise) {
+    const at = Date.now();
+    dataPromise = (async () => {
+      await openDb();
+      bootSteps.push(`db=+${Date.now() - at}[${openDbTimings().join(',')}]`);
+      await seedPrompts();
+      bootSteps.push(`prompts=+${Date.now() - at}`);
+    })().catch((error: unknown) => { dataPromise = null; throw error; });
+  }
+  return dataPromise;
+}
+/** The one request the UI makes before it can show its buttons; it reads config only. */
+const needsData = (path: string, options: Record<string, unknown>): boolean =>
+  !(path.split('?')[0] === '/v1/settings' && String(options.method || 'GET').toUpperCase() === 'GET');
+export { dataReady };
 async function boot(): Promise<void> {
   dbg('boot.ready.start', { message: VERSION });
-  await openDb();
+  // Milliseconds since boot started, per step: shows which one a slow host spends time on.
+  const bootAt = Date.now(), elapsed = () => Date.now() - bootAt;
+  const step = (name: string) => bootSteps.push(`${name}=${elapsed()}`);
   const store = await getDeviceStore().catch((err: unknown) => {
     dbg('boot.storage', { message: String((err as Error)?.message || err) }, 'error');
     throw err;
   });
-  dbg('boot.storage', { message: store.kind });
+  step('store');
+  dbg('boot.storage', { message: store.kind, ms: elapsed() });
 
   setConfig(await loadSettingsFromStorage());
+  step('config');
+  dbg('boot.settings', { ms: elapsed() });
+  // Not awaited: on RisuNest this read alone took ~10s and held back the settings
+  // shortcut and the viewer. Requests that need it wait in `fetch` instead.
+  void dataReady().catch(err => dbg('boot.data', { message: String((err as Error)?.message || err) }, 'error'));
   void ensureOmniHelperModule(getConfig().card.omni_helper_prompt === true).catch(err => {
     dbg('boot.omni-helper', {message:String(err)}, 'warn');
   });
@@ -73,9 +100,9 @@ async function boot(): Promise<void> {
       dbg('boot.inray-display', { message: String((err as Error)?.message || err) }, 'warn');
     });
   }
-  await seedPrompts();
   dbg('boot.ready.done', {
     message: VERSION,
+    ms: elapsed(),
     has_nativeFetch: hostHas('nativeFetch'),
     has_idb: hostHas('getLocalPluginStorage'),
   });
@@ -131,6 +158,7 @@ export async function fetch(
   _timeoutMs = 120000,
 ): Promise<unknown> {
   await ready();
+  if (needsData(path, options)) await dataReady();
   try {
     const body=(options.body && typeof options.body==='object'?options.body:{}) as Record<string,unknown>;
     const imagePath = path.split('?')[0]!;
@@ -176,6 +204,7 @@ export async function fetch(
 
 async function ensureImageUrl(id: string): Promise<string> {
   await ready();
+  await dataReady();
   return ensureBlobUrl(id);
 }
 
@@ -200,8 +229,11 @@ export function installNativeBridge(): void {
     VERSION,
     writeMetrics,
     ready,
+    // Image DB + prompt pack; ready() alone no longer waits for them.
+    dataReady,
     hydrateSettingsPreviews,
     flushSettings: async () => { await ready(); await saveConfig({ flush: true }); },
+    bootTimings: () => bootSteps.join(' '),
     fetch,
     resolveImageUrl,
     refPreviewUrl: getRefPreviewUrl,

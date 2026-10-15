@@ -30,7 +30,9 @@ async function nxFloatBindInputs(h) {
   nxFloatChatRoot = h.body;
   // SafeElement listeners are document-wide. Register once per event and
   // resolve the hit by coordinates, never by the element used to register it.
-  await nxFloatListen(h.body, 'click', async e => {
+  // Independent listeners register together instead of one round trip each.
+  const wait = [];
+  wait.push(nxFloatListen(h.body, 'click', async e => {
     const pos = nxFloatEvPos(e);
     if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
     if(nxFloatTouchReveal){nxFloatTouchReveal=false;return;}
@@ -41,8 +43,10 @@ async function nxFloatBindInputs(h) {
     const button=buttons[hits.indexOf(true)];
     if(button)await nxFloatClick(await button.getAttribute('x-nx-float-btn'));
     } finally {await refs.close();}
-  });
-  await nxFloatListen(h.body, 'pointerdown', async e => {
+  }));
+  wait.push(nxFloatListen(h.body, 'pointerdown', async e => {
+    // A tap may open Risu settings; their watcher polls quickly right after one.
+    t._hostTapAt = Date.now();
     const pos = nxFloatEvPos(e);
     const pointer=nxFloatPointer={held:true,pos};
     const slack=12,near=nxFloatBounds&&{left:nxFloatBounds.left-slack,right:nxFloatBounds.right+slack,top:nxFloatBounds.top-slack,bottom:nxFloatBounds.bottom+slack,width:nxFloatBounds.width,height:nxFloatBounds.height};
@@ -56,8 +60,8 @@ async function nxFloatBindInputs(h) {
     const outside=!nxFloatContains(nxFloatBounds,pos.x,pos.y);
     const found=handles[hits.indexOf(true)] || (outside ? [null, nxFloatIcon && await hitEl(nxFloatIcon,Math.min(Math.max(pos.x,nxFloatBounds.left),nxFloatBounds.right),Math.min(Math.max(pos.y,nxFloatBounds.top),nxFloatBounds.bottom)) ? 'bubble-move' : 'move'] : undefined);
     if(found)await nxFloatMaybeDrag(e,found[1],pointer);
-  });
-  await nxFloatListen(h.body, 'pointermove', e => {
+  }));
+  wait.push(nxFloatListen(h.body, 'pointermove', e => {
     nxFloatMoveDrag(e);
     if (nxFloatDrag || nxFloatTouchOnly()) return;
     const pos = nxFloatEvPos(e);
@@ -65,8 +69,8 @@ async function nxFloatBindInputs(h) {
     const inside=nxFloatContains(nxFloatBounds,pos.x,pos.y) || (nxFloatCountsOpen && nxFloatContains(nxFloatCountBounds,pos.x,pos.y));
     // A fixed frame changes bounds on render/drag, not on mousemove.
     if(inside!==nxFloatHovered){nxFloatHovered=inside;if(inside)nxFloatNudgeIdle();else nxFloatArmIdle();}
-  }, {capture:true});
-  for (const kind of ['pointerup','pointercancel']) await nxFloatListen(h.body,kind,e=>{
+  }, {capture:true}));
+  for (const kind of ['pointerup','pointercancel']) wait.push(nxFloatListen(h.body,kind,e=>{
     if(nxFloatPointer)nxFloatPointer.held=false;
     if(nxFloatTouchOnly()) {
       nxFloatHovered=false;
@@ -74,10 +78,11 @@ async function nxFloatBindInputs(h) {
       if(kind==='pointercancel')nxFloatTouchReveal=false;
     }
     nxFloatMoveDrag(e);void nxFloatEndDrag(kind==='pointercancel');
-  },{capture:true});
+  },{capture:true}));
   for (const kind of ['scroll', 'scrollend']) {
-    await nxFloatListen(h.body, kind, () => nxFloatScheduleScan(), {capture:true});
+    wait.push(nxFloatListen(h.body, kind, () => nxFloatScheduleScan(), {capture:true}));
   }
+  await Promise.all(wait);
   nxFloatMoveListener = true;
 }
 function nxFloatScheduleScan() {

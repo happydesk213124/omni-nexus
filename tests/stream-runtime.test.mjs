@@ -76,3 +76,13 @@ test('single-flight regression guard detects deliberately overlapping reads',asy
   await Promise.all(Array.from({length:10},()=>f.api.read()));
   assert.throws(()=>assert.equal(f.reads(),1),assert.AssertionError);
 });
+
+test('a unified UI scope does not make the viewer re-read the live chat every second',async()=>{
+  const f=fixture();
+  // lastScope belongs to the unified UI session now; the viewer reads the live chat.
+  f.t.lastScope={charIndex:0,chatIndex:'unified',sessionId:'u0'};
+  await f.api.read();assert.equal(f.reads(),1,'first read loads the live chat once');
+  for(let i=0;i<10;i++){await f.tick();await f.api.read();}
+  assert.equal(f.reads(),1,'same chat: the cached live scope answers');
+  assert.equal(f.api.state.scope.sessionId,'s0');
+});

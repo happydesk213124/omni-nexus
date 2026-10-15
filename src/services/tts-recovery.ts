@@ -3,6 +3,14 @@ import { fishVoiceId } from '../domain/tts/library';
 import { selectTtsVoices } from '../providers/tts/selection';
 import { saveTtsData, ttsData } from '../storage/tts-store';
 
+/** Audio arrived for this Fish ID, so its recorded failures (402, 400…) are history. */
+export async function clearTtsVoiceError(fishId: string): Promise<void> {
+  const voices = ttsData().voices.filter(voice => voice.error && fishVoiceId(voice.fishId) === fishVoiceId(fishId));
+  if (!voices.length) return;
+  for (const voice of voices) delete voice.error;
+  await saveTtsData();
+  if (typeof document !== 'undefined') document.dispatchEvent(new Event('omnitts-library'));
+}
 export async function recordTtsVoiceError(fishId: string, status: number): Promise<void> {
   const voices = ttsData().voices.filter(voice => fishVoiceId(voice.fishId) === fishVoiceId(fishId));
   if (!voices.length) return;

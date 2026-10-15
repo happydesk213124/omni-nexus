@@ -222,3 +222,15 @@ test('narration and monologue lines use their role cards, with the card speed an
   assert.equal(api.ttsData().characters.filter(c => c.role).length, 4, 'role cards cannot be deleted');
   assert.equal(calls.fish.length, 0);
 });
+
+test('audio that actually arrives clears the voice error record and the stale notice', async () => {
+  const { data, runtime } = await setup();
+  data.characters[0].voiceKey = 'next'; data.characters[0].fishId = nextId;
+  data.voices[2].error = { count: 3, lastAt: 1, status: 402 };
+  runtime.notice = '음성 API 요청 실패 (402)';
+  assert.equal((await audio(runtime)).byteLength, 32);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(data.voices[2].error, undefined, 'the working voice no longer shows HTTP 402');
+  assert.equal(runtime.notice, '');
+  assert.equal(data.voices[0].error, undefined, 'other voices are untouched');
+});

@@ -240,8 +240,28 @@ export function repairOmniUi(source) {
     return n;
   }
   async function syncQuickSettingsButton`);
+  // Plugin arguments are independent: ask for all six at once (one round trip, not six).
+  replace(`    const n = {
+      enabled: xt(await we("inlay_enabled"), !0),
+      backendUrl: w(await we("inlay_backend_url")) || L,
+      backendToken: w(await we("inlay_backend_token")),
+      requestTimeoutMs: re(await we("inlay_request_timeout_ms"), 5e3, 6e5, 12e4),
+      captureDelayMs: re(await we("inlay_capture_delay_ms"), 0, 1e4, 1400),
+      debug: xt(await we("inlay_debug"), !1)
+    };`, `    const [argEnabled, argUrl, argToken, argTimeout, argCapture, argDebug] = await Promise.all(["inlay_enabled", "inlay_backend_url", "inlay_backend_token", "inlay_request_timeout_ms", "inlay_capture_delay_ms", "inlay_debug"].map(we));
+    const n = {
+      enabled: xt(argEnabled, !0),
+      backendUrl: w(argUrl) || L,
+      backendToken: w(argToken),
+      requestTimeoutMs: re(argTimeout, 5e3, 6e5, 12e4),
+      captureDelayMs: re(argCapture, 0, 1e4, 1400),
+      debug: xt(argDebug, !1)
+    };`);
   // UI scope is unified; explicit live requests still retain the actual message chat.
   replace('const n = e.useOverride !== !1 ? t.scopeOverride : null;', 'const n = e.useOverride !== !1 ? { ...(t.scopeOverride || {}), chatIndex:"unified" } : null;');
+  // A live read answers its caller only: it never moves the UI (unified) session,
+  // or live and unified reads take turns "switching" the session.
+  replace('    }, S = t.lastScope?.sessionId || "";\n    if (S && S !== b) {', '    }, S = t.lastScope?.sessionId || "";\n    if (e.useOverride === !1) return C;\n    if (S && S !== b) {');
   replace('    shell.dataset.nxLiveSave = "1";', `    shell.dataset.nxLiveSave = "1";
     globalThis.__OMNI_SETTINGS_ACTIONS__ = {
       config: () => t.backendSettings,

@@ -130,8 +130,8 @@ async function nxFloatReadPosition() {
     nxFloatScrollAt = scroll;
     let anchor = null;
     if (!jump && nxFloatReadingSlot >= 0) {
-      for (const slot of [nxFloatReadingSlot-1,nxFloatReadingSlot,nxFloatReadingSlot+1]) {
-        const row = await read(slot);
+      // The three neighbours are read together: one round trip, not three.
+      for (const row of await Promise.all([nxFloatReadingSlot-1,nxFloatReadingSlot,nxFloatReadingSlot+1].map(read))) {
         if (row && (!anchor || nxFloatReadingGap(row.rect,y)<nxFloatReadingGap(anchor.rect,y))) anchor = row;
       }
       // Short messages can cross several slots within a small pixel scroll.
@@ -141,14 +141,16 @@ async function nxFloatReadPosition() {
     const rows = [];
     if (anchor) {
       nxFloatReadingSlot = anchor.slot;
-      for (const slot of [anchor.slot-1,anchor.slot,anchor.slot+1]) { const row = await read(slot); if (row) rows.push(row); }
+      for (const row of await Promise.all([anchor.slot-1,anchor.slot,anchor.slot+1].map(read))) if (row) rows.push(row);
     }
     await nxFloatWatchBubbles(rows,refs);
     let best = null, distance = Infinity, reading = null, readingGap = Infinity;
-    for (const row of rows) {
+    const visible = row => row.rect.height > 0 && row.rect.bottom > top && row.rect.top < bottom;
+    const snapshots = await Promise.all(rows.map(row => visible(row) ? nxFloatReadBubble(row,refs) : null));
+    for (const [index, row] of rows.entries()) {
       if (epoch !== nxFloatEpoch) return;
-      if (row.rect.height <= 0 || row.rect.bottom <= top || row.rect.top >= bottom) continue;
-      const snapshot = await nxFloatReadBubble(row,refs), gap = nxFloatReadingGap(row.rect,y);
+      if (!visible(row)) continue;
+      const snapshot = snapshots[index], gap = nxFloatReadingGap(row.rect,y);
       if (gap < readingGap) { reading = snapshot; readingGap = gap; }
       for (const shot of snapshot.shots) {
         const shotTop = row.rect.top+shot.top, shotBottom = row.rect.top+shot.bottom;

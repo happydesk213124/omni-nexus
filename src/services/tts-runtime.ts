@@ -13,7 +13,7 @@ import { TtsPlayer } from '../providers/tts/player';
 import { translateTts } from '../providers/tts/translation';
 import { ensureTtsSpeakers } from './tts-characters';
 import type { TtsChatContext } from './tts-context';
-import { recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
+import { clearTtsVoiceError, recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
 
 export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number }
 interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string }
@@ -229,6 +229,9 @@ export class OmniTtsRuntime {
         throw error;
       }
       this.failedAudio.delete(p.signature);
+      // Real audio came back: an earlier error notice and this voice's error record no longer apply.
+      void clearTtsVoiceError(p.fishId).catch(error => this.report(error));
+      if (this.notice) { this.notice = ''; this.emit(); }
       // Publish bytes immediately; persistent storage must not hold a Fish slot
       // or delay playback. The cache exposes pending writes for deduplication.
       void this.cache.put(p.signature, bytes, generation).catch(error => this.report(error));
