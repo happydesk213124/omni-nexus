@@ -36,13 +36,16 @@ ${row('BGM 사용', sw('snd-bgm-enabled', 'BGM 사용'), '켜면 ⚛️ omni bgm
 ${row('BGM 볼륨', range('snd-bgm-volume', 'BGM 볼륨'))}
 ${row('TTS 재생 중 BGM', range('snd-duck', 'TTS 재생 중 BGM 크기'), 'TTS가 말하는 동안 이만큼으로 줄입니다.')}
 ${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number" min="0" max="10" step="0.5" aria-label="크로스페이드 초" style="width:72px"><span>초 크로스페이드</span></div>`)}
-${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'), '답변 첫 줄에 [[bgm:분위기,장소,템포]] 세 개를 쓰게 합니다. 곡 목록은 보내지 않습니다.')}
+${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'), '답변 첫 줄에 [[bgm:분위기,장소,템포]] 세 개를 쓰게 하고, 중간에 분위기가 확 바뀌면 그 자리에 새 줄을 넣게 합니다(답변당 최대 3개). 곡 목록은 보내지 않습니다.')}
+${row('TTS 목록·이어 읽기에 BGM', sw('snd-list-bgm', 'TTS 목록·이어 읽기에 BGM'), 'TTS 뷰어 목록에 ♪ 줄이 생기고, 이어 읽다가 그 줄에 오면 곡이 바뀝니다. 끄면 새 답변이 올 때 첫 태그로만 바뀝니다.')}
 ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
 <label class="field full"><span>BGM 태그 목록 · 쉼표로 구분 (LLM은 이 안에서만 고릅니다)</span><textarea id="snd-bgm-tags" rows="3" maxlength="1200"></textarea></label>
 </div></div>
 <div class="tts-settings-column"><div class="group"><h3>효과음</h3>
 ${row('효과음 사용', sw('snd-sfx-enabled', '효과음 사용'), '켜면 ⚛️ omni 효과음 모듈이 설치되고 규칙에 걸린 말에 회색 ▶ 버튼이 붙습니다.')}
 ${row('효과음 볼륨', range('snd-sfx-volume', '효과음 볼륨'))}
+${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과음 표시 요청'), '소리가 나는 곳에 §쾅§처럼 쓰게 합니다(답변당 최대 5개). 기본 § 규칙이 켜져 있을 때만 보냅니다.')}
+${row('TTS 목록·이어 읽기에 효과음', sw('snd-list-sfx', 'TTS 목록·이어 읽기에 효과음'), 'TTS 뷰어 목록에 ▶ 줄이 생기고, 이어 읽다가 그 줄에 오면 효과음을 틀고 끝나면 다음 대사로 넘어갑니다.')}
 ${row('자동 재생', `<select id="snd-sfx-auto" aria-label="효과음 자동 재생"><option value="reply">새 답변 · 이어 읽기 중</option><option value="button">버튼을 눌렀을 때만</option></select>`)}
 ${row('효과음 고르는 방식', matcher('snd-sfx-matcher'))}
 ${row('맞는 효과음이 없으면 ElevenLabs로 만들기', sw('snd-sfx-autocreate', '맞는 효과음이 없으면 ElevenLabs로 만들기'), 'JEV·LLM이 "맞는 게 없다"고 답한 말만 만듭니다(유료). 만든 효과음은 「자동 생성」 폴더와 용어집에 들어갑니다.')}
@@ -65,9 +68,9 @@ export const SOUND_DIALOG = `<dialog id="snd-move-dialog"><h2>폴더 이동</h2>
 <label class="field full"><span>이름</span><input id="snd-item-name" maxlength="120"></label>
 <label class="field full"><span>태그 · 쉼표로 구분</span><input id="snd-item-tags" maxlength="500" placeholder="tense, chase, fast"></label>
 <label class="field"><span>폴더</span><select id="snd-item-folder"></select></label>
-<label class="field"><span>등록 방식</span><select id="snd-item-source"><option value="url">오디오 파일 주소 (https)</option><option value="file">파일 직접 등록 (모듈에 저장)</option><option value="eleven">ElevenLabs로 생성 (유료)</option></select></label>
+<label class="field"><span>등록 방식</span><select id="snd-item-source"><option value="url">오디오 파일 주소 (https)</option><option value="file">파일 직접 등록 (모듈에 저장)</option><option value="eleven">ElevenLabs로 만들기 (유료)</option></select></label>
 <label class="field full" id="snd-item-url-wrap"><span>오디오 파일 주소</span><input id="snd-item-url" type="url" placeholder="https://…/sound.mp3" maxlength="2000"></label>
-<label class="field full" id="snd-item-prompt-wrap" hidden><span>만들 효과음 설명 · 영어가 가장 정확합니다</span><textarea id="snd-item-prompt" rows="2" maxlength="450" placeholder="heavy wooden door slamming shut"></textarea><span>길이 (초 · 0이면 자동)</span><input id="snd-item-duration" type="number" min="0" max="30" step="0.5" value="0" style="width:72px"></label>
+<label class="field full" id="snd-item-prompt-wrap" hidden><span id="snd-item-prompt-label">만들 효과음 설명 · 영어가 가장 정확합니다</span><textarea id="snd-item-prompt" rows="2" maxlength="450" placeholder="heavy wooden door slamming shut"></textarea><span>길이 (초 · 0이면 자동)</span><input id="snd-item-duration" type="number" min="0" max="30" step="0.5" value="0" style="width:72px"></label>
 <label class="field full" id="snd-item-file-wrap" hidden><span>파일 (mp3 · wav · ogg · m4a · flac · webm)</span><input id="snd-item-file" type="file" accept="audio/*"></label>
 <small id="snd-item-status" role="status"></small></div></div>
 <div class="dialog-actions"><button type="button" id="snd-item-cancel">취소</button><button type="button" id="snd-item-save" class="primary">추가</button></div></form></dialog>`;

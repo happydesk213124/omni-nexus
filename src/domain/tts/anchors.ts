@@ -42,7 +42,7 @@ export function ttsComparable(value: string): string {
  * unless nothing ahead fits (modules can move blocks).
  */
 export function matchTtsAnchors(anchors: readonly TtsAnchorText[], segments: readonly Pick<TtsSegment, 'kind' | 'text'>[]): number[] {
-  const keys = segments.map(s => ttsComparable(s.text)), used = new Set<number>();
+  const keys = segments.map(s => s.kind === 'bgm' || s.kind === 'sfx' ? '' : ttsComparable(s.text)), used = new Set<number>();
   const fits = (anchor: string, index: number, exact: boolean): boolean => {
     const key = keys[index]!;
     if (!key || used.has(index)) return false;

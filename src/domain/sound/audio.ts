@@ -17,7 +17,7 @@ export const AUDIO_EXTENSIONS: Record<string, string> = {
   'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/ogg': 'ogg', 'audio/flac': 'flac', 'audio/mp4': 'm4a', 'audio/webm': 'webm',
 };
 
-export interface SfxHit { rule: string; word: string; index: number }
+export interface SfxHit { rule: string; word: string; index: number; length: number }
 /**
  * Effect words in a reply, in reading order. A rule's first capture group is the
  * word (`§(덜컹)§`); without one, the whole match is. Invalid rules are skipped.
@@ -30,11 +30,19 @@ export function sfxHits(text: string, rules: readonly SfxRule[]): SfxHit[] {
     try { pattern = new RegExp(rule.pattern, [...new Set(['g', ...rule.flags.replace(/[^imsu]/g, '')])].join('')); } catch { continue; }
     for (const match of String(text || '').matchAll(pattern)) {
       const word = String(match[1] ?? match[0]).trim();
-      if (word) hits.push({ rule: rule.id, word, index: match.index ?? 0 });
+      if (word) hits.push({ rule: rule.id, word, index: match.index ?? 0, length: match[0].length });
       if (hits.length >= 200) break;
     }
   }
   return hits.sort((a, b) => a.index - b.index);
+}
+/** The line as spoken: marked effect words are played, not read aloud. */
+export function withoutSfx(text: string, rules: readonly SfxRule[]): string {
+  const hits = sfxHits(text, rules);
+  if (!hits.length) return text;
+  let out = '', last = 0;
+  for (const hit of hits) { if (hit.index < last) continue; out += text.slice(last, hit.index); last = hit.index + hit.length; }
+  return (out + text.slice(last)).replace(/[ \t]{2,}/g, ' ').trim();
 }
 /** Whether a rule compiles; the settings form shows the error instead of saving. */
 export function sfxRuleError(pattern: string, flags = ''): string {

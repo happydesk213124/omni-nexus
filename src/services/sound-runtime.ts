@@ -4,15 +4,17 @@ import { SoundPlayer } from '../providers/sound/player';
 import { ttsBytes, ttsFetch } from '../providers/tts/http';
 import { AUDIO_EXTENSIONS, sniffAudioMime } from '../domain/sound/audio';
 import { pickBgm, pickSfx } from '../domain/sound/match';
-import { soundTags } from '../domain/sound/tags';
-import { loadSoundData, saveSoundData, soundData, subscribeSound } from '../storage/sound-store';
+import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
+import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound } from '../storage/sound-store';
 import { ensureSoundModules, readSoundAsset, storeSoundBytes } from '../storage/sound-module';
-import { omniTts } from './tts-runtime';
+import { omniTts, type TtsSoundCuePlayer } from './tts-runtime';
+import { sleep } from '../core/util/async';
 import { ttsData } from '../storage/tts-store';
-import { generateSoundEffect, englishText } from '../providers/sound/elevenlabs';
+import { generateMusic, generateSoundEffect, englishText } from '../providers/sound/elevenlabs';
 import { chooseSfx, type SfxChoice } from '../providers/sound/choose';
-import { normalizeSoundTag } from '../domain/sound/tags';
 
+/** Continuous reading waits for an effect this long at most before the next line. */
+const SFX_WAIT_MS = 4000;
 /** Folder for effects ElevenLabs made on its own, so they are easy to review. */
 export const AUTO_SFX_FOLDER = '자동 생성';
 
@@ -70,6 +72,7 @@ export class OmniSoundRuntime {
       subscribeSound(() => this.sync());
       // TTS speech lowers the music; nothing else listens for it.
       omniTts.subscribe(() => this.player.duck(omniTts.player.status === 'playing' || omniTts.player.status === 'loading'));
+      omniTts.setSoundCues(this.cues);
     })().catch(error => { this.started = undefined; throw error; });
   }
   private sync(): void {
@@ -77,7 +80,7 @@ export class OmniSoundRuntime {
     this.player.configure({ bgmVolume: s.bgmVolume, sfxVolume: s.sfxVolume, duck: s.duck });
     if (!s.bgmEnabled) this.player.stopBgm();
     // Module writes rewrite the whole Risu module list: only when what they hold changed.
-    const data = soundData(), wanted = JSON.stringify([s.bgmEnabled, s.sfxEnabled, s.bgmPrompt, s.bgmTags, s.sfxRules,
+    const data = soundData(), wanted = JSON.stringify([s.bgmEnabled, s.sfxEnabled, s.bgmPrompt, s.sfxCue, s.bgmTags, s.sfxRules,
       data.bgm.filter(i => i.source === 'asset').map(i => i.assetPath), data.sfx.filter(i => i.source === 'asset').map(i => i.assetPath)]);
     if (wanted === this.lastModule) return;
     clearTimeout(this.moduleTimer);
@@ -102,11 +105,13 @@ export class OmniSoundRuntime {
     if (!mime) throw new Error('재생할 수 있는 오디오 파일이 아닙니다 (mp3, wav, ogg, m4a, flac, webm).');
     return this.addBytes(kind, { ...input, name: input.name.trim() || input.file.name.replace(/\.[^.]+$/, '') }, bytes, mime);
   }
-  /** Generates an effect with ElevenLabs and stores it in ⚛️ omni 효과음. */
-  async addFromEleven(input: { name: string; tags: string; folder: string; prompt: string; duration: number }): Promise<SoundItem> {
+  /** Generates an effect (or instrumental BGM) with ElevenLabs and stores it in the kind's ⚛️ module. */
+  async addFromEleven(kind: SoundKind, input: { name: string; tags: string; folder: string; prompt: string; duration: number }): Promise<SoundItem> {
     const s = soundData().settings;
-    const audio = await generateSoundEffect(input.prompt, { key: s.elevenKey, durationSeconds: input.duration || s.sfxDuration });
-    return this.addBytes('sfx', { ...input, name: input.name.trim() || input.prompt.slice(0, 40) }, audio.bytes, audio.mime);
+    const audio = kind === 'bgm'
+      ? await generateMusic(input.prompt, { key: s.elevenKey, lengthSeconds: input.duration })
+      : await generateSoundEffect(input.prompt, { key: s.elevenKey, durationSeconds: input.duration || s.sfxDuration });
+    return this.addBytes(kind, { ...input, name: input.name.trim() || input.prompt.slice(0, 40) }, audio.bytes, audio.mime);
   }
   private async addBytes(kind: SoundKind, input: { name: string; tags: string; folder: string }, bytes: ArrayBuffer, mime: string): Promise<SoundItem> {
     const key = uuid(), path = await storeSoundBytes(bytes);
@@ -125,11 +130,28 @@ export class OmniSoundRuntime {
     if (keys.has(this.player.bgmKey)) this.player.stopBgm();
     await saveSoundData();
   }
-  async play(item: SoundItem): Promise<void> {
+  async play(item: SoundItem): Promise<void> { await this.start(item); }
+  /** Starts an item; `ended` settles when an effect has finished (a BGM at once). Wrapped: an async function would wait for a returned promise. */
+  private async start(item: SoundItem): Promise<{ ended: Promise<void> }> {
     const audio = await audioOf(item);
-    if (item.kind === 'bgm') { this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs); }
-    else await this.player.playSfx(audio.bytes, audio.mime);
+    if (item.kind === 'bgm') { this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs); return { ended: Promise.resolve() }; }
+    return this.player.playSfx(audio.bytes, audio.mime);
   }
+  /**
+   * Rows of the TTS list. A BGM cue switches the music and reading goes on at
+   * once (the music plays under the voice); an effect plays to its end first.
+   */
+  private cues: TtsSoundCuePlayer = {
+    listed: segment => { if (!soundReady()) return false; const s = soundData().settings; return segment.kind === 'bgm' ? s.bgmEnabled && s.listBgm : s.sfxEnabled && s.listSfx; },
+    automatic: segment => segment.kind === 'bgm' || (soundReady() && soundData().settings.sfxAutoPlay === 'reply'),
+    play: async request => {
+      const segment = request.segment;
+      if (segment.kind === 'bgm') { await this.playBgmForTags(segment.tags ?? soundTags(segment.text)); return; }
+      if (!soundData().settings.sfxEnabled) return;
+      const item = await this.sfxFor(segment.text, segment.context || '');
+      if (item) await Promise.race([(await this.start(item)).ended, sleep(SFX_WAIT_MS)]);
+    },
+  };
   /** BGM for a reply's tags; free word matching first. Returns the key that plays. */
   async playBgmForTags(tags: readonly string[]): Promise<string> {
     if (!soundData().settings.bgmEnabled) return '';
@@ -164,7 +186,7 @@ export class OmniSoundRuntime {
     if (!job) {
       job = (async () => {
         const prompt = (choice && 'create' in choice && choice.prompt) || s.sfxPrompt.replace('{word}', await englishText(word));
-        const item = await this.addFromEleven({ name: word.slice(0, 40), tags: word, folder: AUTO_SFX_FOLDER, prompt, duration: s.sfxDuration });
+        const item = await this.addFromEleven('sfx', { name: word.slice(0, 40), tags: word, folder: AUTO_SFX_FOLDER, prompt, duration: s.sfxDuration });
         await this.learn(word, item.key); return item;
       })().catch(error => { this.notice = String((error as Error).message || error); return null; }).finally(() => this.creating.delete(id));
       this.creating.set(id, job);
@@ -174,11 +196,16 @@ export class OmniSoundRuntime {
   /** Plays the effect for a word; an unknown word is kept for the glossary. */
   async playSfxWord(word: string, context = ''): Promise<boolean> {
     if (!soundData().settings.sfxEnabled) return false;
+    const item = await this.sfxFor(word, context);
+    if (item) await this.play(item);
+    return !!item;
+  }
+  private async sfxFor(word: string, context: string): Promise<SoundItem | null> {
     const item = pickSfx(word, soundData().glossary, soundData().sfx) || await this.resolveSfx(word, context);
-    if (item) { await this.play(item); return true; }
+    if (item) return item;
     const data = soundData(), clean = word.trim().slice(0, 60);
     if (clean && !data.unknownTerms.includes(clean)) { data.unknownTerms = [clean, ...data.unknownTerms].slice(0, 200); await saveSoundData(); }
-    return false;
+    return null;
   }
 }
 export const omniSound = new OmniSoundRuntime();

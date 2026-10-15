@@ -42,5 +42,6 @@ export function pickSfx(word: string, glossary: readonly SfxTerm[], items: reado
       if (item) return item;
     }
   }
-  return items.find(item => [item.name, ...item.tags].some(term => { const key = termKey(term); return key.length >= 2 && needle.includes(key); })) || null;
+  // A one-letter name (쾅) only matches itself; inside a longer word it would match far too much.
+  return items.find(item => [item.name, ...item.tags].some(term => { const key = termKey(term); return !!key && (key === needle || (key.length >= 2 && needle.includes(key))); })) || null;
 }

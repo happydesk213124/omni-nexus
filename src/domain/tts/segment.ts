@@ -1,5 +1,12 @@
 import type { TtsSegment, TtsSettings } from '../../core/tts-types';
+import type { SfxRule } from '../../core/sound-types';
 import { allowedTtsText } from './filter';
+import { bgmMarkers } from '../sound/tags';
+import { sfxHits, withoutSfx } from '../sound/audio';
+
+/** Sound cues to list with the spoken lines: BGM markers and the effect rules in use. */
+export interface TtsSoundCues { bgm: boolean; sfxRules: readonly SfxRule[] }
+export const isSoundSegment = (segment: Pick<TtsSegment, 'kind'>): boolean => segment.kind === 'bgm' || segment.kind === 'sfx';
 
 export function cueLineKey(line: string): string {
   let a = 0, b = 0;
@@ -53,12 +60,19 @@ const VOID_TAG = /^<(?:img|br|hr|input|source|meta|link|wbr|audio|video)\b[^>]*>
 function oneLineTag(line: string): boolean {
   return VOID_TAG.test(line) || /^<[a-z][\w-]*\b[^>]*\/>$/i.test(line) || /^<!--.*-->$/.test(line) || /^<([a-z][\w-]*)\b[^>]*>.*<\/\1\s*>$/i.test(line);
 }
-export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1, requireLetter = true): TtsSegment[] {
+export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1, requireLetter = true, sound?: TtsSoundCues): TtsSegment[] {
   const lines = text.split('\n');
   const response = /^#[*\t ]*(?:Response|응답|応答|响应|OOC)[*\t ]*$/;
   const beginning = lines.findIndex(line => response.test(line.trim()));
   let fenced = false, html = false, hidden = '', post = false, offset = 0;
   const result: TtsSegment[] = [];
+  const cues = (line: string, number: number, at: number) => {
+    const found = [
+      ...(sound!.bgm ? bgmMarkers(line).map(hit => ({ index: hit.index, length: hit.length, kind: 'bgm' as const, text: hit.tags.join(', '), tags: hit.tags })) : []),
+      ...sfxHits(line, sound!.sfxRules).map(hit => ({ index: hit.index, length: hit.length, kind: 'sfx' as const, text: hit.word, tags: undefined })),
+    ].sort((a, b) => a.index - b.index);
+    found.forEach((cue, k) => { if (cue.text) result.push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags } : { context: line.slice(0, 300) }), start: at + cue.index, end: at + cue.index + cue.length }); });
+  };
   for(let index=0;index<lines.length;index++) {
     const line=lines[index];
     const trimmed = line.trim();
@@ -78,12 +92,17 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
       if(!html && /[:：]\s*$/.test(trimmed)){
         const header=cueHeader(trimmed),next=lines[index+1],speech=next===undefined?null:quotedCue(next);
         if(header&&speech&&!/[<>]/.test(speech)){
-          if (allowedTtsText(speech, excludeTerms, skipChars, requireLetter)) result.push({id:String(index+1),...header,text:speech,kind:'dialogue',start:offset,end:offset+line.length+1+next.length});
+          const spoken = sound ? withoutSfx(speech, sound.sfxRules) : speech;
+          if (sound) cues(next, index + 2, offset + line.length + 1);
+          if (allowedTtsText(spoken, excludeTerms, skipChars, requireLetter)) result.push({id:String(index+1),...header,text:speech,...(spoken !== speech ? { spoken } : {}),kind:'dialogue',start:offset,end:offset+line.length+1+next.length});
           offset+=line.length+1+next.length+1;index++;continue;
         }
       }
+      // A cue comes before the line it sits in: the effect plays, then the line is read.
+      if (!html && sound) cues(line, index + 1, offset);
       const segment = !html ? parseCueLine(line, String(index + 1)) : null;
-      if (segment && allowedTtsText(segment.text, excludeTerms, skipChars, requireLetter)) result.push({ ...segment, start: offset, end: offset + line.length });
+      const spoken = segment && sound ? withoutSfx(segment.text, sound.sfxRules) : segment?.text;
+      if (segment && allowedTtsText(spoken!, excludeTerms, skipChars, requireLetter)) result.push({ ...segment, ...(spoken !== segment.text ? { spoken } : {}), start: offset, end: offset + line.length });
     }
     offset += line.length + 1;
   }

@@ -94,17 +94,22 @@ export class SoundPlayer {
     const key = deck.key;
     setTimeout(() => { if (deck.key === key) { deck.audio.pause(); deck.key = ''; this.onChange(); } }, fadeMs + 50);
   }
-  /** One-shot effect; at most four overlap, the oldest is cut. */
-  async playSfx(bytes: ArrayBuffer, mime: string): Promise<void> {
+  /** One-shot effect; at most four overlap, the oldest is cut. `ended` settles when it stops for any reason. */
+  async playSfx(bytes: ArrayBuffer, mime: string): Promise<{ ended: Promise<void> }> {
     const context = this.ensure();
     await context.resume();
     if (this.sfx.length >= 4) { const old = this.sfx.shift()!; old.audio.pause(); URL.revokeObjectURL(old.url); }
     const audio = new Audio(), url = URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/mpeg' }));
     context.createMediaElementSource(audio).connect(this.sfxBus!);
     const row = { audio, url }; this.sfx.push(row);
-    audio.addEventListener('ended', () => { this.sfx = this.sfx.filter(x => x !== row); URL.revokeObjectURL(url); }, { once: true });
+    let finish = () => {};
+    const ended = new Promise<void>(resolve => { finish = resolve; });
+    audio.addEventListener('ended', () => { this.sfx = this.sfx.filter(x => x !== row); URL.revokeObjectURL(url); finish(); }, { once: true });
+    audio.addEventListener('error', () => finish(), { once: true });
+    audio.addEventListener('pause', () => finish(), { once: true });
     audio.src = url;
     await audio.play();
+    return { ended };
   }
   stopAll(): void {
     for (const deck of this.decks) { deck.audio.pause(); deck.key = ''; }

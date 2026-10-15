@@ -12,10 +12,20 @@ export const SOUND_MODULES: Record<SoundKind, { id: string; name: string; descri
  */
 export const SOUND_DISPLAY_ORDER = { bgm: -10120, sfx: -10130 } as const;
 
-const BUTTON = 'display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;width:22px;height:22px;margin:0 0 0 .3em;padding:0;'
-  + 'border-radius:50%;border:1px solid #9aa3b5;background:#3b4150;color:#e7eaf0;font-size:12px;line-height:1;cursor:pointer';
-const bgmButton = `<span data-omni-bgm-tail="1"><button type="button" data-omni-bgm="1" x-omni-bgm="1" title="BGM 재생" aria-label="BGM 재생" style="${BUTTON}">♪</button></span>`;
-const sfxButton = `<span data-omni-sfx-tail="1"><button type="button" data-omni-sfx="1" x-omni-sfx="1" title="효과음 재생" aria-label="효과음 재생" style="${BUTTON}">▶</button></span>`;
+// Like the OmniTTS control: the glyph is CSS only, so the line's text (which
+// TTS reads and matches against the source) carries no ♪ or ▶ of its own.
+const BUTTON = (selector: string, glyph: string, size: number) => `${selector}{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;box-sizing:border-box;width:22px;height:22px;min-width:0;min-height:0;margin:0 0 0 .3em;padding:0;`
+  + `border-radius:50%;border:1px solid #9aa3b5;background:#3b4150;color:#e7eaf0;font-size:${size}px;line-height:1;cursor:pointer;box-shadow:none}${selector}::before{content:"${glyph}"}${selector}:hover{background:#525a6c}`;
+export const SOUND_MODULE_CSS: Record<SoundKind, string> = { bgm: BUTTON('[data-omni-bgm]', '♪', 12), sfx: BUTTON('[data-omni-sfx]', '▶', 9) };
+const bgmButton = '<span data-omni-bgm-tail="1"><button type="button" data-omni-bgm="1" x-omni-bgm="1" title="BGM 재생" aria-label="BGM 재생"></button></span>';
+const sfxButton = '<span data-omni-sfx-tail="1"><button type="button" data-omni-sfx="1" x-omni-sfx="1" title="효과음 재생" aria-label="효과음 재생"></button></span>';
+/** The built-in rule the effect instruction describes; a custom rule needs its own prompt. */
+export const SFX_SECTION_RULE = 'section-sign';
+export const SFX_CUE_PROMPT = `@@depth 0
+<OmniSFX>
+Sound effects: when a distinct sound happens in the scene (a door slams, thunder, footsteps, a gunshot), write a short sound word wrapped in § right where it happens, e.g. 문이 §쾅§ 닫혔다.
+Keep each one short (one to four words, in the story language), at most five per reply, and never inside dialogue quotes, names or code. Never explain the marks.
+</OmniSFX>`;
 
 /** Module assets for files stored in this kind's module: [name, path, name]. */
 function assets(items: readonly SoundItem[]): [string, string, string][] {
@@ -26,13 +36,15 @@ export function soundModule(kind: SoundKind, settings: SoundSettings, items: rea
   const meta = SOUND_MODULES[kind];
   const regex = kind === 'bgm'
     // The whole marker line becomes a quiet ♪ control; the text itself is untouched in the chat log.
-    ? [{ comment: 'omni-bgm-marker', type: 'editdisplay', ableFlag: true, flag: `gi<order ${SOUND_DISPLAY_ORDER.bgm}>`, in: '\\[\\[bgm:[^\\]\\n]{1,200}\\]\\][ \\t]*', out: bgmButton }]
+    // no_end_nl: Risu otherwise adds a line break after an output that ends in `>`.
+    ? [{ comment: 'omni-bgm-marker', type: 'editdisplay', ableFlag: true, flag: `gi<order ${SOUND_DISPLAY_ORDER.bgm},no_end_nl>`, in: '\\[\\[bgm:[^\\]\\n]{1,200}\\]\\][ \\t]*', out: bgmButton }]
     : settings.sfxRules.filter(rule => rule.enabled && rule.pattern).map(rule => ({
       comment: `omni-sfx-${rule.id}`, type: 'editdisplay', ableFlag: true,
-      flag: `g${rule.flags.replace(/[^imsu]/g, '')}<order ${SOUND_DISPLAY_ORDER.sfx}>`, in: `(${rule.pattern})`, out: `$1${sfxButton}`,
+      flag: `g${rule.flags.replace(/[^imsu]/g, '')}<order ${SOUND_DISPLAY_ORDER.sfx},no_end_nl>`, in: `(${rule.pattern})`, out: `$1${sfxButton}`,
     }));
-  const lorebook = kind === 'bgm' && settings.bgmPrompt
-    ? [{ key: '', secondkey: '', comment: 'omni-bgm-cues', content: `@@depth 0\n<OmniBGM>\n${bgmPromptText(settings.bgmTags)}\n</OmniBGM>`, mode: 'normal', insertorder: 998, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 }]
-    : [];
-  return { id: meta.id, namespace: meta.id, name: meta.name, description: meta.description, hideIcon: false, lowLevelAccess: false, trigger: [], lorebook, regex, assets: assets(items) };
+  const book = (comment: string, content: string, insertorder: number) => ({ key: '', secondkey: '', comment, content, mode: 'normal', insertorder, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 });
+  const lorebook = kind === 'bgm'
+    ? settings.bgmPrompt ? [book('omni-bgm-cues', `@@depth 0\n<OmniBGM>\n${bgmPromptText(settings.bgmTags)}\n</OmniBGM>`, 998)] : []
+    : settings.sfxCue && settings.sfxRules.some(rule => rule.id === SFX_SECTION_RULE && rule.enabled) ? [book('omni-sfx-cues', SFX_CUE_PROMPT, 997)] : [];
+  return { id: meta.id, namespace: meta.id, name: meta.name, description: meta.description, hideIcon: false, lowLevelAccess: false, backgroundEmbedding: `<style>${SOUND_MODULE_CSS[kind]}</style>`, trigger: [], lorebook, regex, assets: assets(items) };
 }

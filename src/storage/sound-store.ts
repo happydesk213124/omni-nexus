@@ -10,6 +10,8 @@ let loading: Promise<SoundData> | undefined;
 let saveTail: Promise<void> = Promise.resolve();
 const subscribers = new Set<() => void>();
 export function subscribeSound(callback: () => void): () => void { subscribers.add(callback); return () => subscribers.delete(callback); }
+/** False until the stored data has been read; callers that run early check it first. */
+export const soundReady = (): boolean => !!state;
 export function soundData(): SoundData {
   if (!state) throw new Error('BGM·효과음 설정을 아직 불러오지 않았습니다.');
   return state;
@@ -44,7 +46,7 @@ function term(raw: unknown): SfxTerm | null {
 }
 export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettings {
   const d = soundDefaults(), s = { ...d, ...raw };
-  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
+  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate', 'sfxCue'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
   s.bgmVolume = clamp(s.bgmVolume, 0, 1, d.bgmVolume); s.sfxVolume = clamp(s.sfxVolume, 0, 1, d.sfxVolume);
   s.duck = clamp(s.duck, 0, 1, d.duck); s.crossfadeMs = Math.round(clamp(s.crossfadeMs, 0, 10_000, d.crossfadeMs));
   s.maxFileMb = clamp(s.maxFileMb, 1, 50, d.maxFileMb);
