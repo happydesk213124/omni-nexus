@@ -62,7 +62,9 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.match(shown, /data-omni-bgm="1"[^>]*><\/button>/, 'an empty control: the glyph is module CSS, so the line text TTS reads stays clean'); assert.doesNotMatch(shown, /\[\[bgm:/);
   assert.match(bgm.backgroundEmbedding, /\[data-omni-bgm\]::before\{content:"♪"\}/);
   assert.match(bgm.lorebook[0].content, /\[\[bgm:mood,place,tempo\]\]/);
-  assert.match(bgm.lorebook[0].content, /changes sharply partway through the reply[\s\S]*new cue line at that point/, 'a sharp turn mid-reply gets its own cue');
+  assert.match(bgm.lorebook[0].content, /only where the music should change[\s\S]*turns sharply/, 'a cue only where the music changes, mid-reply too');
+  assert.match(bgm.lorebook[0].content, /directly before the first narration or dialogue line/, 'the cue sits before the line it scores, not at the very top');
+  assert.doesNotMatch(bgm.lorebook[0].content, /begin every reply/);
   assert.equal(api.soundModule('bgm', { ...settings, bgmPrompt: false }, []).lorebook.length, 0);
   const sfx = api.soundModule('sfx', settings, []);
   assert.equal(sfx.name, '⚛️ omni 효과음');

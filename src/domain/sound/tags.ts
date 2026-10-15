@@ -1,6 +1,6 @@
 /**
  * BGM tag vocabulary. The chat model writes three tags from this list on the
- * first line of a reply, `[[bgm:tense,chase,fast]]`; items carry tags from the
+ * line before the part of a reply where the music changes, `[[bgm:tense,chase,fast]]`; items carry tags from the
  * same list, so plain word matching settles almost every reply for free.
  */
 export const BGM_TAGS: readonly string[] = Object.freeze([
@@ -56,9 +56,9 @@ export function bgmMarkers(text: string): { tags: string[]; index: number; lengt
 /** Chat-model instruction; it names the vocabulary but never the track list. */
 export function bgmPromptText(tags: readonly string[]): string {
   return [
-    'Background music cue: begin every reply with one line [[bgm:mood,place,tempo]] — exactly three tags, chosen only from this list, then continue the reply on the next line.',
+    'Background music cue: write one line [[bgm:mood,place,tempo]] — exactly three tags, chosen only from this list — only where the music should change: when no cue has been written in this chat yet, or when the mood or place turns sharply (a sudden attack, a jump to another place or time).',
     `Tags: ${tags.join(', ')}`,
-    'Keep the same tags while the scene continues. Only when the mood or place changes sharply partway through the reply (a sudden attack, a jump to another place or time), put a new cue line at that point, on its own line. At most three cues per reply.',
-    'Never mention the cues in the story.',
+    'Put the cue on its own line directly before the first narration or dialogue line of the part it scores — after any title, status panel or header, never at the very top of the reply by habit.',
+    'While the scene goes on in the same mood write no cue; the current music keeps playing. At most three cues per reply. Never mention the cues in the story.',
   ].join('\n');
 }

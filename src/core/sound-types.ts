@@ -35,7 +35,7 @@ export interface SoundSettings {
   sfxMatcher: SoundMatcher;
   /** The vocabulary the chat model chooses BGM tags from (three per reply). */
   bgmTags: string[];
-  /** Ask the chat model for [[bgm:mood,place,tempo]] on the first line (and where the scene turns). */
+  /** Ask the chat model for [[bgm:mood,place,tempo]] before the line where the music should change. */
   bgmPrompt: boolean;
   sfxRules: SfxRule[];
   /** Ask the chat model to mark sound effects as §word§ (the built-in rule). */
