@@ -31,7 +31,7 @@ function omniCommitLineReply(arg,msg,text,key) {
   let run=omniKeywordRun;
   if(!id || !characterId || !chatId)return false;
   if(run?.identity && (run.identity.scope.characterId!==characterId || run.identity.scope.chatId!==chatId || run.identity.id!==id))return false;
-  if(run && !run.lineMode){omniCancelKeywordRun(run);run=null;}
+  if(run && run.mode!==omniStreamMode(t.backendSettings?.card)){omniCancelKeywordRun(run);run=null;}
   if(!run)omniKeywordRun=run=omniNewKeywordRun();
   // Short replies (or a final burst before the scan window) have no captured
   // streaming target. Use the committed event, with the same identity check.
@@ -41,7 +41,7 @@ function omniCommitLineReply(arg,msg,text,key) {
     return omniKeywordIdentity({...scope,chat:arg.chat},arg.messageIndex);
   }).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   stopStreamKeywordTick();run.text=text;run.outputComplete=true;
-  run=omniScanLineRun(run,true);
+  run=run.inlineMode ? omniScanInlineRun(run,true) : omniScanLineRun(run,true);
   // Without a line tagging request, the ordinary reply listener owns ON/OFF,
   // character limits and dedupe. Do not mark this reply as stream-handled.
   if(!run.batches.length){omniCancelKeywordRun(run);return false;}

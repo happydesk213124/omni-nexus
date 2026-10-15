@@ -48,6 +48,74 @@ test('line batches cap paid images at their own limit despite a general five-ima
   await f.commit(normal.job_id);await assertRuntimeReleased(f,normal.job_id);
 });
 
+test('streaming tags: each block is its own tagger-free slot at its position; a broken one asks the tagger for that slot only',async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3,preprocessing:true,lorebook:true});
+  const first='First narrative paragraph long enough for generating images.';
+  const block=(n,aspect)=>`[[inx${n}]]{"place":"garden, outdoor","aspect":"${aspect}","characters":[]}[[/inx${n}]]`;
+  const reply=`${first}\n${block(1,'portrait')}\n${block(2,'landscape')}\nSecond dialogue in the scene.\n[[inx3]]{"place":"broken"[[/inx3]]\nLast line.`;
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',isStreaming:true,message:[{role:'char',chatId:'m',data:reply}]}]});
+  const tagged=aspect=>({new_characters:[],scenes:[{place:'garden, outdoor',shots:[{aspect,characters:[],line:1,paragraph:0}]}]});
+  const job=extra=>f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,...extra});
+  const a=await job({inline_block:1,inline_tagged:tagged('portrait')}),b=await job({inline_block:2,inline_tagged:tagged('landscape')});
+  assert.equal(a.accepted,true);assert.equal(b.accepted,true,'two blocks after the same line are two slots, not one busy range');
+  for(const id of [a.job_id,b.job_id])await f.wait(id,j=>j.progress.phase==='waiting_output');
+  assert.equal(f.host.llmRequests.length,0,'no tagger, preprocess or lorebook filter: the chat model already wrote the shot');
+  assert.equal(f.host.naiRequests.filter(r=>r.kind==='generate').length,2);
+  f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[{place:'garden',shots:[{line:2,composition:'flowers'}]}]}));
+  const c=await f.api.createJob({...f.request,assistant_text:first+'\nSecond dialogue in the scene.',stream_line_start:2,stream_line_end:2,inline_block:3});
+  await f.wait(c.job_id,j=>j.progress.phase==='waiting_output');
+  const asked=f.host.llmRequests.map(r=>r.messages.map(m=>m.content).join('\n')).join('\n');
+  assert.match(asked,/ONLY from L2 through L2/);assert.match(asked,/Produce 1 to 1 shots/,'the broken block gets exactly its one slot');
+  await f.commit(a.job_id,{job_ids:[a.job_id,b.job_id,c.job_id]});
+  for(const id of [a.job_id,b.job_id,c.job_id])await f.wait(id,j=>j.state==='done');
+  const saved=(await f.chat()).message[0].data;
+  assert.doesNotMatch(saved,/\[\[\/?inx/,'no block survives in the saved reply');
+  const slot=id=>`\\[\\[@inrayspinner::${id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]`;
+  assert.match(saved,new RegExp(`^${first}\\n${slot(a.job_id)}\\n${slot(b.job_id)}\\nSecond dialogue in the scene\\.\\n${slot(c.job_id)}\\nLast line\\.$`),'each image sits exactly where its block was');
+  for(const id of [a.job_id,b.job_id,c.job_id])await assertRuntimeReleased(f,id);
+});
+
+test('streaming tag rules reach only the chat model: after the first message, once, never on our own tagger calls',async()=>{
+  const f=await fixture();const card=f.api.getConfig().card;
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();
+  const chat=[{role:'system',content:'main prompt'},{role:'user',content:'hi'},{role:'assistant',content:'hello'},{role:'user',content:'go'}];
+  assert.equal(await replacer(chat,'model'),chat,'switched off: the request is untouched');
+  card.stream_inline_tags=true;
+  const rules=await f.api.inlineTagRules();
+  assert.ok(rules.startsWith(f.api.INLINE_RULES_MARK));assert.match(rules,/\[\[inx1\]\]\{\.\.\.\}\[\[\/inx1\]\]/);assert.match(rules,/between 1 and 1 blocks|exactly 1 blocks/);
+  assert.doesNotMatch(rules,/Matched Lorebook|Characters in this message" packs|LINE: `line` is the matching/,'no lore or reference-pack how-to: Risu already sends lore and descriptions');
+  assert.equal(await f.api.inlineTagRules(),rules,'same settings, same text: the cached prefix holds');
+  const sent=await replacer(chat,'model');
+  assert.deepEqual(sent.map(m=>m.content===rules?'RULES':m.content),['main prompt','RULES','hi','hello','go']);
+  assert.equal((await replacer(sent,'model')).length,sent.length,'a retry or fallback model gets the rules once');
+  assert.equal(await replacer(chat,'submodel'),chat,'memory, translation and other model calls are not replies');
+  const own=[{role:'system',content:'# Image tagging\nTurn ONE labeled chat message into tags.'},{role:'user',content:'L1| text'}];
+  const release=f.api.markOwnLlmRequest(own);
+  assert.equal(await replacer(own,'model'),own,'our tagger borrowing the main model is left alone');
+  release();assert.notEqual(await replacer(own,'model'),own);
+  assert.deepEqual(f.api.placeInlineTagPrompts(chat,rules,'# state').map(m=>m.content===rules?'RULES':m.content),['main prompt','RULES','hi','hello','# state','go'],'the chat state goes last, before the newest user turn');
+});
+
+test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still being written, and keeps them out of requests',async()=>{
+  const f=await fixture();
+  await risuai.setDatabase({modules:[],enabledModules:[]});
+  assert.equal(await f.api.ensureInlineTagModule(false),true);assert.equal((await risuai.getDatabase()).modules.length,0,'never used: nothing installed');
+  await f.api.ensureInlineTagModule(true);
+  let db=await risuai.getDatabase();const module=db.modules.find(m=>m.id==='omni-inline-tags');
+  assert.equal(module.name,'⚛️ omni 스트리밍태그');assert.ok(db.enabledModules.includes('omni-inline-tags'));assert.deepEqual(module.lorebook,[],'rules go by beforeRequest: a lorebook entry this size would be cut by the 800-token budget');
+  const display=text=>{for(const r of module.regex.filter(r=>r.type==='editdisplay').sort((a,b)=>Number(/order (-?\d+)/.exec(b.flag)[1])-Number(/order (-?\d+)/.exec(a.flag)[1])))text=text.replace(new RegExp(r.in,r.flag.replace(/<[^>]*>/g,'')),r.out);return text;};
+  const wide=display('앞\n[[inx2]]{"aspect":"landscape","characters":[]}[[/inx2]]\n뒤');
+  assert.match(wide,/data-inx-slot="2"/);assert.match(wide,/viewBox="0 0 1216 832"/);assert.doesNotMatch(wide,/inx2\]\]|"aspect"/);
+  assert.match(display('[[inx1]]{"characters":[]}[[/inx1]]'),/viewBox="0 0 832 1216"/,'portrait unless the block says otherwise');
+  assert.equal(display('본문\n[[inx3]]{"place":"ro'),'본문\n','a block still streaming is hidden');
+  assert.match(display('본문 [[inx3]]{"place":"x"}[[/inx4]] 뒤'),/뒤/,'a misnumbered block never hides the story after it');
+  const request=module.regex.find(r=>r.type==='editprocess');
+  assert.equal('앞\n[[inx1]]{"a":1}[[/inx1]]\n뒤'.replace(new RegExp(request.in,request.flag),request.out),'앞\n뒤');
+  await f.api.ensureInlineTagModule(false);db=await risuai.getDatabase();
+  assert.ok(!db.enabledModules.includes('omni-inline-tags'));assert.ok(db.modules.some(m=>m.id==='omni-inline-tags'),'off keeps it installed, disabled');
+});
+
 test('zero-shot line batches wait for output without NAI, spinners, errors or JSON retries',async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{image_min:5,image_max:5,stream_lines_image_min:0,stream_lines_image_max:1,llm_json_retry:true,preprocessing:true});
   f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[]}));
@@ -571,6 +639,21 @@ test('helper module toggles only itself, hides the marker only in display, and s
   assert.ok(wrapped.modules.find(m=>m.id===helper.id).lorebook.some(l=>l.comment==='custom'));
 });
 
+
+test('image markers leave only the request: 리퀘스트 데이터 수정 strips them, the retired lore goes, user lore stays',async()=>{
+  const f=await fixture();
+  await risuai.setDatabase({modules:[{id:'inlay-inray-display',namespace:'inlay.inray_display',name:'old',lorebook:[{comment:'omni-display-marker-instructions',content:'Do not imitate'},{comment:'mine',content:'keep'}],regex:[]}],enabledModules:['inlay-inray-display']});
+  await f.api.ensureInrayDisplayModule();
+  const display=(await risuai.getDatabase()).modules.find(m=>m.id==='inlay-inray-display');
+  assert.deepEqual(display.lorebook.map(l=>l.comment),['mine'],'the do-not-imitate lore is gone; nothing else is touched');
+  const strip=display.regex.find(r=>r.comment==='omni-request-strip-markers');
+  assert.equal(strip.type,'editprocess','request only: stored chat and display keep the markers');
+  const sent='앞 문단\n[[@inrayspinner::job_1::832::1216]][[@inray::card::inxshot_a.png::832::1216]]\n[[@inraywait::w_2::1024::1024]]\n뒤 [[other::x]]'.replace(new RegExp(strip.in,strip.flag),strip.out);
+  assert.equal(sent,'앞 문단\n\n\n뒤 [[other::x]]','only our markers go; other modules\' [[…]] stay');
+  assert.ok(display.regex.some(r=>r.type==='editdisplay'&&r.comment==='omni-spinner-display'),'display rules are still there');
+  const writes=JSON.stringify((await risuai.getDatabase()).modules);await f.api.ensureInrayDisplayModule();
+  assert.equal(JSON.stringify((await risuai.getDatabase()).modules),writes,'a second run changes nothing');
+});
 
 test('automatic upscale previews raw pixels before upscale and bakes only the doubled result',async()=>{
   const f=await fixture();f.api.getConfig().card.nai_auto_upscale=true;

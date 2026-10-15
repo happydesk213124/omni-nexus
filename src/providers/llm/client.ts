@@ -11,6 +11,7 @@ import { risuHost } from '../../core/host.ts';
 import type { LlmSettings } from '../../core/types.ts';
 import { cleanText } from '../../core/util/text.ts';
 import { networkFetch, type FetchLikeResponse } from '../nai/http.ts';
+import { markOwnLlmRequest } from './own-requests.ts';
 import { googleAccessTokenFromServiceAccount } from './google-auth.ts';
 import { applyReasoningToBody, ensureLlmRequestUrl, normalizeLlmProvider } from './providers.ts';
 import { prepareAutotagImage } from '../../core/util/image.ts';
@@ -361,13 +362,16 @@ export async function callLlmViaRisu(
   // Consumed by whichever race it wins; must not surface if it loses both.
   timeout.catch(() => {});
   const aborted = abortPromise(signal);
+  const risuMessages = openaiMessagesToRisu(messages);
+  // Our own call: streaming tag generation's beforeRequest must not touch it.
+  const releaseOwn = markOwnLlmRequest(risuMessages);
   try {
     const response = await Promise.race([
       api.runLLMModel({
         mode,
         ...(staticOverride ? { staticModel: staticOverride } : {}),
         allowPlugins: true,
-        messages: openaiMessagesToRisu(messages),
+        messages: risuMessages,
       }),
       timeout,
       aborted.promise,
@@ -389,5 +393,6 @@ export async function callLlmViaRisu(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     aborted.clear();
+    releaseOwn();
   }
 }

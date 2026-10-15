@@ -17,11 +17,11 @@ async function run(body, scope) {
 }
 
 test('prepass stops on malformed or wrong-shape JSON and identifies the asset tagger', async () => {
-  const body = block("    if (assetMode === 'prepass') {", "\n    await setJob(jobId, 'tagging', {");
+  const body = block("    if (assetMode === 'prepass' && !inline) {", "\n    await setJob(jobId, 'tagging', {");
   for (const raw of ['broken JSON', '{"new_characters":', '{"scenes":[]}']) {
     let requests = 0, saves = 0;
     await assert.rejects(run(body, {
-      assetMode: 'prepass', request: {}, jobId: 'j', sessionId: 'a', unifiedSessionId: '', characterId: 'a', sourceSessionIds: [],
+      assetMode: 'prepass', inline: null, request: {}, jobId: 'j', sessionId: 'a', unifiedSessionId: '', characterId: 'a', sourceSessionIds: [],
       skipAssetInject: false, referenceCandidates: undefined, llmOptions: {},
       collectGenerationAssets: async () => ({ collected: { block: 'tags', packed: { groups: [] } }, images: [] }),
       characterImageInput: async () => [],
@@ -42,7 +42,7 @@ test('main parse failures keep the failing response details with and without the
   for (const retry of [false, true]) {
     let retries = 0;
     await assert.rejects(run(body, {
-      taggedRaw: 'first bad reply', request: {}, jobId: 'j', messages: [], llmOptions: {},
+      taggedRaw: 'first bad reply', inline: null, request: {}, jobId: 'j', messages: [], llmOptions: {},
       parseJsonLoose, TAGGER_JSON_RETRY_FAIL_MESSAGE, flattenShots: () => [],
       getConfig: () => ({ card: { llm_json_retry: retry } }), dbg: () => {},
       setJob: async () => {}, cancelJobIfStale: async () => false, resolveLlmRole: () => ({}),

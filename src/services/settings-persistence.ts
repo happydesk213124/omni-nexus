@@ -2,6 +2,7 @@ import type { Settings } from '../core/types';
 import { deepcopy } from '../core/util/object';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { ensureOmniHelperModule } from '../storage/omni-helper-module';
+import { ensureInlineTagModule } from '../storage/inline-tag-module';
 import { saveSettingsToStorage } from '../storage/settings-store';
 import { configLock, getConfig } from './context';
 
@@ -11,6 +12,7 @@ let pending: Pending | null = null;
 let running = false;
 let displayKey: string | undefined;
 let helperEnabled: boolean | undefined;
+let inlineKey: string | undefined;
 
 function syncDisplay(snapshot: Settings): void {
   const card = snapshot.card;
@@ -23,6 +25,17 @@ function syncDisplay(snapshot: Settings): void {
     void ensureOmniHelperModule(helper).then(ok => {
       if (!ok && helperEnabled === helper) helperEnabled = undefined;
     }, () => { if (helperEnabled === helper) helperEnabled = undefined; });
+  }
+  const inline = card.stream_inline_tags === true;
+  // The scale only shapes the module's slots while it is on.
+  const nextInline = inline ? JSON.stringify([true, scale]) : 'off';
+  // Never used and still off: nothing to write, and no module read on the first save.
+  if (inlineKey === undefined && !inline) inlineKey = nextInline;
+  if (nextInline !== inlineKey) {
+    inlineKey = nextInline;
+    void ensureInlineTagModule(inline, scale).then(ok => {
+      if (!ok && inlineKey === nextInline) inlineKey = undefined;
+    }, () => { if (inlineKey === nextInline) inlineKey = undefined; });
   }
   const key = JSON.stringify([folded, scale, controls]);
   if (key === displayKey) return;

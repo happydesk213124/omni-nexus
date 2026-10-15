@@ -485,6 +485,8 @@ export async function requestJobStop(args: { session_id?: string } = {}): Promis
 type PendingInlineRow = {
   shot_index: number;
   line: number;
+  /** Streaming tag block this slot replaces. */
+  inline_block?: number;
   aspect?: string;
   width?: number;
   height?: number;
@@ -713,7 +715,11 @@ async function runJob(jobId: string): Promise<void> {
   const deferred = streamJob(jobId);
   const request = deferred?.request ?? JSON.parse(row.request_json ?? '{}') as JobRequest;
   const lineRange=streamLineRange(request);
-  const lineLimits=lineRange ? streamLineImageLimits(getConfig().card) : null;
+  // A streaming-tag block is one shot the chat model already wrote: no tagger, no line budget.
+  // A broken block keeps its slot and asks the tagger for exactly that one shot.
+  const inlineBlock = lineRange && request.defer_attachment && Number.isInteger(request.inline_block) ? request.inline_block! : null;
+  const inline = inlineBlock !== null && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
+  const lineLimits=inlineBlock !== null ? {min:1,max:1} : lineRange ? streamLineImageLimits(getConfig().card) : null;
   request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
   const noteSessionId = chatNoteSessionId(request.session_id, request);
@@ -814,7 +820,7 @@ async function runJob(jobId: string): Promise<void> {
       : [];
 
     // Lorefilter: whitelist character lore before assets/tagger (fail-open).
-    if (characterId && getConfig().card?.lorebook !== false) {
+    if (characterId && !inline && getConfig().card?.lorebook !== false) {
       try {
         const hostLore = await fetchHostLorebookEntries();
         const book = hostLore.length
@@ -850,7 +856,7 @@ async function runJob(jobId: string): Promise<void> {
     // Asset references use one collector; only the receiving tagger differs by mode.
     const assetMode = normalizeAssetNaiTagsMode(getConfig().card?.asset_nai_tags);
     let skipAssetInject = false;
-    if (assetMode === 'prepass') {
+    if (assetMode === 'prepass' && !inline) {
       const { collected: assetCollected, images } = await collectGenerationAssets(request);
       if (assetCollected?.block || images.length) {
         await setJob(jobId, 'tagging', {
@@ -933,9 +939,9 @@ async function runJob(jobId: string): Promise<void> {
       debug_stage: 'job.tagging',
     });
 
-    const messages = await buildTaggerMessages(request, { skipAssetInject, ...llmOptions, ...(lineLimits ? {lineImageLimits:lineLimits} : {}) });
-    dbg('job.tagger.messages', { msgs: messages.length, skip_asset_inject: skipAssetInject });
-    if (getConfig().card?.preprocessing) {
+    const messages = inline ? [] : await buildTaggerMessages(request, { skipAssetInject, ...llmOptions, ...(lineLimits ? {lineImageLimits:lineLimits} : {}) });
+    dbg('job.tagger.messages', { msgs: messages.length, skip_asset_inject: skipAssetInject, inline: !!inline });
+    if (!inline && getConfig().card?.preprocessing) {
       const card = getConfig().card;
       const pre = preprocessPrompt(await getPrompt('preprocess'), lineLimits?.min ?? card.image_min, lineLimits?.max ?? card.image_max,!!lineLimits);
       if (pre) {
@@ -951,7 +957,7 @@ async function runJob(jobId: string): Promise<void> {
     }
     // Keep existing images until their replacement slots are ready. Cleanup
     // shares the spinner write so the host never renders a cleared-only message.
-    const taggedRaw0 = await requestMainTagger(messages);
+    const taggedRaw0 = inline ? JSON.stringify(inline) : await requestMainTagger(messages);
     if (taggedRaw0 === null) return;
     if (await cancelJobIfStale(jobId, 'superseded after tagging')) return;
     let taggedRaw = taggedRaw0;
@@ -971,8 +977,10 @@ async function runJob(jobId: string): Promise<void> {
     try {
       ({ tagged, shots } = readMainTagger(taggedRaw));
     } catch (parseErr) {
-      const retryOn = getConfig().card?.llm_json_retry === true;
       const errMsg = String((parseErr as Error)?.message || parseErr).slice(0, 800);
+      // The model's own block has no tagger conversation to retry in.
+      if (inline) throw new Error(`스트리밍 태그 블록 오류 · ${errMsg}`);
+      const retryOn = getConfig().card?.llm_json_retry === true;
       dbg('job.tagger.json_fail', {
         err: errMsg.slice(0, 160),
         raw_len: String(taggedRaw || '').length,
@@ -1162,6 +1170,7 @@ async function runJob(jobId: string): Promise<void> {
       pendingInline.push({
         shot_index: i,
         line,
+        ...(inlineBlock !== null ? { inline_block: inlineBlock } : {}),
         aspect: resolveShotAspect(shot.aspect),
         width: canvas.width,
         height: canvas.height,
@@ -1169,6 +1178,9 @@ async function runJob(jobId: string): Promise<void> {
       });
     });
     let attachment: Promise<void> = Promise.resolve();
+    // Line batches wait for their slots to be written; a streaming-tag block is
+    // already a slot on screen (the module draws it), so its image shows at once.
+    const previewSlot = () => inlineBlock !== null ? { inlineSlot: inlineBlock } : { deferPaint: !!deferred?.lineAttachments && !deferred.lineAttachments.inserted };
     deferred?.lineAttachments?.plan(jobId,{jobId,shots:pendingInline,completed:completedSpinnerCards});
     const attach = () => attachment = attachment.catch(() => {}).then(async () => {
       if (deferred?.cancelled || !isJobCurrent(jobId)) return;
@@ -1411,7 +1423,7 @@ async function runJob(jobId: string): Promise<void> {
           if (typeof preview === 'function' && isJobCurrent(jobId)) {
             try { await preview({ jobId, shot:idx, cardId, characterId:request.character_id, chatId:request.chat_id,
               messageIndex:request.message_index, url:await bytesToDataUrlAsync(raw!, sniffImageMime(raw!)),
-              deferPaint:deferred?.lineAttachments && !deferred.lineAttachments.inserted }); }
+              ...previewSlot() }); }
             catch { dbg('job.preview.fail', {shot:idx}, 'warn'); }
           }
           await setJob(jobId, 'generating', progressPayload({ shot_count:shots.length, shot_index:idx, shot_done:cardsDone(),
@@ -1493,7 +1505,7 @@ async function runJob(jobId: string): Promise<void> {
               dbg('job.preview.unavailable', { shot: idx }, 'warn');
               return;
             }
-            try { await preview({jobId, shot:idx, cardId, characterId:request.character_id, chatId:request.chat_id, messageIndex:request.message_index, url,deferPaint:deferred?.lineAttachments && !deferred.lineAttachments.inserted}); }
+            try { await preview({jobId, shot:idx, cardId, characterId:request.character_id, chatId:request.chat_id, messageIndex:request.message_index, url,...previewSlot()}); }
             catch { dbg('job.preview.fail', {shot:idx}, 'warn'); }
           }} : {}),
         });

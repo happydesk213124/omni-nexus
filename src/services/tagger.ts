@@ -22,7 +22,7 @@ import { comicCloseupCharacterInstruction } from '../domain/comic/caption';
  */
 
 import { dbg } from '../core/debug';
-import type { CharacterRecord, JobRequest, TaggedShot, TaggerResult } from '../core/types';
+import type { CardSettings, CharacterRecord, JobRequest, TaggedShot, TaggerResult } from '../core/types';
 import { deepMerge } from '../core/util/object';
 import { cleanText, stripCbs } from '../core/util/text';
 import { filterTaggerContextMessages, stripBakeTokens } from '../domain/chat-bake';
@@ -43,7 +43,7 @@ import type { LlmContentPart, LlmMessage } from '../providers/llm/transform';
 import { applyComicKindGuard, comicGenOn } from '../domain/comic/kind';
 import { attachInlineComicPages } from '../domain/comic/page';
 import { resolveShotAspect } from '../domain/nai-meta/aspect';
-import { comicLlmWithMain, normalizeComicGenRatio } from '../domain/comic/params';
+import { effectiveComicLlmBatch, normalizeComicGenRatio } from '../domain/comic/params';
 import { hostHas, risuHost } from '../core/host';
 import { mergeTaggerCharUserFields, pickSelectedPersona } from '../domain/tagging/char-user-info';
 import { authorNoteSystemContent } from '../domain/tagging/session-note';
@@ -458,33 +458,25 @@ function costumeHowTo(): string {
   ].join('\n');
 }
 
-/** Builds the full system/user message list for one tagging call. */
-export async function buildTaggerMessages(
-  request: TaggerArgs,
-  opts: BuildTaggerOptions = {},
-): Promise<LlmMessage[]> {
-  await hydrateTaggerCharUser(request);
-  const card = deepMerge(getConfig().card, (request.card as Record<string, unknown>) || {});
-  const sessionId = cleanText(request.session_id, 200);
+/**
+ * The tagger's own rules, shared by the reply tagger and streaming tag
+ * generation so both follow one text. `inline` is the streaming form: shots
+ * are written into the reply, so the L-line placement and the reference-pack
+ * how-tos (lorebook, "Characters in this message") have nothing to point at.
+ */
+export async function taggerRules(card: CardSettings, opts: { imageMin: number; imageMax: number; assetHow?: boolean; inline?: boolean }): Promise<string> {
+  const { imageMin, imageMax, inline = false } = opts;
   const tagger = scenePromptWithoutLegacyLooks(stripCbs(await getPrompt('tagger')));
   const fmt = stripCbs(await getPrompt('format'));
-  const loreHow = stripCbs(await getPrompt('lore_inject')).trim();
-  const appearanceHow = stripCbs(await getPrompt('appearance_inject')).trim();
+  const loreHow = inline ? '' : stripCbs(await getPrompt('lore_inject')).trim();
+  const appearanceHow = inline ? '' : stripCbs(await getPrompt('appearance_inject')).trim();
   const withCostumes = card.costume === true;
-  const assetMode = normalizeAssetNaiTagsMode(card.asset_nai_tags);
-  const includeAssetHow = !opts.skipAssetInject && assetMode !== 'off';
-  const assetHow = includeAssetHow
-    ? 'Use supplied asset tags as references for new_characters.'
-    : '';
-
+  const assetHow = opts.assetHow ? 'Use supplied asset tags as references for new_characters.' : '';
   const naturalMode = normalizeNaturalBaseMode(card.natural_base);
   const charMax = characterMaxLimit(card);
-  const lineLimits=streamLineRange(request) ? opts.lineImageLimits ?? streamLineImageLimits(card) : null;
-  const imageMin = lineLimits?.min ?? Math.max(1, Number(card.image_min ?? 1) || 1);
-  const imageMax = lineLimits?.max ?? Math.max(imageMin, Number(card.image_max ?? 3) || 3);
   const placement = [
-    'LINE: `line` is the matching message L#; image goes immediately before it. `paragraph` is 0-based shot order, NOT line. Example: third shot matching L7 uses paragraph:2,line:7; never assign line=1,2,3 by shot order.',
-    imageMin === imageMax
+    inline ? '' : 'LINE: `line` is the matching message L#; image goes immediately before it. `paragraph` is 0-based shot order, NOT line. Example: third shot matching L7 uses paragraph:2,line:7; never assign line=1,2,3 by shot order.',
+    inline ? '' : imageMin === imageMax
       ? `SHOT COUNT: produce exactly ${imageMax} shot(s) in scenes[].shots (across all scenes).`
       : `SHOT COUNT: produce between ${imageMin} and ${imageMax} shots in scenes[].shots (across all scenes). Prefer the count that fits the message; never fewer than ${imageMin} or more than ${imageMax}.`,
     naturalBaseSystemMessage(naturalMode),
@@ -496,28 +488,47 @@ export async function buildTaggerMessages(
     ),
     'ASPECT: required on every shot, including comic. portrait (832×1216): tall/standing; square (1024×1024): equal crop/face; landscape (1216×832): wide groups/scenery. Comic layout copies it. Missing/unknown defaults to portrait.',
   ].filter(Boolean).join('\n');
-
-  const withMain = comicGenOn(card) && comicLlmWithMain(card.comic_llm_batch);
+  const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
   const comicPack = withMain ? stripCbs(await getPrompt('comic')).trim() : '';
+  return [
+    `${tagger}\n\n${fmt}`.trim(),
+    loreHow,
+    appearanceHow,
+    await characterPrompt('scene'),
+    withCostumes ? costumeHowTo() : '',
+    taggerShouldUseV5Rules(card, getConfig().nai)
+      ? v5NaturalHowTo(normalizeV5NaturalLang(card.v5_natural_lang))
+      : '',
+    cardFlagOn(card.nai_use_coords, true) ? naiCoordsHowTo() : '',
+    cardFlagOn(card.nai5_speech, false) ? naiSpeechHowTo() : '',
+    comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain) : '',
+    comicPack,
+    withMain ? comicNaturalInstruction(card.comic_natural_supplement === true) : '',
+    withMain ? comicCloseupCharacterInstruction(card.comic_closeup_character_half === true, card.comic_closeup_character_weight) : '',
+    assetHow,
+    placement,
+  ].filter(Boolean).join('\n\n');
+}
+
+/** Builds the full system/user message list for one tagging call. */
+export async function buildTaggerMessages(
+  request: TaggerArgs,
+  opts: BuildTaggerOptions = {},
+): Promise<LlmMessage[]> {
+  await hydrateTaggerCharUser(request);
+  const card = deepMerge(getConfig().card, (request.card as Record<string, unknown>) || {});
+  const sessionId = cleanText(request.session_id, 200);
+  const assetMode = normalizeAssetNaiTagsMode(card.asset_nai_tags);
+  const includeAssetHow = !opts.skipAssetInject && assetMode !== 'off';
+  const lineLimits=streamLineRange(request) ? opts.lineImageLimits ?? streamLineImageLimits(card) : null;
+  const imageMin = lineLimits?.min ?? Math.max(1, Number(card.image_min ?? 1) || 1);
+  const imageMax = lineLimits?.max ?? Math.max(imageMin, Number(card.image_max ?? 3) || 3);
+
+  const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
   const messages: LlmMessage[] = [{
     role: 'system',
     content: [
-      `${tagger}\n\n${fmt}`.trim(),
-      loreHow,
-      appearanceHow,
-      await characterPrompt('scene'),
-      withCostumes ? costumeHowTo() : '',
-      taggerShouldUseV5Rules(card, getConfig().nai)
-        ? v5NaturalHowTo(normalizeV5NaturalLang(card.v5_natural_lang))
-        : '',
-      cardFlagOn(card.nai_use_coords, true) ? naiCoordsHowTo() : '',
-      cardFlagOn(card.nai5_speech, false) ? naiSpeechHowTo() : '',
-      comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain) : '',
-      comicPack,
-      withMain ? comicNaturalInstruction(card.comic_natural_supplement === true) : '',
-      withMain ? comicCloseupCharacterInstruction(card.comic_closeup_character_half === true, card.comic_closeup_character_weight) : '',
-      assetHow,
-      placement,
+      await taggerRules(card, { imageMin, imageMax, assetHow: includeAssetHow }),
       formatPrevLocationLine(
         sessionId
           ? await getSessionAuthorNote(sessionId, request).then((r) => (r as { location?: unknown }).location).catch(() => '')
@@ -629,7 +640,7 @@ export function flattenShots(tagged: unknown, messageText?: unknown): TaggedShot
   // L numbers refer only to the analysis body.
   const repaired = normalizeShotLines(shots, messageText ?? '');
   applyComicKindGuard(repaired, comicGenOn(getConfig().card));
-  if (comicLlmWithMain(getConfig().card?.comic_llm_batch)) attachInlineComicPages(repaired);
+  if (effectiveComicLlmBatch(getConfig().card) === 'with_main') attachInlineComicPages(repaired);
   return repaired;
 }
 

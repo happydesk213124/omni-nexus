@@ -88,6 +88,49 @@ export function inrayDisplayRegexScript(folded = false, scalePct: unknown = 100)
 }
 
 
+export const REQUEST_MARKER_SCRIPT_COMMENT = 'omni-request-strip-markers';
+/**
+ * 「리퀘스트 데이터 수정」: image, spinner and wait markers never reach the model.
+ * Risu applies editprocess to the copy it sends, so the stored chat, the display
+ * and every bake/reroll path still see them. This replaces a lorebook that asked
+ * the model not to imitate markers it could see.
+ */
+export function requestMarkerStripScript() {
+  return { comment: REQUEST_MARKER_SCRIPT_COMMENT, type: 'editprocess' as const, ableFlag: true, flag: 'g',
+    in: '\\[\\[@inray(?:spinner|wait)?::[^\\[\\]\\n]{1,4096}\\]\\][ \\t]*', out: '' };
+}
+
+/**
+ * ⚛️ omni 스트리밍태그 display: a closed `[[inxN]]…[[/inxN]]` is drawn as the
+ * same spinner frame as a stored slot, sized by its aspect, and tagged with
+ * `data-inx-slot="N"` so a streaming preview can paint into it before the
+ * reply is saved. A block still being written is hidden, never shown as JSON.
+ * Unless a closing tag follows: a misnumbered block stays visible rather than
+ * hiding the story after it.
+ */
+export const INLINE_SHOT_DISPLAY_COMMENT = 'omni-inline-shot-display';
+const INLINE_BODY = String.raw`(?:(?!\[\[\/?inx)[\s\S]){0,12000}?`;
+const INLINE_ASPECTS = [['landscape', 1216, 832, -10041], ['square', 1024, 1024, -10042], ['', 832, 1216, -10043]] as const;
+export function inlineShotDisplayScripts(scalePct: unknown = 100) {
+  const frame = spinnerDisplayRegexScript(scalePct).out;
+  const slot = (w: number, h: number) => frame.replaceAll('$2', String(w)).replaceAll('$3', String(h)).replaceAll('$1', 'inxslot$1')
+    .replace('data-inray-spinner=', 'data-inx-slot="$1" data-inray-spinner=');
+  return [
+    ...INLINE_ASPECTS.map(([aspect, w, h, order]) => ({
+      comment: `${INLINE_SHOT_DISPLAY_COMMENT}-${aspect || 'portrait'}`, type: 'editdisplay' as const, ableFlag: true, flag: `g<order ${order}>`,
+      in: String.raw`\[\[inx(\d{1,3})\]\]` + (aspect ? String.raw`(?=${INLINE_BODY}"aspect"\s*:\s*"${aspect}")` : '') + INLINE_BODY + String.raw`\[\[\/inx\1\]\]`,
+      out: slot(w, h),
+    })),
+    { comment: `${INLINE_SHOT_DISPLAY_COMMENT}-open`, type: 'editdisplay' as const, ableFlag: true, flag: 'g<order -10044>',
+      in: String.raw`\[\[inx\d{1,3}\]\](?![\s\S]*\[\[\/inx\d)[\s\S]{0,12000}$`, out: '' },
+  ];
+}
+/** Blocks left in old replies (a failed or cancelled slot) are never sent back to the model. */
+export function inlineShotRequestScript() {
+  return { comment: 'omni-inline-shot-request', type: 'editprocess' as const, ableFlag: true, flag: 'g',
+    in: String.raw`\[\[inx(\d{1,3})\]\][\s\S]{0,12000}?\[\[\/inx\1\]\][ \t]*\n?`, out: '' };
+}
+
 export function spinnerDisplayRegexScript(scalePct:unknown=100) {
   const frame=chatImageFrameStyle('$2','$3',scalePct);
   const css=inrayDisplayOut(false,scalePct).split('</style>')[0]+'</style>';

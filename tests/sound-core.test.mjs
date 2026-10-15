@@ -91,6 +91,12 @@ test('cues join the TTS lines in order; effect words are played, not read', () =
   assert.deepEqual(api.matchTtsAnchors([{ kind: 'narration', text: '문 쾅' }, { kind: 'narration', text: '그가 문을 열었다. §문 쾅§ 소리가 울렸다.' }], rows), [-1, 2]);
 });
 
+test('TTS never reads a streaming-tag block, even one spanning lines or still open', () => {
+  const rows = api.parseTtsMessage('그가 웃었다.\n[[inx1]]\n{"place":"room","characters":[]}\n[[/inx1]]\n하린 (calm): "안녕."\n[[inx2]]{"place":"ha');
+  assert.deepEqual(rows.map(r => r.text), ['그가 웃었다.', '안녕.']);
+  assert.equal(rows[1].start, '그가 웃었다.\n[[inx1]]\n{"place":"room","characters":[]}\n[[/inx1]]\n'.length, 'offsets still point at the source');
+});
+
 test('TTS never reads the BGM marker line', () => {
   assert.equal(api.parseCueLine('[[bgm:tense,chase,fast]]', '1'), null);
   assert.equal(api.parseCueLine('그녀가 문을 열었다.', '2').kind, 'narration');

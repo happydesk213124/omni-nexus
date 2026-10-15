@@ -4,6 +4,7 @@ import { bindCharacterOptions } from './character-options';
 import { bindCharacterCreate } from './character-create';
 import { bindModels } from './model-bindings';
 import { bindGuardrailPreset } from './guardrail-preset';
+import { bindInlineTagToggles, markAutoGenForInlineTags } from './inline-tags';
 /**
  * Preview HTML is the settings window. Vendor values/handlers bind by #nx-* id.
  */
@@ -305,8 +306,12 @@ export function afterPaint(): void {
   syncModelWarning();
   void bindPromptUpdates();
   const tab = activeTab();
-  if (tab === 'dashboard') bindSettingsPresets();
-  if (tab === 'gen_options') bindGuardrailPreset();
+  if (tab === 'dashboard') {
+    bindSettingsPresets();
+    const actions = Reflect.get(globalThis, '__OMNI_SETTINGS_ACTIONS__') as { config?: () => { card?: { stream_inline_tags?: unknown } } } | undefined;
+    markAutoGenForInlineTags(actions?.config?.()?.card?.stream_inline_tags === true);
+  }
+  if (tab === 'gen_options') { bindGuardrailPreset(); bindInlineTagToggles(); }
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
   if (line && tab !== 'curation') line.textContent = TAB_LABELS[tab] || '설정';

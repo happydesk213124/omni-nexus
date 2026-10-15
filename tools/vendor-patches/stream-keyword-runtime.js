@@ -24,11 +24,12 @@ async function omniCaptureKeywordTarget() {
   return omniKeywordIdentity(scope, (scope.chat.message?.length || 0)-1);
 }
 function omniNewKeywordRun(target) {
-  const lineMode=!!t.backendSettings?.card?.stream_lines_enabled;
+  // Streaming tags replace line batches and keywords: one reply, one way to tag it.
+  const mode=omniStreamMode(t.backendSettings?.card),lineMode=mode==='lines',inlineMode=mode==='inline';
   const run = {target, text:'', checked:'', timer:0, fired:false, cancelled:false, committed:false,
     streamId:'stream_'+Date.now()+'_'+Math.random().toString(36).slice(2), task:null, jobId:'', expiry:0,
     activeAt:Date.now(),assistantText:'',scanner:globalThis.__INLAY_STREAM_KW__.createStreamSignalScanner(),
-    lineMode,batches:[],lineBatcher:lineMode?globalThis.__INLAY_STREAM_KW__.createStreamLineBatcher():null};
+    mode,lineMode,inlineMode,batches:[],lineBatcher:lineMode?globalThis.__INLAY_STREAM_KW__.createStreamLineBatcher():null};
   if(target!==undefined)run.target=Promise.resolve(target).catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   return run;
 }
@@ -45,7 +46,7 @@ function omniArmKeywordExpiry(run, delay=30000) {
 function onScriptOutput(content) {
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
   let run = omniKeywordRun;
-  if(run && run.lineMode!==!!t.backendSettings?.card?.stream_lines_enabled) {omniCancelKeywordRun(run);run=null;}
+  if(run && run.mode!==omniStreamMode(t.backendSettings?.card)) {omniCancelKeywordRun(run);run=null;}
   if (!run) omniKeywordRun = run = omniNewKeywordRun();
   run.text=String(content || '');run.activeAt=Date.now();
   if(run.cancelled || run.committing)return content;
@@ -53,7 +54,8 @@ function onScriptOutput(content) {
   if (!run.timer) run.timer = setTimeout(() => {
     run.timer = 0;
     if (run !== omniKeywordRun || run.cancelled || run.committing ||
-      (run.text === run.checked && (!run.lineMode || run.identity))) return;
+      (run.text === run.checked && (!(run.lineMode || run.inlineMode) || run.identity))) return;
+    if(run.inlineMode) {run.checked=run.text;omniScanInlineRun(run);return;}
     if(run.lineMode) {run.checked=run.text;omniScanLineRun(run);return;}
     // Full-prefix comparisons belong to the scan window, never each chunk.
     if(run.fired && !run.text.startsWith(run.checked)) {
@@ -72,6 +74,9 @@ function onScriptOutput(content) {
   return content;
 }
 function omniKeywordScope(scope) {
+  // Streaming tags send this chat's registered people with the next request; the
+  // request hook itself never asks the host, so the state is refreshed here.
+  if(t.backendSettings?.card?.stream_inline_tags===true)globalThis.__OMNI_INLINE_TAGS__?.scope?.({sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId});
   const run=omniKeywordRun, target=run?.identity;
   if(!target || run.committing)return;
   // Viewer scopes cache identity only; their message rows may predate this reply.
@@ -83,7 +88,8 @@ async function omniStartKeywordJob(run, text, batch) {
   const target = await run.target;
   if (!target || run.cancelled || t.unloading || !(await ve()).enabled || t.backendSettings?.card?.power === false) return null;
   const {scope,index,id,role} = target, card = t.backendSettings.card, char = scope.character || {};
-  const lore = card.lorebook ? await la() : [];
+  // A block the model wrote needs no tagger, so no lorebook read either.
+  const lore = card.lorebook && !batch?.inline?.tagged ? await la() : [];
   if (run.cancelled) return null;
   const result = await K('/v1/jobs/create',{method:'POST',body:{
     stream_id:run.streamId, defer_attachment:true, session_id:scope.sessionId,
@@ -91,6 +97,7 @@ async function omniStartKeywordJob(run, text, batch) {
     chat_id:scope.chatId, chat_name:scope.chatName || '', char_index:scope.charIndex, chat_index:scope.chatIndex,
     host_message_id:id, message_index:index, message_role:role, content_hash:ye(text), assistant_text:text,
     ...(batch?{stream_line_start:batch.start,stream_line_end:batch.end}:{}),
+    ...(batch?.inline?{inline_block:batch.inline.n,...(batch.inline.tagged?{inline_tagged:batch.inline.tagged}:{})}:{}),
     lorebook:lore, recent_messages:Xe({...scope.chat,message:scope.chat.message.slice(0,index)},re(card.include_max,0,20,0),!!card.userchat),
     character_description:char.description || char.desc || '', persona_description:char.personality || ''
   }});
@@ -119,8 +126,9 @@ function omniCommitStreamReply(arg, msg, text) {
   const id=String(msg.chatId || msg.id || ''), key=JSON.stringify([characterId,chatId,id,ye(globalThis.__INLAY_STREAM_KW__.analysisBody(text))]);
   if (!id || !characterId || !chatId) return false;
   if (omniKeywordSeen.has(key)) return true;
-  if(omniKeywordRun?.lineMode && !t.backendSettings?.card?.stream_lines_enabled)omniCancelKeywordRun();
-  if(t.backendSettings?.card?.stream_lines_enabled) return omniCommitLineReply(arg,msg,text,key);
+  const mode=omniStreamMode(t.backendSettings?.card);
+  if(omniKeywordRun && omniKeywordRun.mode!==mode)omniCancelKeywordRun();
+  if(mode!=='keywords') return omniCommitLineReply(arg,msg,text,key);
   let run = omniKeywordRun;
   if(run?.identity && (run.identity.scope.characterId!==characterId || run.identity.scope.chatId!==chatId || run.identity.id!==id))return false;
   if(run?.fired && run.checked && !text.startsWith(run.checked) &&

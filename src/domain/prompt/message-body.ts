@@ -1,7 +1,12 @@
+import { INLINE_SHOT_MASK_SOURCE } from './inline-shot-pattern';
+
+// Streaming-tag blocks are image positions, never prose: masked like baked tokens.
+const BODY_TOKEN_SOURCE = String.raw`<\/?(?:thoughts|think)\b[^>]*>|\[\[imgstart\]\]|\[\[@inray(?:spinner|wait)?::[^\]]+\]\]|\{\{#asset::inxbake_[^}]+\}\}|` + INLINE_SHOT_MASK_SOURCE;
+
 /** Analysis projection. Keep original nonempty-line indices for durable placement. */
 export function projectMessageBody(value: unknown, keepMarker = false, preserveUnclosedThoughts = true): { text: string; sourceLines: number[]; ranges: Array<[number, number]> } {
   const raw = String(value ?? '').replace(/\r\n/g, '\n');
-  const token = /<\/?(?:thoughts|think)\b[^>]*>|\[\[imgstart\]\]|\[\[@inray(?:spinner)?::[^\]]+\]\]|\{\{#asset::inxbake_[^}]+\}\}/gi;
+  const token = new RegExp(BODY_TOKEN_SOURCE, 'gi');
   const matches = [...raw.matchAll(token)];
   const closedThoughtTags = new Set<number>();
   if (preserveUnclosedThoughts) {

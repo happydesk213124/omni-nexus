@@ -367,12 +367,13 @@ test('gender-only remains incomplete; final caption deduplicates while preservin
 
 test('generation prepass and inline preserve references even when separate image analysis fails', async()=> {
   const source=readFileSync('src/services/jobs.ts','utf8');
-  const start=source.indexOf("    if (assetMode === 'prepass') {");
+  const start=source.indexOf("    if (assetMode === 'prepass' && !inline) {");
   const end=source.indexOf("\n    await setJob(jobId, 'tagging', {",start);
   assert.ok(start>=0 && end>start);
   let body=source.slice(start,end);
   if(process.env.BREAK_IMAGE_ROUTING) body=body.replace('getConfig().card.image_analysis_separate === true','false');
-  const {code}=await transform(`return (async()=>{${body};return {skipAssetInject};})();`,{loader:'ts'});
+  // Not a streaming-tag job: that path skips the prepass entirely.
+  const {code}=await transform(`return (async()=>{const inline=null;${body};return {skipAssetInject};})();`,{loader:'ts'});
   for(const mode of ['inline','prepass']) for(const separate of [false,true]) for(const material of ['text','image','metadata']) for(const failed of [false,true]) {
     const metadata=material==='metadata',hasAssets=material!=='text';
     const {api,host,config}=await runtime();

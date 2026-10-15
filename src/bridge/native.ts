@@ -35,6 +35,7 @@ import {
 } from '../services/context';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { ensureOmniHelperModule } from '../storage/omni-helper-module';
+import { ensureInlineTagModule } from '../storage/inline-tag-module';
 import { migrateAppearanceToCharacters, migrateCharacterIdentity } from '../services/characters';
 import { hydratePresetVibePreviews } from '../services/nai-assets';
 import { hydratePresetLookPreviews } from '../services/preset-look';
@@ -94,6 +95,10 @@ async function boot(): Promise<void> {
   void dataReady().catch(err => dbg('boot.data', { message: String((err as Error)?.message || err) }, 'error'));
   void ensureOmniHelperModule(getConfig().card.omni_helper_prompt === true).catch(err => {
     dbg('boot.omni-helper', {message:String(err)}, 'warn');
+  });
+  // Off is the default: no module read at boot for people who never use it.
+  if (getConfig().card.stream_inline_tags === true) void ensureInlineTagModule(true, getConfig().card.inline_chat_scale_pct).catch(err => {
+    dbg('boot.inline-tags', {message:String(err)}, 'warn');
   });
   if (getConfig().card?.persist_chat_images || getConfig().card?.inline_msg_fan) {
     void ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true }).catch((err: unknown) => {

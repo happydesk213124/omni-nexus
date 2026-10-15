@@ -228,6 +228,18 @@ export async function runScenario(N, handles) {
     if(saved.stream_lines_enabled!==true || saved.stream_lines_count!==6 || disabled.stream_lines_enabled!==false || disabled.stream_lines_count!==6 || low!==2 || high!==100)throw Error('line batching save/disable/bounds failed');
     return {defaultOff:true,defaultCount:30,saved:true,disabledRetainsCount:true,bounds:[low,high]};
   });
+  await rec('settings.stream_inline_contract', async () => {
+    const card=(await get('/v1/settings')).settings.card;
+    if(!('stream_inline_tags' in card))return {unsupported:true};
+    if(card.stream_inline_tags!==false || card.stream_inline_autogen!==true)throw Error('streaming tags must default OFF with images generated at once');
+    await put('/v1/settings',{card:{stream_inline_tags:true,stream_inline_autogen:false}});
+    const saved=(await get('/v1/settings')).settings.card;
+    const coerced=(await put('/v1/settings',{card:{stream_inline_tags:'on',stream_inline_autogen:'0'}})).settings.card;
+    await put('/v1/settings',{card:{stream_inline_tags:false,stream_inline_autogen:true}});
+    const restored=(await get('/v1/settings')).settings.card;
+    if(saved.stream_inline_tags!==true || saved.stream_inline_autogen!==false)throw Error('streaming tag settings did not save');
+    return {defaultOff:true,defaultAutogen:true,saved:true,coerced:coerced.stream_inline_tags===true && coerced.stream_inline_autogen===false,restored:restored.stream_inline_tags===false && restored.stream_inline_autogen===true};
+  });
   await rec('job.commit_output_group_unknown', async () => {
     const result=await post('/v1/jobs/commit-output',{job_ids:['missing-a','missing-b'],stream_id:'missing'});
     if(result.ok!==false || result.error?.code!=='not_pending')throw Error('unknown line group must not attach');

@@ -54,6 +54,14 @@ export function normalizeComicLlmBatch(raw: unknown): 'once' | 'per_shot' | 'wit
 export function comicLlmWithMain(raw: unknown): boolean {
   return normalizeComicLlmBatch(raw) === 'with_main';
 }
+/**
+ * The batch in effect. With streaming tag generation the chat model writes the
+ * page inside its shot block, whatever the batch setting says; a page it left
+ * out still gets one comic call for the missing shots.
+ */
+export function effectiveComicLlmBatch(card: { comic_llm_batch?: unknown; stream_inline_tags?: unknown } | undefined): 'once' | 'per_shot' | 'with_main' {
+  return card?.stream_inline_tags === true ? 'with_main' : normalizeComicLlmBatch(card?.comic_llm_batch);
+}
 
 export function normalizeComicSchedule(raw: unknown): 'overlap' | 'wait_taggers' {
   const s = cleanText(raw, 40).toLowerCase().replace(/[\s-]+/g, '_');

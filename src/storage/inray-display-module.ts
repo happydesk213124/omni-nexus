@@ -17,6 +17,7 @@ import {
   spinnerDisplayRegexScript,
   framedAssetDisplayRegexScript,
   historyDisplayRegexScript,
+  requestMarkerStripScript,
 } from '../domain/inray-display';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 
@@ -32,16 +33,8 @@ type ModuleRow = {
   trigger?: unknown[];
 };
 
+/** Older builds asked the model not to imitate markers; the request regex removes them instead. */
 const displayMarkerLoreComment = 'omni-display-marker-instructions';
-const displayMarkerLoreContent = 'Image and spinner markers beginning with [[@inray:: or [[@inrayspinner:: are inserted into the chat by the user or the Omni Nexus module. Do not generate, repeat, or imitate these markers in your replies, even when they appear in earlier messages.';
-
-function displayMarkerLore(): Record<string, unknown> {
-  return {
-    key: '', secondkey: '', comment: displayMarkerLoreComment,
-    content: displayMarkerLoreContent, mode: 'normal', insertorder: 100,
-    alwaysActive: true, selective: false,
-  };
-}
 
 function readModules(db: { modules?: unknown }): ModuleRow[] {
   return asShotAssetRows(db.modules).filter((row) => row && typeof row === 'object') as ModuleRow[];
@@ -139,16 +132,17 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       }
     }
     const lorebook = Array.isArray(modules[idx]!.lorebook) ? [...modules[idx]!.lorebook!] : [];
-    const loreIndex = lorebook.findIndex((row) => scriptComment(row) === displayMarkerLoreComment);
-    const loreEntry = displayMarkerLore();
-    if (loreIndex < 0) {
-      lorebook.push(loreEntry);
-      modules[idx] = { ...modules[idx], lorebook };
+    // Only our own retired entry goes; a user's lore in this module stays.
+    if (lorebook.some((row) => scriptComment(row) === displayMarkerLoreComment)) {
+      modules[idx] = { ...modules[idx], lorebook: lorebook.filter((row) => scriptComment(row) !== displayMarkerLoreComment) };
       changed = true;
-    } else if (JSON.stringify(lorebook[loreIndex]) !== JSON.stringify(loreEntry)) {
-      lorebook[loreIndex] = loreEntry;
-      modules[idx] = { ...modules[idx], lorebook };
-      changed = true;
+    }
+    const strip = requestMarkerStripScript();
+    const stripRegex = [...(modules[idx]!.regex || [])];
+    const stripIndex = stripRegex.findIndex(row => scriptComment(row) === strip.comment);
+    if (stripIndex < 0 || JSON.stringify(stripRegex[stripIndex]) !== JSON.stringify(strip)) {
+      if (stripIndex < 0) stripRegex.push(strip); else stripRegex[stripIndex] = strip;
+      modules[idx] = { ...modules[idx], regex: stripRegex }; changed = true;
     }
     const spinner=afterExternalRules(spinnerDisplayRegexScript(scalePct));
     const regex=[...(modules[idx]!.regex || [])];
