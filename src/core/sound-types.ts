@@ -33,6 +33,12 @@ export interface SoundSettings {
   crossfadeMs: number;
   bgmMatcher: SoundMatcher;
   sfxMatcher: SoundMatcher;
+  /**
+   * What picks the music: 'tags' the reply's [[bgm:…]] tags (its text when it has
+   * none); 'message' always its text; 'both' its text and its tags together. Text
+   * goes to JEV or the LLM.
+   */
+  bgmBasis: 'tags' | 'message' | 'both';
   /** The vocabulary the chat model chooses BGM tags from (three per reply). */
   bgmTags: string[];
   /** Ask the chat model for [[bgm:mood,place,tempo]] before the line where the music should change. */

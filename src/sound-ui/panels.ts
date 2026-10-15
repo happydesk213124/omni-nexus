@@ -39,6 +39,7 @@ ${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number
 ${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'), '곡이 바뀔 만할 때만(이 채팅의 첫 장면, 분위기·장소가 확 바뀔 때) 그 부분의 첫 나레이션·대사 바로 앞 줄에 [[bgm:분위기,장소,템포]]를 쓰게 합니다. 같은 분위기가 이어지면 쓰지 않고 곡이 계속 흐릅니다(답변당 최대 3개). 곡 목록은 보내지 않습니다.')}
 ${row('TTS 목록·이어 읽기에 BGM', sw('snd-list-bgm', 'TTS 목록·이어 읽기에 BGM'), 'TTS 뷰어 목록에 ♪ 줄이 생기고, 이어 읽다가 그 줄에 오면 곡이 바뀝니다. 끄면 새 답변이 올 때 첫 태그로만 바뀝니다.')}
 ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
+${row('곡을 고르는 근거', `<select id="snd-bgm-basis" aria-label="곡을 고르는 근거"><option value="tags">BGM 태그 (없으면 메시지 전체)</option><option value="message">메시지 문장 전체</option><option value="both">BGM 태그 + 메시지 전체</option></select>`, '「태그 + 메시지」는 태그를 힌트로 함께 보냅니다. 메시지 전체로 고를 때는 응답 본문(생각·이미지 표시 제외, 최대 4000자)을 JEV·LLM에 보내 곡 하나를 고릅니다. 같은 응답은 한 번만 묻습니다.')}
 <label class="field full"><span>BGM 태그 목록 · 쉼표로 구분 (LLM은 이 안에서만 고릅니다)</span><textarea id="snd-bgm-tags" rows="3" maxlength="1200"></textarea></label>
 </div></div>
 <div class="tts-settings-column"><div class="group"><h3>효과음</h3>

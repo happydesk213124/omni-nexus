@@ -298,8 +298,9 @@ export async function installTtsHost(): Promise<void> {
       const key=JSON.stringify([context.scope,index]), signature=compactHash(String(context.messages[index]?.data || '')); if (seen.get(key)===signature) return; seen.set(key,signature); if (seen.size>100) seen.delete(seen.keys().next().value!);
       const s=ttsData().settings, reads=s.enabled&&s.autoReply;
       // The reply's music starts now, unless continuous reading reaches its cue itself.
+      // With no [[bgm:…]] tag (or with 「메시지 문장 전체」) the reply's text picks the track.
       const bgm=list.find(r=>r.segment.kind==='bgm');
-      if (bgm && !(reads&&s.continuous&&soundReady()&&soundData().settings.listBgm)) void omniSound.playBgmForTags(bgm.segment.tags||[]).catch(report);
+      if (soundReady() && !(bgm && reads&&s.continuous&&soundData().settings.listBgm)) void omniSound.playBgmForReply(String(context.messages[index]?.data||''),bgm?.segment.tags).catch(report);
       if (!reads) { schedule(); return; }
       // Let Risu render the reply first so panels other modules drew are skipped.
       await sleep(250); await requestScan();

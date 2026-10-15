@@ -60,6 +60,7 @@ export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettin
   s.elevenKey = text(s.elevenKey, 200); s.sfxPrompt = text(s.sfxPrompt, 400) || d.sfxPrompt;
   for (const key of ['bgmMatcher', 'sfxMatcher'] as const) if (!MATCHERS.includes(s[key])) s[key] = d[key];
   if (s.sfxAutoPlay !== 'reply' && s.sfxAutoPlay !== 'button') s.sfxAutoPlay = d.sfxAutoPlay;
+  if (!['tags', 'message', 'both'].includes(s.bgmBasis)) s.bgmBasis = d.bgmBasis;
   s.bgmTags = soundTags(Array.isArray(s.bgmTags) ? s.bgmTags : d.bgmTags); if (!s.bgmTags.length) s.bgmTags = d.bgmTags;
   s.sfxRules = Array.isArray(s.sfxRules) ? s.sfxRules.map(rule).filter((r): r is SfxRule => !!r).slice(0, 40) : d.sfxRules;
   return s;

@@ -177,7 +177,12 @@ export class OmniSoundRuntime {
     listed: segment => { if (!soundReady()) return false; const s = soundData().settings; return segment.kind === 'bgm' ? s.bgmEnabled && s.listBgm : s.sfxEnabled && s.listSfx; },
     automatic: segment => segment.kind === 'bgm' || (soundReady() && soundData().settings.sfxAutoPlay === 'reply'),
     play: async request => {
-      if (request.segment.kind === 'bgm') await this.playBgmForTags(request.segment.tags ?? soundTags(request.segment.text));
+      if (request.segment.kind !== 'bgm') return;
+      const tags = request.segment.tags ?? soundTags(request.segment.text);
+      if (soundData().settings.bgmBasis === 'tags') { await this.playBgmForTags(tags); return; }
+      // 메시지 문장 전체 (+ 태그): the row is where the music changes; the reply's text picks it.
+      const message = request.context.messages.find(row => String(row.chatId || row.id || '') === request.messageId);
+      await this.playBgmForReply(String(message?.data ?? ''), tags);
     },
     effect: async request => {
       if (!soundReady() || !soundData().settings.sfxEnabled) return null;
@@ -193,17 +198,40 @@ export class OmniSoundRuntime {
    * has a key, else the LLM (the effect rule). Picking music turns BGM on.
    */
   async guessBgm(reply: string): Promise<SoundItem> {
+    const s = soundData().settings;
+    const item = await this.bgmForText(reply, [], true);
+    if (!s.bgmEnabled) await updateSoundSettings({ bgmEnabled: true });
+    await this.play(item);
+    return item;
+  }
+  private sceneCache = new Map<string, string>();
+  /** The track a reply's own text picks (JEV or the LLM); one request per reply text. */
+  /** fresh: ⚡ asks again; automatic picks reuse the answer for the same reply. */
+  private async bgmForText(reply: string, tags: readonly string[] = [], fresh = false): Promise<SoundItem> {
     const s = soundData().settings, tts = ttsData().settings, items = soundData().bgm;
     if (!items.length) throw new Error('등록된 BGM이 없습니다. BGM·효과음 설정에서 추가해 주세요.');
     const scene = bgmSceneText(reply);
     if (!scene) throw new Error('곡을 고를 메시지가 없습니다.');
     const engine = s.bgmMatcher === 'jev' || s.bgmMatcher === 'llm' ? s.bgmMatcher : tts.jev.key.trim() ? 'jev' : 'llm';
-    const pick = await chooseBgm(scene, items, engine, tts);
+    const cacheKey = JSON.stringify([engine, scene, tags, items.map(item => item.key).join(',')]);
+    const pick = (fresh ? undefined : this.sceneCache.get(cacheKey)) ?? await chooseBgm(scene, items, engine, tts, tags);
     const item = items.find(row => row.key === pick) ?? null;
     if (!item) throw new Error('메시지에 맞는 곡을 고르지 못했습니다.');
-    if (!s.bgmEnabled) await updateSoundSettings({ bgmEnabled: true });
-    await this.play(item);
+    this.sceneCache.set(cacheKey, pick); while (this.sceneCache.size > 50) this.sceneCache.delete(this.sceneCache.keys().next().value!);
     return item;
+  }
+  /**
+   * The music for a reply, as 「곡을 고르는 근거」 says: its [[bgm:…]] tags (its text
+   * when it has none), always its text, or its text with its tags as a hint.
+   * Never turns BGM on by itself.
+   */
+  async playBgmForReply(reply: string, tags?: readonly string[]): Promise<string> {
+    const s = soundData().settings;
+    if (!s.bgmEnabled || !soundData().bgm.length) return '';
+    if (s.bgmBasis === 'tags' && tags?.length) return this.playBgmForTags(tags);
+    const item = await this.bgmForText(reply, s.bgmBasis === 'both' ? tags ?? [] : []);
+    await this.play(item);
+    return item.key;
   }
   /** BGM for a reply's tags; free word matching first. Returns the key that plays. */
   async playBgmForTags(tags: readonly string[]): Promise<string> {

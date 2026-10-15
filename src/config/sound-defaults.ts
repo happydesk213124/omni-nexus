@@ -4,7 +4,7 @@ import { BGM_TAGS } from '../domain/sound/tags';
 export function soundDefaults(): SoundSettings {
   return {
     bgmEnabled: false, sfxEnabled: false, bgmVolume: .5, sfxVolume: .8, duck: .35, crossfadeMs: 1500,
-    bgmMatcher: 'auto', sfxMatcher: 'auto', bgmTags: [...BGM_TAGS], bgmPrompt: true,
+    bgmMatcher: 'auto', sfxMatcher: 'auto', bgmBasis: 'tags', bgmTags: [...BGM_TAGS], bgmPrompt: true,
     // The common `§덜컹§` style; more rules can be added in settings.
     sfxRules: [{ id: 'section-sign', name: '§ 효과음 §', open: '§', close: '§', enabled: true }],
     sfxCue: true,
