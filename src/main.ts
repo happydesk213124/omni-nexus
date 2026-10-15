@@ -11,7 +11,7 @@
 
 import { VERSION } from './core/constants';
 import { dbg } from './core/debug';
-import { installNativeBridge } from './bridge/native';
+import { installNativeBridge, ready } from './bridge/native';
 import { installUiContractGlobals } from './bridge/ui-globals';
 import { installSettingsUx } from './settings-ux/mount';
 import { installTtsHost } from './tts-ui/host-chat';
@@ -22,6 +22,6 @@ installUiContractGlobals();
 installSettingsUx();
 installNativeBridge();
 void installTtsHost().catch(error => dbg('tts.boot.failed', { message: String(error) }, 'warn'));
-void installInlineTags().catch(error => dbg('inline-tags.boot', { message: String(error) }, 'warn'));
+void installInlineTags({ ready }).catch(error => dbg('inline-tags.boot', { message: String(error) }, 'warn'));
 installWaitTaps();
 dbg('boot.loaded', { message: VERSION });
