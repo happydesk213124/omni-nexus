@@ -12,6 +12,7 @@ export interface ProgressToastJob {
   batch_done?: unknown;
   batch_failed?: unknown;
   upscale_count?: unknown;
+  shot_unplaced?: unknown;
 }
 
 const count = (n: unknown): number => Number.isFinite(Number(n)) ? Math.max(0, Math.floor(Number(n))) : 0;
@@ -67,6 +68,8 @@ export function progressToastView(job: ProgressToastJob, elapsedMs = 0) {
     detail=`태깅 ${tagged}/${batches}구간 · 이미지 ${done}/${total}장`;
     if(phase==='streaming')detail+=' · 응답 출력 중';
     if(errors)detail+=` · ${errors}구간 실패`;
+    // The image exists in the gallery; only its place in the reply was gone.
+    if(count(job.shot_unplaced))detail+=` · ${count(job.shot_unplaced)}장 자리 없음(갤러리 보관)`;
     if(count(job.upscale_count))detail+=' · 업스케일 중…';
   }
   if (state === 'done' && /업스케일 실패/.test(message)) detail += ' · 업스케일 실패: 원본 저장';
@@ -90,7 +93,8 @@ export function aggregateStreamLineProgress(rows: Array<{state?:unknown;progress
   const finished=flags.outputComplete && flags.committed && rows.length>=batches && rows.every(row=>['done','error','cancelled'].includes(String(row.state)));
   const phase=!flags.outputComplete ? 'streaming' : tagged<batches ? 'waiting_tags' : !flags.committed ? 'waiting_insert' : done<total ? 'generating' : 'finalizing';
   const upscales=rows.filter(row=>row.progress?.phase==='upscaling' && !['done','error','cancelled'].includes(String(row.state))).length;
-  return {...(upscales ? {upscale_count:upscales} : {}),kind:'stream-lines',state:finished ? failed?'error':'done' : 'generating',phase,batch_count:batches,batch_done:tagged,batch_failed:failed,shot_count:total,shot_done:done};
+  const unplaced=max('unplaced');
+  return {...(upscales ? {upscale_count:upscales} : {}),...(unplaced ? {shot_unplaced:unplaced} : {}),kind:'stream-lines',state:finished ? failed?'error':'done' : 'generating',phase,batch_count:batches,batch_done:tagged,batch_failed:failed,shot_count:total,shot_done:done};
 }
 
 // High background opacity preserves white-text contrast over bright images.

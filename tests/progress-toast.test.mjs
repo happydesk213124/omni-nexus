@@ -21,6 +21,9 @@ test('line-generation toast tracks all batches, pending insertion and one final 
   assert.equal(progressToastView(final).title,'선행 생성 완료');assert.equal(progressToastView(final).detail,'태깅 3/3구간 · 이미지 6/6장');
   group.failed=1;const partial=aggregateStreamLineProgress(rows().map(row=>({...row,state:'done'})),{batchCount:3,outputComplete:true,committed:true});
   assert.equal(progressToastView(partial).title,'선행 생성 일부 실패');assert.match(progressToastView(partial).detail,/1구간 실패/);
+  Object.assign(group,{failed:0,unplaced:1});const unplaced=aggregateStreamLineProgress(rows().map(row=>({...row,state:'done'})),{batchCount:3,outputComplete:true,committed:true});
+  assert.equal(progressToastView(unplaced).title,'선행 생성 완료');assert.equal(progressToastView(unplaced).detail,'태깅 3/3구간 · 이미지 6/6장 · 1장 자리 없음(갤러리 보관)','a streaming-tag image whose slot was gone says so');
+  delete group.unplaced;
   Object.assign(group,{failed:0,total:0,done:0});
   const empty=aggregateStreamLineProgress(rows().map(row=>({...row,state:'done'})),{batchCount:3,outputComplete:true,committed:true});
   assert.equal(progressToastView(empty).title,'선행 생성 이미지 생략');

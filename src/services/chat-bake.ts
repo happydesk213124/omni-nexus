@@ -419,6 +419,34 @@ async function rewriteMessage(target: MessageTarget, change: (body: string) => s
 }
 
 /**
+ * Streaming tags: the message is found by its id (a deleted earlier message
+ * shifts the index), and a write that crossed another save re-reads and applies
+ * `change` again instead of giving up. `change` must be safe to run twice.
+ */
+export async function rewriteMessageById(target: MessageTarget, change: (body: string) => string): Promise<boolean> {
+  for (let attempt = 1; ; attempt++) {
+    const loaded = await loadTargetChat(target.charIndex, target.chatIndex); if (!loaded) return false;
+    const messages = chatMessageList(loaded.chat);
+    const index = target.hostMessageId ? messages.findIndex(msg => String(msg.chatId || msg.id || '') === target.hostMessageId) : target.messageIndex;
+    const msg = messages[index]; if (!msg) return false;
+    const previousBody = messageBody(msg), next = change(previousBody);
+    if (next === previousBody) return true;
+    setMessageBody(msg, next);
+    try {
+      await writeChat(loaded.host, target.charIndex, target.chatIndex, loaded.chat, { messageIndex: index, previousBody });
+      return true;
+    } catch (error) {
+      if (attempt >= 3 || !/changed during bake/.test(String((error as Error)?.message))) throw error;
+    }
+  }
+}
+/** One finished shot's bake token; empty when its asset is not there yet. */
+export async function shotBakeToken(cardId: string, width?: number, height?: number): Promise<string> {
+  const asset = await imageAssetRef(cardId); if (!asset?.path) return '';
+  return bakeTokenForCard(cardId, asset.name, await dimensionsForCard(cardId) || bakeDimensions(width, height)) || '';
+}
+
+/**
  * Streaming tags with 「이미지 바로 생성」 off: every block becomes its waiting
  * (pink) slot in one write, and blocks without a slot leave the reply.
  */

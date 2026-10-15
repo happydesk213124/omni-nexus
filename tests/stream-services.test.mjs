@@ -75,6 +75,54 @@ test('streaming tags: each block is its own tagger-free slot at its position; a 
   for(const id of [a.job_id,b.job_id,c.job_id])await assertRuntimeReleased(f,id);
 });
 
+test('streaming tags bake by message id: an edited reply or a shifted index still bakes, and a lost slot holds back only itself',{timeout:15000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true});
+  const lines=['First narrative paragraph long enough for generating images.','Second dialogue in the scene.','Third line of the reply here.','Fourth line closes it.'];
+  const block=n=>`[[inx${n}]]{"place":"garden, outdoor","aspect":"portrait","characters":[]}[[/inx${n}]]`;
+  const reply=lines.map((line,i)=>`${line}\n${block(i+1)}`).join('\n');
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',isStreaming:true,message:[{role:'char',chatId:'m',data:reply}]}]});
+  const tagged=line=>({new_characters:[],scenes:[{place:'garden, outdoor',shots:[{aspect:'portrait',characters:[],line,paragraph:0}]}]});
+  const job=n=>f.api.createJob({...f.request,assistant_text:lines.slice(0,n).join('\n'),stream_line_start:n,stream_line_end:n,inline_block:n,inline_tagged:tagged(n)});
+  const ids=[];
+  for(const n of [1,2]){const r=await job(n);ids.push(r.job_id);await f.wait(r.job_id,j=>j.progress.phase==='waiting_output');}
+  const gate=f.host.pauseGeneration();
+  for(const n of [3,4]){const r=await job(n);assert.equal(r.accepted,true);ids.push(r.job_id);}
+  await gate.started;
+  // After the reply: its text was edited and a message appeared before it. Neither moves a block.
+  const chat=await f.chat();chat.isStreaming=false;
+  chat.message[0].data=chat.message[0].data.replace('Second dialogue','Second (edited) dialogue');
+  chat.message.unshift({role:'user',chatId:'u',data:'hello'});await risuai.setChatToIndex(0,0,chat);
+  const result=await f.api.commitStreamOutput({...f.request,job_id:ids[0],job_ids:ids,assistant_text:reply,content_hash:'final',message_index:0});
+  assert.equal(result.ok,true,'the reply text is not compared, and the message is found by its id');
+  const frame=id=>new RegExp(`\\[\\[@inrayspinner::${id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::`);
+  let saved=(await f.chat()).message[1].data;
+  for(const id of ids.slice(0,2))assert.match(saved,frame(id),'images finished before the reply ended bake in the first write');
+  // A slot that is gone before the last write (the user deleted it) leaves only its own image out.
+  const now=await f.chat();now.message[1].data=now.message[1].data.replace(new RegExp(`\\[\\[@inrayspinner::${ids[2]}_0::\\d+::\\d+\\]\\]`),'');
+  await risuai.setChatToIndex(0,0,now);
+  gate.release();
+  for(const id of ids)await f.wait(id,j=>j.state==='done');
+  saved=(await f.chat()).message[1].data;
+  for(const id of [ids[0],ids[1],ids[3]])assert.match(saved,frame(id));
+  assert.ok(!saved.includes(ids[2]),'the image without a place is left out alone');
+  assert.doesNotMatch(saved,/\[\[\/?inx/);assert.match(saved,/Second \(edited\) dialogue/);
+  assert.equal((await f.chat()).message[0].data,'hello');
+  assert.equal((await f.api.getJob(ids[3])).progress.line_group.unplaced,1,'the toast can say one image had no place');
+});
+
+test('a streaming-tag write that crosses another save reads again and keeps both',async()=>{
+  const f=await fixture(),get=risuai.getChatFromIndex;let cross=true;
+  risuai.getChatFromIndex=async(...args)=>{
+    const chat=await get(...args);
+    if(cross){cross=false;const other=await get(...args);other.message[0].data+='\nOTHER';await risuai.setChatToIndex(args[0],args[1],other);}
+    return chat;
+  };
+  try {assert.equal(await f.api.rewriteMessageById({charIndex:0,chatIndex:0,messageIndex:5,hostMessageId:'m'},body=>body.replace('First','FIRST')),true);}
+  finally {risuai.getChatFromIndex=get;}
+  const body=(await f.chat()).message[0].data;
+  assert.match(body,/FIRST/);assert.match(body,/OTHER$/,'the other save is kept, not overwritten');
+});
+
 test('streaming tag rules reach only the chat model: after the first message, once, never on our own tagger calls',async()=>{
   const f=await fixture();const card=f.api.getConfig().card;
   let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
