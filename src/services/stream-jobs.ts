@@ -110,21 +110,24 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
   if (row.committing) return row.committing;
   if (row.committed) return { ok: true, committed: true, job_id: id, job_ids: ids };
   row.committing = (async () => {
-    const index = Number(input.message_index);
+    // Streaming tags: the block is the slot, so the reply text is never compared,
+    // and the message is found by its id (Risu keeps it for the whole reply).
+    const inline = !!row.lineAttachments && group.every(r=>Number.isInteger(r.request.inline_block));
     const host = risuHost();
     const character = await host?.getCharacterFromIndex?.(Number(request.char_index));
     const chat = await host?.getChatFromIndex?.(Number(request.char_index), Number(request.chat_index));
+    const index = inline ? (chat?.message ?? []).findIndex((m: { chatId?: unknown; id?: unknown } | null) => String(m?.chatId || m?.id || '') === request.host_message_id) : Number(input.message_index);
     const msg = Number.isInteger(index) && index >= 0 ? chat?.message?.[index] : null;
     const body = String(msg?.data ?? '');
-    if (group.some(r=>r.cancelled) || getConfig().card.power === false || !msg ||
+    if (group.some(r=>r.cancelled) || getConfig().card.power === false || !msg || !inline && (
         String(character?.chaId || character?.id || '') !== request.character_id ||
         !['char','assistant','bot'].includes(String(msg.role)) ||
         String(chat?.id || chat?.chatId || '') !== request.chat_id ||
         String(msg.chatId || msg.id || '') !== request.host_message_id ||
         body !== String(input.assistant_text ?? '') ||
-        group.some(r=>!streamLineRange(r.request) && !analysisBody(stripBakeTokens(body)).startsWith(String(r.request.assistant_text || '')))) {
+        group.some(r=>!streamLineRange(r.request) && !analysisBody(stripBakeTokens(body)).startsWith(String(r.request.assistant_text || ''))))) {
       ids.forEach(cancelStreamJob);
-      return { ok: false, error: { code: 'message_changed', message: '본문 또는 대상이 변경되어 선행 이미지 부착을 취소했습니다.' } };
+      return { ok: false, error: { code: 'message_changed', message: inline ? '응답 메시지를 찾을 수 없어 선행 이미지 부착을 취소했습니다.' : '본문 또는 대상이 변경되어 선행 이미지 부착을 취소했습니다.' } };
     }
     // Bind all siblings before the first write changes the host message body.
     group.forEach((row,i)=>{
@@ -137,7 +140,12 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
     // Ready plans attach now; all remaining taggers share the second placement.
     if(row.lineAttachments) {
       const expected=analysisBody(stripBakeTokens(body));
-      try {await row.lineAttachments.insert(ids,{...jobChatTarget(request),expectedPrefix:expected},async()=>{
+      try {await row.lineAttachments.insert(ids,inline ? jobChatTarget(request) : {...jobChatTarget(request),expectedPrefix:expected},async()=>{
+        if(inline) {
+          if(!group.some(r=>r.cancelled) && getConfig().card.power!==false)return;
+          ids.forEach(cancelStreamJob);
+          throw Object.assign(new Error('선행 이미지 부착을 취소했습니다.'),{code:'message_changed'});
+        }
         const latest=await host?.getChatFromIndex?.(Number(request.char_index),Number(request.chat_index));
         const message=latest?.message?.[index];
         if(group.some(r=>r.cancelled) || getConfig().card.power===false ||
@@ -148,7 +156,7 @@ export async function commitStreamOutput(input: Record<string, unknown>): Promis
           ids.forEach(cancelStreamJob);
           throw Object.assign(new Error('본문 또는 대상이 변경되어 선행 이미지 부착을 취소했습니다.'),{code:'message_changed'});
         }
-      });}
+      },inline);}
       catch(error){
         group.forEach(r=>r.resolve());
         if(error instanceof Error && 'code' in error && error.code==='message_changed')

@@ -1,4 +1,5 @@
 import { jobChatTarget, writeLineGroupSlots, type LineBakeBatch } from './chat-bake';
+import { writeInlineGroupSlots } from './inline-bake';
 
 type Entry = { plan?: LineBakeBatch; ready: Promise<void>; resolve: () => void; ended: boolean };
 
@@ -11,6 +12,8 @@ export class StreamLineAttachments {
   private placementComplete = false;
   private finishing = false;
   private failure?: unknown;
+  private inline = false;
+  private unplaced = 0;
   private resolveFinished!: () => void;
   private finished = new Promise<void>(resolve=>{this.resolveFinished=resolve;});
   inserted = false;
@@ -21,7 +24,7 @@ export class StreamLineAttachments {
       done:entries.reduce((n,entry)=>n+(entry.plan?.completed.size || 0),0),
       settled:entries.filter(entry=>entry.ended).length,
       failed:entries.filter(entry=>entry.ended && (!entry.plan || entry.plan.completed.size<entry.plan.shots.length)).length,
-      inserted:this.inserted};
+      inserted:this.inserted,...(this.unplaced ? {unplaced:this.unplaced} : {})};
   }
   add(id: string): void {
     let resolve!: () => void;
@@ -39,12 +42,12 @@ export class StreamLineAttachments {
     if(this.inserted)void this.finalize();
   }
   waitTags(ids: string[]): Promise<unknown> {return Promise.all(ids.map(id=>this.entries.get(id)?.ready));}
-  insert(ids: string[],target: ReturnType<typeof jobChatTarget>,validate:()=>Promise<void>): Promise<void> {
+  insert(ids: string[],target: ReturnType<typeof jobChatTarget>,validate:()=>Promise<void>,inline=false): Promise<void> {
     if(this.insertion)return this.insertion;
-    this.ids=ids;this.target=target;
+    this.ids=ids;this.target=target;this.inline=inline;
     this.insertion=(async()=>{
       const ready=this.plans();
-      await writeLineGroupSlots(target,ready);
+      await this.write(ready,false);
       this.inserted=true;
       await this.repaint();
       await this.waitTags(ids);
@@ -52,13 +55,19 @@ export class StreamLineAttachments {
       const plans=this.plans();
       // All late taggers share one insertion, regardless of their finish order.
       if(plans.some(plan=>plan.shots.length && !ready.includes(plan))) {
-        await writeLineGroupSlots(target,plans);
+        await this.write(plans,false);
         await this.repaint();
       }
       this.placementComplete=true;
       await this.finalize();
     })().catch(error=>{this.failure=error;this.resolveFinished();throw error;});
     return this.insertion;
+  }
+  private async write(plans: LineBakeBatch[], final: boolean): Promise<void> {
+    if(!this.inline)return writeLineGroupSlots(this.target!,plans,final);
+    const result=await writeInlineGroupSlots(this.target!,plans,final);
+    if(!result.written)throw Object.assign(new Error('응답 메시지를 찾을 수 없어 이미지 박제를 멈췄습니다.'),{code:'message_changed'});
+    if(final)this.unplaced=result.unplaced;
   }
   private plans(): LineBakeBatch[] {
     return this.ids.flatMap(id=>{const plan=this.entries.get(id)?.plan;return plan?[plan]:[];});
@@ -72,7 +81,7 @@ export class StreamLineAttachments {
     if(this.finishing || !this.placementComplete || !this.target || !this.ids.every(id=>this.entries.get(id)?.ended))return;
     this.finishing=true;
     try {
-      await writeLineGroupSlots(this.target,this.plans(),true);
+      await this.write(this.plans(),true);
     } catch(error) {this.failure=error;}
     finally {this.resolveFinished();}
   }
