@@ -15,16 +15,6 @@ let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
 export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models') page = next; }
 
-/** Shows the current page's tabs, keeps its last panel open, hides the TTS power on other pages. */
-export function applySoundPage(root: HTMLElement, tab: (name: string) => void): void {
-  root.dataset.soundPage = page;
-  const allowed = SOUND_PAGE_TABS[page];
-  for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) b.hidden = !allowed.includes(b.dataset.ttsTab || '');
-  const open = [...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id || '';
-  if (!allowed.includes(open)) tab(allowed[0]!);
-  const line = document.getElementById('nx-version-line');
-  if (line) line.textContent = SOUND_PAGE_TITLES[page];
-}
 let applier: (() => void) | undefined;
 /** The mounted root registers how to switch its panels; the nav calls it. */
 export function setSoundApplier(apply: (() => void) | undefined): void { applier = apply; }

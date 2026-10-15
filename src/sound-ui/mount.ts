@@ -1,10 +1,9 @@
-import { SOUND_DIALOG, SOUND_PANELS, SOUND_TABS } from './panels';
+import { SOUND_DIALOG } from './panels';
 import { SoundLibrary } from './library';
 import { bindSoundSettings } from './settings';
 import { bindGlossary, renderGlossary } from './glossary';
-import { applySoundPage, setSoundApplier } from './page';
-import { SOUND_PAGE_CSS, voiceListCssFor } from './style';
-import layout from '../tts-ui/layout.json';
+import { setSoundApplier } from './page';
+import { addSoundStructure, applySoundPage, soundStyleText } from './markup';
 import { omniSound } from '../services/sound-runtime';
 import { el, run } from '../tts-ui/common';
 
@@ -14,16 +13,12 @@ import { el, run } from '../tts-ui/common';
  * Called before the TTS root binds its tab buttons, so they switch these too.
  */
 export function injectSoundPanels(root: HTMLElement): void {
-  if (root.querySelector('#sound-controls')) return;
-  const nav = root.querySelector('.tts-tabs-bar nav');
-  nav?.insertAdjacentHTML('beforeend', SOUND_TABS.map(([id, label]) => `<button role="tab" id="tab-${id}" aria-controls="${id}" aria-selected="false" tabindex="-1" data-tts-tab="${id}">${label}</button>`).join(''));
-  root.querySelector('#tts-controls')?.insertAdjacentHTML('afterend', SOUND_PANELS);
-  const models = root.querySelector('#tts-models');
-  if (models) root.querySelector('#sound-controls')?.append(models);
-  el('tts-dialogs')?.insertAdjacentHTML('beforeend', SOUND_DIALOG);
+  // Usually already in the markup (soundAwareHtml); a root built elsewhere gets it here.
+  addSoundStructure(root);
+  if (!el('snd-item-dialog')) el('tts-dialogs')?.insertAdjacentHTML('beforeend', SOUND_DIALOG);
   let style = document.getElementById('omnisound-page-style');
   if (!style) { style = document.createElement('style'); style.id = 'omnisound-page-style'; document.head.append(style); }
-  style.textContent = SOUND_PAGE_CSS + voiceListCssFor(layout.css);
+  style.textContent = soundStyleText();
 }
 
 export async function mountSound(root: HTMLElement, tab: (name: string) => void, live: () => boolean): Promise<void> {

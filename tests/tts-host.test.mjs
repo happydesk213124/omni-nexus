@@ -121,6 +121,8 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(await page.locator('[data-tts-control="line-12"]').evaluate(n=>n.style.background),'rgba(113, 50, 245, 0.6)','the picked line is highlighted in place');
     await page.evaluate(()=>window.omniTts.stop());
     await page.locator('[data-tts-control="list"]').click();
+    // The list toggle repaints the viewer; measure once the new header is in place, not mid-repaint.
+    await page.waitForFunction(()=>window.ttsData().settings.panel===''&&document.querySelector('[data-tts-header]')?.getBoundingClientRect().width>0);
     const oldRect=await page.locator('[x-omnitts-viewer]').boundingBox();
     const header=await page.locator('[data-tts-header]').boundingBox();
     await page.mouse.move(header.x+10,header.y+18);await page.mouse.down();
