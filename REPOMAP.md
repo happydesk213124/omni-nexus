@@ -129,6 +129,7 @@ main.ts                     entry: builds the bridge, publishes globals
 | Gallery / explorer queries | `src/services/gallery.ts` |
 | Anything the UI reads off `globalThis` | `src/bridge/ui-globals.ts` |
 | 플로팅 뷰어 로딩 / 읽기 위치 / 접힘 / 투명도 | `tools/vendor-patches/float-viewer.js`, `float-viewer-input.js`, `float-viewer-position.js`, `float-viewer-render.js`, `float-viewer-style.js`, `float-viewer-drag.js` — `runtime-rebuild.mjs`에서 검증 후 UI 클로저에 삽입 |
+| 호스트 왕복·리스너·세션 판정 (최종 번들에 마지막으로 적용) | `tools/vendor-patches/host-traffic.mjs` — 검사는 빌드 뒤 `tools/check-host-traffic.mjs` (배포 코드를 그대로 잘라 실행) |
 | The bridge object itself (`fetch`, `ready`) | `src/bridge/native.ts` |
 | Shot-tag 도화지 (갤러리 「샷 태그 수정」) | `src/tag-studio/` — peel/assemble in `peel.ts`/`model.ts`, overlay in `mount.ts` |
 | 설정창 크롬 / TTS 탭 afterPaint | `src/settings-ux/` — CSS inject + `__INLAY_SETTINGS_UX__.afterPaint` |

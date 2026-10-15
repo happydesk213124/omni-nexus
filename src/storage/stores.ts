@@ -803,6 +803,16 @@ async function hydrateDeferredMeta(key:string):Promise<void> {
   await pending;
 }
 
+const dbReadTimings: string[] = [];
+/** Per-key read time and size of the last openDb, for the boot timing log. */
+export function openDbTimings(): string[] { return dbReadTimings.slice(); }
+async function timedRead(key: string): Promise<unknown> {
+  const at = Date.now(), raw = await psGet(key);
+  const size = typeof raw === 'string' ? raw.length : raw == null ? 0 : -1;
+  dbReadTimings.push(`${key.replace(/^onx_nxstore_/, '')}=${Date.now() - at}ms${size >= 0 ? `/${Math.round(size / 1024)}KB` : ''}`);
+  return raw;
+}
+
 export async function openDb(): Promise<boolean> {
   if (storeReady) return storeReady;
   storeReady = (async () => {
@@ -811,9 +821,12 @@ export async function openDb(): Promise<boolean> {
     const legacyWrites: Array<() => Promise<void>> = [];
     // `cards` and `images` are deliberately absent: they are read one room at a
     // time by `ensureRoom`, which is the whole point of the per-room packs.
-    for (const store of MONO_STORES) {
-      if (store === 'jobs') continue;
-      const obj = parseStored(await psGet(STORE_KEY(store)));
+    // The keys are independent, so they are read together (a slow host pays one
+    // round trip, not one per store); rows are still applied in store order.
+    const stores = MONO_STORES.filter(store => store !== 'jobs');
+    const raws = await Promise.all(stores.map(store => timedRead(STORE_KEY(store))));
+    for (const [index, store] of stores.entries()) {
+      const obj = parseStored(raws[index]);
       if (!obj) continue;
       for (const [k, rawRow] of Object.entries(obj)) {
         const v = (rawRow ?? {}) as Record<string, unknown>;
@@ -1005,8 +1018,9 @@ let legacyMonolithLoaded = false;
 async function loadLegacyMonolithIntoMemory(): Promise<void> {
   if (legacyMonolithLoaded) return;
   legacyMonolithLoaded = true;
-  const cards = parseStored(await psGet(STORE_KEY('cards')));
-  const images = parseStored(await psGet(STORE_KEY('images')));
+  const [rawCards, rawImages] = await Promise.all([timedRead(STORE_KEY('cards')), timedRead(STORE_KEY('images'))]);
+  const cards = parseStored(rawCards);
+  const images = parseStored(rawImages);
   if (cards) {
     for (const [k, v] of Object.entries(cards)) {
       if (!memStores.cards.has(k)) loadCardRow(k, (v ?? {}) as Record<string, unknown>);

@@ -147,6 +147,8 @@ vm.runInThisContext(built.outputFiles[0].text, { filename: 'inlay-nexus-2.0.js' 
 
 const N = globalThis.__INLAY_NATIVE__;
 await N.ready();
+// The listing is what is measured: load the store first so its rows are not counted.
+await N.dataReady();
 
 const pngReads = () => {
   let n = 0;

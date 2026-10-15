@@ -39,7 +39,8 @@ async function omniReadScope() {
     if(!Number.isInteger(ci)||ci<0||!Number.isInteger(ti)||ti<0)return null;
     // Rendering needs identity, not a fresh copy of every message. Action handlers
     // validate the actual message separately before changing it.
-    let scope=t.lastScope || omniScope.scope;
+    // lastScope is the unified UI scope; the live scope this reads is cached here.
+    let scope=omniScope.scope || t.lastScope;
     if(!scope || scope.charIndex!==ci || scope.chatIndex!==ti) {
       omniPerf.scopeReads++;
       scope=await Z({useOverride:false});
