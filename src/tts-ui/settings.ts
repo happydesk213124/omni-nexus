@@ -49,9 +49,11 @@ export function bindTtsSettings(): void {
   on('clear-cache', async () => { if (confirm('TTS 음성·번역 캐시를 비울까요?')) await omniTts.clearCache(); });
   // Any model name Fish adds later can be typed in; the list only covers the common ones.
   const fishModels = ['s2.1-pro', 's2.1-pro-free', 's2-pro', 's1', 'drama-3'], fishModel = () => val('tts-fish-model') === 'custom' ? val('tts-fish-model-custom').trim() : val('tts-fish-model');
-  set('tts-fish-key', s.fish.key); set('tts-fish-model', fishModels.includes(s.fish.model) ? s.fish.model : 'custom'); set('tts-fish-model-custom', fishModels.includes(s.fish.model) ? '' : s.fish.model); set('tts-fish-url', s.fish.url);
-  el('tts-fish-model-custom-wrap').hidden = val('tts-fish-model') !== 'custom';
-  for (const id of ['tts-fish-key', 'tts-fish-model', 'tts-fish-model-custom', 'tts-fish-url']) on(id, () => { el('tts-fish-model-custom-wrap').hidden = val('tts-fish-model') !== 'custom'; return updateTtsSettings({ fish: { key: val('tts-fish-key'), model: fishModel() || ttsData().settings.fish.model, url: val('tts-fish-url') } }); }, 'change');
+  set('tts-fish-via', s.fish.via); set('tts-fish-router-key', s.fish.routerKey); set('tts-fish-key', s.fish.key); set('tts-fish-model', fishModels.includes(s.fish.model) ? s.fish.model : 'custom'); set('tts-fish-model-custom', fishModels.includes(s.fish.model) ? '' : s.fish.model); set('tts-fish-url', s.fish.url);
+  // OpenRouter: its key replaces the Fish key for speech; the Fish key stays optional (voice details).
+  const fishRoute = () => { el('tts-fish-model-custom-wrap').hidden = val('tts-fish-model') !== 'custom'; el('tts-fish-router-wrap').hidden = val('tts-fish-via') !== 'openrouter'; };
+  fishRoute();
+  for (const id of ['tts-fish-via', 'tts-fish-router-key', 'tts-fish-key', 'tts-fish-model', 'tts-fish-model-custom', 'tts-fish-url']) on(id, () => { fishRoute(); return updateTtsSettings({ fish: { key: val('tts-fish-key'), model: fishModel() || ttsData().settings.fish.model, url: val('tts-fish-url'), via: val('tts-fish-via') === 'openrouter' ? 'openrouter' : 'fish', routerKey: val('tts-fish-router-key') } }); }, 'change');
   set('helper-model', llmChoice(s.llm)); set('tts-llm-model', s.llm.model); set('tts-llm-url', s.llm.endpoint); set('tts-llm-key', s.llm.api_key);
   for (const id of ['helper-model', 'tts-llm-model', 'tts-llm-url', 'tts-llm-key']) on(id, () => updateTtsSettings({ llm: llmFrom(val('helper-model'), ttsData().settings.llm, 'tts-llm') }), 'change');
   set('jev-provider', s.jev.url.includes('openrouter.ai') ? 'openrouter' : s.jev.url.includes('typesafe.ai') ? 'typesafe' : 'custom');

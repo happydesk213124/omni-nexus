@@ -101,7 +101,11 @@ export interface TtsSettings {
   concurrency: number;
   background: number;
   cacheMb: number;
-  fish: { url: string; key: string; model: string };
+  /**
+   * Fish voices, called on Fish directly or through OpenRouter (`via`); `routerKey`
+   * is the OpenRouter key (empty: JEV's, when JEV goes through OpenRouter).
+   */
+  fish: { url: string; key: string; model: string; via: 'fish' | 'openrouter'; routerKey: string };
   llm: LlmSettings;
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';

@@ -37,6 +37,29 @@ test('Fish synthesis sends the selected model, voice and English delivery throug
   }finally{delete globalThis.risuai;}
 });
 
+test('Fish through OpenRouter: the same voice, tone and loudness on its speech route, with its own key or JEV\'s',async()=>{
+  const settings=api.ttsDefaults();Object.assign(settings.fish,{via:'openrouter',model:'s2.1-pro-free',key:''});
+  let request;
+  globalThis.risuai={nativeFetch:async(url,options)=>{request={url,...options};return {status:200,data:new Uint8Array(32)};}};
+  try{
+    await assert.rejects(api.synthesizeFish('반가워요.','happy',voiceId,settings),/OpenRouter API 키/,'no key anywhere: says which one');
+    Object.assign(settings.jev,{url:'https://openrouter.ai/api/alpha/decisions',key:'jev-or-key'});
+    assert.equal((await api.synthesizeFish('반가워요.','happy',voiceId,settings)).byteLength,32,'no Fish key needed');
+    assert.equal(request.url,'https://openrouter.ai/api/v1/audio/speech');assert.equal(request.headers.Authorization,'Bearer jev-or-key','JEV\'s OpenRouter key when Fish has none of its own');
+    const body=JSON.parse(request.body);
+    assert.deepEqual([body.model,body.voice,body.input,body.response_format],['fish-audio/s2.1-pro-free',voiceId,'[happy]반가워요.','mp3']);
+    assert.equal(body.provider.options['fish-audio'].prosody.normalize_loudness,true,'Fish\'s own options under provider.options');
+    settings.fish.routerKey='own-key';await api.synthesizeFish('테스트','',voiceId,settings);
+    assert.equal(request.headers.Authorization,'Bearer own-key');
+    settings.fish.model='fish-audio/s2-pro';await api.synthesizeFish('테스트','',voiceId,settings);
+    assert.equal(JSON.parse(request.body).model,'fish-audio/s2-pro','a full model id is kept');
+    // Voice details: a public voice needs no key, so OpenRouter-only setups can still add voices.
+    globalThis.risuai.nativeFetch=async(url,options)=>{request={url,...options};return {ok:true,json:async()=>({title:'음성',tags:['female']})};};
+    await api.fetchFishVoice(voiceId,settings);
+    assert.equal(request.headers?.Authorization,undefined);assert.match(request.url,/api\.fish\.audio\/model\//);
+  }finally{delete globalThis.risuai;}
+});
+
 test('Risu LLM translation sends a whole numbered batch and JEV honors gender-filtered numbered candidates',async()=>{
   const settings=api.ttsDefaults();settings.translation.provider='llm';settings.jev.key='fake';
   const segments=['첫 대사','다음 대사'].map((text,i)=>({id:String(i),kind:'dialogue',text,speaker:'하린',tone:'happy',start:0,end:4}));
@@ -115,14 +138,14 @@ test('voice language guess follows Fish, else the title script',()=>{
 test('settings files never carry API keys, and importing keeps the device keys',async()=>{
   globalThis.risuai={pluginStorage:{getItem:async()=>null,setItem:async()=>{}}};
   try{
-    const data=await api.loadTtsData();Object.assign(data.settings,{rate:1.5,hideName:true});data.settings.fish.key='fish-secret';data.settings.llm.api_key='llm-secret';data.settings.jev.key='jev-secret';data.settings.translation.key='tr-secret';
+    const data=await api.loadTtsData();Object.assign(data.settings,{rate:1.5,hideName:true});data.settings.fish.key='fish-secret';data.settings.fish.routerKey='router-secret';data.settings.llm.api_key='llm-secret';data.settings.jev.key='jev-secret';data.settings.translation.key='tr-secret';
     const file=api.exportableTtsSettings(data.settings),text=JSON.stringify(file);
-    for(const secret of ['fish-secret','llm-secret','jev-secret','tr-secret'])assert.ok(!text.includes(secret),'no '+secret+' in the file');
+    for(const secret of ['fish-secret','router-secret','llm-secret','jev-secret','tr-secret'])assert.ok(!text.includes(secret),'no '+secret+' in the file');
     assert.equal(file.settings.rate,1.5);
     data.settings.rate=1;data.settings.hideName=false;
     await api.importTtsSettings(JSON.parse(text));
     assert.equal(data.settings.rate,1.5);assert.equal(data.settings.hideName,true);
-    assert.equal(data.settings.fish.key,'fish-secret');assert.equal(data.settings.llm.api_key,'llm-secret');assert.equal(data.settings.jev.key,'jev-secret');
+    assert.equal(data.settings.fish.key,'fish-secret');assert.equal(data.settings.fish.routerKey,'router-secret');assert.equal(data.settings.llm.api_key,'llm-secret');assert.equal(data.settings.jev.key,'jev-secret');
     await assert.rejects(api.importTtsSettings({foo:1}),/TTS 설정 파일/);
   }finally{delete globalThis.risuai;}
 });
