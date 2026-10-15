@@ -233,8 +233,10 @@ try {
     assert.equal(live.shadow,'none');
     if (tab === 'dashboard') {
       assert.equal(await page.locator('#nx-tts-exclusions,#nx-tts-exclude-text').count(),0,'TTS options are not on the illustration dashboard');
-      assert.equal(await page.locator('#nx-tabs .nx-nav-label').allTextContents().then(t=>t.join('|')),'삽화 쓰기|삽화 연결|TTS|보기');
-      assert.equal(await page.locator('#nx-tabs [data-nx-tab="curation"]').textContent(),'TTS 설정(beta)');
+      assert.equal(await page.locator('#nx-tabs .nx-nav-label').allTextContents().then(t=>t.join('|')),'삽화 쓰기|삽화 연결|TTS · BGM · 효과음|보기');
+      // Three entries share the curation slot; data-sound-page picks the page.
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','소리 모델 설정']);
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').evaluateAll(n=>n.map(b=>b.dataset.soundPage)),['tts','sound','models']);
     }
     if (tab === 'models') {
       await page.locator('[data-backend="comfy"]').click();

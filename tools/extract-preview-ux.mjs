@@ -49,7 +49,8 @@ if (chromeStart < 0 || chromeEnd < chromeStart) throw new Error('missing chrome'
 let chrome = html.slice(chromeStart, chromeEnd);
 chrome = chrome.replace('id="nav"', 'id="nx-tabs"');
 chrome = chrome.replace(/data-tab="/g, 'data-nx-tab="');
-chrome = chrome.replace('data-nx-tab="tts"', 'data-nx-tab="curation"');
+// TTS, BGM·효과음 and the sound models share the one `curation` slot (data-sound-page picks the page).
+chrome = chrome.replaceAll('data-nx-tab="tts"', 'data-nx-tab="curation"');
 chrome = chrome.replace('class="top"', 'class="top head"');
 chrome = chrome.replace('class="brand"', 'class="brand head-brand"');
 chrome = chrome.replace('class="top-right"', 'class="top-right head-actions"');

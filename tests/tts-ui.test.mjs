@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 test('production settings persist independently, edit voice tiles and survive reopening',async()=>{
-  const built=await build({stdin:{contents:`import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {withTtsAudio} from './src/tts-ui/activation';import {ttsData} from './src/storage/tts-store';import {omniTts} from './src/services/tts-runtime';import {replaceMain} from './src/settings-ux/character-render';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome,tabHtml} from './src/settings-ux/tab-html';Object.assign(window,{withTtsAudio,mountTts,ttsSettingsHtml,ttsData,omniTts,replaceMain,settingsUxCss,previewChrome,tabHtml});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
+  const built=await build({stdin:{contents:`import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {withTtsAudio} from './src/tts-ui/activation';import {ttsData} from './src/storage/tts-store';import {omniTts} from './src/services/tts-runtime';import {replaceMain} from './src/settings-ux/character-render';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome,tabHtml} from './src/settings-ux/tab-html';import {bindSoundNav} from './src/sound-ui/page';Object.assign(window,{withTtsAudio,mountTts,ttsSettingsHtml,ttsData,omniTts,replaceMain,settingsUxCss,previewChrome,tabHtml,bindSoundNav});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage({viewport:{width:1360,height:900}}),errors=[];
@@ -191,7 +191,10 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.evaluate(()=>{const root=document.getElementById('tts-settings-root'),main=root.parentElement;window.beforeRefresh=root;window.replaceMain(main,window.ttsSettingsHtml(),'curation');});
     assert.equal(await page.evaluate(()=>window.beforeRefresh===document.getElementById('tts-settings-root')),true,'vendor background repaint preserves the live TTS form');
     assert.equal(await page.locator('#tts-characters').isVisible(),true);
-    await page.locator('#tab-models').click();
+    assert.equal(await page.locator('#tab-models').isVisible(),false,'models are not a TTS page tab any more');
+    const openPage=async name=>{await page.evaluate(name=>{window.bindSoundNav();const b=document.createElement('button');b.dataset.soundPage=name;document.body.append(b);b.click();b.remove();},name);};
+    await openPage('models');await page.waitForFunction(()=>!document.getElementById('tts-models').hidden);
+    assert.deepEqual(await page.locator('[data-tts-tab]:visible').allTextContents(),['모델 설정'],'the sound models page shows only its panel');
     assert.equal(await page.locator('#tts-fish-model').evaluate(n=>n.tagName),'SELECT');
     await page.locator('#tts-fish-model').selectOption('s2.1-pro-free');
     await page.locator('#tts-fish-key').fill('fake-test-key');await page.locator('#tts-fish-key').dispatchEvent('change');
@@ -203,7 +206,7 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.locator('#tts-test-llm').click();await page.waitForFunction(()=>document.getElementById('tts-test-llm-result').textContent.startsWith('연결 성공'));
     await page.locator('#jev-key').fill('fake-jev-key');await page.locator('#jev-key').dispatchEvent('change');
     await page.locator('#tts-test-jev').click();await page.waitForFunction(()=>document.getElementById('tts-test-jev-result').textContent.startsWith('연결 성공'));
-    await page.locator('#tab-settings').click();await page.locator('#translation').selectOption('google-free');
+    await openPage('tts'); await page.locator('#tab-settings').click();await page.locator('#translation').selectOption('google-free');
     await page.locator('#tts-exclude-text').fill('상태창, 체력\n[시스템]');
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, 체력\n[시스템]';});
     assert.equal(await page.locator('#tts-omit-characters').inputValue(),'[, ]');

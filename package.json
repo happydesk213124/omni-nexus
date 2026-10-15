@@ -24,7 +24,7 @@
     "parity:new": "node tools/parity/run.mjs --target=new --out=.parity/new.json",
     "parity": "npm run parity:old && npm run parity:new && node tools/parity/compare.mjs .parity/old.json .parity/new.json",
     "perf": "node tools/parity/perf-report.mjs",
-    "test:tts": "node --test --test-concurrency=4 --test-timeout=60000 --test-skip-pattern=SafeDOM tests/tts-*.test.mjs tests/float-viewer.test.mjs && node --test --test-timeout=60000 tests/tts-host.test.mjs",
+    "test:tts": "node --test --test-concurrency=4 --test-timeout=60000 --test-skip-pattern=SafeDOM tests/tts-*.test.mjs tests/sound-*.test.mjs tests/float-viewer.test.mjs && node --test --test-timeout=60000 tests/tts-host.test.mjs",
     "test": "npm run typecheck && npm run unit && npm run build && npm run audit && npm run smoke && npm run bench && npm run parity && npm run test:settings-ux"
   },
   "keywords": [

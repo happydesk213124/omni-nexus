@@ -11,6 +11,7 @@ import { exportableTtsSettings, importTtsSettings } from './settings-transfer';
 import { download, readJson, notify, run, input } from './common';
 import { bindAudioActivation, cancelAudioActivation, confirmAudioActivation, promptInitialAudioActivation } from './activation';
 import { ttsData } from '../storage/tts-store';
+import { injectSoundPanels, mountSound } from '../sound-ui/mount';
 
 export const ttsSettingsHtml = () => layout.html;
 export const ttsHelp = layout.help;
@@ -31,6 +32,8 @@ export async function mountTts(): Promise<void> {
   el<HTMLDialogElement>('audio-unlock-dialog').addEventListener('cancel',cancelAudioActivation);
   const observer = new MutationObserver(() => { if (!live()) { unbindActivation(); document.removeEventListener('omnitts-library',refresh); characters.dispose(); dialogs.remove(); observer.disconnect(); } });
   // The settings iframe owns these normal DOM dialogs; chat markup is module-owned.
+  // BGM·효과음 share this root: their panels and tabs exist before the tab buttons bind.
+  injectSoundPanels(root);
   for (const b of el('tts-dialogs').querySelectorAll<HTMLElement>('[data-close]')) b.addEventListener('click',event => { event.preventDefault(); dialog(b.dataset.close!,false); });
   const tab = (name: string) => { for (const panel of root.querySelectorAll<HTMLElement>('section.panel')) panel.hidden = panel.id !== name; for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) { const active = b.dataset.ttsTab === name; b.setAttribute('aria-selected',String(active)); b.tabIndex = active ? 0 : -1; } };
   for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) b.addEventListener('click', () => tab(b.dataset.ttsTab!)); tab('tts-settings');
@@ -49,5 +52,6 @@ export async function mountTts(): Promise<void> {
   await characters.bind(live); if(!live())return;
   bindTtsLlmActions(refresh);
   document.addEventListener('omnitts-library',refresh);
+  await mountSound(root, tab, live); if(!live())return;
   if(ttsData().settings.enabled)promptInitialAudioActivation();
 }

@@ -14,6 +14,7 @@ import { bindPresetSheet } from './preset-bindings';
 import { fillRisuTiles } from './risu-bindings';
 import { replaceMain } from './character-render';
 import { mountTts } from '../tts-ui/mount';
+import { SOUND_PAGE_TITLES, bindSoundNav, soundPage } from '../sound-ui/page';
 import { settingsUxCss } from './styles';
 import { previewChrome, tabHtml, previewHelp } from './tab-html';
 
@@ -288,7 +289,8 @@ export function replaceShell(): void {
     main.setAttribute('data-nx-ux-tab', tab);
   }
   document.querySelectorAll('#nx-tabs [data-nx-tab]').forEach((btn) => {
-    const on = btn.getAttribute('data-nx-tab') === tab;
+    // The three sound entries share one slot; only the open page is marked.
+    const on = btn.getAttribute('data-nx-tab') === tab && (tab !== 'curation' || (btn.getAttribute('data-sound-page') || 'tts') === soundPage());
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-current', on ? 'page' : 'false');
 
@@ -304,6 +306,7 @@ export function afterPaint(): void {
   ensureCss();
   if (shell.dataset.nxUxApp !== '1') replaceShell();
   bindMenu();
+  bindSoundNav();
   bindLiveFlash();
   syncModelWarning();
   void bindPromptUpdates();
@@ -312,11 +315,12 @@ export function afterPaint(): void {
   if (tab === 'gen_options') bindGuardrailPreset();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
-  if (line) line.textContent = TAB_LABELS[tab] || '설정';
+  if (line) line.textContent = tab === 'curation' ? SOUND_PAGE_TITLES[soundPage()] : TAB_LABELS[tab] || '설정';
   const main = document.getElementById('nx-main');
   if (main) main.setAttribute('data-nx-ux-tab', tab);
   document.querySelectorAll('#nx-tabs [data-nx-tab]').forEach((btn) => {
-    const on = btn.getAttribute('data-nx-tab') === tab;
+    // The three sound entries share one slot; only the open page is marked.
+    const on = btn.getAttribute('data-nx-tab') === tab && (tab !== 'curation' || (btn.getAttribute('data-sound-page') || 'tts') === soundPage());
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-current', on ? 'page' : 'false');
   });
