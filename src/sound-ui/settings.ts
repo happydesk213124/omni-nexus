@@ -66,7 +66,7 @@ function renderTest(): void {
 
 export function bindSoundSettings(): void {
   const s = soundData().settings;
-  for (const [id, key] of [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx']] as const) {
+  for (const [id, key] of [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim']] as const) {
     input(id).checked = s[key];
     el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: input(id).checked } as Partial<SoundSettings>)));
   }
@@ -78,6 +78,8 @@ export function bindSoundSettings(): void {
   }
   set('snd-crossfade', s.crossfadeMs / 1000);
   el('snd-crossfade').addEventListener('change', () => run(() => updateSoundSettings({ crossfadeMs: Number(val('snd-crossfade')) * 1000 })));
+  set('snd-sfx-max', s.sfxMaxSec);
+  el('snd-sfx-max').addEventListener('change', () => run(async () => { await updateSoundSettings({ sfxMaxSec: Number(val('snd-sfx-max')) }); set('snd-sfx-max', soundData().settings.sfxMaxSec); }));
   set('snd-max-mb', s.maxFileMb);
   el('snd-max-mb').addEventListener('change', () => run(() => updateSoundSettings({ maxFileMb: Number(val('snd-max-mb')) })));
   for (const [id, key] of [['snd-bgm-matcher', 'bgmMatcher'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const) {

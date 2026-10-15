@@ -1,6 +1,7 @@
 /**
  * Two channels in the plugin iframe: BGM (looping, crossfaded between two decks,
- * ducked while TTS speaks) and effects (one-shots that may overlap). The iframe's
+ * ducked while TTS speaks) and effects (one at a time; with TTS on, effects in the
+ * chat play through the voice player instead, so they and the lines never overlap). The iframe's
  * audio activation is shared with TTS: once the user enabled playback there, these
  * elements may play too.
  */
@@ -94,11 +95,15 @@ export class SoundPlayer {
     const key = deck.key;
     setTimeout(() => { if (deck.key === key) { deck.audio.pause(); deck.key = ''; this.onChange(); } }, fadeMs + 50);
   }
-  /** One-shot effect; at most four overlap, the oldest is cut. `ended` settles when it stops for any reason. */
+  /** Cuts the effect that is playing, if any. */
+  stopSfx(): void {
+    for (const row of this.sfx.splice(0)) { row.audio.pause(); URL.revokeObjectURL(row.url); }
+  }
+  /** One effect at a time: a new one cuts the last. `ended` settles when it stops for any reason. */
   async playSfx(bytes: ArrayBuffer, mime: string): Promise<{ ended: Promise<void> }> {
     const context = this.ensure();
     await context.resume();
-    if (this.sfx.length >= 4) { const old = this.sfx.shift()!; old.audio.pause(); URL.revokeObjectURL(old.url); }
+    this.stopSfx();
     const audio = new Audio(), url = URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/mpeg' }));
     context.createMediaElementSource(audio).connect(this.sfxBus!);
     const row = { audio, url }; this.sfx.push(row);
