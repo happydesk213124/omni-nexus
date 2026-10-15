@@ -4,7 +4,9 @@ import { sleep } from '../core/util/async';
 import { ttsData, subscribeTts } from '../storage/tts-store';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
-import { parseTtsMessage, compactHash, cueLineKey } from '../domain/tts/segment';
+import { parseTtsMessage, compactHash, cueLineKey, isSoundSegment, type TtsSoundCues } from '../domain/tts/segment';
+import { soundData, soundReady, subscribeSound } from '../storage/sound-store';
+import { omniSound } from '../services/sound-runtime';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import { matchTtsAnchors, ttsAnchorTexts } from '../domain/tts/anchors';
 import { illustrationTtsRequests } from '../services/tts-illustration';
@@ -12,11 +14,18 @@ import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type H
 import { withTtsAudio } from './activation';
 import { installTtsViewer } from './host-viewer';
 
-interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; state?: string }
+interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; state?: string; sound?: boolean }
+/** BGM markers and effect words become rows of their own while that sound is on. */
+function soundCues(): TtsSoundCues | undefined {
+  if (!soundReady()) return undefined;
+  const s = soundData().settings;
+  return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [] } : undefined;
+}
+const soundOn = () => !!soundCues();
 function requests(context: TtsChatContext, index: number): TtsRequest[] {
   const message = context.messages[index]; if (!message || message.role !== 'char') return [];
   const source = String(message.data || '');
-  return parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
+  return parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly,soundCues()).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
 }
 function findLine(list: TtsRequest[], key: string, line: string): number {
   if (!key) return list.findIndex(r => r.segment.id === line);
@@ -37,7 +46,7 @@ export async function installTtsHost(): Promise<void> {
   let visibilityTail: Promise<void> = Promise.resolve(), stateTail: Promise<void> = Promise.resolve();
   // The plugin owns visibility: unbound controls and narration while it is OFF
   // are hidden on the node itself, never by a module rule.
-  const hidden = (b: Binding) => !b.illustration && (!!b.dead || (b.narration && !ttsData().settings.narration));
+  const hidden = (b: Binding) => !b.illustration && !b.sound && (!!b.dead || (b.narration && !ttsData().settings.narration));
   const syncVisibility = (only?: Binding): Promise<void> => {
     visibilityTail = visibilityTail.catch(() => {}).then(async () => {
       for (const b of only ? [only] : bindings.values()) {
@@ -55,6 +64,7 @@ export async function installTtsHost(): Promise<void> {
       const active = status === 'loading' || status === 'playing' || status === 'paused' ? status : '';
       for (const b of bindings.values()) {
         if (disposed) return;
+        if (b.sound) continue;
         const mine = !!active && !!current && !!b.messageId && b.messageId === current.messageId && (b.illustration || b.line === current.segment.id);
         const want = mine ? active : '';
         if ((b.state || '') !== want) { b.state = want; await b.node.setAttribute('x-omnitts-state', want); }
@@ -63,12 +73,28 @@ export async function installTtsHost(): Promise<void> {
     return stateTail;
   };
   const bootstrap=()=>{if(bootAttempts<8)schedule(Math.min(5000,400*2**bootAttempts++));};
-  const allowed=()=>{const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__');return !disposed&&ttsData().settings.enabled&&!(typeof blocked==='function'&&blocked());};
+  // BGM·효과음 buttons work with TTS switched off, so the chat is watched while either is on.
+  const active=()=>ttsData().settings.enabled||soundOn();
+  const allowed=()=>{const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__');return !disposed&&active()&&!(typeof blocked==='function'&&blocked());};
   const report = (error: unknown) => { omniTts.report(error); const text = String((error as Error)?.message || error || ''); if (text) flash(text); };
   // User-started playback reports its own failure; background work stays quiet.
   const requestPlay = async (list:TtsRequest[], index:number, reservation=omniTts.reservePlayback()) => {
     await withTtsAudio(()=>omniTts.play(list,index,reservation),reservation);
     if (['error','blocked'].includes(omniTts.player.status) && omniTts.notice) flash(omniTts.notice);
+  };
+  /** A ♪ / ▶ in the chat plays its own cue directly; it never stops or moves TTS reading. */
+  const bindSound = async (node: SafeElement, request: TtsRequest | undefined): Promise<string> => {
+    let key = await node.getAttribute('x-omnitts-bound');
+    if (!key || !bindings.has(key)) { key = uuid(); await node.setAttribute('x-omnitts-bound',key); bindings.set(key,{node,play:async()=>{},chips:[],message:-1,messageId:'',line:'',source:'',illustration:false,narration:false,sound:true}); }
+    else await releaseHost(node);
+    const b = bindings.get(key)!;
+    b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.dead = !request;
+    b.play = async () => {
+      const segment = request?.segment; if (!segment) return;
+      if (segment.kind === 'bgm') { if (!await omniSound.playBgmForTags(segment.tags || [])) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); }
+      else if (!await omniSound.playSfxWord(segment.text, segment.context || '')) throw new Error(`「${segment.text}」에 맞는 효과음이 없습니다. 효과음 용어집에서 지정해 주세요.`);
+    };
+    return key;
   };
   const bind = async (node: SafeElement, illustration: boolean): Promise<string> => {
     let key = await node.getAttribute('x-omnitts-bound');
@@ -107,7 +133,7 @@ export async function installTtsHost(): Promise<void> {
   };
   const scanOnce = async () => {
     try {
-      if (disposed || !ttsData().settings.enabled) return;
+      if (disposed || !active()) return;
       // A remounted chat screen (another bot or chat) gets its own watcher.
       await watchChat();
       await refreshViewer();
@@ -120,8 +146,9 @@ export async function installTtsHost(): Promise<void> {
       let lines = 0;
       for (const chat of await safeArray(await doc.querySelectorAll('.risu-chat'))) {
         try {
-          const nodes = await safeArray(await chat.querySelectorAll('[data-omnitts-kind]'));
-          if (!nodes.length) continue;
+          const nodes = ttsData().settings.enabled ? await safeArray(await chat.querySelectorAll('[data-omnitts-kind]')) : [];
+          const sounds = soundOn() ? await safeArray(await chat.querySelectorAll('[data-omni-bgm],[data-omni-sfx]')) : [];
+          if (!nodes.length && !sounds.length) continue;
           lines += nodes.length;
           // One read per message: the rendered line text identifies each control,
           // so the module never has to stamp ids into another module's input.
@@ -129,6 +156,14 @@ export async function installTtsHost(): Promise<void> {
           const index = Number(/\bdata-chat-index="(-?\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? NaN);
           const list = Number.isInteger(index) ? perMessage.get(index) ?? requests(context,index) : [];
           if (Number.isInteger(index)) perMessage.set(index,list);
+          // Sound buttons pair with the message's cues in order, each kind on its own.
+          const cuesOf = (kind: 'bgm' | 'sfx') => list.filter(r => r.segment.kind === kind);
+          const order = { bgm: 0, sfx: 0 };
+          for (const node of sounds) {
+            const kind = await node.matches('[data-omni-bgm]') ? 'bgm' : 'sfx';
+            live.add(await bindSound(node, cuesOf(kind)[order[kind]++]));
+          }
+          if (!nodes.length) continue;
           const matches = matchTtsAnchors(ttsAnchorTexts(html), list.map(r => r.segment));
           const shown: TtsRequest[] = [];
           for (let j=0;j<nodes.length;j++) {
@@ -147,7 +182,9 @@ export async function installTtsHost(): Promise<void> {
             shown.push(request);
             nearby.push({distance:Math.abs(rect.top+rect.height/2-height/2),request});
           }
-          if (shown.length) anchored.set(index, shown);
+          // Cues keep their place among the lines that are on screen.
+          const visible = new Set(shown);
+          if (shown.length) anchored.set(index, list.filter(r => visible.has(r) || isSoundSegment(r.segment)));
         } finally { await releaseHost(chat); }
       }
       for (const node of await safeArray(await doc.querySelectorAll('[data-omnitts-image] [data-omnitts-play],[x-omnitts-image] [x-omnitts-play]'))) live.add(await bind(node, true));
@@ -162,7 +199,7 @@ export async function installTtsHost(): Promise<void> {
         try{if(chat&&await chat.clientHeight()>0){let index=context.messages.length-1;while(index>=0&&context.messages[index].role!=='char')index--;readingList=requests(context,index);}}finally{await releaseHost(chat);}
         bootstrap();
       }else bootAttempts=8;
-      omniTts.reading(readingList);
+      if (ttsData().settings.enabled) omniTts.reading(readingList);
       await syncState();
       const selected = nearby.slice(0,ttsData().settings.prefetch).map(row=>row.request);
       const fingerprint=JSON.stringify([context.scope,selected.map(r=>[r.messageId,r.segment.id,r.segment.text])]);
@@ -176,7 +213,7 @@ export async function installTtsHost(): Promise<void> {
   };
   // While either floating viewer is dragged no scan runs; it waits for the drop.
   const dragging = () => Reflect.get(globalThis,'__OMNI_VIEWER_DRAGGING__') === true;
-  const schedule = (delay=400) => { if (disposed || timer || !ttsData().settings.enabled) return; timer=setTimeout(()=>{timer=undefined;if(dragging()){schedule(250);return;}void requestScan();},delay); };
+  const schedule = (delay=400) => { if (disposed || timer || !active()) return; timer=setTimeout(()=>{timer=undefined;if(dragging()){schedule(250);return;}void requestScan();},delay); };
   // Like the illustration viewer: watch only the chat screen, and never ask the
   // host about each record. The old whole-page watcher made 2-3 bridge calls per
   // DOM change and then re-read every message, which competed with a drag.
@@ -195,8 +232,8 @@ export async function installTtsHost(): Promise<void> {
     if(!allowed())return;
     const viewer=await doc.querySelector('[x-omnitts-viewer]');
     try{if(viewer&&await hitHost(viewer,e))return;}finally{await releaseHost(viewer);}
-    const rows=[...bindings.entries()].filter(([,b])=>!hidden(b)).flatMap(([key,b])=>[
-      ...(!hover||!b.illustration?[{key,node:b.node,play:b.play,illustration:b.illustration}]:[]),
+    const rows=[...bindings.entries()].filter(([,b])=>!hidden(b)&&!b.dead&&(!hover||!b.sound)&&(b.sound||ttsData().settings.enabled)).flatMap(([key,b])=>[
+      ...(!hover||!b.illustration?[{key,node:b.node,play:b.play,illustration:b.illustration||!!b.sound}]:[]),
       ...(!hover?b.chips.map((c,i)=>({key:key+':'+i,node:c.node,play:c.play,illustration:true})):[])
     ]);
     const hits=await Promise.all(rows.map(r=>hitHost(r.node,e)));return rows[hits.indexOf(true)];
@@ -214,18 +251,24 @@ export async function installTtsHost(): Promise<void> {
   });
   await listen('scroll',()=>schedule(),{capture:true,passive:true});
   const unsubscribe=subscribeTts(()=>{void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));lastPrefetch='';bootAttempts=0;schedule();});
+  const unsubscribeSound=subscribeSound(()=>{bootAttempts=0;schedule();});
   const unsubscribeState=omniTts.subscribe(()=>{void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
   const seen = new Map<string,string>();
   const output: (arg:ChatOutputListenerArg)=>Promise<void> = async arg=>{
-    if (disposed || !ttsData().settings.enabled) return;
+    if (disposed || !active()) return;
     try { const context=await currentTtsContext(); if (String(arg.char?.chaId)!==context.characterId || String(arg.chat?.id)!==context.chatId) return;
       const index=arg.messageIndex; let list=requests(context,index); if (!list.length) return;
       const key=JSON.stringify([context.scope,index]), signature=compactHash(String(context.messages[index]?.data || '')); if (seen.get(key)===signature) return; seen.set(key,signature); if (seen.size>100) seen.delete(seen.keys().next().value!);
-      if (!ttsData().settings.autoReply) { schedule(); return; }
+      const s=ttsData().settings, reads=s.enabled&&s.autoReply;
+      // The reply's music starts now, unless continuous reading reaches its cue itself.
+      const bgm=list.find(r=>r.segment.kind==='bgm');
+      if (bgm && !(reads&&s.continuous&&soundReady()&&soundData().settings.listBgm)) void omniSound.playBgmForTags(bgm.segment.tags||[]).catch(report);
+      if (!reads) { schedule(); return; }
       // Let Risu render the reply first so panels other modules drew are skipped.
       await sleep(250); await requestScan();
       const shown = anchored.get(index); if (shown?.length) list = shown;
-      await requestPlay(list, list.findIndex(r=>ttsData().settings.narration || r.segment.kind!=='narration'));
+      // Without continuous reading only one row plays: make it a spoken line, not a cue.
+      await requestPlay(list, list.findIndex(r=>(s.continuous||!isSoundSegment(r.segment))&&(s.narration || r.segment.kind!=='narration')));
     } catch(error) { report(error); }
   };
   if (host.addRisuChatListener) await host.addRisuChatListener('output',output);
@@ -249,5 +292,5 @@ export async function installTtsHost(): Promise<void> {
     } finally { await releaseHost(screen); }
   };
   const viewer=await installTtsViewer(doc,revealInChat);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
-  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeState();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
+  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
 }

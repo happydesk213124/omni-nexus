@@ -47,9 +47,16 @@ export interface TtsSegment {
   text: string;
   speaker: string;
   tone: string;
-  kind: 'dialogue' | 'narration' | 'illustration' | 'audition';
+  /** 'bgm' and 'sfx' are sound cues in the reply: they join the list and continuous reading but are never spoken. */
+  kind: 'dialogue' | 'narration' | 'illustration' | 'audition' | 'bgm' | 'sfx';
   /** A whole line in single quotes with no speaker: spoken by the monologue card. */
   monologue?: boolean;
+  /** The text read aloud when it differs from `text` (marked effect words removed). `text` stays the line as shown, for matching. */
+  spoken?: string;
+  /** A BGM cue's tags. */
+  tags?: string[];
+  /** An effect's line, for JEV/LLM when the word is new. */
+  context?: string;
   start: number;
   end: number;
 }

@@ -95,8 +95,11 @@ export class SoundLibrary {
     folder.value = item?.folder ?? (this.folder === '*' ? '' : this.folder);
     // A registered file or address cannot be swapped in place; editing changes the label only.
     for (const id of ['snd-item-source', 'snd-item-url', 'snd-item-file']) input(id).disabled = !!item;
-    // ElevenLabs makes effects only (music is a different service).
-    const eleven = el('snd-item-source').querySelector<HTMLOptionElement>('option[value="eleven"]'); if (eleven) eleven.hidden = this.kind !== 'sfx';
+    // ElevenLabs makes both: a sound effect, or instrumental music for BGM.
+    const bgm = this.kind === 'bgm';
+    text('snd-item-prompt-label', bgm ? '만들 BGM 설명 · 영어가 가장 정확합니다 (가사 없는 연주곡)' : '만들 효과음 설명 · 영어가 가장 정확합니다');
+    input('snd-item-prompt').placeholder = bgm ? 'calm lo-fi piano for a rainy cafe, slow, loopable' : 'heavy wooden door slamming shut';
+    input('snd-item-duration').max = bgm ? '600' : '30';
     set('snd-item-source', item?.source === 'asset' ? 'file' : 'url'); set('snd-item-prompt', ''); set('snd-item-duration', 0); set('snd-item-url', item?.url || ''); input('snd-item-file').value = '';
     this.syncSource(); text('snd-item-status', '');
     el('snd-item-dialog').dataset.kind = this.kind;
@@ -119,7 +122,7 @@ export class SoundLibrary {
       if (val('snd-item-source') === 'file' && !file) throw new Error('파일을 골라 주세요.');
       if (val('snd-item-source') === 'eleven') text('snd-item-status', 'ElevenLabs에서 만드는 중…');
       const item = val('snd-item-source') === 'eleven'
-        ? await omniSound.addFromEleven({ name, tags, folder, prompt: val('snd-item-prompt'), duration: Number(val('snd-item-duration')) || 0 })
+        ? await omniSound.addFromEleven(this.kind, { name, tags, folder, prompt: val('snd-item-prompt'), duration: Number(val('snd-item-duration')) || 0 })
         : val('snd-item-source') === 'file'
         ? await omniSound.addFromFile(this.kind, { name, tags, folder, file: file! })
         : await omniSound.addFromUrl(this.kind, { name: name || decodeURIComponent(val('snd-item-url').split('/').pop() || '').replace(/\.[^.]+$/, ''), tags, folder, url: val('snd-item-url') });

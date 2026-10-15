@@ -18,6 +18,23 @@ export async function generateSoundEffect(text: string, options: { key: string; 
   return { bytes, mime };
 }
 
+/** ElevenLabs music (Eleven Music), instrumental, for BGM. Returns mp3 bytes. */
+export async function generateMusic(text: string, options: { key: string; lengthSeconds?: number }): Promise<{ bytes: ArrayBuffer; mime: string }> {
+  const key = options.key.trim();
+  if (!key) throw new Error('소리 모델 설정에 ElevenLabs API 키를 넣어 주세요.');
+  const prompt = text.trim().slice(0, 1000);
+  if (!prompt) throw new Error('BGM 설명(프롬프트)을 넣어 주세요.');
+  // BGM sits under the voice: never lyrics.
+  const body: Record<string, unknown> = { prompt, model_id: 'music_v1', force_instrumental: true };
+  if (options.lengthSeconds && options.lengthSeconds > 0) body.music_length_ms = Math.round(Math.max(3, Math.min(600, options.lengthSeconds)) * 1000);
+  const bytes = await ttsBytes(await ttsFetch('https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128', {
+    method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(body),
+  }));
+  const mime = sniffAudioMime(bytes);
+  if (!mime) throw new Error('ElevenLabs 응답이 오디오가 아닙니다.');
+  return { bytes, mime };
+}
+
 /** English wording for a prompt (the effect models work best in English); the original on any failure. */
 export async function englishText(text: string): Promise<string> {
   if (!/[^\x00-\x7f]/.test(text)) return text;

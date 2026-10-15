@@ -35,11 +35,14 @@ export interface SoundSettings {
   sfxMatcher: SoundMatcher;
   /** The vocabulary the chat model chooses BGM tags from (three per reply). */
   bgmTags: string[];
-  /** Ask the chat model for [[bgm:mood,place,tempo]] on the first line. */
+  /** Ask the chat model for [[bgm:mood,place,tempo]] on the first line (and where the scene turns). */
   bgmPrompt: boolean;
   sfxRules: SfxRule[];
+  /** Ask the chat model to mark sound effects as §word§ (the built-in rule). */
+  sfxCue: boolean;
   /** 'reply': a new reply and continuous reading play effects; 'button': only a tap does. */
   sfxAutoPlay: 'reply' | 'button';
+  /** BGM cues and effects join the TTS viewer list and continuous reading. */
   listBgm: boolean;
   listSfx: boolean;
   /** The TTS viewer shows its BGM bar (opened from the header ♪). */

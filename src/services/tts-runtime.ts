@@ -1,6 +1,6 @@
 import type { TtsCharacter, TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
-import { synthesisSignature } from '../domain/tts/segment';
+import { isSoundSegment, synthesisSignature } from '../domain/tts/segment';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText } from '../domain/tts/filter';
 import { ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
@@ -16,6 +16,18 @@ import type { TtsChatContext } from './tts-context';
 import { clearTtsVoiceError, recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
 
 export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number }
+/**
+ * BGM·효과음 rows in the list. The sound runtime registers itself here, so TTS
+ * never imports it (it already listens to TTS to lower the music).
+ */
+export interface TtsSoundCuePlayer {
+  /** Shown in the list and playable from it. */
+  listed(segment: TtsSegment): boolean;
+  /** Played on its own while reading continues; otherwise reading steps over it. */
+  automatic(segment: TtsSegment): boolean;
+  /** Resolves once reading may go on (an effect has ended; a BGM change has started). */
+  play(request: TtsRequest): Promise<void>;
+}
 interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string }
 export class OmniTtsRuntime {
   readonly player = new TtsPlayer();
@@ -40,6 +52,7 @@ export class OmniTtsRuntime {
   private sequenceIndex = -1;
   private moduleSignature = '';
   private settingsSignature = '';
+  private sound?: TtsSoundCuePlayer;
   notice = '';
   stage = '';
   get current(): TtsRequest | undefined { return this.sequence[this.sequenceIndex]; }
@@ -47,6 +60,7 @@ export class OmniTtsRuntime {
   subscribe(callback: () => void): () => void { this.listeners.add(callback); return () => this.listeners.delete(callback); }
   private emit(): void { for (const callback of this.listeners) callback(); }
   report(error: unknown): void { this.notice = String((error as Error)?.message || error); this.emit(); }
+  setSoundCues(player: TtsSoundCuePlayer): void { this.sound = player; this.emit(); }
   async init(): Promise<void> {
     return this.started ||= (async () => {
       await loadTtsData();
@@ -56,7 +70,7 @@ export class OmniTtsRuntime {
       }
       this.queue.onChange = () => this.emit();
       this.player.onChange = (_state, error) => { if (error) this.notice = error; this.emit(); };
-      this.player.onEnded = () => { if (ttsData().settings.continuous && !this.standalone) void this.next(1); };
+      this.player.onEnded = () => { if (ttsData().settings.continuous && !this.standalone) void this.next(1, true); };
       await this.translations.init();
       await this.synchronize();
     })().catch(error => { this.started = undefined; throw error; });
@@ -107,6 +121,7 @@ export class OmniTtsRuntime {
   pause(): void { this.intent++; this.queue.cancelWaitingPlayback(); this.player.pause(); }
   async clearCache(): Promise<void> { this.viewport++; this.queue.cancelPending(); await this.cache.clear(); await this.translations.clear(); this.emit(); }
   private eligible(request: TtsRequest): boolean {
+    if (isSoundSegment(request.segment)) return !!this.sound?.listed(request.segment);
     const s = ttsData().settings;
     return (request.segment.kind !== 'narration' || s.narration) && allowedTtsText(request.segment.text, ttsExcludeTerms(s.excludeText), s.skipChars, s.skipSymbolOnly);
   }
@@ -117,6 +132,7 @@ export class OmniTtsRuntime {
     const request = requests[index];
     if (!request || !this.eligible(request)) return;
     this.setContext(request.context);
+    if (isSoundSegment(request.segment)) { await this.playCue(requests, index); return; }
     const key = JSON.stringify([request.context.scope, request.messageId, request.segment.id, request.segment.text, request.fishId]);
     if (this.player.key === key && ['playing', 'loading'].includes(this.player.status)) return;
     this.stop();
@@ -133,6 +149,15 @@ export class OmniTtsRuntime {
       return this.audio(prepared[0], 0, valid);
     });
   }
+  private async playCue(requests: TtsRequest[], index: number): Promise<void> {
+    this.stop();
+    const ticket = this.intent;
+    this.sequence = requests; this.sequenceIndex = index; this.messageSequence = requests; this.standalone = false; this.notice = '';
+    this.emit();
+    try { await this.sound!.play(requests[index]!); }
+    catch (error) { this.report(error); }
+    if (ticket === this.intent && ttsData().settings.continuous) await this.next(1, true);
+  }
   async replay(): Promise<void> {
     const requests=this.readingSequence.length?this.readingSequence:this.sequence;
     const current=requests.findIndex(r=>r.messageId===this.current?.messageId&&r.segment.id===this.current.segment.id);
@@ -145,7 +170,7 @@ export class OmniTtsRuntime {
     const requests = this.sequence.length ? this.sequence : this.readingSequence;
     const index = this.sequence.length ? this.sequenceIndex : requests.findIndex(r => this.eligible(r));
     const request = requests[index];
-    if (!request || !this.eligible(request)) { this.report(new Error('다시 만들 대사가 없습니다. 목록에서 줄을 먼저 골라 주세요.')); return; }
+    if (!request || !this.eligible(request) || isSoundSegment(request.segment)) { this.report(new Error('다시 만들 대사가 없습니다. 목록에서 대사 줄을 먼저 골라 주세요.')); return; }
     this.stop();
     const ticket = this.intent;
     const prepared = await this.prepare([request], () => ticket === this.intent && ttsData().settings.enabled);
@@ -155,9 +180,11 @@ export class OmniTtsRuntime {
     if (ticket !== this.intent) return;
     await this.play(requests, index, ticket);
   }
-  async next(delta: number): Promise<void> {
+  /** `reading`: continuous reading moved on by itself, so cues that only play on a tap are stepped over. */
+  async next(delta: number, reading = false): Promise<void> {
     let index = this.sequenceIndex + delta;
-    while (index >= 0 && index < this.sequence.length && !this.eligible(this.sequence[index])) index += delta;
+    const skip = (r: TtsRequest) => !this.eligible(r) || (reading && isSoundSegment(r.segment) && !this.sound?.automatic(r.segment));
+    while (index >= 0 && index < this.sequence.length && skip(this.sequence[index])) index += delta;
     if (index >= 0 && index < this.sequence.length) await this.play(this.sequence, index);
   }
   private async prepare(requests: TtsRequest[], valid: () => boolean): Promise<Prepared[]> {
@@ -175,7 +202,7 @@ export class OmniTtsRuntime {
       const voice = ttsData().voices.find(v => v.key === voiceKey);
       const fishId = request.fishId || character?.fishId || voice?.fishId || '';
       const recoverable = !request.fishId && character && request.segment.kind !== 'audition' && !role;
-      return fishId ? [{ request, text: ttsSpokenText(request.segment.text, settings.omitCharacters), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings, language: (character?.language || '').trim(), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
+      return fishId ? [{ request, text: ttsSpokenText(request.segment.spoken ?? request.segment.text, settings.omitCharacters), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings, language: (character?.language || '').trim(), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error('캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
@@ -196,7 +223,7 @@ export class OmniTtsRuntime {
       for (const route of new Set(fresh.map(p => JSON.stringify([provider(p), target(p)])))) {
         const [via, language] = JSON.parse(route) as [TtsSettings['translation']['provider'], string];
         const group = fresh.filter(p => provider(p) === via && target(p) === language);
-        const batch = translateTts(group.map(p=>p.request.segment),{ ...settings, translation: { ...settings.translation, provider: via, language } });
+        const batch = translateTts(group.map(p=>({...p.request.segment,text:p.request.segment.spoken??p.request.segment.text})),{ ...settings, translation: { ...settings.translation, provider: via, language } });
         group.forEach((p,i)=>{const key=cacheKey(p), row=batch.then(values=>values[i]);this.translating.set(key,row);void row.finally(()=>{if(this.translating.get(key)===row)this.translating.delete(key);}).catch(()=>{});});
       }
       const translated=await Promise.all(missing.map(p=>this.translating.get(cacheKey(p))!));
@@ -258,7 +285,7 @@ export class OmniTtsRuntime {
     this.queue.retainBackground(new Set());
     const valid = () => ticket === this.viewport && ttsData().settings.enabled;
     try {
-      const selected = requests.filter(r => this.eligible(r)).slice(0, s.prefetch);
+      const selected = requests.filter(r => this.eligible(r) && !isSoundSegment(r.segment)).slice(0, s.prefetch);
       const ready: TtsRequest[] = [], unassigned: TtsRequest[] = [];
       for (const request of selected) {
         const character = ttsSegmentOwner(request.segment, ttsData().characters, request.context.rosterScope);

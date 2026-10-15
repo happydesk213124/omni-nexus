@@ -48,12 +48,17 @@ export function parseBgmMarker(text: string): string[] | null {
   const hit = BGM_MARKER.exec(String(text || ''));
   return hit ? soundTags(hit[1]!).slice(0, 5) : null;
 }
+/** Every BGM marker in a line, in order: a reply may change the music where the scene turns. */
+export function bgmMarkers(text: string): { tags: string[]; index: number; length: number }[] {
+  return [...String(text || '').matchAll(new RegExp(BGM_MARKER.source, 'gi'))].map(hit => ({ tags: soundTags(hit[1]!).slice(0, 5), index: hit.index ?? 0, length: hit[0].length }));
+}
 
 /** Chat-model instruction; it names the vocabulary but never the track list. */
 export function bgmPromptText(tags: readonly string[]): string {
   return [
     'Background music cue: begin every reply with one line [[bgm:mood,place,tempo]] — exactly three tags, chosen only from this list, then continue the reply on the next line.',
     `Tags: ${tags.join(', ')}`,
-    'Keep the same tags while the scene does not change. Never mention the cue in the story.',
+    'Keep the same tags while the scene continues. Only when the mood or place changes sharply partway through the reply (a sudden attack, a jump to another place or time), put a new cue line at that point, on its own line. At most three cues per reply.',
+    'Never mention the cues in the story.',
   ].join('\n');
 }

@@ -113,11 +113,15 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
     return `<div data-tts-bgm="1" style="height:${BGM_H}px;box-sizing:border-box;display:flex;gap:6px;align-items:center;padding:6px 9px;border-bottom:1px solid #ffffff24">${control('bgm-play',playing?'Ⅱ':'▶','BGM 재생·일시정지',playing)}<div style="flex:1;min-width:0"><div style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px">♪ ${esc(omniSound.bgmName()||'BGM 없음')}</div><small data-tts-bgm-time="1">${clock(p.current)} / ${clock(p.duration)}</small></div>${control('bgm-power',on?'ON':'OFF','BGM 켜기·끄기',on)}</div>`;
   }
   function stateIcon(state:string):string{return state==='playing'?'◉':state==='loading'?'◌':state==='paused'?'Ⅱ':'○';}
-  function lineLabel(segment:TtsSegment):string{return segment.speaker?`${segment.speaker}: ${segment.text}`:segment.monologue?`혼잣말: ${segment.text}`:segment.text;}
+  const CUE:Partial<Record<TtsSegment['kind'],[string,string,string]>>={bgm:['♪','BGM','#9aa3b5'],sfx:['▶','효과음','#9aa3b5']};
+  function lineLabel(segment:TtsSegment):string{const cue=CUE[segment.kind];if(cue)return `${cue[1]}: ${segment.text}`;const text=segment.spoken??segment.text;return segment.speaker?`${segment.speaker}: ${text}`:segment.monologue?`혼잣말: ${text}`:text;}
   // One line per entry: "speaker: text", narration without a colon, tone as a chip.
+  // BGM·효과음 cues are gray rows: what plays there, never read aloud.
   function lineHtml(segment:TtsSegment):string{
+    const cue=CUE[segment.kind];
+    if(cue)return `<span style="display:flex;align-items:center;gap:6px;min-width:0;width:100%;color:${cue[2]}"><span style="flex:none;width:16px;text-align:center">${cue[0]}</span><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"><b>${cue[1]}</b> · ${esc(segment.text)}</span></span>`;
     const tone=segment.tone?`<span style="flex:none;padding:0 6px;border:1px solid #ffffff38;border-radius:6px;background:#ffffff12;color:#d8c8ff;font-size:10px;line-height:16px">${esc(segment.tone)}</span>`:'';
-    return `<span style="display:flex;align-items:center;gap:6px;min-width:0;width:100%"><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${segment.speaker?`<b>${esc(segment.speaker)}</b>: `:segment.monologue?'<b>혼잣말</b>: ':''}${esc(segment.text)}</span>${tone}</span>`;
+    return `<span style="display:flex;align-items:center;gap:6px;min-width:0;width:100%"><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${segment.speaker?`<b>${esc(segment.speaker)}</b>: `:segment.monologue?'<b>혼잣말</b>: ':''}${esc(segment.spoken??segment.text)}</span>${tone}</span>`;
   }
   const render=()=>{void paint().catch(error=>console.warn('OmniTTS viewer',error));};
   const unsubscribeRuntime=omniTts.subscribe(render),unsubscribeSettings=subscribeTts(render),unsubscribeSound=subscribeSound(render);

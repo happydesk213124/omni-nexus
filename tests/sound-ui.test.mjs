@@ -16,7 +16,7 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
       const id3 = () => new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       window.db = { modules: [], enabledModules: [] };
       window.bot = { chaId: 'c', name: '봇', globalLore: [], chats: [{ id: 'chat', message: [] }] };
-      window.played = []; window.eleven = []; window.jevAsked = []; window.jevChoice = 'new'; window.llmAsked = []; window.llmAnswer = '';
+      window.played = []; window.eleven = []; window.music = []; window.jevAsked = []; window.jevChoice = 'new'; window.llmAsked = []; window.llmAnswer = '';
       window.risuai = {
         pluginStorage: { getItem: async k => save.get(k), setItem: async (k, v) => save.set(k, v) },
         requestPluginPermission: async () => true,
@@ -27,6 +27,7 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
         getCurrentCharacterIndex: async () => 0, getCharacter: async () => ({ chaId: 'c', chats: [{ id: 'chat', message: [] }] }),
         getCharacterFromIndex: async () => structuredClone(window.bot), setCharacterToIndex: async (_i, c) => { window.bot = structuredClone(c); },
         nativeFetch: async (url, options = {}) => {
+          if (url.includes('api.elevenlabs.io/v1/music?')) { window.music.push({ body: JSON.parse(options.body), key: options.headers['xi-api-key'] }); return { ok: true, arrayBuffer: async () => id3().buffer }; }
           if (url.includes('api.elevenlabs.io/v1/sound-generation')) { window.eleven.push({ body: JSON.parse(options.body), key: options.headers['xi-api-key'] }); return { ok: true, arrayBuffer: async () => id3().buffer }; }
           if (url.includes('translate.googleapis.com')) return { ok: true, json: async () => [[[window.english || 'boom']]] };
           if (url.includes('decisions')) { window.jevAsked.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ answers: { 0: { choice: window.jevChoice } } }) }; }
@@ -136,8 +137,13 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.deepEqual(await page.evaluate(() => window.eleven.at(-1)), { body: { text: 'heavy wooden door slamming', prompt_influence: 0.4 }, key: 'el-key' });
     assert.equal(await page.evaluate(() => window.soundData().sfx.find(i => i.name === '문 쾅2').source), 'asset');
     await page.locator('#tab-sound-bgm').click(); await page.locator('#snd-bgm-add').click();
-    assert.equal(await page.locator('#snd-item-source option[value="eleven"]').evaluate(o => o.hidden), true, 'BGM has no ElevenLabs effect option');
-    await page.locator('#snd-item-cancel').click();
+    // BGM: the same option makes instrumental music through Eleven Music.
+    await page.locator('#snd-item-source').selectOption('eleven');
+    assert.match(await page.locator('#snd-item-prompt-label').textContent(), /BGM/);
+    await page.locator('#snd-item-prompt').fill('calm piano for a rainy cafe'); await page.locator('#snd-item-duration').fill('90'); await page.locator('#snd-item-name').fill('비 오는 카페'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => window.soundData().bgm.some(i => i.name === '비 오는 카페'));
+    assert.deepEqual(await page.evaluate(() => window.music.at(-1)), { body: { prompt: 'calm piano for a rainy cafe', model_id: 'music_v1', force_instrumental: true, music_length_ms: 90000 }, key: 'el-key' });
+    assert.equal(await page.evaluate(() => window.eleven.filter(c => c.body.text === 'calm piano for a rainy cafe').length), 0, 'BGM never goes to the effect endpoint');
     // Auto: JEV says none fits → one generated effect, in its folder and the glossary.
     await page.evaluate(() => window.updateTtsSettings({ jev: { ...window.ttsData().settings.jev, key: 'jev-key' } }));
     await page.locator('#tab-sound-settings').click(); await page.locator('#snd-sfx-matcher').selectOption('jev');
