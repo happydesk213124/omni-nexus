@@ -5,6 +5,15 @@ import { build } from 'esbuild';
 const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const item = (key, tags, kind = 'bgm') => ({ key, kind, name: key, tags, folder: '', source: 'url', url: `https://x.test/${key}.mp3` });
+// Display rules as Risu runs them: highest <order> first, its own flags.
+const render = (rules, text) => {
+  const order = rule => Number((/<order (-?\d+)/.exec(rule.flag || '') || [])[1] || 0);
+  for (const rule of [...rules].sort((a, b) => order(b) - order(a))) {
+    const flags = [...new Set(String(rule.flag || 'g').replace(/<[^>]*>/g, '').replace(/[^dgimsuvy]/g, ''))].join('') || 'u';
+    text = text.replace(new RegExp(rule.in, flags), rule.out);
+  }
+  return text;
+};
 
 test('BGM tags: thirty vocabulary words, synonyms fold in, the marker yields three tags', () => {
   assert.equal(api.BGM_TAGS.length, 30);
@@ -77,8 +86,12 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.equal(api.soundModule('bgm', { ...settings, bgmPrompt: false }, []).lorebook.length, 0);
   const sfx = api.soundModule('sfx', settings, []);
   assert.equal(sfx.name, '⚛️ omni 효과음');
-  const line = '§덜컹§'.replace(new RegExp(sfx.regex[0].in, 'g'), sfx.regex[0].out);
-  assert.match(line, /^§덜컹§<span data-omni-sfx-tail="1"><button[^>]*data-omni-sfx="1"[^>]*><\/button><\/span>$/, 'the effect text stays and a gray ▶ follows it');
+  const line = render(sfx.regex, '§덜컹§ 문이 열렸다.');
+  assert.match(line, /^§덜컹§<span data-omni-sfx-tail="1"><button[^>]*data-omni-sfx="1"[^>]*><\/button><\/span> 문이 열렸다\.$/, 'the effect text stays and a gray ▶ follows it');
+  assert.equal(render(api.soundModule('sfx', { ...settings, sfxFirst: false }, []).regex, '§덜컹§'), line.replace(' 문이 열렸다.', ''), 'the same look either way');
+  const dashed = api.soundModule('sfx', { ...settings, sfxRules: [{ id: 'd', name: 'd', open: '--', close: '-]', enabled: true }] }, []);
+  assert.match(render(dashed.regex, '--쾅-]'), /^--쾅-\]<span data-omni-sfx-tail/, 'a dash or bracket in a mark is literal in unicode mode');
+  assert.deepEqual(api.sfxHits('--쾅-] 그리고', [{ id: 'd', name: 'd', open: '--', close: '-]', enabled: true }]).map(hit => hit.word), ['쾅']);
   assert.match(sfx.regex[0].flag, /<order 10130,no_end_nl>/, 'before every other module by default');
   assert.match(api.soundModule('sfx', { ...settings, sfxFirst: false }, []).regex[0].flag, /<order -10130,no_end_nl>/, 'off: after them, as before');
   assert.match(sfx.backgroundEmbedding, /\[data-omni-sfx\]::before\{content:"▶"\}/);
@@ -87,8 +100,8 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.equal(api.soundModule('sfx', { ...settings, sfxRules: settings.sfxRules.map(r => ({ ...r, enabled: false })) }, []).lorebook.length, 0, 'no rule in use, no instruction');
   const own = api.soundModule('sfx', { ...settings, sfxRules: [{ id: 'mine', name: 'mine', open: '【', close: '】', enabled: true }] }, []);
   assert.match(own.lorebook[0]?.content || '', /문이 【쾅】 닫혔다/, 'the instruction uses the marks the chat will show, for any rule');
-  assert.equal('【쾅】'.replace(new RegExp(own.regex[0].in, 'gu'), own.regex[0].out).includes('data-omni-sfx'), true);
-  assert.equal('<div title="§쾅§">x</div>'.replace(new RegExp(sfx.regex[0].in, 'gu'), sfx.regex[0].out), '<div title="§쾅§">x</div>', 'a mark inside a tag attribute gets no button');
+  assert.equal(render(own.regex, '【쾅】').includes('data-omni-sfx'), true);
+  assert.equal(render(sfx.regex, '<div title="§쾅§">x</div>'), '<div title="§쾅§">x</div>', 'a mark inside a tag attribute gets no button');
 });
 
 test('cues join the TTS lines in order; effect words are played, not read', () => {
@@ -154,20 +167,13 @@ test('⚡ BGM scene: the prose only, and a long reply keeps its start and its en
   assert.ok(scene.length <= 4003 && scene.startsWith('시작 문단.') && scene.endsWith('지금 장면.'), 'start and the current end both stay');
 });
 
-test('another module that restyles §쾅§ into its own box still gets ▶ (it runs at the default order)', () => {
-  // As a user's module had it: the marks are dropped and the word goes in a block.
-  const theirs = { comment: '의성어', type: 'editdisplay', ableFlag: true, flag: 'gs', in: '§([^§\\n\\r]+)§', out: '<div class="regex-sound-block">$1</div>' };
-  const render = (rules, text) => {
-    const order = rule => Number((/<order (-?\d+)/.exec(rule.flag || '') || [])[1] || 0);
-    for (const rule of [...rules].sort((a, b) => order(b) - order(a))) {
-      const flags = [...new Set(String(rule.flag || 'g').replace(/<[^>]*>/g, '').replace(/[^dgimsuvy]/g, ''))].join('') || 'u';
-      text = text.replace(new RegExp(rule.in, flags), rule.out);
-    }
-    return text;
-  };
+test('another module that restyles §쾅§ into its own box carries ▶ inside it, on the same line', () => {
+  // As a user's module had it: the marks go, the word goes in a block, and a blank line follows the block.
+  const theirs = { comment: '의성어', type: 'editdisplay', ableFlag: true, flag: 'gs', in: '§([^§\\n\\r]+)§', out: '\n\n<div class="regex-sound-block">$1</div>\n\n' };
   const settings = api.soundDefaults();
-  const first = render([theirs, ...api.soundModule('sfx', settings, []).regex], '문이 §쾅§ 닫혔다.');
-  assert.match(first, /<div class="regex-sound-block">쾅<\/div><span data-omni-sfx-tail="1"><button[^>]*data-omni-sfx="1"/, 'their box, then ▶');
+  const first = render([theirs, ...api.soundModule('sfx', settings, []).regex], '문이 §끼이익── 쿠구궁!§ 닫혔다.');
+  assert.match(first, /<div class="regex-sound-block">끼이익── 쿠구궁!<span data-omni-sfx-tail="1"><button[^>]*data-omni-sfx="1"[^>]*><\/button><\/span><\/div>/, 'their box carries ▶ right after the word, not on the next line');
+  assert.equal((first.match(/data-omni-sfx="1"/g) || []).length, 1, 'one ▶, no leftover from the closing step');
   const after = render([theirs, ...api.soundModule('sfx', { ...settings, sfxFirst: false }, []).regex], '문이 §쾅§ 닫혔다.');
   assert.doesNotMatch(after, /data-omni-sfx/, 'switched off it is the old behaviour: nothing left to put ▶ on');
 });
