@@ -180,6 +180,15 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.mouse.click(seekBar.x+seekBar.width/2,seekBar.y+seekBar.height/2);
     await page.waitForFunction(()=>Math.abs((window.seekedBgm??-1)-60)<3);
     await page.evaluate(()=>{delete window.omniSound.player.bgmProgress;});
+    // ⚡ beside ON hands the reply's text to the BGM picker; a failure shows in the toast.
+    await page.evaluate(()=>{window.omniSound.guessBgm=async text=>{window.guessed=text;await new Promise(r=>setTimeout(r,150));return window.soundData().bgm[0];};});
+    await page.locator('[data-tts-control="bgm-guess"]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-tts-control="bgm-guess"]')?.textContent==='…','⚡ shows that it is choosing');
+    await page.waitForFunction(()=>window.guessed!==undefined&&document.querySelector('[data-tts-control="bgm-guess"]')?.textContent==='⚡');
+    assert.ok(await page.evaluate(()=>window.messages.some(m=>m.data===window.guessed)),'the text of a reply in this chat');
+    await page.evaluate(()=>{window.omniSound.guessBgm=async()=>{throw new Error('메시지에 맞는 곡을 고르지 못했습니다.');};});
+    await page.locator('[data-tts-control="bgm-guess"]').click();
+    await page.waitForFunction(()=>/고르지 못했습니다/.test(document.querySelector('[x-omnitts-toast]')?.textContent||''));
     // Dragging with the bar open stores the header's top, so the viewer does not creep upward.
     await page.waitForTimeout(450);
     const grab=await page.locator('[data-tts-header]').boundingBox(),anchorBefore=await page.evaluate(()=>window.ttsData().settings.viewerAnchor);
