@@ -95,12 +95,17 @@ export class SoundLibrary {
     folder.value = item?.folder ?? (this.folder === '*' ? '' : this.folder);
     // A registered file or address cannot be swapped in place; editing changes the label only.
     for (const id of ['snd-item-source', 'snd-item-url', 'snd-item-file']) input(id).disabled = !!item;
-    set('snd-item-source', item?.source === 'asset' ? 'file' : 'url'); set('snd-item-url', item?.url || ''); input('snd-item-file').value = '';
+    // ElevenLabs makes effects only (music is a different service).
+    const eleven = el('snd-item-source').querySelector<HTMLOptionElement>('option[value="eleven"]'); if (eleven) eleven.hidden = this.kind !== 'sfx';
+    set('snd-item-source', item?.source === 'asset' ? 'file' : 'url'); set('snd-item-prompt', ''); set('snd-item-duration', 0); set('snd-item-url', item?.url || ''); input('snd-item-file').value = '';
     this.syncSource(); text('snd-item-status', '');
     el('snd-item-dialog').dataset.kind = this.kind;
     dialog('snd-item-dialog');
   }
-  syncSource(): void { const file = val('snd-item-source') === 'file'; el('snd-item-url-wrap').hidden = file; el('snd-item-file-wrap').hidden = !file; }
+  syncSource(): void {
+    const source = val('snd-item-source');
+    el('snd-item-url-wrap').hidden = source !== 'url'; el('snd-item-file-wrap').hidden = source !== 'file'; el('snd-item-prompt-wrap').hidden = source !== 'eleven';
+  }
   edit(item: SoundItem): void { this.openDialog(item); }
   async save(): Promise<void> {
     const name = val('snd-item-name'), tags = val('snd-item-tags'), folder = val('snd-item-folder');
@@ -112,7 +117,10 @@ export class SoundLibrary {
     const file = input('snd-item-file').files?.[0];
     try {
       if (val('snd-item-source') === 'file' && !file) throw new Error('파일을 골라 주세요.');
-      const item = val('snd-item-source') === 'file'
+      if (val('snd-item-source') === 'eleven') text('snd-item-status', 'ElevenLabs에서 만드는 중…');
+      const item = val('snd-item-source') === 'eleven'
+        ? await omniSound.addFromEleven({ name, tags, folder, prompt: val('snd-item-prompt'), duration: Number(val('snd-item-duration')) || 0 })
+        : val('snd-item-source') === 'file'
         ? await omniSound.addFromFile(this.kind, { name, tags, folder, file: file! })
         : await omniSound.addFromUrl(this.kind, { name: name || decodeURIComponent(val('snd-item-url').split('/').pop() || '').replace(/\.[^.]+$/, ''), tags, folder, url: val('snd-item-url') });
       dialog('snd-item-dialog', false); this.render(); notify(`${LABEL[this.kind]} 추가: ${item.name}`);

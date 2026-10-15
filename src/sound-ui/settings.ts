@@ -61,6 +61,11 @@ export function bindSoundSettings(): void {
     set(id, s[key]);
     el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: val(id) } as Partial<SoundSettings>)));
   }
+  input('snd-sfx-autocreate').checked = s.sfxAutoCreate;
+  el('snd-sfx-autocreate').addEventListener('change', () => run(() => updateSoundSettings({ sfxAutoCreate: input('snd-sfx-autocreate').checked })));
+  set('snd-sfx-prompt', s.sfxPrompt); el('snd-sfx-prompt').addEventListener('change', () => run(() => updateSoundSettings({ sfxPrompt: val('snd-sfx-prompt') })));
+  set('snd-sfx-duration', s.sfxDuration); el('snd-sfx-duration').addEventListener('change', () => run(() => updateSoundSettings({ sfxDuration: Number(val('snd-sfx-duration')) || 0 })));
+  set('snd-eleven-key', s.elevenKey); el('snd-eleven-key')?.addEventListener('change', () => run(() => updateSoundSettings({ elevenKey: val('snd-eleven-key').trim() })));
   set('snd-bgm-tags', s.bgmTags.join(', '));
   el('snd-bgm-tags').addEventListener('change', () => run(async () => { await updateSoundSettings({ bgmTags: soundTags(val('snd-bgm-tags')) }); set('snd-bgm-tags', soundData().settings.bgmTags.join(', ')); }));
   el('snd-rule-add').addEventListener('click', () => run(async () => {

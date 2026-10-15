@@ -8,6 +8,13 @@ import { soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, subscribeSound } from '../storage/sound-store';
 import { ensureSoundModules, readSoundAsset, storeSoundBytes } from '../storage/sound-module';
 import { omniTts } from './tts-runtime';
+import { ttsData } from '../storage/tts-store';
+import { generateSoundEffect, englishText } from '../providers/sound/elevenlabs';
+import { chooseSfx, type SfxChoice } from '../providers/sound/choose';
+import { normalizeSoundTag } from '../domain/sound/tags';
+
+/** Folder for effects ElevenLabs made on its own, so they are easy to review. */
+export const AUTO_SFX_FOLDER = '자동 생성';
 
 /** Fetched or read audio, newest last; bounded so a long session does not grow without limit. */
 const CACHE_LIMIT = 48 * 1024 * 1024;
@@ -93,10 +100,20 @@ export class OmniSoundRuntime {
     if (input.file.size > limit) throw new Error(`파일이 너무 큽니다 (${(input.file.size / 1048576).toFixed(1)}MB). 최대 ${soundData().settings.maxFileMb}MB · 큰 곡은 주소로 등록해 주세요.`);
     const bytes = await input.file.arrayBuffer(), mime = sniffAudioMime(bytes);
     if (!mime) throw new Error('재생할 수 있는 오디오 파일이 아닙니다 (mp3, wav, ogg, m4a, flac, webm).');
+    return this.addBytes(kind, { ...input, name: input.name.trim() || input.file.name.replace(/\.[^.]+$/, '') }, bytes, mime);
+  }
+  /** Generates an effect with ElevenLabs and stores it in ⚛️ omni 효과음. */
+  async addFromEleven(input: { name: string; tags: string; folder: string; prompt: string; duration: number }): Promise<SoundItem> {
+    const s = soundData().settings;
+    const audio = await generateSoundEffect(input.prompt, { key: s.elevenKey, durationSeconds: input.duration || s.sfxDuration });
+    return this.addBytes('sfx', { ...input, name: input.name.trim() || input.prompt.slice(0, 40) }, audio.bytes, audio.mime);
+  }
+  private async addBytes(kind: SoundKind, input: { name: string; tags: string; folder: string }, bytes: ArrayBuffer, mime: string): Promise<SoundItem> {
     const key = uuid(), path = await storeSoundBytes(bytes);
-    const item: SoundItem = { key, kind, name: input.name.trim() || input.file.name.replace(/\.[^.]+$/, ''), tags: soundTags(input.tags), folder: input.folder, source: 'asset',
+    const item: SoundItem = { key, kind, name: input.name, tags: soundTags(input.tags), folder: input.folder, source: 'asset',
       assetName: `omnisound_${kind}_${key.slice(0, 8)}.${AUDIO_EXTENSIONS[mime] || 'mp3'}`, assetPath: path, mime, bytes: bytes.byteLength };
     remember(item.key, bytes, mime);
+    if (input.folder && !soundData().folders[kind].includes(input.folder)) soundData().folders[kind].push(input.folder);
     this.list(kind).push(item); await saveSoundData();
     return item;
   }
@@ -121,10 +138,43 @@ export class OmniSoundRuntime {
     if (item) await this.play(item);
     return item?.key || '';
   }
+  private creating = new Map<string, Promise<SoundItem | null>>();
+  /** Teaches the glossary that `word` means the effect `key`. */
+  private async learn(word: string, key: string): Promise<void> {
+    const data = soundData(), row = data.glossary.find(r => r.sfxKey === key);
+    if (row) row.terms = soundTags([...row.terms, word]); else data.glossary.push({ id: uuid(), terms: [word], sfxKey: key, enabled: true });
+    data.unknownTerms = data.unknownTerms.filter(w => w !== word); await saveSoundData();
+  }
+  /**
+   * A word the glossary does not know: JEV or the LLM picks a listed effect or
+   * says none fits. Only that answer (or an empty list) makes ElevenLabs generate
+   * one — without it every spelling variant would be a new paid effect.
+   */
+  private async resolveSfx(word: string, context: string): Promise<SoundItem | null> {
+    const s = soundData().settings, tts = ttsData().settings, items = soundData().sfx;
+    const engine = s.sfxMatcher === 'jev' || s.sfxMatcher === 'llm' ? s.sfxMatcher : s.sfxMatcher === 'auto' ? (tts.jev.key.trim() ? 'jev' : 'llm') : null;
+    let choice: SfxChoice | null = null;
+    if (engine && items.length) choice = await chooseSfx(word, context, items, engine, tts).catch(error => { this.notice = String((error as Error).message || error); return null; });
+    if (choice && 'key' in choice) { const item = items.find(row => row.key === choice.key); if (item) { await this.learn(word, item.key); return item; } }
+    const create = !items.length || (!!choice && 'create' in choice);
+    if (!create || !s.sfxAutoCreate || !s.elevenKey.trim()) return null;
+    const id = normalizeSoundTag(word);
+    // The same word in several lines (or a re-render) makes one effect, not several.
+    let job = this.creating.get(id);
+    if (!job) {
+      job = (async () => {
+        const prompt = (choice && 'create' in choice && choice.prompt) || s.sfxPrompt.replace('{word}', await englishText(word));
+        const item = await this.addFromEleven({ name: word.slice(0, 40), tags: word, folder: AUTO_SFX_FOLDER, prompt, duration: s.sfxDuration });
+        await this.learn(word, item.key); return item;
+      })().catch(error => { this.notice = String((error as Error).message || error); return null; }).finally(() => this.creating.delete(id));
+      this.creating.set(id, job);
+    }
+    return job;
+  }
   /** Plays the effect for a word; an unknown word is kept for the glossary. */
-  async playSfxWord(word: string): Promise<boolean> {
+  async playSfxWord(word: string, context = ''): Promise<boolean> {
     if (!soundData().settings.sfxEnabled) return false;
-    const item = pickSfx(word, soundData().glossary, soundData().sfx);
+    const item = pickSfx(word, soundData().glossary, soundData().sfx) || await this.resolveSfx(word, context);
     if (item) { await this.play(item); return true; }
     const data = soundData(), clean = word.trim().slice(0, 60);
     if (clean && !data.unknownTerms.includes(clean)) { data.unknownTerms = [clean, ...data.unknownTerms].slice(0, 200); await saveSoundData(); }

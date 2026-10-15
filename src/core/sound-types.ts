@@ -44,6 +44,14 @@ export interface SoundSettings {
   listSfx: boolean;
   /** The TTS viewer shows its BGM bar (opened from the header ♪). */
   viewerBgm: boolean;
+  /** ElevenLabs key, for generating effects (paid). */
+  elevenKey: string;
+  /** When JEV/LLM says no listed effect fits (or none exist), generate one with ElevenLabs. */
+  sfxAutoCreate: boolean;
+  /** Prompt for generated effects; {word} is the sound word in English. */
+  sfxPrompt: string;
+  /** Generated effect length in seconds; 0 lets ElevenLabs decide. */
+  sfxDuration: number;
   /** Upper bound for a file stored in a module (megabytes). */
   maxFileMb: number;
 }

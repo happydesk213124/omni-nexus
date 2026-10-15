@@ -13,6 +13,8 @@ export function addSoundStructure(root: ParentNode): void {
   root.querySelector('#tts-controls')?.insertAdjacentHTML('afterend', SOUND_PANELS);
   const models = root.querySelector('#tts-models');
   if (models) root.querySelector('#sound-controls')?.append(models);
+  // ElevenLabs belongs to the shared model page; BGM·효과음 uses it to generate effects.
+  models?.insertAdjacentHTML('beforeend', '<div class="group" id="snd-eleven-group"><h3>ElevenLabs · 효과음 생성</h3><div class="fields"><label class="field full"><span>ElevenLabs API Key</span><input type="password" id="snd-eleven-key" autocomplete="off" placeholder="효과음 생성에만 씁니다 (유료)"></label></div></div>');
 }
 
 /**
