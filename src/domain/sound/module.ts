@@ -10,8 +10,13 @@ export const SOUND_MODULES: Record<SoundKind, { id: string; name: string; descri
  * Display order: before the OmniTTS rules (-10200…), so the BGM marker is a
  * button by the time TTS looks for lines to read, and after every module that
  * keeps the default order (higher runs first).
+ *
+ * Effects run first of all by default (`sfxFirst`): other modules often restyle
+ * `§쾅§` into their own box and drop the marks, and a rule running after them
+ * found nothing to put ▶ on. Run first, ▶ follows the marks, and their rule still
+ * matches the marks themselves. Off: the old place, after every other module.
  */
-export const SOUND_DISPLAY_ORDER = { bgm: -10120, sfx: -10130 } as const;
+export const SOUND_DISPLAY_ORDER = { bgm: -10120, sfx: -10130, sfxFirst: 10130 } as const;
 
 // Like the OmniTTS control: the glyph is CSS only, so the line's text (which
 // TTS reads and matches against the source) carries no ♪ or ▶ of its own.
@@ -61,7 +66,7 @@ export function soundModule(kind: SoundKind, settings: SoundSettings, items: rea
     ? [{ comment: 'omni-bgm-marker', type: 'editdisplay', ableFlag: true, flag: `gi<order ${SOUND_DISPLAY_ORDER.bgm},no_end_nl>`, in: '\\[\\[bgm:[^\\]\\n]{1,200}\\]\\][ \\t]*', out: bgmButton }]
     : rules.map(rule => ({
       comment: `omni-sfx-${rule.id}`, type: 'editdisplay', ableFlag: true,
-      flag: `gu<order ${SOUND_DISPLAY_ORDER.sfx},no_end_nl>`, in: `(${sfxRuleSource(rule)})`, out: `$1${sfxButton}`,
+      flag: `gu<order ${settings.sfxFirst ? SOUND_DISPLAY_ORDER.sfxFirst : SOUND_DISPLAY_ORDER.sfx},no_end_nl>`, in: `(${sfxRuleSource(rule)})`, out: `$1${sfxButton}`,
     }));
   const book = (comment: string, content: string, insertorder: number) => ({ key: '', secondkey: '', comment, content, mode: 'normal', insertorder, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 });
   const lorebook = kind === 'bgm'

@@ -45,6 +45,7 @@ ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
 ${row('효과음 사용', sw('snd-sfx-enabled', '효과음 사용'), '켜면 ⚛️ omni 효과음 모듈이 설치되고 규칙에 걸린 말에 회색 ▶ 버튼이 붙습니다.')}
 ${row('효과음 볼륨', range('snd-sfx-volume', '효과음 볼륨'))}
 ${row('효과음 크기 자동 맞추기', sw('snd-sfx-normalize', '효과음 크기 자동 맞추기'), '효과음마다 다른 크기를 같은 크기로 맞춥니다(TTS 자동 맞추기와 같은 역할). 소리가 찢어지지 않게 최고 음량은 넘지 않습니다.')}
+${row('▶를 다른 모듈보다 먼저 붙이기', sw('snd-sfx-first', '▶를 다른 모듈보다 먼저 붙이기'), '다른 모듈이 §쾅§를 자기 모양(상자 등)으로 바꿔도 ▶가 생깁니다. 다른 모듈의 표시가 깨지면 끄세요.')}
 ${row('앞뒤 무음 건너뛰기', sw('snd-sfx-trim', '앞뒤 무음 건너뛰기'), '파일 앞뒤의 소리 없는 부분을 빼고 바로 재생합니다.')}
 ${row('효과음 최대 길이', `<div class="control"><input id="snd-sfx-max" type="number" min="0" max="60" step="1" aria-label="효과음 최대 길이 초" style="width:72px"><span>초</span></div>`, '이보다 길면 부드럽게 줄이며 끊습니다. 0이면 끝까지 재생합니다.')}
 ${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과음 표시 요청'), '소리가 나는 곳에 §쾅§처럼 쓰게 합니다(답변당 최대 5개). 켜진 첫 규칙의 앞·뒤 글자로 씁니다.<br><span id="snd-sfx-cue-status"></span>')}

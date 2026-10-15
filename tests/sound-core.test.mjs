@@ -79,7 +79,8 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.equal(sfx.name, '⚛️ omni 효과음');
   const line = '§덜컹§'.replace(new RegExp(sfx.regex[0].in, 'g'), sfx.regex[0].out);
   assert.match(line, /^§덜컹§<span data-omni-sfx-tail="1"><button[^>]*data-omni-sfx="1"[^>]*><\/button><\/span>$/, 'the effect text stays and a gray ▶ follows it');
-  assert.match(sfx.regex[0].flag, /<order -10130,no_end_nl>/);
+  assert.match(sfx.regex[0].flag, /<order 10130,no_end_nl>/, 'before every other module by default');
+  assert.match(api.soundModule('sfx', { ...settings, sfxFirst: false }, []).regex[0].flag, /<order -10130,no_end_nl>/, 'off: after them, as before');
   assert.match(sfx.backgroundEmbedding, /\[data-omni-sfx\]::before\{content:"▶"\}/);
   assert.match(sfx.lorebook[0]?.content || '', /§쾅§/, 'the model is told how to mark an effect');
   assert.equal(api.soundModule('sfx', { ...settings, sfxCue: false }, []).lorebook.length, 0);
@@ -151,4 +152,22 @@ test('⚡ BGM scene: the prose only, and a long reply keeps its start and its en
   const long = '시작 문단.\n' + '가'.repeat(9000) + '\n지금 장면.';
   const scene = api.bgmSceneText(long, 4000);
   assert.ok(scene.length <= 4003 && scene.startsWith('시작 문단.') && scene.endsWith('지금 장면.'), 'start and the current end both stay');
+});
+
+test('another module that restyles §쾅§ into its own box still gets ▶ (it runs at the default order)', () => {
+  // As a user's module had it: the marks are dropped and the word goes in a block.
+  const theirs = { comment: '의성어', type: 'editdisplay', ableFlag: true, flag: 'gs', in: '§([^§\\n\\r]+)§', out: '<div class="regex-sound-block">$1</div>' };
+  const render = (rules, text) => {
+    const order = rule => Number((/<order (-?\d+)/.exec(rule.flag || '') || [])[1] || 0);
+    for (const rule of [...rules].sort((a, b) => order(b) - order(a))) {
+      const flags = [...new Set(String(rule.flag || 'g').replace(/<[^>]*>/g, '').replace(/[^dgimsuvy]/g, ''))].join('') || 'u';
+      text = text.replace(new RegExp(rule.in, flags), rule.out);
+    }
+    return text;
+  };
+  const settings = api.soundDefaults();
+  const first = render([theirs, ...api.soundModule('sfx', settings, []).regex], '문이 §쾅§ 닫혔다.');
+  assert.match(first, /<div class="regex-sound-block">쾅<\/div><span data-omni-sfx-tail="1"><button[^>]*data-omni-sfx="1"/, 'their box, then ▶');
+  const after = render([theirs, ...api.soundModule('sfx', { ...settings, sfxFirst: false }, []).regex], '문이 §쾅§ 닫혔다.');
+  assert.doesNotMatch(after, /data-omni-sfx/, 'switched off it is the old behaviour: nothing left to put ▶ on');
 });

@@ -134,7 +134,7 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.evaluate(() => { window.__OMNI_INLINE_TAGS__.cues = () => ({ at: Date.now(), tts: true, bgm: true, sfx: true }); });
     await page.waitForFunction(() => /효과음 지시가 들어갔습니다/.test(document.getElementById('snd-sfx-cue-status')?.textContent || ''), null, { timeout: 5000 });
     // Loudness, silence and length are per-effect playback settings, on by default.
-    assert.deepEqual(await page.evaluate(() => [document.getElementById('snd-sfx-normalize').checked, document.getElementById('snd-sfx-trim').checked, document.getElementById('snd-sfx-max').value]), [true, true, '6']);
+    assert.deepEqual(await page.evaluate(() => [document.getElementById('snd-sfx-normalize').checked, document.getElementById('snd-sfx-trim').checked, document.getElementById('snd-sfx-max').value, document.getElementById('snd-sfx-first').checked]), [true, true, '6', true]);
     await page.locator('#snd-sfx-max').fill('10'); await page.locator('#snd-sfx-max').dispatchEvent('change');
     await page.locator('#snd-sfx-normalize').evaluate(n => { n.checked = false; n.dispatchEvent(new Event('change')); });
     await page.waitForFunction(() => window.soundData().settings.sfxMaxSec === 10 && window.soundData().settings.sfxNormalize === false);
