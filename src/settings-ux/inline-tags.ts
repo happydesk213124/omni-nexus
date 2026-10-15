@@ -6,10 +6,37 @@
 const STREAM_IDS = ['nx-stream-keywords-on', 'nx-stream-keywords', 'nx-stream-lines-on', 'nx-stream-lines-count', 'nx-stream-lines-image-min', 'nx-stream-lines-image-max'];
 const NOTE_ID = 'nx-stream-inline-note';
 
+type Status = { registered: 'yes' | 'no' | 'pending'; lastAt: number; last: string };
+/** Whether Risu called the request hook, and with what result: shown while the switch is on. */
+export function inlineTagStatusText(status: Status | undefined): string {
+  if (!status) return '';
+  if (status.registered === 'no') return '요청 연결: 이 Risu에서는 쓸 수 없습니다.';
+  if (status.registered === 'pending') return '요청 연결 중…';
+  if (!status.lastAt) return '요청 연결됨 · 아직 메인 모델 요청이 없습니다. 메시지를 보낸 뒤에도 그대로면 Risu가 이 플러그인의 replacer 권한을 막은 것입니다.';
+  const at = new Date(status.lastAt).toLocaleTimeString('ko-KR', { hour12: false });
+  const what = status.last.startsWith('inserted') ? '규칙을 넣었습니다'
+    : status.last.startsWith('off') ? '설정이 꺼진 것으로 읽혔습니다'
+    : status.last.startsWith('already') ? '이미 들어 있었습니다'
+    : `건너뜀 (${status.last.replace(/^skipped · /, '')})`;
+  return `마지막 메인 모델 요청 ${at} · ${what}`;
+}
+
 export function bindInlineTagToggles(): void {
   const on = document.querySelector<HTMLInputElement>('#nx-stream-inline-on');
   if (!on || on.dataset.nxInline) return;
   on.dataset.nxInline = '1';
+  const status = document.createElement('small');
+  status.id = 'nx-stream-inline-status';
+  on.closest('[data-nx-help-id="nx-stream-inline"]')?.append(status);
+  const paintStatus = () => {
+    const read = (Reflect.get(globalThis, '__OMNI_INLINE_TAGS__') as { status?: () => Status } | undefined)?.status;
+    status.textContent = on.checked ? inlineTagStatusText(read?.()) : '';
+    status.hidden = !status.textContent;
+  };
+  // Live while the tab is open: the next chat request updates the line by itself.
+  const timer = setInterval(() => { if (!status.isConnected) clearInterval(timer); else paintStatus(); }, 1500);
+  on.addEventListener('change', paintStatus);
+  paintStatus();
   const sync = () => {
     for (const id of STREAM_IDS) {
       const field = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null;

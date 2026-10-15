@@ -134,17 +134,30 @@ export function placeInlineTagPrompts(messages: OpenAIChat[], rules: string, sta
   return out;
 }
 
+/**
+ * What the settings row shows under the switch: whether Risu accepted the hook,
+ * and what the last request it called us for got. Without it a refused
+ * permission and a skipped request look the same: nothing in the prompt.
+ */
+export interface InlineTagStatus { registered: 'yes' | 'no' | 'pending'; lastAt: number; last: string }
+const status: InlineTagStatus = { registered: 'pending', lastAt: 0, last: '' };
+export const inlineTagStatus = (): InlineTagStatus => ({ ...status });
+function noteRequest(text: string): void {
+  status.lastAt = Date.now(); status.last = text;
+  dbg('inline-tags.request', { message: text });
+}
+
 async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<OpenAIChat[]> {
   try {
-    if (!inlineTagsOn()) return messages;
+    if (!inlineTagsOn()) { if (mode === 'model') noteRequest('off · setting reads off here'); return messages; }
     // Only the chat model's own reply; never our tagger borrowing that model.
     const skip = mode !== 'model' ? `mode ${mode}` : !Array.isArray(messages) || !messages.length ? 'no messages' : isOwnLlmRequest(messages) ? 'own tagger call' : '';
-    // Shown in 디버그: whether Risu called us at all, and what was sent. A provider
-    // plugin that rebuilds the prompt from its own preset can still drop it later.
-    if (skip) { dbg('inline-tags.request', { message: `skipped · ${skip}` }); return messages; }
+    // A provider plugin that rebuilds the prompt from its own preset, or the
+    // bot's own request trigger, can still drop what was inserted here.
+    if (skip) { if (mode === 'model') noteRequest(`skipped · ${skip}`); return messages; }
     const rules = await inlineTagRules(), stateText = lastScope && state.key === scopeKey(lastScope) ? state.text : '';
     const placed = placeInlineTagPrompts(messages, rules, stateText);
-    dbg('inline-tags.request', { message: placed === messages ? 'already present' : `inserted · rules ${rules.length} chars after message 1, chat state ${stateText.length} chars`, msgs: placed.length });
+    noteRequest(placed === messages ? 'already present' : `inserted · rules ${rules.length} chars, chat state ${stateText.length} chars`);
     // People registered by this reply's blocks show up from the next request on.
     void refreshInlineTagState();
     return placed;
@@ -158,10 +171,12 @@ let installed = false;
 export async function installInlineTags(): Promise<void> {
   if (installed) return;
   installed = true;
-  Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); } });
+  Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); }, status: inlineTagStatus });
   const host = risuHost();
-  if (typeof host?.addRisuReplacer !== 'function') { dbg('inline-tags.replacer', { message: 'unavailable on this Risu' }, 'warn'); return; }
-  // Risu asks for the 'replacer' permission here; a refusal registers nothing, silently.
-  await host.addRisuReplacer('beforeRequest', beforeRequest);
+  if (typeof host?.addRisuReplacer !== 'function') { status.registered = 'no'; dbg('inline-tags.replacer', { message: 'unavailable on this Risu' }, 'warn'); return; }
+  // Risu asks for the 'replacer' permission here; a refusal registers nothing and
+  // says nothing. The call itself resolving is all we can observe.
+  try { await host.addRisuReplacer('beforeRequest', beforeRequest); status.registered = 'yes'; }
+  catch (error) { status.registered = 'no'; throw error; }
   dbg('inline-tags.replacer', { message: 'registered' });
 }
