@@ -8,7 +8,7 @@ import { measureWrite } from '../core/write-metrics';
 import { serializeSessionStorage } from '../storage/chat-session-store';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, stripBakeTokens, stripBakeTokensExceptJobs } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, waitToken, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -403,6 +403,47 @@ export async function clearJobSpinners(opts:ReturnType<typeof jobChatTarget> & {
   await writeChat(loaded.host,opts.charIndex,opts.chatIndex,loaded.chat,{messageIndex:opts.messageIndex,previousBody});
 }
 
+
+type MessageTarget = { charIndex: number; chatIndex: number; messageIndex: number; hostMessageId?: string };
+async function rewriteMessage(target: MessageTarget, change: (body: string) => string, expected?: string): Promise<boolean> {
+  const loaded = await loadTargetChat(target.charIndex, target.chatIndex); if (!loaded) return false;
+  const msg = chatMessageList(loaded.chat)[target.messageIndex]; if (!msg) return false;
+  if (target.hostMessageId && String(msg.chatId || msg.id || '') !== target.hostMessageId) throw new Error('Message identity changed');
+  const previousBody = messageBody(msg);
+  if (expected !== undefined && previousBody !== expected) throw new Error('Message body changed');
+  const next = change(previousBody);
+  if (next === previousBody) return true;
+  setMessageBody(msg, next);
+  await writeChat(loaded.host, target.charIndex, target.chatIndex, loaded.chat, { messageIndex: target.messageIndex, previousBody });
+  return true;
+}
+
+/**
+ * Streaming tags with 「이미지 바로 생성」 off: every block becomes its waiting
+ * (pink) slot in one write, and blocks without a slot leave the reply.
+ */
+export async function parkInlineBlocks(target: MessageTarget & { body: string }, slots: Array<{ n: number; id: string; width: number; height: number }>): Promise<boolean> {
+  const card = getConfig().card;
+  await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, { enabled: card.inline_msg_fan === true, userchat: card.userchat === true });
+  return rewriteMessage(target, body => stripInlineShotBlocks(slots.reduce((text, slot) => replaceInlineShotBlock(text, slot.n, waitToken(slot.id, slot.width, slot.height)), body)), target.body);
+}
+/** A tapped waiting slot becomes this job's spinner, in place: nothing else in the reply moves. */
+export async function writeWaitSpinner(target: MessageTarget & { waitId: string; jobId: string; width?: number; height?: number }): Promise<boolean> {
+  let found = false;
+  const ok = await rewriteMessage(target, body => {
+    const size = waitTokenDimensions(body, target.waitId);
+    found = !!size;
+    return replaceWaitToken(body, target.waitId, spinnerToken(target.jobId, 0, target.width ?? size?.width, target.height ?? size?.height));
+  });
+  return ok && found;
+}
+/** A wait job that ends without an image gives the slot back as a waiting one, so a tap can retry. */
+export async function restoreWaitSlot(target: MessageTarget & { waitId: string; jobId: string }): Promise<void> {
+  await rewriteMessage(target, body => {
+    const size = spinnerDimensions(body, target.jobId, 0);
+    return size ? body.replace(new RegExp(`\\[\\[@inrayspinner::${target.jobId}_0::[0-9]+::[0-9]+\\]\\](?!\\[\\[@inray::)`), () => waitToken(target.waitId, size.width, size.height)) : body;
+  });
+}
 
 /** A new plugin instance cannot own any previously persisted loading placeholders. */
 export async function clearAbandonedSpinners():Promise<void> {

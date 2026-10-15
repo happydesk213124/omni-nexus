@@ -28,12 +28,13 @@ function syncDisplay(snapshot: Settings): void {
   }
   const inline = card.stream_inline_tags === true;
   // The scale only shapes the module's slots while it is on.
-  const nextInline = inline ? JSON.stringify([true, scale]) : 'off';
+  const pending = card.stream_inline_autogen === false;
+  const nextInline = inline ? JSON.stringify([true, scale, pending]) : 'off';
   // Never used and still off: nothing to write, and no module read on the first save.
   if (inlineKey === undefined && !inline) inlineKey = nextInline;
   if (nextInline !== inlineKey) {
     inlineKey = nextInline;
-    void ensureInlineTagModule(inline, scale).then(ok => {
+    void ensureInlineTagModule(inline, scale, pending).then(ok => {
       if (!ok && inlineKey === nextInline) inlineKey = undefined;
     }, () => { if (inlineKey === nextInline) inlineKey = undefined; });
   }

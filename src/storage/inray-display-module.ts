@@ -18,6 +18,7 @@ import {
   framedAssetDisplayRegexScript,
   historyDisplayRegexScript,
   requestMarkerStripScript,
+  waitDisplayRegexScript,
 } from '../domain/inray-display';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 
@@ -53,7 +54,7 @@ function scriptComment(row: unknown): string {
   return cleanText((row as { comment?: unknown }).comment, 80);
 }
 
-const displayOrders: Record<string, number> = { 'omni-image-history-display': -10010, 'omni-framed-asset-display': -10020, 'inray-shot-display': -10030, 'omni-spinner-display': -10040 };
+const displayOrders: Record<string, number> = { 'omni-image-history-display': -10010, 'omni-framed-asset-display': -10020, 'inray-shot-display': -10030, 'omni-spinner-display': -10040, 'omni-wait-display': -10045 };
 function afterExternalRules<T extends {comment: string; flag: string}>(script: T): T {
   return { ...script, flag: `g<order ${displayOrders[script.comment]}>` };
 }
@@ -150,6 +151,14 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
     if(spinnerIndex<0 || JSON.stringify(regex[spinnerIndex])!==JSON.stringify(spinner)) {
       if(spinnerIndex<0)regex.push(spinner);else regex[spinnerIndex]=spinner;
       modules[idx]={...modules[idx],regex};changed=true;
+    }
+    // Waiting slots outlive the streaming-tag switch: old replies keep a tappable pink frame.
+    const wait=afterExternalRules(waitDisplayRegexScript(scalePct));
+    const waitRegex=[...(modules[idx]!.regex || [])];
+    const waitIndex=waitRegex.findIndex(row=>scriptComment(row)===wait.comment);
+    if(waitIndex<0 || JSON.stringify(waitRegex[waitIndex])!==JSON.stringify(wait)) {
+      if(waitIndex<0)waitRegex.push(wait);else waitRegex[waitIndex]=wait;
+      modules[idx]={...modules[idx],regex:waitRegex};changed=true;
     }
     const pair = afterExternalRules(framedAssetDisplayRegexScript(folded,scalePct));
     const history = afterExternalRules(historyDisplayRegexScript(folded, scalePct));

@@ -173,6 +173,27 @@ export function stripBakeTokenForCard(text: unknown, cardId: unknown): string {
 }
 
 
+/**
+ * A slot that has a shot but no image yet (streaming tags with 「이미지 바로 생성」
+ * off, or a failed slot). Drawn as the pink spinner; a tap generates it. The shot
+ * itself waits in plugin storage under `id`, never in the chat.
+ */
+const WAIT_ID = /^[a-zA-Z0-9_-]{1,64}$/;
+export function waitToken(id: string, width = 832, height = 1216): string {
+  if (!WAIT_ID.test(id)) throw new Error('Invalid wait slot');
+  const size = bakeDimensions(width, height) ?? { width: 832, height: 1216 };
+  return `[[@inraywait::${id}::${size.width}::${size.height}]]`;
+}
+export function waitTokenDimensions(text: string, id: string): BakeDimensions | undefined {
+  if (!WAIT_ID.test(id)) return undefined;
+  const hit = new RegExp(`\\[\\[@inraywait::${id}::([0-9]+)::([0-9]+)\\]\\]`).exec(text);
+  return hit ? bakeDimensions(hit[1], hit[2]) : undefined;
+}
+export function replaceWaitToken(text: string, id: string, replacement: string): string {
+  if (!WAIT_ID.test(id)) return text;
+  return text.replace(new RegExp(`\\[\\[@inraywait::${id}::[0-9]+::[0-9]+\\]\\]`, 'g'), () => replacement);
+}
+
 export function spinnerToken(jobId:string, shot:number,width=1024,height=1024):string {
   if(!/^[a-zA-Z0-9_-]+$/.test(jobId) || !Number.isInteger(shot) || shot<0) throw new Error('Invalid spinner identity');
   const w=Math.max(64,Math.min(8192,Math.floor(Number(width)||1024))),h=Math.max(64,Math.min(8192,Math.floor(Number(height)||1024)));

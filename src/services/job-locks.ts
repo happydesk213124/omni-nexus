@@ -32,6 +32,9 @@ export function jobKey(request: TargetRequest = {}, sessionId = ''): string {
   const range=streamLineRange(request);
   // Two streaming-tag blocks can follow the same line; each block is its own job.
   const block = Number.isInteger(request.inline_block) ? `:inx${request.inline_block}` : '';
+  // Each waiting slot is its own target: tapping two slots of one reply runs both.
+  const wait = cleanText(request.inline_wait || '', 64);
+  if (wait) return `${sid}::wait:${wait}`;
   if(range && request.defer_attachment && request.stream_id) return `${sid}::stream:${request.stream_id}:${range.start}-${range.end}${block}`;
   const hash = cleanText(request.content_hash || '', 128);
   if (hash) return `${sid}::h:${hash}`;

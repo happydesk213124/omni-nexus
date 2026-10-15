@@ -604,6 +604,8 @@ export interface JobRequest {
   inline_tagged?: TaggerResult;
   /** That block's N, so the slot replaces the block itself. */
   inline_block?: number;
+  /** A tapped waiting slot (`[[@inraywait::id…]]`): this job draws that one slot in place. */
+  inline_wait?: string;
   session_id: string;
   character_id?: string;
   character_name?: string;

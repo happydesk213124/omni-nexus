@@ -16,10 +16,12 @@ import { installUiContractGlobals } from './bridge/ui-globals';
 import { installSettingsUx } from './settings-ux/mount';
 import { installTtsHost } from './tts-ui/host-chat';
 import { installInlineTags } from './services/inline-tagging';
+import { installWaitTaps } from './image-ui/wait-taps';
 
 installUiContractGlobals();
 installSettingsUx();
 installNativeBridge();
 void installTtsHost().catch(error => dbg('tts.boot.failed', { message: String(error) }, 'warn'));
 void installInlineTags().catch(error => dbg('inline-tags.boot', { message: String(error) }, 'warn'));
+installWaitTaps();
 dbg('boot.loaded', { message: VERSION });

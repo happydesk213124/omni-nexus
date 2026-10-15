@@ -49,7 +49,7 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
         finishCompletedSpinners:async()=>{calls.push('bake');if(fails)throw Error('write failed');},
         closeStreamJob:()=>calls.push('close-stream'),setJobContext:()=>calls.push('restore-context'),prevCtx:'',deferred:undefined,
         dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
-        clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],
+        clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],inlineWait:'',
       });
       assert.deepEqual(calls,['bake','end-scroll','close-stream','restore-context']);
     } finally {globalThis.__OMNI_END_SCROLL__=old;}

@@ -111,8 +111,19 @@ export function requestMarkerStripScript() {
 export const INLINE_SHOT_DISPLAY_COMMENT = 'omni-inline-shot-display';
 const INLINE_BODY = String.raw`(?:(?!\[\[\/?inx)[\s\S]){0,12000}?`;
 const INLINE_ASPECTS = [['landscape', 1216, 832, -10041], ['square', 1024, 1024, -10042], ['', 832, 1216, -10043]] as const;
-export function inlineShotDisplayScripts(scalePct: unknown = 100) {
-  const frame = spinnerDisplayRegexScript(scalePct).out;
+/** The waiting slot: the spinner frame exactly, its center pink. Taps on it generate the shot. */
+export const WAIT_CENTER = '#ec4899';
+const pink = (out: string) => out.replace('stroke="#7132f5"', `stroke="${WAIT_CENTER}"`);
+export function waitDisplayRegexScript(scalePct: unknown = 100) {
+  const out = pink(spinnerDisplayRegexScript(scalePct).out)
+    .replace('data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1"', 'data-inray-wait="$1" data-inray-preview-slot="wait_$1" role="button" tabindex="0" aria-label="이미지 대기 · 눌러서 생성"')
+    .replace('aria-label="이미지 슬롯 · 다시 생성 가능"', 'aria-label="이미지 대기 · 눌러서 생성"');
+  return { comment: 'omni-wait-display', in: '\\[\\[@inraywait::([a-zA-Z0-9_-]{1,64})::([0-9]{1,6})::([0-9]{1,6})\\]\\]', out, type: 'editdisplay' as const, ableFlag: true, flag: 'g' };
+}
+
+/** `pending`: 「이미지 바로 생성」 is off, so a closed block is a waiting (pink) slot. */
+export function inlineShotDisplayScripts(scalePct: unknown = 100, pending = false) {
+  const frame = pending ? pink(spinnerDisplayRegexScript(scalePct).out) : spinnerDisplayRegexScript(scalePct).out;
   const slot = (w: number, h: number) => frame.replaceAll('$2', String(w)).replaceAll('$3', String(h)).replaceAll('$1', 'inxslot$1')
     .replace('data-inray-spinner=', 'data-inx-slot="$1" data-inray-spinner=');
   return [

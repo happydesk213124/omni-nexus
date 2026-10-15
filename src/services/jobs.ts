@@ -6,7 +6,8 @@ import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-
 import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage, runStreamImageTask } from './stream-jobs';
 export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
-import { writeJobSpinners, finishJobSpinners } from './chat-bake';
+import { writeJobSpinners, finishJobSpinners, writeWaitSpinner, restoreWaitSlot } from './chat-bake';
+import { dropInlineWait } from '../storage/inline-wait-store';
 /**
  * The generation job engine.
  *
@@ -614,7 +615,8 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
   const payload: JobRequest = { ...request, session_id: sessionId, unified_session_id: sessionId };
   const range=streamLineRange(payload);
   if (payload.stream_line_start!=null || payload.stream_line_end!=null) {
-    if(!range || !payload.defer_attachment || analysisBody(payload.assistant_text).split('\n').filter(Boolean).length!==range.end)
+    // A tapped waiting slot is one line too, but placed at once rather than deferred.
+    if(!range || (!payload.defer_attachment && !payload.inline_wait) || analysisBody(payload.assistant_text).split('\n').filter(Boolean).length!==range.end)
       return {ok:false,error:{code:'bad_request',message:'선행 생성 줄 범위가 올바르지 않습니다.'}};
   }
   if (payload.defer_attachment) payload.force = false;
@@ -718,8 +720,10 @@ async function runJob(jobId: string): Promise<void> {
   // A streaming-tag block is one shot the chat model already wrote: no tagger, no line budget.
   // A broken block keeps its slot and asks the tagger for exactly that one shot.
   const inlineBlock = lineRange && request.defer_attachment && Number.isInteger(request.inline_block) ? request.inline_block! : null;
-  const inline = inlineBlock !== null && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
-  const lineLimits=inlineBlock !== null ? {min:1,max:1} : lineRange ? streamLineImageLimits(getConfig().card) : null;
+  const inlineWait = lineRange && !request.defer_attachment && typeof request.inline_wait === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(request.inline_wait) ? request.inline_wait : '';
+  const oneSlot = inlineBlock !== null || !!inlineWait;
+  const inline = oneSlot && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
+  const lineLimits=oneSlot ? {min:1,max:1} : lineRange ? streamLineImageLimits(getConfig().card) : null;
   request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
   const noteSessionId = chatNoteSessionId(request.session_id, request);
@@ -1194,7 +1198,11 @@ async function runJob(jobId: string): Promise<void> {
     });
     if (deferred) deferred.attach = attach;
     if (!deferred || deferred.committed) await attach();
-    async function enqueueJobSpinners() { return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})})); }
+    async function enqueueJobSpinners() {
+      // A waiting slot turns into this job's frame in place; the rest of the reply is untouched.
+      if (inlineWait) return enqueueBakeWrite(() => writeWaitSpinner({...jobChatTarget(request),waitId:inlineWait,jobId,width:pendingInline[0]?.width,height:pendingInline[0]?.height}));
+      return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})}));
+    }
     await setJob(
       jobId,
       'generating',
@@ -1726,6 +1734,11 @@ async function runJob(jobId: string): Promise<void> {
         if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
       }
       await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
+      // A waiting slot that got its image is done; one that did not goes back to pink.
+      if (inlineWait) {
+        if (completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
+        else await enqueueBakeWrite(() => restoreWaitSlot({...jobChatTarget(request),waitId:inlineWait,jobId})).catch(err => dbg('job.wait.restore.fail', { message: String(err) }, 'warn'));
+      }
       // Unfinished frames remain retryable; successful frames are permanent.
       const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");
       if(typeof endScroll==="function") try {await endScroll(jobId);} catch(error) {dbg("scroll.end.fail",{message:String(error)},"warn");}

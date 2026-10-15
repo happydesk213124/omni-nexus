@@ -45,6 +45,7 @@ function omniCommitLineReply(arg,msg,text,key) {
   // Without a line tagging request, the ordinary reply listener owns ON/OFF,
   // character limits and dedupe. Do not mark this reply as stream-handled.
   if(!run.batches.length){omniCancelKeywordRun(run);return false;}
+  if(run.inlineMode && run.batches.every(batch=>batch.parked))return omniParkInlineReply(run,arg,text,key);
   omniKeywordSeen.add(key);
   if(omniKeywordSeen.size>128)omniKeywordSeen.delete(omniKeywordSeen.values().next().value);
   run.committing=true;clearTimeout(run.expiry);

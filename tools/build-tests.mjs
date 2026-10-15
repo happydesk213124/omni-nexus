@@ -25,7 +25,7 @@ const MODULES = {
   'stream-signal': 'src/domain/prompt/stream-signal.ts',
   'stream-lines': 'src/domain/prompt/stream-lines.ts',
   'inline-shots': 'src/domain/prompt/inline-shots.ts',
-  'stream-services': ['src/services/jobs.ts','src/services/stream-jobs.ts','src/services/context.ts','src/storage/stores.ts','src/services/settings.ts','src/services/chat-bake.ts','src/storage/omni-helper-module.ts','src/storage/inray-display-module.ts','src/storage/shot-module.ts','src/services/inline-tagging.ts','src/storage/inline-tag-module.ts','src/providers/llm/own-requests.ts'],
+  'stream-services': ['src/services/jobs.ts','src/services/stream-jobs.ts','src/services/context.ts','src/storage/stores.ts','src/services/settings.ts','src/services/chat-bake.ts','src/storage/omni-helper-module.ts','src/storage/inray-display-module.ts','src/storage/shot-module.ts','src/services/inline-tagging.ts','src/storage/inline-tag-module.ts','src/providers/llm/own-requests.ts','src/services/inline-waits.ts','src/storage/inline-wait-store.ts'],
   'character-placeholders': 'src/domain/prompt/character-placeholders.ts',
   'character-weight': 'src/domain/prompt/character-weight.ts',
   'viewer-core': 'src/ui-contract/viewer-core.ts',
