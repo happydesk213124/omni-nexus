@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
+const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/combo';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const item = (key, tags, kind = 'bgm') => ({ key, kind, name: key, tags, folder: '', source: 'url', url: `https://x.test/${key}.mp3` });
 // Display rules as Risu runs them: highest <order> first, its own flags.
@@ -176,4 +176,26 @@ test('another module that restyles §쾅§ into its own box carries ▶ inside i
   assert.equal((first.match(/data-omni-sfx="1"/g) || []).length, 1, 'one ▶, no leftover from the closing step');
   const after = render([theirs, ...api.soundModule('sfx', { ...settings, sfxFirst: false }, []).regex], '문이 §쾅§ 닫혔다.');
   assert.doesNotMatch(after, /data-omni-sfx/, 'switched off it is the old behaviour: nothing left to put ▶ on');
+});
+
+test('compound effects: split into sounds, a longer sound plays longer, all fit the longest length, joined into one clip', () => {
+  assert.deepEqual(api.sfxParts('콰아앙 치이익 또르르'), ['콰아앙', '치이익', '또르르']);
+  assert.deepEqual(api.sfxParts('끼이이익── 쿠구구구궁!'), ['끼이이익', '쿠구구구궁']);
+  assert.deepEqual(api.sfxParts('쾅'), ['쾅']);
+  assert.deepEqual(api.sfxParts('쾅!!'), ['쾅!!'], 'one sound keeps its word as written');
+  assert.equal(api.sfxParts('a b c d e f').length, 4, 'four sounds at most');
+  assert.deepEqual(api.sfxPartSeconds(['쾅', '콰앙', '콰아앙', '콰아아아앙'], 0), [1, 1, 2, 3]);
+  const shared = api.sfxPartSeconds(['콰아앙', '치이익', '또르르'], 5);
+  assert.ok(Math.abs(shared.reduce((a, b) => a + b, 0) - 5) < 1e-9 && shared.every(n => Math.abs(n - 5 / 3) < 1e-9), 'six seconds shrink evenly into five');
+  assert.deepEqual(api.sfxPartSeconds(['쾅', '탕'], 5), [1, 1], 'what fits is left alone');
+  const items = [{ key: 'door', kind: 'sfx', name: '문 쾅', tags: [], folder: '', source: 'url', url: 'https://x.test/d.mp3' }];
+  assert.equal(api.exactSfx('문  쾅!', [], items)?.key, 'door', 'an effect named by the whole compound stays one effect');
+  assert.equal(api.exactSfx('문 쾅 소리', [], items), null);
+  const rate = 1000, tone = level => [Float32Array.from({ length: 1000 }, (_, i) => level * Math.sin(i / 3))];
+  const a = tone(.5), b = tone(.5);
+  const joined = api.joinSfxClips([{ channels: a, window: { start: 0, end: 1000, cut: false, gain: 1 } }, { channels: b, window: { start: 0, end: 600, cut: true, gain: 2 } }], rate, .04);
+  assert.equal(joined[0].length, 1000 + 600 - 40, 'end to end, overlapping by the crossfade');
+  assert.ok(Math.abs(joined[0][800] - a[0][800]) < 1e-6, 'the first sound as it was');
+  assert.ok(Math.abs(joined[0][1100] - 2 * b[0][140]) < 1e-6, 'the second levelled by its own gain');
+  assert.ok(Math.abs(joined[0].at(-1)) < .01 && Math.abs(joined[0].at(-1)) < Math.abs(joined[0][1100]) / 10, 'a part cut at its share fades out');
 });

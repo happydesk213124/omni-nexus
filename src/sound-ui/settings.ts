@@ -1,7 +1,8 @@
 import type { SfxRule, SoundSettings } from '../core/sound-types';
 import { soundData, updateSoundSettings } from '../storage/sound-store';
 import { sfxHits, sfxMarksProblem } from '../domain/sound/audio';
-import { pickSfx } from '../domain/sound/match';
+import { exactSfx, pickSfx } from '../domain/sound/match';
+import { sfxParts } from '../domain/sound/combo';
 import { soundTags } from '../domain/sound/tags';
 import { el, input, val, set, text, esc, run } from '../tts-ui/common';
 import { uuid } from '../core/util/text';
@@ -57,10 +58,16 @@ function renderCueStatus(): void {
   node.textContent = sfxCueStatusText(soundData().settings, hook?.cues?.() ?? null, hook?.status?.().registered);
 }
 /** Shows which words the rules catch in the example and which effect each would play. */
+/** What a word would play: one effect, or a compound's parts joined (unknown parts are asked for when it plays). */
+function effectsFor(word: string): string {
+  const { glossary, sfx } = soundData(), exact = exactSfx(word, glossary, sfx), parts = sfxParts(word);
+  if (exact || parts.length <= 1) return (exact || pickSfx(word, glossary, sfx))?.name || '미등록';
+  return parts.map(part => pickSfx(part, glossary, sfx)?.name || '미등록').join(' + ');
+}
 function renderTest(): void {
   const hits = sfxHits(val('snd-rule-test'), soundData().settings.sfxRules);
   text('snd-rule-result', !val('snd-rule-test') ? '' : hits.length
-    ? hits.map(hit => `「${hit.word}」 → ${pickSfx(hit.word, soundData().glossary, soundData().sfx)?.name || '미등록'}`).join(' · ')
+    ? hits.map(hit => `「${hit.word}」 → ${effectsFor(hit.word)}`).join(' · ')
     : '걸리는 말이 없습니다.');
 }
 

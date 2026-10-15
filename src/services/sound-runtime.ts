@@ -3,14 +3,15 @@ import { uuid } from '../core/util/text';
 import { SoundPlayer } from '../providers/sound/player';
 import { ttsBytes, ttsFetch } from '../providers/tts/http';
 import { AUDIO_EXTENSIONS, sniffAudioMime } from '../domain/sound/audio';
-import { pickBgm, pickSfx } from '../domain/sound/match';
+import { exactSfx, pickBgm, pickSfx } from '../domain/sound/match';
 import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound, updateSoundSettings } from '../storage/sound-store';
 import { ensureSoundModules, readSoundAsset, storeSoundBytes } from '../storage/sound-module';
 import { omniTts, type TtsSoundCuePlayer } from './tts-runtime';
 import { ttsData } from '../storage/tts-store';
 import { generateMusic, generateSoundEffect, englishText } from '../providers/sound/elevenlabs';
-import { chooseBgm, chooseSfx, type SfxChoice } from '../providers/sound/choose';
+import { chooseBgm, chooseSfxMany, type SfxChoice } from '../providers/sound/choose';
+import { joinSfxClips, sfxPartSeconds, sfxParts } from '../domain/sound/combo';
 import { bgmSceneText } from '../domain/sound/scene';
 import { decodeAudio } from '../providers/sound/decode';
 import { encodeSfxWav, sfxWindow } from '../domain/sound/clip';
@@ -180,10 +181,10 @@ export class OmniSoundRuntime {
     },
     effect: async request => {
       if (!soundReady() || !soundData().settings.sfxEnabled) return null;
-      const item = await this.sfxFor(request.segment.text, request.segment.context || '');
-      if (!item) return null;
+      const plan = await this.sfxPlan(request.segment.text, request.segment.context || '');
+      if (!plan.length) return null;
       this.player.stopSfx();
-      return { ...(await this.clip(item)), volume: soundData().settings.sfxVolume };
+      return { ...(await this.planClip(plan)), volume: soundData().settings.sfxVolume };
     },
   };
   /**
@@ -224,36 +225,97 @@ export class OmniSoundRuntime {
    * says none fits. Only that answer (or an empty list) makes ElevenLabs generate
    * one — without it every spelling variant would be a new paid effect.
    */
-  private async resolveSfx(word: string, context: string): Promise<SoundItem | null> {
+  private async resolveSfx(words: readonly string[], context: string, anyEngine = false): Promise<Array<SoundItem | null>> {
     const s = soundData().settings, tts = ttsData().settings, items = soundData().sfx;
-    const engine = s.sfxMatcher === 'jev' || s.sfxMatcher === 'llm' ? s.sfxMatcher : s.sfxMatcher === 'auto' ? (tts.jev.key.trim() ? 'jev' : 'llm') : null;
-    let choice: SfxChoice | null = null;
-    if (engine && items.length) choice = await chooseSfx(word, context, items, engine, tts).catch(error => { this.notice = String((error as Error).message || error); return null; });
-    if (choice && 'key' in choice) { const item = items.find(row => row.key === choice.key); if (item) { await this.learn(word, item.key); return item; } }
-    const create = !items.length || (!!choice && 'create' in choice);
-    if (!create || !s.sfxAutoCreate || !s.elevenKey.trim()) return null;
-    const id = normalizeSoundTag(word);
-    // The same word in several lines (or a re-render) makes one effect, not several.
-    let job = this.creating.get(id);
-    if (!job) {
-      job = (async () => {
-        const prompt = (choice && 'create' in choice && choice.prompt) || s.sfxPrompt.replace('{word}', await englishText(word));
-        const item = await this.addFromEleven('sfx', { name: word.slice(0, 40), tags: word, folder: AUTO_SFX_FOLDER, prompt, duration: s.sfxDuration });
-        await this.learn(word, item.key); return item;
-      })().catch(error => { this.notice = String((error as Error).message || error); return null; }).finally(() => this.creating.delete(id));
-      this.creating.set(id, job);
-    }
-    return job;
+    // anyEngine: asked for on purpose (⚡), so a word-only matcher setting still uses JEV or the LLM.
+    const engine = s.sfxMatcher === 'jev' || s.sfxMatcher === 'llm' ? s.sfxMatcher : s.sfxMatcher === 'auto' || anyEngine ? (tts.jev.key.trim() ? 'jev' : 'llm') : null;
+    // A compound's unknown parts go in one request: one JEV question per part.
+    let choices: Array<SfxChoice | null> = words.map(() => null);
+    if (engine && items.length && words.length) choices = await chooseSfxMany(words, context, items, engine, tts).catch(error => { this.notice = String((error as Error).message || error); return words.map(() => null); });
+    return Promise.all(words.map(async (word, i) => {
+      const choice = choices[i] ?? null;
+      if (choice && 'key' in choice) { const item = items.find(row => row.key === choice.key); if (item) { await this.learn(word, item.key); return item; } }
+      const create = !items.length || (!!choice && 'create' in choice);
+      if (!create || !s.sfxAutoCreate || !s.elevenKey.trim()) return null;
+      const id = normalizeSoundTag(word);
+      // The same word in several lines (or a re-render) makes one effect, not several.
+      let job = this.creating.get(id);
+      if (!job) {
+        job = (async () => {
+          const prompt = (choice && 'create' in choice && choice.prompt) || s.sfxPrompt.replace('{word}', await englishText(word));
+          const item = await this.addFromEleven('sfx', { name: word.slice(0, 40), tags: word, folder: AUTO_SFX_FOLDER, prompt, duration: s.sfxDuration });
+          await this.learn(word, item.key); return item;
+        })().catch(error => { this.notice = String((error as Error).message || error); return null; }).finally(() => this.creating.delete(id));
+        this.creating.set(id, job);
+      }
+      return job;
+    }));
+  }
+  /**
+   * ⚡ in the glossary's unknown tab: JEV or the LLM sorts the collected words
+   * into the listed effects, eight per request (one JEV question each). A word
+   * nothing fits stays unknown, unless automatic generation is on.
+   */
+  async learnUnknown(): Promise<{ learned: number; left: number }> {
+    const data = soundData();
+    if (!data.sfx.length) throw new Error('등록된 효과음이 없습니다. 효과음 목록에서 먼저 추가해 주세요.');
+    const words = data.unknownTerms.slice(0, 40);
+    let learned = 0; this.notice = '';
+    for (let i = 0; i < words.length; i += 8) learned += (await this.resolveSfx(words.slice(i, i + 8), '', true)).filter(Boolean).length;
+    if (!learned && this.notice) throw new Error(this.notice);
+    return { learned, left: soundData().unknownTerms.length };
   }
   /** Plays the effect for a word; an unknown word is kept for the glossary. */
   async playSfxWord(word: string, context = ''): Promise<boolean> {
     if (!soundData().settings.sfxEnabled) return false;
-    const item = await this.sfxFor(word, context);
-    if (item) await this.play(item);
-    return !!item;
+    const plan = await this.sfxPlan(word, context);
+    if (!plan.length) return false;
+    const clip = await this.planClip(plan);
+    if (['playing', 'loading', 'paused'].includes(omniTts.player.status)) omniTts.stop();
+    await this.player.playSfx(clip.bytes, clip.mime);
+    return true;
+  }
+  /**
+   * What a word plays: one effect, or a compound's parts (`콰아앙 치이익 또르르`, up
+   * to four) in order, each with its share of the longest length. A word that is
+   * itself an effect's name or term stays whole. Each part is matched and learned
+   * on its own, so the glossary keeps one word → one effect.
+   */
+  private async sfxPlan(word: string, context: string): Promise<Array<{ item: SoundItem; seconds?: number }>> {
+    const data = soundData(), parts = sfxParts(word), exact = exactSfx(word, data.glossary, data.sfx);
+    if (parts.length <= 1 || exact) { const item = exact || await this.sfxFor(word, context); return item ? [{ item }] : []; }
+    const found: Array<SoundItem | null> = parts.map(part => pickSfx(part, data.glossary, data.sfx));
+    const missing = parts.flatMap((_, i) => found[i] ? [] : [i]);
+    if (missing.length) { const resolved = await this.resolveSfx(missing.map(i => parts[i]!), context); missing.forEach((i, k) => { found[i] = resolved[k] ?? null; }); }
+    const unknown = parts.filter((part, i) => !found[i] && !data.unknownTerms.includes(part));
+    if (unknown.length) { data.unknownTerms = [...new Set(unknown), ...data.unknownTerms].slice(0, 200); await saveSoundData(); }
+    const kept = parts.flatMap((part, i) => found[i] ? [{ part, item: found[i]! }] : []);
+    const seconds = sfxPartSeconds(kept.map(row => row.part), data.settings.sfxMaxSec);
+    return kept.map((row, i) => ({ item: row.item, seconds: seconds[i] }));
+  }
+  /** One effect is its own clip; a compound's parts are cut to their shares and joined into one. */
+  private planClip(plan: ReadonlyArray<{ item: SoundItem; seconds?: number }>): Promise<{ bytes: ArrayBuffer; mime: string }> {
+    if (plan.length === 1 && plan[0]!.seconds === undefined) return this.clip(plan[0]!.item);
+    const s = soundData().settings, options = { trim: s.sfxTrim, normalize: s.sfxNormalize };
+    const key = JSON.stringify(['combo', plan.map(row => [row.item.key, Math.round((row.seconds ?? 0) * 100)]), options]);
+    let job = this.clips.get(key);
+    if (!job) {
+      job = (async () => {
+        try {
+          const pcm = await Promise.all(plan.map(async row => decodeAudio((await audioOf(row.item)).bytes)));
+          const rate = pcm[0]!.sampleRate;
+          const joined = joinSfxClips(pcm.map((part, i) => ({ channels: part.channels, window: sfxWindow(part.channels, part.sampleRate, { ...options, maxSeconds: plan[i]!.seconds ?? s.sfxMaxSec }) })), rate);
+          return { bytes: encodeSfxWav(joined, rate, { start: 0, end: joined[0]!.length, cut: false, gain: 1 }), mime: 'audio/wav' };
+        } catch { return this.clip(plan[0]!.item); } // A part this browser cannot decode: the first effect alone.
+      })();
+      this.clips.set(key, job);
+      job.catch(() => this.clips.delete(key));
+      while (this.clips.size > 24) this.clips.delete(this.clips.keys().next().value!);
+    }
+    return job;
   }
   private async sfxFor(word: string, context: string): Promise<SoundItem | null> {
-    const item = pickSfx(word, soundData().glossary, soundData().sfx) || await this.resolveSfx(word, context);
+    const item = pickSfx(word, soundData().glossary, soundData().sfx) || (await this.resolveSfx([word], context))[0];
     if (item) return item;
     const data = soundData(), clean = word.trim().slice(0, 60);
     if (clean && !data.unknownTerms.includes(clean)) { data.unknownTerms = [clean, ...data.unknownTerms].slice(0, 200); await saveSoundData(); }
