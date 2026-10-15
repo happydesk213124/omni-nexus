@@ -30,7 +30,7 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
           if (url.includes('api.elevenlabs.io/v1/music?')) { window.music.push({ body: JSON.parse(options.body), key: options.headers['xi-api-key'] }); return { ok: true, arrayBuffer: async () => id3().buffer }; }
           if (url.includes('api.elevenlabs.io/v1/sound-generation')) { window.eleven.push({ body: JSON.parse(options.body), key: options.headers['xi-api-key'] }); return { ok: true, arrayBuffer: async () => id3().buffer }; }
           if (url.includes('translate.googleapis.com')) return { ok: true, json: async () => [[[window.english || 'boom']]] };
-          if (url.includes('decisions')) { window.jevAsked.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ answers: { 0: { choice: window.jevChoice } } }) }; }
+          if (url.includes('decisions')) { const body = JSON.parse(options.body); window.jevAsked.push(body); return { ok: true, json: async () => ({ answers: Object.fromEntries(Object.keys(body.questions).map(k => [k, { choice: window.jevChoice }])) }) }; }
           return url.endsWith('.mp3') ? { ok: true, arrayBuffer: async () => id3().buffer } : { ok: true, arrayBuffer: async () => new TextEncoder().encode('<!doctype html><html>').buffer };
         },
       };
@@ -100,20 +100,45 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.equal(sfxModule.name, '⚛️ omni 효과음');
     assert.equal(await page.evaluate(() => window.db.enabledModules.includes('omni-sfx')), false, 'effects stay off until switched on');
 
-    // An unknown effect word lands in the glossary tab; assigning it teaches the glossary.
+    // An unknown effect word lands in the glossary tab; assigning it teaches the glossary. 「덜컹! 덜컹!」 is two sounds: the part is what is learned.
     await page.locator('#tab-sound-settings').click(); await page.locator('#snd-sfx-enabled').check();
     await page.waitForFunction(() => window.soundData().settings.sfxEnabled);
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('덜컹! 덜컹!')), false);
     await page.locator('#tab-sound-glossary').click();
-    const unknown = page.locator('#snd-unknown .snd-unknown');
-    assert.equal(await unknown.locator('b').textContent(), '덜컹! 덜컹!');
+    const unknown = page.locator('#snd-unknown .snd-unknown-tile');
+    assert.deepEqual(await unknown.locator('b').allTextContents(), ['덜컹'], 'one unknown sound, not the whole compound');
     await page.setViewportSize({ width: 412, height: 915 });
     assert.ok(await fill('sound-glossary') < 40, 'the glossary fills the height too');
     await page.locator('#tab-sound-bgm').click(); assert.ok(await fill('sound-bgm') < 40, 'and the BGM list');
     await page.locator('#tab-sound-glossary').click(); await page.setViewportSize({ width: 1360, height: 900 });
+    // Words and the unknown list are two tabs.
+    assert.equal(await page.locator('#snd-gloss-unknown').isVisible(), false, 'the word tiles first');
+    assert.equal(await page.locator('#snd-unknown-count').textContent(), '1');
+    await page.locator('#snd-gloss-tab-unknown').click();
+    assert.equal(await page.locator('#snd-gloss-terms').isVisible(), false);
+    assert.equal(await page.locator('#snd-term-add').isVisible(), false, '+ 묶음 belongs to the word tab');
     await unknown.locator('select').selectOption({ label: '문 쾅' });
     await page.waitForFunction(() => window.soundData().glossary.length === 1 && !window.soundData().unknownTerms.length);
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('덜컹! 덜컹!')), true, 'the learned word now plays its effect');
+    // Glossary tiles: words are chips on the tile; add with Enter, × drops one, a word lives in one tile only.
+    await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-terms').click();
+    const tile = () => page.locator('#snd-terms .snd-term-tile');
+    assert.deepEqual(await tile().first().locator('.snd-chip').allTextContents(), ['덜컹×']);
+    assert.equal(await tile().first().locator('.snd-term-effect').inputValue(), await page.evaluate(() => window.soundData().glossary[0].sfxKey));
+    await tile().first().locator('.snd-term-new').fill('쾅쾅, 탕'); await tile().first().locator('.snd-term-new').press('Enter');
+    await page.waitForFunction(() => window.soundData().glossary[0].terms.join(',') === '덜컹,쾅쾅,탕');
+    await tile().first().locator('[aria-label="탕 빼기"]').click();
+    await page.waitForFunction(() => window.soundData().glossary[0].terms.join(',') === '덜컹,쾅쾅');
+    await page.locator('#snd-term-add').click();
+    await page.waitForFunction(() => window.soundData().glossary.length === 2 && document.querySelectorAll('#snd-terms .snd-term-tile').length === 2);
+    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('snd-term-new')), true, 'a new tile is ready to type into');
+    await tile().first().locator('.snd-term-new').fill('쾅쾅'); await tile().first().locator('.snd-term-new').press('Enter');
+    await page.waitForFunction(() => window.soundData().glossary[0].terms.join(',') === '쾅쾅' && window.soundData().glossary[1].terms.join(',') === '덜컹', null, { timeout: 5000 });
+    await tile().first().locator('.snd-term-delete').click();
+    await page.waitForFunction(() => window.soundData().glossary.length === 1 && window.soundData().glossary[0].terms.join(',') === '덜컹');
+    await page.locator('#snd-term-search').fill('없는말');
+    assert.match(await page.locator('#snd-terms').textContent(), /검색에 맞는 용어가 없습니다/);
+    await page.locator('#snd-term-search').fill('');
     await page.locator('#tab-sound-settings').click();
     await page.locator('#snd-rule-test').fill('§덜컹! 덜컹!§');
     assert.match(await page.locator('#snd-rule-result').textContent(), /덜컹! 덜컹!」 → 문 쾅/);
@@ -205,6 +230,27 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('덜컹')), true);
     assert.equal(await page.evaluate(() => window.eleven.length), llmCount, 'a listed pick makes nothing');
     assert.ok(await page.evaluate(() => window.soundData().glossary.some(r => r.terms.includes('덜컹'))));
+    // A compound effect: its unknown parts go to JEV in one request, one question per part, and each part is learned.
+    await page.locator('#snd-sfx-matcher').selectOption('jev'); await page.waitForFunction(() => window.soundData().settings.sfxMatcher === 'jev');
+    await page.evaluate(() => { window.jevChoice = '1'; });
+    const jevBeforeCombo = await page.evaluate(() => window.jevAsked.length);
+    assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('콰르릉 휘이잉', '폭풍이 몰아쳤다')), true);
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforeCombo + 1, 'one request for both parts');
+    assert.deepEqual(await page.evaluate(() => Object.values(window.jevAsked.at(-1).questions).map(q => q.instructions.sound_word)), ['콰르릉', '휘이잉']);
+    assert.ok(await page.evaluate(() => ['콰르릉', '휘이잉'].every(word => window.soundData().glossary.some(row => row.terms.includes(word)))), 'each part is learned');
+    assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('콰르릉 휘이잉')), true);
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforeCombo + 1, 'known parts ask nothing again');
+    // ⚡ in the unknown tab: JEV sorts the collected words into listed effects, eight per request.
+    await page.evaluate(() => { window.soundData().unknownTerms = Array.from({ length: 10 }, (_, i) => '알수없음' + i); window.jevChoice = '1'; });
+    await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-unknown').click();
+    await page.waitForFunction(() => document.querySelectorAll('#snd-unknown .snd-unknown-tile').length === 10);
+    const jevBeforeAuto = await page.evaluate(() => window.jevAsked.length);
+    await page.locator('#snd-unknown-auto').click();
+    await page.waitForFunction(() => !window.soundData().unknownTerms.length && !document.querySelector('#snd-unknown .snd-unknown-tile'));
+    assert.deepEqual(await page.evaluate(n => window.jevAsked.slice(n).map(body => Object.keys(body.questions).length), jevBeforeAuto), [8, 2], 'two requests: eight words, then two');
+    assert.ok(await page.evaluate(() => Array.from({ length: 10 }, (_, i) => '알수없음' + i).every(word => window.soundData().glossary.some(row => row.terms.includes(word)))));
+    assert.equal(await page.locator('#snd-unknown-auto').textContent(), '⚡ 자동 등록');
+    await page.locator('#tab-sound-settings').click();
     // ⚡: a reply's own text picks a listed track through JEV or the LLM, and BGM turns on with it.
     const tracks = await page.evaluate(() => window.soundData().bgm.map(item => item.key));
     assert.ok(tracks.length >= 2, 'two tracks to choose between');

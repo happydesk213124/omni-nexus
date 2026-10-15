@@ -31,7 +31,7 @@ export async function mountSound(root: HTMLElement, tab: (name: string) => void,
   for (const library of libraries) library.bind();
   bindGlossary();
   // Words keep arriving from replies; each visit shows the current lists.
-  for (const [id, render] of [['tab-sound-glossary', renderGlossary], ['tab-sound-bgm', () => libraries[0]!.render()], ['tab-sound-sfx', () => libraries[1]!.render()]] as const) el(id)?.addEventListener('click', render);
+  for (const [id, render] of [['tab-sound-glossary', () => renderGlossary()], ['tab-sound-bgm', () => libraries[0]!.render()], ['tab-sound-sfx', () => libraries[1]!.render()]] as const) el(id)?.addEventListener('click', render);
   let active = libraries[0]!;
   for (const library of libraries) el(`snd-${library.kind}-add`)?.addEventListener('click', () => { active = library; }, true);
   el('snd-item-source')?.addEventListener('change', () => active.syncSource());

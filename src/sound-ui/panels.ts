@@ -63,9 +63,10 @@ ${row('파일 최대 크기', `<div class="control"><input id="snd-max-mb" type=
 ${library('bgm', 'BGM')}
 ${library('sfx', '효과음')}
 <section class="panel" id="sound-glossary" role="tabpanel" hidden>
-<div class="voice-command-bar"><div class="voice-search-wrap"><input id="snd-term-search" placeholder="용어 검색" aria-label="용어 검색"></div><div class="actions voice-tools"><button type="button" class="primary" id="snd-term-add">+ 용어</button></div></div>
-<div class="group"><h3>용어 → 효과음</h3><small>같은 소리를 뜻하는 말을 쉼표로 묶어 하나의 효과음에 연결합니다. 예: 덜컹, 쾅, 문 닫힘</small><div id="snd-terms"></div></div>
-<div class="group"><h3>미등록 용어</h3><small>규칙에 걸렸지만 용어집에 없는 말이 여기에 모입니다. 효과음을 고르면 용어집에 추가됩니다.</small><div id="snd-unknown"></div></div>
+<div class="voice-command-bar"><div class="voice-search-wrap"><input id="snd-term-search" placeholder="용어·효과음 검색" aria-label="용어·효과음 검색"></div><div class="actions voice-tools"><button type="button" class="primary" id="snd-term-add">+ 묶음</button></div></div>
+<div class="snd-subtabs" role="tablist" aria-label="용어집"><button type="button" role="tab" id="snd-gloss-tab-terms" aria-selected="true">용어 <small id="snd-terms-count"></small></button><button type="button" role="tab" id="snd-gloss-tab-unknown" aria-selected="false">미등록 <small id="snd-unknown-count"></small></button></div>
+<div class="group" id="snd-gloss-terms" role="tabpanel"><h3>용어 → 효과음</h3><small>타일 하나가 효과음 하나입니다. 같은 소리를 뜻하는 말을 칩으로 모읍니다. 한 말은 한 효과음에만 들어갑니다. 「콰아앙 치이익」처럼 여러 소리가 이어진 말은 소리마다 따로 찾아 이어 붙입니다(최대 4개).</small><div id="snd-terms"></div></div>
+<div class="group" id="snd-gloss-unknown" role="tabpanel" hidden><h3 style="display:flex;align-items:center;gap:8px">미등록 용어<button type="button" class="primary" id="snd-unknown-auto" style="margin-left:auto" title="효과음 고르는 방식의 JEV·LLM으로 자동 등록">⚡ 자동 등록</button><button type="button" id="snd-unknown-clear">모두 지우기</button></h3><small>효과음 표시에 나왔지만 용어집에 없는 말입니다. 효과음을 고르면 그 타일로 들어갑니다. ⚡는 JEV·LLM(효과음 고르는 방식 설정)이 8개씩 묶어 한 번에 골라 줍니다. 맞는 게 없는 말은 그대로 남습니다.</small><div id="snd-unknown"></div></div>
 </section></div>`;
 
 export const SOUND_DIALOG = `<dialog id="snd-move-dialog"><h2>폴더 이동</h2><label class="field"><span>옮길 폴더</span><select id="snd-move-target"></select></label><div class="dialog-actions"><button type="button" id="snd-move-cancel">취소</button><button type="button" id="snd-move-confirm" class="primary">이동</button></div></dialog><dialog id="snd-item-dialog" class="editor-sheet"><form id="snd-item-form"><div class="dialog-head"><span id="snd-item-title">추가</span></div><div class="editor-scroll"><div class="fields">
