@@ -19,17 +19,24 @@ export const AUDIO_EXTENSIONS: Record<string, string> = {
 
 export interface SfxHit { rule: string; word: string; index: number; length: number }
 
-const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
+// Unicode-mode regexes accept an escape only where it is needed: `\-` is an error
+// outside a class, so the two places get their own escaping.
+export const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+const escapeClass = (text: string) => text.replace(/[\]\\^-]/g, '\\$&');
 /**
- * A rule is the marks around an effect word (`§덜컹§`), not a regex: the source is
- * built here. The word never crosses a line, a tag or another mark, so a mark the
- * model forgot to close cannot swallow the rest of the reply. Marks inside a tag
- * (text followed by `>` before any `<`, an attribute) are not effects: the chat
- * button and the played cue are paired in order, so both sides skip them.
+ * A rule is the marks around an effect word (`§덜컹§`), not a regex: the sources
+ * are built here. The word never crosses a line, a tag or another mark, so a mark
+ * the model forgot to close cannot swallow the rest of the reply. Marks inside a
+ * tag (text followed by `>` before any `<`, an attribute) are not effects: the
+ * chat button and the played cue are paired in order, so both sides skip them.
  */
+export function sfxRuleMarks(rule: Pick<SfxRule, 'open' | 'close'>): { open: string; word: string; close: string } {
+  const marks = escapeClass([...new Set([...rule.open, ...rule.close])].join(''));
+  return { open: escapeRegex(rule.open), word: `[^${marks}\\n<>]{1,60}`, close: `${escapeRegex(rule.close)}(?![^<>]*>)` };
+}
 export function sfxRuleSource(rule: Pick<SfxRule, 'open' | 'close'>): string {
-  const marks = [...new Set([...rule.open, ...rule.close])].map(escapeRegex).join('');
-  return `${escapeRegex(rule.open)}([^${marks}\\n<>]{1,60})${escapeRegex(rule.close)}(?![^<>]*>)`;
+  const marks = sfxRuleMarks(rule);
+  return `${marks.open}(${marks.word})${marks.close}`;
 }
 /** Why a pair of marks cannot be a rule; empty when it can. */
 export function sfxMarksProblem(open: string, close: string): string {

@@ -1,6 +1,6 @@
 import type { SfxRule, SoundItem, SoundKind, SoundSettings } from '../../core/sound-types';
 import { bgmPromptText } from './tags';
-import { sfxMarksProblem, sfxRuleSource } from './audio';
+import { escapeRegex, sfxMarksProblem, sfxRuleMarks, sfxRuleSource } from './audio';
 
 export const SOUND_MODULES: Record<SoundKind, { id: string; name: string; description: string }> = {
   bgm: { id: 'omni-bgm', name: '⚛️ omni bgm', description: 'BGM 파일과 [[bgm:…]] 표시. 재생은 Omni Nexus 플러그인이 담당합니다.' },
@@ -64,10 +64,18 @@ export function soundModule(kind: SoundKind, settings: SoundSettings, items: rea
     // The whole marker line becomes a quiet ♪ control; the text itself is untouched in the chat log.
     // no_end_nl: Risu otherwise adds a line break after an output that ends in `>`.
     ? [{ comment: 'omni-bgm-marker', type: 'editdisplay', ableFlag: true, flag: `gi<order ${SOUND_DISPLAY_ORDER.bgm},no_end_nl>`, in: '\\[\\[bgm:[^\\]\\n]{1,200}\\]\\][ \\t]*', out: bgmButton }]
-    : rules.map(rule => ({
-      comment: `omni-sfx-${rule.id}`, type: 'editdisplay', ableFlag: true,
-      flag: `gu<order ${settings.sfxFirst ? SOUND_DISPLAY_ORDER.sfxFirst : SOUND_DISPLAY_ORDER.sfx},no_end_nl>`, in: `(${sfxRuleSource(rule)})`, out: `$1${sfxButton}`,
-    }));
+    : rules.flatMap(rule => {
+      const effect = (suffix: string, order: number, input: string, output: string) => ({ comment: `omni-sfx-${rule.id}${suffix}`, type: 'editdisplay', ableFlag: true, flag: `gu<order ${order},no_end_nl>`, in: input, out: output });
+      if (!settings.sfxFirst) return [effect('', SOUND_DISPLAY_ORDER.sfx, `(${sfxRuleSource(rule)})`, `$1${sfxButton}`)];
+      const marks = sfxRuleMarks(rule);
+      return [
+        // First, ▶ goes inside the marks: a module that restyles `§…§` into its own
+        // box carries it along, so it sits right after the word, on the same line.
+        effect('', SOUND_DISPLAY_ORDER.sfxFirst, `(${marks.open})(${marks.word})(${marks.close})`, `$1$2${sfxButton}$3`),
+        // Last, when no module took the marks: ▶ steps out after the closing mark.
+        effect('-after', SOUND_DISPLAY_ORDER.sfx, `${escapeRegex(sfxButton)}(${marks.close})`, `$1${sfxButton}`),
+      ];
+    });
   const book = (comment: string, content: string, insertorder: number) => ({ key: '', secondkey: '', comment, content, mode: 'normal', insertorder, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 });
   const lorebook = kind === 'bgm'
     ? settings.bgmPrompt ? [book('omni-bgm-cues', `@@depth 0\n<OmniBGM>\n${bgmPromptText(settings.bgmTags)}\n</OmniBGM>`, 998)] : []
