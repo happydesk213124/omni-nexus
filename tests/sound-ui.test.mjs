@@ -240,6 +240,19 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.ok(await page.evaluate(() => ['콰르릉', '휘이잉'].every(word => window.soundData().glossary.some(row => row.terms.includes(word)))), 'each part is learned');
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('콰르릉 휘이잉')), true);
     assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforeCombo + 1, 'known parts ask nothing again');
+    // Ahead of time: every unknown part of the effects on screen goes to JEV in one request; playing then asks nothing.
+    await page.evaluate(() => { window.jevChoice = '1'; });
+    const jevBeforePrep = await page.evaluate(() => window.jevAsked.length);
+    await page.evaluate(() => window.omniSound.prepareEffects([{ text: '삐용 뿌잉', context: '로봇' }, { text: '휘리릭', context: '바람' }, { text: '휘리릭', context: '다시' }]));
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforePrep + 1, 'one request for the whole screen');
+    assert.deepEqual(await page.evaluate(() => Object.values(window.jevAsked.at(-1).questions).map(q => q.instructions.sound_word)), ['삐용', '뿌잉', '휘리릭']);
+    assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('삐용 뿌잉')), true);
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforePrep + 1, 'playing a prepared effect asks nothing');
+    await page.evaluate(() => { window.jevChoice = 'new'; window.soundData().settings.sfxAutoCreate = false; });
+    await page.evaluate(() => window.omniSound.prepareEffects([{ text: '퓨슝', context: '' }]));
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforePrep + 2);
+    assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('퓨슝')), false);
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevBeforePrep + 2, 'a word nothing fits is not asked again');
     // ⚡ in the unknown tab: JEV sorts the collected words into listed effects, eight per request.
     await page.evaluate(() => { window.soundData().unknownTerms = Array.from({ length: 10 }, (_, i) => '알수없음' + i); window.jevChoice = '1'; });
     await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-unknown').click();
