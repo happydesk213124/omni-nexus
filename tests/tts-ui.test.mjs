@@ -50,6 +50,21 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.skipChars===3;});
     await page.locator('#tab-voices').click();
     assert.equal(await page.locator('#voice-list .voice-row').count(),176);
+    // One 「LLM에게 시키기」 replaces 「LLM으로 추가」 and 「LLM 정리 요청」: add from pasted source, rename and refile in one request.
+    assert.equal(await page.locator('#bulk-voice').isVisible(),false);assert.equal(await page.locator('#organize-voices').isVisible(),false);
+    const voiceBefore=await page.evaluate(()=>JSON.stringify(window.ttsData().voices[0]));
+    await page.evaluate(()=>{window.realLlm=window.risuai.runLLMModel;window.risuai.runLLMModel=async()=>({success:true,content:JSON.stringify({folders:['검수'],edit:[[1,'정리한 이름','검수',null]],add:[{name:'새 목소리',folder:'검수',tags:['female'],fishId:'0123456789abcdef0123456789abcdef'},{name:'지어낸 목소리',fishId:'not-an-id'}]})});});
+    await page.locator('#voice-llm-command').click();
+    await page.locator('#llm-command-request').fill('검수 폴더로 옮기고 붙여 넣은 것 추가');await page.locator('#llm-command-source').fill('새 목소리 0123456789abcdef0123456789abcdef');
+    await page.locator('#llm-command-run').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#llm-command-results input[data-row]').length===2);
+    const offered=await page.locator('#llm-command-results label').allTextContents();
+    assert.deepEqual([offered.length,offered[0].includes('정리한 이름'),offered[1].startsWith('추가 · 새 목소리')],[2,true,true],'an invented id is never offered');
+    await page.locator('#llm-command-apply').click();
+    await page.waitForFunction(()=>window.ttsData().voices[0].name==='정리한 이름'&&window.ttsData().voices.length===177&&window.ttsData().folders.includes('검수'));
+    assert.equal(await page.evaluate(()=>window.ttsData().voices.at(-1).fishId),'0123456789abcdef0123456789abcdef');
+    await page.evaluate(async before=>{const d=window.ttsData();d.voices[0]=JSON.parse(before);d.voices.pop();d.folders=d.folders.filter(f=>f!=='검수');window.risuai.runLLMModel=window.realLlm;document.dispatchEvent(new Event('omnitts-library'));},voiceBefore);
+    await page.waitForFunction(()=>document.querySelectorAll('#voice-list .voice-row').length===176);
     assert.equal(await page.locator('#voice-list').evaluate(node=>node.scrollHeight>node.clientHeight&&getComputedStyle(node).overflowY==='auto'),true,'voice tiles must scroll inside their own panel');
     await page.locator('#voice-search').fill('여성 & 차분 | 남성 & 파워풀');
     assert.ok(await page.locator('#voice-list .voice-row').count()>0);

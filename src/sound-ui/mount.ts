@@ -6,6 +6,8 @@ import { setSoundApplier } from './page';
 import { addSoundStructure, applySoundPage, soundStyleText } from './markup';
 import { omniSound } from '../services/sound-runtime';
 import { el, run } from '../tts-ui/common';
+import { placeLlmCommandButton } from '../tts-ui/llm-command';
+import { glossaryLlmCommand, soundLlmCommand } from './llm';
 
 /**
  * Adds the BGM·효과음 panels and tab buttons to the TTS root, and moves the model
@@ -30,6 +32,8 @@ export async function mountSound(root: HTMLElement, tab: (name: string) => void,
   const libraries = [new SoundLibrary('bgm'), new SoundLibrary('sfx')];
   for (const library of libraries) library.bind();
   bindGlossary();
+  for (const library of libraries) placeLlmCommandButton(`snd-${library.kind}-llm`, el(`snd-${library.kind}-add`), () => soundLlmCommand(library.kind, () => library.render()));
+  placeLlmCommandButton('snd-term-llm', el('snd-term-add'), () => glossaryLlmCommand(() => renderGlossary()));
   // Words keep arriving from replies; each visit shows the current lists.
   for (const [id, render] of [['tab-sound-glossary', () => renderGlossary()], ['tab-sound-bgm', () => libraries[0]!.render()], ['tab-sound-sfx', () => libraries[1]!.render()]] as const) el(id)?.addEventListener('click', render);
   let active = libraries[0]!;

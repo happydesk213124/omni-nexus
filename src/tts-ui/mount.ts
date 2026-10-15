@@ -4,6 +4,8 @@ import { bindTtsSettings } from './settings';
 import { TtsLibrary } from './library';
 import { TtsCharacters } from './characters';
 import { bindTtsLlmActions } from './llm-actions';
+import { placeLlmCommandButton } from './llm-command';
+import { voiceLlmCommand } from './voice-llm';
 import { bindTtsConnectionTests } from './connection-tests';
 import { el, dialog, on, LISTEN_CSS } from './common';
 import { attachTtsHelp } from './help';
@@ -53,6 +55,9 @@ export async function mountTts(): Promise<void> {
   observer.observe(document.body,{childList:true,subtree:true});
   await characters.bind(live); if(!live())return;
   bindTtsLlmActions(refresh);
+  // 「LLM으로 추가」 and 「LLM 정리 요청」 are one request now: add, rename, refile and retag.
+  for (const id of ['bulk-voice', 'organize-voices']) el(id)?.setAttribute('hidden', '');
+  placeLlmCommandButton('voice-llm-command', el('add-voice'), () => voiceLlmCommand(refresh));
   document.addEventListener('omnitts-library',refresh);
   await mountSound(root, tab, live); if(!live())return;
   if(ttsData().settings.enabled)promptInitialAudioActivation();
