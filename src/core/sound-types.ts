@@ -18,8 +18,8 @@ export interface SoundItem {
   mime?: string;
   bytes?: number;
 }
-/** One regex that marks sound-effect words in a reply (e.g. §덜컹§). */
-export interface SfxRule { id: string; name: string; pattern: string; flags: string; enabled: boolean }
+/** The marks around sound-effect words in a reply: `open`덜컹`close` (e.g. §덜컹§). */
+export interface SfxRule { id: string; name: string; open: string; close: string; enabled: boolean }
 /** Glossary row: words that all mean one sound effect. */
 export interface SfxTerm { id: string; terms: string[]; sfxKey: string; enabled: boolean }
 
@@ -38,7 +38,7 @@ export interface SoundSettings {
   /** Ask the chat model for [[bgm:mood,place,tempo]] before the line where the music should change. */
   bgmPrompt: boolean;
   sfxRules: SfxRule[];
-  /** Ask the chat model to mark sound effects as §word§ (the built-in rule). */
+  /** Ask the chat model to mark sound effects with the first rule in use (§word§ by default). */
   sfxCue: boolean;
   /** 'reply': a new reply and continuous reading play effects; 'button': only a tap does. */
   sfxAutoPlay: 'reply' | 'button';

@@ -61,4 +61,5 @@ export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[
   + '#tts-settings-root #sound-glossary:not([hidden]){flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}'
   + '#tts-settings-root .snd-rule,#tts-settings-root .snd-term,#tts-settings-root .snd-unknown{display:flex;gap:6px;align-items:center;flex-wrap:wrap}'
   + '#tts-settings-root .snd-rule-error{flex-basis:100%;color:#f29da6}'
+  + '#tts-settings-root .snd-rule-word{color:#9aa3b5;font-size:12px}'
   + '#tts-settings-root .snd-tile-time{font-size:11px;opacity:.75}';

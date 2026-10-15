@@ -31,8 +31,17 @@ test('effects: rules find the words in reading order, the glossary picks the sou
   const rules = api.soundDefaults().sfxRules;
   const text = '§싸아아아──§\n문이 열렸다.\n§덜컹! 덜컹! 와르르르르──!§';
   assert.deepEqual(api.sfxHits(text, rules).map(hit => hit.word), ['싸아아아──', '덜컹! 덜컹! 와르르르르──!']);
-  assert.notEqual(api.sfxRuleError('(unclosed'), '');
-  assert.deepEqual(api.sfxHits('§x§', [{ id: 'bad', name: 'bad', pattern: '(', flags: '', enabled: true }]), [], 'an invalid rule is skipped');
+  assert.notEqual(api.sfxMarksProblem('', '§'), '');
+  assert.deepEqual(api.sfxHits('§x§', [{ id: 'bad', name: 'bad', open: '', close: '§', enabled: true }]), [], 'a rule without both marks is skipped');
+  const marks = (id, open, close) => ({ id, name: id, open, close, enabled: true });
+  assert.deepEqual(api.sfxHits('[[쾅]] 그리고 (펑) *휙*', [marks('b', '[[', ']]'), marks('p', '(', ')'), marks('s', '*', '*')]).map(hit => hit.word), ['쾅', '펑', '휙'], 'marks are literal, regex characters too');
+  assert.deepEqual(api.sfxHits('§열린 채로\n다음 줄§ 끝', rules), [], 'a mark left open never swallows the next line');
+  assert.deepEqual(api.sfxHits('<b title="§쾅§">x</b>', rules).length, 0, 'never across a tag');
+  assert.deepEqual(api.sfxMarksFromPattern('§([^§\\n]{1,60})§'), { open: '§', close: '§' }, 'a rule saved as a regex keeps its marks');
+  assert.deepEqual(api.sfxMarksFromPattern('\\*([^*\\n]{1,40})\\*'), { open: '*', close: '*' });
+  assert.deepEqual(api.sfxMarksFromPattern('(?:x|y)+'), { open: '§', close: '§' }, 'anything else becomes the § rule');
+  const migrated = api.normalizeSoundData({ settings: { sfxRules: [{ id: 'old', name: '옛 규칙', pattern: '\\[([^\\]\\n]{1,60})\\]', flags: 'i', enabled: true }] } }).settings.sfxRules;
+  assert.deepEqual(migrated, [{ id: 'old', name: '옛 규칙', open: '[', close: ']', enabled: true }], 'older saves keep their rule as marks, without the regex');
   const sfx = [item('door', ['문 닫힘'], 'sfx'), item('crash', ['붕괴'], 'sfx')];
   const glossary = [{ id: 'g', terms: ['덜컹', '쾅'], sfxKey: 'door', enabled: true }, { id: 'h', terms: ['와르르'], sfxKey: 'crash', enabled: false }];
   assert.equal(api.pickSfx('덜컹! 덜컹!', glossary, sfx).key, 'door');
@@ -74,7 +83,11 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.match(sfx.backgroundEmbedding, /\[data-omni-sfx\]::before\{content:"▶"\}/);
   assert.match(sfx.lorebook[0]?.content || '', /§쾅§/, 'the model is told how to mark an effect');
   assert.equal(api.soundModule('sfx', { ...settings, sfxCue: false }, []).lorebook.length, 0);
-  assert.equal(api.soundModule('sfx', { ...settings, sfxRules: settings.sfxRules.map(r => ({ ...r, enabled: false })) }, []).lorebook.length, 0, 'the § instruction only goes out with the § rule');
+  assert.equal(api.soundModule('sfx', { ...settings, sfxRules: settings.sfxRules.map(r => ({ ...r, enabled: false })) }, []).lorebook.length, 0, 'no rule in use, no instruction');
+  const own = api.soundModule('sfx', { ...settings, sfxRules: [{ id: 'mine', name: 'mine', open: '【', close: '】', enabled: true }] }, []);
+  assert.match(own.lorebook[0]?.content || '', /문이 【쾅】 닫혔다/, 'the instruction uses the marks the chat will show, for any rule');
+  assert.equal('【쾅】'.replace(new RegExp(own.regex[0].in, 'gu'), own.regex[0].out).includes('data-omni-sfx'), true);
+  assert.equal('<div title="§쾅§">x</div>'.replace(new RegExp(sfx.regex[0].in, 'gu'), sfx.regex[0].out), '<div title="§쾅§">x</div>', 'a mark inside a tag attribute gets no button');
 });
 
 test('cues join the TTS lines in order; effect words are played, not read', () => {

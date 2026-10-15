@@ -9,12 +9,13 @@ import { soundData, soundReady, subscribeSound } from '../storage/sound-store';
 import { omniSound } from '../services/sound-runtime';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import { matchTtsAnchors, ttsAnchorTexts } from '../domain/tts/anchors';
+import { TTS_NARRATION_OFF_CSS } from '../domain/tts/module';
 import { illustrationTtsRequests } from '../services/tts-illustration';
 import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type HostPoint } from './host-utils';
 import { withTtsAudio } from './activation';
 import { installTtsViewer } from './host-viewer';
 
-interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; state?: string; sound?: boolean }
+interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; styled?: boolean; state?: string; sound?: boolean }
 /** BGM markers and effect words become rows of their own while that sound is on. */
 function soundCues(): TtsSoundCues | undefined {
   if (!soundReady()) return undefined;
@@ -44,16 +45,35 @@ export async function installTtsHost(): Promise<void> {
   // turned into markup never get a control and so never join the playlist.
   const anchored = new Map<number,TtsRequest[]>();
   let visibilityTail: Promise<void> = Promise.resolve(), stateTail: Promise<void> = Promise.resolve();
-  // The plugin owns visibility: unbound controls and narration while it is OFF
-  // are hidden on the node itself, never by a module rule.
+  // The plugin owns visibility, never a module rule (switching would rewrite the
+  // module and redraw every chat). Narration OFF is one <style> outside the chat:
+  // a button Risu redraws for each streamed chunk is hidden from its first frame,
+  // where hiding it per node let it flash first. A control with no line to read is
+  // only known after a scan, so that one is still hidden on the node itself.
   const hidden = (b: Binding) => !b.illustration && !b.sound && (!!b.dead || (b.narration && !ttsData().settings.narration));
+  let narrationRule: SafeElement | null = null;
+  const syncNarrationRule = async (): Promise<void> => {
+    const off = !disposed && !ttsData().settings.narration;
+    if (off === !!narrationRule) return;
+    if (!off) {
+      const rule = narrationRule; narrationRule = null;
+      try { await rule?.remove(); } catch { /* gone with the page */ }
+      await releaseHost(rule); return;
+    }
+    const rule = await doc.createElement('style'); await rule.setTextContent(TTS_NARRATION_OFF_CSS);
+    const body = await doc.querySelector('body');
+    try { if (body) { await body.appendChild(rule); narrationRule = rule; } else await releaseHost(rule); }
+    finally { await releaseHost(body); }
+  };
   const syncVisibility = (only?: Binding): Promise<void> => {
     visibilityTail = visibilityTail.catch(() => {}).then(async () => {
+      if (!only) await syncNarrationRule();
       for (const b of only ? [only] : bindings.values()) {
         if (disposed) return;
-        const hide = hidden(b);
-        if (b.hidden === hide) continue;
-        b.hidden = hide; await b.node.setStyle('display', hide ? 'none' : '');
+        b.hidden = hidden(b);
+        const unbound = !b.illustration && !b.sound && !!b.dead;
+        if (!!b.styled === unbound) continue;
+        b.styled = unbound; await b.node.setStyle('display', unbound ? 'none' : '');
       }
     });
     return visibilityTail;
@@ -291,6 +311,7 @@ export async function installTtsHost(): Promise<void> {
       else await screen.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     } finally { await releaseHost(screen); }
   };
+  await syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));
   const viewer=await installTtsViewer(doc,revealInChat);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
-  if(host.onUnload)await host.onUnload(async()=>{disposed=true;inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
+  if(host.onUnload)await host.onUnload(async()=>{disposed=true;await syncNarrationRule().catch(()=>{});inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
 }

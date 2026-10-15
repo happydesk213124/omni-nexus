@@ -276,10 +276,17 @@ test('hidden thoughts never enter playback and controls bind to the original cue
 
 test('incomplete delimiters and long streaming tails do not run expanding backtracking searches',()=>{
   const before=performance.now();
-  for(const text of ['하린 ('+'a'.repeat(100000),'가'.repeat(100000),'[[@inray::'.repeat(10000),'"'.repeat(50000),'```\n'+'가 "나"\n'.repeat(20000),('그는 "말했다" 그리고 떠났다.\n').repeat(4000),'<div class="x">'.repeat(10000)]) {
+  for(const text of ['하린 ('+'a'.repeat(100000),'가'.repeat(100000),'[[@inray::'.repeat(10000),'"'.repeat(50000),'```\n'+'가 "나"\n'.repeat(20000),('그는 "말했다" 그리고 떠났다.\n').repeat(4000),'<div class="x">'.repeat(10000),('가나다 [[bgm:calm\n').repeat(20000)]) {
     apply(text,[...imageRules,api.messageControlsDisplayScript(),...module.regex]);
   }
   assert.ok(performance.now()-before<4000);
+});
+
+test('a BGM marker still streaming in gets no control, like the reader that never reads it',()=>{
+  for(const partial of ['[[bgm:calm, ca','[[BGM:calm, cafe, slow','그 순간 [[bgm:tense']) {
+    assert.deepEqual(kinds(apply(`문이 열렸다.\n${partial}`,plain.regex)),['narration'],'only the prose line: '+partial);
+    assert.deepEqual(api.parseTtsMessage(partial,[]),[],'the reader skips it too: '+partial);
+  }
 });
 
 test('narration OFF does not change the module; hiding is left to the plugin',async()=>{
