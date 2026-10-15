@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
+/**
+ * The shipped preview painter, run against sanitized module markup. Previews are
+ * one <style> rule per image outside the chat, so a rebuilt or remounted message
+ * shows them at once without any host query.
+ */
 export async function checkSpinnerPreview(page, source, render) {
   const start=source.indexOf('  const nxSpinnerPreviews=new Map();');
   const end=source.indexOf('  async function paintAllMsgFans()',start);
@@ -17,88 +22,75 @@ export async function checkSpinnerPreview(page, source, render) {
     const sanitize=html=>DOMPurify.sanitize(html);
     const check=(value,message)=>{if(!value)throw new Error(message);};
     const seen=new WeakMap();
-    let appendGate=null,queries=0,markupReads=0,releases=0;
+    let queries=0,lists=0,markupReads=0,sends=0,releases=0;
     class SafeElement {
       #node;
       constructor(node){this.#node=node;}
-      querySelector(selector){const n=this.#node.querySelector(selector);return n instanceof HTMLElement?wrap(n):null;}
+      querySelector(selector){queries++;const n=this.#node.querySelector(selector);return n instanceof HTMLElement?wrap(n):null;}
       getOuterHTML(){markupReads++;return this.#node.outerHTML;}
       release(){releases++;}
-      getParent(){return this.#node.parentElement?wrap(this.#node.parentElement):null;}
-      getAttribute(name){if(!name.startsWith('x-'))throw new Error('unsupported attribute read');return this.#node.getAttribute(name);}
-      setAttribute(name,value){if(!name.startsWith('x-'))throw new Error('unsupported attribute write');this.#node.setAttribute(name,value);}
-      setStyleAttribute(css){this.#node.style.cssText=css;}
-      setInnerHTML(html){this.#node.innerHTML=sanitize(html);}
-      async appendChild(child){if(appendGate)await appendGate;this.#node.appendChild(child.#node);}
+      setTextContent(text){sends++;this.#node.textContent=text;}
+      async appendChild(child){this.#node.appendChild(child.#node);}
       remove(){this.#node.remove();}
     }
     const wrap=n=>{if(!seen.has(n))seen.set(n,new SafeElement(n));return seen.get(n);};
-    const doc={querySelector:s=>{queries++;const n=document.querySelector(s);return n?wrap(n):null;},querySelectorAll:s=>{queries++;return [...document.querySelectorAll(s)].map(wrap);}};
-    const ownScope=()=>{const refs=new Set();return {own:n=>{if(n)refs.add(n);return n;},all:async nodes=>{for(const n of nodes)refs.add(n);return nodes;},close:async()=>{for(const n of refs)n.release();}};};
-    const H=async(_doc,tag,{html})=>{const n=wrap(document.createElement(tag));n.setInnerHTML(html);return n;};
+    const doc={querySelector:s=>{queries++;const n=document.querySelector(s);return n?wrap(n):null;},querySelectorAll:s=>{lists++;return [...document.querySelectorAll(s)].map(wrap);},
+      createElement:tag=>wrap(document.createElement(tag))};
     const logs=[];
-    const make=()=>new Function('t','Z','H','nxEnsureFanRemountWatch','y','omniMountFooters','omniStreamObservers','omniDomScope',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,release:globalThis.__OMNI_REPAINT_SPINNER_PREVIEWS__,rows:nxSpinnerPreviews,schedule:nxScheduleSpinnerPreviews,dispose:nxDisposeSpinnerPreviews};')(
-      {hostDoc:doc},async()=>{throw Error('Preview must not load the full character/chat');},H,()=>{},(...args)=>logs.push(args),async()=>{},async()=>{},ownScope);
+    const make=()=>new Function('t','y','omniMountFooters','omniRelease',code+';return {paint:nxPaintSpinnerPreviews,accept:globalThis.__OMNI_SPINNER_PREVIEW__,clear:globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__,release:globalThis.__OMNI_REPAINT_SPINNER_PREVIEWS__,schedule:nxScheduleSpinnerPreviews,dispose:nxDisposeSpinnerPreviews,rows:nxPreviewRules,previews:nxSpinnerPreviews};')(
+      {hostDoc:doc},(...args)=>logs.push(args),async()=>{},async v=>{if(v?.release)v.release();});
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=768;
     canvas.getContext('2d').fillRect(0,0,512,768);const url=canvas.toDataURL('image/png');
     const row=shot=>({jobId:'job',shot,cardId:'card-'+shot,characterId:'bot',chatId:'chat',messageIndex:2,url});
-    const mount=html=>{document.body.innerHTML='<div class="risu-chat" data-chat-index="2">'+sanitize(html)+'</div>';};
-    const count=()=>document.querySelectorAll('[x-omni-preview]').length;
+    const mount=html=>{document.querySelector('#chat')?.remove();const chat=document.createElement('div');chat.id='chat';chat.innerHTML='<div class="risu-chat" data-chat-index="2">'+sanitize(html)+'</div>';document.body.prepend(chat);};
+    const painted=()=>[...document.querySelectorAll('[data-inray-preview-slot]')].filter(n=>getComputedStyle(n).backgroundImage.includes('data:image/png')).length;
+    const wheelsHidden=()=>[...document.querySelectorAll('[data-inray-preview-slot] svg')].filter(n=>getComputedStyle(n).opacity==='0').length;
     const boxes=()=>[...document.querySelectorAll('[data-inray-preview-slot]')].map(n=>{const r=n.getBoundingClientRect();return [r.width,r.height,r.top];});
+    const styles=()=>document.querySelectorAll('body > style').length;
 
     mount(pending.replaceAll('data-inray-spinner=','x-inray-spinner=').replaceAll('data-inray-preview-slot=','x-inray-preview-slot=').replaceAll('data-shot=','x-shot='));
     check(!document.querySelector('[x-inray-spinner]'),'sanitizer must reproduce the old missing marker');
-    let api=make();await api.accept(row(0));check(count()===0,'old module markup must fail to paint');
-    check(logs.some(r=>r[2].startsWith('slot ')),'missing slots need a diagnostic');
+    let api=make();await api.accept(row(0));
+    check(document.querySelectorAll('[data-inray-preview-slot]').length===0 && styles()===1,'old module markup has no slot to paint; the rule waits harmlessly');
+    api.dispose();await new Promise(resolve=>setTimeout(resolve,0));
+    check(styles()===0,'dispose removes every rule');
 
-    api.dispose();mount(pending);api=make();queries=0;
-    await api.accept({...row(0),deferPaint:true});await api.paint();api.schedule();
-    await new Promise(resolve=>setTimeout(resolve,160));
-    check(queries===0&&count()===0,'streaming previews must cache without querying or painting host DOM');
-    await api.release(['job']);
-    check(count()===1,'one group insertion must release the already generated preview');
-    api.dispose();
+    mount(pending);api=make();queries=0;lists=0;
+    await api.accept({...row(0),deferPaint:true});
+    check(lists===0 && markupReads===0 && queries===1,'a preview needs only the one body lookup: no chat query, no markup read');
+    check(painted()===1,'a line batch preview shows as soon as its slot exists');
+    api.dispose();await new Promise(resolve=>setTimeout(resolve,0));
 
     mount(pending);api=make();const initial=boxes();
     check(document.querySelectorAll('.x-risu-omni-spinner').length===4,'each shot must have one dedicated spinner frame');
-    check(!document.querySelector('.x-risu-omni-spinner div'),'pending spinner must not contain nested div frames');
+    sends=0;
     for(let shot=0;shot<4;shot++){
       await api.accept(row(shot));
-      await Promise.all([...document.querySelectorAll('[x-omni-preview] img')].map(img=>img.decode()));
-      check(count()===shot+1,'each finished image must appear immediately');
+      check(painted()===shot+1 && wheelsHidden()===shot+1,'each finished image must appear immediately, over the wheel');
       check(JSON.stringify(boxes())===JSON.stringify(initial),'preview must preserve spinner geometry');
-      const img=document.querySelector('[x-omni-preview="card-'+shot+'"] img');
-      const r=img.getBoundingClientRect(),c=img.parentElement.parentElement.getBoundingClientRect();
-      check(r.width<=c.width+1&&r.height<=c.height+1,'image must fit inside its slot');
     }
-    queries=0;markupReads=0;const releasedBefore=releases;
-    await api.paint();check(count()===4,'repaint must not duplicate images');
-    check(queries===1&&markupReads===0,'unchanged previews need one filtered query and no markup reads');
-    for(let i=0;i<100;i++)api.schedule();
+    await api.accept(row(0));check(sends===4,'an unchanged image is never sent again');
+    queries=0;lists=0;markupReads=0;
+    for(let i=0;i<100;i++)api.schedule();await api.paint();
     await new Promise(resolve=>setTimeout(resolve,160));
-    check(queries===2&&markupReads===0,'100 mutation callbacks must coalesce into one additional query');
-    mount(pending.replaceAll('data-inray-spinner=','x-inray-spinner='));
-    await api.paint();check(count()===4,'dedicated class and shot identity must paint without the fallback marker');
-    mount(pending);await api.paint();check(count()===4,'new message DOM must regain all previews');
-    check(releases>releasedBefore,'temporary host references must be released after painting');
-    check(document.querySelectorAll('[data-inray-spinner]').length===4,'painting must retain spinners');
+    check(queries===0 && lists===0 && markupReads===0,'chat mutations cost nothing: there is nothing to repaint');
+    check(api.previews.size===0,'the mutation watcher never has previews to wait for');
+    mount(pending);
+    check(painted()===4,'a rebuilt message shows every image at once');
+    check(queries===0 && lists===0,'rebuilding needs no host call');
 
-    mount(pending);api=make();let release;appendGate=new Promise(resolve=>{release=resolve;});
-    const painting=api.accept(row(0));
-    // Yield until the asynchronous painter reaches its gated append.
-    await new Promise(resolve=>setTimeout(resolve,0));
-    await api.clear('job');release();await painting;appendGate=null;
-    check(api.rows.size===0,'finalization releases references without an asset decode probe');
+    mount(pending);await api.clear('job');
+    check(painted()===4,'a finished job keeps its images until its slots are replaced');
     mount(completed.replace('{{raw::inxshot_card-0.webp}}',url));
-    await api.paint();
-    check(count()===0&&api.rows.size===0,'final message DOM must never regain base64 previews');
-    await api.accept(row(0));check(count()===0&&api.rows.size===0,'late completion must not reopen a closed job');
-    const beforeIdle=queries;api.schedule();api.dispose();
-    await new Promise(resolve=>setTimeout(resolve,160));
-    check(queries===beforeIdle,'idle/disposed previews must not poll');
+    await new Promise(resolve=>setTimeout(resolve,2300));
+    check(api.rows.size===0 && styles()===0,'the rules go once the slots are gone');
+    check(!document.querySelector('[data-inray-spinner]') || painted()===0,'final message DOM never carries a base64 preview');
+    await api.accept(row(0));check(api.rows.size===0 && styles()===0,'late completion must not reopen a closed job');
     check(!JSON.stringify(logs).includes(url),'diagnostics must not contain image bytes');
+    check(releases>0,'temporary host references must be released');
+    api.dispose();
     return {passed:true};
   },{code,pending,completed:render('[[@inrayspinner::job_0::512::768]][[@inray::card-0::inxshot_card-0.webp::512::768]]')});
   assert.equal(result.passed,true);
-  console.log('Sanitized spinner preview: deferred cache/release, old-marker failure, 4 sequential images, fixed geometry, remount, dedupe and late-completion cleanup passed.');
+  console.log('Spinner preview rules: no-host-call paint, immediate images over the wheel, fixed geometry, rebuild/remount, send-once, sweep after bake and late-completion cleanup passed.');
 }
