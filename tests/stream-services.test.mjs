@@ -121,6 +121,9 @@ test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still bein
   assert.match(wide,/data-inx-slot="2"/);assert.match(wide,/viewBox="0 0 1216 832"/);assert.doesNotMatch(wide,/inx2\]\]|"aspect"/);
   assert.match(display('[[inx1]]{"characters":[]}[[/inx1]]'),/viewBox="0 0 832 1216"/,'portrait unless the block says otherwise');
   assert.equal(display('본문\n[[inx3]]{"place":"ro'),'본문\n','a block still streaming is hidden');
+  assert.equal(display('<Thoughts>\n생각 [[inx1]]{"characters":[]}[[/inx1]]\n</Thoughts>\n본문'),'<Thoughts>\n생각 \n</Thoughts>\n본문','a draft in the thoughts is never drawn');
+  assert.equal(display('<think>생각 중 [[inx1]]{"characters":[]}[[/inx1]] 더'),'<think>생각 중  더','nor while the thoughts are still streaming');
+  assert.match(display('<Thoughts>a</Thoughts>\n본문\n[[inx1]]{"characters":[]}[[/inx1]]'),/data-inx-slot="1"/,'a story block after the thoughts is a slot');
   assert.match(display('본문 [[inx3]]{"place":"x"}[[/inx4]] 뒤'),/뒤/,'a misnumbered block never hides the story after it');
   const request=module.regex.find(r=>r.type==='editprocess');
   assert.equal('앞\n[[inx1]]{"a":1}[[/inx1]]\n뒤'.replace(new RegExp(request.in,request.flag),request.out),'앞\n뒤');

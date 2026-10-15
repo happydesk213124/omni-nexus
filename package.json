@@ -16,7 +16,7 @@
     "build:dev": "vite build --mode development",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
-    "unit": "node tools/build-tests.mjs && node --test --test-skip-pattern=SafeDOM tests/*.test.mjs && node --test --test-timeout=60000 tests/tts-host.test.mjs",
+    "unit": "node tools/build-tests.mjs && node --test --test-concurrency=4 --test-timeout=120000 --test-skip-pattern=SafeDOM tests/*.test.mjs && node --test --test-timeout=60000 tests/tts-host.test.mjs",
     "audit": "node tools/audit.mjs && node tools/check-docs.mjs",
     "smoke": "node tools/smoke.mjs",
     "bench": "node tools/bench-gallery.mjs --route=gallery && node tools/bench-gallery.mjs --route=explore && node tools/bench-gallery.mjs --route=window && node tools/bench-gallery.mjs --route=arrows",
