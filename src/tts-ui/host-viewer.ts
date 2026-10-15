@@ -7,6 +7,7 @@ import { withTtsAudio } from './activation';
 import type { TtsSegment } from '../core/tts-types';
 import { omniSound } from '../services/sound-runtime';
 import { soundData, updateSoundSettings, subscribeSound } from '../storage/sound-store';
+import { currentTtsContext } from '../services/tts-context';
 
 /** The BGM bar opens above the header; a top-anchored viewer moves up by this much so the header stays put. */
 const BGM_H = 76;
@@ -31,7 +32,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   let currentLine = -1, locating = false;
   // The BGM track list, opened from the track name. Not a <select>: SafeDOM gives
   // neither its change event nor its value, so it is a list of rows like ☷.
-  let bgmPicking = false;
+  let bgmPicking = false, bgmGuessing = false;
   const act = (f:()=>unknown) => { try { Promise.resolve(f()).catch(error=>omniTts.report(error)); } catch(error) { omniTts.report(error); } };
   const control = (id:string,label:string,title:string,active=false) => `<button data-tts-control="${id}" title="${title}" aria-label="${title}" style="backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none;text-shadow:none;transition:none;color:#eee;background:${active?'#7132f599':'#11182780'};border:1px solid #ffffff18;border-radius:8px;min-width:36px;min-height:36px;padding:5px;cursor:pointer">${label}</button>`;
   const paint=async()=>{
@@ -76,6 +77,13 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       await bind('bgm-play',()=>omniSound.toggleBgm());
       await bind('bgm-pick',()=>{bgmPicking=!bgmPicking;return paint();});
       await bind('bgm-seek',()=>{});
+      await bind('bgm-guess',async()=>{
+        if(bgmGuessing)return;
+        bgmGuessing=true;await paint();
+        try{await omniSound.guessBgm(await bgmScene());}
+        catch(error){flash(String((error as Error)?.message||error));}
+        finally{bgmGuessing=false;await paint();}
+      });
       if(picking)for(const [i,item] of soundData().bgm.entries())await bind(`bgm-item-${i}`,async()=>{
         bgmPicking=false;
         // Picking a track means music: BGM turns on with it.
@@ -120,7 +128,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       await actions.get(`line-${line}`)?.node.scrollIntoView({block:'nearest',inline:'nearest'});
     }
   }
-  function bgmState(){const player=omniSound.player;return [soundData().settings.bgmEnabled,player.bgmKey,player.bgmPlaying,omniSound.bgmName(),bgmPicking];}
+  function bgmState(){const player=omniSound.player;return [soundData().settings.bgmEnabled,player.bgmKey,player.bgmPlaying,omniSound.bgmName(),bgmPicking,bgmGuessing];}
   const bgmFill=(p:{current:number;duration:number})=>`linear-gradient(to right,#7132f5 ${p.duration>0?p.current/p.duration*100:0}%,#283043 0)`;
   /**
    * BGM bar: the time and its seek bar on top (like the voice bar), then play,
@@ -134,7 +142,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       +`<div style="display:flex;align-items:center;gap:6px;height:14px"><small data-tts-bgm-time="1" style="min-width:58px;line-height:14px">${clock(p.current)} / ${clock(p.duration)}</small><button data-tts-control="bgm-seek" aria-label="BGM 재생 위치" style="flex:1;border:1px solid #ffffff24;background:${bgmFill(p)};height:10px;border-radius:5px;padding:0;cursor:pointer"></button></div>`
       +`<div style="display:flex;gap:6px;align-items:center;margin-top:6px">${control('bgm-play',playing?'Ⅱ':'▶','BGM 재생·일시정지',playing)}`
       +`<button data-tts-control="bgm-pick" title="BGM 곡 고르기" aria-label="BGM 곡 고르기" aria-expanded="${bgmPicking}" style="${LINE_STYLE}flex:1;min-width:0;width:auto;margin:0;min-height:36px;display:flex;align-items:center;gap:4px;background:${bgmPicking?'#7132f599':'#11182780'}"><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">♪ ${name}</span><span aria-hidden="true">${bgmPicking?'▴':'▾'}</span></button>`
-      +`${control('bgm-power',on?'ON':'OFF','BGM 켜기·끄기',on)}</div></div>`;
+      +`${control('bgm-guess',bgmGuessing?'…':'⚡','이 메시지로 곡 고르기 (JEV·LLM)',bgmGuessing)}${control('bgm-power',on?'ON':'OFF','BGM 켜기·끄기',on)}</div></div>`;
   }
   /** The BGM list by folder; the track that plays is marked. */
   function bgmPicker():string{
@@ -146,6 +154,13 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       const rows=items.map((item,i)=>({item,i})).filter(({item})=>folder?item.folder===folder:!item.folder||!soundData().folders.bgm.includes(item.folder)).map(({i})=>row(i)).join('');
       return `<div style="margin:4px 0 3px;color:#9aa3b5;font-size:11px">${esc(folder||'미분류')}</div>${rows}`;
     }).join('')}</div>`;
+  }
+  /** ⚡ reads the reply being read, else the newest reply on screen; the BGM picker does the rest. */
+  async function bgmScene():Promise<string>{
+    const messages=(await currentTtsContext()).messages,current=omniTts.current;
+    const reading=current&&messages.find(message=>String(message.chatId||message.id||'')===current.messageId);
+    const latest=[...messages].reverse().find(message=>message.role==='char');
+    return String((reading||latest)?.data??'');
   }
   /** The time and the seek bar fill, in place. */
   async function paintBgmTime():Promise<void>{

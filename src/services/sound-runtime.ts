@@ -5,12 +5,13 @@ import { ttsBytes, ttsFetch } from '../providers/tts/http';
 import { AUDIO_EXTENSIONS, sniffAudioMime } from '../domain/sound/audio';
 import { pickBgm, pickSfx } from '../domain/sound/match';
 import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
-import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound } from '../storage/sound-store';
+import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound, updateSoundSettings } from '../storage/sound-store';
 import { ensureSoundModules, readSoundAsset, storeSoundBytes } from '../storage/sound-module';
 import { omniTts, type TtsSoundCuePlayer } from './tts-runtime';
 import { ttsData } from '../storage/tts-store';
 import { generateMusic, generateSoundEffect, englishText } from '../providers/sound/elevenlabs';
-import { chooseSfx, type SfxChoice } from '../providers/sound/choose';
+import { chooseBgm, chooseSfx, type SfxChoice } from '../providers/sound/choose';
+import { bgmSceneText } from '../domain/sound/scene';
 import { decodeAudio } from '../providers/sound/decode';
 import { encodeSfxWav, sfxWindow } from '../domain/sound/clip';
 
@@ -185,6 +186,24 @@ export class OmniSoundRuntime {
       return { ...(await this.clip(item)), volume: soundData().settings.sfxVolume };
     },
   };
+  /**
+   * ⚡: a reply's own text picks the music, for replies with no BGM cue. JEV or
+   * the LLM, as the BGM matcher setting says; any other setting uses JEV when it
+   * has a key, else the LLM (the effect rule). Picking music turns BGM on.
+   */
+  async guessBgm(reply: string): Promise<SoundItem> {
+    const s = soundData().settings, tts = ttsData().settings, items = soundData().bgm;
+    if (!items.length) throw new Error('등록된 BGM이 없습니다. BGM·효과음 설정에서 추가해 주세요.');
+    const scene = bgmSceneText(reply);
+    if (!scene) throw new Error('곡을 고를 메시지가 없습니다.');
+    const engine = s.bgmMatcher === 'jev' || s.bgmMatcher === 'llm' ? s.bgmMatcher : tts.jev.key.trim() ? 'jev' : 'llm';
+    const pick = await chooseBgm(scene, items, engine, tts);
+    const item = items.find(row => row.key === pick) ?? null;
+    if (!item) throw new Error('메시지에 맞는 곡을 고르지 못했습니다.');
+    if (!s.bgmEnabled) await updateSoundSettings({ bgmEnabled: true });
+    await this.play(item);
+    return item;
+  }
   /** BGM for a reply's tags; free word matching first. Returns the key that plays. */
   async playBgmForTags(tags: readonly string[]): Promise<string> {
     if (!soundData().settings.bgmEnabled) return '';

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
+const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const item = (key, tags, kind = 'bgm') => ({ key, kind, name: key, tags, folder: '', source: 'url', url: `https://x.test/${key}.mp3` });
 
@@ -143,4 +143,12 @@ test('effect clips: the silence around a sound is skipped, a long one stops at t
   assert.equal(String.fromCharCode(wav.getUint8(0), wav.getUint8(1), wav.getUint8(2), wav.getUint8(3)), 'RIFF');
   assert.equal(wav.getUint32(40, true), (trimmed.end - trimmed.start) * 2, 'one 16-bit channel of exactly the window');
   assert.equal(wav.getInt16(wav.byteLength - 2, true), 0, 'a cut clip fades out to silence');
+});
+
+test('⚡ BGM scene: the prose only, and a long reply keeps its start and its end', () => {
+  const reply = '<Thoughts>\nsecret plan\n</Thoughts>\n[[bgm:calm,cafe,slow]]\n비가 내리는 카페.\n[[@inray::c::inxshot_c.png::1::1]]\n[[inx1]]{"place":"x"}[[/inx1]]\n그녀가 웃었다.';
+  assert.equal(api.bgmSceneText(reply), '비가 내리는 카페.\n그녀가 웃었다.');
+  const long = '시작 문단.\n' + '가'.repeat(9000) + '\n지금 장면.';
+  const scene = api.bgmSceneText(long, 4000);
+  assert.ok(scene.length <= 4003 && scene.startsWith('시작 문단.') && scene.endsWith('지금 장면.'), 'start and the current end both stay');
 });

@@ -205,6 +205,24 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('덜컹')), true);
     assert.equal(await page.evaluate(() => window.eleven.length), llmCount, 'a listed pick makes nothing');
     assert.ok(await page.evaluate(() => window.soundData().glossary.some(r => r.terms.includes('덜컹'))));
+    // ⚡: a reply's own text picks a listed track through JEV or the LLM, and BGM turns on with it.
+    const tracks = await page.evaluate(() => window.soundData().bgm.map(item => item.key));
+    assert.ok(tracks.length >= 2, 'two tracks to choose between');
+    await page.locator('#snd-bgm-matcher').selectOption('jev'); await page.waitForFunction(() => window.soundData().settings.bgmMatcher === 'jev');
+    await page.evaluate(() => { window.jevChoice = '1'; window.soundData().settings.bgmEnabled = false; });
+    const reply = '<Thoughts>\nsecret plan\n</Thoughts>\n빗소리가 들리는 조용한 카페.';
+    assert.equal(await page.evaluate(text => window.omniSound.guessBgm(text).then(item => item.key), reply), tracks[0]);
+    const asked = await page.evaluate(() => window.jevAsked.at(-1).questions[0]);
+    assert.equal(asked.instructions.scene, '빗소리가 들리는 조용한 카페.', 'the prose only, never the reasoning');
+    assert.equal(JSON.stringify(asked.criteria).includes('"new"'), false, 'a pick among the listed tracks only');
+    assert.equal(await page.evaluate(() => window.soundData().settings.bgmEnabled), true, 'picking music turns BGM on');
+    await page.locator('#snd-bgm-matcher').selectOption('llm'); await page.waitForFunction(() => window.soundData().settings.bgmMatcher === 'llm');
+    await page.evaluate(n => { window.llmAnswer = JSON.stringify({ n }); }, tracks.length);
+    const jevNow = await page.evaluate(() => window.jevAsked.length);
+    assert.equal(await page.evaluate(text => window.omniSound.guessBgm(text).then(item => item.key), reply), tracks.at(-1));
+    assert.equal(await page.evaluate(() => window.jevAsked.length), jevNow, 'the LLM setting never asks JEV');
+    await page.evaluate(() => { window.llmAnswer = '{"n":999}'; });
+    assert.match(await page.evaluate(text => window.omniSound.guessBgm(text).then(() => 'played', error => error.message), reply), /고르지 못했습니다/, 'an answer naming no listed track plays nothing');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
