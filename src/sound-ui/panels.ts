@@ -1,0 +1,60 @@
+/**
+ * BGM·효과음 pages. They reuse the TTS settings classes (groups, rows, voice
+ * tiles, editor sheets) so the pages look like the rest of the TTS area, and
+ * they sit outside #tts-controls so switching TTS off never disables them.
+ */
+const sw = (id: string, label: string) => `<label class="switch"><input type="checkbox" id="${id}" aria-label="${label}"></label>`;
+const row = (title: string, control: string, hint = '') => `<div class="row"><div class="copy"><b>${title}</b>${hint ? `<small>${hint}</small>` : ''}</div>${control}</div>`;
+const range = (id: string, label: string) => `<div class="control"><input id="${id}" type="range" min="0" max="100" aria-label="${label}"><output class="value" id="${id}-value"></output></div>`;
+const matcher = (id: string) => `<select id="${id}" aria-label="고르는 방식"><option value="auto">자동 · 글자 → 임베딩 → JEV</option><option value="tag">글자 매칭만 (무료)</option><option value="embedding">임베딩</option><option value="jev">JEV</option><option value="llm">LLM</option></select>`;
+
+export const SOUND_TABS = [
+  ['sound-settings', '설정'], ['sound-bgm', 'BGM 목록'], ['sound-sfx', '효과음 목록'], ['sound-glossary', '효과음 용어집'],
+] as const;
+
+function library(kind: 'bgm' | 'sfx', title: string): string {
+  return `<section class="panel" id="sound-${kind}" role="tabpanel" hidden>
+<div class="voice-command-bar"><div class="voice-search-wrap"><input id="snd-${kind}-search" placeholder="이름·태그 검색" aria-label="${title} 검색" maxlength="200"></div>
+<span id="snd-${kind}-count"></span><div class="actions voice-tools"><button type="button" id="snd-${kind}-delete" class="danger" disabled>선택 삭제</button><button type="button" class="primary" id="snd-${kind}-add">+ ${title}</button></div></div>
+<div class="voice-explorer"><aside class="voice-folders"><div class="folder-heading"><b>폴더</b><button type="button" id="snd-${kind}-folder-add" title="폴더 만들기">+</button></div><div id="snd-${kind}-folders"></div></aside>
+<div class="voice-list" id="snd-${kind}-list" role="listbox" aria-multiselectable="true"></div></div></section>`;
+}
+
+export const SOUND_PANELS = `<div class="workspace" id="sound-controls">
+<section class="panel" id="sound-settings" role="tabpanel" hidden><div class="tts-settings-columns">
+<div class="tts-settings-column"><div class="group"><h3>BGM</h3>
+${row('BGM 사용', sw('snd-bgm-enabled', 'BGM 사용'), '켜면 ⚛️ omni bgm 모듈이 설치되고 [[bgm:…]] 줄이 ♪ 버튼이 됩니다.')}
+${row('BGM 볼륨', range('snd-bgm-volume', 'BGM 볼륨'))}
+${row('TTS 재생 중 BGM', range('snd-duck', 'TTS 재생 중 BGM 크기'), 'TTS가 말하는 동안 이만큼으로 줄입니다.')}
+${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number" min="0" max="10" step="0.5" aria-label="크로스페이드 초" style="width:72px"><span>초 크로스페이드</span></div>`)}
+${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'), '답변 첫 줄에 [[bgm:분위기,장소,템포]] 세 개를 쓰게 합니다. 곡 목록은 보내지 않습니다.')}
+${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
+<label class="field full"><span>BGM 태그 목록 · 쉼표로 구분 (LLM은 이 안에서만 고릅니다)</span><textarea id="snd-bgm-tags" rows="3" maxlength="1200"></textarea></label>
+</div></div>
+<div class="tts-settings-column"><div class="group"><h3>효과음</h3>
+${row('효과음 사용', sw('snd-sfx-enabled', '효과음 사용'), '켜면 ⚛️ omni 효과음 모듈이 설치되고 규칙에 걸린 말에 회색 ▶ 버튼이 붙습니다.')}
+${row('효과음 볼륨', range('snd-sfx-volume', '효과음 볼륨'))}
+${row('자동 재생', `<select id="snd-sfx-auto" aria-label="효과음 자동 재생"><option value="reply">새 답변 · 이어 읽기 중</option><option value="button">버튼을 눌렀을 때만</option></select>`)}
+${row('효과음 고르는 방식', matcher('snd-sfx-matcher'))}
+<div class="field full"><span>효과음 규칙 · 정규식 (첫 괄호가 효과음 말)</span><div id="snd-rules"></div><div class="actions"><button type="button" id="snd-rule-add">+ 규칙</button></div></div>
+<label class="field full"><span>규칙 테스트 · 예시 문장</span><textarea id="snd-rule-test" rows="2" placeholder="§덜컹! 덜컹! 와르르──!§"></textarea><small id="snd-rule-result"></small></label>
+</div><div class="group"><h3>파일</h3>
+${row('파일 최대 크기', `<div class="control"><input id="snd-max-mb" type="number" min="1" max="50" aria-label="파일 최대 크기 MB" style="width:72px"><span>MB</span></div>`, '파일은 모듈에 저장되어 저장 파일·동기화 크기가 늘어납니다. 큰 곡은 주소로 등록하세요.')}
+</div></div></div></section>
+${library('bgm', 'BGM')}
+${library('sfx', '효과음')}
+<section class="panel" id="sound-glossary" role="tabpanel" hidden>
+<div class="voice-command-bar"><div class="voice-search-wrap"><input id="snd-term-search" placeholder="용어 검색" aria-label="용어 검색"></div><div class="actions voice-tools"><button type="button" class="primary" id="snd-term-add">+ 용어</button></div></div>
+<div class="group"><h3>용어 → 효과음</h3><small>같은 소리를 뜻하는 말을 쉼표로 묶어 하나의 효과음에 연결합니다. 예: 덜컹, 쾅, 문 닫힘</small><div id="snd-terms"></div></div>
+<div class="group"><h3>미등록 용어</h3><small>규칙에 걸렸지만 용어집에 없는 말이 여기에 모입니다. 효과음을 고르면 용어집에 추가됩니다.</small><div id="snd-unknown"></div></div>
+</section></div>`;
+
+export const SOUND_DIALOG = `<dialog id="snd-item-dialog" class="editor-sheet"><form id="snd-item-form"><div class="dialog-head"><span id="snd-item-title">추가</span></div><div class="editor-scroll"><div class="fields">
+<label class="field full"><span>이름</span><input id="snd-item-name" maxlength="120"></label>
+<label class="field full"><span>태그 · 쉼표로 구분</span><input id="snd-item-tags" maxlength="500" placeholder="tense, chase, fast"></label>
+<label class="field"><span>폴더</span><select id="snd-item-folder"></select></label>
+<label class="field"><span>등록 방식</span><select id="snd-item-source"><option value="url">오디오 파일 주소 (https)</option><option value="file">파일 직접 등록 (모듈에 저장)</option></select></label>
+<label class="field full" id="snd-item-url-wrap"><span>오디오 파일 주소</span><input id="snd-item-url" type="url" placeholder="https://…/sound.mp3" maxlength="2000"></label>
+<label class="field full" id="snd-item-file-wrap" hidden><span>파일 (mp3 · wav · ogg · m4a · flac · webm)</span><input id="snd-item-file" type="file" accept="audio/*"></label>
+<small id="snd-item-status" role="status"></small></div></div>
+<div class="dialog-actions"><button type="button" id="snd-item-cancel">취소</button><button type="button" id="snd-item-save" class="primary">추가</button></div></form></dialog>`;

@@ -37,7 +37,7 @@ export function quotedCue(value:string):string|null {
 }
 export function parseCueLine(line: string, id: string): TtsSegment | null {
   const value = line.trim();
-  if (!value || value.length > 8000 || /[<>]/.test(value) || value.includes('{{') || value.includes('[[@') || /^[|#!`~]/.test(value)) return null;
+  if (!value || value.length > 8000 || /[<>]/.test(value) || value.includes('{{') || value.includes('[[@') || /\[\[bgm:/i.test(value) || /^[|#!`~]/.test(value)) return null;
   const quotes=['"','“',"'",'‘','「','『'].map(q=>value.indexOf(q)).filter(n=>n>0).sort((a,b)=>a-b);
   for(const quote of quotes){const header=cueHeader(value.slice(0,quote)),speech=quotedCue(value.slice(quote));if(header&&speech)return {id,...header,text:speech,kind:'dialogue',start:0,end:line.length};}
   if(/[:：]\s*$/.test(value)&&cueHeader(value))return null;
