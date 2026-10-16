@@ -42,16 +42,37 @@ function speechLangTag(text: string, langRaw: unknown): string {
   return 'english text';
 }
 
-/** `speechbubble, korean text:안돼!!` — appended to the speaker's own caption. */
-export function speechCaptionTag(speech: unknown, speechLang?: unknown): string {
-  const text = cleanText(speech, 200);
-  if (!text) return '';
-  return `speechbubble, ${speechLangTag(text, speechLang)}:${text}`;
+/** 생성 옵션 → 말풍선 강조 / 글씨 크게. Weight 1 (or 0) is the plain tag. */
+export interface SpeechStyle { weight?: unknown; huge?: unknown }
+export type SpeechBubble = 'speech bubble' | 'thought bubble' | 'narration box';
+
+export function speechStyleFromCard(card: { speech_bubble_weight?: unknown; speech_huge_text?: unknown } | null | undefined): SpeechStyle {
+  return { weight: card?.speech_bubble_weight, huge: card?.speech_huge_text === true };
 }
 
-/** True once a caption already carries a bubble, so a reroll cannot stack a second one. */
+/** 0–5 in tenths; 1 and anything unusable mean no weight. */
+export function speechBubbleWeight(raw: unknown): number {
+  const n = Math.round(Math.min(5, Math.max(0, Number(raw))) * 10) / 10;
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
+ * `speech bubble, korean text:안돼!!` — appended to the speaker's own caption.
+ * With a weight the bubble (and 「글씨 크게」's huge text) take it as NAI groups:
+ * `2::speech bubble:: 2::huge text::, korean text:안돼!!`. The line itself is never weighted.
+ */
+export function speechCaptionTag(speech: unknown, speechLang?: unknown, style: SpeechStyle = {}, bubble: SpeechBubble = 'speech bubble'): string {
+  const text = cleanText(speech, 200);
+  if (!text) return '';
+  const weight = speechBubbleWeight(style.weight);
+  const tags = style.huge === true ? [bubble, 'huge text'] : [bubble];
+  const head = weight === 1 ? tags.join(', ') : tags.map(tag => `${weight}::${tag}::`).join(' ');
+  return `${head}, ${speechLangTag(text, speechLang)}:${text}`;
+}
+
+/** True once a caption already carries a bubble, so a reroll cannot stack a second one. Older images say `speechbubble`. */
 export function captionHasSpeech(prompt: unknown): boolean {
-  return /speechbubble/i.test(String(prompt || ''));
+  return /speech\s*bubble/i.test(String(prompt || ''));
 }
 
 export type SpeechCharacter = { speech?: unknown; speech_lang?: unknown; name?: unknown };
@@ -64,13 +85,14 @@ export type SpeechCharacter = { speech?: unknown; speech_lang?: unknown; name?: 
 export function speechCaptionTagsForShot(
   shot: { speech?: unknown } & Record<string, unknown>,
   chars: SpeechCharacter[],
+  style: SpeechStyle = {},
 ): string[] {
-  const out = chars.map((ch) => speechCaptionTag(ch.speech, ch.speech_lang));
+  const out = chars.map((ch) => speechCaptionTag(ch.speech, ch.speech_lang, style));
   if (out.some(Boolean) || !chars.length) return out;
   const raw = shot.speech;
   if (raw == null || raw === '') return out;
   if (typeof raw === 'string') {
-    out[0] = speechCaptionTag(raw);
+    out[0] = speechCaptionTag(raw, undefined, style);
     return out;
   }
   if (typeof raw === 'object') {
@@ -78,7 +100,7 @@ export function speechCaptionTagsForShot(
     const speaker = cleanText(obj.speaker, 200);
     const at = speaker ? chars.findIndex((c) => cleanText(c.name, 200) === speaker) : -1;
     const idx = at >= 0 ? at : 0;
-    out[idx] = speechCaptionTag(obj.text, obj.lang ?? obj.speech_lang ?? chars[idx]?.speech_lang);
+    out[idx] = speechCaptionTag(obj.text, obj.lang ?? obj.speech_lang ?? chars[idx]?.speech_lang, style);
   }
   return out;
 }

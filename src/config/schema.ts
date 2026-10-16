@@ -18,6 +18,7 @@ import { normalizeInlineMsgActions } from '../domain/inline-msg-actions.ts';
 import { normalizeImagePressInspect, normalizeToastAnchor } from '../domain/toast-press.ts';
 import { normalizeCharacterWeight } from '../domain/prompt/character-weight';
 import { normalizeLocationWeight } from '../domain/prompt/location-weight';
+import { speechBubbleWeight } from '../domain/nai/speech';
 
 /** NovelAI base natural-language mode (replaces the old boolean toggle). */
 export type NaturalBaseMode = 'off' | 'short' | 'detailed' | 'supplement';
@@ -219,6 +220,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.image_analysis_separate = card.image_analysis_separate === true;
   card.character_height = ![false, 'false', 0, '0', 'off'].includes(card.character_height as string | number | boolean);
   card.character_age = ![false, 'false', 0, '0', 'off'].includes(card.character_age as string | number | boolean);
+  card.speech_bubble_weight = speechBubbleWeight(card.speech_bubble_weight ?? 1);
+  card.speech_huge_text = card.speech_huge_text === true;
   // Missing toggle stays off so old saves retain their reply-generation behavior.
   card.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
   card.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);

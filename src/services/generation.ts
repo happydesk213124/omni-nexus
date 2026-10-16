@@ -55,6 +55,7 @@ import { shouldUseNaiCoords, readNaiCoord, type CoordPair } from '../domain/nai/
 import {
   captionWithSpeech,
   speechCaptionTagsForShot,
+  speechStyleFromCard,
   stripSpokenBubbleSuppression,
 } from '../domain/nai/speech';
 import { tokensForFamily } from '../domain/nai/keys';
@@ -286,7 +287,7 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
     stylePos = joinTags(cleanText(card.custom_pos), filePos);
     styleNeg = joinTags(cleanText(card.custom_neg), fileNeg);
   }
-  const speechCaps = route.useSpeech ? speechCaptionTagsForShot(shot, chars) : [];
+  const speechCaps = route.useSpeech ? speechCaptionTagsForShot(shot, chars, speechStyleFromCard(card)) : [];
   const hasSpeech = speechCaps.some(Boolean);
   if (hasSpeech) stylePos = stripSpokenBubbleSuppression(stylePos);
   let situation: unknown = shot.situation || shot.scene;

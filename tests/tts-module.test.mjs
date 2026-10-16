@@ -167,6 +167,7 @@ test('illustration speech is read from the caption tail like the shot-tag editor
   assert.equal(api.illustrationSpeech('1girl, smile, speechbubble, korean text:안녕, 반가워!'),'안녕, 반가워!','commas inside the line are kept');
   assert.equal(api.illustrationSpeech('boy, thought bubble, japanese text:こんにちは'),'こんにちは');
   assert.equal(api.illustrationSpeech('girl, 1.2::speechbubble, english text:Stop.::'),'Stop.');
+  assert.equal(api.illustrationSpeech('girl, 2::speech bubble:: 2::huge text::, korean text:안돼, 가지마'),'안돼, 가지마','말풍선 강조 / 글씨 크게');
   assert.equal(api.illustrationSpeech('girl, smile, looking at viewer'),'');
 });
 

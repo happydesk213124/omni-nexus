@@ -10,7 +10,7 @@ import { resolveCostumeWear } from '../character/costume';
 import type { CharacterRecord, ShotCharacter } from '../../core/types.ts';
 import { cleanText, splitTagTokens } from '../../core/util/text.ts';
 import { composeCharacterCaptionTags, isClothingTag } from '../character/tags.ts';
-import { speechCaptionTag } from '../nai/speech.ts';
+import { speechCaptionTag, speechStyleFromCard, type SpeechStyle } from '../nai/speech.ts';
 import { comicCutHidesLooks, normalizeComicCutKind } from './page.ts';
 import { resolveComicSlotCostume } from './costume.ts';
 import { weightCharacterPrompt, stripCharacterEmphasis, normalizeCharacterWeight } from '../prompt/character-weight';
@@ -22,23 +22,17 @@ export function comicCloseupCharacterInstruction(enabled: boolean, weight: unkno
     : '';
 }
 
-export function comicSpeechCaption(bubble: unknown, text: unknown): string {
-  const tag = speechCaptionTag(text);
-  if (!tag) return '';
+export function comicSpeechCaption(bubble: unknown, text: unknown, style: SpeechStyle = {}): string {
   const kind = cleanText(bubble, 40).toLowerCase();
-  if (kind === 'thought' || kind === 'think') {
-    return tag.replace(/^speechbubble,/, 'thought bubble,');
-  }
-  if (kind === 'narration' || kind === 'narrator' || kind === 'box') {
-    return tag.replace(/^speechbubble,/, 'narration box,');
-  }
-  return tag;
+  const shape = kind === 'thought' || kind === 'think' ? 'thought bubble'
+    : kind === 'narration' || kind === 'narrator' || kind === 'box' ? 'narration box' : 'speech bubble';
+  return speechCaptionTag(text, undefined, style, shape);
 }
 
 export function composeComicSlotCaption(
   stored: Partial<CharacterRecord> | null | undefined,
   slot: ShotCharacter & { bubble?: unknown },
-  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown } = {},
+  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown; speech_bubble_weight?: unknown; speech_huge_text?: unknown } = {},
 ): string {
   const half = options.comic_closeup_character_half === true
     && normalizeComicCutKind((slot as { cut_kind?: unknown }).cut_kind) === 'closeup';
@@ -52,7 +46,7 @@ export function composeComicSlotCaption(
       mutual: slot.mutual,
       sex: slot.sex,
     });
-    const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text);
+    const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text, speechStyleFromCard(options));
     if (!speech) return looks;
     return looks ? `${looks}, ${speech}` : speech;
   }
@@ -82,7 +76,7 @@ export function composeComicSlotCaption(
     wear_state: slot.wear_state,
     nude: slot.nude,
   }, options);
-  const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text);
+  const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text, speechStyleFromCard(options));
   if (half) {
     const appearance = composeCharacterCaptionTags({ ...fakeStored, costumes: [{
       ...resolveCostumeWear(fakeStored, '_comic'), attire: '', bottoms: '', accessories: '',

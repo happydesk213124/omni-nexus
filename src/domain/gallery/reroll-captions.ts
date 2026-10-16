@@ -6,7 +6,7 @@ import type { CharacterInput } from '../character/identity.ts';
 import { composeCharacterCaptionTags } from '../character/tags.ts';
 import { resolveCharacter } from '../character/roster.ts';
 import { slimCardCharacters } from './slim-cast.ts';
-import { speechCaptionTag } from '../nai/speech.ts';
+import { captionHasSpeech, speechCaptionTag } from '../nai/speech.ts';
 import { cleanText, joinTags } from '../../core/util/text.ts';
 import type { NaiSceneChar } from '../nai-meta/replay.ts';
 
@@ -22,7 +22,7 @@ export function illustrationCaptionsFromCast(
     const shot = { ...raw, ...slot };
     let prompt = joinTags(composeCharacterCaptionTags(stored, shot)) || 'girl';
     const tag = speechCaptionTag(shot.speech, shot.speech_lang);
-    if (tag && !/speechbubble/i.test(prompt)) prompt = `${prompt}, ${tag}`;
+    if (tag && !captionHasSpeech(prompt)) prompt = `${prompt}, ${tag}`;
     return {
       prompt,
       uc: cleanText(shot.uc, 4000),

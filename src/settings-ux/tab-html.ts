@@ -149,6 +149,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   out.querySelector<HTMLInputElement>('#nx-nai-auto-upscale')?.toggleAttribute('checked', card?.nai_auto_upscale === true);
   const locationWeight = out.querySelector<HTMLInputElement>('#nx-location-tag-weight');
   if (locationWeight) locationWeight.setAttribute('value', String(card?.location_tag_weight ?? 1));
+  out.querySelector<HTMLInputElement>('#nx-speech-bubble-weight')?.setAttribute('value', String(card?.speech_bubble_weight ?? 1));
   if (card) for (const [id, key, defaultOn] of [
     ['nx-appearance', 'char_appearance', true],
     ['nx-llm-json-retry', 'llm_json_retry', false],
@@ -159,6 +160,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-stream-inline-on', 'stream_inline_tags', false],
     ['nx-stream-inline-autogen', 'stream_inline_autogen', true],
     ['nx-omni-helper', 'omni_helper_prompt', false],
+    ['nx-speech-huge-text', 'speech_huge_text', false],
     ['nx-auto-gen-char-limit-on', 'auto_gen_char_limit_enabled', false],
   ] as const) {
     out.querySelector<HTMLInputElement>('#' + id)?.toggleAttribute('checked', card[key] == null ? defaultOn : Boolean(card[key]));

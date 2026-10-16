@@ -70,6 +70,8 @@ export function rebuildMessageRuntime(source) {
   once('  async function P() {','  async function P() {\n    if(t.uiOpen && await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();');
   once('      auto_aspect: document.getElementById("nx-auto-aspect")', `      character_height: document.getElementById("nx-character-height") ? ee("nx-character-height") : e.character_height !== false,
       character_age: document.getElementById("nx-character-age") ? ee("nx-character-age") : e.character_age !== false,
+      speech_bubble_weight: document.getElementById("nx-speech-bubble-weight") ? (() => { const r = N("nx-speech-bubble-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.speech_bubble_weight ?? 1),
+      speech_huge_text: document.getElementById("nx-speech-huge-text") ? ee("nx-speech-huge-text") : e.speech_huge_text === true,
       auto_aspect: document.getElementById("nx-auto-aspect")`);
   once('          const rawAct = typeof e.querySelectorAll', '          if (await omniHistoryHit(e, f)) return;\n          const rawAct = typeof e.querySelectorAll');
   once('    }, l = async (f) => {', '    }, l = async (f) => {\n      if(nxFloatDrag || nxFloatDragStarting || (!t._nxHostInspectOpen && !nxFloatHidden && nxFloatContains(nxFloatBounds,f?.clientX ?? f?.pageX,f?.clientY ?? f?.pageY)))return;\n      if (t._nxHostInspectOpen) void omniInspectHistoryHover(f).catch(error=>y("warn","inspect.history.hover",String(error)));\n      else void omniHistoryHover().catch(error=>y("warn","image.history",String(error)));');

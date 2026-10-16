@@ -22,7 +22,7 @@ export async function illustrationTtsRequests(id: string, context: TtsChatContex
     if (!text || text.length > 8000 || !allowedTtsText(text, excluded, ttsData().settings.skipChars, ttsData().settings.skipSymbolOnly)) continue;
     requests.push({ context, messageId: `illustration:${id}`, segment: { id: String(index), speaker: String(character.name || '').trim(), text, tone: '', kind: 'illustration', start: 0, end: 0 } });
   }
-  if (!requests.length) throw new Error('이 삽화의 캐릭터 프롬프트에 대사(speechbubble, … text:)가 없습니다.');
+  if (!requests.length) throw new Error('이 삽화의 캐릭터 프롬프트에 대사(speech bubble, … text:)가 없습니다.');
   // Illustration names are the roster's display names (보민). Map each to the
   // TTS character through its trigger words and name variants (Bomin, 김보민)
   // so an existing voice is used instead of creating a new speaker.

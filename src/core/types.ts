@@ -94,6 +94,10 @@ export interface CardSettings {
   auto_aspect: boolean;
   character_height?: boolean;
   character_age?: boolean;
+  /** NAI5 대사삽입: weight on the bubble (and huge text); 1 = plain. */
+  speech_bubble_weight?: number;
+  /** NAI5 대사삽입: adds huge text to every bubble, at the bubble's weight. */
+  speech_huge_text?: boolean;
   /**
    * When true, main-tagger JSON parse failure appends the error and retries the
    * LLM once before failing the job.
