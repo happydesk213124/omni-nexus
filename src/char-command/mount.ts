@@ -65,6 +65,10 @@ export function openCharacterCommandEdit(opts: OpenCharacterCommandOpts): void {
           <pre data-cc-log style="margin:0;min-height:88px;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-word;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:#070b12;color:#c8d4e6;padding:8px 10px;font:12px/1.45 ui-monospace,Consolas,monospace">LLM 호출 후 추가(+)/삭제(−)가 여기 표시됩니다.</pre>
         </label>
         ${optionBarHtml({ name: 'cc-preset-name', select: 'cc-preset', save: 'cc-preset-save', del: 'cc-preset-del', namePlaceholder: '명령 프리셋 이름' })}
+        <div data-cc-refs style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;color:#c9d4e6;font:600 12px Segoe UI,sans-serif">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="lb-xnai.lb.extra에서 이 캐릭터 섹션만 함께 보냅니다"><input type="checkbox" data-cc-ref-xnai> lb-xnai 참조</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="키나 제목에 이 캐릭터 이름·별칭이 걸린 로어북 항목(최대 5개)을 함께 보냅니다"><input type="checkbox" data-cc-ref-lore> 로어북 참조</label>
+        </div>
         <label style="display:grid;gap:4px;color:#9aa6b8;font-size:11px;font-weight:650">명령어
           <textarea data-cc-cmd rows="5" placeholder="예: 옷만 교복으로 바꾸고 구도는 그대로." style="width:100%;box-sizing:border-box;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:#0b0f18;color:#e8eef8;padding:8px 10px;font:13px/1.45 Segoe UI,sans-serif;resize:vertical;min-height:110px"></textarea>
         </label>
@@ -92,6 +96,8 @@ export function openCharacterCommandEdit(opts: OpenCharacterCommandOpts): void {
   const cmdEl = veil.querySelector('[data-cc-cmd]') as HTMLTextAreaElement;
   const logEl = veil.querySelector('[data-cc-log]') as HTMLElement;
   const busyEl = veil.querySelector('[data-cc-busy]') as HTMLElement;
+  const xnaiEl = veil.querySelector('[data-cc-ref-xnai]') as HTMLInputElement;
+  const loreEl = veil.querySelector('[data-cc-ref-lore]') as HTMLInputElement;
 
   let presets: CommandPreset[] = [];
   let abort: AbortController | null = null;
@@ -153,6 +159,22 @@ export function openCharacterCommandEdit(opts: OpenCharacterCommandOpts): void {
     }
   };
 
+  // The two reference switches are remembered with the settings, like the other options.
+  const loadRefs = async () => {
+    try {
+      const res = await nativeFetch()('/v1/settings', { method: 'GET' });
+      const card = ((res?.settings as Record<string, unknown> | undefined)?.card ?? {}) as Record<string, unknown>;
+      xnaiEl.checked = card.char_command_xnai === true;
+      loreEl.checked = card.char_command_lore === true;
+    } catch { /* stays off */ }
+  };
+  const saveRef = (key: 'char_command_xnai' | 'char_command_lore', el: HTMLInputElement) => el.addEventListener('change', () => {
+    void nativeFetch()('/v1/settings', { method: 'POST', body: { card: { [key]: el.checked } } })
+      .catch(() => toast(veil, '참조 설정을 저장하지 못했습니다', false));
+  });
+  saveRef('char_command_xnai', xnaiEl);
+  saveRef('char_command_lore', loreEl);
+
   const currentInstruction = (): string => {
     const cmd = cleanText(cmdEl.value, 4000);
     const trail = cleanText(trailEl.value, 2000);
@@ -176,6 +198,9 @@ export function openCharacterCommandEdit(opts: OpenCharacterCommandOpts): void {
         instruction: currentInstruction(),
         character,
         signal: request.signal,
+        xnai: xnaiEl.checked,
+        lore: loreEl.checked,
+        scope: ownerScope,
       }) as Record<string, unknown>;
       if(closed || request!==abort || request.signal.aborted)return;
       if (!res?.ok) {
@@ -263,6 +288,7 @@ export function openCharacterCommandEdit(opts: OpenCharacterCommandOpts): void {
 
   document.body.appendChild(veil);
   void loadPresets();
+  void loadRefs();
 }
 
 export { openImagePeek, closeImagePeek };

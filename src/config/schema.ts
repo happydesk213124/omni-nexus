@@ -222,6 +222,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.character_age = ![false, 'false', 0, '0', 'off'].includes(card.character_age as string | number | boolean);
   card.speech_bubble_weight = speechBubbleWeight(card.speech_bubble_weight ?? 1);
   card.speech_huge_text = card.speech_huge_text === true;
+  card.char_command_xnai = card.char_command_xnai === true;
+  card.char_command_lore = card.char_command_lore === true;
   // Missing toggle stays off so old saves retain their reply-generation behavior.
   card.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
   card.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);
