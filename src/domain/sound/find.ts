@@ -8,26 +8,36 @@ export function matchesSoundSearch(item: SoundItem, query: string): boolean {
 }
 
 const termKey = (text: string) => String(text || '').normalize('NFKC').toLowerCase().replace(/[\s~!?.,·…─—\-]+/g, '');
-const pairs = (text: string) => { const out = new Set<string>(); for (let i = 0; i + 1 < text.length; i++) out.add(text.slice(i, i + 2)); return out; };
+/** 뚜벅뚜벅 → 뚜벅, 쾅쾅 → 쾅: a doubled sound is compared once. */
+const half = (text: string) => { const n = text.length; return n >= 2 && n % 2 === 0 && text.slice(0, n / 2) === text.slice(n / 2) ? text.slice(0, n / 2) : text; };
+function distance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length]!;
+}
 
 /**
- * How alike two spellings of a sound are: shared jamo and jamo pairs. NFD splits
- * a syllable into jamo, so 콰광 and 콰앙 share ㅋㅘ and ㅘㅇ though no syllable,
- * and 뚜벅뚜벅 is near 저벅저벅. Free and local, for a first guess the user
- * confirms; the matchers still decide at play time.
+ * How alike two spellings of a sound are, by edit distance over jamo. NFD splits
+ * each syllable into jamo, so 콰광 and 콰앙 differ in two jamo rather than in one
+ * whole syllable, and 철컥 and 철컹 in one. Order counts: 뚜벅뚜벅 shares most
+ * letters with 북적 but sounds nothing like it. Free and local, a first guess
+ * the user confirms; the matchers still decide at play time.
  */
 export function soundWordSimilarity(a: string, b: string): number {
-  const x = termKey(a), y = termKey(b);
+  const x = half(termKey(a)), y = half(termKey(b));
   if (!x || !y) return 0;
   if (x === y) return 1;
   if (x.length >= 2 && y.length >= 2 && (x.includes(y) || y.includes(x))) return 0.8;
-  const jamo = (s: string) => s.normalize('NFD'), letters = (s: string) => new Set([...jamo(s)]);
-  const jaccard = (p: Set<string>, q: Set<string>) => { const all = new Set([...p, ...q]); return all.size ? [...p].filter(v => q.has(v)).length / all.size : 0; };
-  return Math.max(jaccard(letters(x), letters(y)) * 0.75, jaccard(pairs(jamo(x)), pairs(jamo(y))));
+  const p = x.normalize('NFD'), q = y.normalize('NFD');
+  return 1 - distance(p, q) / Math.max(p.length, q.length);
 }
 
 /** Up to `limit` effects a word probably means, best first: by their names, tags and glossary words. */
-export function suggestSfx(word: string, glossary: readonly SfxTerm[], items: readonly SoundItem[], limit = 3, minScore = 0.34): SoundItem[] {
+export function suggestSfx(word: string, glossary: readonly SfxTerm[], items: readonly SoundItem[], limit = 3, minScore = 0.45): SoundItem[] {
   const words = new Map<string, string[]>();
   for (const row of glossary) words.set(row.sfxKey, [...(words.get(row.sfxKey) || []), ...row.terms]);
   return items
