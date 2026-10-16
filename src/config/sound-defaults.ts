@@ -1,4 +1,4 @@
-import type { SoundData, SoundSettings } from '../core/sound-types';
+import type { SoundSettings } from '../core/sound-types';
 import { BGM_TAGS } from '../domain/sound/tags';
 
 export function soundDefaults(): SoundSettings {
@@ -11,7 +11,4 @@ export function soundDefaults(): SoundSettings {
     sfxAutoPlay: 'reply', sfxMaxSec: 6, sfxFirst: true, sfxTrim: true, sfxNormalize: true, listBgm: true, listSfx: true, viewerBgm: false, maxFileMb: 8,
     elevenKey: '', sfxAutoCreate: false, sfxPrompt: '{word} sound effect, short and clean, no music, no speech', sfxDuration: 0,
   };
-}
-export function emptySoundData(): SoundData {
-  return { version: 1, settings: soundDefaults(), bgm: [], sfx: [], glossary: [], unknownTerms: [], folders: { bgm: [], sfx: [] } };
 }

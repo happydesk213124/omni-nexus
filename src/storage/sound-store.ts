@@ -1,5 +1,6 @@
 import type { SfxRule, SfxTerm, SoundData, SoundItem, SoundKind, SoundSettings } from '../core/sound-types';
-import { emptySoundData, soundDefaults } from '../config/sound-defaults';
+import { soundDefaults } from '../config/sound-defaults';
+import { sampleSoundData } from '../config/sound-samples';
 import { psGet, psSet } from './device-store';
 import { soundTags } from '../domain/sound/tags';
 import { sfxMarksFromPattern, sfxMarksProblem } from '../domain/sound/audio';
@@ -81,7 +82,9 @@ export function loadSoundData(): Promise<SoundData> {
   if (state) return Promise.resolve(state);
   return loading ||= (async () => {
     const raw = await psGet(SOUND_DATA_KEY);
-    state = raw == null || raw === '' ? emptySoundData() : normalizeSoundData(typeof raw === 'string' ? JSON.parse(raw) : raw);
+    // Nothing saved yet is a first run: it starts with the example lists. A save
+    // whose lists were emptied is not, so the examples never come back by themselves.
+    state = normalizeSoundData(raw == null || raw === '' ? sampleSoundData() : typeof raw === 'string' ? JSON.parse(raw) : raw);
     return state;
   })().finally(() => { loading = undefined; });
 }

@@ -6,6 +6,7 @@ import { matchesSoundSearch } from '../domain/sound/find';
 import { el, input, val, set, text, esc, dialog, run, notify, download, readJson } from '../tts-ui/common';
 import { uuid } from '../core/util/text';
 import { setWordsFor, wordsFor } from './glossary';
+import { BGM_SAMPLE_CREDIT, BGM_SAMPLE_HOST, sampleSoundData } from '../config/sound-samples';
 
 const LABEL: Record<SoundKind, string> = { bgm: 'BGM', sfx: '효과음' };
 const sizeOf = (item: SoundItem) => !item.bytes ? '' : item.bytes < 1048576 ? `${Math.max(1, Math.round(item.bytes / 1024))}KB` : `${(item.bytes / 1048576).toFixed(1)}MB`;
@@ -77,6 +78,8 @@ export class SoundLibrary {
       tile.addEventListener('dragend', () => { this.dragging = []; tile.classList.remove('dragging'); el(this.id('folders'))?.closest('.voice-folders')?.classList.remove('drop-ready'); });
       list.append(tile);
     });
+    // CC BY 4.0 asks for the credit wherever the example music is offered.
+    if (this.kind === 'bgm' && items.some(item => item.url?.includes(BGM_SAMPLE_HOST))) { const credit = document.createElement('p'); credit.className = 'snd-credit'; credit.textContent = BGM_SAMPLE_CREDIT; list.append(credit); }
     const count = this.selected.size;
     text(this.id('selected-count'), count ? `선택 ${count}개` : '선택 없음');
     input(this.id('edit')).disabled = count !== 1;
@@ -187,15 +190,24 @@ export class SoundLibrary {
     this.on('file', async () => {
       const file = input(this.id('file')).files?.[0]; if (!file) return;
       const raw = await readJson(file) as { items?: unknown; folders?: unknown };
-      // Same normalisation as stored data; links and files already in this Risu are kept, duplicates skipped.
-      const parsed = normalizeSoundData({ [this.kind]: raw.items, folders: { [this.kind]: raw.folders } });
-      const list = this.items(), seen = new Set(list.map(item => item.url || item.assetPath));
-      const fresh = parsed[this.kind].filter(item => !seen.has(item.url || item.assetPath)).map(item => ({ ...item, key: uuid() }));
-      list.push(...fresh);
-      for (const name of parsed.folders[this.kind]) if (!soundData().folders[this.kind].includes(name)) soundData().folders[this.kind].push(name);
-      input(this.id('file')).value = ''; await saveSoundData(); this.render(); notify(`${LABEL[this.kind]} ${fresh.length}개를 가져왔습니다.`);
+      input(this.id('file')).value = '';
+      notify(`${LABEL[this.kind]} ${await this.merge(raw.items, raw.folders)}개를 가져왔습니다.`);
     }, 'change');
+    this.on('samples', async () => {
+      const samples = sampleSoundData(), added = await this.merge(samples[this.kind], samples.folders[this.kind]);
+      notify(added ? `예제 ${LABEL[this.kind]} ${added}개를 더했습니다.` : `예제 ${LABEL[this.kind]}은 이미 모두 목록에 있습니다.`);
+    });
     this.render();
+  }
+  /** Same normalisation as stored data; links and files already in this Risu are kept, duplicates skipped. */
+  private async merge(items: unknown, folders: unknown): Promise<number> {
+    const parsed = normalizeSoundData({ [this.kind]: items, folders: { [this.kind]: folders } });
+    const list = this.items(), seen = new Set(list.map(item => item.url || item.assetPath));
+    const fresh = parsed[this.kind].filter(item => !seen.has(item.url || item.assetPath)).map(item => ({ ...item, key: uuid() }));
+    list.push(...fresh);
+    for (const name of parsed.folders[this.kind]) if (!soundData().folders[this.kind].includes(name)) soundData().folders[this.kind].push(name);
+    await saveSoundData(); this.render();
+    return fresh.length;
   }
   async moveSelected(target: string): Promise<void> { await this.moveKeys(this.selected, target); }
   private async moveKeys(keys: ReadonlySet<string>, target: string): Promise<void> {
