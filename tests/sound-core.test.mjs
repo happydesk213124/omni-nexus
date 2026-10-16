@@ -234,3 +234,10 @@ test('a first run starts with the example lists; a save whose lists were emptied
     assert.deepEqual([again.bgm.length, again.sfx.length], [0, 0], 'deleted examples never come back by themselves');
   } finally { delete globalThis.risuai; api.resetSoundStore(); }
 });
+
+test('defaults: quiet music under the voice, a short crossfade, full-level effects cut at 3 s, both off until switched on', () => {
+  const d = api.soundDefaults();
+  assert.deepEqual([d.bgmVolume, d.sfxVolume, d.duck, d.crossfadeMs, d.sfxMaxSec], [0.29, 1, 0.26, 500, 3]);
+  assert.deepEqual([d.bgmEnabled, d.sfxEnabled], [false, false], 'installing changes nothing in the chat until a switch is on');
+  assert.deepEqual([d.bgmMatcher, d.sfxMatcher], ['auto', 'auto'], 'auto is JEV with a key and the LLM without one; jev alone would fail before a key is set');
+});
