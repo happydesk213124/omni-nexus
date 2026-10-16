@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 import { chromium } from 'playwright';
 
-const compiled = await build({stdin:{contents:"export * from './src/domain/tts/module';export * from './src/domain/tts/anchors';export * from './src/domain/tts/segment';export * from './src/domain/tts/filter';export * from './src/storage/tts-module';export * from './src/domain/message-controls';export * from './src/domain/inray-display';export * from './src/config/tts-defaults';export {normalizeTtsSettings} from './src/storage/tts-store';export * from './src/domain/tts/illustration';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
+const compiled = await build({stdin:{contents:"export * from './src/domain/tts/module';export * from './src/domain/tts/anchors';export * from './src/domain/tts/segment';export * from './src/domain/tts/filter';export * from './src/storage/tts-module';export * from './src/domain/message-controls';export * from './src/domain/inray-display';export * from './src/config/tts-defaults';export {normalizeTtsSettings} from './src/storage/tts-store';export * from './src/domain/tts/illustration';export {soundModule} from './src/domain/sound/module';export {soundDefaults} from './src/config/sound-defaults';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const external = JSON.parse(readFileSync('tests/fixtures/tts-external-display.json','utf8'));
 const status = JSON.parse(readFileSync('tests/fixtures/tts-dd-status.json','utf8')).data;
@@ -151,12 +151,14 @@ test('symbol-only lines are never voiced; brackets are stripped only from what F
 });
 
 test('status-panel exclusions are default, merged once into older saves, then left to the user',()=>{
-  const terms=['┣','§','::','DD_','✨Upcoming'];
+  // § is the effect mark now: a line with one is read without it (segment.ts), so it is no longer a default.
+  const terms=['┣','::','DD_','✨Upcoming'];
   assert.deepEqual(api.ttsExcludeTerms(api.ttsDefaults().excludeText),terms);
   const old=api.normalizeTtsSettings({excludeText:'상태창'});
   assert.deepEqual(api.ttsExcludeTerms(old.excludeText),['상태창',...terms],'existing terms stay first');
   assert.equal(old.excludeSeed,1);
   assert.equal(api.normalizeTtsSettings({...old,excludeText:'상태창'}).excludeText,'상태창','a user who removed the defaults keeps them removed');
+  assert.equal(api.normalizeTtsSettings({excludeText:'┣, §, ::',excludeSeed:1}).excludeText,'┣, §, ::','a save that has § keeps it: it is never taken out by itself');
   assert.deepEqual(api.ttsExcludeTerms('a,\nb\nc, a'),['a','b','c'],'one term per line works in the textarea too');
   for(const line of ['┣ 체력 99','JET::120','DD_STATUS 표시','✨Upcoming: 다음 화'])assert.deepEqual(api.parseTtsMessage(line,terms),[],line);
 });
@@ -350,4 +352,27 @@ test('a one-line tag hides only its own line; a block tag still hides its block'
   assert.deepEqual(kinds('<span class="x">장면</span>\n그녀가 웃었다.'), [['narration', '']]);
   assert.deepEqual(kinds('<br/>\n그녀가 웃었다.'), [['narration', '']]);
   assert.deepEqual(kinds('<div class="panel">\n상태 패널 안의 글\n<img src=a.webp>\n여전히 패널 안\n</div>\n\n바깥 나레이션이다.'), [['narration', '']], 'lines inside a <div> block stay hidden');
+});
+
+test('narration with parentheses gets its control; a speaker header alone does not', () => {
+  const rules = api.ttsModule(visible).regex;
+  assert.deepEqual(kinds(apply('그는 (작게) 한숨을 쉬었다.', rules)), ['narration'], 'parentheses are prose');
+  assert.deepEqual(kinds(apply('(조용한 밤이었다)', rules)), ['narration']);
+  assert.deepEqual(kinds(apply('하린 (angry):', rules)), [], 'a cue header waiting for its quote is not narration');
+  assert.deepEqual(kinds(apply('하린 (angry): "그만해."', rules)), ['dialogue']);
+  const source = '그는 (작게) 한숨을 쉬었다.';
+  assert.equal(bound(apply(source, rules), source)[0]?.kind, 'narration', 'the host binds it to the line the player reads');
+});
+
+test('a line with an effect keeps its own control next to the effect ▶, as it is read', () => {
+  const sfx = api.soundModule('sfx', { ...api.soundDefaults(), sfxEnabled: true }, []).regex, tts = api.ttsModule(visible).regex;
+  const SFX = /data-omni-sfx="1"/g;
+  for (const [line, kind] of [['§끼이익§ 문이 열렸다.', 'narration'], ['그가 문을 닫았다. §쾅§', 'narration'], ['하린 (calm): "§쾅§ 깜짝이야."', 'dialogue']]) {
+    const html = apply(line, [...sfx, ...tts]);
+    assert.equal((html.match(SFX) || []).length, 1, line + ': the effect ▶');
+    assert.deepEqual(kinds(html), [kind], line + ': and the line\'s own control');
+    assert.equal(bound(html, line).filter(Boolean)[0]?.kind, kind, line + ': and the host pairs that control with the line it reads');
+  }
+  // A real raw block is still guarded: a button that is not ours gets no control in its line.
+  assert.deepEqual(kinds(apply('<button>눌러</button> 문이 열렸다.', tts)), []);
 });

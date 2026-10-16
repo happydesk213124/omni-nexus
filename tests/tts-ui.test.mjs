@@ -243,7 +243,10 @@ test('production settings persist independently, edit voice tiles and survive re
     await openPage('tts'); await page.locator('#tab-settings').click();await page.locator('#translation').selectOption('google-free');
     await page.locator('#tts-exclude-text').fill('상태창, 체력\n[시스템]');
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, 체력\n[시스템]';});
-    assert.equal(await page.locator('#tts-omit-characters').inputValue(),'[, ]');
+    assert.equal(await page.locator('#tts-omit-characters').inputValue(),'[, ], (, )');
+    assert.equal(await page.locator('#tts-omit-paren-text').isChecked(),false,'parenthesized words are read by default');
+    await page.locator('#tts-omit-paren-text').check();await page.waitForFunction(()=>window.ttsData().settings.omitParenText===true);
+    await page.locator('#tts-omit-paren-text').uncheck();await page.waitForFunction(()=>window.ttsData().settings.omitParenText===false);
     await page.locator('#tts-omit-characters').fill('[, ], 【, 】');
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.omitCharacters==='[, ], 【, 】';});
     assert.equal(await page.locator('#speed').evaluate(n=>n.closest('[data-nx-help-id]')?.dataset.nxHelpId),'speed','each TTS row resolves to its own help tip');

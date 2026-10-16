@@ -99,7 +99,8 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.equal(api.soundModule('sfx', { ...settings, sfxCue: false }, []).lorebook.length, 0);
   assert.equal(api.soundModule('sfx', { ...settings, sfxRules: settings.sfxRules.map(r => ({ ...r, enabled: false })) }, []).lorebook.length, 0, 'no rule in use, no instruction');
   const own = api.soundModule('sfx', { ...settings, sfxRules: [{ id: 'mine', name: 'mine', open: '【', close: '】', enabled: true }] }, []);
-  assert.match(own.lorebook[0]?.content || '', /문이 【쾅】 닫혔다/, 'the instruction uses the marks the chat will show, for any rule');
+  assert.match(own.lorebook[0]?.content || '', /\n【쾅】\n문이 닫혔다\./, 'the instruction uses the marks the chat will show, for any rule, on a line of their own');
+  assert.match(own.lorebook[0]?.content || '', /Never put the marks inside a narration or dialogue line/);
   assert.equal(render(own.regex, '【쾅】').includes('data-omni-sfx'), true);
   assert.equal(render(sfx.regex, '<div title="§쾅§">x</div>'), '<div title="§쾅§">x</div>', 'a mark inside a tag attribute gets no button');
 });
@@ -108,14 +109,20 @@ test('cues join the TTS lines in order; effect words are played, not read', () =
   const rules = api.soundDefaults().sfxRules;
   const reply = '[[bgm:calm,cafe,slow]]\n그가 문을 열었다. §문 쾅§ 소리가 울렸다.\n하린 (calm): "괜찮아."\n[[bgm:tense,chase,fast]]\n§우르르 쾅§';
   const rows = api.parseTtsMessage(reply, [], 1, true, { bgm: true, sfxRules: rules });
-  assert.deepEqual(rows.map(r => [r.kind, r.text]), [['bgm', 'calm, cafe, slow'], ['sfx', '문 쾅'], ['narration', '그가 문을 열었다. §문 쾅§ 소리가 울렸다.'], ['dialogue', '괜찮아.'], ['bgm', 'tense, chase, fast'], ['sfx', '우르르 쾅']]);
-  assert.equal(rows[2].spoken, '그가 문을 열었다. 소리가 울렸다.');
+  // An effect past the middle of its line plays after the line; the music is always set first.
+  assert.deepEqual(rows.map(r => [r.kind, r.text]), [['bgm', 'calm, cafe, slow'], ['narration', '그가 문을 열었다. §문 쾅§ 소리가 울렸다.'], ['sfx', '문 쾅'], ['dialogue', '괜찮아.'], ['bgm', 'tense, chase, fast'], ['sfx', '우르르 쾅']]);
+  assert.equal(rows[1].spoken, '그가 문을 열었다. 소리가 울렸다.');
+  const order = text => api.parseTtsMessage(text, [], 1, true, { bgm: true, sfxRules: rules }).map(r => r.kind);
+  assert.deepEqual(order('§끼이익§ 문이 열렸다.'), ['sfx', 'narration'], 'a mark in the first half: the effect, then the line');
+  assert.deepEqual(order('그가 문을 닫았다. §쾅§'), ['narration', 'sfx'], 'in the second half: the line, then the effect');
+  assert.deepEqual(order('하린 (calm): "§쾅§ 깜짝이야."'), ['sfx', 'dialogue'], 'the same inside a dialogue line');
+  assert.deepEqual(order('하린 (calm):\n"놀랐잖아. §쾅§"'), ['dialogue', 'sfx'], 'and in a two-line cue');
   assert.deepEqual(rows[4].tags, ['tense', 'chase', 'fast'], 'a second cue changes the music mid-reply');
-  assert.equal(rows[1].context, '그가 문을 열었다. §문 쾅§ 소리가 울렸다.');
+  assert.equal(rows[2].context, '그가 문을 열었다. §문 쾅§ 소리가 울렸다.');
   assert.equal(rows.filter(r => r.kind === 'narration').length, 1, 'a line that is only an effect is not read');
   assert.deepEqual(api.parseTtsMessage(reply).map(r => r.kind), ['narration', 'dialogue', 'narration'], 'without sound on, nothing changes');
   // Chat controls exist only for spoken lines: a cue never takes one.
-  assert.deepEqual(api.matchTtsAnchors([{ kind: 'narration', text: '문 쾅' }, { kind: 'narration', text: '그가 문을 열었다. §문 쾅§ 소리가 울렸다.' }], rows), [-1, 2]);
+  assert.deepEqual(api.matchTtsAnchors([{ kind: 'narration', text: '문 쾅' }, { kind: 'narration', text: '그가 문을 열었다. §문 쾅§ 소리가 울렸다.' }], rows), [-1, 1]);
 });
 
 test('TTS never reads a streaming-tag block, even one spanning lines or still open', () => {

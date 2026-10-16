@@ -85,6 +85,10 @@ export interface TtsSettings {
   stripBrackets: boolean;
   /** Comma-separated literal text omitted from speech, never from the chat. */
   omitCharacters: string;
+  /** 1 once ( and ) were added to an older omit list; later edits win. */
+  omitSeed?: number;
+  /** Also leave out the words inside parentheses, not just the marks. */
+  omitParenText: boolean;
   /** Base delivery for every voice, English Fish cues by comma; a character's own replaces it. */
   tone: string;
   /** Skip lines that hold only digits and symbols ([00:10… 00:09…]). */

@@ -23,7 +23,10 @@ const GUARD_OPEN = '\uf8f0', GUARD_CLOSE = '\uf8f1';
 const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
 const OPEN = `<(?:${TAGS})(?:\\s[^<>\\n]*)?/?>`;
 const CLOSE = `</(?:${TAGS})\\s*>`;
-const TAG = `(?:${OPEN}|${CLOSE})`;
+// The sound module's ▶ (inserted earlier, inside the line) is part of the prose line,
+// so a line with an effect keeps its own narration or dialogue control.
+const SOUND_TAIL = '<span data-omni-(?:sfx|bgm)-tail="1"><button [^<>\\n]*></button></span>';
+const TAG = `(?:${SOUND_TAIL}|${OPEN}|${CLOSE})`;
 // A guarded block is consumed whole by the same scan, keeping every rule linear.
 // Its copy of the control lands right after the closing marker and is released.
 const GUARDED = '(\\uF8F0[^\\uF8F1]*\\uF8F1)';
@@ -97,13 +100,14 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
         out: '$1<div data-omnitts-image="1" x-omnitts-image="1"><button type="button" data-omnitts-play="1" x-omnitts-play="1" title="삽화 대사 재생" aria-label="삽화 대사 재생">▶</button><span data-omnitts-cast="1" x-omnitts-cast="1"></span></div>' },
       // Code, CSS, form fields and similar raw blocks never receive a control.
       { comment: 'omnitts-guard', type: 'editdisplay', ableFlag: true, flag: `gi<order ${TTS_DISPLAY_ORDER.guard}>`,
-        in: '(```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)|<!--[\\s\\S]*?(?:-->|$)|<(style|script|textarea|title|pre|code|svg|math|select|template|xmp|noscript|table|iframe|object|button)\\b[\\s\\S]*?(?:<\\/\\2\\s*>|$))',
+        in: '(```[\\s\\S]*?(?:```|$)|~~~[\\s\\S]*?(?:~~~|$)|<!--[\\s\\S]*?(?:-->|$)|<(?!button [^<>]*data-omni-(?:sfx|bgm)=)(style|script|textarea|title|pre|code|svg|math|select|template|xmp|noscript|table|iframe|object|button)\\b[\\s\\S]*?(?:<\\/\\2\\s*>|$))',
         out: `${GUARD_OPEN}$1${GUARD_CLOSE}` },
       { comment: 'omnitts-dialogue', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.dialogue}>`,
-        in: `${head}(?=(?:[^\\n<>\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?["“‘'「『][^\\n]*?["”’'」』])${LINE_END}`,
+        // A line may end in the effect ▶ (문을 닫았다 §쾅§▶): the line's own control goes after it.
+        in: `${head}(?=(?:[^\\n<>\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?["“‘'「『][^\\n]*?(?:["”’'」』]|${SOUND_TAIL}))${LINE_END}`,
         out: `$1$2$3${anchor('dialogue')}$4$5` },
       { comment: 'omnitts-narration', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.narration}>`,
-        in: `${head}(?=(?:[^\\n<>"“”‘’「」『』()\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?[^\\s<>:：])${LINE_END}`,
+        in: `${head}(?=(?:[^\\n<>"“”‘’「」『』\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?(?:[^\\s<>:：]|${SOUND_TAIL}))${LINE_END}`,
         out: `$1$2$3${anchor('narration')}$4$5` },
       { comment: 'omnitts-release-guard', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.release}>`,
         in: '\\uF8F1(?:<span data-omnitts-tail="1"><button [^<>]*></button></span>)+', out: GUARD_CLOSE },

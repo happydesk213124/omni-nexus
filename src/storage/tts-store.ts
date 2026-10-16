@@ -33,6 +33,13 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     result.excludeSeed = 1;
   }
   if (typeof result.tone !== 'string') result.tone = '';
+  // Older saves read (작게) to Fish as a delivery tag. Add ( and ) once, and only them; a list
+  // emptied on purpose stays empty, and removing them later sticks.
+  if (raw.omitSeed !== 1) {
+    const missing = result.omitCharacters.trim() ? ['(', ')'].filter(term => !ttsExcludeTerms(result.omitCharacters).includes(term)) : [];
+    if (missing.length) result.omitCharacters = [result.omitCharacters.trim(), missing.join(', ')].filter(Boolean).join(', ');
+    result.omitSeed = 1;
+  }
   if (typeof result.translation.narrationLanguage !== 'string') result.translation.narrationLanguage = '';
   const clamp = (n: number, min: number, max: number, fallback: number) => Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   result.rate = clamp(result.rate, .25, 4, 1);

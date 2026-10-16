@@ -1,7 +1,7 @@
 import type { TtsCharacter, TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
 import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/segment';
-import { allowedTtsText, ttsExcludeTerms, ttsSpokenText } from '../domain/tts/filter';
+import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
 import { ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
@@ -16,6 +16,8 @@ import type { TtsChatContext } from './tts-context';
 import { clearTtsVoiceError, recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
 
 /** tone / model: a preview's own base delivery and model (the character popup's unsaved fields). */
+/** What Fish is sent: the words inside parentheses too unless 「괄호 안의 말도 빼고 읽기」, then the omitted characters out. */
+const spokenText = (text: string, settings: Pick<TtsSettings, 'omitCharacters' | 'omitParenText'>) => ttsSpokenText(settings.omitParenText ? ttsWithoutParentheticals(text) : text, settings.omitCharacters);
 export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number; tone?: string; model?: string }
 /**
  * BGM·효과음 rows in the list. The sound runtime registers itself here, so TTS
@@ -91,7 +93,7 @@ export class OmniTtsRuntime {
     const s = ttsData().settings;
     this.queue.configure(s.concurrency, s.background);
     this.player.configure(s.rate, s.volume);
-    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.skipSymbolOnly]);
+    const generation = JSON.stringify([s.enabled, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
@@ -243,7 +245,7 @@ export class OmniTtsRuntime {
       const own = (value: unknown) => typeof value === 'string' ? value.trim() : '';
       const base = own(request.tone) || own(character?.tone) || settings.tone, model = own(request.model) || own(character?.model);
       const voiceSettings = model ? { ...settings, fish: { ...settings.fish, model } } : settings;
-      return fishId ? [{ request, text: ttsSpokenText(request.segment.spoken ?? request.segment.text, settings.omitCharacters), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: speechTone(request.segment.tone, base), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
+      return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: speechTone(request.segment.tone, base), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error('캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
@@ -273,7 +275,7 @@ export class OmniTtsRuntime {
       void this.translations.flush().catch(error => this.report(error));
     }
     for (const p of prepared) {
-      p.text = ttsSpokenText(p.text, settings.omitCharacters);
+      p.text = spokenText(p.text, settings);
       p.signature = synthesisSignature(p.text, p.tone, p.fishId, p.settings);
     }
     return prepared;
