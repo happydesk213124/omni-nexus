@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.3.1';
+const PLUGIN_VERSION = '1.3.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -985,6 +985,15 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.3.2 · [[…]]를 쓰는 다른 모듈과의 충돌 방지</strong>
+          <div class="muted" style="margin-top:8px">2026.10.17 · 위키화 모듈처럼 [[…]]를 링크로 바꾸는 모듈을 켜도 그림이 파란 글자로 바뀌지 않습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>다른 모듈이 돌기 전에 우리 표시(그림·생성 중 스피너·분홍 대기 슬롯·스트리밍 태그 블록·BGM ♪·[[imgstart]])의 [[ ]]만 잠깐 보이지 않는 문자로 바꿔 두고, 우리가 그리기 직전에 되돌립니다. 다른 모듈의 [[링크]]는 그대로 동작합니다.</li>
+            <li>화면 표시에만 적용되며 채팅 원문과 모델에 보내는 요청은 바뀌지 않습니다. 따로 켤 필요가 없습니다.</li>
+            <li>⚛️ omni 보조 프롬 모듈이 바뀐 게 없어도 실행할 때마다 다시 저장되던 문제를 고쳤습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.3.1 · 스트리밍 중 TTS 미리 만들기 중복 수정</strong>
@@ -15071,7 +15080,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.3.1 · 스트리밍 중인 답변은 줄바꿈까지 끝난 줄만 TTS를 미리 만들어 같은 줄을 여러 번 만들지 않고, OpenRouter 연결에서도 미리 만들기가 동작합니다. 1.3.0 · BGM·효과음 메뉴와 TTS 플로팅 뷰어 BGM 바, 메인 모델 스트리밍 중 태그 생성, 말풍선 강조·글씨 크게, 샷 태그 수정 히스토리 다시 불러오기·삭제와 불러오기 버튼을 추가했습니다. 1.2.3 · 나레이션·혼잣말 카드(글로벌 따라가기·캐릭터별 속도·성별 기타), TTS 설정 내보내기·불러오기, Fish 모델 직접 입력과 오류 안내를 추가했고, 이미지 태그 바로 아래 줄에도 재생 버튼이 붙습니다. 1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
+    body: "1.3.2 · [[…]]를 링크로 바꾸는 모듈(위키화 등)을 켜도 그림·스피너·스트리밍 슬롯·BGM ♪가 깨지지 않습니다. 1.3.1 · 스트리밍 중인 답변은 줄바꿈까지 끝난 줄만 TTS를 미리 만들어 같은 줄을 여러 번 만들지 않고, OpenRouter 연결에서도 미리 만들기가 동작합니다. 1.3.0 · BGM·효과음 메뉴와 TTS 플로팅 뷰어 BGM 바, 메인 모델 스트리밍 중 태그 생성, 말풍선 강조·글씨 크게, 샷 태그 수정 히스토리 다시 불러오기·삭제와 불러오기 버튼을 추가했습니다. 1.2.3 · 나레이션·혼잣말 카드(글로벌 따라가기·캐릭터별 속도·성별 기타), TTS 설정 내보내기·불러오기, Fish 모델 직접 입력과 오류 안내를 추가했고, 이미지 태그 바로 아래 줄에도 재생 버튼이 붙습니다. 1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
