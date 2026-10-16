@@ -59,6 +59,10 @@ export const TTS_NARRATION_OFF_CSS = '[data-omnitts-play][data-omnitts-kind="nar
 export const TTS_MODULE_CSS = [
   // A zero-size inline anchor: wrapping, line height and spacing are exactly
   // what the message would have without TTS. The control floats beside it.
+  // The anchor takes no room, so a line that fills the bubble would hang its control
+  // outside it. A block holding one (directly, or at the end of an inline tag) keeps
+  // a gutter a hair wider than the control (.3em gap + 26px); other blocks are untouched.
+  ':is(p,div,li,blockquote,dd,td,th,h1,h2,h3,h4,h5,h6):has(> [data-omnitts-tail],> :is(span,em,strong,b,i,u,s,del,ins,mark,small,big,font,a,q,sub,sup,cite,abbr,dfn) > [data-omnitts-tail]){padding-inline-end:32px}',
   '[data-omnitts-tail]{display:inline-block;position:relative;width:0;height:0;margin:0;padding:0;border:0;vertical-align:middle;line-height:0;white-space:nowrap;overflow:visible}',
   '[data-omnitts-tail]>[data-omnitts-play]{position:absolute;left:.3em;top:0;transform:translateY(-50%);z-index:1;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;min-width:0;min-height:0;margin:0;padding:0;border:1px solid #8262bb77;border-radius:50%;background:#22192fd9;color:#c6afff;font-size:0;line-height:0;cursor:pointer;box-shadow:none}',
   '[data-omnitts-play][data-omnitts-kind]::before{content:"";display:block;box-sizing:border-box;width:0;height:0;margin-left:2px;border-style:solid;border-width:5px 0 5px 8px;border-color:transparent transparent transparent currentColor}',

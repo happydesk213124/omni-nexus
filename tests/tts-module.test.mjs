@@ -311,7 +311,7 @@ test('narration OFF does not change the module; hiding is left to the plugin',as
   } finally {await browser.close();}
 });
 
-test('controls never change wrapping and sit right after the last glyph; the playing control animates',async()=>{
+test('controls change wrapping only by their gutter and sit right after the last glyph; the playing control animates',async()=>{
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try{
     const page=await browser.newPage();
@@ -319,12 +319,24 @@ test('controls never change wrapping and sit right after the last glyph; the pla
     const toggles={toggle_ban_CSS:0,toggle_cuevisible:1};
     for(const width of [233,320,517,900])for(const [withTts,without] of [[apply(source,[...external,...plain.regex],toggles),apply(source,external,toggles)],['<p>'+apply(source,plain.regex).replace('\n','<br>')+'</p>','<p>'+source.replace('\n','<br>')+'</p>']]){
       await page.setViewportSize({width:width+80,height:700});
-      const lines=async html=>{
+      // Blocks are addressed by their place among element children, controls left out, so both pages agree.
+      const lines=async (html,gutters)=>{
         await page.setContent(plain.backgroundEmbedding+`<style>.regex-quote-block{border:1px solid #888;padding:6px}</style><main style="width:${width}px;font:20px/1.5 sans-serif">${html}</main>`);
-        return page.locator('main').evaluate(n=>{const walker=document.createTreeWalker(n,NodeFilter.SHOW_TEXT),rows=[];let t;while(t=walker.nextNode()){const range=document.createRange();for(let i=0;i<t.length;i++){range.setStart(t,i);range.setEnd(t,i+1);const r=range.getBoundingClientRect();if(r.width)rows.push([t.data[i],Math.round(r.left),Math.round(r.top)]);}}return {rows,height:n.getBoundingClientRect().height};});
+        return page.locator('main').evaluate((n,gutters)=>{
+          const kids=el=>[...el.children].filter(c=>!c.matches('[data-omnitts-tail]'));
+          const pathOf=el=>{const path=[];for(let e=el;e!==n;e=e.parentElement)path.unshift(kids(e.parentElement).indexOf(e));return path;};
+          const at=path=>path.reduce((el,i)=>kids(el)[i],n);
+          // The page without TTS gets the same gutter on the same blocks; the page with TTS reports where it has one.
+          if(gutters)for(const path of gutters)at(path).style.paddingInlineEnd='32px';
+          const found=gutters?null:[...n.querySelectorAll('*')].filter(el=>!el.closest('[data-omnitts-tail]')&&getComputedStyle(el).paddingInlineEnd==='32px').map(pathOf);
+          const walker=document.createTreeWalker(n,NodeFilter.SHOW_TEXT),rows=[];let t;while(t=walker.nextNode()){const range=document.createRange();for(let i=0;i<t.length;i++){range.setStart(t,i);range.setEnd(t,i+1);const r=range.getBoundingClientRect();if(r.width)rows.push([t.data[i],Math.round(r.left),Math.round(r.top)]);}}
+          return {layout:{rows,height:n.getBoundingClientRect().height},found};
+        },gutters);
       };
-      const before=await lines(without),after=await lines(withTts);
-      assert.deepEqual(after,before,'every glyph keeps its exact position: '+width);
+      const after=await lines(withTts),before=await lines(without,after.found);
+      assert.ok(after.found.length>0,'the blocks holding a control keep a gutter for it');
+      assert.deepEqual(after.layout,before.layout,'every glyph sits where it would without TTS, given the same gutter: the gutter is the only change: '+width);
+      await lines(withTts);
       const buttons=page.locator('[data-omnitts-play]');
       assert.equal(await buttons.count(),2);
       for(let i=0;i<2;i++){
