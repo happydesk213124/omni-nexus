@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 test('restricted SafeDOM host binds module buttons, honors five slots, stop interlock and cross-message cache',async()=>{
-  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';import {omniSound} from './src/services/sound-runtime';import {soundData} from './src/storage/sound-store';Object.assign(window,{cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings,omniSound,soundData});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
+  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';import {omniSound} from './src/services/sound-runtime';import {soundData,updateSoundSettings} from './src/storage/sound-store';Object.assign(window,{cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings,omniSound,soundData,updateSoundSettings});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage(),errors=[];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
@@ -159,9 +159,25 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     const bar=await page.locator('[data-tts-bgm]').boundingBox(),headOpen=await page.locator('[data-tts-header]').boundingBox();
     assert.ok(Math.abs(headOpen.y-headBefore.y)<=2,'opening the BGM bar keeps the header in place');
     assert.ok(Math.abs(bar.y+bar.height-headOpen.y)<=2,'the bar sits right above the header');
-    assert.equal(await page.locator('[data-tts-control="bgm-power"]').textContent(),'OFF');
-    await page.locator('[data-tts-control="bgm-power"]').click();
-    await page.waitForFunction(()=>window.soundData().settings.bgmEnabled&&document.querySelector('[data-tts-control="bgm-power"]')?.textContent==='ON');
+    // BGM on/off is a setting: the bar has no ON button, and play takes its place at the right end.
+    assert.equal(await page.locator('[data-tts-control="bgm-power"]').count(),0);
+    const rowButtons=await page.locator('[data-tts-control="bgm-pick"]').evaluate(n=>[...n.parentElement.querySelectorAll('[data-tts-control]')].map(b=>b.dataset.ttsControl));
+    assert.deepEqual(rowButtons,['bgm-pick','bgm-guess','bgm-play'],'track, ⚡, then play');
+    // Two levels in one row: BGM, and BGM while TTS speaks; a tap sets each.
+    const slider=async id=>{const box=await page.locator(`[data-tts-control="${id}"]`).boundingBox();await page.mouse.click(box.x+box.width*0.75,box.y+box.height/2);};
+    const [volume,duck]=await Promise.all(['bgm-volume','bgm-duck'].map(id=>page.locator(`[data-tts-control="${id}"]`).boundingBox()));
+    assert.ok(Math.abs(volume.y-duck.y)<=1,'both levels share one row');
+    await slider('bgm-volume');await page.waitForFunction(()=>Math.abs(window.soundData().settings.bgmVolume-0.75)<0.06);
+    await slider('bgm-duck');await page.waitForFunction(()=>Math.abs(window.soundData().settings.duck-0.75)<0.06);
+    assert.match(await page.locator('[data-tts-bgm]').textContent(),/BGM 7\d%[\s\S]*TTS 중 7\d%/,'the bar shows the levels it set');
+    // While a track is fetched, play spins.
+    await page.evaluate(()=>{window.omniSound.bgmLoading='x';window.omniSound.player.onChange();});
+    await page.waitForFunction(()=>document.querySelector('[data-tts-control="bgm-play"] span[style*="omnitts-spin"]'));
+    await page.evaluate(()=>{window.omniSound.bgmLoading='';window.omniSound.player.onChange();});
+    await page.waitForFunction(()=>!document.querySelector('[data-tts-control="bgm-play"] span'));
+    // On/off is the settings page's: set it there, then the bar repaints once before the next press.
+    await page.evaluate(()=>window.updateSoundSettings({bgmEnabled:true}));
+    await page.waitForFunction(()=>window.soundData().settings.bgmEnabled);await page.waitForTimeout(300);
     await page.evaluate(()=>{window.toggledBgm=0;window.omniSound.toggleBgm=async()=>{window.toggledBgm++;};});
     await page.locator('[data-tts-control="bgm-play"]').click();
     await page.waitForFunction(()=>window.toggledBgm===1);

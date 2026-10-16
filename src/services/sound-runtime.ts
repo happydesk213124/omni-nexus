@@ -105,12 +105,18 @@ export class OmniSoundRuntime {
     if (keys.has(this.player.bgmKey)) this.player.stopBgm();
     await saveSoundData();
   }
+  /** The BGM track still being fetched: its buttons spin until it plays. */
+  bgmLoading = '';
   async play(item: SoundItem): Promise<void> { await this.start(item); }
   /** Starts an item; `ended` settles when an effect has finished (a BGM at once). Wrapped: an async function would wait for a returned promise. */
   private async start(item: SoundItem): Promise<{ ended: Promise<void> }> {
     if (item.kind === 'bgm') {
-      const audio = await audioOf(item);
-      this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs); return { ended: Promise.resolve() };
+      this.bgmLoading = item.key; this.player.onChange();
+      try {
+        const audio = await audioOf(item);
+        this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs);
+      } finally { if (this.bgmLoading === item.key) { this.bgmLoading = ''; this.player.onChange(); } }
+      return { ended: Promise.resolve() };
     }
     const clip = await effectClip(item);
     // A preview, or ▶ with TTS off: still one voice at a time.

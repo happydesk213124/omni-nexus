@@ -10,7 +10,7 @@ import { soundData, updateSoundSettings, subscribeSound } from '../storage/sound
 import { currentTtsContext } from '../services/tts-context';
 
 /** The BGM bar opens above the header; a top-anchored viewer moves up by this much so the header stays put. */
-const BGM_H = 76;
+const BGM_H = 100;
 const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
 const LINE_STYLE='backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none;text-shadow:none;transition:none;display:block;width:100%;box-sizing:border-box;margin:0 0 3px;padding:5px 8px;min-height:30px;border:1px solid #ffffff18;border-radius:8px;color:#eee;text-align:left;font:inherit;cursor:pointer;';
@@ -90,7 +90,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
         if(!soundData().settings.bgmEnabled)await updateSoundSettings({bgmEnabled:true});
         await omniSound.play(item);await paint();
       });
-      await bind('bgm-power',()=>updateSoundSettings({bgmEnabled:!soundData().settings.bgmEnabled}));await bind('narration',()=>updateTtsSettings({narration:!ttsData().settings.narration}));await bind('continuous',()=>updateTtsSettings({continuous:!ttsData().settings.continuous}));
+      await bind('bgm-volume',()=>{});await bind('bgm-duck',()=>{});await bind('narration',()=>updateTtsSettings({narration:!ttsData().settings.narration}));await bind('continuous',()=>updateTtsSettings({continuous:!ttsData().settings.continuous}));
       for(const name of ['audio','cache','list'] as const)await bind(name,()=>{const shown=ttsData().settings.panel===name&&!picking;bgmPicking=false;return shown?updateTtsSettings({panel:''}):ttsData().settings.panel===name?paint():updateTtsSettings({panel:name});});
       await bind('locate',async()=>{locating=true;void revealInChat().catch(error=>omniTts.report(error));if(ttsData().settings.panel!=='list')await updateTtsSettings({panel:'list'});else{stateSignature='';await paintState();}});
       await bind('regenerate',()=>withTtsAudio(()=>omniTts.regenerate()));
@@ -128,21 +128,27 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       await actions.get(`line-${line}`)?.node.scrollIntoView({block:'nearest',inline:'nearest'});
     }
   }
-  function bgmState(){const player=omniSound.player;return [soundData().settings.bgmEnabled,player.bgmKey,player.bgmPlaying,omniSound.bgmName(),bgmPicking,bgmGuessing];}
+  function bgmState(){const player=omniSound.player,s=soundData().settings;return [s.bgmEnabled,player.bgmKey,player.bgmPlaying,omniSound.bgmName(),bgmPicking,bgmGuessing,omniSound.bgmLoading,s.bgmVolume,s.duck];}
   const bgmFill=(p:{current:number;duration:number})=>`linear-gradient(to right,#7132f5 ${p.duration>0?p.current/p.duration*100:0}%,#283043 0)`;
+  // The TTS module (on whenever the viewer shows) defines omnitts-spin.
+  const SPIN='<span aria-hidden="true" style="display:inline-block;box-sizing:border-box;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:omnitts-spin .8s linear infinite"></span>';
+  /** A level slider for the bar: label, value and a track a tap or drag sets. */
+  const level=(id:string,label:string,value:number,title:string)=>`<small style="white-space:nowrap;line-height:18px">${label} ${Math.round(value*100)}%</small><button data-tts-control="${id}" aria-label="${title}" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(value*100)}" style="flex:1;min-width:0;height:10px;padding:0;border:1px solid #ffffff24;border-radius:5px;cursor:pointer;background:linear-gradient(to right,#7132f5 ${value*100}%,#283043 0)"></button>`;
   /**
    * BGM bar: the time and its seek bar on top (like the voice bar), then play,
    * the track (opens the track list) and on/off. Repainted with the viewer; the
    * time ticks separately.
    */
   function bgmBar():string{
-    const on=soundData().settings.bgmEnabled,playing=omniSound.player.bgmPlaying,p=omniSound.player.bgmProgress;
+    const s=soundData().settings,playing=omniSound.player.bgmPlaying,p=omniSound.player.bgmProgress;
     const name=esc(omniSound.bgmName()||(soundData().bgm.length?'곡 고르기':'BGM 없음'));
     return `<div data-tts-bgm="1" style="height:${BGM_H}px;box-sizing:border-box;padding:6px 9px;border-bottom:1px solid #ffffff24">`
       +`<div style="display:flex;align-items:center;gap:6px;height:14px"><small data-tts-bgm-time="1" style="min-width:58px;line-height:14px">${clock(p.current)} / ${clock(p.duration)}</small><button data-tts-control="bgm-seek" aria-label="BGM 재생 위치" style="flex:1;border:1px solid #ffffff24;background:${bgmFill(p)};height:10px;border-radius:5px;padding:0;cursor:pointer"></button></div>`
-      +`<div style="display:flex;gap:6px;align-items:center;margin-top:6px">${control('bgm-play',playing?'Ⅱ':'▶','BGM 재생·일시정지',playing)}`
+      +`<div style="display:flex;gap:6px;align-items:center;margin-top:6px">`
       +`<button data-tts-control="bgm-pick" title="BGM 곡 고르기" aria-label="BGM 곡 고르기" aria-expanded="${bgmPicking}" style="${LINE_STYLE}flex:1;min-width:0;width:auto;margin:0;min-height:36px;display:flex;align-items:center;gap:4px;background:${bgmPicking?'#7132f599':'#11182780'}"><span style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">♪ ${name}</span><span aria-hidden="true">${bgmPicking?'▴':'▾'}</span></button>`
-      +`${control('bgm-guess',bgmGuessing?'…':'⚡','이 메시지로 곡 고르기 (JEV·LLM)',bgmGuessing)}${control('bgm-power',on?'ON':'OFF','BGM 켜기·끄기',on)}</div></div>`;
+      // BGM on/off lives in the settings; the bar plays. It spins while a track is fetched.
+      +`${control('bgm-guess',bgmGuessing?'…':'⚡','이 메시지로 곡 고르기 (JEV·LLM)',bgmGuessing)}${control('bgm-play',omniSound.bgmLoading?SPIN:playing?'Ⅱ':'▶','BGM 재생·일시정지',playing||!!omniSound.bgmLoading)}</div>`
+      +`<div style="display:flex;gap:6px;align-items:center;margin-top:6px;height:18px">${level('bgm-volume','BGM',s.bgmVolume,'BGM 볼륨')}${level('bgm-duck','TTS 중',s.duck,'TTS 재생 중 BGM 크기')}</div></div>`;
   }
   /** The BGM list by folder; the track that plays is marked. */
   function bgmPicker():string{
@@ -195,10 +201,11 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   })});
   events.push({type:'pointerdown',id:await doc.addEventListener('pointerdown',(e:HostPoint)=>act(async()=>{
     if(!allowed()||drag?.busy||!await hitHost(viewer,e))return;
-    const sliders=(['volume','seek','bgm-seek'] as const).flatMap(id=>{const a=actions.get(id);return a?[[id,a] as const]:[];});
+    const sliders=(['volume','seek','bgm-seek','bgm-volume','bgm-duck'] as const).flatMap(id=>{const a=actions.get(id);return a?[[id,a] as const]:[];});
     const hits=await Promise.all(sliders.map(([,a])=>hitHost(a.node,e))),row=sliders[hits.indexOf(true)];if(!row)return;
     const rect=await row[1].node.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
-    if(row[0]==='volume')await updateTtsSettings({volume:fraction});else if(row[0]==='bgm-seek'){omniSound.player.seekBgm(fraction*omniSound.player.bgmProgress.duration);await paintBgmTime();}else omniTts.player.seek(fraction*omniTts.player.progress.duration);
+    if(row[0]==='bgm-volume')await updateSoundSettings({bgmVolume:fraction});else if(row[0]==='bgm-duck')await updateSoundSettings({duck:fraction});
+    else if(row[0]==='volume')await updateTtsSettings({volume:fraction});else if(row[0]==='bgm-seek'){omniSound.player.seekBgm(fraction*omniSound.player.bgmProgress.duration);await paintBgmTime();}else omniTts.player.seek(fraction*omniTts.player.progress.duration);
   }))});
   events.push({type:'keydown',id:await doc.addEventListener('keydown',(e:{key:string})=>act(async()=>{
     const volume=actions.get('volume');if(allowed()&&volume&&['ArrowLeft','ArrowRight'].includes(e.key)&&await volume.node.matches(':focus'))await updateTtsSettings({volume:ttsData().settings.volume+(e.key==='ArrowRight'?.05:-.05)});
