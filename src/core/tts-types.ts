@@ -41,6 +41,10 @@ export interface TtsCharacter {
   followId?: string;
   /** Own playback speed; absent follows the player speed. */
   rate?: number;
+  /** Own base delivery, English Fish cues by comma (`soft tone, slow`); absent or empty uses the settings' one. */
+  tone?: string;
+  /** Own Fish model (`s2-pro`, `drama-3`, any id); absent or empty follows the model settings. */
+  model?: string;
 }
 export interface TtsSegment {
   id: string;
@@ -81,6 +85,8 @@ export interface TtsSettings {
   stripBrackets: boolean;
   /** Comma-separated literal text omitted from speech, never from the chat. */
   omitCharacters: string;
+  /** Base delivery for every voice, English Fish cues by comma; a character's own replaces it. */
+  tone: string;
   /** Skip lines that hold only digits and symbols ([00:10… 00:09…]). */
   skipSymbolOnly: boolean;
   skipChars: number;

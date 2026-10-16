@@ -22,27 +22,27 @@ export function button(label: string, action: () => void | Promise<unknown>): HT
 export function download(value: unknown, name: string): void { const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 export async function readJson(file: File): Promise<unknown> { if (file.size > 5 * 1024 * 1024) throw new Error('JSON 파일은 5 MB 이하로 가져와 주세요.'); return JSON.parse(await file.text()); }
 export async function persist(): Promise<void> { omniTts.stop(); await saveTtsData(); document.dispatchEvent(new Event('omnitts-library')); }
-export async function audition(fishId: string, gain = 0): Promise<void> {
+export async function audition(fishId: string, gain = 0, voice: { tone?: string; model?: string } = {}): Promise<void> {
   if (!fishId) throw new Error('Fish 음성을 먼저 선택해 주세요.');
   const reservation = omniTts.reservePlayback();
   await omniTts.player.unlock();
   if (!omniTts.player.ready) return;
   const context = await currentTtsContext().catch(()=>({scope:'audition',rosterScope:'global',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
-  await omniTts.play([{ context, messageId: 'audition', fishId, gain, segment: { id: fishId, text: '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
+  await omniTts.play([{ context, messageId: 'audition', fishId, gain, ...voice, segment: { id: fishId, text: '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
   if (omniTts.player.status === 'error' || omniTts.player.status === 'blocked') throw new Error(omniTts.notice || '미리 듣기를 재생하지 못했습니다.');
 }
 const LISTEN_LABEL = '듣기';
 // Fish has to synthesize before anything is heard, so the ▶ turns into a spinner.
-export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number }): HTMLButtonElement {
+export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number; tone?: string; model?: string }): HTMLButtonElement {
   node.classList.add('tts-listen');
   node.innerHTML = `<span class="tts-listen-icon" aria-hidden="true">▶</span> ${LISTEN_LABEL}`;
   node.addEventListener('click', event => {
     event.preventDefault(); event.stopPropagation();
     if (node.getAttribute('aria-busy') === 'true') return;
-    const { fishId, gain } = read();
+    const { fishId, gain, tone, model } = read();
     node.setAttribute('aria-busy', 'true'); node.classList.add('is-loading');
     const done = () => { node.removeAttribute('aria-busy'); node.classList.remove('is-loading'); };
-    run(async () => { try { await audition(fishId, gain ?? 0); } finally { done(); } });
+    run(async () => { try { await audition(fishId, gain ?? 0, { tone, model }); } finally { done(); } });
   });
   return node;
 }

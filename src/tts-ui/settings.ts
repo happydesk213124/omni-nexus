@@ -22,7 +22,7 @@ export function syncPower(): void {
   text('audio-enable-settings', omniTts.player.ready ? '음성 활성화됨 ♪' : '음성 재생 활성화 ♪');
   text('cache-usage', `캐시 ${omniTts.cache.count}개 · ${(omniTts.cache.bytes / 1024 / 1024).toFixed(1)} MB`);
 }
-function bindTextSetting(id: string, key: 'excludeText' | 'omitCharacters'): void {
+function bindTextSetting(id: string, key: 'excludeText' | 'omitCharacters' | 'tone'): void {
   const field = el<HTMLInputElement | HTMLTextAreaElement>(id); if (!field) return;
   field.value = ttsData().settings[key];
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -70,7 +70,7 @@ export function bindTtsSettings(): void {
     translationUi(); const choice = val('translation-model'), provider = val('translation') === 'custom' ? 'llm' : val('translation');
     return updateTtsSettings({ translation: { provider: provider as TtsSettings['translation']['provider'], language: val('language') === 'custom' ? val('custom-lang') : val('language'), narrationLanguage: ttsData().settings.translation.narrationLanguage, key: provider === 'google' ? val('tts-google-key') : val('tts-deepl-key'), url: provider === 'deepl' ? (val('tts-deepl-plan') === 'API Free' ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate') : '', llm: choice === 'shared' ? { ...ttsData().settings.llm } : llmFrom(choice, ttsData().settings.translation.llm, 'tts-translation') } });
   }, 'change');
-  translationUi(); bindTextSetting('tts-exclude-text', 'excludeText'); bindTextSetting('tts-omit-characters', 'omitCharacters'); syncPower();
+  translationUi(); bindTextSetting('tts-exclude-text', 'excludeText'); bindTextSetting('tts-omit-characters', 'omitCharacters'); bindTextSetting('tts-default-tone', 'tone'); syncPower();
   const unsubscribe = omniTts.subscribe(syncPower);
   const root = el('tts-settings-root');
   const observer = new MutationObserver(() => { if (!root.isConnected) { unsubscribe(); observer.disconnect(); } }); observer.observe(document.body, { childList: true, subtree: true });

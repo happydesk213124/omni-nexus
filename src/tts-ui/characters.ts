@@ -17,6 +17,9 @@ import type { TtsLibrary } from './library';
 import { uuid } from '../core/util/text';
 import { characterAvatar, roleAvatar } from './character-avatar';
 
+/** The popup's model list: '' follows the model settings; anything else is typed under 직접 입력. */
+const MODEL_CHOICES = ['', 's2.1-pro', 's2.1-pro-free', 's2-pro', 's1', 'drama-3'];
+
 function characterVoice(character: Pick<TtsCharacter, 'voiceKey' | 'fishId'>): TtsVoice | undefined {
   const id = fishVoiceId(character.fishId);
   const voices = ttsData().voices;
@@ -128,6 +131,7 @@ export class TtsCharacters {
     const language = c.language || '';
     set('c-language', ['', 'original', 'en', 'ja', 'ko'].includes(language) ? language : 'custom'); set('c-language-custom', ['', 'original', 'en', 'ja', 'ko'].includes(language) ? '' : language);
     el('c-language-custom-wrap').hidden = val('c-language') !== 'custom';
+    this.fillToneModel(c);
     const autoGain = c.autoGain ?? c.gain === 0;
     input('c-gain-manual').checked = !autoGain; input('c-gain').disabled = autoGain;
     text('c-gain-value', autoGain ? '자동' : `${c.gain} dB`); el('character-voice-suggestions').replaceChildren(); el('character-voice-suggestions').hidden = true;
@@ -171,7 +175,17 @@ export class TtsCharacters {
     const rate = src.rate ?? ttsData().settings.rate, rates = el<HTMLSelectElement>('c-rate');
     if (![...rates.options].some(o => Number(o.value) === rate)) rates.add(new Option(`${rate}×`, String(rate)));
     set('c-rate', String(rate)); input('c-rate-on').checked = src.rate !== undefined; rates.disabled = src.rate === undefined;
-    set('c-follow-char', src.followId || ''); text('character-voice-choice', this.voiceLabel(src));
+    set('c-follow-char', src.followId || ''); text('character-voice-choice', this.voiceLabel(src)); this.fillToneModel(src);
+  }
+  /** The card's own base delivery and model; a model not in the list shows as typed. */
+  private fillToneModel(src: TtsCharacter): void {
+    const model = (src.model || '').trim(), known = MODEL_CHOICES.includes(model);
+    set('c-tone', src.tone || ''); set('c-model', known ? model : 'custom'); set('c-model-custom', known ? '' : model);
+    el('c-model-custom-wrap').hidden = val('c-model') !== 'custom';
+  }
+  private readToneModel(): { tone?: string; model?: string } {
+    const tone = val('c-tone').trim(), model = (val('c-model') === 'custom' ? val('c-model-custom') : val('c-model')).trim();
+    return { tone: tone || undefined, model: model || undefined };
   }
   private lockFollowing(locked: boolean): void {
     for (const node of el('character-form').querySelectorAll<HTMLElement>('.fields > *')) { if (node.id === 'c-follow-global-wrap') continue; node.inert = locked; node.style.opacity = locked ? '.45' : ''; }
@@ -181,8 +195,8 @@ export class TtsCharacters {
     if (this.draft.role && this.draft.scope !== 'global' && input('c-follow-global').checked) return { ...this.draft, followGlobal: true };
     const fishId=fishVoiceId(val('c-id')),voice=fishId ? characterVoice({voiceKey:this.draft.voiceKey,fishId}) : undefined;
     const language = val('c-language') === 'custom' ? val('c-language-custom').trim() : val('c-language'), rate = input('c-rate-on').checked ? Number(val('c-rate')) : undefined;
-    if (this.draft.role) return { ...this.draft, tags: list(val('c-tags')), gender: characterGender(val('c-gender')), fishId, voiceKey: voice?.key || '', gain: Number(val('c-gain')), autoGain: !input('c-gain-manual').checked, language, rate, followGlobal: this.draft.scope === 'global' ? undefined : input('c-follow-global').checked, followId: val('c-follow-char') || undefined };
-    return { ...this.draft, name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:characterGender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true', autoGain:!input('c-gain-manual').checked, language, rate };
+    if (this.draft.role) return { ...this.draft, tags: list(val('c-tags')), gender: characterGender(val('c-gender')), fishId, voiceKey: voice?.key || '', gain: Number(val('c-gain')), autoGain: !input('c-gain-manual').checked, language, rate, ...this.readToneModel(), followGlobal: this.draft.scope === 'global' ? undefined : input('c-follow-global').checked, followId: val('c-follow-char') || undefined };
+    return { ...this.draft, name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:characterGender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true', autoGain:!input('c-gain-manual').checked, language, rate, ...this.readToneModel() };
   }
   private save(commitIdentity = false): boolean {
     if (!this.draft || !ttsData().settings.enabled) return false;
@@ -256,6 +270,7 @@ export class TtsCharacters {
     el('c-rate-on')?.addEventListener('change', () => { input('c-rate').disabled = !input('c-rate-on').checked; });
     on('character-jev-folder', async () => { await updateTtsSettings({ characterFolder: val('character-jev-folder') }); }, 'change');
     el('c-language')?.addEventListener('change', () => { el('c-language-custom-wrap').hidden = val('c-language') !== 'custom'; });
+    el('c-model')?.addEventListener('change', () => { el('c-model-custom-wrap').hidden = val('c-model') !== 'custom'; });
     for (const field of el('character-form').querySelectorAll<HTMLInputElement | HTMLSelectElement>('input,select')) {
       field.addEventListener('input',()=>{if(ttsData().characters.some(c=>c.id===this.draft?.id))this.save();});
       field.addEventListener('change',()=>{this.save(['c-name','c-surname','c-given_name','c-surname_variants','c-given_name_variants'].includes(field.id));});
@@ -267,8 +282,9 @@ export class TtsCharacters {
     auditionButton(el<HTMLButtonElement>('test-character-editor'), () => {
       // A card that follows another character is heard with that character's voice and loudness.
       const lead = this.draft?.role ? this.followed(val('c-follow-char') || undefined) : undefined;
-      if (lead) return { fishId: lead.fishId || characterVoice(lead)?.fishId || '', gain: ttsCharacterGain(lead) };
-      return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0 };
+      // The unsaved base delivery and model are heard too.
+      if (lead) return { fishId: lead.fishId || characterVoice(lead)?.fishId || '', gain: ttsCharacterGain(lead), ...this.readToneModel() };
+      return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0, ...this.readToneModel() };
     });
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
     on('choose-character-voice', () => { this.draft = this.read(); dialog('character-dialog',false); this.library.pickVoice(voice => { this.tab('tts-characters'); dialog('character-dialog'); this.choose(voice); }); });

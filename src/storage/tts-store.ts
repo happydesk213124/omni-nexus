@@ -32,6 +32,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     if (missing.length) result.excludeText = [result.excludeText.trim(), missing.join(', ')].filter(Boolean).join(', ');
     result.excludeSeed = 1;
   }
+  if (typeof result.tone !== 'string') result.tone = '';
   if (typeof result.translation.narrationLanguage !== 'string') result.translation.narrationLanguage = '';
   const clamp = (n: number, min: number, max: number, fallback: number) => Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   result.rate = clamp(result.rate, .25, 4, 1);

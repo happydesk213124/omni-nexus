@@ -1,6 +1,6 @@
 import type { TtsCharacter, TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
-import { isSoundSegment, synthesisSignature } from '../domain/tts/segment';
+import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/segment';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText } from '../domain/tts/filter';
 import { ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
@@ -15,7 +15,8 @@ import { ensureTtsSpeakers } from './tts-characters';
 import type { TtsChatContext } from './tts-context';
 import { clearTtsVoiceError, recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
 
-export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number }
+/** tone / model: a preview's own base delivery and model (the character popup's unsaved fields). */
+export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number; tone?: string; model?: string }
 /**
  * BGM·효과음 rows in the list. The sound runtime registers itself here, so TTS
  * never imports it (it already listens to TTS to lower the music).
@@ -34,7 +35,7 @@ export interface TtsSoundCuePlayer {
    */
   effect(request: TtsRequest): Promise<{ bytes: ArrayBuffer; mime: string; volume: number } | null>;
 }
-interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string }
+interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string; tone: string }
 export class OmniTtsRuntime {
   readonly player = new TtsPlayer();
   readonly cache = new TtsAudioCache();
@@ -238,7 +239,11 @@ export class OmniTtsRuntime {
       const voice = ttsData().voices.find(v => v.key === voiceKey);
       const fishId = request.fishId || character?.fishId || voice?.fishId || '';
       const recoverable = !request.fishId && character && request.segment.kind !== 'audition' && !role;
-      return fishId ? [{ request, text: ttsSpokenText(request.segment.spoken ?? request.segment.text, settings.omitCharacters), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings, language: (character?.language || '').trim(), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
+      // The speaker's own base delivery and model, else the settings' ones.
+      const own = (value: unknown) => typeof value === 'string' ? value.trim() : '';
+      const base = own(request.tone) || own(character?.tone) || settings.tone, model = own(request.model) || own(character?.model);
+      const voiceSettings = model ? { ...settings, fish: { ...settings.fish, model } } : settings;
+      return fishId ? [{ request, text: ttsSpokenText(request.segment.spoken ?? request.segment.text, settings.omitCharacters), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: speechTone(request.segment.tone, base), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error('캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
@@ -269,7 +274,7 @@ export class OmniTtsRuntime {
     }
     for (const p of prepared) {
       p.text = ttsSpokenText(p.text, settings.omitCharacters);
-      p.signature = synthesisSignature(p.text, p.request.segment.tone, p.fishId, settings);
+      p.signature = synthesisSignature(p.text, p.tone, p.fishId, p.settings);
     }
     return prepared;
   }
@@ -284,7 +289,7 @@ export class OmniTtsRuntime {
       if (!ttsData().settings.enabled) throw new Error('TTS가 꺼져 있습니다.');
       this.stage = canRecover ? '음성 생성' : '대체 음성 생성'; this.emit();
       let bytes: ArrayBuffer;
-      try { bytes = await synthesizeFish(p.text, p.request.segment.tone, p.fishId, p.settings); }
+      try { bytes = await synthesizeFish(p.text, p.tone, p.fishId, p.settings); }
       catch (error) {
         this.failedAudio.set(p.signature, Date.now());
         if (this.failedAudio.size > 100) this.failedAudio.delete(this.failedAudio.keys().next().value!);
@@ -307,7 +312,7 @@ export class OmniTtsRuntime {
       this.stage = '대체 음성 선택'; this.emit();
       const fishId = await this.recovery.select(p.character, p.fishId, p.settings, valid);
       if (!fishId || !valid()) throw error;
-      const signature = synthesisSignature(p.text, p.request.segment.tone, fishId, p.settings);
+      const signature = synthesisSignature(p.text, p.tone, fishId, p.settings);
       return this.audio({ ...p, fishId, signature }, priority, valid, false);
     }
   }
