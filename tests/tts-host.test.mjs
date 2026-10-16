@@ -162,7 +162,13 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     // BGM on/off is a setting: the bar has no ON button, and play takes its place at the right end.
     assert.equal(await page.locator('[data-tts-control="bgm-power"]').count(),0);
     const rowButtons=await page.locator('[data-tts-control="bgm-pick"]').evaluate(n=>[...n.parentElement.querySelectorAll('[data-tts-control]')].map(b=>b.dataset.ttsControl));
-    assert.deepEqual(rowButtons,['bgm-pick','bgm-guess','bgm-play'],'track, ⚡, then play');
+    assert.deepEqual(rowButtons,['bgm-play','bgm-pick','bgm-guess','bgm-follow'],'play, track, ⚡, then the follow-reading toggle');
+    // 「자동」 is the settings page's 「TTS 읽는 위치의 BGM 자동 전환」.
+    const follow=await page.evaluate(()=>window.soundData().settings.listBgm);
+    await page.locator('[data-tts-control="bgm-follow"]').click();
+    await page.waitForFunction(was=>window.soundData().settings.listBgm===!was,follow);
+    await page.locator('[data-tts-control="bgm-follow"]').click();
+    await page.waitForFunction(was=>window.soundData().settings.listBgm===was,follow);
     // Two levels in one row: BGM, and BGM while TTS speaks; a tap sets each.
     const slider=async id=>{const box=await page.locator(`[data-tts-control="${id}"]`).boundingBox();await page.mouse.click(box.x+box.width*0.75,box.y+box.height/2);};
     const [volume,duck]=await Promise.all(['bgm-volume','bgm-duck'].map(id=>page.locator(`[data-tts-control="${id}"]`).boundingBox()));
