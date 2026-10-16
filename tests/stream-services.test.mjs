@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installHost,PNG_1X1,zipStore} from '../tools/parity/host.mjs';
 import {analysisBody} from '../.test-build/message-body.mjs';
+import {sessionIdHash} from '../.test-build/text-util.mjs';
 let instance=0;
 const sleep=()=>new Promise(r=>setTimeout(r,10));
 const body='First narrative paragraph long enough for generating images.\nSecond dialogue in the scene.';
@@ -135,7 +136,8 @@ test('streaming tag rules reach only the chat model: after the first message, on
   assert.doesNotMatch(rules,/Matched Lorebook|Characters in this message" packs|LINE: `line` is the matching/,'no lore or reference-pack how-to: Risu already sends lore and descriptions');
   assert.equal(await f.api.inlineTagRules(),rules,'same settings, same text: the cached prefix holds');
   const sent=await replacer(chat,'model');
-  assert.deepEqual(sent.map(m=>m.content===rules?'RULES':m.content),['main prompt','RULES','hi','hello','go']);
+  const state=m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK);
+  assert.deepEqual(sent.map(m=>m.content===rules?'RULES':state(m)?'STATE':m.content),['main prompt','RULES','hi','hello','STATE','go'],'the open chat\'s state too, from the first request (it once never got there)');
   assert.equal((await replacer(sent,'model')).length,sent.length,'a retry or fallback model gets the rules once');
   assert.equal(await replacer(chat,'submodel'),chat,'memory, translation and other model calls are not replies');
   const own=[{role:'system',content:'# Image tagging\nTurn ONE labeled chat message into tags.'},{role:'user',content:'L1| text'}];
@@ -166,7 +168,44 @@ test('a chat request that comes before the settings load waits for them, instead
   await f.api.installInlineTags({ready:async()=>{loads++;const c=f.api.getConfig();c.card.stream_inline_tags=true;f.api.setConfig(c);}});
   const chat=[{role:'system',content:'main prompt'},{role:'user',content:'go'}];
   const sent=await replacer(chat,'model');
-  assert.equal(loads,1);assert.equal(sent.length,3,'the rules went out on the first request');
+  assert.equal(loads,1);assert.equal(sent.length,4,'the rules and the chat state went out on the first request');
+  assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
+});
+
+test('the chat model gets this chat\'s people, most recently named first, with their costumes; the order is kept in the note once a reply is done',async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,costume:true});
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();
+  const sid='risu_'+sessionIdHash('c|chat');
+  const names=['하나','민아','민지','채원','예원','해린',...Array.from({length:20},(_,i)=>'단역'+String.fromCharCode(0xAC00+i*28))];
+  for(const name of names)await f.api.upsertCharacter('c',{name,appearance:'1girl, blue hair',attire:'school uniform'});
+  const hana=(await f.api.loadTaggerRoster({sessionId:sid,unifiedSessionId:sid,characterId:'c'})).find(c=>c.name==='하나');
+  await f.api.upsertCharacter('c',{id:hana.id,name:'하나',costumes:[...hana.costumes,{name:'swim',note:'수영복',attire:'swimsuit'}]});
+  const say=async(...replies)=>{
+    const message=replies.flatMap((data,i)=>[{role:'user',chatId:'u'+i,data:'계속'},{role:'char',chatId:'r'+i,data}]);
+    const character=await risuai.getCharacterFromIndex(0);await risuai.setCharacterToIndex(0,{...character,chats:[{...character.chats[0],message}]});
+    const sent=await replacer([{role:'system',content:'main'},{role:'user',content:'go'}],'model');
+    const state=sent.find(m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK))?.content ?? '';
+    return {state,order:[...state.matchAll(/^- (\S+)/gm)].map(m=>m[1])};
+  };
+  const note=async()=>JSON.parse((await f.chat()).localLore?.find(e=>e.comment==='omni.nexus.note')?.content ?? '{"note":{}}').note;
+  // Older replies are not read: only the last two.
+  let {state,order}=await say('예원이 노래했다.','하나가 민아를 불렀다.','조용한 밤이었다.');
+  assert.deepEqual(order.slice(0,2),['하나','민아'],'named in the last two replies: first');
+  assert.notEqual(order[2],'예원','예원, three replies back, is not read');
+  assert.equal(order.length,20,'twenty at most');
+  assert.ok(!order.includes(names.at(-1)),'the rest wait their turn');
+  assert.match(state,/- 하나 — looks saved \| costumes: default\[0\][^;]*; swim\[1\] 수영복 \| wearing default\[0\] \| wear_state=clothed/,'each person: costumes by name and note, what they wear now');
+  assert.doesNotMatch(state,/blue hair|school uniform/,'saved looks stay with the generator');
+  assert.equal((await note()).recent_cast,undefined,'nothing written while the reply could still be streaming');
+  // Later: 민지 and 채원 in the last two; 하나 and 민아 stay right behind them without being read again.
+  ({order}=await say('민지와 채원이 들어왔다.','채원이 웃었다.'));
+  assert.deepEqual(order.slice(0,4),['채원','민지','하나','민아'],'the newest reply first, then the remembered order');
+  await f.api.persistSessionLocation(sid,'');
+  const kept=(await note()).recent_cast;
+  assert.equal(kept.length,names.length);
+  const roster=await f.api.loadTaggerRoster({sessionId:sid,unifiedSessionId:sid,characterId:'c'});
+  assert.deepEqual(kept.slice(0,4).map(id=>roster.find(c=>c.id===id)?.name),['채원','민지','하나','민아'],'saved in this chat\'s note once a reply is done');
   assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
 });
 
