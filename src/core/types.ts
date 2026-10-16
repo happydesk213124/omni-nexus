@@ -604,6 +604,8 @@ export interface JobRequest {
   inline_tagged?: TaggerResult;
   /** That block's N, so the slot replaces the block itself. */
   inline_block?: number;
+  /** A streaming-tag block whose JSON did not parse, as the model wrote it: fixed before anything else. */
+  inline_raw?: string;
   /** A tapped waiting slot (`[[@inraywait::id…]]`): this job draws that one slot in place. */
   inline_wait?: string;
   session_id: string;

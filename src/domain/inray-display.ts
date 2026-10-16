@@ -113,7 +113,8 @@ const INLINE_BODY = String.raw`(?:(?!\[\[\/?inx)[\s\S]){0,12000}?`;
 const INLINE_ASPECTS = [['landscape', 1216, 832, -10041], ['square', 1024, 1024, -10042], ['', 832, 1216, -10043]] as const;
 /** The waiting slot: the spinner frame exactly, its center pink. Taps on it generate the shot. */
 export const WAIT_CENTER = '#ec4899';
-const pink = (out: string) => out.replace('stroke="#7132f5"', `stroke="${WAIT_CENTER}"`);
+// Twice as thick as a loading wheel: at a glance it reads as a button, not a load still running.
+const pink = (out: string) => out.replace('stroke="#7132f5" stroke-width="10"', `stroke="${WAIT_CENTER}" stroke-width="22"`);
 export function waitDisplayRegexScript(scalePct: unknown = 100) {
   const out = pink(spinnerDisplayRegexScript(scalePct).out)
     .replace('data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1"', 'data-inray-wait="$1" data-inray-preview-slot="wait_$1" role="button" tabindex="0" aria-label="이미지 대기 · 눌러서 생성"')

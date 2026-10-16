@@ -49,6 +49,12 @@ test('both block shapes become one tagged shot at its line', () => {
   assert.equal(two.scenes[0].shots[0].line, 3); assert.equal(two.scenes[0].shots[0].aspect, 'landscape'); assert.deepEqual(two.new_characters, []);
   assert.equal(api.inlineShotTagged('{"place":"x"', 1), null, 'broken JSON: the caller falls back to the tagger for this slot');
   assert.equal(api.inlineShotTagged('{"place":"only place"}', 1), null, 'a block with no shot fields is not a shot');
+  // Parses, but would draw an empty prompt: broken, so it is fixed or waits pink.
+  assert.equal(api.inlineShotTagged('{"aspect":"portrait","camera":"from side"}', 1), null, 'framing alone is nothing to draw');
+  assert.equal(api.inlineShotTagged('{"x":1,"y":""}', 1), null);
+  assert.equal(api.inlineShotTagged('{"scenes":[{"place":"p","shots":[{"aspect":"square"}]}]}', 1), null);
+  assert.ok(api.inlineShotTagged('{"place":"p","aspect":"portrait","characters":[]}', 1), 'an empty cast is a scenery shot');
+  assert.ok(api.inlineShotTagged('{"composition":"flowers"}', 1));
 });
 
 test('the block itself becomes the slot; stripping keeps the prose as written', () => {

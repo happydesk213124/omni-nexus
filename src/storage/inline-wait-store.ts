@@ -15,6 +15,8 @@ export interface InlineWait {
   id: string;
   /** The block's shot; null when the block was broken and the tagger must draw it. */
   tagged: TaggerResult | null;
+  /** The broken block as written, when tagged is null: a tap asks to fix it first. */
+  raw?: string;
   /** Analysis lines before the slot. */
   line: number;
   characterId: string;
@@ -36,7 +38,7 @@ function parse(raw: unknown): Map<string, InlineWait> {
     const r = row as Record<string, unknown>, id = String(r.id || '');
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id)) continue;
     out.set(id, { id, tagged: r.tagged && typeof r.tagged === 'object' ? r.tagged as TaggerResult : null, line: Math.max(1, Math.floor(Number(r.line)) || 1),
-      characterId: String(r.characterId || ''), chatId: String(r.chatId || ''), hostMessageId: String(r.hostMessageId || ''), createdAt: Number(r.createdAt) || 0 });
+      characterId: String(r.characterId || ''), chatId: String(r.chatId || ''), hostMessageId: String(r.hostMessageId || ''), createdAt: Number(r.createdAt) || 0, ...(typeof r.raw === 'string' && r.raw ? { raw: r.raw.slice(0, 4000) } : {}) });
   }
   return out;
 }

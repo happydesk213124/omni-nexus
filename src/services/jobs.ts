@@ -71,6 +71,7 @@ import {
 } from '../domain/nai/routing';
 import { callLlm } from './llm-call';
 import { resolveLlmRole } from '../domain/llm/roles';
+import { repairInlineShot } from './inline-repair';
 import { comicGenOn, clampComicByRatio } from '../domain/comic/kind';
 import { applyComicAspect } from '../domain/comic/aspect';
 import { normalizeComicSchedule } from '../domain/comic/params';
@@ -718,11 +719,13 @@ async function runJob(jobId: string): Promise<void> {
   const request = deferred?.request ?? JSON.parse(row.request_json ?? '{}') as JobRequest;
   const lineRange=streamLineRange(request);
   // A streaming-tag block is one shot the chat model already wrote: no tagger, no line budget.
-  // A broken block keeps its slot and asks the tagger for exactly that one shot.
+  // A broken block is asked to be fixed first (repairInlineShot); one still broken
+  // becomes a pink slot, and only a tap on it lets the tagger draw that one shot.
   const inlineBlock = lineRange && request.defer_attachment && Number.isInteger(request.inline_block) ? request.inline_block! : null;
   const inlineWait = lineRange && !request.defer_attachment && typeof request.inline_wait === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(request.inline_wait) ? request.inline_wait : '';
   const oneSlot = inlineBlock !== null || !!inlineWait;
-  const inline = oneSlot && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
+  let inline = oneSlot && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
+  const inlineRaw = oneSlot && !inline && typeof request.inline_raw === 'string' ? request.inline_raw.slice(0, 4000) : '';
   const lineLimits=oneSlot ? {min:1,max:1} : lineRange ? streamLineImageLimits(getConfig().card) : null;
   request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
@@ -808,6 +811,28 @@ async function runJob(jobId: string): Promise<void> {
     const storedBody = deferred ? null : await readStoredMessageBody(request.char_index, request.chat_index, request.message_index);
     request.assistant_text = analysisBody(stripBakeTokens(storedBody ?? request.assistant_text));
     if (await cancelJobIfStale(jobId, 'superseded before tagging')) return;
+    if (inlineRaw) {
+      // The model's own block, broken: one short request fixes its syntax; the scene stays the writer's.
+      await setJob(jobId, 'tagging', { phase: 'tagging', progress: 0, message: '스트리밍 태그 블록 고치는 중…', shot_count: 0, shot_done: 0, debug_stage: 'job.inline_repair' });
+      const lines = String(request.assistant_text || '').split('\n').filter(Boolean);
+      inline = await repairInlineShot(inlineRaw, lines.at(-1) || '', lineRange?.end || lines.length || 1, llmOptions)
+        .catch(error => { dbg('job.inline_repair.fail', { message: String((error as Error)?.message || error).slice(0, 200) }, 'warn'); return null; });
+      dbg('job.inline_repair', { fixed: !!inline });
+      if (await cancelJobIfStale(jobId, 'superseded after block repair')) return;
+      // Still broken: a pink slot at the block, so a tap can try again (a tap's own job falls back to the tagger).
+      if (!inline && inlineBlock !== null && lineRange) {
+        const retry = { tagged: null, raw: inlineRaw, line: lineRange.end, characterId: String(request.character_id || ''), chatId: String(request.chat_id || '') };
+        deferred?.lineAttachments?.plan(jobId, { jobId, shots: [{ shot_index: 0, line: lineRange.end, inline_block: inlineBlock, width: 832, height: 1216 }], completed: completedSpinnerCards, retry });
+        deferred?.lineAttachments?.settle(jobId);
+        const failed = { cards: [], shot_count: 1, shot_done: 0, shot_failed: 1, progress: 100, phase: 'error', message: '블록 JSON을 고치지 못했습니다 · 분홍 칸을 누르면 다시 만듭니다', message_index: request.message_index ?? -1 };
+        if (deferred && !deferred.committed && !deferred.cancelled) { await setJob(jobId, 'generating', { ...failed, phase: 'waiting_output', message: '블록 고치기 실패 · 응답 완료 대기…' }); await deferred.ready; }
+        if (await cancelJobIfStale(jobId)) return;
+        if (deferred?.committed) await deferred.lineAttachments?.waitFinished().catch(err => dbg('job.group.bake.fail', { message: String(err) }, 'warn'));
+        await setJob(jobId, 'error', failed, failed.message);
+        jobSpan.end({ message: 'inline block unrepaired', cards: 0 });
+        return;
+      }
+    }
     await setJob(jobId, 'tagging', {
       phase: 'tagging',
       progress: 0,
@@ -1181,11 +1206,13 @@ async function runJob(jobId: string): Promise<void> {
         ...(isComicShot(shot) ? { kind: 'comic' as const } : {}),
       });
     });
+    // A block's slot that ends without its image turns pink with this shot, so a tap retries exactly it.
+    const retry = inlineBlock !== null && lineRange ? { tagged: inline ?? tagged, raw: inlineRaw, line: lineRange.end, characterId: String(request.character_id || ''), chatId: String(request.chat_id || '') } : undefined;
     let attachment: Promise<void> = Promise.resolve();
     // Line batches wait for their slots to be written; a streaming-tag block is
     // already a slot on screen (the module draws it), so its image shows at once.
     const previewSlot = () => inlineBlock !== null ? { inlineSlot: inlineBlock } : { deferPaint: !!deferred?.lineAttachments && !deferred.lineAttachments.inserted };
-    deferred?.lineAttachments?.plan(jobId,{jobId,shots:pendingInline,completed:completedSpinnerCards});
+    deferred?.lineAttachments?.plan(jobId,{jobId,shots:pendingInline,completed:completedSpinnerCards,...(retry ? { retry } : {})});
     const attach = () => attachment = attachment.catch(() => {}).then(async () => {
       if (deferred?.cancelled || !isJobCurrent(jobId)) return;
       if(deferred?.lineAttachments)durableSpinners=deferred.lineAttachments.inserted && pendingInline.length>0;

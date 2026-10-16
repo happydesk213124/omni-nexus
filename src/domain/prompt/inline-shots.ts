@@ -66,6 +66,18 @@ const shotObject = (value: unknown): value is Record<string, unknown> => !!value
  * compact form (shot fields with `place` and `new_characters` beside them) or
  * the tagger's own `{scenes:[{place,shots:[…]}]}` shape.
  */
+/**
+ * Something to draw: people, or a description beyond the framing. A block like
+ * {"aspect":"portrait"} or {"x":1} parses, but would send an empty prompt; it is
+ * treated as broken so it gets repaired or a pink slot instead of a junk image.
+ */
+const FRAMING = new Set(['aspect', 'camera', 'kind', 'shot_index', 'width', 'height']);
+function drawable(shot: Record<string, unknown>): boolean {
+  if (Array.isArray(shot.characters)) return true;
+  return Object.entries(shot).some(([key, value]) => !FRAMING.has(key) &&
+    (typeof value === 'string' ? !!value.trim() : Array.isArray(value) ? value.length > 0 : false));
+}
+
 export function inlineShotTagged(body: unknown, line: number): TaggerResult | null {
   let parsed: unknown;
   try { parsed = parseJsonLoose(String(body ?? '').trim()); } catch { return null; }
@@ -77,11 +89,11 @@ export function inlineShotTagged(body: unknown, line: number): TaggerResult | nu
   if (Array.isArray(parsed.scenes)) {
     const scene = (parsed.scenes as unknown[]).find(row => shotObject(row) && Array.isArray(row.shots) && row.shots.some(shotObject)) as Record<string, unknown> | undefined;
     const shot = (scene?.shots as unknown[] | undefined)?.find(shotObject);
-    if (!scene || !shot) return null;
+    if (!scene || !shot || !drawable(shot)) return null;
     return { ...extras(parsed), scenes: [{ place: String(scene.place ?? ''), shots: [{ ...shot, line, paragraph: 0 }] }] } as TaggerResult;
   }
   const { place, new_characters: _n, new_costumes: _c, scenes: _s, line: _l, paragraph: _p, ...shot } = parsed;
-  if (!Object.keys(shot).length) return null;
+  if (!Object.keys(shot).length || !drawable(shot)) return null;
   return { ...extras(parsed), scenes: [{ place: String(place ?? ''), shots: [{ ...shot, line, paragraph: 0 }] }] } as TaggerResult;
 }
 
