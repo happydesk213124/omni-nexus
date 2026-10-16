@@ -288,6 +288,22 @@ export function tagStudioCss(): string {
 #nx-tag-studio .hitem img { width: 100%; height: 100%; object-fit: cover; display: block; }
 #nx-tag-studio .hitem.on { border-color: var(--accent-2); box-shadow: 0 0 0 2px rgba(183,164,255,.25); }
 #nx-tag-studio .hitem b { position: absolute; left: 5px; bottom: 4px; font-size: 10px; padding: 1px 5px; border-radius: 999px; background: rgba(8,9,13,.7); color: #dcd8ee; font-weight: 600; }
+#nx-tag-studio .hitem .hdel {
+  position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; padding: 0;
+  display: grid; place-items: center; border: 0; border-radius: 999px;
+  background: rgba(8,9,13,.72); color: #f3c2d2; font-size: 11px; line-height: 1; cursor: pointer;
+}
+#nx-tag-studio .hitem .hdel:hover { background: #8a2a4a; color: #fff; }
+#nx-tag-studio .hitem.loading::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border: 3px solid rgba(183,164,255,.25); border-top-color: var(--accent); border-radius: 50%;
+  animation: nx-tag-studio-spin .7s linear infinite;
+}
+#nx-tag-studio .metaload { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+#nx-tag-studio .metaload i {
+  width: 11px; height: 11px; border: 2px solid rgba(183,164,255,.25); border-top-color: var(--accent);
+  border-radius: 50%; animation: nx-tag-studio-spin .7s linear infinite;
+}
 #nx-tag-studio .rfoot { padding: 8px; border-top: 1px solid var(--line); flex: 0 0 auto; background: var(--panel); }
 
 #nx-tag-studio .floor { display: flex; flex-direction: column; background: #12141b; }

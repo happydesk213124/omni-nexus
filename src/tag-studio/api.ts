@@ -43,8 +43,12 @@ export async function loadNaiPrompt(cardId: string): Promise<Record<string, unkn
   return studioGet(`/v1/cards/${encodeURIComponent(cardId)}/nai-prompt`);
 }
 
-export async function loadNaiFromImage(imageDataUrl: string): Promise<Record<string, unknown>> {
-  return studioPost('/v1/cards/nai-from-image', { image_data_url: imageDataUrl });
+export async function loadNaiFromImage(imageDataUrl: string, fileName = ''): Promise<Record<string, unknown>> {
+  return studioPost('/v1/cards/nai-from-image', { image_data_url: imageDataUrl, file_name: fileName });
+}
+
+export function deleteHistoryRevision(cardId: string): Promise<Record<string, unknown>> {
+  return studioPost(`/v1/cards/${encodeURIComponent(cardId)}/history-delete`);
 }
 
 export async function loadNaiQuota(): Promise<Record<string, unknown>> {

@@ -38,6 +38,7 @@ import { characterMaxLimit, stripPersonCountTags } from '../domain/character/tag
 import { collectStylePositives } from '../domain/prompt/reroll-setup';
 import { modelToNaia } from '../providers/nai/payload';
 import { slimCardCharacters } from '../domain/gallery/slim-cast';
+import { castFromShotAssetName } from '../domain/gallery/shot-assets';
 import { stripStoredCardMeta } from '../domain/gallery/strip-stored-meta';
 import { resolveRerollCharacters } from '../domain/gallery/reroll-captions';
 import { aspectFromCanvas, extractNaiMetadata, readGenerationImageData } from '../domain/nai-meta';
@@ -284,9 +285,13 @@ export async function readImageNaiPrompts(body: Record<string, unknown> = {}): P
     if (!cleanText(scene.main) && !scene.characters.length) {
       throw new Error('메타데이터에 프롬프트가 없습니다.');
     }
+    // A file saved from a chat keeps its cast in its name, like the card it was.
+    const ids = castFromShotAssetName(cleanText(body.file_name, 400));
+    const cast = ids.length && ids.length === scene.characters.length ? (await resolveCastCharacters(ids)).characters : [];
+    const byCast = new Map(cast.map(c => [c.cast_id, c]));
     return { ...naiPromptFromScene(scene), characters: scene.characters.map((c, i) => ({
-      ...(embedded?.characters[i] || {}), prompt: c.prompt, uc: c.uc,
-      center_x: c.center_x, center_y: c.center_y,
+      ...(embedded?.characters[i] || {}), ...(byCast.has(ids[i]!) ? { ...byCast.get(ids[i]!), cast_id: ids[i] } : {}),
+      prompt: c.prompt, uc: c.uc, center_x: c.center_x, center_y: c.center_y,
     })) };
   } catch (err) {
     return {
