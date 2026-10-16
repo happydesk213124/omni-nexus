@@ -1,14 +1,14 @@
 import { risuHost } from '../core/host';
 import { sleep } from '../core/util/async';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
-import { inlineShotDisplayScripts, inlineShotRequestScript } from '../domain/inray-display';
+import { inlineShotDisplayScripts, inlineShotRequestScript, isTokenGuardComment, tokenGuardScripts } from '../domain/inray-display';
 import { serializeModuleWrite } from './module-write';
 
 export const INLINE_TAG_MODULE_ID = 'omni-inline-tags';
 export const INLINE_TAG_MODULE_NAME = '⚛️ omni 스트리밍태그';
 type Row = Record<string, unknown>;
 const rows = (value: unknown): Row[] => asShotAssetRows(value).filter((v): v is Row => !!v && typeof v === 'object');
-const ours = (row: Row) => /^omni-inline-shot-/.test(String(row.comment || ''));
+const ours = (row: Row) => /^omni-inline-shot-/.test(String(row.comment || '')) || isTokenGuardComment(row.comment);
 
 /**
  * The module only draws and hides blocks. The tagging rules themselves are not
@@ -28,7 +28,7 @@ export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100,
     if (index < 0 && !enabled) return true;
     const previous = index < 0 ? {} : modules[index]!;
     // A user's own rules in this module stay; ours are rewritten.
-    const regex = [...inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), ...rows(previous.regex).filter(row => !ours(row))];
+    const regex = [...inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), ...tokenGuardScripts(), ...rows(previous.regex).filter(row => !ours(row))];
     const module = { ...previous, id: INLINE_TAG_MODULE_ID, namespace: INLINE_TAG_MODULE_ID, name: INLINE_TAG_MODULE_NAME,
       description: 'Risu 메인 모델이 답장 안에 쓴 [[inxN]] 샷을 스피너 칸으로 그립니다. 생성은 Omni Nexus 플러그인이 합니다.',
       hideIcon: false, lowLevelAccess: false, lorebook: rows(previous.lorebook), trigger: rows(previous.trigger), assets: rows(previous.assets), regex };

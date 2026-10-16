@@ -88,6 +88,30 @@ export function inrayDisplayRegexScript(folded = false, scalePct: unknown = 100)
 }
 
 
+/**
+ * Our chat tokens behind a mask while other modules run. A module with a broad
+ * `\[\[(.+?)\]\]` rule (a wiki module's links) runs at the default order, before
+ * our rules, and ate the brackets: `[[@inray::…]]` showed as a blue link instead
+ * of the image. First of all, only our own tokens get private-use brackets no
+ * other rule matches; after every default-order module, before our first rule,
+ * they get their brackets back. Any other `[[…]]` is left to its module.
+ * The same pair rides in every module of ours that draws a token: masking an
+ * already masked text, or unmasking a plain one, does nothing.
+ */
+export const TOKEN_GUARD_COMMENT = 'omni-token-guard';
+export const TOKEN_UNGUARD_COMMENT = 'omni-token-unguard';
+export const TOKEN_GUARD_ORDER = { guard: 10200, unguard: -10005 } as const;
+const MASK_OPEN = '\uf8f2', MASK_CLOSE = '\uf8f3';
+export function tokenGuardScripts() {
+  return [
+    { comment: TOKEN_GUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: `gi<order ${TOKEN_GUARD_ORDER.guard}>`,
+      in: '\\[\\[(@inray(?:spinner|wait)?::[^\\[\\]\\n]{1,4096}|\\/?inxw?\\d{1,3}|imgstart|bgm:[^\\]\\n]{1,200})\\]\\]', out: `${MASK_OPEN}$1${MASK_CLOSE}` },
+    { comment: TOKEN_UNGUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: `g<order ${TOKEN_GUARD_ORDER.unguard}>`,
+      in: `${MASK_OPEN}([^${MASK_OPEN}${MASK_CLOSE}\\n]{1,4300})${MASK_CLOSE}`, out: '[[$1]]' },
+  ];
+}
+export const isTokenGuardComment = (comment: unknown): boolean => comment === TOKEN_GUARD_COMMENT || comment === TOKEN_UNGUARD_COMMENT;
+
 export const REQUEST_MARKER_SCRIPT_COMMENT = 'omni-request-strip-markers';
 /**
  * 「리퀘스트 데이터 수정」: image, spinner and wait markers never reach the model.

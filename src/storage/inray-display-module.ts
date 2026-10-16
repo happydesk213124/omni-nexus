@@ -21,6 +21,7 @@ import {
   waitDisplayRegexScript,
   waitBlockDisplayScripts,
   waitBlockRequestScript,
+  tokenGuardScripts,
 } from '../domain/inray-display';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 
@@ -163,7 +164,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       modules[idx]={...modules[idx],regex:waitRegex};changed=true;
     }
     // Waiting blocks keep their JSON in the message: drawn pink, and stripped from requests.
-    for (const script of [...waitBlockDisplayScripts(scalePct), waitBlockRequestScript()]) {
+    for (const script of [...waitBlockDisplayScripts(scalePct), waitBlockRequestScript(), ...tokenGuardScripts()]) {
       const rows = [...(modules[idx]!.regex || [])], at = rows.findIndex(row => scriptComment(row) === script.comment);
       if (at < 0 || JSON.stringify(rows[at]) !== JSON.stringify(script)) {
         if (at < 0) rows.push(script); else rows[at] = script;

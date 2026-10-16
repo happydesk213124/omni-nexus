@@ -847,7 +847,11 @@ test('helper module toggles only itself, hides the marker only in display, and s
   let db=await risuai.getDatabase();
   const helper=db.modules.find(m=>m.id===f.api.OMNI_HELPER_ID);
   assert.equal(helper.name,'⚛️ omni 보조 프롬');assert.equal(helper.lorebook[0].alwaysActive,true);
-  assert.equal(helper.regex[0].type,'editdisplay');assert.equal('before [[imgstart]] after'.replace(new RegExp(helper.regex[0].in,helper.regex[0].flag),helper.regex[0].out),'before  after');
+  // The marker rule runs right after the token guard unmasks it (its <order …> is Risu's, not a RegExp flag).
+  const marker=helper.regex.find(r=>r.comment==='omni-imgstart-display');
+  assert.equal(marker.type,'editdisplay');assert.match(marker.flag,/<order -10006>/);
+  assert.equal('before [[imgstart]] after'.replace(new RegExp(marker.in,marker.flag.replace(/<[^>]*>/g,'')),marker.out),'before  after');
+  assert.deepEqual(helper.regex.map(r=>r.comment),['omni-imgstart-display','omni-token-guard','omni-token-unguard']);
   assert.ok(db.enabledModules.includes(helper.id));assert.equal(db.modules.length,4);
   helper.lorebook.push({comment:'custom',content:'keep'});await risuai.setDatabase(db);
   await f.api.ensureOmniHelperModule(false);db=await risuai.getDatabase();
