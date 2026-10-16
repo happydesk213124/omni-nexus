@@ -4,7 +4,7 @@ import { normalizeGender, type CharacterInput } from './identity';
 import { foldCharacterUpsert, normalizeCharacterRecord } from './roster';
 import { syncGenderIntoAppearance, parseWearState, wearLocked } from './tags';
 import { COSTUME_FIELDS, ensureCostumes, promoteCostumeToDefault, syncActiveCostumeFromWear } from './costume';
-import { appendDuplicateCostumes, costumeOwnerName, describeCharacterCostumes } from './save-costumes';
+import { appendDuplicateCostumes, collapseSameCostumes, costumeOwnerName, describeCharacterCostumes } from './save-costumes';
 import { givenNameDuplicates, mergedGivenNames } from './save-identity';
 import { sanitizeHash } from './char-ref-store';
 import { sanitizeCastId } from '../gallery/cast-ids';
@@ -117,9 +117,12 @@ export function prepareCharacterUpsert(
       rec.bottoms = costumes[0]!.bottoms || '';
       rec.accessories = costumes[0]!.accessories;
     }
-    rec.costumes = describeCharacterCostumes({ ...rec, costumes }, Boolean(sameRow || mergedDuplicate),
+    const described = describeCharacterCostumes({ ...rec, costumes }, Boolean(sameRow || mergedDuplicate),
       sameRow && !mergedDuplicate ? costumeOwnerName(sameRow) : '');
-    rec.active_costume = active_costume;
+    // Every save folds costumes that say the same thing into one, older rosters included.
+    const collapsed = collapseSameCostumes(described, costumeOwnerName(rec), active_costume);
+    rec.costumes = collapsed.costumes;
+    rec.active_costume = collapsed.active_costume;
   }
 
   const now = updatedAt;

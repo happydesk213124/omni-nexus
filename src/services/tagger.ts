@@ -454,6 +454,7 @@ function costumeHowTo(): string {
     'characters[].costume is a string: existing bare name, numeric index string, or catalog name[index]. Omit/empty only to keep the previous set. Reuse matching catalog clothes; never register them again.',
     'Costume notes may begin with the original person\'s full name (surname + given name), added by the application. Compare that name with the person in the story and select the matching costume, including default. Keep characters[].name as the exact supplied roster name; do not rename the roster or add aliases to represent a costume owner.',
     'New outfit/transformation: new_costumes=[{name:"exact character name",costumes:[{name:"bare variant id",note:"what the outfit is, not when/where",...lookFields}]}]; wear it via characters[].costume. Never name a set default0/maid1/name[index].',
+    'The catalog\'s default (index 0) is the base look. Never register a base, default, normal or usual look again, and never a set whose note matches one already in the catalog: wear that one by name instead. Only a genuinely different outfit or form is new.',
     'lookFields: appearance, hair_color, hair_style, eye_color, height, age, penis_size, attire, bottoms, accessories. Apply shared character rules; unchanged variant fields use [base]. Identity/name/aliases/original/gender stay common; never overwrite default.',
   ].join('\n');
 }
