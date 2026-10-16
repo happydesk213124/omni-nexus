@@ -27,6 +27,34 @@ export function describeCharacterCostumes(row: CharacterInput, onlyMissing = fal
   });
 }
 
+/**
+ * What a costume is, for telling two apart: its description, without this
+ * character's own name in front (「래그 · 기본 외형·의상」 is 「기본 외형·의상」 for 래그).
+ * Another owner's name stays, so 「붉은래그 · 기본 외형·의상」 is a different form. A
+ * costume with no description has no key and is never merged.
+ */
+export function costumeDescriptionKey(costume: Pick<CharacterCostume, 'name' | 'note'>, owner: string): string {
+  let note = cleanText(costume.note, 200);
+  if (owner && note.startsWith(`${owner} · `)) note = note.slice(owner.length + 3);
+  if (!note && costume.name === 'default') note = '기본 외형·의상';
+  return note.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+/**
+ * Costumes that say the same thing become one: the first (lowest index, so the
+ * default never moves) stays, the later ones go, and the active costume follows
+ * to the one it became.
+ */
+export function collapseSameCostumes(costumes: readonly CharacterCostume[], owner: string, active = 0): { costumes: CharacterCostume[]; active_costume: number } {
+  const kept: CharacterCostume[] = [], seen = new Map<string, number>(), moved: number[] = [];
+  costumes.forEach((costume, index) => {
+    const key = costumeDescriptionKey(costume, owner), hit = key ? seen.get(key) : undefined;
+    if (hit != null) { moved[index] = hit; return; }
+    if (key) seen.set(key, kept.length);
+    moved[index] = kept.length; kept.push(costume);
+  });
+  return { costumes: kept, active_costume: moved[active] ?? 0 };
+}
+
 const lookKey = (costume: CharacterCostume): string => COSTUME_FIELDS.map(field =>
   splitTagTokens(costume[field]).map(tag => tag.toLowerCase()).sort().join('\0'),
 ).join('\n');
@@ -39,8 +67,11 @@ export function appendDuplicateCostumes(survivor: CharacterInput, donors: Charac
     for (const costume of catalog) {
       const next = normalizeCostume({ ...costume, ...resolveCostumeFields(costume, catalog[0]!) }, out.length);
       if (!next) continue;
-      if (out.some(existing => lookKey({ ...existing, ...resolveCostumeFields(existing, out[0]!) }) === lookKey(next)
-        && existing.note === next.note)) continue;
+      // Already there: the same looks, or the same description (another merge of the same person
+      // once made Lag_default, Lag_default_2… each time their tags differed a little).
+      const key = costumeDescriptionKey(next, costumeOwnerName(survivor));
+      if (out.some(existing => (key && costumeDescriptionKey(existing, costumeOwnerName(survivor)) === key)
+        || (lookKey({ ...existing, ...resolveCostumeFields(existing, out[0]!) }) === lookKey(next) && existing.note === next.note))) continue;
       const stem = normalizeCostume({ ...next, name: `${costumeOwnerName(donor)}_${costume.name}` }, out.length)!.name;
       next.name = stem;
       let suffix = 2;

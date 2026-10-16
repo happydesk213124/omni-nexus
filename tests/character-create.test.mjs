@@ -98,7 +98,9 @@ test('existing identity and filled appearance survive repeated creation; global 
  const after=await api.listCharacters('char_parity');
  assert.equal(after.length,1);assert.equal(after[0].id,'kept');assert.equal(after[0].appearance,before[0].appearance);
  assert.equal(after[0].attire,before[0].attire);assert.deepEqual(after[0].aliases,before[0].aliases);
- assert.ok(after[0].costumes.some(c=>c.note.startsWith('하진 · ') && c.appearance.includes('red hair') && c.attire==='red shirt'));
+ // The same person created again brings only another 「기본 외형·의상」: there is one already, so nothing is added.
+ assert.equal(after[0].costumes.length,before[0].costumes.length,'no second default look');
+ assert.ok(!after[0].costumes.some(c=>c.appearance?.includes('red hair')),'the existing default is kept as it was');
  assert.match(textForCreation(host),/application adds them/);
  host.setLlmReply(JSON.stringify({new_characters:[minji]}));
  const global=(await api.routeFetch('/v1/characters/create-from-description',{method:'POST',body:{...body,scope:'__global__'}})).data;
@@ -142,4 +144,13 @@ test('the settings-selected bot receives characters and references even if anoth
  assert.ok(JSON.stringify(host.llmRequests[0]).includes('SELECTED_BOT_REFERENCE'));
  assert.equal((await api.listCharacters('char_style'))[0].name,'민지');
  assert.deepEqual(await api.listCharacters('char_parity'),[]);
+});
+
+test('saving a character folds costumes that say the same thing, keeping other forms', async () => {
+ const {api}=await runtime();
+ const c=(name,note)=>({name,note,attire:name,accessories:''});
+ await api.upsertCharacter('char_parity',{name:'래그',id:'lag',costumes:[c('default','래그 · 기본 외형·의상'),c('hostage','tied up hostage'),c('Lag_default','Lag · 기본 외형·의상'),c('Lag_default_2','Lag · 기본 외형·의상'),c('래그_default','래그 · 기본 외형·의상'),c('래그_hostage','래그 · tied up hostage'),c('붉은래그_default','붉은래그 · 기본 외형·의상')],active_costume:5});
+ const row=(await api.listCharacters('char_parity')).find(r=>r.id==='lag');
+ assert.deepEqual(row.costumes.map(x=>x.name),['default','hostage','Lag_default','붉은래그_default']);
+ assert.equal(row.active_costume,1,'the worn 래그_hostage became hostage');
 });
