@@ -137,6 +137,50 @@ test('studio and reroll images reopen with scoped identity, costume and nude sta
   assert.equal(imported.characters[0].wear_state, 'completely');
 });
 
+test('a dropped or loaded file finds its people like the card did: by its file name\'s cast, then id, then name', async () => {
+  const f = await fixture();
+  const a = await f.api.upsertCharacter('owner', { name: '하나', appearance: 'girl, red hair' });
+  const b = await f.api.upsertCharacter('owner', { name: '민아', appearance: 'girl, blue hair' });
+  const ids = await f.api.ensureStudioCastIds([a, b], 'owner');
+  const location = { session_id: 'session', character_id: 'owner', chat_id: 'chat', char_index: 0, chat_index: 0, message_index: -1, cast_ids: ids };
+  const recipe = { ...f.recipe, prompt: 'style, park', characters: [{ ...f.recipe.characters[0], prompt: 'girl, red hair, smile' }, { ...f.recipe.characters[1], prompt: 'girl, blue hair, wave' }] };
+  const png = () => PNG_NAI_1X1.buffer.slice(PNG_NAI_1X1.byteOffset, PNG_NAI_1X1.byteOffset + PNG_NAI_1X1.byteLength);
+  // Saved under the bot's own scope, while this chat's roster lists the rows under a chat alias.
+  await f.api.publishImage('drop_s1', png(), location, { recipe, characters: [{ id: a.id, scope: 'owner', name: a.name }, { id: b.id, scope: 'owner', name: b.name }] });
+  const image_b64 = Buffer.from((await f.api.idbGet('images', 'drop_s1')).png).toString('base64');
+  const payload = await f.api.getCharactersPayload('risu_' + sessionIdHash('owner|chat'), 'owner');
+  const names = nai => { const state = emptyState(); hydrateFromNai({ state, nai, settings: {}, rosterPayload: payload, card: {} }); return Object.values(state.chars).map(c => c.charName); };
+  assert.deepEqual(names(await f.api.readImageNaiPrompts({ image_b64 })), ['하나', '민아'], 'the saved id finds its row whatever scope it was written under');
+  // No identity inside the file (another tool rewrote it): its name still carries the cast.
+  await f.api.publishImage('drop_s2', png(), location, { recipe, characters: [] });
+  const bare = Buffer.from((await f.api.idbGet('images', 'drop_s2')).png).toString('base64');
+  assert.deepEqual(names(await f.api.readImageNaiPrompts({ image_b64: bare })), ['', ''], 'nothing to go on');
+  const fileName = (await f.api.imageAssetRef('drop_s2')).name;
+  assert.match(fileName, new RegExp('c' + ids.join('-')), 'a shot file carries its cast in its name');
+  const named = await f.api.readImageNaiPrompts({ image_b64: bare, file_name: fileName });
+  assert.deepEqual(named.characters.map(c => c.cast_id), ids);
+  assert.deepEqual(names(named), ['하나', '민아'], 'the file name\'s cast ids name them');
+});
+
+test('a history revision can be deleted, but not the one a chat message shows', async () => {
+  const f = await fixture();
+  // A studio image is a history revision no message shows until it is saved.
+  const revision = await f.api.studioGenerate('root', { characters: [] });
+  assert.equal(revision.ok, true);
+  const shown = (await f.chat()).message[0].data;
+  const refused = await f.api.deleteImageRevision('root');
+  assert.equal(refused.ok, false); assert.equal(refused.error.code, 'in_chat');
+  assert.ok(await f.api.idbGet('cards', 'root'), 'the chat\'s image stays');
+  const kept = (await f.api.readImageHistory('root')).cards.map(c => c.id);
+  const other = kept.find(id => !shown.includes(`::${id}::`));
+  assert.ok(other, 'one revision the chat does not show');
+  assert.equal((await f.api.deleteImageRevision(other)).ok, true);
+  assert.equal(await f.api.idbGet('cards', other), undefined);
+  assert.deepEqual((await f.api.readImageHistory('root')).cards.map(c => c.id), kept.filter(id => id !== other));
+  assert.equal((await f.chat()).message[0].data, shown, 'the chat is untouched');
+  assert.equal((await f.api.deleteImageRevision('nope')).error.code, 'not_found');
+});
+
 test('studio restores filename cast across bot/chat scopes ahead of stale image identities', async () => {
   const f = await fixture();
   await risuai.setDatabase({modules:[...(await risuai.getDatabase(['modules'])).modules,

@@ -3,6 +3,7 @@ import { imageHistoryRoot, nextImageRevision } from '../domain/gallery/image-his
 import { idbGet, idbGetAll, imageLocation, imageAssetRef } from '../storage/stores';
 import { findAssetMessage } from '../storage/asset-message';
 import { rewriteBakedCardInChatMessage } from './chat-bake';
+import { deleteCard } from './gallery';
 
 // Serialize revision allocation through publication, including studio generation.
 import { Mutex } from '../core/util/async';
@@ -36,6 +37,21 @@ export async function readImageHistory(id: string): Promise<ApiResult> {
     return { id: row.id, seed: row.seed, asset_name: asset?.name || '', asset_path: asset?.path || '', width: meta.width, height: meta.height };
   }));
   return { ok: true, root, cards };
+}
+
+/**
+ * Drops one revision from a history. The one a chat message shows stays: that
+ * message would lose its image. Save another revision first, then delete it.
+ */
+export function deleteImageRevision(id: string): Promise<ApiResult> {
+  return imageRevisionLock.run(async () => {
+    const row = await idbGet('cards', id);
+    if (!row) return { ok: false, error: { code: 'not_found', message: 'card not found' } };
+    if (await findAssetMessage(id, await imageLocation(id))) {
+      return { ok: false, error: { code: 'in_chat', message: '채팅에 걸린 이미지는 지울 수 없습니다. 다른 이미지를 저장한 뒤 지워 주세요.' } };
+    }
+    return deleteCard(id);
+  });
 }
 
 export function pinImageRevision(id: string): Promise<ApiResult> {

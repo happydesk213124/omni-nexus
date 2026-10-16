@@ -945,6 +945,9 @@ export async function runScenario(N, handles) {
       preserved:JSON.stringify(ids) === JSON.stringify(expected), root:result.root === cardId,
       noTargetPinRejected:pin.ok === false && pin.error?.code === 'not_found' };
   });
+  // 2.0 only: deleting one history revision. Nothing here is deleted (the counts
+  // below are asserted); the image-history unit test deletes and refuses the chat's.
+  await rec('cards.history_delete_missing', () => post('/v1/cards/no_such_card/history-delete', {}));
   await rec('messages.reroll', () => post('/v1/messages/reroll', {
     session_id: 'sess_main', content_hash: 'hash_main', message_index: 1,
   }));

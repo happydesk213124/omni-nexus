@@ -472,12 +472,15 @@ export function hydrateFromNai(args: {
     const rosterId = cleanText(ch.id, 80);
     const scope = cleanText(ch.scope, 200);
     const castId = cleanText(ch.cast_id, 80);
-    // cast_id is globally unique, unlike the bot/chat aliases of row.scope.
-    const stored = castId
-      ? roster.find(row => cleanText(row.cast_id, 80) === castId)
-      : rosterId
-      ? roster.find((row) => cleanText(row.id, 80) === rosterId && (!scope || cleanText(row.scope, 200) === scope))
-      : rawName ? resolveCharacter(rawName, roster) : null;
+    // cast_id is globally unique, unlike the bot/chat aliases of row.scope. A
+    // dropped file names its people by the scope they were saved under (the bot
+    // id), while this roster may list the same row under a chat alias: an id
+    // that is unique here still counts, and the name is the last resort.
+    const sameId = rosterId ? roster.filter((row) => cleanText(row.id, 80) === rosterId) : [];
+    const stored = (castId ? roster.find(row => cleanText(row.cast_id, 80) === castId) : undefined)
+      || sameId.find((row) => !scope || cleanText(row.scope, 200) === scope)
+      || (sameId.length === 1 ? sameId[0] : undefined)
+      || (rawName ? resolveCharacter(rawName, roster) : null);
     const name = stored ? (stored.name || rawName) : '';
     const costumePick = ch.costume ?? asRecord(ch.raw).costume;
     const costumes = Array.isArray(stored?.costumes) ? stored.costumes : [];

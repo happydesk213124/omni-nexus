@@ -26,6 +26,7 @@ import {
 import { readCharacterWeightGroup, normalizeCharacterWeight } from '../domain/prompt/character-weight';
 import {
   commandRewrite,
+  deleteHistoryRevision,
   loadNaiFromImage,
   loadNaiPrompt,
   loadNaiQuota,
@@ -217,7 +218,9 @@ const SHELL = `
       <button class="btn mobset" data-act="settings" type="button">설정</button>
       <button class="gen" id="gen" type="button">생성</button>
       <button class="btn" id="save" type="button">저장</button>
+      <button class="btn" id="load" type="button" title="이미지 파일의 메타데이터로 태그를 채웁니다">불러오기</button>
       <button class="btn" id="cancel" type="button">취소</button>
+      <input id="loadFile" type="file" accept="image/png,image/webp,image/jpeg,.png,.webp,.jpg,.jpeg" hidden>
     </footer>
   </div>
   <div class="ask" id="ask" hidden>
@@ -274,6 +277,9 @@ export async function openTagStudio(card: unknown): Promise<void> {
   let currentUrl = fallbackUrl;
   let loaded: HTMLImageElement | null = null;
   let dragging = false;
+  // A history tile being read back: its metadata replaces the tags when it lands.
+  let metaLoading = false;
+  let historyTicket = 0;
   let loopTimer: ReturnType<typeof setInterval> | null = null;
   const view = { scale: 1, x: 0, y: 0 };
   const cleanups: Array<() => void> = [];
@@ -450,13 +456,13 @@ export async function openTagStudio(card: unknown): Promise<void> {
       state.imageUrl = url;
       currentUrl = url;
       await showImage(url);
-      const nai = await loadNaiFromImage(url);
+      const nai = await loadNaiFromImage(url, file.name);
       if (nai.ok === false || nai.error) {
         toast(errMsg(nai, '이미지 메타를 읽지 못했습니다.'));
         return;
       }
       applyNaiPayload(nai);
-      toast('드롭한 이미지 메타를 넣었습니다.');
+      toast('이미지 메타를 넣었습니다.');
     } catch (err) {
       toast(String((err as Error)?.message || err));
     } finally {
@@ -671,6 +677,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
     return [
       sec('preset',
         `<span class="name">선행 프리셋</span>
+        ${metaLoading ? '<span class="metaload" role="status"><i aria-hidden="true"></i>메타 불러오는 중…</span>' : ''}
         <span class="grow"></span>
         <button class="btn sm ${m.autoPerson ? 'on' : ''}" data-act="autoPerson" type="button">인원수 자동넣기 ${m.autoPerson ? '켬' : '끔'}</button>`,
         `${optionBar({
@@ -852,6 +859,17 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const b = document.createElement('b');
       b.textContent = [h.id?.match(/_([rs]\d+)$/)?.[1] || (h.id ? '원본' : ''), h.seed ? `seed ${h.seed}` : ''].filter(Boolean).join(' · ');
       el.append(img, b);
+      if (metaLoading && state.historySel === i) el.classList.add('loading');
+      if (h.id) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'hdel';
+        del.dataset.hdel = String(i);
+        del.title = '삭제';
+        del.setAttribute('aria-label', '이 이미지를 히스토리에서 삭제');
+        del.textContent = '✕';
+        el.append(del);
+      }
       grid.append(el);
     });
   }
@@ -1581,6 +1599,54 @@ export async function openTagStudio(card: unknown): Promise<void> {
     }
   }
 
+  /**
+   * The tile is picked at once and its picture shown; the tags follow when that
+   * image's metadata has been read (the preset header says so meanwhile). A
+   * later pick wins over one still loading.
+   */
+  async function selectHistory(i: number): Promise<void> {
+    const h = state.history[i];
+    if (!h) return;
+    const ticket = ++historyTicket;
+    state.historySel = i;
+    metaLoading = !!h.id;
+    renderHistory();
+    renderPanel();
+    const [nai] = await Promise.all([
+      h.id ? loadNaiPrompt(h.id).catch((err: unknown) => ({ ok: false, error: { message: String((err as Error)?.message || err) } })) : null,
+      showImage(h.url),
+    ]);
+    if (ticket !== historyTicket) return;
+    metaLoading = false;
+    const meta = nai ? asRecord(nai) : null;
+    if (meta && (meta.ok === false || meta.error)) toast(errMsg(meta, '이 이미지의 메타를 읽지 못했습니다.'));
+    else if (meta) { applyNaiPayload(meta); return; }
+    renderAll();
+  }
+
+  async function deleteHistoryAt(i: number): Promise<void> {
+    const h = state.history[i];
+    if (!h?.id) return;
+    if (!await askYesNo('이 이미지를 히스토리에서 지울까요?')) return;
+    setBusy(true);
+    try {
+      const res = asRecord(await deleteHistoryRevision(h.id));
+      if (res.ok === false || res.error) { toast(errMsg(res, '지우지 못했습니다.')); return; }
+      const at = state.history.indexOf(h);
+      if (at < 0) return;
+      state.history.splice(at, 1);
+      if (state.historySel > at) state.historySel -= 1;
+      else if (state.historySel === at) {
+        state.historySel = Math.min(at, state.history.length - 1);
+        if (state.historySel >= 0) void selectHistory(state.historySel);
+      }
+      renderAll();
+      toast('히스토리에서 지웠습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function downloadHistory(): void {
     if (!state.history.length) return toast('받을 게 없습니다.');
     state.history.forEach((h, i) => {
@@ -1935,12 +2001,16 @@ export async function openTagStudio(card: unknown): Promise<void> {
         renderAll();
         return;
       }
+      const hdel = t.closest('[data-hdel]');
+      if (hdel instanceof HTMLElement) {
+        void deleteHistoryAt(Number(hdel.dataset.hdel));
+        return;
+      }
       const h = t.closest('[data-h]');
       if (h instanceof HTMLElement) {
         const i = Number(h.dataset.h);
         if (!Number.isFinite(i) || !state.history[i]) return;
-        state.historySel = i;
-        void showImage(state.history[i]!.url).then(() => renderAll());
+        void selectHistory(i);
       }
     });
 
@@ -2093,6 +2163,19 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const fn = () => { void commitAndClose(); };
       save.addEventListener('click', fn);
       cleanups.push(() => save.removeEventListener('click', fn));
+    }
+    const load = $('#load');
+    const loadFile = $('#loadFile') as HTMLInputElement | null;
+    if (load && loadFile) {
+      const pick = () => loadFile.click();
+      const picked = () => {
+        const file = loadFile.files?.[0];
+        loadFile.value = '';
+        if (file) void ingestDroppedFile(file);
+      };
+      load.addEventListener('click', pick);
+      loadFile.addEventListener('change', picked);
+      cleanups.push(() => { load.removeEventListener('click', pick); loadFile.removeEventListener('change', picked); });
     }
     const cancel = $('#cancel');
     if (cancel) {
