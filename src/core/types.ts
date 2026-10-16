@@ -98,6 +98,9 @@ export interface CardSettings {
   speech_bubble_weight?: number;
   /** NAI5 대사삽입: adds huge text to every bubble, at the bubble's weight. */
   speech_huge_text?: boolean;
+  /** 명령수정: send this character's lb-xnai section / lorebook entries naming it. */
+  char_command_xnai?: boolean;
+  char_command_lore?: boolean;
   /**
    * When true, main-tagger JSON parse failure appends the error and retries the
    * LLM once before failing the job.

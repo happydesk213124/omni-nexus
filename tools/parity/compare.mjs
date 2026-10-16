@@ -481,6 +481,9 @@ function expectedAssetChange(a,b,at) {
   // and speech.bubble_on_caption asserts the weighted tags on the wire.
   if (/\.value\.(?:settings|json)\.card\.speech_bubble_weight$/.test(at)) return a === undefined && b === 1;
   if (/\.value\.(?:settings|json)\.card\.speech_huge_text$/.test(at)) return a === undefined && b === false;
+  // 명령수정 lb-xnai / 로어북 참조 switches are opt-in; tests/char-command-refs and the
+  // stream-services 명령수정 test assert their save and what they send.
+  if (/\.value\.(?:settings|json)\.card\.char_command_(?:xnai|lore)$/.test(at)) return a === undefined && b === false;
   // New default-on field injection switches; scenario asserts disabling, export and restore.
   if (/\.value\.(?:settings|json)\.card\.character_(?:height|age)$/.test(at)) return a === undefined && b === true;
   // 1.0.1 no longer exports the service-account credential field, even when empty.

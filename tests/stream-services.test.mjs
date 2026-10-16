@@ -840,6 +840,26 @@ test('changed committed text cancels attachment and preserves paid image bytes',
   assert.equal(f.api.storeSize('images'),before);assert.equal((await f.chat()).message[0].data,'Completely replaced output');
 });
 
+test('명령수정 sends this character\'s lb-xnai section and lorebook entries only when its switches are on',async()=>{
+  const f=await fixture();
+  const bot=await risuai.getCharacterFromIndex(0);
+  await risuai.setCharacterToIndex(0,{...bot,globalLore:[
+    {comment:'lb-xnai.lb.extra',key:'',content:'### 하나\nred hair, school uniform\n\n### 민아\nblue hair'},
+    {comment:'하나 · 설정',key:'하나',content:'하나는 늘 교복을 입는다.'},
+    {comment:'민아',key:'민아',content:'민아는 메이드다.'}]});
+  f.host.setLlmReply('{}');
+  const sent=async body=>{
+    await f.api.commandRewriteCharacter('h1',{instruction:'교복으로',character:{id:'h1',name:'하나',appearance:'girl'},scope:'c',...body});
+    return JSON.parse(f.host.llmRequests.at(-1).messages.findLast(m=>m.role==='user').content);
+  };
+  assert.equal((await sent({})).reference,undefined,'switches off: nothing from the lorebook');
+  const both=await sent({xnai:true,lore:true});
+  assert.match(both.reference.lb_xnai,/### 하나\nred hair, school uniform/);assert.doesNotMatch(both.reference.lb_xnai,/민아/);
+  assert.deepEqual(both.reference.lorebook,[{title:'하나 · 설정',text:'하나는 늘 교복을 입는다.'}],'the bot\'s own lorebook, entries naming her only');
+  assert.match(both.reference.note,/never copy story text/);
+  assert.deepEqual(Object.keys((await sent({xnai:true})).reference).sort(),['lb_xnai','note']);
+});
+
 test('helper module toggles only itself, hides the marker only in display, and serializes with gallery/display writes',async()=>{
   const f=await fixture();
   await risuai.setDatabase({modules:[{id:'user',assets:[['keep','path','keep']]}],enabledModules:['user']});
