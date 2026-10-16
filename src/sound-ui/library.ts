@@ -98,6 +98,8 @@ export class SoundLibrary {
       folders.append(b);
     }
     input(this.id('folder-edit')).disabled = !this.folder || this.folder === '*';
+    // On a phone the folder list is folded: its button names the open folder.
+    text(this.id('folder-toggle'), `${this.folder === '*' ? '폴더' : this.folder || '미분류'} ▾`);
   }
   private openDialog(item?: SoundItem): void {
     this.editing = item;

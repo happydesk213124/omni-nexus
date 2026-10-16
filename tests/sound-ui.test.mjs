@@ -110,6 +110,11 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.setViewportSize({ width: 412, height: 915 });
     assert.ok(await fill('sound-glossary') < 40, 'the glossary fills the height too');
     await page.locator('#tab-sound-bgm').click(); assert.ok(await fill('sound-bgm') < 40, 'and the BGM list');
+    // Three rows of controls above the list on a phone (search · commands · folders with the selection bar), not five.
+    const head = await page.evaluate(() => Math.round(document.getElementById('snd-bgm-list').getBoundingClientRect().top - document.getElementById('sound-bgm').getBoundingClientRect().top));
+    assert.ok(head < 200, `the list starts ${head}px below the tabs`);
+    assert.equal(await page.evaluate(() => document.getElementById('snd-bgm-folder-toggle').getBoundingClientRect().top === document.getElementById('snd-bgm-multi').getBoundingClientRect().top), true, 'folders and the selection bar share a row');
+    assert.ok(await page.evaluate(() => { const list = document.getElementById('snd-bgm-list').getBoundingClientRect(), bar = document.querySelector('#sound-bgm .voice-command-bar').getBoundingClientRect(); return Math.abs(list.left - bar.left) < 8 && Math.abs(list.right - bar.right) < 8; }), 'the list keeps the full width below them');
     await page.locator('#tab-sound-glossary').click(); await page.setViewportSize({ width: 1360, height: 900 });
     // Words and the unknown list are two tabs.
     assert.equal(await page.locator('#snd-gloss-unknown').isVisible(), false, 'the word tiles first');

@@ -106,9 +106,28 @@ export const SOUND_LIST_CSS = '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-lis
   + '#tts-settings-root .voice-folders.drop-ready .folder-item:not(:first-child){outline:1px dashed #a780ef88;outline-offset:-1px}'
   + '#tts-settings-root .voice-folders .folder-item.drop{background:#7132f550;border-color:#b697ff}'
   + '@media(max-width:768px){#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list){grid-template-columns:minmax(0,1fr)}'
-  // One row of commands on a phone: LLM, + 추가 and 파일 side by side.
-  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools{display:flex;flex-wrap:nowrap!important;gap:6px;width:100%}'
-  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools>button{flex:1 1 0;min-width:0;white-space:nowrap}}'
+  // Three rows above the list on a phone instead of five: search with filter and
+  // sort; LLM, + 추가 and 파일; then 폴더 ▾ ＋ beside the selection bar. The browser
+  // box steps aside (display:contents) so its bar and list join the explorer grid.
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-command-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-command-bar .voice-search-wrap{flex:1 1 0;min-width:0}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-command-bar>select{flex:none;width:76px;min-width:0;padding-left:8px;padding-right:4px;font-size:12px}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-command-bar>:is([id$="-count"],[id$="-total"]){display:none}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools{display:flex;flex-wrap:nowrap!important;gap:6px;width:100%;flex-basis:100%}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools>button{flex:1 1 0;min-width:0;white-space:nowrap;min-height:38px;padding-top:6px;padding-bottom:6px}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools>.file-menu{flex:none}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-explorer{grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:6px}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-explorer:has(.folders-open){grid-template-rows:auto auto minmax(0,1fr)}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-folders{grid-column:1;grid-row:1;min-width:0}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-folders.folders-open{grid-column:1/-1}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-browser{display:contents}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-selection-bar{grid-column:2;grid-row:1;min-width:0;flex-wrap:wrap;gap:5px;padding-bottom:6px}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-explorer:has(.folders-open) .voice-selection-bar{grid-column:1/-1;grid-row:2}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-selection-bar>button{padding:6px 9px;min-height:36px;font-size:12px}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-selection-bar>[id$="-selected-count"]{font-size:11px}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) :is(#snd-bgm-list,#snd-sfx-list){grid-column:1/-1;grid-row:2}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-explorer:has(.folders-open) :is(#snd-bgm-list,#snd-sfx-list){grid-row:3}}'
+  + '@media(max-width:360px){#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-command-bar>select{width:64px;font-size:11px}#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-selection-bar>[id$="-selected-count"]{display:none}}'
   // Glossary: the effect is a button that opens the searchable picker.
   + '#tts-settings-root .snd-term-effect{flex:1;min-width:0;display:flex;align-items:center;gap:6px;justify-content:space-between;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:7px 10px;font-weight:600}'
   + '#tts-settings-root .snd-term-effect span{opacity:.6;font-size:11px}'
