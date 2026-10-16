@@ -24,9 +24,21 @@ export function synthesisSignature(text: string, tone: string, fishId: string, s
   // Message id, character spelling, local volume and playback speed don't affect bytes.
   return JSON.stringify([1, settings.fish.url, settings.fish.model, fishId, tone.trim().toLowerCase(), text, settings.normalize, 'mp3']);
 }
+/** Fish delivery cues from a comma list: short English words only, each once. */
+export function toneCues(tone: string): string[] {
+  return [...new Set(String(tone || '').toLowerCase().split(',').map(v => v.trim()).filter(v => /^[a-z][a-z -]{0,39}$/.test(v)))];
+}
+/**
+ * What a line is spoken with: its own delivery first (two cues at most, as
+ * before), then the speaker's base delivery, four cues in all. With no base the
+ * line's tone is returned as it was written, so cached audio keeps its key.
+ */
+export function speechTone(line: string, base: string): string {
+  const own = toneCues(line).slice(0, 2), extra = toneCues(base).filter(cue => !own.includes(cue));
+  return extra.length ? [...own, ...extra].slice(0, 4).join(', ') : line;
+}
 export function fishText(text: string, tone: string): string {
-  const cues = tone.toLowerCase().split(',').map(v => v.trim()).filter(v => /^[a-z][a-z -]{0,39}$/.test(v)).slice(0, 2);
-  return cues.map(cue => `[${cue}]`).join('') + text;
+  return toneCues(tone).slice(0, 4).map(cue => `[${cue}]`).join('') + text;
 }
 export function cueHeader(value:string): {speaker:string;tone:string}|null {
   let prefix=value.trim().replace(/[:：]\s*$/,'').trim();

@@ -41,6 +41,9 @@ test('production settings persist independently, edit voice tiles and survive re
     assert.deepEqual(await page.evaluate(()=>window.ttsData().settings.rates),[1,2,2.5,3.5]);
     assert.deepEqual(await page.locator('#speed option').allTextContents(),['1×','2×','2.5×','3.5×'],'speed choices are the custom rate list');
     await page.locator('#speed').selectOption('2.5');await page.waitForFunction(()=>window.ttsData().settings.rate===2.5);await page.locator('#speed').selectOption('1');
+    // One base delivery for every voice, as English Fish cues.
+    await page.locator('#tts-default-tone').fill('soft tone, slow');await page.waitForFunction(()=>window.ttsData().settings.tone==='soft tone, slow');
+    await page.locator('#tts-default-tone').fill('');await page.waitForFunction(()=>window.ttsData().settings.tone==='');
     assert.equal(await page.locator('#tts-skip-chars').inputValue(),'1');
     await page.locator('#tts-skip-chars').fill('3');await page.locator('#tts-skip-chars').dispatchEvent('change');
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.skipChars===3;});
@@ -164,6 +167,22 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.locator('#c-gain-manual').uncheck();await page.waitForFunction(()=>window.ttsData().characters.find(c=>c.name==='하린').autoGain===true);
     await page.locator('#c-surname').fill('김');await page.locator('#c-surname').fill('');
     assert.equal(await page.evaluate(()=>window.ttsData().characters.find(c=>c.name==='하린').surname),'');
+    // This character's own base delivery and audio model; empty follows the settings.
+    const harin=()=>page.evaluate(()=>{const c=window.ttsData().characters.find(x=>x.name==='하린');return [c.tone,c.model];});
+    assert.equal(await page.locator('#c-model').inputValue(),'','a new character follows the model settings');
+    await page.locator('#c-tone').fill('husky, slow');await page.waitForFunction(()=>window.ttsData().characters.find(c=>c.name==='하린').tone==='husky, slow');
+    await page.locator('#c-model').selectOption('drama-3');await page.waitForFunction(()=>window.ttsData().characters.find(c=>c.name==='하린').model==='drama-3');
+    assert.equal(await page.locator('#c-model-custom').isVisible(),false);
+    await page.locator('#c-model').selectOption('custom');assert.equal(await page.locator('#c-model-custom').isVisible(),true,'직접 입력 shows the name field');
+    await page.locator('#c-model-custom').fill('s2.2-pro');await page.waitForFunction(()=>window.ttsData().characters.find(c=>c.name==='하린').model==='s2.2-pro');
+    // Reopened, a typed model shows as 직접 입력 with its name.
+    await page.locator('#character-dialog [data-close]').first().click();
+    const harinTile=page.locator('#character-list .char-card').filter({hasText:'하린'});
+    await harinTile.click();if(!await page.locator('#character-dialog').isVisible())await harinTile.click();
+    assert.deepEqual([await page.locator('#c-tone').inputValue(),await page.locator('#c-model').inputValue(),await page.locator('#c-model-custom').inputValue()],['husky, slow','custom','s2.2-pro']);
+    await page.locator('#c-model').selectOption('');await page.locator('#c-tone').fill('');
+    await page.waitForFunction(()=>{const c=window.ttsData().characters.find(x=>x.name==='하린');return !c.tone&&!c.model;});
+    assert.deepEqual(await harin(),[undefined,undefined],'emptied, the character follows the settings again');
     await page.locator('#choose-character-voice').click();
     await page.locator('#voice-folder-list .folder-item').first().click();
     await page.locator('#voice-list .voice-row').nth(2).click();await page.locator('#voice-list .voice-row').nth(2).click();
