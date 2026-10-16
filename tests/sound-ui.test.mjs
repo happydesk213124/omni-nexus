@@ -153,19 +153,37 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.match(await page.locator('#snd-terms').textContent(), /검색에 맞는 용어가 없습니다/);
     await page.locator('#snd-term-search').fill('');
     await page.locator('#tab-sound-settings').click();
-    await page.locator('#snd-rule-test').fill('§덜컹! 덜컹!§');
-    assert.match(await page.locator('#snd-rule-result').textContent(), /덜컹! 덜컹!」 → 문 쾅/);
+    // No test sentence, no generation prompt: each rule shows its own example.
+    assert.equal(await page.locator('#snd-rule-test, #snd-rule-result, #snd-sfx-prompt').count(), 0);
     // A rule is two marks, no regex: what the user types is what the chat matches.
     const rule = page.locator('#snd-rules .snd-rule').first();
     assert.equal(await rule.locator('.snd-rule-pattern, .snd-rule-flags').count(), 0, 'no regex or flag field');
-    await rule.locator('.snd-rule-open').fill('[['); await rule.locator('.snd-rule-open').dispatchEvent('change');
+    assert.equal(await rule.locator('.snd-rule-sample').textContent(), '예 §쾅§');
+    await rule.locator('.snd-rule-open').fill('[[');
+    assert.equal(await rule.locator('.snd-rule-sample').textContent(), '예 [[쾅§', 'the example follows the marks as they are typed');
+    await rule.locator('.snd-rule-open').dispatchEvent('change');
     await rule.locator('.snd-rule-close').fill(']]'); await rule.locator('.snd-rule-close').dispatchEvent('change');
     await page.waitForFunction(() => window.soundData().settings.sfxRules[0].open === '[[' && window.soundData().settings.sfxRules[0].close === ']]');
-    await page.locator('#snd-rule-test').fill('[[덜컹! 덜컹!]]');
-    assert.match(await page.locator('#snd-rule-result').textContent(), /덜컹! 덜컹!」 → 문 쾅/, 'the example follows the new marks');
+    assert.equal(await rule.locator('.snd-rule-sample').textContent(), '예 [[쾅]]');
     await rule.locator('.snd-rule-close').fill(''); await rule.locator('.snd-rule-close').dispatchEvent('change');
     await page.waitForFunction(() => /모두 넣어/.test(document.querySelector('#snd-rules .snd-rule-error')?.textContent || ''));
     assert.equal(await page.evaluate(() => window.soundData().settings.sfxRules[0].close), ']]', 'an empty mark is not saved');
+    // On a wide screen a rule is one compact line: switch, name, the marks around 효과음, its example, 삭제.
+    await rule.locator('.snd-rule-close').fill(']]'); await rule.locator('.snd-rule-close').dispatchEvent('change');
+    await page.waitForFunction(() => !document.querySelector('#snd-rules .snd-rule-error')?.textContent);
+    // As wide as the user's PC screenshot (one column, ~1200px): the card stays compact instead of spreading out.
+    await page.evaluate(() => { document.getElementById('snd-sfx-gate').style.width = '1200px'; });
+    const card = await rule.evaluate(node => { const box = node.getBoundingClientRect(), parts = ['.switch', '.snd-rule-name', '.snd-rule-marks', '.snd-rule-sample', '.snd-rule-del'].map(s => node.querySelector(s).getBoundingClientRect());
+      return { width: box.width, height: box.height, oneLine: parts.every(p => Math.abs((p.top + p.bottom) / 2 - (parts[0].top + parts[0].bottom) / 2) < 8), ordered: parts.every((p, i) => !i || p.left >= parts[i - 1].right - 1), inside: parts.every(p => p.right <= box.right + 1), markGap: node.querySelector('.snd-rule-close').getBoundingClientRect().left - node.querySelector('.snd-rule-open').getBoundingClientRect().right,
+        maxGap: Math.max(...parts.slice(1).map((p, i) => p.left - parts[i].right)) }; });
+    assert.ok(card.height < 64 && card.oneLine && card.ordered && card.inside, JSON.stringify(card));
+    assert.ok(card.markGap < 80, 'the two marks sit together around 효과음, not spread across the row: ' + card.markGap);
+    assert.ok(card.maxGap <= 16 && card.width <= 680, 'nothing floats apart on a wide row: ' + JSON.stringify(card));
+    await page.evaluate(() => { document.getElementById('snd-sfx-gate').style.width = ''; });
+    // Explanations open with 「?」: the rows carry help ids, and their small lines are live status only.
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#sound-settings .row .copy small')].filter(s => !s.querySelector('span[id]')).map(s => s.textContent)), [], 'no explanation text under the rows');
+    const helpIds = await page.evaluate(() => ['snd-sfx-cue', 'snd-bgm-prompt', 'snd-rules-head', 'snd-bgm-tags', 'snd-bgm-cache'].map(id => document.getElementById(id).closest('[data-nx-help-id]')?.dataset.nxHelpId));
+    assert.deepEqual(helpIds, ['snd-sfx-cue', 'snd-bgm-prompt', 'snd-rules-head', 'snd-bgm-tags', 'snd-bgm-cache']);
     // Under the instruction switch: whether the chat model's last request carried it.
     await page.evaluate(() => { Object.assign(window.soundData().settings, { sfxEnabled: true, sfxCue: true }); window.__OMNI_INLINE_TAGS__ = { status: () => ({ registered: 'yes' }), cues: () => ({ at: Date.now(), tts: true, bgm: true, sfx: false }) }; });
     await page.waitForFunction(() => /효과음 지시가 빠졌습니다[\s\S]*로어북 토큰 한도/.test(document.getElementById('snd-sfx-cue-status')?.textContent || ''), null, { timeout: 5000 });

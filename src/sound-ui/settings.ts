@@ -1,8 +1,6 @@
 import type { SfxRule, SoundSettings } from '../core/sound-types';
 import { soundData, subscribeSound, updateSoundSettings } from '../storage/sound-store';
-import { sfxHits, sfxMarksProblem } from '../domain/sound/audio';
-import { exactSfx, pickSfx } from '../domain/sound/match';
-import { sfxParts } from '../domain/sound/combo';
+import { sfxMarksProblem } from '../domain/sound/audio';
 import { soundTags } from '../domain/sound/tags';
 import { el, input, val, set, text, esc, run, download, readJson, notify } from '../tts-ui/common';
 import { SOUND_SETTINGS_FILE, exportableSoundSettings, importSoundSettings } from './settings-transfer';
@@ -15,28 +13,42 @@ import type { CueAudit } from '../services/cue-audit';
 
 const percent = (id: string, value: number) => { set(id, Math.round(value * 100)); text(`${id}-value`, `${Math.round(value * 100)}%`); };
 
+/**
+ * One card per rule: switch, name, the two marks around 「효과음」 as one unit,
+ * and what a word looks like with them (예 §쾅§), so no test sentence is needed.
+ */
 function renderRules(): void {
   const host = el('snd-rules'); if (!host) return;
   host.replaceChildren();
-  for (const rule of soundData().settings.sfxRules) {
-    const line = document.createElement('div'); line.className = 'row snd-rule';
+  const rules = soundData().settings.sfxRules;
+  if (!rules.length) { host.innerHTML = '<p class="snd-rules-empty">규칙이 없습니다. 「+ 규칙」으로 만드세요.</p>'; return; }
+  for (const rule of rules) {
+    const line = document.createElement('div'); line.className = 'snd-rule'; line.classList.toggle('off', !rule.enabled);
     // Only the marks: the matching itself is built in (sfxRuleSource), like the dialogue controls.
-    const mark = (cls: string, value: string, label: string) => `<input class="${cls}" value="${esc(value)}" aria-label="${label}" placeholder="${label.slice(0, 1)}" maxlength="8" style="width:56px;text-align:center">`;
+    const mark = (cls: string, value: string, label: string) => `<input class="${cls}" value="${esc(value)}" aria-label="${label}" placeholder="${label.slice(0, 1)}" maxlength="8">`;
     line.innerHTML = `<label class="switch"><input type="checkbox" ${rule.enabled ? 'checked' : ''} aria-label="${esc(rule.name)} 사용"></label>`
-      + `<input class="snd-rule-name" value="${esc(rule.name)}" aria-label="규칙 이름" style="width:110px">`
-      + mark('snd-rule-open', rule.open, '앞 글자') + `<span class="snd-rule-word" aria-hidden="true">효과음</span>` + mark('snd-rule-close', rule.close, '뒤 글자')
-      + `<button type="button" class="danger" aria-label="규칙 삭제">삭제</button><small class="snd-rule-error" role="alert"></small>`;
+      + `<input class="snd-rule-name" value="${esc(rule.name)}" aria-label="규칙 이름" maxlength="40">`
+      + `<span class="snd-rule-marks">${mark('snd-rule-open', rule.open, '앞 글자')}<span class="snd-rule-word" aria-hidden="true">효과음</span>${mark('snd-rule-close', rule.close, '뒤 글자')}</span>`
+      + `<span class="snd-rule-sample" aria-label="예"></span>`
+      + `<button type="button" class="snd-rule-del danger" aria-label="규칙 삭제" title="규칙 삭제">삭제</button><small class="snd-rule-error" role="alert"></small>`;
     const [on, name, open, close] = [...line.querySelectorAll('input')] as HTMLInputElement[];
+    const sample = line.querySelector<HTMLElement>('.snd-rule-sample')!;
+    const paintSample = () => { sample.textContent = open!.value && close!.value ? `예 ${open!.value}쾅${close!.value}` : ''; };
+    paintSample();
+    for (const field of [open, close]) field!.addEventListener('input', paintSample);
     const save = () => run(async () => {
       const problem = sfxMarksProblem(open!.value, close!.value);
       (line.querySelector('.snd-rule-error') as HTMLElement).textContent = problem;
+      line.classList.toggle('bad', !!problem);
       if (problem) return;
+      line.classList.toggle('off', !on!.checked);
       const rules = soundData().settings.sfxRules.map(r => r.id === rule.id ? { ...r, enabled: on!.checked, name: name!.value.trim() || '규칙', open: open!.value, close: close!.value } : r);
-      await updateSoundSettings({ sfxRules: rules }); renderTest();
+      await updateSoundSettings({ sfxRules: rules });
     });
     for (const field of [on, name, open, close]) field!.addEventListener('change', save);
-    line.querySelector('button')!.addEventListener('click', () => run(async () => {
-      await updateSoundSettings({ sfxRules: soundData().settings.sfxRules.filter(r => r.id !== rule.id) }); renderRules(); renderTest();
+    line.querySelector('.snd-rule-del')!.addEventListener('click', () => run(async () => {
+      if (!confirm(`「${rule.name}」 규칙을 지울까요?`)) return;
+      await updateSoundSettings({ sfxRules: soundData().settings.sfxRules.filter(r => r.id !== rule.id) }); renderRules();
     }));
     host.append(line);
   }
@@ -62,19 +74,6 @@ function renderCueStatus(): void {
   const hook = Reflect.get(globalThis, '__OMNI_INLINE_TAGS__') as { status?: () => { registered?: string }; cues?: () => CueAudit | null } | undefined;
   node.textContent = sfxCueStatusText(soundData().settings, hook?.cues?.() ?? null, hook?.status?.().registered);
 }
-/** Shows which words the rules catch in the example and which effect each would play. */
-/** What a word would play: one effect, or a compound's parts joined (unknown parts are asked for when it plays). */
-function effectsFor(word: string): string {
-  const { glossary, sfx } = soundData(), exact = exactSfx(word, glossary, sfx), parts = sfxParts(word);
-  if (exact || parts.length <= 1) return (exact || pickSfx(word, glossary, sfx))?.name || '미등록';
-  return parts.map(part => pickSfx(part, glossary, sfx)?.name || '미등록').join(' + ');
-}
-function renderTest(): void {
-  const hits = sfxHits(val('snd-rule-test'), soundData().settings.sfxRules);
-  text('snd-rule-result', !val('snd-rule-test') ? '' : hits.length
-    ? hits.map(hit => `「${hit.word}」 → ${effectsFor(hit.word)}`).join(' · ')
-    : '걸리는 말이 없습니다.');
-}
 
 const SWITCHES = [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst'], ['snd-sfx-autocreate', 'sfxAutoCreate']] as const;
 const RANGES = [['snd-bgm-volume', 'bgmVolume'], ['snd-sfx-volume', 'sfxVolume'], ['snd-duck', 'duck']] as const;
@@ -98,7 +97,7 @@ export function paintSoundSettings(rules = true): void {
   put('snd-bgm-cache', s.bgmCacheMb);
   const usage = omniSound.bgmCacheUsage(); text('snd-bgm-cache-usage', `지금 ${usage.count}곡 · ${(usage.bytes / 1048576).toFixed(1)} MB`);
   put('snd-crossfade', s.crossfadeMs / 1000); put('snd-sfx-max', s.sfxMaxSec); put('snd-max-mb', s.maxFileMb);
-  put('snd-sfx-prompt', s.sfxPrompt); put('snd-sfx-duration', s.sfxDuration); put('snd-eleven-key', s.elevenKey);
+  put('snd-sfx-duration', s.sfxDuration); put('snd-eleven-key', s.elevenKey);
   put('snd-bgm-tags', s.bgmTags.join(', '));
   put('snd-embed-provider', s.embed.provider); put('snd-embed-model', s.embed.model); put('snd-embed-key', s.embed.key); put('snd-embed-endpoint', s.embed.endpoint);
   if (input('snd-embed-endpoint')) input('snd-embed-endpoint').placeholder = defaultEndpointForEmbedding(s.embed.provider);
@@ -127,7 +126,6 @@ export function bindSoundSettings(): void {
   }));
   commit('snd-sfx-max', () => ({ sfxMaxSec: Number(val('snd-sfx-max')) }), s => s.sfxMaxSec);
   commit('snd-max-mb', () => ({ maxFileMb: Number(val('snd-max-mb')) }), s => s.maxFileMb);
-  el('snd-sfx-prompt').addEventListener('change', () => run(() => updateSoundSettings({ sfxPrompt: val('snd-sfx-prompt') })));
   commit('snd-sfx-duration', () => ({ sfxDuration: Number(val('snd-sfx-duration')) || 0 }), s => s.sfxDuration);
   el('snd-eleven-key')?.addEventListener('change', () => run(() => updateSoundSettings({ elevenKey: val('snd-eleven-key').trim() })));
   commit('snd-bgm-tags', () => ({ bgmTags: soundTags(val('snd-bgm-tags')) }), s => s.bgmTags.join(', '));
@@ -149,7 +147,6 @@ export function bindSoundSettings(): void {
     const rule: SfxRule = { id: uuid(), name: '새 규칙', open: '*', close: '*', enabled: false };
     await updateSoundSettings({ sfxRules: [...soundData().settings.sfxRules, rule] }); renderRules();
   }));
-  el('snd-rule-test').addEventListener('input', renderTest);
   el('snd-settings-export').addEventListener('click', () => download(exportableSoundSettings(soundData().settings), `${SOUND_SETTINGS_FILE}.json`));
   el('snd-settings-import').addEventListener('click', () => input('snd-settings-file').click());
   el('snd-settings-file').addEventListener('change', () => run(async () => {
