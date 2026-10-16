@@ -21,7 +21,7 @@ import { shouldUseNaiCoords } from '../.test-build/nai-coords.mjs';
 import { allUniqueNaiTokens, quotaTokenGroups, tokensForFamily, vibeEncodeToken } from '../.test-build/nai-keys.mjs';
 import {
   captionWithSpeech,
-  speechCaptionTag,
+  speechCaptionTag, speechStyleFromCard,
   speechCaptionTagsForShot,
   stripSpokenBubbleSuppression,
 } from '../.test-build/nai-speech.mjs';
@@ -237,9 +237,20 @@ test('same API key on V5 and V4 is one quota group', () => {
 });
 
 test('speech tag names no one; suppression groups are stripped', () => {
-  assert.equal(speechCaptionTag('안돼!!'), 'speechbubble, korean text:안돼!!');
-  assert.equal(speechCaptionTag('No!', 'english'), 'speechbubble, english text:No!');
+  assert.equal(speechCaptionTag('안돼!!'), 'speech bubble, korean text:안돼!!');
+  assert.equal(speechCaptionTag('No!', 'english'), 'speech bubble, english text:No!');
   assert.equal(speechCaptionTag(''), '');
+  // 말풍선 강조 / 글씨 크게: the bubble (and huge text) take the weight, the line never does.
+  assert.equal(speechCaptionTag('원래는 우리가 밥도 안 먹고 잠도 안 자도 안 죽거든?', undefined, { weight: 2, huge: true }),
+    '2::speech bubble:: 2::huge text::, korean text:원래는 우리가 밥도 안 먹고 잠도 안 자도 안 죽거든?');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 1.5 }), '1.5::speech bubble::, korean text:안돼!!');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { huge: true }), 'speech bubble, huge text, korean text:안돼!!', 'weight 1: plain tags');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 1, huge: false }), speechCaptionTag('안돼!!'), 'the defaults change nothing');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 9 }), '5::speech bubble::, korean text:안돼!!', 'at most 5');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 'x' }), 'speech bubble, korean text:안돼!!');
+  assert.deepEqual(speechStyleFromCard({ speech_bubble_weight: 2, speech_huge_text: true }), { weight: 2, huge: true });
+  assert.equal(captionWithSpeech('girl, 2::speech bubble:: 2::huge text::, korean text:a', 'speech bubble, korean text:b'), 'girl, 2::speech bubble:: 2::huge text::, korean text:a', 'a weighted bubble is still a bubble');
+  assert.equal(captionWithSpeech('girl, speechbubble, korean text:a', 'speech bubble, korean text:b'), 'girl, speechbubble, korean text:a', 'and so is the old spelling on older images');
   const stripped = stripSpokenBubbleSuppression(
     'artist:foo, -3::spoken bubble, text, cross-section::, year 2025',
   );
@@ -253,12 +264,17 @@ test('each speaker gets a bubble on their own caption slot', () => {
       { name: '세나', speech: '안돼!!' },
       { name: '한진우', speech: 'Stop.', speech_lang: 'english' },
     ]),
-    ['speechbubble, korean text:안돼!!', 'speechbubble, english text:Stop.'],
+    ['speech bubble, korean text:안돼!!', 'speech bubble, english text:Stop.'],
+  );
+  assert.deepEqual(
+    speechCaptionTagsForShot({ speech: { speaker: '한진우', text: '안돼!!' } }, [{ name: '세나' }, { name: '한진우' }], { weight: 2, huge: true }),
+    ['', '2::speech bubble:: 2::huge text::, korean text:안돼!!'],
+    'the style reaches every way a line is given',
   );
   // Silent cast members stay empty rather than inheriting someone else's line.
   assert.deepEqual(
     speechCaptionTagsForShot({}, [{ name: '세나', speech: '안돼!!' }, { name: '한진우' }]),
-    ['speechbubble, korean text:안돼!!', ''],
+    ['speech bubble, korean text:안돼!!', ''],
   );
 });
 
@@ -268,24 +284,24 @@ test('shot-level speech fills the named speaker when character speech is empty',
       { name: '세나' },
       { name: '한진우' },
     ]),
-    ['', 'speechbubble, korean text:안돼!!'],
+    ['', 'speech bubble, korean text:안돼!!'],
   );
   // A bare string has no speaker, so it belongs to char1.
   assert.deepEqual(
     speechCaptionTagsForShot({ speech: '안돼!!' }, [{ name: '세나' }, { name: '한진우' }]),
-    ['speechbubble, korean text:안돼!!', ''],
+    ['speech bubble, korean text:안돼!!', ''],
   );
   assert.deepEqual(speechCaptionTagsForShot({ speech: '안돼!!' }, []), []);
 });
 
 test('caption speech append keeps dialogue commas and never doubles', () => {
   assert.equal(
-    captionWithSpeech('brown hair, girl', 'speechbubble, korean text:안돼, 그러지 마'),
-    'brown hair, girl, speechbubble, korean text:안돼, 그러지 마',
+    captionWithSpeech('brown hair, girl', 'speech bubble, korean text:안돼, 그러지 마'),
+    'brown hair, girl, speech bubble, korean text:안돼, 그러지 마',
   );
   assert.equal(
-    captionWithSpeech('girl, speechbubble, korean text:안돼', 'speechbubble, korean text:안돼'),
-    'girl, speechbubble, korean text:안돼',
+    captionWithSpeech('girl, speech bubble, korean text:안돼', 'speech bubble, korean text:안돼'),
+    'girl, speech bubble, korean text:안돼',
   );
-  assert.equal(captionWithSpeech('', 'speechbubble, korean text:안돼'), 'speechbubble, korean text:안돼');
+  assert.equal(captionWithSpeech('', 'speech bubble, korean text:안돼'), 'speech bubble, korean text:안돼');
 });

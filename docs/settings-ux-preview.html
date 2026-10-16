@@ -1195,6 +1195,8 @@
             <label class="row"><span class="row-text"><b>LLM한테 V4/V5 선택권</b></span><span class="sw"><input id="nx-nai5-first" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>무조건 NAI V5만</b></span><span class="sw"><input id="nx-nai5-only" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>NAI5 대사삽입</b></span><span class="sw"><input id="nx-nai5-speech" type="checkbox"></span></label>
+            <div class="row" data-nx-help-id="nx-speech-bubble-weight"><span class="row-text"><b>말풍선 강조</b><small>1은 기존 그대로 · 2면 2::speech bubble::</small></span><input class="ctrl" id="nx-speech-bubble-weight" type="number" min="0" max="5" step="0.1" value="1" aria-label="말풍선 강조"></div>
+            <label class="row" data-nx-help-id="nx-speech-huge-text"><span class="row-text"><b>말풍선 글씨 크게</b><small>huge text를 같은 강조로 붙입니다</small></span><span class="sw"><input id="nx-speech-huge-text" type="checkbox"></span></label>
             <label class="row" data-nx-help-id="nx-character-height"><span class="row-text"><b>캐릭터 키 넣기</b></span><span class="sw"><input id="nx-character-height" type="checkbox" checked></span></label><label class="row" data-nx-help-id="nx-character-age"><span class="row-text"><b>캐릭터 나이 넣기</b></span><span class="sw"><input id="nx-character-age" type="checkbox" checked></span></label><label class="row"><span class="row-text"><b>자동 비율 조절</b></span><span class="sw"><input id="nx-auto-aspect" type="checkbox"></span></label>
           </div>
         </div>
@@ -2518,6 +2520,14 @@
   "nx-nai5-speech": {
     "title": "NAI5 대사삽입",
     "body": "V5 샷에서 말한 캐릭터의 캡션 끝에 말풍선을 넣습니다. 여러 명이 말하면 각자 자기 대사만 가집니다. 프리셋의 spoken bubble 억제는 그 샷에서 빼입니다."
+  },
+  "nx-speech-bubble-weight": {
+    "title": "말풍선 강조",
+    "body": "NAI5 대사삽입이 넣는 말풍선 태그의 강조입니다. 1은 기존 그대로(speech bubble, korean text:대사). 2면 2::speech bubble::, korean text:대사. 0~5, 0.1 단위. 대사 글자 자체는 강조하지 않습니다. 생각 풍선·나레이션 상자(만화)도 같은 값을 씁니다."
+  },
+  "nx-speech-huge-text": {
+    "title": "말풍선 글씨 크게",
+    "body": "켜면 말풍선에 huge text를 붙여 글씨를 크게 그리게 합니다. 강조가 1이 아니면 같은 강조로 감쌉니다. 예: 2::speech bubble:: 2::huge text::, korean text:대사"
   },
   "nx-natural-base": {
     "title": "자연어 base",

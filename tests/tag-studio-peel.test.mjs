@@ -56,6 +56,17 @@ describe('tag-studio peel', () => {
     );
   });
 
+  it('keeps a weighted bubble with huge text whole on C 후행', () => {
+    assert.equal(
+      resolveCharPost({
+        slim: { action: 'waving', expression: 'smile' },
+        caption: 'long silver hair, waving, smile, 2::speech bubble:: 2::huge text::, korean text:안돼, 가지마',
+        lookTags: 'long silver hair',
+      }),
+      'waving, smile, 2::speech bubble:: 2::huge text::, korean text:안돼, 가지마',
+    );
+  });
+
   it('uses slim shot fields for C 후행 when present', () => {
     assert.equal(
       resolveCharPost({

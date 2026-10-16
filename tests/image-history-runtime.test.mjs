@@ -30,6 +30,17 @@ test('history arrows preview, pin posts the viewed revision, and scale updates c
     });
     assert.deepEqual(options.saved,[false,true]);assert.deepEqual(options.defaults,[true,true]);
     assert.match(options.help['nx-character-height'].body,/170cm/);assert.match(options.help['nx-character-age'].body,/24 years old/);
+    // 말풍선 강조 / 글씨 크게 sit under NAI5 대사삽입 and show what is saved.
+    const speech = await page.evaluate(()=>{
+      const read=()=>[document.getElementById('nx-speech-bubble-weight').value,document.getElementById('nx-speech-huge-text').checked,
+        document.getElementById('nx-nai5-speech').closest('label').nextElementSibling?.querySelector('input')?.id];
+      document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{speech_bubble_weight:2,speech_huge_text:true}});
+      const saved=read();
+      document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{}});
+      return {saved,defaults:read(),help:SettingsTabs.previewHelp('nx-speech-huge-text')?.body};
+    });
+    assert.deepEqual(speech.saved,['2',true,'nx-speech-bubble-weight']);assert.deepEqual(speech.defaults,['1',false,'nx-speech-bubble-weight']);
+    assert.match(speech.help,/2::speech bubble:: 2::huge text::/);
     for (const [width,height] of [[832,1216],[1216,832],[1024,1024]]) {
       await page.evaluate(html=>{document.body.innerHTML=risuSanitize(html);},inrayDisplayOut().replaceAll('$1','shot_r2').replaceAll('$2','inxshot_shot_r2.webp').replaceAll('$3',String(width)).replaceAll('$4',String(height)));
       await page.evaluate(({runtime})=>{

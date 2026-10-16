@@ -145,7 +145,7 @@ export function peelLookFromCaption(caption: unknown, look: unknown): string {
 
 /** V5 bubble sits at the end of the char caption. Keep the line intact (commas in dialogue). */
 const SPEECH_TAIL_RE =
-  /(?:,\s*)?((?:speechbubble|thought bubble|narration box)\s*,\s*(?:korean|english|japanese)\s+text\s*:\s*[\s\S]+)$/i;
+  /(?:,\s*)?((?:-?\d+(?:\.\d+)?::)?(?:speech\s*bubble|thought bubble|narration box)(?:::)?(?:\s*,?\s*(?:-?\d+(?:\.\d+)?::)?huge text(?:::)?)?\s*,\s*(?:korean|english|japanese)\s+text\s*:\s*[\s\S]+)$/i;
 
 export function peelSpeechTail(caption: unknown): { body: string; speech: string } {
   const raw = String(caption || '').trim();
@@ -167,7 +167,7 @@ export function resolveCharPost(opts: {
   const fromSlim = joinSlimShotPost(opts.slim);
   const base = fromSlim || peelLookFromCaption(body, opts.lookTags);
   if (!speech) return base;
-  if (/(?:speechbubble|thought bubble|narration box)/i.test(base)) return base;
+  if (/(?:speech\s*bubble|thought bubble|narration box)/i.test(base)) return base;
   return base ? `${base}, ${speech}` : speech;
 }
 

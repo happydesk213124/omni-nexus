@@ -477,6 +477,10 @@ function expectedAssetChange(a,b,at) {
   if (/\.value\.(?:settings|json)\.card\.studio_coords_visible$/.test(at)) return a === undefined && b === true;
   // Explicit AI/manual selection is new; the same scenario asserts its save/export.
   if (/\.value\.(?:settings|json)\.card\.studio_coord_mode$/.test(at)) return a === undefined && b === 'image';
+  // 말풍선 강조 / 글씨 크게 default to the plain bubble; speech.style_on asserts save/export
+  // and speech.bubble_on_caption asserts the weighted tags on the wire.
+  if (/\.value\.(?:settings|json)\.card\.speech_bubble_weight$/.test(at)) return a === undefined && b === 1;
+  if (/\.value\.(?:settings|json)\.card\.speech_huge_text$/.test(at)) return a === undefined && b === false;
   // New default-on field injection switches; scenario asserts disabling, export and restore.
   if (/\.value\.(?:settings|json)\.card\.character_(?:height|age)$/.test(at)) return a === undefined && b === true;
   // 1.0.1 no longer exports the service-account credential field, even when empty.
@@ -678,6 +682,7 @@ const NEW_ONLY_STEPS = new Map([
   ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
+  ['speech.style_on',v=>JSON.stringify(v?.saved)==='[2,true]' && JSON.stringify(v?.exported)==='[2,true]' ? null : 'Speech bubble weight/huge text must persist and export'],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],
   // Revisions intentionally keep the original entity; assert identity and the complete family.
   ['cards.reroll',v=>v?.ok === true && v.card?.id === v.replaced+'_r1' ? null : 'Reroll must retain the source hash and add r1'],
@@ -1288,7 +1293,7 @@ for (const name of oldSteps.keys()) {
         at: name,
         old: JSON.stringify(oldStep.value),
         new: JSON.stringify(newStep.value),
-        note: 'the speaking character\'s caption must end with the bubble, and only theirs; main carries none',
+        note: 'the speaking character\'s caption must end with the bubble (weight 2, huge text), and only theirs; main carries none',
       });
     }
     if (name === 'job.person_tag_emphasis' && newStep.value?.emphasized !== true) {

@@ -399,7 +399,12 @@ test("strip comic/manga from positive and 4koma from UC", () => {
 test("comicSpeechCaption builds a bubble tag", () => {
   assert.equal(
     comicSpeechCaption("speech", "하아..."),
-    "speechbubble, korean text:하아...",
+    "speech bubble, korean text:하아...",
+  );
+  assert.equal(
+    comicSpeechCaption("narration", "그날 밤", { weight: 2, huge: true }),
+    "2::narration box:: 2::huge text::, korean text:그날 밤",
+    "말풍선 강조 / 글씨 크게 apply to every bubble shape",
   );
   assert.equal(
     comicSpeechCaption("thought", "안돼, 가지마"),
@@ -443,7 +448,7 @@ test("composeComicSlotCaption keeps looks, costume, action, and korean text", ()
   assert.match(caption, /blonde hair/);
   assert.match(caption, /navy dress/);
   assert.match(caption, /walking/);
-  assert.match(caption, /speechbubble, korean text:아\.\.\.\. 힘들다\.\.\./);
+  assert.match(caption, /speech bubble, korean text:아\.\.\.\. 힘들다\.\.\./);
 });
 
 test("composeComicSlotCaption forwards source/target/mutual as #-tags", () => {

@@ -1408,6 +1408,13 @@ export async function runScenario(N, handles) {
   await rec('speech.on', () => put('/v1/settings', {
     card: { nai5_speech: true, nai5_only: true },
   }));
+  // 말풍선 강조 / 글씨 크게 (2.0 only): the bubble below is read off the wire with both on.
+  await rec('speech.style_on', async () => {
+    await put('/v1/settings', { card: { speech_bubble_weight: 2, speech_huge_text: true } });
+    const card = (await get('/v1/settings'))?.settings?.card ?? {};
+    const exported = JSON.parse((await get('/v1/settings/export'))?.json || '{}')?.card ?? {};
+    return { saved: [card.speech_bubble_weight, card.speech_huge_text], exported: [exported.speech_bubble_weight, exported.speech_huge_text] };
+  });
   const speechGenBefore = handles.naiRequests.filter((r) => r.kind === 'generate').length;
   const speechJob = await rec('speech.job_create', () => post('/v1/jobs/create', {
     session_id: 'sess_speech',
@@ -1430,14 +1437,14 @@ export async function runScenario(N, handles) {
     const charCaptions = (caption.char_captions ?? []).map((c) => String(c?.char_caption || ''));
     return {
       sent: sent.length,
-      main_has_bubble: String(caption.base_caption || '').includes('speechbubble'),
-      char1_ends_with_bubble: /speechbubble, korean text:안돼!!$/.test(charCaptions[0] || ''),
-      bubbles: charCaptions.filter((c) => c.includes('speechbubble')).length,
+      main_has_bubble: /speech ?bubble/.test(String(caption.base_caption || '')),
+      char1_ends_with_bubble: /(?:^|, )2::speech bubble:: 2::huge text::, korean text:안돼!!$/.test(charCaptions[0] || ''),
+      bubbles: charCaptions.filter((c) => /speech ?bubble/.test(c)).length,
     };
   });
   handles.setLlmReply?.(DEFAULT_LLM_REPLY);
   await rec('speech.off', () => put('/v1/settings', {
-    card: { nai5_speech: false, nai5_only: false },
+    card: { nai5_speech: false, nai5_only: false, speech_bubble_weight: 1, speech_huge_text: false },
   }));
 
   // ── comic cuts (2.0-only shape: 1.x never knew cut_kind) ──────────────
