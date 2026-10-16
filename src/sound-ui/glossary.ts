@@ -91,7 +91,7 @@ export function renderGlossary(focusRow?: string): void {
   for (const word of words) {
     const tile = document.createElement('div'); tile.className = 'snd-unknown-tile';
     // Only close spellings become one-tap chips; the picker shows looser guesses too.
-    const hints = suggestSfx(word, soundData().glossary, soundData().sfx, 2, 0.45);
+    const hints = suggestSfx(word, soundData().glossary, soundData().sfx, 2, 0.55);
     tile.innerHTML = `<b>${esc(word)}</b>`
       + (hints.length ? `<div class="snd-unknown-hints">${hints.map(item => `<button type="button" class="snd-hint" data-key="${esc(item.key)}" title="「${esc(word)}」→ ${esc(item.name)}에 연결">→ ${esc(item.name)}</button>`).join('')}</div>` : '')
       + `<div class="snd-unknown-row"><button type="button" class="snd-unknown-pick" title="검색해서 효과음 고르기">직접 고르기</button><button type="button" class="snd-unknown-ignore" title="무시" aria-label="${esc(word)} 무시">무시</button></div>`;

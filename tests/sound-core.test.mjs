@@ -201,16 +201,17 @@ test('compound effects: split into sounds, a longer sound plays longer, all fit 
 });
 
 test('a word is matched to effects by how it sounds, jamo by jamo, and search covers the folder', () => {
-  assert.ok(api.soundWordSimilarity('콰광', '콰앙') > 0.34, 'no shared syllable, but ㅋㅘ and ㅘㅇ');
+  assert.ok(api.soundWordSimilarity('콰광', '콰앙') > 0.55, 'a different syllable, but only two jamo apart');
   assert.ok(api.soundWordSimilarity('철컥', '철컹') > 0.6);
-  assert.ok(api.soundWordSimilarity('휘이잉', '띠리링') < 0.34, 'only the ending in common');
+  assert.ok(api.soundWordSimilarity('휘이잉', '띠리링') < 0.45, 'only the ending in common');
+  assert.ok(api.soundWordSimilarity('뚜벅뚜벅', '북적') < api.soundWordSimilarity('뚜벅뚜벅', '저벅저벅'), 'the same letters in another order are another sound');
   assert.ok(api.soundWordSimilarity('우당탕', '쾅') < 0.2);
   assert.equal(api.soundWordSimilarity('휘잉', '휘잉!'), 1);
-  const items = [{ key: 'door', name: '문 쾅', tags: ['쾅'], folder: '문' }, { key: 'wind', name: '강풍', tags: ['휘잉', '바람'], folder: '날씨' }, { key: 'step', name: '발소리', tags: [], folder: '사람' }];
+  const items = [{ key: 'door', name: '문 쾅', tags: ['쾅'], folder: '문' }, { key: 'wind', name: '강풍', tags: ['휘잉', '바람'], folder: '날씨' }, { key: 'step', name: '발소리', tags: [], folder: '사람' }, { key: 'market', name: '야외 시장', tags: ['북적'], folder: '환경음' }];
   const glossary = [{ id: 'g', terms: ['저벅저벅'], sfxKey: 'step', enabled: true }];
   assert.deepEqual(api.suggestSfx('휘이잉', glossary, items).map(i => i.key), ['wind']);
-  assert.deepEqual(api.suggestSfx('뚜벅뚜벅', glossary, items).map(i => i.key), ['step'], 'glossary words count as the effect\'s spellings');
-  assert.deepEqual(api.suggestSfx('뚜벅뚜벅', glossary, items, 3, 0.45), [], 'a looser guess is not offered as a one-tap chip');
+  assert.deepEqual(api.suggestSfx('뚜벅뚜벅', glossary, items).map(i => i.key), ['step', 'market'], 'glossary words count as the effect\'s spellings; the picker also lists a looser guess');
+  assert.deepEqual(api.suggestSfx('뚜벅뚜벅', glossary, items, 3, 0.55).map(i => i.key), ['step'], 'a looser guess (북적) is not a one-tap chip');
   assert.deepEqual(api.suggestSfx('삐리리', glossary, items), []);
   assert.equal(api.matchesSoundSearch(items[1], '날씨'), true, 'the folder is searchable');
   assert.equal(api.matchesSoundSearch(items[1], '날씨 & 문'), false);
