@@ -7,7 +7,7 @@ import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
 import { loadTtsData, ttsData, subscribeTts, updateTtsSettings } from '../storage/tts-store';
 import { ensureTtsModule } from '../storage/tts-module';
-import { synthesizeFish } from '../providers/tts/fish';
+import { fishSpeechReady, synthesizeFish } from '../providers/tts/fish';
 import { TtsHttpError } from '../providers/tts/http';
 import { TtsPlayer } from '../providers/tts/player';
 import { translateTts } from '../providers/tts/translation';
@@ -326,7 +326,8 @@ export class OmniTtsRuntime {
   async prefetch(requests: TtsRequest[]): Promise<void> {
     await this.init();
     const s = ttsData().settings;
-    if (!s.enabled || !s.fish.key.trim()) return;
+    // Either route can voice ahead; only Fish's own key was checked before, so OpenRouter never prefetched.
+    if (!s.enabled || !fishSpeechReady(s)) return;
     if (!s.prefetch || !requests.length) { this.viewport++; this.queue.retainBackground(new Set()); return; }
     this.setContext(requests[0].context);
     const ticket = ++this.viewport;

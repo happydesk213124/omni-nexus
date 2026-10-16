@@ -8,11 +8,15 @@ export const OPENROUTER_SPEECH_URL = 'https://openrouter.ai/api/v1/audio/speech'
 export function fishRouterKey(settings: Pick<TtsSettings, 'fish' | 'jev'>): string {
   return settings.fish.routerKey.trim() || (settings.jev.url.includes('openrouter.ai') ? settings.jev.key.trim() : '');
 }
+/** Whether speech can be made at all over the chosen route: Fish's own key, or an OpenRouter one. */
+export function fishSpeechReady(settings: Pick<TtsSettings, 'fish' | 'jev'>): boolean {
+  return settings.fish.via === 'openrouter' ? !!fishRouterKey(settings) : !!settings.fish.key.trim();
+}
 /** OpenRouter names Fish models fish-audio/<model>; a full id is kept as typed. */
 export const fishRouterModel = (model: string): string => model.includes('/') ? model : `fish-audio/${model}`;
 export async function synthesizeFish(text: string, tone: string, voice: string, settings: TtsSettings): Promise<ArrayBuffer> {
   const router = settings.fish.via === 'openrouter';
-  if (router ? !fishRouterKey(settings) : !settings.fish.key.trim()) throw new Error(router ? 'TTS 모델 설정에 OpenRouter API 키를 입력해 주세요.' : 'TTS 모델 설정에 Fish API 키를 입력해 주세요.');
+  if (!fishSpeechReady(settings)) throw new Error(router ? 'TTS 모델 설정에 OpenRouter API 키를 입력해 주세요.' : 'TTS 모델 설정에 Fish API 키를 입력해 주세요.');
   const reference = fishVoiceId(voice);
   if (!reference) throw new Error('유효한 Fish 음성 ID가 필요합니다.');
   if (!text.trim() || text.length > 8000) throw new Error('재생 구간은 1~8000자여야 합니다.');

@@ -9,6 +9,7 @@ import { soundData, soundReady, subscribeSound } from '../storage/sound-store';
 import { omniSound } from '../services/sound-runtime';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import { matchTtsAnchors, ttsAnchorTexts } from '../domain/tts/anchors';
+import { settledWhileStreaming } from '../domain/tts/streaming';
 import { TTS_NARRATION_OFF_CSS } from '../domain/tts/module';
 import { illustrationTtsRequests } from '../services/tts-illustration';
 import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type HostPoint } from './host-utils';
@@ -182,6 +183,9 @@ export async function installTtsHost(): Promise<void> {
       const live = new Set<string>(), nearby: {distance:number;request:TtsRequest}[] = [];
       const height = await doc.clientHeight();
       const perMessage = new Map<number,TtsRequest[]>();
+      // The reply being written: only its finished lines may be voiced ahead.
+      const streamingIndex = context.chat.isStreaming === true ? context.messages.length - 1 : -1;
+      const unsettled = new Set<TtsRequest>();
       anchored.clear();
       let lines = 0;
       for (const chat of await safeArray(await doc.querySelectorAll('.risu-chat'))) {
@@ -196,6 +200,10 @@ export async function installTtsHost(): Promise<void> {
           const index = Number(/\bdata-chat-index="(-?\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? NaN);
           const list = Number.isInteger(index) ? perMessage.get(index) ?? requests(context,index) : [];
           if (Number.isInteger(index)) perMessage.set(index,list);
+          if (index === streamingIndex) {
+            const settled = new Set(settledWhileStreaming(list, String(context.messages[index]?.data ?? '')));
+            for (const request of list) if (!settled.has(request)) unsettled.add(request);
+          }
           // Sound buttons pair with the message's cues in order, each kind on its own.
           const cuesOf = (kind: 'bgm' | 'sfx') => list.filter(r => r.segment.kind === kind);
           const order = { bgm: 0, sfx: 0 };
@@ -247,7 +255,8 @@ export async function installTtsHost(): Promise<void> {
       }else bootAttempts=8;
       if (ttsData().settings.enabled) omniTts.reading(readingList);
       await syncState();
-      const selected = nearby.slice(0,ttsData().settings.prefetch).map(row=>row.request);
+      // The line still being written changes with every chunk: it is made once, after the reply ends.
+      const selected = nearby.filter(row=>!unsettled.has(row.request)).slice(0,ttsData().settings.prefetch).map(row=>row.request);
       const fingerprint=JSON.stringify([context.scope,selected.map(r=>[r.messageId,r.segment.id,r.segment.text])]);
       if (fingerprint !== lastPrefetch) { lastPrefetch=fingerprint; void omniTts.prefetch(selected); }
     } catch (error) { if (ttsData().settings.enabled) console.warn('OmniTTS chat scan',error); }
