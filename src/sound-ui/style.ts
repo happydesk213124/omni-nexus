@@ -85,3 +85,49 @@ export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[
   + '#tts-settings-root .snd-rule-error{flex-basis:100%;color:#f29da6}'
   + '#tts-settings-root .snd-rule-word{color:#9aa3b5;font-size:12px}'
   + '#tts-settings-root .snd-tile-time{font-size:11px;opacity:.75}';
+
+/**
+ * After the copied voice-list rules, so these win on order: a sound needs a name,
+ * its tags and a play button, not a square tile. Hundreds of tracks fit in fewer
+ * screens, and a phone shows one readable row per sound.
+ */
+export const SOUND_LIST_CSS = '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list){grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:7px}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-row{aspect-ratio:auto;min-height:0;padding:9px 54px 9px 10px;gap:2px;cursor:pointer}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-top{align-items:center;gap:8px;min-width:0}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-top strong{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-tags{-webkit-line-clamp:1;margin:0;font-size:12px;color:var(--muted,#a4a8bc)}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .snd-row-words{margin:0;font-size:12px;color:#d8c4fb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .snd-row-words.none{color:var(--muted,#a4a8bc);opacity:.55}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .snd-row-meta{font-size:10.5px;color:#c9b4ec;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .tile-audition{top:50%;bottom:auto;right:9px;transform:translateY(-50%);width:38px;height:38px;min-width:0;min-height:0;padding:0;border-radius:50%;font-size:13px}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-row.playing{border-color:#ec4899;box-shadow:inset 0 0 0 1px #ec489966}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-row.playing .tile-audition{background:#ec4899;border-color:#f9a8d4;color:#fff}'
+  + '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list) .voice-row.dragging{opacity:.4}'
+  + '#tts-settings-root .voice-folders.drop-ready .folder-item:not(:first-child){outline:1px dashed #a780ef88;outline-offset:-1px}'
+  + '#tts-settings-root .voice-folders .folder-item.drop{background:#7132f550;border-color:#b697ff}'
+  + '@media(max-width:768px){#tts-settings-root :is(#snd-bgm-list,#snd-sfx-list){grid-template-columns:minmax(0,1fr)}'
+  // One row of commands on a phone: LLM, + 추가 and 파일 side by side.
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools{display:flex;flex-wrap:nowrap!important;gap:6px;width:100%}'
+  + '#tts-settings-root :is(#sound-bgm,#sound-sfx) .voice-tools>button{flex:1 1 0;min-width:0;white-space:nowrap}}'
+  // Glossary: the effect is a button that opens the searchable picker.
+  + '#tts-settings-root .snd-term-effect{flex:1;min-width:0;display:flex;align-items:center;gap:6px;justify-content:space-between;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:7px 10px;font-weight:600}'
+  + '#tts-settings-root .snd-term-effect span{opacity:.6;font-size:11px}'
+  + '#tts-settings-root .snd-term-effect.empty{border-style:dashed;color:var(--muted,#a4a8bc);font-weight:400}'
+  + '#tts-settings-root .snd-unknown-hints{display:flex;flex-wrap:wrap;gap:5px}'
+  + '#tts-settings-root .snd-hint{padding:4px 9px;min-height:0;border-radius:14px;font-size:12px;background:#7132f530;border-color:#7132f588;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+  + '#tts-settings-root .snd-hint:hover{background:#7132f560}'
+  + '#tts-settings-root .snd-unknown-pick{flex:1;min-width:0}'
+  // The picker: a modal list, a bottom sheet on a phone.
+  + '#tts-dialogs #snd-pick-dialog{width:480px;max-width:calc(100vw - 24px);height:min(640px,85vh);padding:16px;box-sizing:border-box;flex-direction:column;gap:10px}'
+  + '#tts-dialogs #snd-pick-dialog[open]{display:flex}'
+  + '#tts-dialogs #snd-pick-dialog .dialog-head{margin:0}'
+  + '#tts-dialogs #snd-pick-dialog #snd-pick-search{width:100%;box-sizing:border-box}'
+  + '#tts-dialogs #snd-pick-dialog #snd-pick-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:4px}'
+  + '#tts-dialogs #snd-pick-dialog .snd-pick-row{display:flex;gap:6px;align-items:stretch}'
+  + '#tts-dialogs #snd-pick-dialog .snd-pick-play{flex:none;width:40px;padding:0}'
+  + '#tts-dialogs #snd-pick-dialog .snd-pick-name{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;text-align:left;padding:7px 10px}'
+  + '#tts-dialogs #snd-pick-dialog .snd-pick-name small{flex-basis:100%;font-size:11px;color:var(--muted,#a4a8bc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '#tts-dialogs #snd-pick-dialog .snd-pick-name em{font-style:normal;font-size:10px;padding:1px 7px;border-radius:8px;background:#ec489933;color:#f9a8d4}'
+  + '#tts-dialogs #snd-pick-dialog .snd-pick-row.active .snd-pick-name{border-color:#aa82fa;background:#7132f530}'
+  + '#tts-dialogs #snd-pick-dialog #snd-pick-count{color:var(--muted,#a4a8bc);font-size:11px}'
+  + '@media(max-width:600px){#tts-dialogs #snd-pick-dialog{width:100vw;max-width:100vw;height:82vh;max-height:82vh;margin:auto 0 0;border-radius:16px 16px 0 0}}';
