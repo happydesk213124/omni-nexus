@@ -2,6 +2,18 @@ import { SOUND_PANELS, SOUND_TABS } from './panels';
 import { SOUND_PAGE_TABS, markSoundNav, soundPage } from './page';
 import { SOUND_LIST_CSS, SOUND_PAGE_CSS, voiceListCssFor } from './style';
 import layout from '../tts-ui/layout.json';
+import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
+
+/**
+ * The embedding behind 「자동」 matching (after JEV) and the 「임베딩」 setting. An
+ * OpenRouter key left empty borrows the JEV key, so most users set nothing here.
+ */
+const EMBED_GROUP = '<div class="group" id="snd-embed-group"><h3>임베딩 · 효과음·BGM 고르기</h3><div class="fields">'
+  + `<label class="field"><span>제공자</span><select id="snd-embed-provider">${EMBEDDING_PROVIDERS.map(p => `<option value="${p.value}">${p.label}</option>`).join('')}</select></label>`
+  + '<label class="field"><span>모델</span><input id="snd-embed-model" maxlength="200" autocomplete="off"></label>'
+  + '<label class="field full"><span>API Key · OpenRouter는 비우면 JEV 키를 씁니다</span><input type="password" id="snd-embed-key" autocomplete="off"></label>'
+  + '<label class="field full"><span>주소 · 비우면 제공자 기본 주소</span><input id="snd-embed-endpoint" maxlength="500" autocomplete="off"></label>'
+  + '<div class="actions"><button type="button" id="snd-embed-test">연결 테스트</button><small id="snd-embed-status" role="status"></small></div></div></div>';
 
 /**
  * Adds the BGM·효과음 tabs and panels to the TTS root and moves the model panel
@@ -14,7 +26,7 @@ export function addSoundStructure(root: ParentNode): void {
   const models = root.querySelector('#tts-models');
   if (models) root.querySelector('#sound-controls')?.append(models);
   // ElevenLabs belongs to the shared model page; BGM·효과음 uses it to generate effects.
-  models?.insertAdjacentHTML('beforeend', '<div class="group" id="snd-eleven-group"><h3>ElevenLabs · 효과음·BGM 생성</h3><div class="fields"><label class="field full"><span>ElevenLabs API Key</span><input type="password" id="snd-eleven-key" autocomplete="off" placeholder="효과음·BGM 생성에만 씁니다 (유료)"></label></div></div>');
+  models?.insertAdjacentHTML('beforeend', '<div class="group" id="snd-eleven-group"><h3>ElevenLabs · 효과음·BGM 생성</h3><div class="fields"><label class="field full"><span>ElevenLabs API Key</span><input type="password" id="snd-eleven-key" autocomplete="off" placeholder="효과음·BGM 생성에만 씁니다 (유료)"></label></div></div>' + EMBED_GROUP);
 }
 
 /**

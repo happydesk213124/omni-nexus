@@ -63,6 +63,11 @@ export interface SoundSettings {
   viewerBgm: boolean;
   /** ElevenLabs key, for generating effects (paid). */
   elevenKey: string;
+  /**
+   * Embedding for matching (the step after JEV in 「자동」). An empty key on
+   * OpenRouter uses the JEV key, which is an OpenRouter key too.
+   */
+  embed: { provider: string; model: string; endpoint: string; key: string };
   /** When JEV/LLM says no listed effect fits (or none exist), generate one with ElevenLabs. */
   sfxAutoCreate: boolean;
   /** Prompt for generated effects; {word} is the sound word in English. */

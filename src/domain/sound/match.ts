@@ -40,10 +40,11 @@ export function exactSfx(word: string, glossary: readonly SfxTerm[], items: read
   return items.find(item => [item.name, ...item.tags].some(term => termKey(term) === needle)) || null;
 }
 /**
- * The sound effect for an effect word (`덜컹! 덜컹!`). The glossary decides
- * first; otherwise an effect's own name or tags may contain the word.
+ * The effect the glossary gives a word: a row whose word the word contains
+ * (`덜컹! 덜컹!` holds 덜컹). The glossary is what the user and JEV settled, so
+ * it decides before anything is asked.
  */
-export function pickSfx(word: string, glossary: readonly SfxTerm[], items: readonly SoundItem[]): SoundItem | null {
+export function glossarySfx(word: string, glossary: readonly SfxTerm[], items: readonly SoundItem[]): SoundItem | null {
   const needle = termKey(word);
   if (!needle) return null;
   const byKey = new Map(items.map(item => [item.key, item]));
@@ -54,6 +55,19 @@ export function pickSfx(word: string, glossary: readonly SfxTerm[], items: reado
       if (item) return item;
     }
   }
-  // A one-letter name (쾅) only matches itself; inside a longer word it would match far too much.
+  return null;
+}
+/**
+ * A free guess from the effects' own names and tags containing the word: the
+ * last resort, after JEV and embedding (or the only one with neither set up).
+ * A one-letter name (쾅) only matches itself; inside a longer word it would match far too much.
+ */
+export function guessSfx(word: string, items: readonly SoundItem[]): SoundItem | null {
+  const needle = termKey(word);
+  if (!needle) return null;
   return items.find(item => [item.name, ...item.tags].some(term => { const key = termKey(term); return !!key && (key === needle || (key.length >= 2 && needle.includes(key))); })) || null;
+}
+/** The glossary, then the free guess: what a word plays with nothing asked (the rule preview). */
+export function pickSfx(word: string, glossary: readonly SfxTerm[], items: readonly SoundItem[]): SoundItem | null {
+  return glossarySfx(word, glossary, items) || guessSfx(word, items);
 }
