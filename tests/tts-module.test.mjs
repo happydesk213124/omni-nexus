@@ -311,7 +311,23 @@ test('narration OFF does not change the module; hiding is left to the plugin',as
   } finally {await browser.close();}
 });
 
-test('controls change wrapping only by their gutter and sit right after the last glyph; the playing control animates',async()=>{
+test('with the gutter on, only the gutter changes the layout',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try{
+    const page=await browser.newPage(),gutter=api.ttsModule({...visible,controlGutter:true});
+    const source='바람이 불었다. 나뭇잎이 흔들리고 멀리서 종소리가 들려왔다 그리고 다시 조용해졌다.\n하린: “긴 대사도 그대로 읽을 수 있어요.”';
+    const withTts='<p>'+apply(source,gutter.regex).replace('\n','<br>')+'</p>',without='<p>'+source.replace('\n','<br>')+'</p>';
+    for(const width of [233,320,517]){
+      const glyphs=async (html,pad)=>{await page.setContent(gutter.backgroundEmbedding+`<main style="width:${width}px;font:20px/1.5 sans-serif">${html}</main>`);
+        return page.locator('main').evaluate((n,pad)=>{if(pad)n.querySelector('p').style.paddingInlineEnd='32px';const p=getComputedStyle(n.querySelector('p')).paddingInlineEnd;const w=document.createTreeWalker(n,NodeFilter.SHOW_TEXT),rows=[];let t;while(t=w.nextNode()){const r=document.createRange();for(let i=0;i<t.length;i++){r.setStart(t,i);r.setEnd(t,i+1);const b=r.getBoundingClientRect();if(b.width)rows.push([t.data[i],Math.round(b.left),Math.round(b.top)]);}}return {p,rows};},pad);};
+      const on=await glyphs(withTts,false),off=await glyphs(without,true);
+      assert.equal(on.p,'32px','the paragraph with controls keeps the gutter');
+      assert.deepEqual(on.rows,off.rows,'every glyph sits where it would without TTS given the same gutter: '+width);
+    }
+  } finally { await browser.close(); }
+});
+
+test('controls never change wrapping and sit right after the last glyph; the playing control animates',async()=>{
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try{
     const page=await browser.newPage();
@@ -334,7 +350,7 @@ test('controls change wrapping only by their gutter and sit right after the last
         },gutters);
       };
       const after=await lines(withTts),before=await lines(without,after.found);
-      assert.ok(after.found.length>0,'the blocks holding a control keep a gutter for it');
+      assert.deepEqual(after.found,[],'「재생 버튼 자리 여백」 off (the default): no gutter, every glyph exactly where it is without TTS');
       assert.deepEqual(after.layout,before.layout,'every glyph sits where it would without TTS, given the same gutter: the gutter is the only change: '+width);
       await lines(withTts);
       const buttons=page.locator('[data-omnitts-play]');
