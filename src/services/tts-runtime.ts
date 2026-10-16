@@ -36,6 +36,8 @@ export interface TtsSoundCuePlayer {
    * ends. null: no effect fits the word.
    */
   effect(request: TtsRequest): Promise<{ bytes: ArrayBuffer; mime: string; volume: number } | null>;
+  /** The effect marks in use, so a line that is only an effect gets no chat control. */
+  marks?(): ReadonlyArray<{ open: string; close: string }>;
 }
 interface Prepared { request: TtsRequest; text: string; signature: string; fishId: string; gain: number; rate?: number; settings: TtsSettings; character?: TtsCharacter; language: string; tone: string }
 export class OmniTtsRuntime {
@@ -69,7 +71,9 @@ export class OmniTtsRuntime {
   subscribe(callback: () => void): () => void { this.listeners.add(callback); return () => this.listeners.delete(callback); }
   private emit(): void { for (const callback of this.listeners) callback(); }
   report(error: unknown): void { this.notice = String((error as Error)?.message || error); this.emit(); }
-  setSoundCues(player: TtsSoundCuePlayer): void { this.sound = player; this.emit(); }
+  setSoundCues(player: TtsSoundCuePlayer): void { this.sound = player; this.emit(); this.refreshModule(); }
+  /** The sound settings changed: the chat rules follow the effect marks. */
+  refreshModule(): void { if (this.started) void this.synchronize().catch(error => this.report(error)); }
   async init(): Promise<void> {
     return this.started ||= (async () => {
       await loadTtsData();
@@ -102,8 +106,9 @@ export class OmniTtsRuntime {
     if (this.current && !this.eligible(this.current) && ['playing', 'loading', 'paused'].includes(this.player.status)) this.stop();
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly]);
-    if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s); this.moduleSignature = moduleKey; }
+    const marks = this.sound?.marks?.() ?? [];
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, marks]);
+    if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s, marks); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
   setContext(context: TtsChatContext): void {
