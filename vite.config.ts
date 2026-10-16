@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.2.3';
+const PLUGIN_VERSION = '1.3.0';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -985,6 +985,19 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.3.0 · BGM·효과음과 스트리밍 중 태그 생성</strong>
+          <div class="muted" style="margin-top:8px">2026.10.16 · 장면에 맞춰 BGM이 흐르고 소리 나는 곳에 효과음이 붙습니다. 메인 모델이 답변을 쓰면서 그림 자리와 태그까지 함께 쓰게 할 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>BGM·효과음: 메뉴 「TTS · BGM · 효과음 → BGM·효과음」과 ⚛️ omni bgm·⚛️ omni 효과음 모듈을 추가했습니다. 첫 실행 예제 목록과 「예제 불러오기」, 효과음 용어집(미등록·⚡ 자동 등록·다중선택 삭제), 「자동」 고르기(용어집 → JEV → 임베딩 → 글자), ElevenLabs 생성, 설정 파일 내보내기·불러오기를 지원합니다. 각 항목 설명은 상단 「?」로 봅니다.</li>
+            <li>BGM 바: TTS 플로팅 뷰어에 재생·곡 고르기·⚡ 답변으로 고르기·「자동」(TTS 읽는 위치 따라 전환) 토글과 BGM 볼륨·TTS 재생 중 BGM 막대를 넣었습니다. 받는 동안 버튼이 돌고, 들은 곡은 이 기기에 저장해 다음부터 바로 재생합니다(BGM 기기 저장). 목록에서 「미리 받기」도 됩니다.</li>
+            <li>스트리밍 중 태그 생성: 생성 옵션 「Risu 메인 모델 메시지 스트리밍 중에 태그 생성」을 켜면 메인 모델이 답변 안에 그림 블록을 쓰고, 닫히는 대로 그 자리에 그립니다. 「이미지 바로 생성」을 끄면 분홍 대기 슬롯을 눌러 그립니다. 깨진 블록은 그 한 장만 고치고, 이 채팅의 등록 인물(최근 순 20명, 코스튬·옷 상태)을 함께 보내 같은 사람을 새로 만들지 않습니다.</li>
+            <li>말풍선: 태그를 speech bubble로 바꾸고, NAI5 대사삽입 아래에 「말풍선 강조」(예: 2::speech bubble::)와 「말풍선 글씨 크게」(huge text)를 추가했습니다.</li>
+            <li>샷 태그 수정: 히스토리 그림을 누르면 바로 바뀌고 그 그림의 메타데이터로 태그·캐릭터·프리셋을 다시 채웁니다. 그림 오른쪽 위 ✕로 삭제합니다(채팅에 걸린 그림 제외). 저장 옆 「불러오기」를 추가했고, 드롭·불러오기한 이미지의 C1·C2 캐릭터가 비던 문제를 고쳤습니다.</li>
+            <li>TTS: 전역·캐릭터별 기본 억양, 캐릭터별 오디오 모델, OpenRouter를 거친 Fish 연결, 괄호 속 말 나레이션 처리와 「괄호 안의 말도 빼고 읽기」, 「재생 버튼 자리 여백」을 추가했습니다. 효과음만 있는 줄에는 나레이션 버튼이 붙지 않습니다.</li>
+            <li>캐릭터: 같은 설명의 코스튬은 하나로 합치고, 기본 외형을 새 코스튬으로 다시 만들지 않습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.2.3 · 나레이션·혼잣말 카드와 TTS 설정 정리</strong>
@@ -15050,7 +15063,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.2.3 · 나레이션·혼잣말 카드(글로벌 따라가기·캐릭터별 속도·성별 기타), TTS 설정 내보내기·불러오기, Fish 모델 직접 입력과 오류 안내를 추가했고, 이미지 태그 바로 아래 줄에도 재생 버튼이 붙습니다. 1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
+    body: "1.3.0 · BGM·효과음 메뉴와 TTS 플로팅 뷰어 BGM 바, 메인 모델 스트리밍 중 태그 생성, 말풍선 강조·글씨 크게, 샷 태그 수정 히스토리 다시 불러오기·삭제와 불러오기 버튼을 추가했습니다. 1.2.3 · 나레이션·혼잣말 카드(글로벌 따라가기·캐릭터별 속도·성별 기타), TTS 설정 내보내기·불러오기, Fish 모델 직접 입력과 오류 안내를 추가했고, 이미지 태그 바로 아래 줄에도 재생 버튼이 붙습니다. 1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
