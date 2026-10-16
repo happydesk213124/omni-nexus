@@ -230,6 +230,9 @@ export async function installTtsHost(): Promise<void> {
       // The effects on screen are matched and cut ahead, all unknown parts in one request.
       const effects = [...perMessage.values()].flat().filter(r => r.segment.kind === 'sfx');
       if (effects.length) void omniSound.prepareEffects(effects.map(r => ({ text: r.segment.text, context: r.segment.context || '' }))).catch(error => console.warn('OmniSound prepare', error));
+      // The tracks the [[bgm:…]] cues on screen would play are fetched before reading reaches them.
+      const cues = [...perMessage.values()].flat().filter(r => r.segment.kind === 'bgm' && r.segment.tags?.length);
+      if (cues.length) omniSound.prefetchBgmForTags(cues.map(r => r.segment.tags!));
       for (const node of await safeArray(await doc.querySelectorAll('[data-omnitts-image] [data-omnitts-play],[x-omnitts-image] [x-omnitts-play]'))) live.add(await bind(node, true));
       for (const [key,b] of bindings) if (!live.has(key)) { await releaseHost(b.node);for (const chip of b.chips) await releaseHost(chip.node); bindings.delete(key); }
       nearby.sort((a,b)=>a.distance-b.distance);

@@ -25,7 +25,7 @@ function library(kind: 'bgm' | 'sfx', title: string): string {
 <div class="voice-explorer"><aside class="voice-folders"><div class="folder-heading"><b>폴더</b><button id="${id('folder-toggle')}" type="button" aria-expanded="false">폴더 ▾</button><button id="${id('folder-add')}" title="폴더 만들기" aria-label="폴더 만들기">＋</button></div>
 <nav id="${id('folders')}" aria-label="${title} 폴더"></nav><button id="${id('folder-edit')}" disabled>폴더 관리</button></aside>
 <div class="voice-browser"><div class="voice-selection-bar"><button id="${id('multi')}" type="button" aria-pressed="false">다중선택</button><span id="${id('selected-count')}" role="status">선택 없음</span>
-<button id="${id('select-all')}">전체 선택</button><button id="${id('clear')}" disabled>선택 해제</button><button id="${id('edit')}" disabled>수정</button><button id="${id('move')}" disabled>폴더 이동</button><button id="${id('delete')}" class="danger" disabled>삭제</button></div>
+<button id="${id('select-all')}">전체 선택</button><button id="${id('clear')}" disabled>선택 해제</button><button id="${id('edit')}" disabled>수정</button>${kind === 'bgm' ? `<button id="${id('prefetch')}" disabled title="선택한 곡을 이 기기에 미리 받아 둡니다">미리 받기</button>` : ''}<button id="${id('move')}" disabled>폴더 이동</button><button id="${id('delete')}" class="danger" disabled>삭제</button></div>
 <div id="${id('list')}" class="voice-list" role="listbox" aria-label="${title} 선택" aria-multiselectable="true"></div></div></div></section>`;
 }
 
@@ -50,7 +50,7 @@ ${row('효과음 볼륨', range('snd-sfx-volume', '효과음 볼륨'))}
 ${row('효과음 크기 자동 맞추기', sw('snd-sfx-normalize', '효과음 크기 자동 맞추기'), '효과음마다 다른 크기를 같은 크기로 맞춥니다(TTS 자동 맞추기와 같은 역할). 소리가 찢어지지 않게 최고 음량은 넘지 않습니다.')}
 ${row('▶를 다른 모듈보다 먼저 붙이기', sw('snd-sfx-first', '▶를 다른 모듈보다 먼저 붙이기'), '다른 모듈이 §쾅§를 자기 모양(상자 등)으로 바꿔도 ▶가 생깁니다. 다른 모듈의 표시가 깨지면 끄세요.')}
 ${row('앞뒤 무음 건너뛰기', sw('snd-sfx-trim', '앞뒤 무음 건너뛰기'), '파일 앞뒤의 소리 없는 부분을 빼고 바로 재생합니다.')}
-${row('효과음 최대 길이', `<div class="control"><input id="snd-sfx-max" type="number" min="0" max="60" step="1" aria-label="효과음 최대 길이 초" style="width:72px"><span>초</span></div>`, '이보다 길면 부드럽게 줄이며 끊습니다. 0이면 끝까지 재생합니다.')}
+${row('효과음 최대 길이', `<div class="control"><input id="snd-sfx-max" type="number" min="0" max="60" step="0.5" aria-label="효과음 최대 길이 초" style="width:72px"><span>초</span></div>`, '이보다 길면 부드럽게 줄이며 끊습니다. 0이면 끝까지 재생합니다.')}
 ${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과음 표시 요청'), '소리가 나는 곳에 §쾅§처럼 쓰게 합니다(답변당 최대 5개). 켜진 첫 규칙의 앞·뒤 글자로 씁니다.<br><span id="snd-sfx-cue-status"></span>')}
 ${row('TTS 목록·이어 읽기에 효과음', sw('snd-list-sfx', 'TTS 목록·이어 읽기에 효과음'), 'TTS 뷰어 목록에 ▶ 줄이 생기고, 이어 읽다가 그 줄에 오면 효과음을 틀고 끝나면 다음 대사로 넘어갑니다.')}
 ${row('자동 재생', `<select id="snd-sfx-auto" aria-label="효과음 자동 재생"><option value="reply">새 답변 · 이어 읽기 중</option><option value="button">버튼을 눌렀을 때만</option></select>`)}
@@ -62,6 +62,7 @@ ${row('생성 길이', `<div class="control"><input id="snd-sfx-duration" type="
 <label class="field full"><span>규칙 테스트 · 예시 문장</span><textarea id="snd-rule-test" rows="2" placeholder="§덜컹! 덜컹! 와르르──!§"></textarea><small id="snd-rule-result"></small></label>
 </fieldset></div><div class="group"><h3>파일</h3>
 ${row('BGM·효과음 설정 파일', `<div class="actions"><button type="button" id="snd-settings-export">내보내기</button><button type="button" id="snd-settings-import">불러오기</button><input type="file" id="snd-settings-file" accept=".json,application/json" hidden></div>`, '이 화면의 설정(볼륨·고르는 방식·태그 목록·효과음 규칙 등)을 JSON 하나로 옮깁니다. ElevenLabs 키는 담지 않고, 불러와도 BGM·효과음 사용 스위치는 그대로입니다. 곡·효과음 목록은 각 목록의 「파일 ⋯」로 옮깁니다.')}
+${row('BGM 기기 저장', `<div class="control"><input id="snd-bgm-cache" type="number" min="0" max="4000" step="50" aria-label="BGM 기기 저장 한도 MB" style="width:80px"><span>MB</span><button type="button" id="snd-bgm-cache-clear">비우기</button></div>`, '한 번 들은 곡(과 미리 받은 곡)을 이 기기에 두어, 새로 고침 뒤에도 바로 재생합니다. 저장 파일·동기화에는 들어가지 않고, 넘치면 오래 안 들은 곡부터 지웁니다. 0이면 기기에 두지 않습니다.<br><span id="snd-bgm-cache-usage"></span>')}
 ${row('파일 최대 크기', `<div class="control"><input id="snd-max-mb" type="number" min="1" max="50" aria-label="파일 최대 크기 MB" style="width:72px"><span>MB</span></div>`, '파일은 모듈에 저장되어 저장 파일·동기화 크기가 늘어납니다. 큰 곡은 주소로 등록하세요.')}
 </div></div></div></section>
 ${library('bgm', 'BGM')}

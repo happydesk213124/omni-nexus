@@ -120,9 +120,10 @@ export function renderGlossary(focusRow?: string): void {
     // Only close spellings become one-tap chips; the picker shows looser guesses too.
     const hints = suggestSfx(word, soundData().glossary, soundData().sfx, 2, 0.55);
     tile.innerHTML = `<b>${esc(word)}</b>`
-      + (hints.length ? `<div class="snd-unknown-hints">${hints.map(item => `<button type="button" class="snd-hint" data-key="${esc(item.key)}" title="「${esc(word)}」→ ${esc(item.name)}에 연결">→ ${esc(item.name)}</button>`).join('')}</div>` : '')
+      + (hints.length ? `<div class="snd-unknown-hints">${hints.map(item => `<span class="snd-hint-pair"><button type="button" class="snd-hint" data-key="${esc(item.key)}" title="「${esc(word)}」→ ${esc(item.name)}에 연결">→ ${esc(item.name)}</button><button type="button" class="snd-hint-play" data-key="${esc(item.key)}" title="${esc(item.name)} 들어보기" aria-label="${esc(item.name)} 들어보기">▶</button></span>`).join('')}</div>` : '')
       + `<div class="snd-unknown-row"><button type="button" class="snd-unknown-pick" title="검색해서 효과음 고르기">직접 고르기</button><button type="button" class="snd-unknown-ignore" title="무시" aria-label="${esc(word)} 무시">무시</button></div>`;
     for (const hint of tile.querySelectorAll<HTMLButtonElement>('.snd-hint')) hint.addEventListener('click', () => { connect(word, hint.dataset.key || ''); void save(); });
+    for (const play of tile.querySelectorAll<HTMLButtonElement>('.snd-hint-play')) play.addEventListener('click', () => run(async () => { const item = soundData().sfx.find(sfx => sfx.key === play.dataset.key); if (item) await omniSound.play(item); }));
     tile.querySelector('.snd-unknown-pick')!.addEventListener('click', () => pickSfx({ word }, item => { connect(word, item.key); void save(); }));
     tile.querySelector('.snd-unknown-ignore')!.addEventListener('click', () => { soundData().unknownTerms = soundData().unknownTerms.filter(w => w !== word); void save(); });
     pickable(tile, picked.unknown, word);

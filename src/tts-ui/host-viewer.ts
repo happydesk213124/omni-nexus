@@ -75,7 +75,8 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       await bind('settings',openTtsSettings);
       await bind('bgm',()=>{bgmPicking=false;return updateSoundSettings({viewerBgm:!bgmOpen()});});
       await bind('bgm-play',()=>omniSound.toggleBgm());
-      await bind('bgm-pick',()=>{bgmPicking=!bgmPicking;return paint();});
+      // Opening the list fetches the tracks around the current one ahead.
+      await bind('bgm-pick',()=>{bgmPicking=!bgmPicking;if(bgmPicking)omniSound.prefetchBgmAround(omniSound.player.bgmKey||soundData().bgm[0]?.key||'');return paint();});
       await bind('bgm-seek',()=>{});
       await bind('bgm-guess',async()=>{
         if(bgmGuessing)return;

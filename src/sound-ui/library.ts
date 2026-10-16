@@ -32,14 +32,15 @@ export class SoundLibrary {
   }
   render(): void {
     const list = el(this.id('list')); if (!list) return;
-    const items = this.items(), visible = this.visible(), playing = omniSound.player.bgmPlaying ? omniSound.player.bgmKey : '';
+    const items = this.items(), visible = this.visible(), playing = omniSound.player.bgmPlaying ? omniSound.player.bgmKey : '', loading = omniSound.bgmLoading;
     this.selected = new Set([...this.selected].filter(key => items.some(item => item.key === key)));
     el(this.id('search-clear')).hidden = !val(this.id('search'));
     text(this.id('count'), `${visible.length}개 표시 / 전체 ${items.length}개`); text(this.id('total'), String(items.length));
     list.replaceChildren();
     if (!visible.length) { const empty = document.createElement('p'); empty.className = 'char-empty'; empty.style.gridColumn = '1/-1'; empty.textContent = items.length ? '검색·폴더에 맞는 항목이 없습니다.' : `등록된 ${LABEL[this.kind]}이 없습니다. + ${LABEL[this.kind]}로 추가하세요.`; list.append(empty); }
     visible.forEach(item => {
-      const on = this.selected.has(item.key), live = this.kind === 'bgm' && playing === item.key;
+      // A track being fetched is the current one already: it spins, and the old one stops looking current.
+      const fetching = this.kind === 'bgm' && loading === item.key, on = this.selected.has(item.key), live = this.kind === 'bgm' && (fetching || (!loading && playing === item.key));
       const tile = document.createElement('div'); tile.className = 'voice-row snd-row' + (on ? ' selected' : '') + (live ? ' playing' : ''); tile.tabIndex = 0;
       tile.setAttribute('role', 'option'); tile.setAttribute('aria-selected', String(on)); tile.draggable = true;
       // Effects show the glossary words that call them: the list and the glossary describe one thing.
@@ -49,9 +50,11 @@ export class SoundLibrary {
         + (this.kind === 'sfx' ? `<p class="snd-row-words${words.length ? '' : ' none'}" title="이 말이 나오면 이 효과음 (용어집)${words.length ? ': ' + esc(words.join(', ')) : ''}">${words.length ? '용어 · ' + esc(words.slice(0, 6).join(', ')) + (words.length > 6 ? ` 외 ${words.length - 6}` : '') : '용어 없음'}</p>` : '')
         + `<small class="snd-row-meta">▱ ${esc(item.folder || '미분류')} · ${item.source === 'asset' ? '파일' : '주소'}${sizeOf(item) ? ' · ' + sizeOf(item) : ''}</small>`;
       const play = document.createElement('button'); play.type = 'button'; play.className = 'tile-audition tts-listen';
-      play.textContent = live ? '⏸' : this.kind === 'bgm' ? '♪' : '▶'; play.title = live ? '정지' : '미리 듣기';
+      if (fetching) { play.innerHTML = '<span class="snd-spin" aria-hidden="true"></span>'; play.title = '불러오는 중'; }
+      else { play.textContent = live ? '⏸' : this.kind === 'bgm' ? '♪' : '▶'; play.title = live ? '정지' : '미리 듣기'; }
       play.setAttribute('aria-label', `${item.name} ${live ? '정지' : '미리 듣기'}`);
       play.addEventListener('click', event => { event.stopPropagation(); run(async () => {
+        if (fetching) return;
         if (live) omniSound.player.stopBgm(); else await omniSound.play(item);
         setTimeout(() => this.render(), 50);
       }); });
@@ -83,7 +86,7 @@ export class SoundLibrary {
     const count = this.selected.size;
     text(this.id('selected-count'), count ? `선택 ${count}개` : '선택 없음');
     input(this.id('edit')).disabled = count !== 1;
-    for (const part of ['delete', 'move', 'clear']) input(this.id(part)).disabled = !count;
+    for (const part of ['delete', 'move', 'clear', 'prefetch']) { const node = input(this.id(part)); if (node) node.disabled = !count; }
     el(this.id('multi')).setAttribute('aria-pressed', String(this.multi));
     const folders = el(this.id('folders')); folders.replaceChildren();
     for (const [key, label] of [['*', `전체 ${LABEL[this.kind]}`], ['', '미분류'], ...soundData().folders[this.kind].map(name => [name, name])] as [string, string][]) {
@@ -153,6 +156,8 @@ export class SoundLibrary {
   }
   private on(part: string, action: () => void | Promise<unknown>, type = 'click'): void { el(this.id(part))?.addEventListener(type, () => run(action)); }
   bind(): void {
+    // The list follows the player: a pick spins at once, and the tile turns current when it plays.
+    if (this.kind === 'bgm') { const before = omniSound.player.onChange; omniSound.player.onChange = () => { before(); if (el(this.id('list'))?.isConnected) this.render(); }; }
     this.on('search', () => this.render(), 'input');
     this.on('search-clear', () => { set(this.id('search'), ''); this.render(); });
     this.on('filter', () => this.render(), 'change'); this.on('sort', () => this.render(), 'change');
@@ -164,6 +169,14 @@ export class SoundLibrary {
     this.on('delete', async () => {
       if (!this.selected.size || !confirm(`선택한 ${LABEL[this.kind]} ${this.selected.size}개를 삭제할까요? 모듈 파일 연결도 함께 지웁니다.`)) return;
       await omniSound.remove(this.kind, this.selected); this.selected.clear(); this.render();
+    });
+    this.on('prefetch', async () => {
+      const items = this.items().filter(item => this.selected.has(item.key) && item.source === 'url');
+      if (!items.length) { notify('미리 받을 주소 곡이 없습니다. 파일로 등록한 곡은 이미 모듈에 있습니다.'); return; }
+      if (soundData().settings.bgmCacheMb <= 0) { notify('설정 › 파일에서 「BGM 기기 저장」 한도를 0보다 크게 해 주세요.'); return; }
+      const button = el<HTMLButtonElement>(this.id('prefetch')); button.disabled = true; button.textContent = `받는 중 · ${items.length}곡`;
+      try { const fetched = await omniSound.prefetchBgm(items); notify(`${fetched}곡을 이 기기에 받아 두었습니다${items.length - fetched ? ` · ${items.length - fetched}곡은 이미 있거나 받지 못했습니다` : ''}.`); }
+      finally { button.textContent = '미리 받기'; this.render(); }
     });
     this.on('move', () => {
       el<HTMLSelectElement>('snd-move-target').innerHTML = ['', ...soundData().folders[this.kind]].map(name => `<option value="${esc(name)}">${esc(name || '미분류')}</option>`).join('');

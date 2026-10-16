@@ -381,6 +381,11 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.evaluate(() => { window.soundData().unknownTerms = ['쿵콰앙']; });
     await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-unknown').click();
     const hint = page.locator('#snd-unknown .snd-hint').first();
+    // Every suggestion has its own ▶, to hear it before connecting.
+    const heard = await page.evaluate(() => window.played.length);
+    await page.locator('#snd-unknown .snd-hint-play').first().click();
+    await page.waitForFunction(n => window.played.length > n, heard);
+    assert.equal(await page.evaluate(() => window.soundData().unknownTerms.includes('쿵콰앙')), true, 'hearing it connects nothing');
     assert.equal(await hint.getAttribute('data-key'), await page.evaluate(() => window.soundData().sfx[0].key));
     await hint.click();
     await page.waitForFunction(() => !window.soundData().unknownTerms.length && window.soundData().glossary.some(row => row.sfxKey === window.soundData().sfx[0].key && row.terms.includes('쿵콰앙')));
@@ -441,6 +446,29 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#snd-settings-file').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"type":"other"}') });
     await page.waitForTimeout(150);
     assert.equal(await page.evaluate(() => window.soundData().settings.sfxMaxSec), 4, 'another kind of file changes nothing');
+    // The BGM list: a pick spins at once and is the current track before it plays; the bar names it.
+    await page.locator('#tab-sound-bgm').click();
+    // A track that is neither playing nor the last one played: only the fetch makes it current.
+    const firstBgm = await page.evaluate(() => { const p = window.omniSound.player; return window.soundData().bgm.find(item => item.key !== p.bgmKey && item.name !== window.omniSound.bgmName()); });
+    await page.evaluate(key => { window.omniSound.bgmLoading = key; window.omniSound.player.onChange(); }, firstBgm.key);
+    await page.waitForFunction(() => document.querySelector('#snd-bgm-list .voice-row .snd-spin'));
+    assert.ok(await page.locator('#snd-bgm-list .voice-row.playing').first().locator('.snd-spin').count(), 'the fetched track is the current tile');
+    assert.equal(await page.evaluate(() => window.omniSound.bgmName()), firstBgm.name, 'and its name is the current one');
+    await page.evaluate(() => { window.omniSound.bgmLoading = ''; window.omniSound.player.onChange(); });
+    await page.waitForFunction(() => !document.querySelector('#snd-bgm-list .snd-spin'));
+    if (!await page.locator('#snd-bgm-clear').isDisabled()) await page.locator('#snd-bgm-clear').click();
+    assert.equal(await page.locator('#snd-bgm-prefetch').isDisabled(), true, '「미리 받기」 waits for a ticked track');
+    await page.locator('#snd-bgm-list .voice-row').first().click();
+    assert.equal(await page.locator('#snd-bgm-prefetch').isDisabled(), false, 'and acts on the ticked ones');
+    assert.equal(await page.locator('#snd-sfx-prefetch').count(), 0, 'not on effects (small, fetched when heard)');
+    // Settings: the device limit and its usage; effect length in halves of a second.
+    await page.locator('#tab-sound-settings').click();
+    assert.equal(await page.locator('#snd-bgm-cache').inputValue(), '200', 'BGM kept on this device: 200 MB by default');
+    assert.match(await page.locator('#snd-bgm-cache-usage').textContent(), /곡 · [\d.]+ MB/);
+    await page.locator('#snd-sfx-enabled').evaluate(n => { n.checked = true; n.dispatchEvent(new Event('change')); });
+    await page.locator('#snd-sfx-max').fill('2.5'); await page.locator('#snd-sfx-max').dispatchEvent('change');
+    await page.waitForFunction(() => window.soundData().settings.sfxMaxSec === 2.5);
+    assert.equal(await page.locator('#snd-sfx-max').inputValue(), '2.5');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

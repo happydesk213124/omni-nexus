@@ -185,7 +185,8 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_settings_presets` | Dashboard settings presets, hidden examples and last applied id; no style collections or credentials. |
 | `omnitts.data` | TTS settings, voice library, folders and **global** TTS characters (`src/storage/tts-store.ts`). |
 | `omnisound.data` | BGM·효과음 settings, lists, glossary (`src/storage/sound-store.ts`). |
-| `omniinline.waits` | Streaming-tag waiting slots: the shot each pink `[[@inraywait::id…]]` will draw, newest 300 (`src/storage/inline-wait-store.ts`). |
+| `omniinline.waits` | Streaming-tag waiting slots: older slots only (new ones are `[[inxwN]]` blocks in the message itself): the shot each pink `[[@inraywait::id…]]` will draw, newest 300 (`src/storage/inline-wait-store.ts`). |
+| `omnisound.bgm.index`, `omnisound.bgm.<hash>` | **Device-local** (`getLocalPluginStorage`, never in the save file): BGM link tracks kept for the next play, base64, least recently played dropped past `bgmCacheMb`. Read through the index only, never by listing the store (`src/storage/bgm-cache.ts`). |
 | bot lorebook entry `omni.nexus.tts` | A bot's own TTS characters (`src/storage/tts-roster.ts`): disabled, empty key, never injected; same write queue as `omni.nexus.data.global`. 1.2.0 per-chat rows migrate here when the bot is opened. |
 
 **Keys are frozen.** Renaming one silently orphans every existing user's data.

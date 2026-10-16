@@ -57,8 +57,14 @@ test('자동 matching: glossary → JEV → embedding → guess; JEV "none" is f
     assert.deepEqual(await plan('쾅쾅쾅'), ['thunder']); assert.equal((await counts())[0], jev1, 'a known word asks nothing');
     // JEV "none fits" is an answer: no guess, no embedding.
     await page.evaluate(() => { window.jevChoice = 'new'; });
-    assert.deepEqual(await plan('쨍그랑쨍'), [], 'JEV said none: nothing plays');
+    // ElevenLabs generation on: "none fits" makes a new effect (here it cannot: no ElevenLabs), never a guess.
+    await page.evaluate(async () => { await window.updateSoundSettings({ sfxAutoCreate: true, elevenKey: 'el-key' }); });
+    assert.deepEqual(await plan('쨍그랑쨍'), [], 'generation on: a "none fits" word waits for its own effect');
     assert.equal((await counts())[1], 0, 'and embedding is not asked');
+    // Generation off: the closest effect plays anyway.
+    await page.evaluate(async () => { await window.updateSoundSettings({ sfxAutoCreate: false, elevenKey: '' }); });
+    assert.deepEqual(await plan('쨍쨍쨍'), ['glass'], 'generation off: JEV said none, the nearest effect still plays');
+    assert.equal((await counts())[1], 1, 'found by the embedding');
     // JEV down: embedding next, borrowing the JEV key on OpenRouter; its pick is remembered, not learned.
     await page.evaluate(() => { window.jevDown = true; });
     assert.deepEqual(await plan('쿠구궁'), ['thunder'], 'embedding finds the nearest effect');
@@ -75,7 +81,7 @@ test('자동 matching: glossary → JEV → embedding → guess; JEV "none" is f
     assert.deepEqual(await plan('쨍그랑!'), ['glass']); assert.deepEqual(await counts(), quiet, 'nothing set up: free, local');
     // Another embedding provider uses its own key and address.
     await page.evaluate(async () => { await window.updateSoundSettings({ embed: { provider: 'voyage', model: 'voyage-3-lite', endpoint: '', key: 'vo-key' } }); });
-    assert.deepEqual(await plan('번개 우르'), ['thunder']);
+    assert.deepEqual(await plan('번개침'), ['thunder']);
     const voyage = await page.evaluate(() => window.embedAsked.at(-1));
     assert.match(voyage.url, /api\.voyageai\.com\/v1\/embeddings/); assert.equal(voyage.key, 'Bearer vo-key');
     // BGM from a reply's text: JEV first; when it is down, the embedding picks the nearest track.

@@ -100,6 +100,7 @@ export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[
   // The settings sheet already dims a row with a disabled input (.row:has(input:disabled)); inside a gated section that
   // stacked on the section, and rows holding only a select stood out brighter. The section alone dims, evenly.
   + '#tts-settings-root .snd-gate:disabled .row{opacity:1}'
+  + '#tts-settings-root .snd-spin{display:inline-block;box-sizing:border-box;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:snd-spin .8s linear infinite}@keyframes snd-spin{to{transform:rotate(360deg)}}'
   + '#tts-settings-root .snd-credit{grid-column:1/-1;margin:6px 2px 2px;font-size:11px;color:var(--muted,#a4a8bc);opacity:.8;overflow-wrap:anywhere}';
 
 /**
@@ -151,6 +152,8 @@ export const SOUND_LIST_CSS = '#tts-settings-root :is(#snd-bgm-list,#snd-sfx-lis
   + '#tts-settings-root .snd-unknown-hints{display:flex;flex-wrap:wrap;gap:5px}'
   + '#tts-settings-root .snd-hint{padding:4px 9px;min-height:0;border-radius:14px;font-size:12px;background:#7132f530;border-color:#7132f588;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
   + '#tts-settings-root .snd-hint:hover{background:#7132f560}'
+  + '#tts-settings-root .snd-hint-pair{display:inline-flex;align-items:center;gap:2px;max-width:100%}'
+  + '#tts-settings-root .snd-hint-play{flex:none;width:26px;height:26px;min-width:0;min-height:0;padding:0;border-radius:50%;font-size:10px;line-height:1}'
   + '#tts-settings-root .snd-unknown-pick{flex:1;min-width:0}'
   // The picker: a modal list, a bottom sheet on a phone.
   + '#tts-dialogs #snd-pick-dialog{width:480px;max-width:calc(100vw - 24px);height:min(640px,85vh);padding:16px;box-sizing:border-box;flex-direction:column;gap:10px}'

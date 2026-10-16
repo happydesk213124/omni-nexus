@@ -74,6 +74,8 @@ export interface SoundSettings {
   sfxPrompt: string;
   /** Generated effect length in seconds; 0 lets ElevenLabs decide. */
   sfxDuration: number;
+  /** BGM kept on this device for the next play, in megabytes; 0 keeps nothing there. */
+  bgmCacheMb: number;
   /** Upper bound for a file stored in a module (megabytes). */
   maxFileMb: number;
 }

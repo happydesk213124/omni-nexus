@@ -1,8 +1,10 @@
 import type { SoundItem, SoundKind } from '../core/sound-types';
 import { uuid } from '../core/util/text';
+import { dbg } from '../core/debug';
 import { SoundPlayer } from '../providers/sound/player';
 import { AUDIO_EXTENSIONS, sfxMarksProblem, sniffAudioMime } from '../domain/sound/audio';
 import { exactSfx, glossarySfx, guessSfx, pickBgm } from '../domain/sound/match';
+import { suggestSfx } from '../domain/sound/find';
 import { embedPickMany, soundEmbedSettings } from '../providers/sound/embed';
 import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound, updateSoundSettings } from '../storage/sound-store';
@@ -13,7 +15,8 @@ import { generateMusic, generateSoundEffect, englishText } from '../providers/so
 import { chooseBgm, chooseSfxMany, type SfxChoice } from '../providers/sound/choose';
 import { sfxPartSeconds, sfxParts } from '../domain/sound/combo';
 import { bgmSceneText } from '../domain/sound/scene';
-import { audioOf, downloadAudio, effectClip, planClip, rememberAudio } from './sound-clips';
+import { audioOf, downloadAudio, effectClip, planClip, prefetchAudio, rememberAudio } from './sound-clips';
+import { bgmDeviceCache } from '../storage/bgm-cache';
 
 /** Folder for effects ElevenLabs made on its own, so they are easy to review. */
 export const AUTO_SFX_FOLDER = '자동 생성';
@@ -26,7 +29,43 @@ export class OmniSoundRuntime {
   notice = '';
   /** The track the BGM bar resumes when nothing is loaded. */
   private lastBgm = '';
-  bgmName(): string { const key = this.player.bgmKey || this.lastBgm; return soundData().bgm.find(item => item.key === key)?.name || ''; }
+  /**
+   * BGM fetched ahead, one track at a time so a phone never stalls on several
+   * large writes: a reply's [[bgm:…]] picks, the tracks around the current one when
+   * the viewer list opens, and 「미리 받기」 on the list. Already kept ones are skipped.
+   */
+  private prefetching: Promise<unknown> = Promise.resolve();
+  private queued = new Set<string>();
+  prefetchBgm(items: readonly SoundItem[]): Promise<number> {
+    const fresh = items.filter(item => item.kind === 'bgm' && item.source === 'url' && !this.queued.has(item.key));
+    for (const item of fresh) this.queued.add(item.key);
+    const run = this.prefetching.catch(() => {}).then(async () => {
+      let fetched = 0;
+      for (const item of fresh) {
+        try { if (soundData().settings.bgmCacheMb > 0 && await prefetchAudio(item)) fetched++; }
+        catch (error) { dbg('bgm.prefetch', { message: String((error as Error)?.message || error).slice(0, 160) }, 'warn'); }
+        finally { this.queued.delete(item.key); }
+      }
+      return fetched;
+    });
+    this.prefetching = run;
+    return run;
+  }
+  /** The tracks a reply's tags would play, fetched before reading reaches them. */
+  prefetchBgmForTags(tagSets: ReadonlyArray<readonly string[]>): void {
+    if (!soundReady() || !soundData().settings.bgmEnabled) return;
+    const picks = tagSets.map(tags => soundData().bgm.find(item => item.key === pickBgm(tags, soundData().bgm, '').key)).filter((item): item is SoundItem => !!item);
+    if (picks.length) void this.prefetchBgm(picks);
+  }
+  /** The viewer list opened: the tracks before and after the current one. */
+  prefetchBgmAround(key: string): void {
+    const items = soundData().bgm, at = items.findIndex(item => item.key === key);
+    if (at >= 0) void this.prefetchBgm([items[at + 1], items[at - 1]].filter((item): item is SoundItem => !!item));
+  }
+  bgmCacheUsage(): { bytes: number; count: number } { return { bytes: bgmDeviceCache.bytes, count: bgmDeviceCache.count }; }
+  clearBgmCache(): Promise<void> { return bgmDeviceCache.clear(); }
+  /** The track being fetched counts as the current one: the bar names it at once. */
+  bgmName(): string { const key = this.bgmLoading || this.player.bgmKey || this.lastBgm; return soundData().bgm.find(item => item.key === key)?.name || ''; }
   /** BGM bar play button: pause, resume, or start the last (else first) track. */
   async toggleBgm(): Promise<void> {
     if (this.player.bgmPlaying) { this.player.pauseBgm(); return; }
@@ -53,6 +92,7 @@ export class OmniSoundRuntime {
   private sync(): void {
     const s = soundData().settings;
     this.player.configure({ bgmVolume: s.bgmVolume, sfxVolume: s.sfxVolume, duck: s.duck });
+    void bgmDeviceCache.configure(s.bgmCacheMb).catch(error => dbg('bgm.cache.limit', { message: String(error) }, 'warn'));
     if (!s.bgmEnabled) this.player.stopBgm();
     // Module writes rewrite the whole Risu module list: only when what they hold changed.
     const data = soundData(), wanted = JSON.stringify([s.bgmEnabled, s.sfxEnabled, s.bgmPrompt, s.sfxCue, s.sfxFirst, s.bgmTags, s.sfxRules,
@@ -267,10 +307,11 @@ export class OmniSoundRuntime {
   }
   /**
    * Words the glossary does not know, in the order 「자동」 means: JEV, then
-   * embedding, then a free guess from the effects' names and tags. A JEV "none
-   * fits" is an answer and ends it there. An explicit setting uses its own step
-   * (falling back to the guess); ⚡ (anyEngine) asks JEV or the LLM on purpose and
-   * registers only what they pick.
+   * embedding, then a free guess from the effects' names and tags, then the
+   * closest spelling. A JEV "none fits" makes a new effect when ElevenLabs
+   * generation is on; otherwise the closest effect plays anyway. An explicit
+   * setting uses its own step (falling back to the guess); ⚡ (anyEngine) asks JEV
+   * or the LLM on purpose and registers only what they pick.
    */
   private async resolveSfx(words: readonly string[], context: string, anyEngine = false): Promise<Array<SoundItem | null>> {
     const s = soundData().settings, tts = ttsData().settings, items = soundData().sfx, m = s.sfxMatcher, jev = !!tts.jev.key.trim();
@@ -280,11 +321,12 @@ export class OmniSoundRuntime {
     let choices: Array<SfxChoice | null> = words.map(() => null);
     if (engine && items.length && words.length) choices = await chooseSfxMany(words, context, items, engine, tts).catch(error => { this.notice = String((error as Error).message || error); return words.map(() => null); });
     // No answer from JEV (none set up, or it failed): embedding for all of them in one request, then the guess.
-    const open = anyEngine ? [] : words.filter((_, i) => !choices[i]);
+    const generates = s.sfxAutoCreate && !!s.elevenKey.trim();
+    const open = anyEngine ? [] : words.filter((_, i) => !choices[i] || (!generates && 'create' in choices[i]!));
     const nearest = embed && open.length && items.length
       ? await embedPickMany(open.map(word => `효과음: ${word}${context ? ` · ${context.slice(0, 200)}` : ''}`), items, item => this.describeSfx(item), embed).catch(error => { this.notice = String((error as Error).message || error); return open.map(() => null); })
       : open.map(() => null);
-    const fallback = new Map(open.map((word, k) => [word, nearest[k]?.item ?? guessSfx(word, items)]));
+    const fallback = new Map(open.map((word, k) => [word, nearest[k]?.item ?? guessSfx(word, items) ?? suggestSfx(word, soundData().glossary, items, 1)[0] ?? null]));
     return Promise.all(words.map(async (word, i) => {
       const choice = choices[i] ?? null;
       if (choice && 'key' in choice) { const item = items.find(row => row.key === choice.key); if (item) { await this.learn(word, item.key); return item; } }

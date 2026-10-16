@@ -83,6 +83,7 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
       s.sfx.push({ key: 'bang', kind: 'sfx', name: '쾅', tags: ['쾅'], folder: '', source: 'url', url: 'https://snd.test/bang.mp3' });
       await window.updateSoundSettings({ bgmEnabled: true, sfxEnabled: true, sfxMatcher: 'tag', bgmMatcher: 'tag' });
       const prepare = window.omniSound.prepareEffects.bind(window.omniSound); window.omniSound.prepareEffects = async words => { window.prepared = words.map(w => w.text); return prepare(words); };
+      window.prefetched = []; window.omniSound.prefetchBgm = async items => { window.prefetched.push(...items.map(item => item.key)); return 0; };
       await window.installTtsHost(); await window.omniTts.player.unlock();
       // The chat rules learn the effect marks: a line that is only an effect gets no narration control.
       const narrationRule = () => (window.dbModules || []).flatMap(m => m.regex || []).find(r => r.comment === 'omnitts-narration')?.in || '';
@@ -100,6 +101,8 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
     });
     assert.deepEqual(await page.evaluate(() => [window.effectOnlyRule, window.effectOnlyOff]), [true, true], 'effect marks reach the TTS chat rules, and leave with effects off');
     await page.waitForFunction(() => window.prepared?.includes('쾅'), undefined, { timeout: 5000 });
+    // The track a [[bgm:…]] cue on screen would play is fetched ahead, before reading reaches it.
+    await page.waitForFunction(() => window.prefetched.includes('cafe'), undefined, { timeout: 5000 });
     // The viewer list: ♪ row, the lines, the ▶ row between them. The effect-only line is not read.
     await page.waitForFunction(() => window.omniTts.list.length === 4);
     assert.deepEqual(await page.evaluate(() => window.omniTts.list.map(r => r.segment.kind)), ['bgm', 'dialogue', 'sfx', 'dialogue']);
