@@ -8,6 +8,7 @@ import { omniSound } from '../services/sound-runtime';
 import { el, run } from '../tts-ui/common';
 import { placeLlmCommandButton } from '../tts-ui/llm-command';
 import { glossaryLlmCommand, soundLlmCommand } from './llm';
+import { SOUND_PICK_DIALOG, bindSfxPicker } from './picker';
 
 /**
  * Adds the BGM·효과음 panels and tab buttons to the TTS root, and moves the model
@@ -17,7 +18,7 @@ import { glossaryLlmCommand, soundLlmCommand } from './llm';
 export function injectSoundPanels(root: HTMLElement): void {
   // Usually already in the markup (soundAwareHtml); a root built elsewhere gets it here.
   addSoundStructure(root);
-  if (!el('snd-item-dialog')) el('tts-dialogs')?.insertAdjacentHTML('beforeend', SOUND_DIALOG);
+  if (!el('snd-item-dialog')) el('tts-dialogs')?.insertAdjacentHTML('beforeend', SOUND_DIALOG + SOUND_PICK_DIALOG);
   let style = document.getElementById('omnisound-page-style');
   if (!style) { style = document.createElement('style'); style.id = 'omnisound-page-style'; document.head.append(style); }
   style.textContent = soundStyleText();
@@ -31,7 +32,7 @@ export async function mountSound(root: HTMLElement, tab: (name: string) => void,
   bindSoundSettings();
   const libraries = [new SoundLibrary('bgm'), new SoundLibrary('sfx')];
   for (const library of libraries) library.bind();
-  bindGlossary();
+  bindSfxPicker(); bindGlossary();
   for (const library of libraries) placeLlmCommandButton(`snd-${library.kind}-llm`, el(`snd-${library.kind}-add`), () => soundLlmCommand(library.kind, () => library.render()));
   placeLlmCommandButton('snd-term-llm', el('snd-term-add'), () => glossaryLlmCommand(() => renderGlossary()));
   // Words keep arriving from replies; each visit shows the current lists.

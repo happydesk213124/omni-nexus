@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/combo';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
+const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/combo';export * from './src/domain/sound/find';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const item = (key, tags, kind = 'bgm') => ({ key, kind, name: key, tags, folder: '', source: 'url', url: `https://x.test/${key}.mp3` });
 // Display rules as Risu runs them: highest <order> first, its own flags.
@@ -198,4 +198,20 @@ test('compound effects: split into sounds, a longer sound plays longer, all fit 
   assert.ok(Math.abs(joined[0][800] - a[0][800]) < 1e-6, 'the first sound as it was');
   assert.ok(Math.abs(joined[0][1100] - 2 * b[0][140]) < 1e-6, 'the second levelled by its own gain');
   assert.ok(Math.abs(joined[0].at(-1)) < .01 && Math.abs(joined[0].at(-1)) < Math.abs(joined[0][1100]) / 10, 'a part cut at its share fades out');
+});
+
+test('a word is matched to effects by how it sounds, jamo by jamo, and search covers the folder', () => {
+  assert.ok(api.soundWordSimilarity('콰광', '콰앙') > 0.34, 'no shared syllable, but ㅋㅘ and ㅘㅇ');
+  assert.ok(api.soundWordSimilarity('철컥', '철컹') > 0.6);
+  assert.ok(api.soundWordSimilarity('휘이잉', '띠리링') < 0.34, 'only the ending in common');
+  assert.ok(api.soundWordSimilarity('우당탕', '쾅') < 0.2);
+  assert.equal(api.soundWordSimilarity('휘잉', '휘잉!'), 1);
+  const items = [{ key: 'door', name: '문 쾅', tags: ['쾅'], folder: '문' }, { key: 'wind', name: '강풍', tags: ['휘잉', '바람'], folder: '날씨' }, { key: 'step', name: '발소리', tags: [], folder: '사람' }];
+  const glossary = [{ id: 'g', terms: ['저벅저벅'], sfxKey: 'step', enabled: true }];
+  assert.deepEqual(api.suggestSfx('휘이잉', glossary, items).map(i => i.key), ['wind']);
+  assert.deepEqual(api.suggestSfx('뚜벅뚜벅', glossary, items).map(i => i.key), ['step'], 'glossary words count as the effect\'s spellings');
+  assert.deepEqual(api.suggestSfx('뚜벅뚜벅', glossary, items, 3, 0.45), [], 'a looser guess is not offered as a one-tap chip');
+  assert.deepEqual(api.suggestSfx('삐리리', glossary, items), []);
+  assert.equal(api.matchesSoundSearch(items[1], '날씨'), true, 'the folder is searchable');
+  assert.equal(api.matchesSoundSearch(items[1], '날씨 & 문'), false);
 });

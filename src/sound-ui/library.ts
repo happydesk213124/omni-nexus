@@ -2,16 +2,12 @@ import type { SoundItem, SoundKind } from '../core/sound-types';
 import { soundData, saveSoundData, normalizeSoundData } from '../storage/sound-store';
 import { omniSound } from '../services/sound-runtime';
 import { soundTags } from '../domain/sound/tags';
+import { matchesSoundSearch } from '../domain/sound/find';
 import { el, input, val, set, text, esc, dialog, run, notify, download, readJson } from '../tts-ui/common';
 import { uuid } from '../core/util/text';
+import { setWordsFor, wordsFor } from './glossary';
 
 const LABEL: Record<SoundKind, string> = { bgm: 'BGM', sfx: '효과음' };
-/** `|` = any of, `&` = all of — the voice list's search rules. */
-export function matchesSoundSearch(item: SoundItem, query: string): boolean {
-  const hay = [item.name, ...item.tags, item.url || ''].join(' ').normalize('NFKC').toLowerCase();
-  const groups = query.normalize('NFKC').toLowerCase().split('|').map(g => g.split('&').map(s => s.trim()).filter(Boolean)).filter(g => g.length);
-  return !groups.length || groups.some(group => group.every(term => hay.includes(term)));
-}
 const sizeOf = (item: SoundItem) => !item.bytes ? '' : item.bytes < 1048576 ? `${Math.max(1, Math.round(item.bytes / 1024))}KB` : `${(item.bytes / 1048576).toFixed(1)}MB`;
 
 /** One tile list (BGM or effects) that behaves like the TTS voice list. */
@@ -21,6 +17,8 @@ export class SoundLibrary {
   private multi = false;
   private anchor = '';
   private editing?: SoundItem;
+  /** Keys being dragged onto a folder: the selection when the tile is part of it. */
+  private dragging: string[] = [];
   constructor(readonly kind: SoundKind) {}
   private id(part: string): string { return `snd-${this.kind}-${part}`; }
   private items(): SoundItem[] { return omniSound.list(this.kind); }
@@ -39,14 +37,17 @@ export class SoundLibrary {
     text(this.id('count'), `${visible.length}개 표시 / 전체 ${items.length}개`); text(this.id('total'), String(items.length));
     list.replaceChildren();
     if (!visible.length) { const empty = document.createElement('p'); empty.className = 'char-empty'; empty.style.gridColumn = '1/-1'; empty.textContent = items.length ? '검색·폴더에 맞는 항목이 없습니다.' : `등록된 ${LABEL[this.kind]}이 없습니다. + ${LABEL[this.kind]}로 추가하세요.`; list.append(empty); }
-    visible.forEach((item, index) => {
-      const on = this.selected.has(item.key);
-      const tile = document.createElement('div'); tile.className = 'voice-row' + (on ? ' selected' : ''); tile.tabIndex = 0;
-      tile.setAttribute('role', 'option'); tile.setAttribute('aria-selected', String(on));
-      tile.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(item.name)} 선택" ${on ? 'checked' : ''}><small>${index + 1}</small><small>${item.source === 'asset' ? '파일' : '주소'}${sizeOf(item) ? ' · ' + sizeOf(item) : ''}</small></div>`
-        + `<strong>${esc(item.name)}</strong><span>${esc(item.tags.join(', ') || '태그 없음')}</span>${item.folder ? `<small>${esc(item.folder)}</small>` : ''}`;
+    visible.forEach(item => {
+      const on = this.selected.has(item.key), live = this.kind === 'bgm' && playing === item.key;
+      const tile = document.createElement('div'); tile.className = 'voice-row snd-row' + (on ? ' selected' : '') + (live ? ' playing' : ''); tile.tabIndex = 0;
+      tile.setAttribute('role', 'option'); tile.setAttribute('aria-selected', String(on)); tile.draggable = true;
+      // Effects show the glossary words that call them: the list and the glossary describe one thing.
+      const words = this.kind === 'sfx' ? wordsFor(item.key) : [];
+      tile.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(item.name)} 선택" ${on ? 'checked' : ''}><strong title="${esc(item.name)}">${esc(item.name)}</strong></div>`
+        + `<p class="voice-tags">${esc(item.tags.join(', ') || '태그 없음')}</p>`
+        + (this.kind === 'sfx' ? `<p class="snd-row-words${words.length ? '' : ' none'}" title="이 말이 나오면 이 효과음 (용어집)${words.length ? ': ' + esc(words.join(', ')) : ''}">${words.length ? '용어 · ' + esc(words.slice(0, 6).join(', ')) + (words.length > 6 ? ` 외 ${words.length - 6}` : '') : '용어 없음'}</p>` : '')
+        + `<small class="snd-row-meta">▱ ${esc(item.folder || '미분류')} · ${item.source === 'asset' ? '파일' : '주소'}${sizeOf(item) ? ' · ' + sizeOf(item) : ''}</small>`;
       const play = document.createElement('button'); play.type = 'button'; play.className = 'tile-audition tts-listen';
-      const live = this.kind === 'bgm' && playing === item.key;
       play.textContent = live ? '⏸' : this.kind === 'bgm' ? '♪' : '▶'; play.title = live ? '정지' : '미리 듣기';
       play.setAttribute('aria-label', `${item.name} ${live ? '정지' : '미리 듣기'}`);
       play.addEventListener('click', event => { event.stopPropagation(); run(async () => {
@@ -68,6 +69,12 @@ export class SoundLibrary {
       tile.addEventListener('click', select);
       tile.addEventListener('dblclick', () => this.edit(item));
       tile.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(event); } });
+      tile.addEventListener('dragstart', event => {
+        this.dragging = on ? [...this.selected] : [item.key];
+        event.dataTransfer?.setData('text/plain', item.name); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        tile.classList.add('dragging'); el(this.id('folders'))?.closest('.voice-folders')?.classList.add('drop-ready');
+      });
+      tile.addEventListener('dragend', () => { this.dragging = []; tile.classList.remove('dragging'); el(this.id('folders'))?.closest('.voice-folders')?.classList.remove('drop-ready'); });
       list.append(tile);
     });
     const count = this.selected.size;
@@ -81,6 +88,13 @@ export class SoundLibrary {
       b.setAttribute('aria-current', String(key === this.folder));
       b.innerHTML = `<span>${esc(label)}</span><span>${items.filter(item => key === '*' || item.folder === key).length}</span>`;
       b.addEventListener('click', () => { this.folder = key; this.selected.clear(); this.render(); });
+      // Dropping tiles on a folder moves them there (「전체」 is not a folder).
+      if (key !== '*') {
+        b.title = '여기로 끌어 놓으면 이 폴더로 옮깁니다';
+        b.addEventListener('dragover', event => { if (!this.dragging.length) return; event.preventDefault(); b.classList.add('drop'); });
+        b.addEventListener('dragleave', () => b.classList.remove('drop'));
+        b.addEventListener('drop', event => { event.preventDefault(); b.classList.remove('drop'); const keys = new Set(this.dragging); this.dragging = []; if (keys.size) run(() => this.moveKeys(keys, key)); });
+      }
       folders.append(b);
     }
     input(this.id('folder-edit')).disabled = !this.folder || this.folder === '*';
@@ -90,6 +104,7 @@ export class SoundLibrary {
     text('snd-item-title', item ? `${LABEL[this.kind]} 수정` : `${LABEL[this.kind]} 추가`);
     text('snd-item-save', item ? '저장' : '추가');
     set('snd-item-name', item?.name || ''); set('snd-item-tags', item?.tags.join(', ') || '');
+    el('snd-item-terms-wrap').hidden = this.kind !== 'sfx'; set('snd-item-terms', item && this.kind === 'sfx' ? wordsFor(item.key).join(', ') : '');
     const folder = el<HTMLSelectElement>('snd-item-folder');
     folder.innerHTML = ['', ...soundData().folders[this.kind]].map(name => `<option value="${esc(name)}">${esc(name || '미분류')}</option>`).join('');
     folder.value = item?.folder ?? (this.folder === '*' ? '' : this.folder);
@@ -111,9 +126,10 @@ export class SoundLibrary {
   }
   edit(item: SoundItem): void { this.openDialog(item); }
   async save(): Promise<void> {
-    const name = val('snd-item-name'), tags = val('snd-item-tags'), folder = val('snd-item-folder');
+    const name = val('snd-item-name'), tags = val('snd-item-tags'), folder = val('snd-item-folder'), words = soundTags(val('snd-item-terms'));
     if (this.editing) {
       Object.assign(this.editing, { name: name.trim() || this.editing.name, tags: soundTags(tags), folder });
+      if (this.kind === 'sfx') setWordsFor(this.editing.key, words);
       await saveSoundData(); dialog('snd-item-dialog', false); this.render(); return;
     }
     text('snd-item-status', '확인하는 중…');
@@ -126,6 +142,7 @@ export class SoundLibrary {
         : val('snd-item-source') === 'file'
         ? await omniSound.addFromFile(this.kind, { name, tags, folder, file: file! })
         : await omniSound.addFromUrl(this.kind, { name: name || decodeURIComponent(val('snd-item-url').split('/').pop() || '').replace(/\.[^.]+$/, ''), tags, folder, url: val('snd-item-url') });
+      if (this.kind === 'sfx' && words.length) { setWordsFor(item.key, words); await saveSoundData(); }
       dialog('snd-item-dialog', false); this.render(); notify(`${LABEL[this.kind]} 추가: ${item.name}`);
     } catch (error) { text('snd-item-status', String((error as Error).message || error)); }
   }
@@ -178,8 +195,11 @@ export class SoundLibrary {
     }, 'change');
     this.render();
   }
-  async moveSelected(target: string): Promise<void> {
-    for (const item of this.items()) if (this.selected.has(item.key)) item.folder = target;
-    await saveSoundData(); this.render();
+  async moveSelected(target: string): Promise<void> { await this.moveKeys(this.selected, target); }
+  private async moveKeys(keys: ReadonlySet<string>, target: string): Promise<void> {
+    let moved = 0;
+    for (const item of this.items()) if (keys.has(item.key) && item.folder !== target) { item.folder = target; moved++; }
+    if (!moved) return;
+    await saveSoundData(); this.render(); notify(`${moved}개를 「${target || '미분류'}」로 옮겼습니다.`);
   }
 }

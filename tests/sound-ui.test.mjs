@@ -117,14 +117,21 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#snd-gloss-tab-unknown').click();
     assert.equal(await page.locator('#snd-gloss-terms').isVisible(), false);
     assert.equal(await page.locator('#snd-term-add').isVisible(), false, '+ 묶음 belongs to the word tab');
-    await unknown.locator('select').selectOption({ label: '문 쾅' });
+    // 「직접 고르기」 opens a searchable list with ▶ on every row; Enter takes the first match.
+    await unknown.locator('.snd-unknown-pick').click();
+    assert.equal(await page.locator('#snd-pick-dialog').isVisible(), true);
+    assert.match(await page.locator('#snd-pick-title').textContent(), /덜컹/);
+    await page.locator('#snd-pick-search').fill('문 쾅'); assert.equal(await page.locator('#snd-pick-list .snd-pick-row').count(), 1, 'the search narrows the list');
+    await page.locator('#snd-pick-search').press('Enter');
+    assert.equal(await page.locator('#snd-pick-dialog').isVisible(), false);
     await page.waitForFunction(() => window.soundData().glossary.length === 1 && !window.soundData().unknownTerms.length);
     assert.equal(await page.evaluate(() => window.omniSound.playSfxWord('덜컹! 덜컹!')), true, 'the learned word now plays its effect');
     // Glossary tiles: words are chips on the tile; add with Enter, × drops one, a word lives in one tile only.
     await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-terms').click();
     const tile = () => page.locator('#snd-terms .snd-term-tile');
     assert.deepEqual(await tile().first().locator('.snd-chip').allTextContents(), ['덜컹×']);
-    assert.equal(await tile().first().locator('.snd-term-effect').inputValue(), await page.evaluate(() => window.soundData().glossary[0].sfxKey));
+    assert.equal(await tile().first().locator('.snd-term-effect').getAttribute('data-key'), await page.evaluate(() => window.soundData().glossary[0].sfxKey));
+    assert.match(await tile().first().locator('.snd-term-effect').textContent(), /문 쾅/, 'the tile names its effect');
     await tile().first().locator('.snd-term-new').fill('쾅쾅, 탕'); await tile().first().locator('.snd-term-new').press('Enter');
     await page.waitForFunction(() => window.soundData().glossary[0].terms.join(',') === '덜컹,쾅쾅,탕');
     await tile().first().locator('[aria-label="탕 빼기"]').click();
@@ -333,6 +340,33 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.waitForFunction(() => document.querySelectorAll('#llm-command-results input[data-row]').length === 1);
     await page.locator('#llm-command-apply').click();
     await page.waitForFunction(() => window.soundData().glossary.some(row => row.sfxKey === window.soundData().sfx[0].key && row.terms.includes('콰당')) && !window.soundData().unknownTerms.includes('콰당'));
+    // An effect's tile shows the glossary words that call it; its editor changes them.
+    await page.locator('#tab-sound-sfx').click();
+    const first = page.locator('#snd-sfx-list .voice-row').first();
+    assert.match(await first.locator('.snd-row-words').getAttribute('title'), /콰당/, 'every word, past the six shown');
+    await first.dblclick();
+    assert.equal(await page.locator('#snd-item-terms').isVisible(), true);
+    assert.match(await page.locator('#snd-item-terms').inputValue(), /콰당/);
+    await page.locator('#snd-item-terms').fill('쿵쾅, 쾅쾅'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => { const key = window.soundData().sfx[0].key, words = window.soundData().glossary.filter(row => row.sfxKey === key).flatMap(row => row.terms); return words.join(',') === '쿵쾅,쾅쾅'; });
+    assert.ok(!(await page.evaluate(() => window.soundData().glossary.flatMap(row => row.terms))).includes('콰당'), 'a word taken out leaves the glossary');
+    assert.match(await first.locator('.snd-row-words').textContent(), /쿵쾅, 쾅쾅/);
+    // BGM keeps no glossary words.
+    await page.locator('#tab-sound-bgm').click(); await page.locator('#snd-bgm-list .voice-row').first().dblclick();
+    assert.equal(await page.locator('#snd-item-terms').isVisible(), false); await page.locator('#snd-item-cancel').click();
+    // Dragging a tile onto a folder moves it there.
+    await page.locator('#tab-sound-sfx').click();
+    await page.evaluate(async () => { window.soundData().folders.sfx.push('드래그'); });
+    await page.locator('#snd-sfx-search').fill(''); await page.locator('#snd-sfx-search').dispatchEvent('input');
+    await first.dragTo(page.locator('#snd-sfx-folders .folder-item', { hasText: '드래그' }));
+    await page.waitForFunction(() => window.soundData().sfx[0].folder === '드래그');
+    // An unknown word that sounds like an effect's word is one tap from it.
+    await page.evaluate(() => { window.soundData().unknownTerms = ['쿵콰앙']; });
+    await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-unknown').click();
+    const hint = page.locator('#snd-unknown .snd-hint').first();
+    assert.equal(await hint.getAttribute('data-key'), await page.evaluate(() => window.soundData().sfx[0].key));
+    await hint.click();
+    await page.waitForFunction(() => !window.soundData().unknownTerms.length && window.soundData().glossary.some(row => row.sfxKey === window.soundData().sfx[0].key && row.terms.includes('쿵콰앙')));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
