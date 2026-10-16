@@ -1,7 +1,7 @@
 import type { SoundItem, SoundKind } from '../core/sound-types';
 import { uuid } from '../core/util/text';
 import { SoundPlayer } from '../providers/sound/player';
-import { AUDIO_EXTENSIONS, sniffAudioMime } from '../domain/sound/audio';
+import { AUDIO_EXTENSIONS, sfxMarksProblem, sniffAudioMime } from '../domain/sound/audio';
 import { exactSfx, glossarySfx, guessSfx, pickBgm } from '../domain/sound/match';
 import { embedPickMany, soundEmbedSettings } from '../providers/sound/embed';
 import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
@@ -39,7 +39,7 @@ export class OmniSoundRuntime {
     return this.started ||= (async () => {
       await loadSoundData();
       this.sync();
-      subscribeSound(() => this.sync());
+      subscribeSound(() => { this.sync(); omniTts.refreshModule(); });
       // TTS speech lowers the music. An effect is one of the voices: the next one to
       // speak (a line, or an effect through the voice player) cuts it.
       omniTts.subscribe(() => {
@@ -125,6 +125,7 @@ export class OmniSoundRuntime {
   private cues: TtsSoundCuePlayer = {
     listed: segment => { if (!soundReady()) return false; const s = soundData().settings; return segment.kind === 'bgm' ? s.bgmEnabled && s.listBgm : s.sfxEnabled && s.listSfx; },
     automatic: segment => segment.kind === 'bgm' || (soundReady() && soundData().settings.sfxAutoPlay === 'reply'),
+    marks: () => !soundReady() || !soundData().settings.sfxEnabled ? [] : soundData().settings.sfxRules.filter(rule => rule.enabled && !sfxMarksProblem(rule.open, rule.close)).map(({ open, close }) => ({ open, close })),
     play: async request => {
       if (request.segment.kind !== 'bgm') return;
       const tags = request.segment.tags ?? soundTags(request.segment.text);

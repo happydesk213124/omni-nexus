@@ -1,10 +1,10 @@
 import { risuHost } from '../core/host';
-import { OMNI_TTS_MODULE, ttsModule } from '../domain/tts/module';
+import { OMNI_TTS_MODULE, ttsModule, type TtsSfxMarks } from '../domain/tts/module';
 import type { TtsSettings } from '../core/tts-types';
 import { serializeModuleWrite } from './module-write';
 import { sleep } from '../core/util/async';
 
-export async function ensureTtsModule(settings: TtsSettings): Promise<void> {
+export async function ensureTtsModule(settings: TtsSettings, sfxMarks: TtsSfxMarks = []): Promise<void> {
   return serializeModuleWrite(async () => {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) throw new Error('Risu 모듈 저장 API를 사용할 수 없습니다.');
@@ -13,7 +13,7 @@ export async function ensureTtsModule(settings: TtsSettings): Promise<void> {
     if (!db) throw new Error('Risu 모듈 목록을 읽지 못했습니다.');
     const modules = Array.isArray(db.modules) ? [...db.modules] : [];
     const index = modules.findIndex(m => m.id === OMNI_TTS_MODULE);
-    const module = ttsModule(settings);
+    const module = ttsModule(settings, sfxMarks);
     if (index < 0) modules.push(module); else modules[index] = { ...modules[index], ...module };
     const previous: string[] = Array.isArray(db.enabledModules) ? [...db.enabledModules] : [];
     const enabled = previous.filter(id => id !== OMNI_TTS_MODULE);

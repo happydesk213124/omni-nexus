@@ -57,7 +57,7 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
       window.risuai = {
         pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) },
         getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
-        getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async () => {}, requestPluginPermission: async () => true,
+        getDatabase: async () => ({ modules: structuredClone(window.dbModules || []), enabledModules: [] }), setDatabase: async db => { if (db.modules) window.dbModules = structuredClone(db.modules); }, requestPluginPermission: async () => true,
         getRootDocument: async () => new Safe(document.documentElement),
         createMutationObserver: async fn => { const o = new MutationObserver(() => fn([])); return { observe: async (t, opt) => o.observe(t.node, opt), disconnect: async () => o.disconnect() }; },
         addRisuChatListener: async (_m, fn) => { window.output = fn; }, removeRisuChatListener: async () => {}, onUnload: async () => {},
@@ -84,12 +84,21 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
       await window.updateSoundSettings({ bgmEnabled: true, sfxEnabled: true, sfxMatcher: 'tag', bgmMatcher: 'tag' });
       const prepare = window.omniSound.prepareEffects.bind(window.omniSound); window.omniSound.prepareEffects = async words => { window.prepared = words.map(w => w.text); return prepare(words); };
       await window.installTtsHost(); await window.omniTts.player.unlock();
+      // The chat rules learn the effect marks: a line that is only an effect gets no narration control.
+      const narrationRule = () => (window.dbModules || []).flatMap(m => m.regex || []).find(r => r.comment === 'omnitts-narration')?.in || '';
+      for (let i = 0; i < 200 && !narrationRule().includes('(?![ \\t]*§'); i++) await new Promise(r => setTimeout(r, 10));
+      window.effectOnlyRule = narrationRule().includes('(?![ \\t]*§');
+      await window.updateSoundSettings({ sfxEnabled: false });
+      for (let i = 0; i < 200 && narrationRule().includes('(?![ \\t]*§'); i++) await new Promise(r => setTimeout(r, 10));
+      window.effectOnlyOff = !narrationRule().includes('(?![ \\t]*§');
+      await window.updateSoundSettings({ sfxEnabled: true });
       const player = window.omniSound.player, bgm = player.playBgm.bind(player), sfx = player.playSfx.bind(player);
       player.playBgm = (key, ...rest) => { window.log.push('bgm:' + key); return bgm(key, ...rest); };
       player.playSfx = (...rest) => { window.log.push('sfx'); return sfx(...rest); };
       let last = '';
       window.omniTts.subscribe(() => { const now = window.omniTts.player.status === 'playing' ? 'tts:' + window.omniTts.current?.segment.id : ''; if (now && now !== last) window.log.push(now); last = now; });
     });
+    assert.deepEqual(await page.evaluate(() => [window.effectOnlyRule, window.effectOnlyOff]), [true, true], 'effect marks reach the TTS chat rules, and leave with effects off');
     await page.waitForFunction(() => window.prepared?.includes('쾅'), undefined, { timeout: 5000 });
     // The viewer list: ♪ row, the lines, the ▶ row between them. The effect-only line is not read.
     await page.waitForFunction(() => window.omniTts.list.length === 4);

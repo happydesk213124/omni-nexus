@@ -404,3 +404,14 @@ test('a line with an effect keeps its own control next to the effect ▶, as it 
   // A real raw block is still guarded: a button that is not ours gets no control in its line.
   assert.deepEqual(kinds(apply('<button>눌러</button> 문이 열렸다.', tts)), []);
 });
+
+test('a line that is only an effect mark never gets a narration control, not even while it streams', () => {
+  const marks = [{ open: '§', close: '§' }], sfx = api.soundModule('sfx', { ...api.soundDefaults(), sfxEnabled: true }, []).regex, tts = api.ttsModule(visible, marks).regex;
+  for (const partial of ['§ 쾅!', '§ 쾅! §', '  §우르르 쾅§  ']) assert.deepEqual(kinds(apply(partial, [...sfx, ...tts])), [], partial);
+  assert.equal((apply('§ 쾅! §', [...sfx, ...tts]).match(/data-omni-sfx="1"/g) || []).length, 1, 'the effect keeps its own ▶');
+  for (const mixed of ['§끼이익§ 문이 열렸다.', '그가 문을 닫았다. §쾅§']) assert.deepEqual(kinds(apply(mixed, [...sfx, ...tts])), ['narration'], mixed);
+  assert.deepEqual(kinds(apply('§ 쾅! §\n그가 웃었다.', [...sfx, ...tts])), ['narration'], 'the next line is unaffected');
+  assert.deepEqual(kinds(apply('§ 쾅! §', api.ttsModule(visible).regex)), ['narration'], 'without effect marks (effects off) nothing changes');
+  const own = api.ttsModule(visible, [{ open: '[[', close: ']]' }]).regex;
+  assert.deepEqual(kinds(apply('[[쾅]]', own)), [], 'any rule\'s marks, written literally');
+});

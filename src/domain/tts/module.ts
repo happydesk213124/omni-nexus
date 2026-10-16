@@ -44,6 +44,17 @@ const SPEAKER = '([^\\n<>:："“”‘’「」『』(){}\\[\\]|#!*]{1,80}?)\\*
 const BEFORE_ANCHORED_QUOTE = `[ \\t]*[:：][ \\t]*(?:\\r?\\n[ \\t]*)*(?=(?:${OPEN}[ \\t]*)*["“‘'「『][^\\n]*data-omnitts-kind=)`;
 
 function regexLiteral(value: string): string { return value.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&'); }
+/** The effect marks in use (§쾅§): a line that is only one is never read. */
+export type TtsSfxMarks = ReadonlyArray<{ open: string; close: string }>;
+/**
+ * A line holding nothing but an effect mark gets no control, also while it is
+ * still streaming (`§ 쾅!` before its closing mark), so no narration control
+ * shows and vanishes again. A mark with prose after it (`§끼이익§ 문이 열렸다`)
+ * is not affected.
+ */
+function effectOnly(marks: TtsSfxMarks): string {
+  return marks.map(({ open, close }) => `(?![ \\t]*${regexLiteral(open)}(?:(?!${regexLiteral(close)})[^\\n])*(?:${regexLiteral(close)})?(?:${SOUND_TAIL})?[ \\t\\r]*(?:\\n|$))`).join('');
+}
 function anchor(kind: 'dialogue' | 'narration'): string {
   // The glyph is CSS-only, so the copied text and the host's line text stay prose.
   return `<span data-omnitts-tail="1"><button type="button" data-omnitts-play="1" x-omnitts-play="1" data-omnitts-kind="${kind}" title="재생" aria-label="재생"></button></span>`;
@@ -86,9 +97,9 @@ export const TTS_MODULE_CSS = [
   '@media (prefers-reduced-motion:reduce){[data-omnitts-play][x-omnitts-state]{animation:none!important}[data-omnitts-play][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
 
-export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter'>>) {
+export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter'>>, sfxMarks: TtsSfxMarks = []) {
   const excluded = exclusion(settings.excludeText || '');
-  const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
+  const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${effectOnly(sfxMarks)}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
   const imageCss = `[data-omnitts-image]{display:${settings.illustration ? 'flex' : 'none'};align-items:center;gap:6px;max-width:100%;overflow-x:auto}[data-omnitts-image] [data-omnitts-cast]{display:flex;gap:6px}[data-inlay-inline-shot]:has(>[data-omnitts-image]){display:flex!important;flex-direction:column}[data-omnitts-image]{order:10;justify-content:flex-start;margin-top:8px;min-height:40px}[data-omnitts-image] [data-omnitts-play]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 4px;margin-left:0;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e3fff0;cursor:pointer}[data-omnitts-image] [data-omnitts-play]:hover{background:#219c63;border-color:#9effcc}`;
   const hide = (flags: string, order: number, tone: boolean, out: string) => ({
     comment: tone ? 'omnitts-hide-cue-tone' : 'omnitts-hide-cue-name', type: 'editdisplay', ableFlag: true, flag: `${flags}<order ${order}>`,
