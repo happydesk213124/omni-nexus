@@ -122,8 +122,15 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
     assert.ok(seconds > .3 && seconds < .42, 'the silence on both sides is gone: ' + seconds.toFixed(3) + ' s of 2.3 s');
     await page.evaluate(() => window.omniTts.stop());
     await page.waitForFunction(() => !document.querySelector('[data-omni-sfx]').getAttribute('x-omnitts-state') && window.omniTts.player.status === 'idle');
+    // ♪ spins while its track is fetched, then goes back to plain: no playing equalizer for BGM.
+    await page.evaluate(() => { const real = window.omniSound.playBgmForTags.bind(window.omniSound); window.releaseBgm = null; window.omniSound.playBgmForTags = async tags => { await new Promise(r => { window.releaseBgm = r; }); return real(tags); }; window.realBgmTags = real; });
     await page.locator('[data-omni-bgm]').click();
-    await page.waitForFunction(() => window.log.includes('bgm:cafe'));
+    await page.waitForFunction(() => document.querySelector('[data-omni-bgm]').getAttribute('x-omnitts-state') === 'loading' && window.releaseBgm);
+    assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[data-omni-bgm]'), '::before').animationName), /omni-bgm-spin/, 'a spinner, not the ♪');
+    await page.evaluate(() => window.releaseBgm());
+    await page.waitForFunction(() => window.log.includes('bgm:cafe') && !document.querySelector('[data-omni-bgm]').getAttribute('x-omnitts-state'));
+    assert.doesNotMatch(await page.evaluate(() => window.SOUND_MODULE_CSS.bgm), /eq|playing/, 'BGM has no playing equalizer');
+    await page.evaluate(() => { window.omniSound.playBgmForTags = window.realBgmTags; });
     assert.equal(await page.evaluate(() => window.fish), 0, 'a sound button never synthesizes speech');
     // One voice at a time: a line cuts a playing effect, an effect cuts a playing line.
     await page.locator('[data-omni-sfx]').click();

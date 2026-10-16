@@ -37,7 +37,11 @@ const SFX_STATE_CSS = [
   '@keyframes omni-sfx-eq{0%,100%{background-size:3px 40%,3px 90%,3px 60%}33%{background-size:3px 100%,3px 35%,3px 80%}66%{background-size:3px 55%,3px 70%,3px 25%}}',
   '@media (prefers-reduced-motion:reduce){[data-omni-sfx][x-omnitts-state]{animation:none!important}[data-omni-sfx][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
-export const SOUND_MODULE_CSS: Record<SoundKind, string> = { bgm: BUTTON('[data-omni-bgm]', '♪', 12), sfx: BUTTON('[data-omni-sfx]', '▶', 9) + SFX_STATE_CSS };
+/** ♪ only spins while its track is fetched: the music then plays under the voice, with no playing state on the button. */
+const BGM_STATE_CSS = '[data-omni-bgm][x-omnitts-state="loading"]{background:#7132f5;border-color:#d8c8ff;color:#fff}'
+  + '[data-omni-bgm][x-omnitts-state="loading"]::before{content:"";display:block;box-sizing:border-box;width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:omni-bgm-spin .8s linear infinite}'
+  + '@keyframes omni-bgm-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){[data-omni-bgm][x-omnitts-state]::before{animation-duration:2s!important}}';
+export const SOUND_MODULE_CSS: Record<SoundKind, string> = { bgm: BUTTON('[data-omni-bgm]', '♪', 12) + BGM_STATE_CSS, sfx: BUTTON('[data-omni-sfx]', '▶', 9) + SFX_STATE_CSS };
 const bgmButton = '<span data-omni-bgm-tail="1"><button type="button" data-omni-bgm="1" x-omni-bgm="1" title="BGM 재생" aria-label="BGM 재생"></button></span>';
 const sfxButton = '<span data-omni-sfx-tail="1"><button type="button" data-omni-sfx="1" x-omni-sfx="1" title="효과음 재생" aria-label="효과음 재생"></button></span>';
 /** The built-in rule: § 효과음 §. */

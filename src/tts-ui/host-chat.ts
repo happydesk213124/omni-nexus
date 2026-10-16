@@ -117,7 +117,13 @@ export async function installTtsHost(): Promise<void> {
     b.message = message; b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.dead = !request; b.effect = request?.segment.kind === 'sfx';
     b.play = async () => {
       const segment = request?.segment; if (!segment) return;
-      if (segment.kind === 'bgm') { if (!await omniSound.playBgmForTags(segment.tags || [])) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); return; }
+      if (segment.kind === 'bgm') {
+        // ♪ spins until the track is fetched and playing.
+        await b.node.setAttribute('x-omnitts-state', 'loading');
+        try { if (!await omniSound.playBgmForTags(segment.tags || [])) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); }
+        finally { await b.node.setAttribute('x-omnitts-state', ''); }
+        return;
+      }
       if (ttsData().settings.enabled) {
         const reservation = omniTts.reservePlayback();
         const shown = anchored.get(b.message), list = shown?.some(r => r.segment.id === b.line) ? shown : requests(await currentTtsContext(), b.message);
