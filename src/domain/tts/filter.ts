@@ -103,6 +103,10 @@ export function allowedTtsText(text: string, terms: readonly string[], skipChars
   // Countdowns and timestamps ([00:10… 00:09…]) carry no word in any language.
   return hasTtsSpeech(text, skipChars) && (!requireLetter || /\p{L}/u.test(text)) &&!terms.some(term => text.includes(term));
 }
+/** 「괄호 안의 말도 빼고 읽기」: (작게) and （작게） go whole, not just their marks. */
+export function ttsWithoutParentheticals(text: string): string {
+  return text.replace(/\([^()\n]*\)|（[^（）\n]*）/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+}
 export function ttsSpokenText(text: string, omissions: string | boolean): string {
   // Keep the old boolean call contract for integrations, while new settings
   // treat every list entry literally (including regular-expression symbols).

@@ -66,7 +66,8 @@ export function parseCueLine(line: string, id: string): TtsSegment | null {
   if(whole&&!/['‘’]/.test(whole.replace(/(?<=\p{L})['’](?=\p{L})/gu,'')))return {id,speaker:'',tone:'',text:whole,kind:'dialogue',monologue:true,start:0,end:line.length};
   // A short single-quoted word inside prose ('디지털 데이터') is emphasis, not speech.
   const prose=value.replace(/(?<=\S[ \t]?)['‘][^'‘’\n]{1,30}['’](?=[ \t]?[\p{L}\p{N}])/gu,'');
-  if (/[()"“‘「『']/.test(prose) || /[:：]\s*'/.test(value)) return null;
+  // Parentheses are prose ((작게) 한숨을 쉬었다): only a speaker header ending in a colon is held back, above.
+  if (/["“‘「『']/.test(prose) || /[:：]\s*'/.test(value)) return null;
   return { id, speaker: '', tone: '', text: value, kind: 'narration', start: 0, end: line.length };
 }
 const VOID_TAG = /^<(?:img|br|hr|input|source|meta|link|wbr|audio|video)\b[^>]*>$/i;
@@ -80,13 +81,24 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
   const beginning = lines.findIndex(line => response.test(line.trim()));
   let fenced = false, html = false, hidden = '', post = false, offset = 0;
   const result: TtsSegment[] = [];
-  const cues = (line: string, number: number, at: number) => {
+  /**
+   * The sound cues in a line, split by where they sit in the words that are
+   * read (a dialogue's quote, not its speaker header): one in the first half
+   * plays before the line, one in the second half after it
+   * (§끼이익§ 문이 열렸다 → effect, line; 문을 닫았다 §쾅§ → line, effect).
+   */
+  const cues = (line: string, number: number, at: number, spoken?: string): { before: TtsSegment[]; after: TtsSegment[] } => {
+    const out = { before: [] as TtsSegment[], after: [] as TtsSegment[] }, from = spoken ? Math.max(0, line.indexOf(spoken)) : line.length - line.trimStart().length;
+    const middle = from + (spoken ? spoken.length : line.trimEnd().length - from) / 2;
     const found = [
       ...(sound!.bgm ? bgmMarkers(line).map(hit => ({ index: hit.index, length: hit.length, kind: 'bgm' as const, text: hit.tags.join(', '), tags: hit.tags })) : []),
       ...sfxHits(line, sound!.sfxRules).map(hit => ({ index: hit.index, length: hit.length, kind: 'sfx' as const, text: hit.word, tags: undefined })),
     ].sort((a, b) => a.index - b.index);
-    found.forEach((cue, k) => { if (cue.text) result.push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags } : { context: line.slice(0, 300) }), start: at + cue.index, end: at + cue.index + cue.length }); });
+    // A BGM cue always comes first: the music is set before the line.
+    found.forEach((cue, k) => { if (cue.text) (cue.kind === 'sfx' && cue.index + cue.length / 2 > middle ? out.after : out.before).push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags } : { context: line.slice(0, 300) }), start: at + cue.index, end: at + cue.index + cue.length }); });
+    return out;
   };
+  const none = { before: [] as TtsSegment[], after: [] as TtsSegment[] };
   for(let index=0;index<lines.length;index++) {
     const line=lines[index];
     const trimmed = line.trim();
@@ -107,16 +119,19 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
         const header=cueHeader(trimmed),next=lines[index+1],speech=next===undefined?null:quotedCue(next);
         if(header&&speech&&!/[<>]/.test(speech)){
           const spoken = sound ? withoutSfx(speech, sound.sfxRules) : speech;
-          if (sound) cues(next, index + 2, offset + line.length + 1);
+          const around = sound ? cues(next, index + 2, offset + line.length + 1, speech) : none;
+          result.push(...around.before);
           if (allowedTtsText(spoken, excludeTerms, skipChars, requireLetter)) result.push({id:String(index+1),...header,text:speech,...(spoken !== speech ? { spoken } : {}),kind:'dialogue',start:offset,end:offset+line.length+1+next.length});
+          result.push(...around.after);
           offset+=line.length+1+next.length+1;index++;continue;
         }
       }
-      // A cue comes before the line it sits in: the effect plays, then the line is read.
-      if (!html && sound) cues(line, index + 1, offset);
       const segment = !html ? parseCueLine(line, String(index + 1)) : null;
+      const around = !html && sound ? cues(line, index + 1, offset, segment?.kind === 'dialogue' ? segment.text : undefined) : none;
+      result.push(...around.before);
       const spoken = segment && sound ? withoutSfx(segment.text, sound.sfxRules) : segment?.text;
       if (segment && allowedTtsText(spoken!, excludeTerms, skipChars, requireLetter)) result.push({ ...segment, ...(spoken !== segment.text ? { spoken } : {}), start: offset, end: offset + line.length });
+      result.push(...around.after);
     }
     offset += line.length + 1;
   }

@@ -47,6 +47,12 @@ test('each character speaks with its own base delivery and model; the settings\'
     data.settings.fish.via='openrouter';data.settings.fish.routerKey='or-key';
     const routed=await say(line('하린','sad','왜 그래'));
     assert.equal(routed.model,'fish-audio/drama-3');assert.equal(routed.text,'[sad][husky][slow]왜 그래');
+    // Parentheses: the marks never reach Fish (it reads (..) as a tag); the words inside go only with the toggle off.
+    data.settings.tone='';data.characters[0].tone='';
+    assert.equal((await say(line('하린','','그는 (작게) 웃었다'))).text,'그는 작게 웃었다','by default the words inside are read');
+    data.settings.omitParenText=true;
+    assert.equal((await say(line('하린','','그녀는 (조용히) 웃었다'))).text,'그녀는 웃었다','「괄호 안의 말도 빼고 읽기」 drops them whole');
+    data.settings.omitParenText=false;data.characters[0].tone='husky, slow';
     // A preview carries the popup's unsaved base delivery and model.
     const preview=await say({context,messageId:'audition',fishId:voiceB,tone:'whispering',model:'s2-pro',segment:{id:voiceB,kind:'audition',speaker:'',tone:'',text:'안녕하세요',start:0,end:0}});
     assert.equal(preview.text,'[whispering]안녕하세요');assert.equal(preview.model,'fish-audio/s2-pro');
