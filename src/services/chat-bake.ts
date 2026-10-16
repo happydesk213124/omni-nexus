@@ -14,6 +14,7 @@ import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
 import { getConfig } from './context';
 import type { BakeDimensions } from '../domain/chat-bake';
+import type { TaggerResult } from '../core/types';
 import { imageAssetRef, imageMeta, imagePng, idbGet } from '../storage/stores';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 
@@ -281,6 +282,8 @@ export type LineBakeBatch = {
   jobId: string;
   shots: Array<{line?:unknown;shot_index:number;width?:number;height?:number;inline_block?:number}>;
   completed: Map<number,string>;
+  /** A streaming-tag block: its slot turns into a pink (tap to retry) slot when no image came. */
+  retry?: { tagged: TaggerResult | null; raw: string; line: number; characterId: string; chatId: string };
 };
 
 /** A line reply has one initial placement and one final save, across all jobs. */
@@ -450,10 +453,10 @@ export async function shotBakeToken(cardId: string, width?: number, height?: num
  * Streaming tags with 「이미지 바로 생성」 off: every block becomes its waiting
  * (pink) slot in one write, and blocks without a slot leave the reply.
  */
-export async function parkInlineBlocks(target: MessageTarget & { body: string }, slots: Array<{ n: number; id: string; width: number; height: number }>): Promise<boolean> {
+export async function parkInlineBlocks(target: MessageTarget, slots: Array<{ n: number; id: string; width: number; height: number }>): Promise<boolean> {
   const card = getConfig().card;
   await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, { enabled: card.inline_msg_fan === true, userchat: card.userchat === true });
-  return rewriteMessage(target, body => stripInlineShotBlocks(slots.reduce((text, slot) => replaceInlineShotBlock(text, slot.n, waitToken(slot.id, slot.width, slot.height)), body)), target.body);
+  return rewriteMessageById(target, body => stripInlineShotBlocks(slots.reduce((text, slot) => replaceInlineShotBlock(text, slot.n, waitToken(slot.id, slot.width, slot.height)), body)));
 }
 /** A tapped waiting slot becomes this job's spinner, in place: nothing else in the reply moves. */
 export async function writeWaitSpinner(target: MessageTarget & { waitId: string; jobId: string; width?: number; height?: number }): Promise<boolean> {

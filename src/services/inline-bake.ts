@@ -1,7 +1,9 @@
 import { dbg } from '../core/debug';
-import { attachBakeToSpinner, removeJobSpinners, spinnerDimensions, spinnerToken, stripBakeTokensExceptJobs } from '../domain/chat-bake';
+import { uuid } from '../core/util/text';
+import { attachBakeToSpinner, removeJobSpinners, replaceSpinner, spinnerDimensions, spinnerToken, stripBakeTokensExceptJobs, waitToken } from '../domain/chat-bake';
 import { replaceInlineShotBlock, stripInlineShotBlocks } from '../domain/prompt/inline-shots';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { putInlineWaits } from '../storage/inline-wait-store';
 import { getConfig } from './context';
 import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBatch } from './chat-bake';
 
@@ -11,6 +13,8 @@ import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBat
  * the reply text is never compared: line batches compare it because they place
  * by L number, which an edited reply would shift. Each image goes to its own
  * spinner or block; one that has neither is left out alone, never with the rest.
+ * A block that ends with no image (broken JSON, a failed or cancelled request)
+ * becomes a pink waiting slot holding its shot, so a tap makes exactly it.
  */
 export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTarget>, batches: LineBakeBatch[], final = false): Promise<{ written: boolean; unplaced: number }> {
   if (!batches.some(batch => batch.shots.length)) return { written: true, unplaced: 0 };
@@ -24,6 +28,17 @@ export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTar
     const token = await shotBakeToken(cardId, shot.width, shot.height).catch(() => '');
     if (token) tokens.set(key(batch.jobId, shot.shot_index), token);
   }
+  // Rows first, as for parked slots: a pink slot is tappable the moment it is drawn.
+  const waits = new Map<string, string>();
+  if (final) {
+    const rows = batches.filter(batch => batch.retry && !batch.completed.size).flatMap(batch => batch.shots.map(shot => {
+      const id = 'w' + uuid().replace(/-/g, '').slice(0, 20);
+      waits.set(key(batch.jobId, shot.shot_index), id);
+      return { id, tagged: batch.retry!.tagged, ...(batch.retry!.raw && !batch.retry!.tagged ? { raw: batch.retry!.raw } : {}), line: batch.retry!.line,
+        characterId: batch.retry!.characterId, chatId: batch.retry!.chatId, hostMessageId: target.hostMessageId || '', createdAt: Date.now() };
+    }));
+    if (rows.length) await putInlineWaits(rows).catch(error => { waits.clear(); dbg('inline.bake.wait_fail', { message: String((error as Error)?.message || error).slice(0, 200) }, 'warn'); });
+  }
   const missing: Array<{ job: string; n?: number; reason: string }> = [];
   const written = await rewriteMessageById(target, body => {
     missing.length = 0;
@@ -31,6 +46,12 @@ export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTar
     for (const batch of batches) {
       for (const shot of batch.shots) {
         const token = tokens.get(key(batch.jobId, shot.shot_index)) || '', made = batch.completed.has(shot.shot_index);
+        const wait = waits.get(key(batch.jobId, shot.shot_index));
+        if (wait) {
+          const size = spinnerDimensions(next, batch.jobId, shot.shot_index), pink = waitToken(wait, size?.width ?? shot.width, size?.height ?? shot.height);
+          next = size ? replaceSpinner(next, batch.jobId, shot.shot_index, pink) : Number.isInteger(shot.inline_block) ? replaceInlineShotBlock(next, shot.inline_block!, pink) : next;
+          continue;
+        }
         if (spinnerDimensions(next, batch.jobId, shot.shot_index)) {
           if (token) next = attachBakeToSpinner(next, batch.jobId, shot.shot_index, token);
         } else if (Number.isInteger(shot.inline_block) && (token || !final)) {

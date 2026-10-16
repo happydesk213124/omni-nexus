@@ -39,6 +39,16 @@ test('display regex rewrites Inray tokens to centered gallery assets', () => {
   assert.match(inrayDisplayOut(true), /id="inray-fold-\$1" checked/);
 });
 
+test('a waiting slot is the spinner frame with a thick pink ring, so it reads as a button', async () => {
+  const { spinnerDisplayRegexScript, waitDisplayRegexScript, inlineShotDisplayScripts } = await import('../.test-build/inray-display.mjs');
+  const loading = spinnerDisplayRegexScript().out, wait = waitDisplayRegexScript().out;
+  assert.match(loading, /stroke="#7132f5" stroke-width="10"/);
+  assert.match(wait, /stroke="#ec4899" stroke-width="22"/);
+  assert.doesNotMatch(wait, /#7132f5/);
+  assert.ok(inlineShotDisplayScripts(100, true).some(rule => rule.out.includes('stroke-width="22"')), 'a pending block uses the same pink ring');
+  assert.ok(!inlineShotDisplayScripts(100, false).some(rule => rule.out.includes('stroke-width="22"')));
+});
+
 test('spinner exposes a stable preview slot independent of Risu class prefixes', async () => {
   const { spinnerDisplayRegexScript } = await import('../.test-build/inray-display.mjs');
   const script = spinnerDisplayRegexScript();

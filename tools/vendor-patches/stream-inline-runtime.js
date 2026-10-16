@@ -37,9 +37,9 @@ function omniScanInlineRun(run, final=false) {
     run.inlineSeen.add(block.n);
     const text=SK.analysisBody(run.text.slice(0,block.start));
     if(!text)continue;
-    // A broken block keeps its slot: the job asks the tagger for that one shot.
+    // A broken block keeps its slot: the job asks to fix its JSON, kept here as written.
     const tagged=SK.inlineShotTagged(block.body,line);
-    const batch={start:line,end:line,text,task:null,payload:null,jobId:'',inline:{n:block.n,tagged},parked};
+    const batch={start:line,end:line,text,task:null,payload:null,jobId:'',inline:{n:block.n,tagged,raw:tagged?'':String(block.body||'').slice(0,4000)},parked};
     run.batches.push(batch);run.fired=true;
     if(!parked)batch.task=omniStartKeywordJob(run,text,batch).catch(error=>{y('error','stream.inline.start',String(error));return null;});
   }
@@ -54,7 +54,7 @@ function omniParkInlineReply(run,arg,text,key) {
     if(!target || run.cancelled || t.unloading)return;
     const scope=target.scope;
     const result=await K('/v1/inline-tags/park',{method:'POST',body:{character_id:scope.characterId,chat_id:scope.chatId,char_index:scope.charIndex,chat_index:scope.chatIndex,
-      host_message_id:target.id,message_index:arg.messageIndex,assistant_text:text,blocks:run.batches.map(batch=>({n:batch.inline.n,line:batch.start,tagged:batch.inline.tagged || null}))}});
+      host_message_id:target.id,message_index:arg.messageIndex,assistant_text:text,blocks:run.batches.map(batch=>({n:batch.inline.n,line:batch.start,tagged:batch.inline.tagged || null,...(batch.inline.raw?{raw:batch.inline.raw}:{})}))}});
     if(!result?.ok)throw Error(result?.error?.message || '대기 칸을 만들지 못했습니다.');
     run.committed=true;
     globalThis.__OMNI_WAIT_TAPS__?.sync?.();
