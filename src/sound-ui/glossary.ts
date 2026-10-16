@@ -38,8 +38,32 @@ function connect(word: string, sfxKey: string): void {
 }
 /** Words and the unknown list are two tabs of the glossary. */
 let tab: 'terms' | 'unknown' = 'terms';
+/**
+ * 다중선택: a checkbox on every tile, and one delete for the ticked ones. Each tab
+ * keeps its own ticks (tile ids, unknown words); leaving the mode clears them.
+ */
+let picking = false;
+const picked = { terms: new Set<string>(), unknown: new Set<string>() };
+function syncPicking(): void {
+  const set = picked[tab], n = set.size;
+  el('snd-gloss-multi')?.setAttribute('aria-pressed', String(picking));
+  for (const id of ['snd-gloss-all', 'snd-gloss-none', 'snd-gloss-delete']) { const node = el(id); if (node) node.hidden = !picking; }
+  const remove = el<HTMLButtonElement>('snd-gloss-delete'); if (remove) { remove.disabled = !n; remove.textContent = n ? `${n}개 삭제` : '선택 삭제'; }
+  const status = el('snd-gloss-picked'); if (status) status.textContent = picking ? (n ? `선택 ${n}개` : '선택 없음') : '';
+}
+/** A tile in 다중선택: its checkbox, and a click on its empty area, tick it. */
+function pickable(tile: HTMLElement, set: Set<string>, key: string): void {
+  if (!picking) return;
+  tile.classList.add('picking'); tile.classList.toggle('picked', set.has(key));
+  const box = document.createElement('input'); box.type = 'checkbox'; box.className = 'snd-pick'; box.checked = set.has(key); box.setAttribute('aria-label', '선택');
+  const flip = () => { if (set.has(key)) set.delete(key); else set.add(key); box.checked = set.has(key); tile.classList.toggle('picked', set.has(key)); syncPicking(); };
+  box.addEventListener('change', () => { if (box.checked !== set.has(key)) flip(); });
+  tile.addEventListener('click', event => { if (event.target === tile || (event.target as Element).matches?.('.snd-term-chips,.snd-term-head,b')) flip(); });
+  tile.prepend(box);
+}
 function showTab(next: typeof tab): void {
   tab = next;
+  syncPicking();
   for (const [name, panel, button] of [['terms', 'snd-gloss-terms', 'snd-gloss-tab-terms'], ['unknown', 'snd-gloss-unknown', 'snd-gloss-tab-unknown']] as const) {
     const on = tab === name; const node = el(panel); if (node) node.hidden = !on; el(button)?.setAttribute('aria-selected', String(on));
   }
@@ -57,6 +81,8 @@ export function renderGlossary(focusRow?: string): void {
   const host = el('snd-terms'); if (!host) return;
   const query = val('snd-term-search').trim().toLowerCase();
   host.replaceChildren(); host.classList.add('snd-tile-grid');
+  for (const id of [...picked.terms]) if (!soundData().glossary.some(row => row.id === id)) picked.terms.delete(id);
+  for (const word of [...picked.unknown]) if (!soundData().unknownTerms.includes(word)) picked.unknown.delete(word);
   const rows = soundData().glossary.filter(row => !query || row.terms.some(term => term.toLowerCase().includes(query)) || effectName(row.sfxKey).toLowerCase().includes(query));
   if (!rows.length) host.innerHTML = `<p class="char-empty" style="grid-column:1/-1">${query ? '검색에 맞는 용어가 없습니다.' : '등록된 용어가 없습니다. + 묶음으로 만들거나, 아래 미등록 용어에서 효과음을 고르세요.'}</p>`;
   for (const row of rows) {
@@ -79,6 +105,7 @@ export function renderGlossary(focusRow?: string): void {
     const commit = () => { const words = soundTags(add.value); if (!words.length) return; giveWords(row, words); void save(row.id); };
     add.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); commit(); } });
     add.addEventListener('change', commit);
+    pickable(tile, picked.terms, row.id);
     host.append(tile);
     if (focusRow === row.id) add.focus();
   }
@@ -98,6 +125,7 @@ export function renderGlossary(focusRow?: string): void {
     for (const hint of tile.querySelectorAll<HTMLButtonElement>('.snd-hint')) hint.addEventListener('click', () => { connect(word, hint.dataset.key || ''); void save(); });
     tile.querySelector('.snd-unknown-pick')!.addEventListener('click', () => pickSfx({ word }, item => { connect(word, item.key); void save(); }));
     tile.querySelector('.snd-unknown-ignore')!.addEventListener('click', () => { soundData().unknownTerms = soundData().unknownTerms.filter(w => w !== word); void save(); });
+    pickable(tile, picked.unknown, word);
     unknown.append(tile);
   }
 }
@@ -115,6 +143,27 @@ export function bindGlossary(): void {
   el('snd-term-add')?.addEventListener('click', () => {
     const row: SfxTerm = { id: uuid(), terms: [], sfxKey: '', enabled: true };
     soundData().glossary.unshift(row); el<HTMLInputElement>('snd-term-search').value = ''; showTab('terms'); void save(row.id);
+  });
+  el('snd-gloss-multi')?.addEventListener('click', () => { picking = !picking; if (!picking) { picked.terms.clear(); picked.unknown.clear(); } renderGlossary(); });
+  // 전체 선택: what this tab shows now (a search narrows it).
+  el('snd-gloss-all')?.addEventListener('click', () => {
+    const query = val('snd-term-search').trim().toLowerCase();
+    if (tab === 'terms') for (const row of soundData().glossary) { if (!query || row.terms.some(t => t.toLowerCase().includes(query)) || effectName(row.sfxKey).toLowerCase().includes(query)) picked.terms.add(row.id); }
+    else for (const word of soundData().unknownTerms) { if (!query || word.toLowerCase().includes(query)) picked.unknown.add(word); }
+    renderGlossary();
+  });
+  el('snd-gloss-none')?.addEventListener('click', () => { picked[tab].clear(); renderGlossary(); });
+  el('snd-gloss-delete')?.addEventListener('click', () => {
+    const set = picked[tab]; if (!set.size) return;
+    if (tab === 'terms') {
+      const rows = soundData().glossary.filter(row => set.has(row.id)), words = rows.reduce((n, row) => n + row.terms.length, 0);
+      if (words && !confirm(`선택한 묶음 ${rows.length}개(용어 ${words}개)를 지울까요?`)) return;
+      soundData().glossary = soundData().glossary.filter(row => !set.has(row.id));
+    } else {
+      if (!confirm(`선택한 미등록 용어 ${set.size}개를 지울까요?`)) return;
+      soundData().unknownTerms = soundData().unknownTerms.filter(word => !set.has(word));
+    }
+    set.clear(); void save();
   });
   el('snd-unknown-clear')?.addEventListener('click', () => { if (!soundData().unknownTerms.length || !confirm('미등록 용어를 모두 지울까요?')) return; soundData().unknownTerms = []; void save(); });
   renderGlossary();

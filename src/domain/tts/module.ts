@@ -56,13 +56,18 @@ function exclusion(text: string): string {
 /** Placed outside the chat by the plugin while narration is OFF; never part of the module. */
 export const TTS_NARRATION_OFF_CSS = '[data-omnitts-play][data-omnitts-kind="narration"]{display:none!important}';
 
+/**
+ * 「재생 버튼 자리 여백」 (off by default): the anchor takes no room, so a line that
+ * fills the bubble hangs its control outside it, which on a phone can widen the
+ * chat into a sideways scroll. With this on, a block holding a control (directly,
+ * or at the end of an inline tag) keeps a gutter a hair wider than the control
+ * (.3em gap + 26px); other blocks are untouched.
+ */
+export const TTS_GUTTER_CSS = ':is(p,div,li,blockquote,dd,td,th,h1,h2,h3,h4,h5,h6):has(> [data-omnitts-tail],> :is(span,em,strong,b,i,u,s,del,ins,mark,small,big,font,a,q,sub,sup,cite,abbr,dfn) > [data-omnitts-tail]){padding-inline-end:32px}';
+
 export const TTS_MODULE_CSS = [
   // A zero-size inline anchor: wrapping, line height and spacing are exactly
   // what the message would have without TTS. The control floats beside it.
-  // The anchor takes no room, so a line that fills the bubble would hang its control
-  // outside it. A block holding one (directly, or at the end of an inline tag) keeps
-  // a gutter a hair wider than the control (.3em gap + 26px); other blocks are untouched.
-  ':is(p,div,li,blockquote,dd,td,th,h1,h2,h3,h4,h5,h6):has(> [data-omnitts-tail],> :is(span,em,strong,b,i,u,s,del,ins,mark,small,big,font,a,q,sub,sup,cite,abbr,dfn) > [data-omnitts-tail]){padding-inline-end:32px}',
   '[data-omnitts-tail]{display:inline-block;position:relative;width:0;height:0;margin:0;padding:0;border:0;vertical-align:middle;line-height:0;white-space:nowrap;overflow:visible}',
   '[data-omnitts-tail]>[data-omnitts-play]{position:absolute;left:.3em;top:0;transform:translateY(-50%);z-index:1;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;min-width:0;min-height:0;margin:0;padding:0;border:1px solid #8262bb77;border-radius:50%;background:#22192fd9;color:#c6afff;font-size:0;line-height:0;cursor:pointer;box-shadow:none}',
   '[data-omnitts-play][data-omnitts-kind]::before{content:"";display:block;box-sizing:border-box;width:0;height:0;margin-left:2px;border-style:solid;border-width:5px 0 5px 8px;border-color:transparent transparent transparent currentColor}',
@@ -81,7 +86,7 @@ export const TTS_MODULE_CSS = [
   '@media (prefers-reduced-motion:reduce){[data-omnitts-play][x-omnitts-state]{animation:none!important}[data-omnitts-play][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
 
-export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly'>>) {
+export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter'>>) {
   const excluded = exclusion(settings.excludeText || '');
   const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
   const imageCss = `[data-omnitts-image]{display:${settings.illustration ? 'flex' : 'none'};align-items:center;gap:6px;max-width:100%;overflow-x:auto}[data-omnitts-image] [data-omnitts-cast]{display:flex;gap:6px}[data-inlay-inline-shot]:has(>[data-omnitts-image]){display:flex!important;flex-direction:column}[data-omnitts-image]{order:10;justify-content:flex-start;margin-top:8px;min-height:40px}[data-omnitts-image] [data-omnitts-play]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 4px;margin-left:0;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e3fff0;cursor:pointer}[data-omnitts-image] [data-omnitts-play]:hover{background:#219c63;border-color:#9effcc}`;
@@ -95,7 +100,7 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
   return {
     id: OMNI_TTS_MODULE, namespace: OMNI_TTS_MODULE, name: '⚛️ omni tts',
     description: '이름·영문 억양 규칙과 채팅 재생 버튼. 음성 처리는 Omni Nexus 플러그인이 담당합니다.',
-    hideIcon: false, lowLevelAccess: false, assets: [], backgroundEmbedding: `<style>${TTS_MODULE_CSS}${imageCss}</style>`,
+    hideIcon: false, lowLevelAccess: false, assets: [], backgroundEmbedding: `<style>${TTS_MODULE_CSS}${settings.controlGutter ? TTS_GUTTER_CSS : ''}${imageCss}</style>`,
     lorebook: [{ key: '', secondkey: '', comment: 'omnitts-cues', content: TTS_CUE_PROMPT, mode: 'normal', insertorder: 999, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 }],
     trigger: [],
     regex: [

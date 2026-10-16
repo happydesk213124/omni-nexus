@@ -6,7 +6,7 @@ import { omniTts } from '../services/tts-runtime';
 import { el, input, val, set, text, on, run } from './common';
 import { promptAudioActivation } from './activation';
 
-const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'skip-symbol-only': 'skipSymbolOnly', 'tts-omit-paren-text': 'omitParenText' };
+const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'control-gutter': 'controlGutter', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'skip-symbol-only': 'skipSymbolOnly', 'tts-omit-paren-text': 'omitParenText' };
 const numbers: Record<string, keyof TtsSettings> = { speed: 'rate', volume: 'volume', 'tts-skip-chars': 'skipChars', prefetch: 'prefetch', concurrency: 'concurrency', 'background-concurrency': 'background', 'cache-limit': 'cacheMb' };
 const source: Record<string, LlmSettings['source']> = { model: 'main', submodel: 'aux', emotion: 'emotion', translate: 'translate', memory: 'memory', otherAx: 'other' };
 function llmChoice(model: LlmSettings): string { return Object.entries(source).find(([,v]) => v === model.source)?.[0] || (model.provider === 'google' ? 'Gemini' : model.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 호환'); }

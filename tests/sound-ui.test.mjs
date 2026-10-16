@@ -384,6 +384,25 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.equal(await hint.getAttribute('data-key'), await page.evaluate(() => window.soundData().sfx[0].key));
     await hint.click();
     await page.waitForFunction(() => !window.soundData().unknownTerms.length && window.soundData().glossary.some(row => row.sfxKey === window.soundData().sfx[0].key && row.terms.includes('쿵콰앙')));
+    // 다중선택: tick tiles, delete them at once; each tab keeps its own ticks.
+    await page.evaluate(async () => { const d = window.soundData(); d.glossary.push({ id: 'm1', terms: ['하나'], sfxKey: d.sfx[0].key, enabled: true }, { id: 'm2', terms: ['둘'], sfxKey: d.sfx[0].key, enabled: true }, { id: 'm3', terms: ['셋'], sfxKey: d.sfx[0].key, enabled: true }); d.unknownTerms = ['가가', '나나', '다다']; });
+    await page.locator('#snd-gloss-tab-terms').click(); await page.locator('#snd-term-search').fill(''); await page.locator('#snd-term-search').dispatchEvent('input');
+    assert.equal(await page.locator('#snd-gloss-delete').isVisible(), false, 'no delete bar until 다중선택');
+    await page.locator('#snd-gloss-multi').click();
+    const termTile = id => page.locator(`#snd-terms .snd-term-tile[data-row="${id}"]`);
+    await termTile('m1').locator('.snd-pick').check(); await termTile('m3').locator('.snd-pick').check();
+    assert.equal(await page.locator('#snd-gloss-delete').textContent(), '2개 삭제');
+    await page.locator('#snd-gloss-delete').click();
+    await page.waitForFunction(() => { const ids = window.soundData().glossary.map(r => r.id); return !ids.includes('m1') && !ids.includes('m3') && ids.includes('m2'); });
+    assert.equal(await page.locator('#snd-gloss-delete').textContent(), '선택 삭제', 'the ticks go with the deleted tiles');
+    await page.locator('#snd-gloss-tab-unknown').click();
+    await page.locator('#snd-gloss-all').click(); assert.equal(await page.locator('#snd-gloss-delete').textContent(), '3개 삭제', '전체 선택 ticks this tab only');
+    await page.locator('#snd-unknown .snd-unknown-tile').filter({ hasText: '나나' }).locator('.snd-pick').uncheck();
+    await page.locator('#snd-gloss-delete').click();
+    await page.waitForFunction(() => window.soundData().unknownTerms.join(',') === '나나');
+    await page.locator('#snd-gloss-multi').click();
+    assert.equal(await page.locator('#snd-unknown .snd-pick').count(), 0, 'leaving 다중선택 takes the checkboxes away');
+    assert.equal(await page.locator('#snd-gloss-delete').isVisible(), false);
     // Settings: a section is greyed out and locked while its switch is off.
     await page.locator('#tab-sound-settings').click();
     const gate = async id => page.evaluate(g => { const node = document.getElementById(g); return [node.disabled, Number(getComputedStyle(node).opacity) < 1]; }, id);

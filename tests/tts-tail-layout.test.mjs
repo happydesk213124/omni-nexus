@@ -9,12 +9,16 @@ import { chromium } from 'playwright';
  * a paragraph, in every way a line can end, the control stays inside.
  */
 test('a play control never hangs outside its message, however full its last line is', { timeout: 60000 }, async () => {
-  const built = await build({ stdin: { contents: `export {TTS_MODULE_CSS} from './src/domain/tts/module';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
-  const { TTS_MODULE_CSS } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
+  const built = await build({ stdin: { contents: `export {TTS_MODULE_CSS,TTS_GUTTER_CSS,ttsModule} from './src/domain/tts/module';export {ttsDefaults} from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
+  const { TTS_MODULE_CSS, TTS_GUTTER_CSS, ttsModule, ttsDefaults } = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 400, height: 800 } });
-    await page.setContent(`<style>${TTS_MODULE_CSS} body{margin:0;font:16px/1.6 sans-serif} #box{width:300px;padding:0;margin:20px;overflow:visible}</style><div id="box"></div>`);
+    // 「재생 버튼 자리 여백」 is off by default and adds the gutter rule to the module when on.
+    assert.equal(ttsDefaults().controlGutter, false);
+    assert.ok(!ttsModule(ttsDefaults()).backgroundEmbedding.includes(TTS_GUTTER_CSS), 'off: no gutter, layout exactly as without TTS');
+    assert.ok(ttsModule({ ...ttsDefaults(), controlGutter: true }).backgroundEmbedding.includes(TTS_GUTTER_CSS));
+    await page.setContent(`<style>${TTS_MODULE_CSS}${TTS_GUTTER_CSS} body{margin:0;font:16px/1.6 sans-serif} #box{width:300px;padding:0;margin:20px;overflow:visible}</style><div id="box"></div>`);
     const tail = '<span data-omnitts-tail="1"><button type="button" data-omnitts-play="1" data-omnitts-kind="narration"></button></span>';
     const bad = await page.evaluate(tail => {
       const box = document.getElementById('box'), text = n => '가'.repeat(n), out = [];

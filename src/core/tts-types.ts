@@ -89,6 +89,8 @@ export interface TtsSettings {
   omitSeed?: number;
   /** Also leave out the words inside parentheses, not just the marks. */
   omitParenText: boolean;
+  /** 「재생 버튼 자리 여백」: blocks with a chat control keep a gutter so it never hangs outside. */
+  controlGutter: boolean;
   /** Base delivery for every voice, English Fish cues by comma; a character's own replaces it. */
   tone: string;
   /** Skip lines that hold only digits and symbols ([00:10… 00:09…]). */
