@@ -1,7 +1,7 @@
 import type { TaggerResult } from '../../core/types';
 import { parseJsonLoose } from '../../core/util/object';
 import { analysisBody } from './message-body';
-import { INLINE_SHOT_CLOSED_SOURCE as CLOSED_SOURCE, INLINE_SHOT_MASK_SOURCE } from './inline-shot-pattern';
+import { INLINE_SHOT_CLOSED_SOURCE as CLOSED_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOURCE } from './inline-shot-pattern';
 
 export { INLINE_SHOT_MASK_SOURCE };
 
@@ -105,6 +105,22 @@ export function replaceInlineShotBlock(raw: unknown, n: number, replacement: str
   return text.slice(0, block.start) + replacement + text.slice(block.end);
 }
 
+/** `[[inxN]]{json}[[/inxN]]` → `[[inxwN]]{json}[[/inxwN]]`: the same JSON, now a waiting slot. */
+export function waitingInlineBlock(n: number, body: string): string {
+  return `[[inxw${n}]]${body}[[/inxw${n}]]`;
+}
+/** Turns block n into its waiting form, keeping its JSON exactly. Unchanged when there is no such block. */
+export function parkInlineShotBlock(raw: unknown, n: number): string {
+  const text = String(raw ?? '');
+  const block = inlineShotBlocks(text).find(row => row.n === n);
+  return block ? text.slice(0, block.start) + waitingInlineBlock(n, block.body) + text.slice(block.end) : text;
+}
+/** The waiting block n in a message: its full text, its JSON, and where it starts. */
+export function waitingBlock(raw: unknown, n: number): { text: string; body: string; start: number } | null {
+  const text = String(raw ?? '');
+  for (const hit of text.matchAll(new RegExp(INLINE_WAIT_BLOCK_SOURCE, 'g'))) if (Number(hit[1]) === n) return { text: hit[0], body: hit[2] ?? '', start: hit.index ?? 0 };
+  return null;
+}
 /** Removes every block (and a still-open one at the end), keeping the prose as written. */
 export function stripInlineShotBlocks(raw: unknown): string {
   return String(raw ?? '')

@@ -1,5 +1,5 @@
 import { insertAtAnalysisLine, analysisBody } from '../domain/prompt/message-body';
-import { replaceInlineShotBlock, stripInlineShotBlocks } from '../domain/prompt/inline-shots';
+import { parkInlineShotBlock, replaceInlineShotBlock, stripInlineShotBlocks } from '../domain/prompt/inline-shots';
 import { streamLineRange } from '../domain/prompt/stream-lines';
 import { measureWrite } from '../core/write-metrics';
 /**
@@ -283,7 +283,7 @@ export type LineBakeBatch = {
   shots: Array<{line?:unknown;shot_index:number;width?:number;height?:number;inline_block?:number}>;
   completed: Map<number,string>;
   /** A streaming-tag block: its slot turns into a pink (tap to retry) slot when no image came. */
-  retry?: { tagged: TaggerResult | null; raw: string; line: number; characterId: string; chatId: string };
+  retry?: { tagged: TaggerResult | null; raw: string; line: number; characterId: string; chatId: string; body: string };
 };
 
 /** A line reply has one initial placement and one final save, across all jobs. */
@@ -453,10 +453,11 @@ export async function shotBakeToken(cardId: string, width?: number, height?: num
  * Streaming tags with 「이미지 바로 생성」 off: every block becomes its waiting
  * (pink) slot in one write, and blocks without a slot leave the reply.
  */
-export async function parkInlineBlocks(target: MessageTarget, slots: Array<{ n: number; id: string; width: number; height: number }>): Promise<boolean> {
+/** The reply's blocks become waiting blocks in place, their JSON kept; others left over go. */
+export async function parkInlineBlocks(target: MessageTarget, blocks: readonly number[]): Promise<boolean> {
   const card = getConfig().card;
   await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, { enabled: card.inline_msg_fan === true, userchat: card.userchat === true });
-  return rewriteMessageById(target, body => stripInlineShotBlocks(slots.reduce((text, slot) => replaceInlineShotBlock(text, slot.n, waitToken(slot.id, slot.width, slot.height)), body)));
+  return rewriteMessageById(target, body => stripInlineShotBlocks(blocks.reduce((text, n) => parkInlineShotBlock(text, n), body)));
 }
 /** A tapped waiting slot becomes this job's spinner, in place: nothing else in the reply moves. */
 export async function writeWaitSpinner(target: MessageTarget & { waitId: string; jobId: string; width?: number; height?: number }): Promise<boolean> {
@@ -468,11 +469,15 @@ export async function writeWaitSpinner(target: MessageTarget & { waitId: string;
   });
   return ok && found;
 }
-/** A wait job that ends without an image gives the slot back as a waiting one, so a tap can retry. */
-export async function restoreWaitSlot(target: MessageTarget & { waitId: string; jobId: string }): Promise<void> {
+/**
+ * A wait job that ends without an image gives the slot back as a waiting one, so a
+ * tap can retry: a block slot gets its own waiting block (its JSON) back.
+ */
+export async function restoreWaitSlot(target: MessageTarget & { waitId: string; jobId: string; block?: string }): Promise<void> {
   await rewriteMessage(target, body => {
     const size = spinnerDimensions(body, target.jobId, 0);
-    return size ? body.replace(new RegExp(`\\[\\[@inrayspinner::${target.jobId}_0::[0-9]+::[0-9]+\\]\\](?!\\[\\[@inray::)`), () => waitToken(target.waitId, size.width, size.height)) : body;
+    const back = target.block || (size ? waitToken(target.waitId, size.width, size.height) : '');
+    return size && back ? body.replace(new RegExp(`\\[\\[@inrayspinner::${target.jobId}_0::[0-9]+::[0-9]+\\]\\](?!\\[\\[@inray::)`), () => back) : body;
   });
 }
 

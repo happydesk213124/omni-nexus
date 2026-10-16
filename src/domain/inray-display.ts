@@ -142,6 +142,25 @@ export function inlineShotDisplayScripts(scalePct: unknown = 100, pending = fals
       in: String.raw`\[\[inx\d{1,3}\]\](?![\s\S]*\[\[\/inx\d)[\s\S]{0,12000}$`, out: '' },
   ];
 }
+/**
+ * `[[inxwN]]{json}[[/inxwN]]`: a block with no image yet, its JSON kept in the
+ * message. Drawn as the pink waiting frame, sized by its aspect, tappable as slot
+ * `bN`. Landscape and square run before the portrait default.
+ */
+export const WAIT_BLOCK_DISPLAY_COMMENT = 'omni-wait-block-display';
+export function waitBlockDisplayScripts(scalePct: unknown = 100) {
+  const frame = waitDisplayRegexScript(scalePct).out;
+  return INLINE_ASPECTS.map(([aspect, w, h], i) => ({
+    comment: `${WAIT_BLOCK_DISPLAY_COMMENT}-${aspect || 'portrait'}`, type: 'editdisplay' as const, ableFlag: true, flag: `g<order ${-10046 - i}>`,
+    in: String.raw`\[\[inxw(\d{1,3})\]\]` + (aspect ? String.raw`(?=${INLINE_BODY}"aspect"\s*:\s*"${aspect}")` : '') + INLINE_BODY + String.raw`\[\[\/inxw\1\]\]`,
+    out: frame.replaceAll('$2', String(w)).replaceAll('$3', String(h)).replaceAll('$1', 'b$1'),
+  }));
+}
+/** A waiting block is the slot, never story: no request carries its JSON. */
+export function waitBlockRequestScript() {
+  return { comment: 'omni-wait-block-request', type: 'editprocess' as const, ableFlag: true, flag: 'g',
+    in: String.raw`\[\[inxw(\d{1,3})\]\][\s\S]{0,12000}?\[\[\/inxw\1\]\][ \t]*\n?`, out: '' };
+}
 /** Blocks left in old replies (a failed or cancelled slot) are never sent back to the model. */
 export function inlineShotRequestScript() {
   return { comment: 'omni-inline-shot-request', type: 'editprocess' as const, ableFlag: true, flag: 'g',

@@ -39,7 +39,7 @@ function omniScanInlineRun(run, final=false) {
     if(!text)continue;
     // A broken block keeps its slot: the job asks to fix its JSON, kept here as written.
     const tagged=SK.inlineShotTagged(block.body,line);
-    const batch={start:line,end:line,text,task:null,payload:null,jobId:'',inline:{n:block.n,tagged,raw:tagged?'':String(block.body||'').slice(0,4000)},parked};
+    const batch={start:line,end:line,text,task:null,payload:null,jobId:'',inline:{n:block.n,tagged,raw:tagged?'':String(block.body||'').slice(0,4000),body:String(block.body||'').slice(0,12000)},parked};
     run.batches.push(batch);run.fired=true;
     if(!parked)batch.task=omniStartKeywordJob(run,text,batch).catch(error=>{y('error','stream.inline.start',String(error));return null;});
   }

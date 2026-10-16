@@ -3,7 +3,7 @@ import type { SfxRule } from '../../core/sound-types';
 import { allowedTtsText } from './filter';
 import { bgmMarkers } from '../sound/tags';
 import { sfxHits, withoutSfx } from '../sound/audio';
-import { INLINE_SHOT_MASK_SOURCE } from '../prompt/inline-shot-pattern';
+import { INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOURCE } from '../prompt/inline-shot-pattern';
 
 /** Sound cues to list with the spoken lines: BGM markers and the effect rules in use. */
 export interface TtsSoundCues { bgm: boolean; sfxRules: readonly SfxRule[] }
@@ -76,7 +76,7 @@ function oneLineTag(line: string): boolean {
 }
 export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1, requireLetter = true, sound?: TtsSoundCues): TtsSegment[] {
   // Streaming-tag blocks are image slots, never read. Blanked in place, so every offset still points at the source.
-  const lines = text.replace(new RegExp(INLINE_SHOT_MASK_SOURCE, 'gi'), block => block.replace(/[^\n]/g, ' ')).split('\n');
+  const lines = text.replace(new RegExp(`${INLINE_WAIT_BLOCK_SOURCE}|${INLINE_SHOT_MASK_SOURCE}`, 'gi'), block => block.replace(/[^\n]/g, ' ')).split('\n');
   const response = /^#[*\t ]*(?:Response|응답|応答|响应|OOC)[*\t ]*$/;
   const beginning = lines.findIndex(line => response.test(line.trim()));
   let fenced = false, html = false, hidden = '', post = false, offset = 0;

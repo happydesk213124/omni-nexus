@@ -1,29 +1,25 @@
 import type { ApiResult, TaggerResult } from '../core/types';
 import { risuHost } from '../core/host';
-import { cleanText, toInt, uuid } from '../core/util/text';
-import { waitTokenDimensions } from '../domain/chat-bake';
+import { cleanText, toInt } from '../core/util/text';
+import { isBlockWaitId, waitSlotBlock, waitTokenDimensions } from '../domain/chat-bake';
+import { inlineShotTagged } from '../domain/prompt/inline-shots';
 import { analysisBody } from '../domain/prompt/message-body';
-import { resolveShotAspect } from '../domain/nai-meta/aspect';
-import { dropInlineWait, getInlineWait, putInlineWaits, type InlineWait } from '../storage/inline-wait-store';
+import { dropInlineWait, getInlineWait } from '../storage/inline-wait-store';
 import { parkInlineBlocks, readStoredMessageBody } from './chat-bake';
 import { getConfig } from './context';
 import { createJob } from './jobs';
 
 /**
  * Streaming tags with 「이미지 바로 생성」 off. At completion the blocks become
- * waiting (pink) slots; a tap on one generates exactly that shot in place.
+ * waiting (pink) slots in place, `[[inxwN]]{json}[[/inxwN]]`: the JSON stays in the
+ * message as the slot itself, so a tap reads exactly that shot from there. Older
+ * `[[@inraywait]]` slots (their shot in plugin storage) still work.
  */
-const SLOT_SIZE: Record<string, [number, number]> = { portrait: [832, 1216], square: [1024, 1024], landscape: [1216, 832] };
 const fail = (code: string, message: string): ApiResult => ({ ok: false, error: { code, message } });
 /** The slot's line is read from where it sits now; the saved shot follows it. */
 const atLine = (tagged: TaggerResult, line: number): TaggerResult => ({ ...tagged, scenes: (tagged.scenes || []).map(scene => ({ ...scene, shots: (scene.shots || []).map(shot => ({ ...shot, line })) })) });
 
-function slotAspect(tagged: TaggerResult | null): string {
-  const shot = tagged?.scenes?.[0]?.shots?.[0] as { aspect?: unknown } | undefined;
-  return resolveShotAspect(shot?.aspect);
-}
-
-/** One write turns the reply's blocks into waiting slots; their shots go to the save. */
+/** One write turns the reply's blocks into waiting blocks, in place. */
 export async function parkInlineShots(body: Record<string, unknown>): Promise<ApiResult> {
   if (getConfig().card?.power === false) return fail('power_off', 'Power가 OFF 상태입니다.');
   const blocks = (Array.isArray(body.blocks) ? body.blocks : []).filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
@@ -44,15 +40,8 @@ export async function parkInlineShots(body: Record<string, unknown>): Promise<Ap
       !(chat?.message || []).some((msg: { chatId?: unknown; id?: unknown }) => String(msg?.chatId || msg?.id || '') === hostMessageId)) {
     return fail('message_changed', '응답 메시지를 찾지 못해 대기 칸을 만들지 않았습니다.');
   }
-  const now = Date.now();
-  const slots = blocks.map(block => {
-    const [width, height] = SLOT_SIZE[slotAspect(block.tagged)] ?? SLOT_SIZE.portrait!;
-    return { ...block, id: 'w' + uuid().replace(/-/g, '').slice(0, 20), width, height };
-  });
-  // Rows first: a slot is tappable the moment it is drawn.
-  await putInlineWaits(slots.map((slot): InlineWait => ({ id: slot.id, tagged: slot.tagged, ...(slot.raw ? { raw: slot.raw } : {}), line: slot.line, characterId, chatId, hostMessageId, createdAt: now })));
-  if (!await parkInlineBlocks({ charIndex, chatIndex, messageIndex, hostMessageId }, slots)) return fail('message_changed', '응답 메시지를 찾지 못해 대기 칸을 만들지 않았습니다.');
-  return { ok: true, parked: slots.length, wait_ids: slots.map(slot => slot.id) };
+  if (!await parkInlineBlocks({ charIndex, chatIndex, messageIndex, hostMessageId }, blocks.map(block => block.n))) return fail('message_changed', '응답 메시지를 찾지 못해 대기 칸을 만들지 않았습니다.');
+  return { ok: true, parked: blocks.length, wait_ids: blocks.map(block => `b${block.n}`) };
 }
 
 /** A tap: one job for this slot only. Its shot comes from the save, its broken block is fixed, or the tagger draws it from its line. */
@@ -64,11 +53,15 @@ export async function generateInlineWait(body: Record<string, unknown>): Promise
     await dropInlineWait(id).catch(() => {});
     return fail('not_found', '이 칸은 이미 만들었거나 메시지가 바뀌었습니다.');
   }
-  const wait = await getInlineWait(id);
+  // A block slot carries its own shot in the message; an older token's shot is in storage.
+  const block = isBlockWaitId(id) ? waitSlotBlock(stored, id) : null;
+  const wait = block ? undefined : await getInlineWait(id);
   const lines = analysisBody(stored).split('\n').filter(Boolean);
-  const before = analysisBody(stored.slice(0, stored.indexOf(`[[@inraywait::${id}::`))).split('\n').filter(Boolean).length;
+  const before = analysisBody(stored.slice(0, block ? block.start : stored.indexOf(`[[@inraywait::${id}::`))).split('\n').filter(Boolean).length;
   const line = Math.max(1, Math.min(lines.length, before || wait?.line || 1));
   if (!lines.length) return fail('bad_request', '이 메시지에는 그릴 본문이 없습니다.');
+  const tagged = block ? inlineShotTagged(block.body, line) : wait?.tagged ?? null;
+  const raw = block ? (tagged ? '' : block.body.slice(0, 4000)) : wait?.raw || '';
   return createJob({
     ...body,
     message_role: 'char',
@@ -78,6 +71,8 @@ export async function generateInlineWait(body: Record<string, unknown>): Promise
     stream_line_end: line,
     inline_wait: id,
     // A broken block is fixed first; when that fails too, the tagger draws the line.
-    ...(wait?.tagged ? { inline_tagged: atLine(wait.tagged, line) } : wait?.raw ? { inline_raw: wait.raw } : {}),
+    ...(tagged ? { inline_tagged: atLine(tagged, line) } : raw ? { inline_raw: raw } : {}),
+    // A failed run puts the block back exactly as it was, ready for another tap.
+    ...(block ? { inline_wait_block: block.text } : {}),
   });
 }
