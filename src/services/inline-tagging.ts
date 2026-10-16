@@ -1,19 +1,21 @@
 import type { CharacterRecord } from '../core/types';
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
-import { cleanText, stripCbs, writeSessionId } from '../core/util/text';
+import { cleanText, sessionIdHash, stripCbs, writeSessionId } from '../core/util/text';
 import { characterTriggers } from '../domain/character/roster';
-import { characterHasAppearance } from '../domain/character/tags';
+import { ensureCostumes } from '../domain/character/costume';
+import { characterHasAppearance, formatWearStateForPrompt } from '../domain/character/tags';
 import { comicGenOn } from '../domain/comic/kind';
 import { effectiveComicLlmBatch } from '../domain/comic/params';
 import { formatPrevLocationLine } from '../domain/tagging/location';
+import { castInTexts, orderCast } from '../domain/tagging/recent-cast';
 import { authorNoteSystemContent } from '../domain/tagging/session-note';
 import { isOwnLlmRequest } from '../providers/llm/own-requests';
 import { auditCues, lastCueAudit } from './cue-audit';
 import { loadTaggerRoster } from './characters';
 import { getConfig } from './context';
 import { getPrompt } from './settings';
-import { chatNoteSessionId, getSessionAuthorNote, rosterWithSessionOutfits, sessionAuthorNoteLlmContent } from './session-author-note';
+import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionRecentCast } from './session-author-note';
 import { taggerRules } from './tagger';
 
 /**
@@ -22,12 +24,18 @@ import { taggerRules } from './tagger';
  * gives it the rules. Two parts, placed for prompt caching:
  *  - the rules, fixed until settings or prompts change, right after the first
  *    message (ahead of everything that varies per turn);
- *  - this chat's registered people and previous place, before the last user turn.
+ *  - this chat's registered people (most recently named first, with their
+ *    costumes and what they wear now) and previous place, before the last user turn.
  * Character descriptions and story lorebooks are not repeated: Risu already sends them.
  */
 export const INLINE_RULES_MARK = '# Omni Nexus · image shots in your reply';
 export const INLINE_STATE_MARK = '# Omni Nexus · image state for this chat';
-const ROSTER_LIMIT = 40;
+// The people most recently named in this chat; the rest are far less likely in the next reply.
+const ROSTER_LIMIT = 20;
+// Replies read each turn for who was just named. Older ones live on in the remembered order.
+const RECENT_REPLIES = 2;
+// How long a chat request may wait for this chat's roster before going without it.
+const STATE_BUDGET_MS = 2500;
 
 export function inlineTagsOn(): boolean {
   const card = getConfig().card;
@@ -68,17 +76,21 @@ export async function inlineTagRules(): Promise<string> {
   ].filter(Boolean).map(part => stripCbs(part)).join('\n\n');
 }
 
-export interface InlineScope { sessionId?: unknown; characterId?: unknown; chatId?: unknown }
+export interface InlineScope { sessionId?: unknown; characterId?: unknown; chatId?: unknown; recent?: unknown }
 
-function rosterLine(char: CharacterRecord): string {
+function rosterLine(char: CharacterRecord, withCostumes: boolean): string {
   const aliases = characterTriggers(char).filter(name => name !== char.name).slice(0, 6);
-  const costume = cleanText(char.active_costume, 80);
-  return `- ${cleanText(char.name, 120)}${aliases.length ? ` (also: ${aliases.join(', ')})` : ''} — ${characterHasAppearance(char)
-    ? `looks saved${costume && costume !== 'default' ? `, wearing ${costume}` : ''}`
-    : 'looks missing: give full looks in new_characters'}`;
+  const head = `- ${cleanText(char.name, 120)}${aliases.length ? ` (also: ${aliases.join(', ')})` : ''}`;
+  if (!characterHasAppearance(char)) return `${head} — looks missing: give full looks in new_characters`;
+  const { costumes, active_costume } = ensureCostumes(char);
+  const worn = costumes[active_costume];
+  // Names and notes only: the generator fills in the saved looks, the model only has to pick one.
+  const catalog = withCostumes ? costumes.map((c, i) => [`${c.name}[${i}]`, cleanText(c.note, 60)].filter(Boolean).join(' ')).join('; ') : '';
+  return [`${head} — looks saved`, catalog ? `costumes: ${catalog}` : '',
+    withCostumes && worn ? `wearing ${worn.name}[${active_costume}]` : '', `wear_state=${formatWearStateForPrompt(char.wear_state)}`].filter(Boolean).join(' | ');
 }
 
-/** The varying part for one chat: who is registered, where the last image was, this chat's note. */
+/** The varying part for one chat: who is registered (most recently named first), where the last image was, this chat's note. */
 export async function inlineTagState(scope: InlineScope): Promise<string> {
   const characterId = cleanText(scope.characterId, 200), chatId = cleanText(scope.chatId, 200);
   const sessionId = writeSessionId({ sessionId: scope.sessionId, characterId });
@@ -87,16 +99,40 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
   let roster = await loadTaggerRoster({ sessionId, unifiedSessionId: sessionId, characterId });
   const note = noteId ? await getSessionAuthorNote(noteId).catch(() => null) : null;
   if (note) roster = rosterWithSessionOutfits(roster, note);
-  const people = roster.filter(char => cleanText(char.name, 200)).slice(0, ROSTER_LIMIT).map(rosterLine);
+  roster = roster.filter(char => cleanText(char.name, 200));
+  const recent = Array.isArray(scope.recent) ? scope.recent.map(text => String(text ?? '')) : [];
+  if (noteId) {
+    const order = orderCast(roster, castInTexts(recent, roster), await sessionRecentCast(noteId));
+    rememberRecentCast(noteId, order.map(char => cleanText(char.id || char.name, 200)));
+    roster = order;
+  }
+  const withCostumes = getConfig().card?.costume === true;
+  const people = roster.slice(0, ROSTER_LIMIT).map(char => rosterLine(char, withCostumes));
   const location = formatPrevLocationLine((note as { location?: unknown } | null)?.location ?? '');
   const sessionNote = noteId ? await sessionAuthorNoteLlmContent(noteId) : '';
   if (!people.length && !location && !sessionNote) return '';
   return [
     INLINE_STATE_MARK,
-    people.length ? `Registered characters (reuse these exact names in "characters"; never repeat a saved one in new_characters):\n${people.join('\n')}` : '',
+    people.length ? `Registered characters, most recently in the story first (reuse these exact names in "characters"; never repeat a saved one in new_characters; pick a listed costume instead of registering the same look again):\n${people.join('\n')}` : '',
     location,
     sessionNote,
   ].filter(Boolean).join('\n\n');
+}
+
+/** The chat open in Risu now, with its last replies (newest first). */
+async function liveScope(): Promise<InlineScope | null> {
+  const host = risuHost();
+  if (!host?.getCurrentCharacterIndex || !host.getCharacterFromIndex) return null;
+  const charIndex = Number(await host.getCurrentCharacterIndex());
+  const character = await host.getCharacterFromIndex(charIndex) as { chaId?: unknown; id?: unknown; chatPage?: unknown; chats?: unknown } | null;
+  const chats = Array.isArray(character?.chats) ? character!.chats as Array<{ id?: unknown; chatId?: unknown; message?: unknown }> : [];
+  const chatIndex = Number(typeof host.getCurrentChatIndex === 'function' ? await host.getCurrentChatIndex() : character?.chatPage) || 0;
+  const chat = chats[chatIndex];
+  const characterId = cleanText(character?.chaId || character?.id, 200), chatId = cleanText(chat?.id || chat?.chatId, 200);
+  if (!characterId || !chatId) return null;
+  const messages = Array.isArray(chat?.message) ? chat!.message as Array<{ role?: unknown; data?: unknown }> : [];
+  const recent = messages.filter(m => m?.role === 'char').slice(-RECENT_REPLIES).reverse().map(m => String(m.data ?? ''));
+  return { sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, characterId, chatId, recent };
 }
 
 let lastScope: InlineScope | null = null;
@@ -105,16 +141,17 @@ let refreshing: Promise<void> | null = null;
 const scopeKey = (scope: InlineScope) => JSON.stringify([cleanText(scope.sessionId, 200), cleanText(scope.characterId, 200), cleanText(scope.chatId, 200)]);
 
 /**
- * Called whenever the UI knows the live chat. The request hook only reads the
- * cached text: it must never ask the host anything (a slow bridge would hold
- * every chat request).
+ * Rebuilds the chat state, for the given chat or (null) the one open in Risu.
+ * Every chat request waits for it within a budget, so it is read fresh each turn.
  */
 export function refreshInlineTagState(scope: InlineScope | null = lastScope): Promise<void> {
-  if (!scope || !inlineTagsOn()) return Promise.resolve();
-  lastScope = scope;
-  const key = scopeKey(scope);
+  if (!inlineTagsOn()) return Promise.resolve();
   const task = (refreshing ?? Promise.resolve()).catch(() => {}).then(async () => {
-    const text = await inlineTagState(scope).catch(error => { dbg('inline-tags.state', { message: String(error) }, 'warn'); return ''; });
+    const target = scope ?? await liveScope().catch(error => { dbg('inline-tags.chat', { message: String(error) }, 'warn'); return null; });
+    if (!target) return;
+    lastScope = target;
+    const key = scopeKey(target);
+    const text = await inlineTagState(target).catch(error => { dbg('inline-tags.state', { message: String(error) }, 'warn'); return ''; });
     if (lastScope && scopeKey(lastScope) === key) state = { key, text };
   });
   refreshing = task;
@@ -171,11 +208,12 @@ async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<Open
     // A provider plugin that rebuilds the prompt from its own preset, or the
     // bot's own request trigger, can still drop what was inserted here.
     if (skip) { if (mode === 'model') noteRequest(`skipped · ${skip}`); return messages; }
-    const rules = await inlineTagRules(), stateText = lastScope && state.key === scopeKey(lastScope) ? state.text : '';
+    // Read this chat now: who is registered changes with every reply's blocks, and
+    // the user may have switched chats. A slow host sends the rules without the state.
+    const live = await Promise.race([refreshInlineTagState(null).then(() => true), new Promise<false>(r => setTimeout(() => r(false), STATE_BUDGET_MS))]);
+    const rules = await inlineTagRules(), stateText = live && lastScope && state.key === scopeKey(lastScope) ? state.text : '';
     const placed = placeInlineTagPrompts(messages, rules, stateText);
-    noteRequest(placed === messages ? 'already present' : `inserted · rules ${rules.length} chars, chat state ${stateText.length} chars`);
-    // People registered by this reply's blocks show up from the next request on.
-    void refreshInlineTagState();
+    noteRequest(placed === messages ? 'already present' : `inserted · rules ${rules.length} chars, chat state ${stateText.length} chars${live ? '' : ' (chat not read in time)'}`);
     return placed;
   } catch (error) {
     dbg('inline-tags.request', { message: String((error as Error)?.message || error) }, 'warn');

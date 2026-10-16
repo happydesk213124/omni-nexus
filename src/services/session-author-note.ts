@@ -172,12 +172,48 @@ function persistSessionWearStatesUnlocked(sessionId: unknown, entries: SessionWe
   return writeChatNote(id, { wear: map }).then(() => {});
 }
 
+/**
+ * The chat's cast in recent order (ids), for the streaming-tag roster. It rides
+ * in the note but is not part of what the note API returns. It is written only
+ * once a reply is finished: writing the chat while Risu streams into it would
+ * put back the chat as it was before the reply.
+ */
+const RECENT_CAST_LIMIT = 40;
+const recentCasts = new Map<string, string[]>();
+const unsavedCasts = new Set<string>();
+
+export async function sessionRecentCast(id: string): Promise<string[]> {
+  const held = recentCasts.get(id);
+  if (held) return held;
+  const raw = await readChatNote(id).catch(() => null) as { recent_cast?: unknown } | null;
+  const ids = Array.isArray(raw?.recent_cast) ? raw!.recent_cast.map(v => cleanText(v, 200)).filter(Boolean) : [];
+  recentCasts.set(id, ids);
+  return ids;
+}
+
+export function rememberRecentCast(id: string, ids: readonly string[]): void {
+  const next = ids.slice(0, RECENT_CAST_LIMIT);
+  if (JSON.stringify(recentCasts.get(id) ?? []) === JSON.stringify(next)) return;
+  recentCasts.set(id, next);
+  unsavedCasts.add(id);
+}
+
+/** Called when a reply is committed. */
+export function saveRecentCasts(): Promise<void> {
+  const ids = [...unsavedCasts];
+  unsavedCasts.clear();
+  return updateNote(async () => {
+    for (const id of ids) await writeChatNote(id, { recent_cast: recentCasts.get(id) ?? [] }).catch(() => { unsavedCasts.add(id); });
+  });
+}
+
 export function setSessionAuthorNote(sessionId: unknown, body: Record<string, unknown> | unknown): Promise<ApiResult> {
   return updateNote(() => setSessionAuthorNoteUnlocked(sessionId, body));
 }
 
 export function persistSessionLocation(sessionId: unknown, location: unknown): Promise<void> {
-  return updateNote(() => persistSessionLocationUnlocked(sessionId, location));
+  // Only ever called once a reply is done: the moment the recent cast can be written too.
+  return updateNote(() => persistSessionLocationUnlocked(sessionId, location)).then(saveRecentCasts);
 }
 
 export function persistSessionWearStates(sessionId: unknown, entries: SessionWearPersistEntry[]): Promise<void> {
