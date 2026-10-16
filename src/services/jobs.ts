@@ -726,6 +726,10 @@ async function runJob(jobId: string): Promise<void> {
   const oneSlot = inlineBlock !== null || !!inlineWait;
   let inline = oneSlot && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
   const inlineRaw = oneSlot && !inline && typeof request.inline_raw === 'string' ? request.inline_raw.slice(0, 4000) : '';
+  // The block's JSON as the chat model wrote it, for its waiting block when no image comes;
+  // without it (an older client), the shot itself, written back as JSON.
+  const blockBody = (shot: TaggerResult | null): string => typeof request.inline_body === 'string' && request.inline_body.trim() ? request.inline_body.slice(0, 12000)
+    : inlineRaw || (shot ? JSON.stringify({ place: shot.scenes?.[0]?.place || '', ...(shot.scenes?.[0]?.shots?.[0] || {}), line: undefined, paragraph: undefined }) : '');
   const lineLimits=oneSlot ? {min:1,max:1} : lineRange ? streamLineImageLimits(getConfig().card) : null;
   request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
@@ -821,7 +825,7 @@ async function runJob(jobId: string): Promise<void> {
       if (await cancelJobIfStale(jobId, 'superseded after block repair')) return;
       // Still broken: a pink slot at the block, so a tap can try again (a tap's own job falls back to the tagger).
       if (!inline && inlineBlock !== null && lineRange) {
-        const retry = { tagged: null, raw: inlineRaw, line: lineRange.end, characterId: String(request.character_id || ''), chatId: String(request.chat_id || '') };
+        const retry = { tagged: null, raw: inlineRaw, line: lineRange.end, characterId: String(request.character_id || ''), chatId: String(request.chat_id || ''), body: blockBody(null) };
         deferred?.lineAttachments?.plan(jobId, { jobId, shots: [{ shot_index: 0, line: lineRange.end, inline_block: inlineBlock, width: 832, height: 1216 }], completed: completedSpinnerCards, retry });
         deferred?.lineAttachments?.settle(jobId);
         const failed = { cards: [], shot_count: 1, shot_done: 0, shot_failed: 1, progress: 100, phase: 'error', message: '블록 JSON을 고치지 못했습니다 · 분홍 칸을 누르면 다시 만듭니다', message_index: request.message_index ?? -1 };
@@ -1207,7 +1211,7 @@ async function runJob(jobId: string): Promise<void> {
       });
     });
     // A block's slot that ends without its image turns pink with this shot, so a tap retries exactly it.
-    const retry = inlineBlock !== null && lineRange ? { tagged: inline ?? tagged, raw: inlineRaw, line: lineRange.end, characterId: String(request.character_id || ''), chatId: String(request.chat_id || '') } : undefined;
+    const retry = inlineBlock !== null && lineRange ? { tagged: inline ?? tagged, raw: inlineRaw, line: lineRange.end, characterId: String(request.character_id || ''), chatId: String(request.chat_id || ''), body: blockBody(inline ?? tagged) } : undefined;
     let attachment: Promise<void> = Promise.resolve();
     // Line batches wait for their slots to be written; a streaming-tag block is
     // already a slot on screen (the module draws it), so its image shows at once.
@@ -1764,7 +1768,7 @@ async function runJob(jobId: string): Promise<void> {
       // A waiting slot that got its image is done; one that did not goes back to pink.
       if (inlineWait) {
         if (completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
-        else await enqueueBakeWrite(() => restoreWaitSlot({...jobChatTarget(request),waitId:inlineWait,jobId})).catch(err => dbg('job.wait.restore.fail', { message: String(err) }, 'warn'));
+        else await enqueueBakeWrite(() => restoreWaitSlot({...jobChatTarget(request),waitId:inlineWait,jobId,block:typeof request.inline_wait_block==='string'?request.inline_wait_block.slice(0,13000):undefined})).catch(err => dbg('job.wait.restore.fail', { message: String(err) }, 'warn'));
       }
       // Unfinished frames remain retryable; successful frames are permanent.
       const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");

@@ -97,6 +97,8 @@ async function boot(): Promise<void> {
     dbg('boot.omni-helper', {message:String(err)}, 'warn');
   });
   // Off is the default: no module read at boot for people who never use it.
+  // Waiting slots from earlier sessions are tappable from the start.
+  if (getConfig().card.stream_inline_tags === true) (Reflect.get(globalThis, '__OMNI_WAIT_TAPS__') as { sync?: () => void } | undefined)?.sync?.();
   if (getConfig().card.stream_inline_tags === true) void ensureInlineTagModule(true, getConfig().card.inline_chat_scale_pct, getConfig().card.stream_inline_autogen === false).catch(err => {
     dbg('boot.inline-tags', {message:String(err)}, 'warn');
   });

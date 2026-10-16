@@ -9,7 +9,7 @@ const stubs = { name: 'stubs', setup(b) {
     ? 'export async function generateInlineWait(body){globalThis.generated.push(body);return {ok:true,accepted:true,job_id:"job-1"};}'
     : 'export async function currentTtsContext(){return globalThis.ctx;}' }));
 } };
-const built = await build({ stdin: { contents: "export * from './src/image-ui/wait-taps';export {putInlineWaits,dropInlineWait} from './src/storage/inline-wait-store';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral', plugins: [stubs] });
+const built = await build({ stdin: { contents: "export * from './src/image-ui/wait-taps';export {putInlineWaits,dropInlineWait} from './src/storage/inline-wait-store';export {getConfig} from './src/services/context';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral', plugins: [stubs] });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 
 function node(html, box, parent = null, classes = []) {
@@ -52,4 +52,15 @@ test('a tap on a pink slot generates that slot in its message; nothing listens w
   await api.syncWaitTaps();
   assert.equal(listeners.size, 0, 'the last slot drawn: the listener goes away');
   assert.ok(queries <= 2, 'slots are looked up only on a click');
+  // A waiting block lives in the message, from this session or an earlier one: with
+  // streaming tags on, clicks are watched from the start, store or no store.
+  api.getConfig().card.stream_inline_tags = true;
+  await api.syncWaitTaps();
+  assert.equal(listeners.size, 1, 'streaming tags on: a block slot is tappable after a restart');
+  slot.html = '<div class="omni-spinner" data-inray-wait="b3" data-inray-preview-slot="wait_b3" role="button">';
+  await click(150, 200);
+  assert.equal(globalThis.generated.at(-1).wait_id, 'b3', 'a tap on block 3 generates block 3');
+  api.getConfig().card.stream_inline_tags = false;
+  await api.syncWaitTaps();
+  assert.equal(listeners.size, 0, 'off again: nothing listens');
 });

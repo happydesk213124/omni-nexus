@@ -7,6 +7,7 @@ import { analysisBody } from './prompt/message-body';
 import { isShotAssetName, sanitizeShotId } from './gallery/shot-assets.ts';
 import { cleanText } from '../core/util/text.ts';
 import { imageHistoryRoot } from './gallery/image-history';
+import { waitingBlock } from './prompt/inline-shots';
 
 const INRAY_TOKEN_RE = /\[\[@inray::[^\]]+\]\]/g;
 const LEGACY_BAKE_RE = /\{\{#asset::inxbake_[^}]+\}\}/g;
@@ -184,13 +185,30 @@ export function waitToken(id: string, width = 832, height = 1216): string {
   const size = bakeDimensions(width, height) ?? { width: 832, height: 1216 };
   return `[[@inraywait::${id}::${size.width}::${size.height}]]`;
 }
+/**
+ * A waiting slot is either an older `[[@inraywait::id::w::h]]` token, or (`bN`) the
+ * streaming-tag block N itself in its waiting form, `[[inxwN]]{json}[[/inxwN]]`,
+ * sized by the aspect its JSON names. Every slot helper takes both.
+ */
+const BLOCK_ID = /^b(\d{1,3})$/;
+export const isBlockWaitId = (id: string): boolean => BLOCK_ID.test(id);
+export function waitSlotBlock(text: string, id: string): { text: string; body: string; start: number } | null {
+  const hit = BLOCK_ID.exec(id);
+  return hit ? waitingBlock(text, Number(hit[1])) : null;
+}
 export function waitTokenDimensions(text: string, id: string): BakeDimensions | undefined {
   if (!WAIT_ID.test(id)) return undefined;
+  if (isBlockWaitId(id)) {
+    const block = waitSlotBlock(text, id); if (!block) return undefined;
+    const aspect = /"aspect"\s*:\s*"(landscape|square)"/.exec(block.body)?.[1];
+    return aspect === 'landscape' ? bakeDimensions(1216, 832) : aspect === 'square' ? bakeDimensions(1024, 1024) : bakeDimensions(832, 1216);
+  }
   const hit = new RegExp(`\\[\\[@inraywait::${id}::([0-9]+)::([0-9]+)\\]\\]`).exec(text);
   return hit ? bakeDimensions(hit[1], hit[2]) : undefined;
 }
 export function replaceWaitToken(text: string, id: string, replacement: string): string {
   if (!WAIT_ID.test(id)) return text;
+  if (isBlockWaitId(id)) { const block = waitSlotBlock(text, id); return block ? text.slice(0, block.start) + replacement + text.slice(block.start + block.text.length) : text; }
   return text.replace(new RegExp(`\\[\\[@inraywait::${id}::[0-9]+::[0-9]+\\]\\]`, 'g'), () => replacement);
 }
 

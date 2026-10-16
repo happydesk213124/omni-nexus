@@ -19,6 +19,8 @@ import {
   historyDisplayRegexScript,
   requestMarkerStripScript,
   waitDisplayRegexScript,
+  waitBlockDisplayScripts,
+  waitBlockRequestScript,
 } from '../domain/inray-display';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 
@@ -159,6 +161,14 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
     if(waitIndex<0 || JSON.stringify(waitRegex[waitIndex])!==JSON.stringify(wait)) {
       if(waitIndex<0)waitRegex.push(wait);else waitRegex[waitIndex]=wait;
       modules[idx]={...modules[idx],regex:waitRegex};changed=true;
+    }
+    // Waiting blocks keep their JSON in the message: drawn pink, and stripped from requests.
+    for (const script of [...waitBlockDisplayScripts(scalePct), waitBlockRequestScript()]) {
+      const rows = [...(modules[idx]!.regex || [])], at = rows.findIndex(row => scriptComment(row) === script.comment);
+      if (at < 0 || JSON.stringify(rows[at]) !== JSON.stringify(script)) {
+        if (at < 0) rows.push(script); else rows[at] = script;
+        modules[idx] = { ...modules[idx], regex: rows }; changed = true;
+      }
     }
     const pair = afterExternalRules(framedAssetDisplayRegexScript(folded,scalePct));
     const history = afterExternalRules(historyDisplayRegexScript(folded, scalePct));

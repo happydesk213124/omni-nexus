@@ -2,13 +2,15 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { generateInlineWait } from '../services/inline-waits';
 import { currentTtsContext } from '../services/tts-context';
+import { getConfig } from '../services/context';
 import { inlineWaitCount, subscribeInlineWaits } from '../storage/inline-wait-store';
 import { hitHost, releaseHost, safeArray, type HostPoint } from '../tts-ui/host-utils';
 
 /**
- * Pink waiting slots (streaming tags, 「이미지 바로 생성」 off): a tap generates
- * that slot. Chat clicks are watched only while some slot waits, so an ordinary
- * chat pays nothing for this. The frozen UI's pointer pipeline is not touched.
+ * Pink waiting slots (streaming tags): a tap generates that slot. Chat clicks are
+ * watched while streaming tags are on (a waiting block lives in the message, from
+ * this session or an earlier one) or an older stored slot waits, so a chat without
+ * them pays nothing. The frozen UI's pointer pipeline is not touched.
  */
 let installed = false;
 let synchronize: () => Promise<void> = async () => {};
@@ -71,7 +73,7 @@ export function installWaitTaps(): void {
   synchronize = () => syncing ??= (async () => {
     const host = risuHost();
     if (!host?.getRootDocument) return;
-    const waiting = await inlineWaitCount() > 0;
+    const waiting = getConfig().card?.stream_inline_tags === true || await inlineWaitCount() > 0;
     if (waiting && !listener) {
       doc ||= await host.getRootDocument();
       if (doc) listener = await doc.addEventListener('click', (event: HostPoint) => { void tap(event).catch(error => dbg('wait.tap', { message: String(error) }, 'warn')); });

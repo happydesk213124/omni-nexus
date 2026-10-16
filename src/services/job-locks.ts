@@ -34,7 +34,7 @@ export function jobKey(request: TargetRequest = {}, sessionId = ''): string {
   const block = Number.isInteger(request.inline_block) ? `:inx${request.inline_block}` : '';
   // Each waiting slot is its own target: tapping two slots of one reply runs both.
   const wait = cleanText(request.inline_wait || '', 64);
-  if (wait) return `${sid}::wait:${wait}`;
+  if (wait) return /^b\d{1,3}$/.test(wait) ? `${sid}::wait:${cleanText(request.host_message_id || '', 200)}:${wait}` : `${sid}::wait:${wait}`;
   if(range && request.defer_attachment && request.stream_id) return `${sid}::stream:${request.stream_id}:${range.start}-${range.end}${block}`;
   const hash = cleanText(request.content_hash || '', 128);
   if (hash) return `${sid}::h:${hash}`;

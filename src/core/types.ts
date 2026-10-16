@@ -606,6 +606,10 @@ export interface JobRequest {
   inline_block?: number;
   /** A streaming-tag block whose JSON did not parse, as the model wrote it: fixed before anything else. */
   inline_raw?: string;
+  /** A block slot's waiting block as written: put back when its job ends without an image. */
+  inline_wait_block?: string;
+  /** A streaming-tag block's JSON as written: kept in the message as the waiting block if no image comes. */
+  inline_body?: string;
   /** A tapped waiting slot (`[[@inraywait::id…]]`): this job draws that one slot in place. */
   inline_wait?: string;
   session_id: string;

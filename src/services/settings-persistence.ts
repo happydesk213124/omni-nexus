@@ -34,6 +34,8 @@ function syncDisplay(snapshot: Settings): void {
   if (inlineKey === undefined && !inline) inlineKey = nextInline;
   if (nextInline !== inlineKey) {
     inlineKey = nextInline;
+    // Taps on waiting slots follow the switch.
+    (Reflect.get(globalThis, '__OMNI_WAIT_TAPS__') as { sync?: () => void } | undefined)?.sync?.();
     void ensureInlineTagModule(inline, scale, pending).then(ok => {
       if (!ok && inlineKey === nextInline) inlineKey = undefined;
     }, () => { if (inlineKey === nextInline) inlineKey = undefined; });

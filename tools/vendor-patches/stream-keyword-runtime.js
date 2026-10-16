@@ -102,7 +102,7 @@ async function omniStartKeywordJob(run, text, batch) {
     chat_id:scope.chatId, chat_name:scope.chatName || '', char_index:scope.charIndex, chat_index:scope.chatIndex,
     host_message_id:id, message_index:index, message_role:role, content_hash:ye(text), assistant_text:text,
     ...(batch?{stream_line_start:batch.start,stream_line_end:batch.end}:{}),
-    ...(batch?.inline?{inline_block:batch.inline.n,...(batch.inline.tagged?{inline_tagged:batch.inline.tagged}:batch.inline.raw?{inline_raw:batch.inline.raw}:{})}:{}),
+    ...(batch?.inline?{inline_block:batch.inline.n,...(batch.inline.tagged?{inline_tagged:batch.inline.tagged}:batch.inline.raw?{inline_raw:batch.inline.raw}:{}),...(batch.inline.body?{inline_body:batch.inline.body}:{})}:{}),
     lorebook:lore, recent_messages:Xe({...scope.chat,message:scope.chat.message.slice(0,index)},re(card.include_max,0,20,0),!!card.userchat),
     character_description:char.description || char.desc || '', persona_description:char.personality || ''
   }});
