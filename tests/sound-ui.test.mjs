@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, links and files register, glossary learns words', async () => {
-  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';import {bindSoundNav,setSoundPage} from './src/sound-ui/page';import {soundData} from './src/storage/sound-store';import {omniSound} from './src/services/sound-runtime';import {ttsData,updateTtsSettings} from './src/storage/tts-store';Object.assign(window,{mountTts,ttsSettingsHtml,settingsUxCss,previewChrome,bindSoundNav,setSoundPage,soundData,omniSound,ttsData,updateTtsSettings});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', loader: { '.txt': 'text' } });
+  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';import {bindSoundNav,setSoundPage} from './src/sound-ui/page';import {soundData,updateSoundSettings} from './src/storage/sound-store';import {omniSound} from './src/services/sound-runtime';import {ttsData,updateTtsSettings} from './src/storage/tts-store';Object.assign(window,{mountTts,ttsSettingsHtml,settingsUxCss,previewChrome,bindSoundNav,setSoundPage,soundData,updateSoundSettings,omniSound,ttsData,updateTtsSettings});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', loader: { '.txt': 'text' } });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 1360, height: 900 } }), errors = [];
@@ -12,7 +12,8 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.route('https://sound.test/', route => route.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="background:#0b0f18;color:#eee"></body></html>' }));
     await page.goto('https://sound.test/');
     await page.evaluate(() => {
-      const save = new Map(), assets = new Map();
+      // An existing save with empty lists: a first run would start with the examples (tested at the end).
+      const save = new Map([['omnisound.data', '{}']]), assets = new Map();
       const id3 = () => new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       window.db = { modules: [], enabledModules: [] };
       window.bot = { chaId: 'c', name: '봇', globalLore: [], chats: [{ id: 'chat', message: [] }] };
@@ -365,6 +366,17 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#snd-sfx-search').fill(''); await page.locator('#snd-sfx-search').dispatchEvent('input');
     await first.dragTo(page.locator('#snd-sfx-folders .folder-item', { hasText: '드래그' }));
     await page.waitForFunction(() => window.soundData().sfx[0].folder === '드래그');
+    // 「예제 불러오기」 adds the examples that are missing, once; the example music carries its credit.
+    const bgmBefore = await page.evaluate(() => window.soundData().bgm.length);
+    await page.locator('#tab-sound-bgm').click();
+    await page.locator('#sound-bgm .file-menu summary').click(); await page.locator('#snd-bgm-samples').click();
+    await page.waitForFunction(n => window.soundData().bgm.length > n + 100, bgmBefore);
+    const bgmAfter = await page.evaluate(() => window.soundData().bgm.length);
+    assert.match(await page.locator('#snd-bgm-list .snd-credit').textContent(), /Kevin MacLeod.*Attribution 4.0/);
+    await page.locator('#snd-bgm-samples').click();
+    await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(() => window.soundData().bgm.length), bgmAfter, 'a second time adds nothing');
+    await page.locator('#tab-sound-sfx').click();
     // An unknown word that sounds like an effect's word is one tap from it.
     await page.evaluate(() => { window.soundData().unknownTerms = ['쿵콰앙']; });
     await page.locator('#tab-sound-glossary').click(); await page.locator('#snd-gloss-tab-unknown').click();
@@ -372,6 +384,36 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     assert.equal(await hint.getAttribute('data-key'), await page.evaluate(() => window.soundData().sfx[0].key));
     await hint.click();
     await page.waitForFunction(() => !window.soundData().unknownTerms.length && window.soundData().glossary.some(row => row.sfxKey === window.soundData().sfx[0].key && row.terms.includes('쿵콰앙')));
+    // Settings: a section is greyed out and locked while its switch is off.
+    await page.locator('#tab-sound-settings').click();
+    const gate = async id => page.evaluate(g => { const node = document.getElementById(g); return [node.disabled, Number(getComputedStyle(node).opacity) < 1]; }, id);
+    await page.locator('#snd-sfx-enabled').evaluate(n => { n.checked = false; n.dispatchEvent(new Event('change')); });
+    // Greyed out once the short fade ends.
+    await page.waitForFunction(() => { const node = document.getElementById('snd-sfx-gate'); return node.disabled && Number(getComputedStyle(node).opacity) < 0.5; });
+    assert.deepEqual(await gate('snd-sfx-gate'), [true, true]);
+    assert.equal(await page.locator('#snd-sfx-volume').isDisabled(), true); assert.equal(await page.locator('#snd-rule-add').isDisabled(), true, 'rules are locked too');
+    assert.equal(await page.locator('#snd-sfx-enabled').isDisabled(), false, 'the switch itself stays usable');
+    assert.equal((await gate('snd-bgm-gate'))[0], !(await page.evaluate(() => window.soundData().settings.bgmEnabled)), 'the BGM section follows its own switch only');
+    // A change made elsewhere (⚡ turns BGM on) shows here at once.
+    await page.evaluate(() => window.omniSound.player.stopBgm?.());
+    await page.locator('#snd-bgm-enabled').evaluate(n => { n.checked = false; n.dispatchEvent(new Event('change')); });
+    await page.waitForFunction(() => document.getElementById('snd-bgm-gate').disabled);
+    await page.evaluate(() => window.updateSoundSettings({ bgmEnabled: true }));
+    await page.waitForFunction(() => !document.getElementById('snd-bgm-gate').disabled && document.getElementById('snd-bgm-enabled').checked);
+    // The settings as one JSON: no ElevenLabs key; loading it keeps this device's key and switches.
+    const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#snd-settings-export').click()]);
+    const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await download.path(), 'utf8'));
+    assert.equal(exported.type, 'omnisound-settings'); assert.equal('elevenKey' in exported.settings, false, 'no key in a shareable file');
+    assert.equal(exported.settings.sfxMaxSec, 60);
+    const key = await page.evaluate(() => window.soundData().settings.elevenKey); assert.ok(key, 'a key is set on this device');
+    exported.settings = { ...exported.settings, sfxMaxSec: 4, bgmVolume: 0.3, bgmTags: ['calm', 'rain'], sfxEnabled: true, bgmEnabled: false, elevenKey: 'stolen' };
+    await page.locator('#snd-settings-file').setInputFiles({ name: 'omnisound-settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
+    await page.waitForFunction(() => window.soundData().settings.sfxMaxSec === 4);
+    assert.deepEqual(await page.evaluate(() => { const s = window.soundData().settings; return [s.bgmVolume, s.bgmTags, s.sfxEnabled, s.bgmEnabled, s.elevenKey]; }), [0.3, ['calm', 'rain'], false, true, key], 'switches and key stay as they were');
+    assert.deepEqual(await page.evaluate(() => [document.getElementById('snd-sfx-max').value, document.getElementById('snd-bgm-volume-value').textContent, document.getElementById('snd-bgm-tags').value]), ['4', '30%', 'calm, rain'], 'the page shows the loaded values');
+    await page.locator('#snd-settings-file').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"type":"other"}') });
+    await page.waitForTimeout(150);
+    assert.equal(await page.evaluate(() => window.soundData().settings.sfxMaxSec), 4, 'another kind of file changes nothing');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

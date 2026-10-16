@@ -20,7 +20,7 @@ function library(kind: 'bgm' | 'sfx', title: string): string {
 <select id="${id('filter')}" aria-label="등록 방식 필터"><option value="all">전체</option><option value="url">주소</option><option value="asset">파일</option></select>
 <select id="${id('sort')}" aria-label="${title} 정렬"><option value="added">추가순</option><option value="name">이름순</option><option value="size">크기순</option></select>
 <span id="${id('count')}"></span><span class="badge" id="${id('total')}" hidden></span>
-<div class="actions voice-tools"><button class="primary" id="${id('add')}">+ ${title}</button><details class="file-menu"><summary>파일 ⋯</summary><div><button id="${id('import')}">JSON 가져오기</button><button id="${id('export')}">JSON 내보내기</button></div></details></div>
+<div class="actions voice-tools"><button class="primary" id="${id('add')}">+ ${title}</button><details class="file-menu"><summary>파일 ⋯</summary><div><button id="${id('import')}">JSON 가져오기</button><button id="${id('export')}">JSON 내보내기</button><button id="${id('samples')}" title="기본 예제 중 목록에 없는 것만 더합니다">예제 불러오기</button></div></details></div>
 <input type="file" id="${id('file')}" accept=".json,application/json" hidden></div>
 <div class="voice-explorer"><aside class="voice-folders"><div class="folder-heading"><b>폴더</b><button id="${id('folder-toggle')}" type="button" aria-expanded="false">폴더 ▾</button><button id="${id('folder-add')}" title="폴더 만들기" aria-label="폴더 만들기">＋</button></div>
 <nav id="${id('folders')}" aria-label="${title} 폴더"></nav><button id="${id('folder-edit')}" disabled>폴더 관리</button></aside>
@@ -33,6 +33,7 @@ export const SOUND_PANELS = `<div class="workspace" id="sound-controls">
 <section class="panel" id="sound-settings" role="tabpanel" hidden><div class="tts-settings-columns">
 <div class="tts-settings-column"><div class="group"><h3>BGM</h3>
 ${row('BGM 사용', sw('snd-bgm-enabled', 'BGM 사용'), '켜면 ⚛️ omni bgm 모듈이 설치되고 [[bgm:…]] 줄이 ♪ 버튼이 됩니다.')}
+<fieldset class="snd-gate" id="snd-bgm-gate">
 ${row('BGM 볼륨', range('snd-bgm-volume', 'BGM 볼륨'))}
 ${row('TTS 재생 중 BGM', range('snd-duck', 'TTS 재생 중 BGM 크기'), 'TTS가 말하는 동안 이만큼으로 줄입니다.')}
 ${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number" min="0" max="10" step="0.5" aria-label="크로스페이드 초" style="width:72px"><span>초 크로스페이드</span></div>`)}
@@ -41,9 +42,10 @@ ${row('TTS 목록·이어 읽기에 BGM', sw('snd-list-bgm', 'TTS 목록·이어
 ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
 ${row('곡을 고르는 근거', `<select id="snd-bgm-basis" aria-label="곡을 고르는 근거"><option value="tags">BGM 태그 (없으면 메시지 전체)</option><option value="message">메시지 문장 전체</option><option value="both">BGM 태그 + 메시지 전체</option></select>`, '「태그 + 메시지」는 태그를 힌트로 함께 보냅니다. 메시지 전체로 고를 때는 응답 본문(생각·이미지 표시 제외, 최대 4000자)을 JEV·LLM에 보내 곡 하나를 고릅니다. 같은 응답은 한 번만 묻습니다.')}
 <label class="field full"><span>BGM 태그 목록 · 쉼표로 구분 (LLM은 이 안에서만 고릅니다)</span><textarea id="snd-bgm-tags" rows="3" maxlength="1200"></textarea></label>
-</div></div>
+</fieldset></div></div>
 <div class="tts-settings-column"><div class="group"><h3>효과음</h3>
 ${row('효과음 사용', sw('snd-sfx-enabled', '효과음 사용'), '켜면 ⚛️ omni 효과음 모듈이 설치되고 규칙에 걸린 말에 회색 ▶ 버튼이 붙습니다.')}
+<fieldset class="snd-gate" id="snd-sfx-gate">
 ${row('효과음 볼륨', range('snd-sfx-volume', '효과음 볼륨'))}
 ${row('효과음 크기 자동 맞추기', sw('snd-sfx-normalize', '효과음 크기 자동 맞추기'), '효과음마다 다른 크기를 같은 크기로 맞춥니다(TTS 자동 맞추기와 같은 역할). 소리가 찢어지지 않게 최고 음량은 넘지 않습니다.')}
 ${row('▶를 다른 모듈보다 먼저 붙이기', sw('snd-sfx-first', '▶를 다른 모듈보다 먼저 붙이기'), '다른 모듈이 §쾅§를 자기 모양(상자 등)으로 바꿔도 ▶가 생깁니다. 다른 모듈의 표시가 깨지면 끄세요.')}
@@ -58,7 +60,8 @@ ${row('맞는 효과음이 없으면 ElevenLabs로 만들기', sw('snd-sfx-autoc
 ${row('생성 길이', `<div class="control"><input id="snd-sfx-duration" type="number" min="0" max="30" step="0.5" aria-label="생성 길이 초" style="width:72px"><span>초 · 0이면 자동</span></div>`)}
 <div class="field full"><span>효과음 규칙 · 앞 글자와 뒤 글자 사이의 말이 효과음 (예: § 와 § → §쾅§)</span><div id="snd-rules"></div><div class="actions"><button type="button" id="snd-rule-add">+ 규칙</button></div></div>
 <label class="field full"><span>규칙 테스트 · 예시 문장</span><textarea id="snd-rule-test" rows="2" placeholder="§덜컹! 덜컹! 와르르──!§"></textarea><small id="snd-rule-result"></small></label>
-</div><div class="group"><h3>파일</h3>
+</fieldset></div><div class="group"><h3>파일</h3>
+${row('BGM·효과음 설정 파일', `<div class="actions"><button type="button" id="snd-settings-export">내보내기</button><button type="button" id="snd-settings-import">불러오기</button><input type="file" id="snd-settings-file" accept=".json,application/json" hidden></div>`, '이 화면의 설정(볼륨·고르는 방식·태그 목록·효과음 규칙 등)을 JSON 하나로 옮깁니다. ElevenLabs 키는 담지 않고, 불러와도 BGM·효과음 사용 스위치는 그대로입니다. 곡·효과음 목록은 각 목록의 「파일 ⋯」로 옮깁니다.')}
 ${row('파일 최대 크기', `<div class="control"><input id="snd-max-mb" type="number" min="1" max="50" aria-label="파일 최대 크기 MB" style="width:72px"><span>MB</span></div>`, '파일은 모듈에 저장되어 저장 파일·동기화 크기가 늘어납니다. 큰 곡은 주소로 등록하세요.')}
 </div></div></div></section>
 ${library('bgm', 'BGM')}

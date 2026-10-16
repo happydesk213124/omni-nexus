@@ -1,10 +1,11 @@
 import type { SfxRule, SoundSettings } from '../core/sound-types';
-import { soundData, updateSoundSettings } from '../storage/sound-store';
+import { soundData, subscribeSound, updateSoundSettings } from '../storage/sound-store';
 import { sfxHits, sfxMarksProblem } from '../domain/sound/audio';
 import { exactSfx, pickSfx } from '../domain/sound/match';
 import { sfxParts } from '../domain/sound/combo';
 import { soundTags } from '../domain/sound/tags';
-import { el, input, val, set, text, esc, run } from '../tts-ui/common';
+import { el, input, val, set, text, esc, run, download, readJson, notify } from '../tts-ui/common';
+import { SOUND_SETTINGS_FILE, exportableSoundSettings, importSoundSettings } from './settings-transfer';
 import { uuid } from '../core/util/text';
 import type { CueAudit } from '../services/cue-audit';
 
@@ -71,40 +72,68 @@ function renderTest(): void {
     : '걸리는 말이 없습니다.');
 }
 
+const SWITCHES = [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst'], ['snd-sfx-autocreate', 'sfxAutoCreate']] as const;
+const RANGES = [['snd-bgm-volume', 'bgmVolume'], ['snd-sfx-volume', 'sfxVolume'], ['snd-duck', 'duck']] as const;
+const SELECTS = [['snd-bgm-matcher', 'bgmMatcher'], ['snd-bgm-basis', 'bgmBasis'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const;
+
+/**
+ * Every control from the stored settings: on mount, after a settings file is
+ * loaded, and when something else changes them (⚡ turns BGM on). With its
+ * switch off a section's other rows sit in a disabled fieldset, greyed out.
+ * Rule rows are rebuilt only when asked: they hold marks still being typed and
+ * their own error, which a repaint after an unrelated save would drop.
+ */
+export function paintSoundSettings(rules = true): void {
+  if (!el('snd-bgm-gate')) return;
+  const s = soundData().settings, typing = document.activeElement;
+  // The field being typed in keeps what is typed; it saves on its own change.
+  const put = (id: string, value: unknown) => { if (el(id) !== typing) set(id, value); };
+  for (const [id, key] of SWITCHES) input(id).checked = s[key];
+  for (const [id, key] of RANGES) if (el(id) !== typing) percent(id, s[key]);
+  for (const [id, key] of SELECTS) put(id, s[key]);
+  put('snd-crossfade', s.crossfadeMs / 1000); put('snd-sfx-max', s.sfxMaxSec); put('snd-max-mb', s.maxFileMb);
+  put('snd-sfx-prompt', s.sfxPrompt); put('snd-sfx-duration', s.sfxDuration); put('snd-eleven-key', s.elevenKey);
+  put('snd-bgm-tags', s.bgmTags.join(', '));
+  el<HTMLFieldSetElement>('snd-bgm-gate').disabled = !s.bgmEnabled;
+  el<HTMLFieldSetElement>('snd-sfx-gate').disabled = !s.sfxEnabled;
+  if (rules) renderRules();
+}
+
+let unsubscribe: (() => void) | undefined;
 export function bindSoundSettings(): void {
-  const s = soundData().settings;
-  for (const [id, key] of [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst']] as const) {
-    input(id).checked = s[key];
-    el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: input(id).checked } as Partial<SoundSettings>)));
-  }
-  for (const [id, key] of [['snd-bgm-volume', 'bgmVolume'], ['snd-sfx-volume', 'sfxVolume'], ['snd-duck', 'duck']] as const) {
-    percent(id, s[key]);
+  for (const [id, key] of SWITCHES) el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: input(id).checked } as Partial<SoundSettings>)));
+  for (const [id, key] of RANGES) {
     // The percentage follows the slider while it moves; the value is saved on release.
     el(id).addEventListener('input', () => text(`${id}-value`, `${val(id)}%`));
     el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: Number(val(id)) / 100 } as Partial<SoundSettings>)));
   }
-  set('snd-crossfade', s.crossfadeMs / 1000);
-  el('snd-crossfade').addEventListener('change', () => run(() => updateSoundSettings({ crossfadeMs: Number(val('snd-crossfade')) * 1000 })));
-  set('snd-sfx-max', s.sfxMaxSec);
-  el('snd-sfx-max').addEventListener('change', () => run(async () => { await updateSoundSettings({ sfxMaxSec: Number(val('snd-sfx-max')) }); set('snd-sfx-max', soundData().settings.sfxMaxSec); }));
-  set('snd-max-mb', s.maxFileMb);
-  el('snd-max-mb').addEventListener('change', () => run(() => updateSoundSettings({ maxFileMb: Number(val('snd-max-mb')) })));
-  for (const [id, key] of [['snd-bgm-matcher', 'bgmMatcher'], ['snd-bgm-basis', 'bgmBasis'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const) {
-    set(id, s[key]);
-    el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: val(id) } as Partial<SoundSettings>)));
-  }
-  input('snd-sfx-autocreate').checked = s.sfxAutoCreate;
-  el('snd-sfx-autocreate').addEventListener('change', () => run(() => updateSoundSettings({ sfxAutoCreate: input('snd-sfx-autocreate').checked })));
-  set('snd-sfx-prompt', s.sfxPrompt); el('snd-sfx-prompt').addEventListener('change', () => run(() => updateSoundSettings({ sfxPrompt: val('snd-sfx-prompt') })));
-  set('snd-sfx-duration', s.sfxDuration); el('snd-sfx-duration').addEventListener('change', () => run(() => updateSoundSettings({ sfxDuration: Number(val('snd-sfx-duration')) || 0 })));
-  set('snd-eleven-key', s.elevenKey); el('snd-eleven-key')?.addEventListener('change', () => run(() => updateSoundSettings({ elevenKey: val('snd-eleven-key').trim() })));
-  set('snd-bgm-tags', s.bgmTags.join(', '));
-  el('snd-bgm-tags').addEventListener('change', () => run(async () => { await updateSoundSettings({ bgmTags: soundTags(val('snd-bgm-tags')) }); set('snd-bgm-tags', soundData().settings.bgmTags.join(', ')); }));
+  for (const [id, key] of SELECTS) el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: val(id) } as Partial<SoundSettings>)));
+  // A field shows what was saved once it commits (99 s comes back as 60); a repaint leaves the focused field alone.
+  const commit = (id: string, patch: () => Partial<SoundSettings>, shown: (s: SoundSettings) => unknown) =>
+    el(id).addEventListener('change', () => run(async () => { await updateSoundSettings(patch()); set(id, shown(soundData().settings)); }));
+  commit('snd-crossfade', () => ({ crossfadeMs: Number(val('snd-crossfade')) * 1000 }), s => s.crossfadeMs / 1000);
+  commit('snd-sfx-max', () => ({ sfxMaxSec: Number(val('snd-sfx-max')) }), s => s.sfxMaxSec);
+  commit('snd-max-mb', () => ({ maxFileMb: Number(val('snd-max-mb')) }), s => s.maxFileMb);
+  el('snd-sfx-prompt').addEventListener('change', () => run(() => updateSoundSettings({ sfxPrompt: val('snd-sfx-prompt') })));
+  commit('snd-sfx-duration', () => ({ sfxDuration: Number(val('snd-sfx-duration')) || 0 }), s => s.sfxDuration);
+  el('snd-eleven-key')?.addEventListener('change', () => run(() => updateSoundSettings({ elevenKey: val('snd-eleven-key').trim() })));
+  commit('snd-bgm-tags', () => ({ bgmTags: soundTags(val('snd-bgm-tags')) }), s => s.bgmTags.join(', '));
   el('snd-rule-add').addEventListener('click', () => run(async () => {
     const rule: SfxRule = { id: uuid(), name: '새 규칙', open: '*', close: '*', enabled: false };
     await updateSoundSettings({ sfxRules: [...soundData().settings.sfxRules, rule] }); renderRules();
   }));
   el('snd-rule-test').addEventListener('input', renderTest);
-  renderRules();
+  el('snd-settings-export').addEventListener('click', () => download(exportableSoundSettings(soundData().settings), `${SOUND_SETTINGS_FILE}.json`));
+  el('snd-settings-import').addEventListener('click', () => input('snd-settings-file').click());
+  el('snd-settings-file').addEventListener('change', () => run(async () => {
+    const file = input('snd-settings-file').files?.[0]; if (!file) return;
+    input('snd-settings-file').value = '';
+    await importSoundSettings(await readJson(file));
+    notify('BGM·효과음 설정을 불러왔습니다.');
+  }));
+  // Outside changes show (⚡ turning BGM on, an imported file).
+  unsubscribe?.();
+  unsubscribe = subscribeSound(() => { if (!el('snd-bgm-gate')?.isConnected) { unsubscribe?.(); unsubscribe = undefined; return; } paintSoundSettings(false); });
+  paintSoundSettings();
   clearInterval(cueTimer); cueTimer = setInterval(renderCueStatus, 2000); renderCueStatus();
 }

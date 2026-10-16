@@ -16,7 +16,8 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
     const blockedSource = readFileSync('tools/vendor-patches/float-viewer.js', 'utf8').match(/globalThis\.__OMNI_TTS_HOST_BLOCKED__ = (.*);/)[1];
     await page.evaluate(blockedSource => {
       window.hostScreenState = {}; window.__OMNI_TTS_HOST_BLOCKED__ = new Function('t', 'return ' + blockedSource)(window.hostScreenState);
-      const saved = new Map(), local = new Map(); window.fish = 0; window.log = [];
+      // An existing save with empty lists, not a first run (which starts with the examples).
+      const saved = new Map([['omnisound.data', '{}']]), local = new Map(); window.fish = 0; window.log = [];
       class Safe {
         constructor(node) { this.node = node; }
         async querySelector(s) { const n = this.node.querySelector(s); return n ? new Safe(n) : null; }

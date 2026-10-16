@@ -84,7 +84,15 @@ export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[
   + '#tts-settings-root .snd-unknown-row button{flex:none;padding:5px 10px}'
   + '#tts-settings-root .snd-rule-error{flex-basis:100%;color:#f29da6}'
   + '#tts-settings-root .snd-rule-word{color:#9aa3b5;font-size:12px}'
-  + '#tts-settings-root .snd-tile-time{font-size:11px;opacity:.75}';
+  + '#tts-settings-root .snd-tile-time{font-size:11px;opacity:.75}'
+  // A section behind its off switch: the fieldset disables every control in it; it only has to look it.
+  + '#tts-settings-root .snd-gate{border:0;margin:0;padding:0;min-width:0;min-inline-size:0;transition:opacity .15s}'
+  + '#tts-settings-root .snd-gate:disabled{opacity:.4;filter:grayscale(1)}'
+  + '#tts-settings-root .snd-gate:disabled *{cursor:not-allowed}'
+  // The settings sheet already dims a row with a disabled input (.row:has(input:disabled)); inside a gated section that
+  // stacked on the section, and rows holding only a select stood out brighter. The section alone dims, evenly.
+  + '#tts-settings-root .snd-gate:disabled .row{opacity:1}'
+  + '#tts-settings-root .snd-credit{grid-column:1/-1;margin:6px 2px 2px;font-size:11px;color:var(--muted,#a4a8bc);opacity:.8;overflow-wrap:anywhere}';
 
 /**
  * After the copied voice-list rules, so these win on order: a sound needs a name,

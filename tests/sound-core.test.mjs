@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/combo';export * from './src/domain/sound/find';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData} from './src/storage/sound-store';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
+const built = await build({ stdin: { contents: `export * from './src/domain/sound/tags';export * from './src/domain/sound/match';export * from './src/domain/sound/audio';export * from './src/domain/sound/clip';export * from './src/domain/sound/scene';export * from './src/domain/sound/combo';export * from './src/domain/sound/find';export * from './src/domain/sound/module';export * from './src/config/sound-defaults';export {normalizeSoundData,loadSoundData,saveSoundData,soundData,resetSoundStore} from './src/storage/sound-store';export {SOUND_SAMPLES} from './src/config/sound-samples';export {parseCueLine,parseTtsMessage} from './src/domain/tts/segment';export {matchTtsAnchors} from './src/domain/tts/anchors';`, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'neutral' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const item = (key, tags, kind = 'bgm') => ({ key, kind, name: key, tags, folder: '', source: 'url', url: `https://x.test/${key}.mp3` });
 // Display rules as Risu runs them: highest <order> first, its own flags.
@@ -215,4 +215,22 @@ test('a word is matched to effects by how it sounds, jamo by jamo, and search co
   assert.deepEqual(api.suggestSfx('삐리리', glossary, items), []);
   assert.equal(api.matchesSoundSearch(items[1], '날씨'), true, 'the folder is searchable');
   assert.equal(api.matchesSoundSearch(items[1], '날씨 & 문'), false);
+});
+
+test('a first run starts with the example lists; a save whose lists were emptied stays empty', async () => {
+  const kv = new Map();
+  globalThis.risuai = { pluginStorage: { getItem: async k => kv.get(k), setItem: async (k, v) => { kv.set(k, v); } } };
+  try {
+    api.resetSoundStore();
+    const first = await api.loadSoundData();
+    assert.equal(first.bgm.length, api.SOUND_SAMPLES.bgm.items.length); assert.equal(first.sfx.length, api.SOUND_SAMPLES.sfx.items.length);
+    assert.ok(first.bgm.length > 100 && first.sfx.length > 100, 'both example lists are there');
+    assert.ok(first.bgm.every(item => item.source === 'url' && item.url.startsWith('https://')), 'links only: nothing goes into the save file');
+    assert.deepEqual(first.folders.bgm, api.SOUND_SAMPLES.bgm.folders);
+    assert.equal(kv.size, 0, 'loading writes nothing');
+    first.bgm.length = 0; first.sfx.length = 0; await api.saveSoundData();
+    api.resetSoundStore();
+    const again = await api.loadSoundData();
+    assert.deepEqual([again.bgm.length, again.sfx.length], [0, 0], 'deleted examples never come back by themselves');
+  } finally { delete globalThis.risuai; api.resetSoundStore(); }
 });
