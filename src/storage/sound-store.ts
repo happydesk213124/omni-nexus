@@ -53,10 +53,11 @@ function term(raw: unknown): SfxTerm | null {
 export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettings {
   const d = soundDefaults(), s = { ...d, ...raw };
   for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate', 'sfxCue', 'sfxFirst', 'sfxTrim', 'sfxNormalize'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
-  s.sfxMaxSec = Math.round(clamp(s.sfxMaxSec, 0, 60, d.sfxMaxSec));
+  s.sfxMaxSec = Math.round(clamp(s.sfxMaxSec, 0, 60, d.sfxMaxSec) * 10) / 10;
   s.bgmVolume = clamp(s.bgmVolume, 0, 1, d.bgmVolume); s.sfxVolume = clamp(s.sfxVolume, 0, 1, d.sfxVolume);
   s.duck = clamp(s.duck, 0, 1, d.duck); s.crossfadeMs = Math.round(clamp(s.crossfadeMs, 0, 10_000, d.crossfadeMs));
   s.maxFileMb = clamp(s.maxFileMb, 1, 50, d.maxFileMb);
+  s.bgmCacheMb = Math.round(clamp(s.bgmCacheMb, 0, 4000, d.bgmCacheMb));
   s.sfxDuration = clamp(s.sfxDuration, 0, 30, 0);
   s.elevenKey = text(s.elevenKey, 200);
   const embed = (s.embed && typeof s.embed === 'object' ? s.embed : {}) as Partial<SoundSettings['embed']>;

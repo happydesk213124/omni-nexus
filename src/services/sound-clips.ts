@@ -3,6 +3,8 @@ import { ttsBytes, ttsFetch } from '../providers/tts/http';
 import { sniffAudioMime } from '../domain/sound/audio';
 import { soundData } from '../storage/sound-store';
 import { readSoundAsset } from '../storage/sound-module';
+import { bgmDeviceCache } from '../storage/bgm-cache';
+import { dbg } from '../core/debug';
 import { joinSfxClips } from '../domain/sound/combo';
 import { decodeAudio } from '../providers/sound/decode';
 import { encodeSfxWav, sfxWindow } from '../domain/sound/clip';
@@ -37,9 +39,21 @@ export async function audioOf(item: SoundItem): Promise<{ bytes: ArrayBuffer; mi
     const bytes = await readSoundAsset(item.assetPath || '');
     if (!bytes) throw new Error(`${item.name}: 모듈에 저장한 파일을 읽지 못했습니다.`);
     row = { bytes, mime: item.mime || sniffAudioMime(bytes) || 'audio/mpeg' };
-  } else row = await downloadAudio(item.url || '');
+  } else {
+    // A BGM link: this device first; a fresh download is kept there for next time.
+    const kept = item.kind === 'bgm' ? await bgmDeviceCache.get(item.url || '').catch(() => null) : null;
+    row = kept ?? await downloadAudio(item.url || '');
+    if (!kept && item.kind === 'bgm') void bgmDeviceCache.put(item.url || '', row.bytes, row.mime).catch(error => dbg('bgm.cache.put', { message: String(error) }, 'warn'));
+  }
   rememberAudio(item.key, row.bytes, row.mime);
   return row;
+}
+/** Fetches a BGM link ahead into the device store, without filling memory. true when it was fetched now. */
+export async function prefetchAudio(item: SoundItem): Promise<boolean> {
+  if (item.kind !== 'bgm' || item.source !== 'url' || !item.url || cache.has(item.key) || await bgmDeviceCache.has(item.url)) return false;
+  const row = await downloadAudio(item.url);
+  await bgmDeviceCache.put(item.url, row.bytes, row.mime);
+  return true;
 }
 
 

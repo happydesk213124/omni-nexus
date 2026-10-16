@@ -9,6 +9,7 @@ import { SOUND_SETTINGS_FILE, exportableSoundSettings, importSoundSettings } fro
 import { defaultEndpointForEmbedding, defaultModelForEmbedding, shouldAutoReplaceEmbeddingModel, testEmbedding } from '../providers/embedding/client';
 import { soundEmbedSettings } from '../providers/sound/embed';
 import { ttsData } from '../storage/tts-store';
+import { omniSound } from '../services/sound-runtime';
 import { uuid } from '../core/util/text';
 import type { CueAudit } from '../services/cue-audit';
 
@@ -94,6 +95,8 @@ export function paintSoundSettings(rules = true): void {
   for (const [id, key] of SWITCHES) input(id).checked = s[key];
   for (const [id, key] of RANGES) if (el(id) !== typing) percent(id, s[key]);
   for (const [id, key] of SELECTS) put(id, s[key]);
+  put('snd-bgm-cache', s.bgmCacheMb);
+  const usage = omniSound.bgmCacheUsage(); text('snd-bgm-cache-usage', `지금 ${usage.count}곡 · ${(usage.bytes / 1048576).toFixed(1)} MB`);
   put('snd-crossfade', s.crossfadeMs / 1000); put('snd-sfx-max', s.sfxMaxSec); put('snd-max-mb', s.maxFileMb);
   put('snd-sfx-prompt', s.sfxPrompt); put('snd-sfx-duration', s.sfxDuration); put('snd-eleven-key', s.elevenKey);
   put('snd-bgm-tags', s.bgmTags.join(', '));
@@ -117,6 +120,11 @@ export function bindSoundSettings(): void {
   const commit = (id: string, patch: () => Partial<SoundSettings>, shown: (s: SoundSettings) => unknown) =>
     el(id).addEventListener('change', () => run(async () => { await updateSoundSettings(patch()); set(id, shown(soundData().settings)); }));
   commit('snd-crossfade', () => ({ crossfadeMs: Number(val('snd-crossfade')) * 1000 }), s => s.crossfadeMs / 1000);
+  commit('snd-bgm-cache', () => ({ bgmCacheMb: Number(val('snd-bgm-cache')) }), s => s.bgmCacheMb);
+  el('snd-bgm-cache-clear')?.addEventListener('click', () => run(async () => {
+    if (!confirm('이 기기에 받아 둔 BGM을 모두 지울까요? 다음에 들을 때 다시 받습니다.')) return;
+    await omniSound.clearBgmCache(); paintSoundSettings(false); notify('기기에 받아 둔 BGM을 비웠습니다.');
+  }));
   commit('snd-sfx-max', () => ({ sfxMaxSec: Number(val('snd-sfx-max')) }), s => s.sfxMaxSec);
   commit('snd-max-mb', () => ({ maxFileMb: Number(val('snd-max-mb')) }), s => s.maxFileMb);
   el('snd-sfx-prompt').addEventListener('change', () => run(() => updateSoundSettings({ sfxPrompt: val('snd-sfx-prompt') })));
