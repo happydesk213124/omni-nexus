@@ -58,7 +58,9 @@ export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettin
   s.duck = clamp(s.duck, 0, 1, d.duck); s.crossfadeMs = Math.round(clamp(s.crossfadeMs, 0, 10_000, d.crossfadeMs));
   s.maxFileMb = clamp(s.maxFileMb, 1, 50, d.maxFileMb);
   s.sfxDuration = clamp(s.sfxDuration, 0, 30, 0);
-  s.elevenKey = text(s.elevenKey, 200); s.sfxPrompt = text(s.sfxPrompt, 400) || d.sfxPrompt;
+  s.elevenKey = text(s.elevenKey, 200);
+  const embed = (s.embed && typeof s.embed === 'object' ? s.embed : {}) as Partial<SoundSettings['embed']>;
+  s.embed = { provider: text(embed.provider, 40) || d.embed.provider, model: text(embed.model, 200).trim() || d.embed.model, endpoint: text(embed.endpoint, 500).trim(), key: text(embed.key, 4000).trim() }; s.sfxPrompt = text(s.sfxPrompt, 400) || d.sfxPrompt;
   for (const key of ['bgmMatcher', 'sfxMatcher'] as const) if (!MATCHERS.includes(s[key])) s[key] = d[key];
   if (s.sfxAutoPlay !== 'reply' && s.sfxAutoPlay !== 'button') s.sfxAutoPlay = d.sfxAutoPlay;
   if (!['tags', 'message', 'both'].includes(s.bgmBasis)) s.bgmBasis = d.bgmBasis;

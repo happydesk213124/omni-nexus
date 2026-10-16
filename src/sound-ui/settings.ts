@@ -6,6 +6,9 @@ import { sfxParts } from '../domain/sound/combo';
 import { soundTags } from '../domain/sound/tags';
 import { el, input, val, set, text, esc, run, download, readJson, notify } from '../tts-ui/common';
 import { SOUND_SETTINGS_FILE, exportableSoundSettings, importSoundSettings } from './settings-transfer';
+import { defaultEndpointForEmbedding, defaultModelForEmbedding, shouldAutoReplaceEmbeddingModel, testEmbedding } from '../providers/embedding/client';
+import { soundEmbedSettings } from '../providers/sound/embed';
+import { ttsData } from '../storage/tts-store';
 import { uuid } from '../core/util/text';
 import type { CueAudit } from '../services/cue-audit';
 
@@ -94,6 +97,8 @@ export function paintSoundSettings(rules = true): void {
   put('snd-crossfade', s.crossfadeMs / 1000); put('snd-sfx-max', s.sfxMaxSec); put('snd-max-mb', s.maxFileMb);
   put('snd-sfx-prompt', s.sfxPrompt); put('snd-sfx-duration', s.sfxDuration); put('snd-eleven-key', s.elevenKey);
   put('snd-bgm-tags', s.bgmTags.join(', '));
+  put('snd-embed-provider', s.embed.provider); put('snd-embed-model', s.embed.model); put('snd-embed-key', s.embed.key); put('snd-embed-endpoint', s.embed.endpoint);
+  if (input('snd-embed-endpoint')) input('snd-embed-endpoint').placeholder = defaultEndpointForEmbedding(s.embed.provider);
   el<HTMLFieldSetElement>('snd-bgm-gate').disabled = !s.bgmEnabled;
   el<HTMLFieldSetElement>('snd-sfx-gate').disabled = !s.sfxEnabled;
   if (rules) renderRules();
@@ -118,6 +123,20 @@ export function bindSoundSettings(): void {
   commit('snd-sfx-duration', () => ({ sfxDuration: Number(val('snd-sfx-duration')) || 0 }), s => s.sfxDuration);
   el('snd-eleven-key')?.addEventListener('change', () => run(() => updateSoundSettings({ elevenKey: val('snd-eleven-key').trim() })));
   commit('snd-bgm-tags', () => ({ bgmTags: soundTags(val('snd-bgm-tags')) }), s => s.bgmTags.join(', '));
+  // A new provider brings its own model unless one was typed in; the address follows its default.
+  el('snd-embed-provider')?.addEventListener('change', () => run(async () => {
+    const provider = val('snd-embed-provider'), model = shouldAutoReplaceEmbeddingModel(val('snd-embed-model')) ? defaultModelForEmbedding(provider) : val('snd-embed-model');
+    await updateSoundSettings({ embed: { ...soundData().settings.embed, provider, model } }); set('snd-embed-model', soundData().settings.embed.model);
+  }));
+  for (const [id, field] of [['snd-embed-model', 'model'], ['snd-embed-key', 'key'], ['snd-embed-endpoint', 'endpoint']] as const)
+    el(id)?.addEventListener('change', () => run(() => updateSoundSettings({ embed: { ...soundData().settings.embed, [field]: val(id).trim() } })));
+  el('snd-embed-test')?.addEventListener('click', () => run(async () => {
+    const settings = soundEmbedSettings(soundData().settings, ttsData().settings);
+    if (!settings) { text('snd-embed-status', 'API 키가 없습니다. 키를 넣거나, OpenRouter라면 JEV 키를 넣어 주세요.'); return; }
+    text('snd-embed-status', '확인하는 중…');
+    try { const result = await testEmbedding(settings); text('snd-embed-status', `연결됨 · ${result.model} · ${result.dims}차원`); }
+    catch (error) { text('snd-embed-status', String((error as Error).message || error)); }
+  }));
   el('snd-rule-add').addEventListener('click', () => run(async () => {
     const rule: SfxRule = { id: uuid(), name: '새 규칙', open: '*', close: '*', enabled: false };
     await updateSoundSettings({ sfxRules: [...soundData().settings.sfxRules, rule] }); renderRules();

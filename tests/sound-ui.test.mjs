@@ -401,15 +401,23 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.evaluate(() => window.updateSoundSettings({ bgmEnabled: true }));
     await page.waitForFunction(() => !document.getElementById('snd-bgm-gate').disabled && document.getElementById('snd-bgm-enabled').checked);
     // The settings as one JSON: no ElevenLabs key; loading it keeps this device's key and switches.
+    // The embedding: a provider brings its own model; its key stays on this device.
+    await page.locator('#snd-embed-provider').evaluate(n => { n.value = 'voyage'; n.dispatchEvent(new Event('change')); });
+    await page.waitForFunction(() => window.soundData().settings.embed.provider === 'voyage' && window.soundData().settings.embed.model === 'voyage-3-lite');
+    await page.locator('#snd-embed-key').evaluate(n => { n.value = 'vo-secret'; n.dispatchEvent(new Event('change')); });
+    await page.waitForFunction(() => window.soundData().settings.embed.key === 'vo-secret');
+    assert.equal(await page.locator('#snd-embed-endpoint').getAttribute('placeholder'), 'https://api.voyageai.com/v1/embeddings', 'the address field shows the default it uses');
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#snd-settings-export').click()]);
     const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await download.path(), 'utf8'));
     assert.equal(exported.type, 'omnisound-settings'); assert.equal('elevenKey' in exported.settings, false, 'no key in a shareable file');
     assert.equal(exported.settings.sfxMaxSec, 60);
     const key = await page.evaluate(() => window.soundData().settings.elevenKey); assert.ok(key, 'a key is set on this device');
+    assert.equal(exported.settings.embed.key, '', 'nor the embedding key');
     exported.settings = { ...exported.settings, sfxMaxSec: 4, bgmVolume: 0.3, bgmTags: ['calm', 'rain'], sfxEnabled: true, bgmEnabled: false, elevenKey: 'stolen' };
     await page.locator('#snd-settings-file').setInputFiles({ name: 'omnisound-settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
     await page.waitForFunction(() => window.soundData().settings.sfxMaxSec === 4);
     assert.deepEqual(await page.evaluate(() => { const s = window.soundData().settings; return [s.bgmVolume, s.bgmTags, s.sfxEnabled, s.bgmEnabled, s.elevenKey]; }), [0.3, ['calm', 'rain'], false, true, key], 'switches and key stay as they were');
+    assert.deepEqual(await page.evaluate(() => [window.soundData().settings.embed.provider, window.soundData().settings.embed.key]), ['voyage', 'vo-secret'], 'the embedding key stays too');
     assert.deepEqual(await page.evaluate(() => [document.getElementById('snd-sfx-max').value, document.getElementById('snd-bgm-volume-value').textContent, document.getElementById('snd-bgm-tags').value]), ['4', '30%', 'calm, rain'], 'the page shows the loaded values');
     await page.locator('#snd-settings-file').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"type":"other"}') });
     await page.waitForTimeout(150);
