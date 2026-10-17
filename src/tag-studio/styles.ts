@@ -372,23 +372,36 @@ export function tagStudioCss(): string {
   width: 100%; height: 100%; margin: 0; padding: 0; border: 0;
 }
 #nx-tag-studio .optbar .btn { height: 36px; }
-#nx-tag-studio .stiles {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px;
-  max-height: 212px; overflow-y: auto; padding: 1px; position: relative;
+#nx-tag-studio .optcaret button {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  width: 100%; height: 100%; margin: 0; padding: 0; border: 0;
 }
+#nx-tag-studio .spop { position: fixed; inset: 0; z-index: 70; background: rgba(8,9,13,.35); }
+#nx-tag-studio .spop-card {
+  position: fixed; overflow-y: auto; padding: 8px;
+  background: #12141c; border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow);
+}
+#nx-tag-studio .stiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
 #nx-tag-studio .stile {
-  position: relative; height: 64px; padding: 0 6px; overflow: hidden;
-  border: 1px solid var(--line); border-radius: 9px; background: #0e1017; color: var(--ink);
-  display: grid; place-items: center; cursor: pointer; font-size: 11.5px; line-height: 1.2;
+  position: relative; aspect-ratio: 1 / 1; padding: 0; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 10px; background: #0e1017; color: #fff; cursor: pointer;
+}
+#nx-tag-studio .stile img, #nx-tag-studio .stile .noimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#nx-tag-studio .stile .noimg {
+  display: grid; place-items: center; font-style: normal; font-size: 22px; color: var(--muted);
+  background: linear-gradient(160deg, #1b1f2c, #0c0e14);
 }
 #nx-tag-studio .stile span {
-  position: relative; z-index: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
-  overflow: hidden; text-align: center; word-break: break-all;
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 5px 5px;
+  background: linear-gradient(transparent, rgba(0,0,0,.82));
+  font-size: 11px; line-height: 1.2; text-align: center; text-shadow: 0 1px 2px #000;
 }
-#nx-tag-studio .stile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .55; }
-#nx-tag-studio .stile.img span { align-self: end; margin-bottom: 4px; -webkit-line-clamp: 2; text-shadow: 0 1px 3px #000; }
-#nx-tag-studio .stile.add { color: var(--muted); border-style: dashed; }
-#nx-tag-studio .stile.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: #fff; }
+/* The clamp sits on the text itself: on the padded label a third line peeked through. */
+#nx-tag-studio .stile span b {
+  font-weight: 600; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; word-break: keep-all; overflow-wrap: anywhere;
+}
+#nx-tag-studio .stile.add { border-style: dashed; }
+#nx-tag-studio .stile.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 #nx-tag-studio .stile:hover { border-color: var(--line-2); }
 
 #nx-tag-studio .spinveil {
