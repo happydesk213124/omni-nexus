@@ -56,11 +56,13 @@ test('incoming chunks allocate only one scan timer and one idle timer per window
 
 test('idle cleanup reschedules from activity without resetting its timer on each chunk',async()=>{
   const f=fixture();f.onScriptOutput(f.prose+'[[imgstart]]');await f.fire();
-  f.advance(24000);f.onScriptOutput(f.prose+'[[imgstart]]\nMore status');
-  await f.fire(30000,5000);
+  f.advance(2400);f.onScriptOutput(f.prose+'[[imgstart]]\nMore status');
+  await f.fire(3000,500);
   assert.equal(f.calls.length,1);
-  assert.ok([...f.timers.values()].some(row=>row.ms===25000));
-  await f.fire(25000);assert.equal(f.calls[1].body.cancel,true);
+  assert.ok([...f.timers.values()].some(row=>row.ms===2500));
+  // The reply is gone when the quiet window closes: nothing to bake into.
+  f.scope.chat.isStreaming=false;f.scope.chat.message.pop();
+  await f.fire(2500);await tick();assert.equal(f.calls[1].body.cancel,true);
 });
 
 test('replaced replies cancel paid attachment at the scan window or at completion before that window',async()=>{
@@ -117,9 +119,12 @@ test('thought-only signals do nothing; switching chats cancels without attaching
   f.omniKeywordScope({...f.scope,chatId:'other'});await tick();
   assert.equal(f.calls[1].body.cancel,true);assert.equal(f.polls.length,0);
 });
-test('abort expiry cancels a pending job, and a later stream can start afresh',async()=>{
+test('expiry with the reply gone cancels a pending job, and a later stream can start afresh',async()=>{
   const f=fixture();f.onScriptOutput(f.prose+'[[imgstart]]');await f.fire();
-  await f.fire(30000);assert.equal(f.calls[1].body.cancel,true);
+  f.scope.chat.isStreaming=false;f.scope.chat.message.pop();
+  await f.fire(3000);await tick();assert.equal(f.calls[1].body.cancel,true);
+  // A new reply starts streaming.
+  f.scope.chat.isStreaming=true;f.scope.chat.message.push(f.msg);
   f.onScriptOutput(f.prose+'[[imgstart]]');await f.fire();assert.equal(f.calls[2].path,'/v1/jobs/create');
 });
 
@@ -127,7 +132,8 @@ test('keyword OFF and ordinary chunks perform no host chat reads or generation',
   const f=fixture({stream_keywords_enabled:false});
   for(let i=0;i<20;i++){f.onScriptOutput(f.prose+' RP-Guide '+i);await f.fire();}
   assert.equal(f.reads(),0);assert.equal(f.calls.length,0);
-  await f.fire(30000);assert.equal(f.timers.size,0);
+  // The quiet check ends a run that started nothing without reading the chat.
+  await f.fire(3000);await tick();assert.equal(f.timers.size,0);assert.equal(f.reads(),0);
 });
 
 test('line mode sends 1-10 and 11-20 during streaming, then commits both without a tail or keyword duplicate',async()=>{
@@ -150,6 +156,49 @@ test('line mode sends 1-10 and 11-20 during streaming, then commits both without
   assert.equal(f.galleries.length,2);assert.equal(f.t.pollTimer,null);
 });
 const shot=(n,extra='')=>`[[inx${n}]]{"place":"room, indoor","aspect":"portrait","characters":[{"name":"Harin","action":"waving"}]${extra}}[[/inx${n}]]`;
+test('a reply Risu ends without completion (an error or Stop) is committed as it stands, so its images bake',async()=>{
+  const f=fixture({stream_inline_tags:true});
+  const reply=['First narrative line, long enough to depict.',shot(1),'Second line of the scene.',shot(2),'Third line, cut off by an err'];
+  for(let n=1;n<=reply.length;n++){f.onScriptOutput(reply.slice(0,n).join('\n'));await f.fire();}
+  const creates=()=>f.calls.filter(c=>c.path.endsWith('/create'));
+  assert.equal(creates().length,2);
+  // Risu kept what it got, turned streaming off and never sent the completion signal.
+  f.msg.data=reply.join('\n');f.scope.chat.isStreaming=false;
+  await f.fire(3000);await tick();
+  assert.equal(f.calls.filter(c=>c.path==='/v1/jobs/commit-output').length,0,'3 quiet seconds, streaming off: 2 more for a completion on its way');
+  await f.fire(2000);await tick();await tick();
+  const commit=f.calls.find(c=>c.path==='/v1/jobs/commit-output');
+  assert.ok(commit,'committed, not cancelled');
+  assert.notEqual(commit.body.cancel,true);
+  assert.deepEqual(Array.from(commit.body.job_ids),['j1','j2'],'both blocks bake into the partial reply');
+  assert.equal(commit.body.assistant_text,reply.join('\n'));
+  // Its completion arriving late, even with finished text, is not a second commit.
+  assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data+' (post-processed)'),true);await tick();
+  assert.equal(f.calls.filter(c=>c.path==='/v1/jobs/commit-output').length,1);
+  assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,2,'and starts nothing');
+});
+test('a completion right after streaming stops wins over the quiet check',async()=>{
+  const f=fixture({stream_inline_tags:true});
+  const reply=['First narrative line, long enough to depict.',shot(1),'Done.'];
+  for(let n=1;n<=reply.length;n++){f.onScriptOutput(reply.slice(0,n).join('\n'));await f.fire();}
+  f.msg.data=reply.join('\n');f.scope.chat.isStreaming=false;
+  await f.fire(3000);await tick();
+  assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data),true);await tick();
+  await f.fire(2000);await tick();await tick();
+  assert.equal(f.calls.filter(c=>c.path==='/v1/jobs/commit-output').length,1,'one commit, from the completion');
+});
+test('a stream still running after 3 quiet seconds is waited for, then committed once it ends',async()=>{
+  const f=fixture({stream_inline_tags:true});
+  const reply=['First narrative line, long enough to depict.',shot(1),'More.'];
+  for(let n=1;n<=reply.length;n++){f.onScriptOutput(reply.slice(0,n).join('\n'));await f.fire();}
+  await f.fire(3000);await tick();
+  assert.equal(f.calls.filter(c=>c.path==='/v1/jobs/commit-output').length,0,'a long pause cancels nothing');
+  assert.ok([...f.timers.values()].some(row=>row.ms===6000),'and is read again later, not every 3 seconds');
+  f.msg.data=reply.join('\n');f.scope.chat.isStreaming=false;
+  await f.fire(6000);await tick();await f.fire(2000);await tick();await tick();
+  const commit=f.calls.find(c=>c.path==='/v1/jobs/commit-output');
+  assert.ok(commit && commit.body.cancel!==true,'committed when it ended');
+});
 test('streaming tags: each closed block starts one tagger-free job at its line, once; line batches and keywords stay off',async()=>{
   const f=fixture({stream_inline_tags:true,stream_lines_enabled:true,stream_lines_count:2,stream_keywords_enabled:true});
   const reply=['First narrative line, long enough to depict.',shot(1),'Second line of the scene.','Third line here. RP-Guide','[[inx2]]{"place":"ro'];
