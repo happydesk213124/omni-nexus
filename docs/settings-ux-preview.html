@@ -1034,6 +1034,13 @@
     .nx-comfy-help :is(button,a):focus-visible { outline:2px solid #7132f5; outline-offset:3px; }
     /* 선택 모드 · 비활성화 (character tab) */
     /* The selection bar takes the place of the row's own buttons: no extra line. */
+    /* 메인 태거 작가의 노트 프리셋: select wide, name beside it, then 저장 · 삭제. */
+    #nx-author-note-presets { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 6px; }
+    #nx-author-note-presets select { flex:1 1 220px; min-width:0; min-height:36px; }
+    #nx-author-note-presets input { flex:1 1 140px; min-width:0; min-height:36px; }
+    #nx-author-note-presets button { flex:0 0 auto; min-height:36px; padding:0 14px; }
+    #nx-author-note-presets button:disabled { opacity:.4; cursor:default; }
+    #nx-anp-status { margin:0 0 6px; font-size:12px; }
     #nx-char-select-bar { display:contents; }
     #nx-char-select-bar[hidden] { display:none; }
     #nx-char-select-bar [data-sel-count] { font-size:12px; color:var(--muted); margin-right:2px; }
@@ -1631,7 +1638,18 @@
           <button class="btn-ghost" type="button" id="nx-prompts-import">가져오기</button>
         </div>
         <div class="stack">
-          <label class="block"><span>메인 태거 작가의 노트</span><p class="muted">메인 태거의 장면 선택·이미지 태그 작성 지침입니다.</p><textarea id="nx-prompt-author_note"></textarea></label>
+          <div class="block" id="nx-author-note-block">
+            <label data-prompt-title for="nx-prompt-author_note">메인 태거 작가의 노트</label>
+            <p class="muted">메인 태거의 장면 선택·이미지 태그 작성 지침입니다. 프리셋을 고르면 노트가 그 내용으로 바뀝니다.</p>
+            <div id="nx-author-note-presets">
+              <select id="nx-anp-select" aria-label="작가의 노트 프리셋"><option value="">프리셋 선택</option></select>
+              <input id="nx-anp-name" type="text" maxlength="80" placeholder="프리셋 이름" aria-label="프리셋 이름">
+              <button class="btn-ghost" type="button" id="nx-anp-save">저장</button>
+              <button class="btn-ghost" type="button" id="nx-anp-delete" disabled>삭제</button>
+            </div>
+            <p class="muted" id="nx-anp-status" role="status" hidden></p>
+            <textarea id="nx-prompt-author_note"></textarea>
+          </div>
           <label class="block"><span>에셋 태거 작가의 노트</span><p class="muted">별도 에셋 태거의 외형·복장 추출 지침입니다. 메인태깅에 포함할 때는 적용되지 않습니다.</p><textarea id="nx-prompt-asset_author_note"></textarea></label>
           <label class="block"><span>전역 작가의 노트</span><p class="muted">메인 태거·에셋 태거·만화 LLM에 공통으로 전달합니다.</p><textarea id="nx-prompt-global_author_note"></textarea></label>
           <label class="block"><span>tagger</span><textarea id="nx-prompt-tagger"></textarea></label>
