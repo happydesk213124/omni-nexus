@@ -18,6 +18,7 @@ import { mountTts } from '../tts-ui/mount';
 import { bindSoundNav, markSoundNav } from '../sound-ui/page';
 import { settingsUxCss } from './styles';
 import { previewChrome, tabHtml, previewHelp } from './tab-html';
+import { bindFullBackup } from './full-backup';
 
 let explorerOpen = false;
 let explorerCharacter = '';
@@ -358,7 +359,7 @@ export function afterPaint(): void {
     if (risuPickOpen) void fillRisuTiles(document.getElementById('nx-risu-pick-tiles'));
   }
   if (tab === 'explorer') bindExplorerPick();
-  if (tab === 'debug') bindDebugBar();
+  if (tab === 'debug') { bindDebugBar(); bindFullBackup(); }
 }
 
 export function installSettingsUx(): void {

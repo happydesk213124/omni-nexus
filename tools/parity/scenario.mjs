@@ -1972,5 +1972,15 @@ export async function runScenario(N, handles) {
     await put('/v1/settings', {card:{location_tag_weight:1}});
     return {saved, exported};
   });
+  // 2.0 only: 디버그 → 백업. The one export that keeps keys; restoring the same file changes nothing.
+  await rec('backup.full_roundtrip', async () => {
+    const first = await get('/v1/backup/full-export');
+    const doc = JSON.parse(first?.json || '{}');
+    const restored = await post('/v1/backup/full-import', { json: first?.json || '' });
+    const again = JSON.parse((await get('/v1/backup/full-export'))?.json || '{}');
+    const strip = d => JSON.stringify({ ...d, exported_at: '' });
+    return { type: doc.type, parts: ['settings', 'prompts', 'tts', 'sound'].every(k => doc[k] && typeof doc[k] === 'object'),
+      keyKept: /(?:sk|pst)-parity/.test(JSON.stringify(doc.settings || {})), restored: restored?.ok === true, same: strip(doc) === strip(again) };
+  });
   return transcript;
 }
