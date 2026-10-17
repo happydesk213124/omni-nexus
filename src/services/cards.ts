@@ -68,6 +68,7 @@ import { getConfig, messageBusyKeys, clearMessageRerollStop, isMessageRerollStop
 import {
   cardMetaFromLocation,
   generateFromNaiReplay,
+  keepsOriginalPng,
   locationFieldsForCard,
   readImageLocation,
 } from './generation';
@@ -649,6 +650,17 @@ async function createRerollRevision(
   } catch (err) {
     return { ok: false, error: { code: 'no_meta', message: String((err as Error)?.message || err) } };
   }
+  // A PNG kept as NAI delivered it (원본으로 저장) has no Omni data, but its file name
+  // still names the cast, as it does for the chips: the reroll's references come from there.
+  if (!embeddedCast.length) {
+    try {
+      const { ids } = await shotCastIds(cardId);
+      if (ids.length) {
+        const owner = cleanText((await readImageLocation(cardId)).character_id || row.session_id, 200);
+        embeddedCast = (await resolveCastCharacters(ids, owner)).characters.map(({ scope, id, name }) => ({ scope, id, name }));
+      }
+    } catch { /* castless: the reroll draws without references, as before */ }
+  }
 
   const ov = overrides as Record<string, unknown> | null;
   if (ov && 'main_prompt' in ov) {
@@ -731,7 +743,7 @@ async function createRerollRevision(
     content_hash: cleanText(prevLoc.content_hash || '', 128),
     assistant_preview: cleanText(prevLoc.assistant_preview || meta.assistant_preview || '', ASSISTANT_PREVIEW_LIMIT),
   };
-  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, original: getConfig().card.image_png_original === true, recipe:recipe || replayRequest,characters:replayCast,generatedAt:Date.now()});
+  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, original: keepsOriginalPng(), recipe:recipe || replayRequest,characters:replayCast,generatedAt:Date.now()});
 
   const genMeta = cardMetaFromLocation({ ...meta, ...genMetaExtra }, location, bytes.byteLength);
   // The old card's y position lives under three historical key names; drop all

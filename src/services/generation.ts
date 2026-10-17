@@ -777,6 +777,15 @@ export async function generateImage(
   return { bytes: result.raw_bytes, seed: req.seed || 0, recipe };
 }
 
+/**
+ * 원본으로 저장, for NAI only. A NAI PNG carries its own recipe, so a reroll still
+ * replays it. A ComfyUI PNG carries only its workflow: its recipe exists nowhere but in
+ * the Omni data we embed, so ComfyUI images are always encoded with it.
+ */
+export function keepsOriginalPng(): boolean {
+  return getConfig().card.image_png_original === true && imageBackendKind(getConfig().nai) !== 'comfy';
+}
+
 /** Replay image prompts/settings, with only the seed and current reference inputs changed. */
 export async function generateFromNaiReplay(req: T2iRequest, cast: Array<{id?:string;scope?:string;name?:string}> = []): Promise<GeneratedImage> {
   if (!cleanText(req.model)) throw new Error('이미지 메타에 모델이 없습니다.');

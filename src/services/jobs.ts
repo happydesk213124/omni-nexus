@@ -90,7 +90,7 @@ import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessio
 import { parseWearState } from '../domain/character/wear-state';
 import { shotKeepsComicSlots } from '../domain/comic/page';
 import { fillComicPagesForShots } from './comic';
-import { buildComicGenerationForShot, buildGenerationForShot, buildImageLocation, cardMetaFromLocation, generateImage, isComicShot, readImageLocation } from './generation';
+import { buildComicGenerationForShot, buildGenerationForShot, buildImageLocation, cardMetaFromLocation, generateImage, isComicShot, keepsOriginalPng, readImageLocation } from './generation';
 import { buildCharacterLooksMessages, buildTaggerMessages, collectGenerationAssets, flattenShots } from './tagger';
 import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import {
@@ -1534,7 +1534,7 @@ async function runJob(jobId: string): Promise<void> {
         if (castIds.length) location.cast_ids = castIds;
         await publishImage(cardId, raw, location, {
           qualityPercent: card.image_webp_quality,
-          original: card.image_png_original === true,
+          original: keepsOriginalPng(),
           warmUrl: true,
           recipe,
           characters:(meta.characters || []).map(c=>({scope:String(c.scope || ''),id:String(c.id || ''),name:String(c.name || ''),
