@@ -35,8 +35,34 @@ async function omniReadAnchor() {
   }
   return visible.sort((a,b)=>a.score-b.score)[0] || null;
 }
+// A double-tapped pink slot is the anchor while its image replaces it: the reader is
+// looking at that slot, and a paragraph below it would hold still while the image
+// above it changed height, so the picture itself seemed to jump.
+const OMNI_SLOT_ID=/^[a-zA-Z0-9_-]{1,256}$/;
+async function omniReadSlotAnchor(slot) {
+  if(!slot || !Number.isInteger(slot.index) || !OMNI_SLOT_ID.test(slot.waitId || '') || !OMNI_SLOT_ID.test(slot.cardId || ''))return null;
+  const doc=t.hostDoc || await ue();if(!doc)return null;
+  const screen=await doc.querySelector('.default-chat-screen');if(!screen)return null;
+  const bubble=await screen.querySelector('.risu-chat[data-chat-index="'+slot.index+'"]');
+  const node=bubble && await bubble.querySelector('[data-inray-wait="'+slot.waitId+'"]');if(!node)return null;
+  const [rect,sr]=await Promise.all([node.getBoundingClientRect(),screen.getBoundingClientRect()]);
+  // Off screen: nothing the reader sees moves with it; the usual anchor applies.
+  if(!rect.height || rect.bottom<=sr.top || rect.top>=sr.bottom)return null;
+  return {scope:await omniScrollContext(),index:slot.index,slot,offset:rect.top-sr.top};
+}
+async function omniLocateSlot(anchor) {
+  const doc=t.hostDoc || await ue(),screen=await doc.querySelector('.default-chat-screen');if(!screen)return null;
+  const bubble=await screen.querySelector('.risu-chat[data-chat-index="'+anchor.index+'"]');if(!bubble)return null;
+  // The image once the message is drawn again; the slot until then.
+  const node=await bubble.querySelector('[data-inlay-inline-shot="'+anchor.slot.cardId+'"]') || await bubble.querySelector('[data-inray-wait="'+anchor.slot.waitId+'"]');
+  if(!node)return null;
+  const [rect,sr]=await Promise.all([node.getBoundingClientRect(),screen.getBoundingClientRect()]);
+  if(!rect.height)return null;
+  return {node,rect,sr,error:rect.top-sr.top-anchor.offset};
+}
 async function omniLocateAnchor(anchor) {
   if(anchor.scope!==await omniScrollContext())return null;
+  if(anchor.slot)return omniLocateSlot(anchor);
   const doc=t.hostDoc || await ue(),screen=await doc.querySelector('.default-chat-screen');if(!screen)return null;
   const bubble=await screen.querySelector('.risu-chat[data-chat-index="'+anchor.index+'"]');
   const body=bubble && await bubble.querySelector('.chattext');if(!body)return null;
@@ -55,7 +81,7 @@ async function omniLocateAnchor(anchor) {
 async function omniWithScrollWrite(work,options={}) {
   if(!nxScrollHoldOn() || t.uiOpen)return work();
   const run=async()=>{
-    const epoch=++omniScrollEpoch,anchor=await omniReadAnchor();
+    const epoch=++omniScrollEpoch,anchor=await omniReadSlotAnchor(options.slot) || await omniReadAnchor();
     if(!anchor)return work();
     const doc=t.hostDoc || await ue(),screen=await doc.querySelector('.default-chat-screen');
     let userMoved=false,pointer=false,own=false,dirty=0,observer=null,lastMutation=performance.now();

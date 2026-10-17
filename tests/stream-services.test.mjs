@@ -268,8 +268,15 @@ test('이미지 바로 생성 off: blocks stay as written and are the pink slots
   assert.equal((await tap('b1')).error?.code,'busy','not while its streaming job runs');
   f.api.closeStreamJob('drawing');
   assert.equal(f.host.naiRequests.length,0,'refused taps spend nothing');
+  // The bake write holds scroll on the tapped slot itself.
+  f.api.getConfig().card.scroll_hold=true;const holds=[];
+  globalThis.__INLAY_SCROLL_HOLD__=async(work,options)=>{holds.push(options);await work();};
   const job=await tap('b1');assert.equal(job.accepted,true);
   await f.wait(job.job_id,j=>j.state==='done');
+  delete globalThis.__INLAY_SCROLL_HOLD__;
+  const held=holds.find(o=>o?.slot);
+  assert.ok(held,'the tapped slot is the scroll anchor');
+  assert.equal(held.slot.waitId,'b1');assert.equal(held.slot.index,0);assert.match(held.slot.cardId,/^[a-zA-Z0-9_-]+$/);
   saved=(await f.chat()).message[0].data;
   assert.match(saved,new RegExp(`^${first}\\n\\[\\[@inray::[^\\]]+\\]\\]\\nSecond dialogue`),'the image sits where the block was, in one write: no spinner was ever written');
   assert.doesNotMatch(saved,/inrayspinner/);

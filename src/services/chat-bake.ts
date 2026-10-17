@@ -87,7 +87,7 @@ async function writeChat(
   charIndex: number,
   chatIndex: number,
   chat: Record<string, unknown>,
-  opts: { refreshAssets?: boolean; messageIndex: number; previousBody: string },
+  opts: { refreshAssets?: boolean; messageIndex: number; previousBody: string; scrollSlot?: { waitId: string; cardId: string } },
 ): Promise<void> {
   const work = async () => {
     // Character asset registration refreshes host lookup without toggling modules.
@@ -106,9 +106,11 @@ async function writeChat(
     });
   };
   const bridge = (globalThis as typeof globalThis & {
-    __INLAY_SCROLL_HOLD__?: (work: () => Promise<void>, options?: {requireMutation:boolean}) => Promise<void>;
+    __INLAY_SCROLL_HOLD__?: (work: () => Promise<void>, options?: {requireMutation:boolean; slot?: {index:number; waitId:string; cardId:string}}) => Promise<void>;
   }).__INLAY_SCROLL_HOLD__;
-  if (getConfig().card?.scroll_hold && typeof bridge === 'function') await bridge(work,{requireMutation:true});
+  // A tapped slot holds its own place: the image that replaces it stays where the reader looked.
+  const slot = opts.scrollSlot ? { slot: { index: opts.messageIndex, ...opts.scrollSlot } } : {};
+  if (getConfig().card?.scroll_hold && typeof bridge === 'function') await bridge(work,{requireMutation:true,...slot});
   else await work();
   const repaint = Reflect.get(globalThis, '__OMNI_REPAINT_FANS__');
   if (typeof repaint === 'function') void Promise.resolve(repaint()).catch(() => {});
@@ -410,7 +412,7 @@ export async function clearJobSpinners(opts:ReturnType<typeof jobChatTarget> & {
 
 
 type MessageTarget = { charIndex: number; chatIndex: number; messageIndex: number; hostMessageId?: string };
-async function rewriteMessage(target: MessageTarget, change: (body: string) => string, expected?: string): Promise<boolean> {
+async function rewriteMessage(target: MessageTarget, change: (body: string) => string, expected?: string, scrollSlot?: { waitId: string; cardId: string }): Promise<boolean> {
   const loaded = await loadTargetChat(target.charIndex, target.chatIndex); if (!loaded) return false;
   const msg = chatMessageList(loaded.chat)[target.messageIndex]; if (!msg) return false;
   if (target.hostMessageId && String(msg.chatId || msg.id || '') !== target.hostMessageId) throw new Error('Message identity changed');
@@ -419,7 +421,7 @@ async function rewriteMessage(target: MessageTarget, change: (body: string) => s
   const next = change(previousBody);
   if (next === previousBody) return true;
   setMessageBody(msg, next);
-  await writeChat(loaded.host, target.charIndex, target.chatIndex, loaded.chat, { messageIndex: target.messageIndex, previousBody });
+  await writeChat(loaded.host, target.charIndex, target.chatIndex, loaded.chat, { messageIndex: target.messageIndex, previousBody, scrollSlot });
   return true;
 }
 
@@ -463,7 +465,7 @@ export async function writeWaitImage(target: MessageTarget & { waitId: string; c
   const ok = await rewriteMessage(target, body => {
     found = !!waitTokenDimensions(body, target.waitId);
     return found ? replaceWaitToken(body, target.waitId, token) : body;
-  });
+  }, undefined, { waitId: target.waitId, cardId: target.cardId });
   return ok && found;
 }
 
