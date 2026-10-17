@@ -485,6 +485,8 @@ export interface CharacterRecord {
    * Assigned once from name+aliases+original; a rename never changes it.
    */
   cast_id?: string;
+  /** 비활성화: kept in the roster, left out of tagging (no injection, no merge writes). */
+  disabled?: boolean;
   /** Convenience field the UI reads: original + appearance + attire + bottoms + accessories. */
   tags?: string;
   [key: string]: unknown;

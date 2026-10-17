@@ -1,6 +1,6 @@
 import { prepareCharacterUpsert, type UpsertOptions } from '../domain/character/save-record';
 import { syncGenderIntoAppearance } from '../domain/character/tags';
-import { mergeSessionAndGlobalRoster } from '../domain/character/roster';
+import { activeRoster, mergeSessionAndGlobalRoster } from '../domain/character/roster';
 import { readCharacterRoster, mutateCharacterRoster } from '../storage/character-roster';
 import { givenNameDuplicates, mergedGivenNames } from '../domain/character/save-identity';
 import { appendDuplicateCostumes, describeCharacterCostumes } from '../domain/character/save-costumes';
@@ -163,6 +163,7 @@ function characterRosterView(stored: CharacterRecord[], scope: string): Characte
     if (penisSize) rec.penis_size = penisSize;
     const castId = sanitizeCastId(row.cast_id);
     if (castId) rec.cast_id = castId;
+    if (row.disabled === true) rec.disabled = true;
     rec.tags = fullTags(rec);
     const cid = cleanText(rec.id, 200);
     if (cid) {
@@ -296,7 +297,8 @@ export async function loadTaggerRoster(args: TaggerRosterArgs = {}): Promise<Cha
   const sourceSessionIds = args.sourceSessionIds ?? [];
   const roster = await rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
   if (!roster.length) return roster;
-  return absorbAliasesOntoLatinPeers({ sessionId, unifiedSessionId, characterId, sourceSessionIds });
+  // 비활성화 characters are never offered to the tagger.
+  return activeRoster(await absorbAliasesOntoLatinPeers({ sessionId, unifiedSessionId, characterId, sourceSessionIds }));
 }
 
 /** Characters the tagger would list as "Characters in this message". */
@@ -586,6 +588,10 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
 
   let roster = await readRoster();
+  // 비활성화: a tagged person who is one of them is neither saved nor filled in,
+  // and their shots keep the tagger's own tags (they are not in the roster returned).
+  const off = roster.filter(row => row.disabled === true);
+  const isOff = (name: unknown): boolean => off.length > 0 && !!resolveCharacter(cleanText(name, 200), off);
   // Same gate as roster reads: priority off must not see sibling chats as "already exists".
   const pool = scanLinkedChatsForRosterMerge(getConfig()?.card?.unified_chat_priority, sourceSessionIds)
     ? await listMergedSessionCharacters([writeSessionId, ...sourceSessionIds])
@@ -616,7 +622,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
   });
   for (const char of shotChars || []) {
     const name = cleanText(char.name, 200);
-    if (!name) continue;
+    if (!name || isOff(name)) continue;
     const key = normalizeAlias(name);
     const shotApp = joinTags(char.label, char.age, char.appearance, char.body);
     const shotAttire = cleanText(char.attire || '');
@@ -653,7 +659,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
 
   for (const raw of newList) {
     const rec = normalizeCharacterRecord(raw);
-    if (!rec) continue;
+    if (!rec || isOff(rec.name)) continue;
     const hinted = originalFromHint(raw) || originalFromHint(rec);
     if (hinted) rec.original = hinted;
     const weightMap = getLastAssetWeightMap();
@@ -809,7 +815,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
   await seedCharRefsFromLooks(seededRoster, characterId).catch((err) => {
     dbg('char_ref.seed.merge.fail', { message: String((err as Error)?.message || err) }, 'warn');
   });
-  return readRoster();
+  return activeRoster(await readRoster());
 }
 
 // ── one-time migrations ────────────────────────────────────────────────────

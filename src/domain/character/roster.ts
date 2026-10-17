@@ -164,6 +164,11 @@ export function mergeCharactersByAlias(
 }
 
 /** Characters whose trigger aliases appear in the text, in roster order. */
+/** Rows the tagger may use: 비활성화 ones are left out. */
+export function activeRoster<T extends { disabled?: unknown }>(rows: T[]): T[] {
+  return rows.filter(row => row.disabled !== true);
+}
+
 export function matchCharactersInText(
   text: unknown,
   characters: CharacterInput[] | null | undefined,

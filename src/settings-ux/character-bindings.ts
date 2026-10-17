@@ -1,4 +1,5 @@
 import { uuid } from '../core/util/text';
+import { openRosterCommand, type RosterCommandActions } from './roster-command';
 import { bindCharacterPaste, selectPasteCharacter } from './character-paste';
 import type { CharacterRecord } from '../core/types';
 import { mutateCharacterRoster } from '../storage/character-roster';
@@ -46,7 +47,9 @@ export function bindCharacterSheet(): void {
   const penis = sheet.querySelector<HTMLSelectElement>('[data-char-penis-size]');
   if (penis && ![...penis.options].some(o => o.value === '[base]')) penis.add(new Option('[base]', '[base]'));
   let current: HTMLElement | undefined;
-  const mirrors = [...sheet.querySelectorAll<HTMLElement>('*')].flatMap(element => {
+  // Filled in below, once tiles and deletion exist; tile clicks only read it.
+  const selection = { on: false, toggle: (_card: HTMLElement, _tile: HTMLElement) => {}, clear: () => {} };
+  const mirrors =[...sheet.querySelectorAll<HTMLElement>('*')].flatMap(element => {
     const attr = element.getAttributeNames().find(name => name.startsWith('data-char-'));
     return attr ? [{ element, selector: `[${attr}]` }] : [];
   });
@@ -114,6 +117,7 @@ export function bindCharacterSheet(): void {
     refresh();
   };
   const selectScope = (scope: string) => {
+    if (scope !== selectedScope) selection.clear();
     selectedScope = scope;
     bar.dataset.uxSelectedScope = scope;
     bar.querySelectorAll<HTMLElement>('[data-ux-scope]').forEach(button => button.classList.toggle('on', button.dataset.uxScope === scope));
@@ -165,6 +169,8 @@ export function bindCharacterSheet(): void {
     nameField?.addEventListener('change', paintName);
     paintName();
     tile.addEventListener('click', () => {
+      // Selection mode: a tap picks or unpicks, it never opens the editor.
+      if (selection.on) { selection.toggle(card, tile); return; }
       const again = current === card;
       choose(card);
       if (again && !document.getElementById('nx-char-sheet')?.classList.contains('open')) document.getElementById('nx-char-edit-btn')?.click();
@@ -336,7 +342,128 @@ export function bindCharacterSheet(): void {
     } catch(error) {window.alert(String(error));} finally {button.disabled=false;}
   });
   if(empty) empty.textContent='등록된 캐릭터가 없습니다.';
+  bindSelection({ cards: () => cards, scope: () => selectedScope, removeCharacters, selection });
   document.getElementById('nx-char-search')?.dispatchEvent(new Event('input', {bubbles:true}));
+}
+
+type Bridge = typeof globalThis & {
+  __OMNI_FLUSH_CHARACTERS__?: () => Promise<void>;
+  __OMNI_CHARACTER_SCOPE__?: () => string;
+  __OMNI_SETTINGS_ACTIONS__?: RosterCommandActions;
+};
+const tileFor = (card: HTMLElement) => [...document.querySelectorAll<HTMLElement>('[data-ux-character-tile]')]
+  .find(tile => tile.dataset.uxCharacterScope === card.dataset.charScope && tile.dataset.uxCharacterTile === card.dataset.charId);
+/** The roster a card is saved in: the global one, or its bot's. */
+const rosterOf = (card: HTMLElement | undefined, scope: string): string => scope === 'global'
+  ? '__global__' : card?.dataset.charRefScope || (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '';
+
+/** 비활성화 shows on its tile: dimmed, and said in its title. */
+async function paintDisabled(cards: HTMLElement[]): Promise<void> {
+  for (const scope of ['session', 'global']) {
+    const scoped = cards.filter(card => card.dataset.charScope === scope);
+    const roster = rosterOf(scoped[0], scope);
+    if (!roster) continue;
+    const off = new Set((await listCharacters(roster).catch(() => [])).filter(row => row.disabled === true).map(row => row.id));
+    for (const card of scoped) {
+      const tile = tileFor(card), name = tile?.querySelector('[data-character-label]')?.textContent || '';
+      tile?.classList.toggle('nx-off', off.has(card.dataset.charId || ''));
+      if (tile) tile.title = off.has(card.dataset.charId || '') ? `${name} · 비활성화 (태깅에서 빠짐)` : name;
+    }
+  }
+}
+
+/**
+ * 선택 모드: tiles are picked by tapping, then one bar acts on all of them:
+ * delete, 비활성화/활성화, an LLM command, or a copy/move to the other roster.
+ */
+function bindSelection(ctx: {
+  cards: () => HTMLElement[];
+  scope: () => string;
+  removeCharacters: (targets: HTMLElement[]) => Promise<void>;
+  selection: { on: boolean; toggle: (card: HTMLElement, tile: HTMLElement) => void; clear: () => void };
+}): void {
+  // Beside the search, not in the dock: the dock is a fixed six-cell grid.
+  const search = document.getElementById('nx-char-search');
+  const anchor = document.getElementById('nx-char-create-llm');
+  if (!search || !anchor || document.getElementById('nx-char-select')) return;
+  const toggleButton = document.createElement('button');
+  toggleButton.type = 'button'; toggleButton.id = 'nx-char-select'; toggleButton.className = anchor.className; toggleButton.textContent = '선택';
+  search.after(toggleButton);
+  const bar = document.createElement('div');
+  bar.id = 'nx-char-select-bar'; bar.hidden = true; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '고른 캐릭터');
+  (search.closest('.preset-search') || search).after(bar);
+  const picked = new Set<HTMLElement>();
+  const other = () => ctx.scope() === 'global' ? '이 봇으로' : '전역으로';
+  bar.innerHTML = '<span data-sel-count></span><button type="button" class="dock-btn" data-sel="all">전체 선택</button>'
+    + '<button type="button" class="dock-btn" data-sel="off">비활성화</button><button type="button" class="dock-btn" data-sel="on">활성화</button>'
+    + '<button type="button" class="dock-btn" data-sel="llm">LLM 명령</button><button type="button" class="dock-btn" data-sel="copy"></button>'
+    + '<button type="button" class="dock-btn" data-sel="move"></button><button type="button" class="dock-btn" data-sel="delete">삭제</button>'
+    + '<button type="button" class="dock-btn" data-sel="done">완료</button>';
+  const chosen = () => [...picked].filter(card => card.isConnected && card.dataset.charScope === ctx.scope());
+  const paint = () => {
+    const n = chosen().length;
+    bar.querySelector('[data-sel-count]')!.textContent = `${n}명 선택`;
+    bar.querySelector('[data-sel="copy"]')!.textContent = `${other()} 복사`;
+    bar.querySelector('[data-sel="move"]')!.textContent = `${other()} 이동`;
+    // A run locks every button; this is also what unlocks them, 전체 선택·완료 included.
+    for (const button of bar.querySelectorAll<HTMLButtonElement>('[data-sel]')) {
+      button.disabled = !['all', 'done'].includes(button.dataset.sel || '') && n === 0;
+    }
+    toggleButton.classList.toggle('on', ctx.selection.on);
+    toggleButton.setAttribute('aria-pressed', String(ctx.selection.on));
+  };
+  const setTile = (card: HTMLElement, on: boolean) => {
+    const tile = tileFor(card);
+    tile?.classList.toggle('nx-picked', on);
+    tile?.setAttribute('aria-checked', String(on));
+  };
+  ctx.selection.toggle = (card) => { const on = !picked.has(card); if (on) picked.add(card); else picked.delete(card); setTile(card, on); paint(); };
+  ctx.selection.clear = () => { for (const card of picked) setTile(card, false); picked.clear(); paint(); };
+  const setMode = (on: boolean) => { ctx.selection.on = on; bar.hidden = !on; if (!on) ctx.selection.clear(); paint(); };
+  toggleButton.addEventListener('click', () => setMode(!ctx.selection.on));
+  const run = async (work: (cards: HTMLElement[]) => Promise<void>) => {
+    const cards = chosen(); if (!cards.length) return;
+    bar.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    try { await work(cards); } catch (error) { window.alert(String((error as Error)?.message || error)); }
+    finally { paint(); }
+  };
+  const refresh = () => document.getElementById('nx-refresh-chars')?.click();
+  bar.addEventListener('click', event => {
+    const action = (event.target as Element).closest<HTMLElement>('[data-sel]')?.dataset.sel;
+    if (!action) return;
+    if (action === 'done') { setMode(false); return; }
+    if (action === 'all') { for (const card of ctx.cards()) if (card.dataset.charScope === ctx.scope() && !tileFor(card)?.hidden) { picked.add(card); setTile(card, true); } paint(); return; }
+    if (action === 'delete') void run(async cards => {
+      if (!window.confirm(`고른 ${cards.length}명을 삭제할까요?`)) return;
+      await ctx.removeCharacters(cards); for (const card of cards) picked.delete(card);
+    });
+    if (action === 'off' || action === 'on') void run(async cards => {
+      const roster = rosterOf(cards[0], ctx.scope()), ids = new Set(cards.map(card => card.dataset.charId || ''));
+      await (globalThis as Bridge).__OMNI_FLUSH_CHARACTERS__?.();
+      await mutateCharacterRoster(roster, rows => rows.map(row => !ids.has(row.id) ? row
+        : action === 'off' ? { ...row, disabled: true } : Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'disabled')) as CharacterRecord));
+      await paintDisabled(ctx.cards());
+    });
+    if (action === 'llm') void run(async cards => {
+      const actions = (globalThis as Bridge).__OMNI_SETTINGS_ACTIONS__;
+      if (!actions?.characterTarget || !actions.request) throw new Error('설정 연결을 찾을 수 없습니다.');
+      openRosterCommand(actions, rosterOf(cards[0], ctx.scope()), cards.map(card => card.dataset.charId || ''),
+        cards.map(card => card.querySelector<HTMLInputElement>('[data-char-name]')?.value || ''));
+    });
+    if (action === 'copy' || action === 'move') void run(async cards => {
+      const from = rosterOf(cards[0], ctx.scope());
+      const to = ctx.scope() === 'global' ? (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '' : '__global__';
+      if (!from || !to) throw new Error('옮길 캐릭터 목록을 찾을 수 없습니다.');
+      await (globalThis as Bridge).__OMNI_FLUSH_CHARACTERS__?.();
+      const ids = new Set(cards.map(card => card.dataset.charId || ''));
+      const rows = (await listCharacters(from)).filter(row => ids.has(row.id));
+      for (const row of rows) await upsertCharacter(to, row);
+      if (action === 'move') await mutateCharacterRoster(from, list => list.filter(row => !ids.has(row.id)));
+      setMode(false); refresh();
+    });
+  });
+  paint();
+  void paintDisabled(ctx.cards());
 }
 
 /** Open the shared editor by stable identity, never by tile position. */

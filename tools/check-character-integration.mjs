@@ -261,17 +261,22 @@ try {
      {name:'하진',aliases:['하진','Hajin'],given_name:'하진',given_name_variants:['Hajin'],appearance:'mature female',hair_color:'brown hair',hair_style:'side ponytail',eye_color:'brown eyes',attire:'white shirt',bottoms:'black pants'},
      {name:'민지',aliases:['민지','Minji'],given_name:'민지',given_name_variants:['Minji'],appearance:'girl',hair_color:'blue hair',hair_style:'long hair',eye_color:'blue eyes',attire:'gray hoodie',bottoms:'jeans'},
    ]};
-   risuai.runLLMModel=async({messages})=>{descriptionCalls.push(messages);return {success:true,content:JSON.stringify(descriptionReply)}};
+   // 「LLM한테 시키기」 asks twice: the plan, then (on 적용) character creation for the adds.
+   globalThis.planReply={edit:[],delete:[],add:[{name:'하진',description:'중년 여성, 갈색 머리'},{name:'민지',description:'파란 머리, 회색 후드'}]};
+   risuai.runLLMModel=async({messages})=>{descriptionCalls.push(messages);const plan=messages.some(m=>String(m.content).includes('# Roster command'));return {success:true,content:JSON.stringify(plan?planReply:descriptionReply)}};
    await __INLAY_NATIVE__.fetch('/v1/settings',{method:'PUT',body:{llm:{source:'emotion'},llm_roles:{asset_char:{source:'emotion',follow_main:true}},card:{llm_reverse_bar:'off',llm_tag_cal:false}}});
  });
  await page.locator('#nx-char-create-llm').click();
- await page.locator('#nx-char-create-description').fill('하진: 중년 여성, 갈색 머리와 갈색 눈, 사이드테일, 흰 셔츠와 검은 바지.\n민지: 파란 머리와 파란 눈, 긴 생머리, 회색 후드와 청바지.');
- await page.locator('[data-create-run]').click();
- await page.waitForFunction(()=>document.querySelector('[data-create-status]')?.textContent.includes('2명 추가됨'));
- assert.equal(await page.evaluate(()=>descriptionCalls.length),1);
+ await page.locator('[data-rc-text]').fill('하진: 중년 여성, 갈색 머리와 갈색 눈, 사이드테일, 흰 셔츠와 검은 바지.\n민지: 파란 머리와 파란 눈, 긴 생머리, 회색 후드와 청바지.');
+ await page.locator('[data-rc-preview]').click();
+ await page.waitForFunction(()=>/추가 · 2/.test(document.querySelector('[data-rc-plan]')?.textContent||''));
+ assert.equal(await page.locator('[data-ux-character-tile]').filter({hasText:'하진'}).count(),0,'a preview adds nobody');
+ await page.locator('[data-rc-apply]').click();
+ await page.waitForFunction(()=>/적용했습니다.*추가 2/.test(document.querySelector('[data-rc-plan]')?.textContent||''));
+ assert.equal(await page.evaluate(()=>descriptionCalls.length),2,'one plan, one creation');
  assert.equal(await page.locator('[data-ux-character-tile]').filter({hasText:'하진'}).count(),1);
  assert.equal(await page.locator('[data-ux-character-tile]').filter({hasText:'민지'}).count(),1);
- await page.locator('[data-create-close]').click();
+ await page.locator('[data-rc-close]').click();
  await page.locator('[data-ux-character-tile]').filter({hasText:'하진'}).click();
  if(!await page.locator('#nx-char-edit-body').isVisible())await page.locator('#nx-char-edit-btn').click();
  assert.equal(await page.locator('#nx-char-edit-body [data-char-hair-style]').inputValue(),'side ponytail');
@@ -281,15 +286,17 @@ try {
  await page.locator('[data-risu-value="__global__"]').click();
  await page.waitForFunction(()=>document.getElementById('nx-char-scope-bar')?.dataset.uxSelectedScope==='global');
  await page.locator('#nx-risu-pick-close').press('Enter');
- await page.evaluate(()=>{descriptionReply={new_characters:[{name:'수연',aliases:['수연','Suyeon'],appearance:'girl',hair_color:'green hair',hair_style:'long hair',eye_color:'green eyes',attire:'white shirt'}]}});
+ await page.evaluate(()=>{planReply={edit:[],delete:[],add:[{name:'수연',description:'초록 머리'}]};descriptionReply={new_characters:[{name:'수연',aliases:['수연','Suyeon'],appearance:'girl',hair_color:'green hair',hair_style:'long hair',eye_color:'green eyes',attire:'white shirt'}]}});
  await page.locator('#nx-char-create-llm').click();
- await page.locator('#nx-char-create-description').fill('수연: 초록 머리와 초록 눈, 긴 머리, 흰 셔츠.');
- await page.locator('[data-create-run]').click();
- await page.waitForFunction(()=>document.querySelector('[data-create-status]')?.textContent.includes('1명 추가됨'));
+ await page.locator('[data-rc-text]').fill('수연: 초록 머리와 초록 눈, 긴 머리, 흰 셔츠.');
+ await page.locator('[data-rc-preview]').click();
+ await page.waitForFunction(()=>/추가 · 1/.test(document.querySelector('[data-rc-plan]')?.textContent||''));
+ await page.locator('[data-rc-apply]').click();
+ await page.waitForFunction(()=>/적용했습니다.*추가 1/.test(document.querySelector('[data-rc-plan]')?.textContent||''));
  assert.equal(await page.locator('[data-ux-character-tile][data-ux-character-scope="global"]').filter({hasText:'수연'}).count(),1);
  const shared=await page.evaluate(async()=>(await __INLAY_NATIVE__.fetch('/v1/characters?session_id=__global__',{method:'GET'})).characters);
  assert.equal(shared.find(row=>row.name==='수연')?.hair_color,'green hair');
- await page.locator('[data-create-close]').click();
+ await page.locator('[data-rc-close]').click();
  await page.screenshot({path:'.test-build/character-integration-mobile.png',fullPage:true});
  assert.deepEqual(errors,[]);
  console.log('Character integration: description batch creation in session/global scopes, generated look persistence, incremental adds, draft preservation, image/text paste, module assets and both options passed.');

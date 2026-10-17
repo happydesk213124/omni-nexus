@@ -23,7 +23,7 @@ export interface CharCommandRewriteBody {
 }
 
 /** The bot's own lorebook when the character belongs to one; else what Risu has open. */
-async function loreFor(scope: string) {
+export async function characterLoreFor(scope: string) {
   const own = scope && scope !== GLOBAL_SCOPE ? await fetchCharacterLorebookEntries(scope).catch(() => []) : [];
   return own.length ? own : fetchHostLorebookEntries();
 }
@@ -43,7 +43,7 @@ export async function commandRewriteCharacter(
   const instruction = cleanText(body.instruction, 4000);
   const system = stripCbs(await getPrompt('command_char_edit'));
   const reference = body.xnai || body.lore
-    ? characterLoreReference(await loreFor(cleanText(body.scope, 200)), characterTriggers(current), { xnai: body.xnai === true, lore: body.lore === true })
+    ? characterLoreReference(await characterLoreFor(cleanText(body.scope, 200)), characterTriggers(current), { xnai: body.xnai === true, lore: body.lore === true })
     : {};
   const messages: LlmMessage[] = [
     { role: 'system', content: system || 'Rewrite character tags. Return JSON only.' },

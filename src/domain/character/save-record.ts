@@ -126,6 +126,10 @@ export function prepareCharacterUpsert(
   }
 
   const now = updatedAt;
+  // 비활성화 rides every save like the hashes: a form save that never sends it keeps it.
+  const disabled = mergedDuplicate ? rec.disabled === true : hasOwn(raw, 'disabled')
+    ? (raw as Record<string, unknown>).disabled === true
+    : rec.disabled === true || sameRow?.disabled === true;
   const gender = normalizeGender(rec.gender ?? rec.sex);
   const appearance = syncGenderIntoAppearance(rec.appearance, gender);
   const saved: CharacterRecord = {
@@ -169,6 +173,7 @@ export function prepareCharacterUpsert(
     cast_id: mergedDuplicate ? sanitizeCastId(rec.cast_id) : hasOwn(raw, 'cast_id')
       ? sanitizeCastId((raw as Record<string, unknown>).cast_id)
       : sanitizeCastId(rec.cast_id || sameRow?.cast_id || dup?.cast_id),
+    ...(disabled ? { disabled: true } : {}),
     updated_at: now,
   } as CharacterRecord;
   const replacedIds = new Set([selfId, rec.id, ...duplicates.map(row => row.id)]);

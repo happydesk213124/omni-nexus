@@ -10,7 +10,7 @@ export const CHARACTER_ROSTER_LORE = 'omni.nexus.data.global';
 type Row = Record<string, unknown>;
 const object = (v: unknown): Row | null => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Row : null;
 type Target = {index:number; id:string; scope:string};
-const fields = new Set('id name original aliases surname given_name surname_variants given_name_variants appearance attire bottoms accessories costumes active_costume attire_locked bottoms_locked accessories_locked priority gender hair_color hair_style eye_color height age penis_size schema_version ref_hash example_hash cast_id updated_at'.split(' '));
+const fields = new Set('id name original aliases surname given_name surname_variants given_name_variants appearance attire bottoms accessories costumes active_costume attire_locked bottoms_locked accessories_locked priority gender hair_color hair_style eye_color height age penis_size schema_version ref_hash example_hash cast_id disabled updated_at'.split(' '));
 function clean(row: Row): CharacterRecord {
   const out = Object.fromEntries(Object.entries(row).filter(([key])=>fields.has(key)));
   if (!out.id || typeof out.id !== 'string' || typeof out.name !== 'string') throw new Error('Invalid character roster record');

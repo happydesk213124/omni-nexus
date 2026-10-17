@@ -26,6 +26,7 @@ import { getConfig, getPresetVibePreviewUrl } from '../services/context';
 import { readImageHistory, pinImageRevision, deleteImageRevision } from '../services/image-history';
 import * as cards from '../services/cards';
 import * as characters from '../services/characters';
+import * as rosterCommand from '../services/roster-command';
 import * as diagnostics from '../services/diagnostics';
 import * as gallery from '../services/gallery';
 import * as generation from '../services/generation';
@@ -545,6 +546,14 @@ const WRITE_ROUTES: readonly Route[] = [
   {
     match: exact('/v1/characters/import-fill'),
     handler: async ({ body }) => ok(await charImport.runImportFill(body)),
+  },
+  {
+    match: exact('/v1/characters/command-plan'),
+    handler: async ({ body }) => ok(await rosterCommand.planRosterCommand(body)),
+  },
+  {
+    match: exact('/v1/characters/command-apply'),
+    handler: async ({ body }) => ok(await rosterCommand.applyRosterCommand(body)),
   },
   {
     match: exact('/v1/characters/create-from-description'),
