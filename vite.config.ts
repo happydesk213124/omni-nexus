@@ -9725,6 +9725,7 @@ const VENDOR_INLINE_SAVE_PATCH =
       inline_chat_dom_radius: Math.max(3, Math.min(20, Math.round(Ne(N("nx-inline-dom-radius"), 4)) || 4)),
       progress_toast: ee("nx-progress-toast"),
       image_webp_quality: document.getElementById("nx-image-webp-quality") ? Math.min(100, Math.max(1, Number(N("nx-image-webp-quality")) || 90)) : (t.backendSettings?.card?.image_webp_quality ?? 90),
+      image_png_original: document.getElementById("nx-image-png-original") ? ee("nx-image-png-original") : t.backendSettings?.card?.image_png_original === true,
       image_done_sound: document.getElementById("nx-image-done-sound") ? N("nx-image-done-sound") !== "off" : !!t.backendSettings?.card?.image_done_sound,
       image_done_sound_type: document.getElementById("nx-image-done-sound") && N("nx-image-done-sound") !== "off" ? N("nx-image-done-sound") : (t.backendSettings?.card?.image_done_sound_type || "ding"),
       toast_anchor: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeToastAnchor == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeToastAnchor(N("nx-toast-anchor")) : String(N("nx-toast-anchor") || "tc")),

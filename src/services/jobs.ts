@@ -1534,6 +1534,7 @@ async function runJob(jobId: string): Promise<void> {
         if (castIds.length) location.cast_ids = castIds;
         await publishImage(cardId, raw, location, {
           qualityPercent: card.image_webp_quality,
+          original: card.image_png_original === true,
           warmUrl: true,
           recipe,
           characters:(meta.characters || []).map(c=>({scope:String(c.scope || ''),id:String(c.id || ''),name:String(c.name || ''),

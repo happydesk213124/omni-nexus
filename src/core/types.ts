@@ -273,6 +273,8 @@ export interface CardSettings {
   toast_anchor?: 'tl' | 'bl' | 'tr' | 'br' | 'tc';
   /** Play a one-shot completion sound when an image generation job completes. */
   image_webp_quality?: number;
+  /** Keep NAI's PNG as delivered: no decode, no WebP, no embedded generation data. */
+  image_png_original?: boolean;
   nai_auto_upscale?: boolean;
   image_done_sound?: boolean;
   image_done_sound_type?: 'ding' | 'soft' | 'bell' | 'loud';

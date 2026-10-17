@@ -162,6 +162,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-stream-inline-autogen', 'stream_inline_autogen', true],
     ['nx-omni-helper', 'omni_helper_prompt', false],
     ['nx-speech-huge-text', 'speech_huge_text', false],
+    ['nx-image-png-original', 'image_png_original', false],
     ['nx-auto-gen-char-limit-on', 'auto_gen_char_limit_enabled', false],
   ] as const) {
     out.querySelector<HTMLInputElement>('#' + id)?.toggleAttribute('checked', card[key] == null ? defaultOn : Boolean(card[key]));

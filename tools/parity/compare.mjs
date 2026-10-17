@@ -481,6 +481,9 @@ function expectedAssetChange(a,b,at) {
   // and speech.bubble_on_caption asserts the weighted tags on the wire.
   if (/\.value\.(?:settings|json)\.card\.speech_bubble_weight$/.test(at)) return a === undefined && b === 1;
   if (/\.value\.(?:settings|json)\.card\.speech_huge_text$/.test(at)) return a === undefined && b === false;
+  // 원본으로 저장 is opt-in; settings.image_output asserts its save and export, and
+  // tests/image-publish-preview asserts the PNG is stored and previewed untouched.
+  if (/\.value\.(?:settings|json)\.card\.image_png_original$/.test(at)) return a === undefined && b === false;
   // 명령수정 lb-xnai / 로어북 참조 switches are opt-in; tests/char-command-refs and the
   // stream-services 명령수정 test assert their save and what they send.
   if (/\.value\.(?:settings|json)\.card\.char_command_(?:xnai|lore)$/.test(at)) return a === undefined && b === false;
@@ -681,7 +684,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  * keyed by step name.
  */
 const NEW_ONLY_STEPS = new Map([
-  ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale persistence failed'],
+  ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale/원본 저장 persistence failed'],
   ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],

@@ -136,13 +136,13 @@ export async function runScenario(N, handles) {
   await rec('settings.image_output', async () => {
     const initial=(await get('/v1/settings')).settings.card;
     if (initial.image_webp_quality === undefined) return {unsupported:true};
-    await post('/v1/settings',{card:{image_webp_quality:73,nai_auto_upscale:true}});
+    await post('/v1/settings',{card:{image_webp_quality:73,nai_auto_upscale:true,image_png_original:true}});
     const saved=(await get('/v1/settings')).settings.card;
     const exported=JSON.parse((await get('/v1/settings/export')).json).card;
-    await post('/v1/settings',{card:{image_webp_quality:90,nai_auto_upscale:false}});
-    return {defaults:initial.image_webp_quality===90 && initial.nai_auto_upscale===false,
-      saved:saved.image_webp_quality===73 && saved.nai_auto_upscale===true,
-      exported:exported.image_webp_quality===73 && exported.nai_auto_upscale===true};
+    await post('/v1/settings',{card:{image_webp_quality:90,nai_auto_upscale:false,image_png_original:false}});
+    return {defaults:initial.image_webp_quality===90 && initial.nai_auto_upscale===false && initial.image_png_original===false,
+      saved:saved.image_webp_quality===73 && saved.nai_auto_upscale===true && saved.image_png_original===true,
+      exported:exported.image_webp_quality===73 && exported.nai_auto_upscale===true && exported.image_png_original===true};
   });
   await rec('cards.upscale_missing', () => post('/v1/cards/not-existing/upscale', {}));
   await rec('settings.studio_coords_visible', async () => {
