@@ -50,6 +50,26 @@ V5 natural: call the viewpoint person "the viewer" (e.g. the viewer's hand reach
 
 type Example = [id: string, name: string, text: string];
 const EXAMPLES: Example[] = [
+  // Supplied by the user verbatim as a general quality pass.
+  ['quality', '퀄리티 향상', `1 Dialogue: Korean, ≤6 chars, fit context
+2 Continuity: keep pose/sex position/location(bed) across shots; no random stand/sit jumps
+3 Main prompt (natural language): precisely describe layout, poses, hand positions, actions, camera angle like manual rendering. Camera angle/view (upper body, dutch angle, from above...) in BOTH main & char prompts. Vary angles, pick exact one needed (high/low). Face-only/close-up needed -> close-up composition. Heart eyes -> "heart-shaped pupils" + more detailed expression
+4 Char tags:
+-Appearance: MUST hair_color+hair_style (infer if unknown, e.g. blue clothes->blue hair). NEVER expressions here
+-Expression/gaze/pose -> action (e.g. "looking at brown hair boy")
+-Mostly upper body -> ALWAYS add 2::upper body:: to action
+-Register all new chars/animals/creatures/monsters
+-Original: Danbooru "character (series)"
+5 Contact:
+-Source: performer
+-Target: receiver; EXACT same English action tag as Source (no passive/names e.g. "being sucked")
+-Mutual: both do same action simultaneously
+-Expression/gaze/posture separate in action; no unmentioned actions
+6 NSFW: position+NSFW tags+positions -> mutual; continue positions from prior shots; insertion -> 'deep penetration'; facing -> 'face to face'
+7 Structure:
+-Distribute 'line' (L12, L15...) evenly across scenes, no one-side bias
+-Location precise (e.g. "on bed") to prevent accidental standing
+-Keep char coords well apart (think real hitboxes); too close -> tags overlap -> malformed chars`],
   ['pov', 'POV · 1인칭 시점', `[POV]
 ${POV_CORE}`],
   ['pov-touch', 'POV · 손과 스킨십', `[POV · hands and touch]

@@ -31,6 +31,12 @@ try {
   const select = page.locator('#nx-anp-select'), note = page.locator('#nx-prompt-author_note');
   await page.waitForFunction(() => document.querySelectorAll('#nx-anp-select optgroup[label="예제"] option').length >= 6);
   assert.equal(await page.locator('#nx-anp-delete').isDisabled(), true, 'nothing picked, nothing to delete');
+  // The shipped note is always there to go back to, and the untouched note already is it.
+  assert.equal(await page.locator('#nx-anp-select optgroup[label="예제"] option').first().textContent(), '기존 노트 (기본값)');
+  assert.equal(await select.inputValue(), 'example-default', 'an untouched note shows as the shipped one');
+  const shipped = await note.inputValue();
+  assert.ok(shipped.trim().length > 0);
+  assert.ok(await page.locator('#nx-anp-select option[value="example-quality"]').count() === 1, '퀄리티 향상 is listed');
 
   // A hand-written note is not in any preset: replacing it asks first.
   await note.fill('내가 쓴 노트');
@@ -78,5 +84,8 @@ try {
   // Phone width: the bar stays inside the block.
   const fits = await page.evaluate(() => { const bar = document.getElementById('nx-author-note-presets').getBoundingClientRect(); return bar.right <= document.documentElement.clientWidth + 1; });
   assert.ok(fits, 'preset bar fits a 360px screen');
-  console.log('[author note presets] PASS: examples listed, unsaved note guarded, pick persists, save/overwrite/delete');
+  // 기존 노트 (기본값) gives back exactly the note this started with.
+  await select.selectOption('example-default');
+  assert.equal(await note.inputValue(), shipped);
+  console.log('[author note presets] PASS: shipped note pickable, examples listed, unsaved note guarded, pick persists, save/overwrite/delete');
 } finally { await browser.close(); }
