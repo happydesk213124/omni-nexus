@@ -1,4 +1,6 @@
   async function At() {
+    // Milliseconds since the press, per step, like settings.close.timing: shows which one lags.
+    const openAt=Date.now(),openSteps=[],openMark=step=>openSteps.push(step+'='+(Date.now()-openAt));
     if(t.overlayUi)t.overlayUi._stickyEditorOpen=true;
     t._inspectGen=(t._inspectGen || 0)+1;
     if(!t.uiOpen){ensureExplorerState().folderKey='__all__';t._explorerWindow=null;}
@@ -22,12 +24,14 @@
     const hide='position:fixed;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none;visibility:hidden;';
     for(const node of [t.overlayUi?.fullscreen,t.overlayUi?.actionMenu])void node?.setStyleAttribute(hide).catch(()=>{});
     document.body.innerHTML='';
-    const shown=Promise.resolve(k.showContainer?.('fullscreen'));
+    const shown=Promise.resolve(k.showContainer?.('fullscreen')).finally(()=>openMark('show'));
+    void hidden.then(()=>openMark('hide'));
     for(let attempt=0;attempt<3 && t.uiOpen;attempt++) {
       await P();
       if(document.getElementById('nx-shell'))break;
       if(attempt<2)await new Promise(resolve=>setTimeout(resolve,80+attempt*80));
     }
+    openMark('paint');
     if(!t.uiOpen)return;
     if(!document.getElementById('nx-shell')) {
       t.uiOpen=false;
@@ -39,6 +43,7 @@
     armSettingsCloseWatch();
     const generation=t.uiRenderGen,override=JSON.stringify(t.scopeOverride);
     t._settingsCatalogLoad ||= ia().finally(()=>{t._settingsCatalogLoad=null;});
+    void t._settingsCatalogLoad.then(()=>y('info','settings.open.catalog','catalog='+(Date.now()-openAt)),()=>{});
     void t._settingsCatalogLoad.then(()=>{
       if(!t.uiOpen || t.uiRenderGen!==generation || JSON.stringify(t.scopeOverride)!==override)return;
       // Only update the scope choices; a full rerender would discard live edits.
@@ -51,4 +56,5 @@
     try {window.focus?.();document.body?.focus?.();}catch{}
     clearInterval(t._debugTabTimer);t._debugTabTimer=null;
     await Promise.all([shown,hidden]);
+    y('info','settings.open.timing',openSteps.join(' '));
   }
