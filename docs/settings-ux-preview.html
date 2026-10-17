@@ -653,15 +653,15 @@
     }
     .preset-current > b { flex: 1; min-width: 0; font-weight: 600; }
     .preset-current .actions { padding: 0; margin-left: auto; }
+    /* 선택 · 전역 로스터로 · 새 캐릭터 · 복제 · 삭제 · 참고컷 생성 · 참고컷 vibe레퍼로 — or, selecting, 선택 and the bar.
+       Wrapping flex, not a grid: each label keeps its width instead of spilling into the next cell. */
     #characters .preset-current .actions {
-      display: grid;
-      grid-template-columns: minmax(92px, 1.45fr) repeat(4, minmax(52px, 1fr));
-      width: min(100%, 430px);
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
       gap: 6px;
     }
     #characters .preset-current .actions button {
-      min-width: 0;
-      padding: 7px 8px;
+      flex: 0 0 auto;
+      padding: 7px 10px;
       white-space: nowrap;
     }
     #nx-lorefilter-slot { padding: 0 12px 10px; }
@@ -927,12 +927,10 @@
       .brand {display:none;} .top {gap:4px;padding:6px;} .top-right {gap:4px;flex:1;min-width:0;flex-wrap:nowrap;} .top-right button {padding:6px;font-size:11px;min-width:28px;} .live {font-size:10px;flex:1;white-space:nowrap;}
       #characters .preset-current { display:block; padding:7px 8px; }
       #characters .preset-current > b { display:block; margin:0 0 6px; font-size:12px; }
-      #characters .preset-current .actions {
-        grid-template-columns: minmax(76px,1.45fr) repeat(4,minmax(42px,1fr));
-        width:100%; gap:3px;
-      }
+      #characters .preset-current .actions { justify-content:stretch; gap:3px; }
+      /* Lines fill edge to edge; a short label never shrinks below its own text. */
       #characters .preset-current .actions button {
-        min-height:34px; padding:5px 3px; font-size:10px; letter-spacing:-.04em;
+        flex:1 1 auto; min-height:34px; padding:5px 6px; font-size:10px; letter-spacing:-.04em;
       }
       #nx-shell.nx-ux #characters .preset-dock {
         display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
@@ -1035,11 +1033,12 @@
     .nx-comfy-help a { color:#c4b5fd; text-decoration:underline; }
     .nx-comfy-help :is(button,a):focus-visible { outline:2px solid #7132f5; outline-offset:3px; }
     /* 선택 모드 · 비활성화 (character tab) */
-    #nx-char-select-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 8px; padding:0 12px; }
-    #nx-char-select-bar [data-sel-count] { font-size:12px; color:var(--muted); margin-right:4px; }
-    /* The search row is already a grid of input + one button. */
-    #nx-char-select { width:auto; min-height:38px; padding:0 14px; }
+    /* The selection bar takes the place of the row's own buttons: no extra line. */
+    #nx-char-select-bar { display:contents; }
+    #nx-char-select-bar[hidden] { display:none; }
+    #nx-char-select-bar [data-sel-count] { font-size:12px; color:var(--muted); margin-right:2px; }
     #nx-char-select.on { border-color:#7132f5; background:#7132f5; color:#fff; }
+    .actions.nx-selecting > :not(#nx-char-select):not(#nx-char-select-bar) { display:none !important; }
     .preset-tile.nx-picked { outline:2px solid #7132f5; outline-offset:2px; }
     .preset-tile.nx-off { opacity:.45; }
     .preset-tile.nx-off::after { content:"꺼짐"; position:absolute; top:4px; right:4px; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; }
@@ -1373,12 +1372,14 @@
             <div class="preset-current">
               <b id="nx-char-current">린</b>
               <div class="actions">
+                <button class="btn-ghost" type="button" id="nx-char-select" aria-pressed="false">선택</button>
                 <button class="btn-ghost" type="button" id="nx-char-to-global">전역 로스터로</button>
-                <button class="btn-ghost" type="button" id="nx-char-del-all">전체삭제</button>
                 <button class="btn-ghost" type="button" id="nx-char-add-session">새 캐릭터</button>
                 <button class="btn-ghost" type="button" id="nx-char-add-global" hidden>새 캐릭터</button>
                 <button class="btn-ghost" type="button" id="nx-char-dup">복제</button>
                 <button class="btn-ghost" type="button" id="nx-char-del">삭제</button>
+                <button class="btn-ghost" type="button" id="nx-char-head-look-gen">참고컷 생성</button>
+                <button class="btn-ghost" type="button" id="nx-char-look-vibe">참고컷 vibe레퍼로</button>
                 <button type="button" id="nx-save-chars" hidden></button>
                 <button type="button" id="nx-save-global-chars" hidden></button>
               </div>

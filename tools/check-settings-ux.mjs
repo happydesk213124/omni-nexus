@@ -142,7 +142,7 @@ try {
           shadow: getComputedStyle(document.querySelector('#nx-tabs button')).boxShadow,
           headerBottom: document.querySelector('.head').getBoundingClientRect().bottom,
           closeBottom: document.getElementById('nx-close').getBoundingClientRect().bottom,
-          charActionTops: [...document.querySelectorAll('#characters .preset-current .actions button')].filter(el=>el.getClientRects().length).map(el=>Math.round(el.getBoundingClientRect().top)),
+          charActions: [...document.querySelectorAll('#characters .preset-current .actions button')].filter(el=>el.getClientRects().length).map(el=>({top:Math.round(el.getBoundingClientRect().top),clipped:el.scrollWidth>el.clientWidth+1,label:el.textContent.trim()})),
         };
       });
       assert.equal(layout.width, width);
@@ -160,7 +160,11 @@ try {
       assert.ok(layout.closeBottom <= layout.headerBottom, `${tab}@${width}: header actions overlap content`);
       if (width <= 768) assert.equal(layout.mainLeft, 0, `${tab}: mobile sidebar must not consume a grid column`);
       assert.ok(layout.overflow <= 1, `${tab}@${width}: horizontal overflow ${layout.overflow}`);
-      if(width===320 && tab==='characters') assert.equal(new Set(layout.charActionTops).size,1,'character action buttons must remain on one mobile row');
+      // Seven buttons cannot share one 320px line; two lines are the budget, and no label may spill into its neighbour.
+      if(width===320 && tab==='characters') {
+        assert.ok(new Set(layout.charActions.map(b=>b.top)).size<=2,'character action buttons stay within two mobile rows');
+        assert.deepEqual(layout.charActions.filter(b=>b.clipped).map(b=>b.label),[],'character action labels fit their buttons');
+      }
       if (width <= 768 && tab === 'dashboard') {
         const mobile = await page.evaluate(() => {
           const nav = document.getElementById('nx-tabs');
@@ -684,7 +688,10 @@ try {
   assert.notEqual(await page.locator('#nx-char-edit-name').inputValue(),editedName,'next character is selected immediately');
   await page.locator('#nx-char-sheet-close').click();
   await page.evaluate(()=>{window.confirm=()=>true;});
-  await page.locator('#nx-char-del-all').click();
+  // 전체삭제 is 선택 → 전체 선택 → 삭제.
+  await page.locator('#nx-char-select').click();
+  await page.locator('#nx-char-select-bar [data-sel="all"]').click();
+  await page.locator('#nx-char-select-bar [data-sel="delete"]').click();
   await page.waitForFunction(()=>document.querySelectorAll('#nx-char-session-list .preset-tile').length===0);
   assert.equal(await page.locator('#nx-char-empty').isVisible(),true);
   await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='dashboard';await paint();t.uiTab='characters';await paint();});

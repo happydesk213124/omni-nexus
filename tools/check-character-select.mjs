@@ -40,8 +40,14 @@ try {
   const select = page.locator('#nx-char-select');
   assert.equal(await select.textContent(), '선택');
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);
+  assert.equal(await page.locator('#nx-char-del-all').count(), 0, '전체삭제 is 선택 → 전체 선택 → 삭제 now');
+  for (const id of ['#nx-char-head-look-gen', '#nx-char-look-vibe', '#nx-char-dup']) assert.equal(await page.locator(id).isVisible(), true, id + ' in the name row');
   await select.click();
   assert.equal(await page.locator('#nx-char-select-bar').isVisible(), true);
+  // The bar takes the row's place: same line, the row's own buttons out of the way.
+  assert.equal(await page.locator('#nx-char-dup').isVisible(), false);
+  const sameLine = await page.evaluate(() => Math.abs(document.getElementById('nx-char-select').getBoundingClientRect().top - document.querySelector('#nx-char-select-bar [data-sel="all"]').getBoundingClientRect().top) < 8);
+  assert.ok(sameLine, 'the bar sits in the name row');
   await tile('Alpha').click();
   await tile('Beta').click();
   assert.match(await page.locator('#nx-char-select-bar [data-sel-count]').textContent(), /2명 선택/);
@@ -67,6 +73,8 @@ try {
   assert.equal(await tile('Beta').count(), 0);
   await page.locator('#nx-char-select-bar [data-sel="done"]').click();
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);
+  assert.equal(await page.locator('#nx-char-dup').isVisible(), true, 'the row comes back');
+  assert.equal(await page.locator('#nx-char-add-global').isVisible(), false, 'a scope-hidden button stays hidden');
   assert.equal(await page.locator('[data-ux-character-tile].nx-picked').count(), 0);
   // 전역으로 복사: the bot keeps Alpha, the global roster gets her too.
   await select.click();

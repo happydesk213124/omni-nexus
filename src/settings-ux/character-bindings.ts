@@ -188,6 +188,7 @@ export function bindCharacterSheet(): void {
   for (const [id, selector] of Object.entries({
     'nx-char-del': '[data-char-delete]',
     'nx-char-look-act': '[data-char-ex-upload]', 'nx-char-look-gen': '[data-char-ex-gen]',
+    'nx-char-head-look-gen': '[data-char-ex-gen]', 'nx-char-look-vibe': '[data-char-ex-vibe]',
   })) document.getElementById(id)?.addEventListener('click', event => {
     event.stopImmediatePropagation();
     if (selector === '[data-char-delete]') void removeCharacters(current ? [current] : []);
@@ -305,10 +306,7 @@ export function bindCharacterSheet(): void {
       window.alert(String(error));
     } finally { targets.forEach(card=>deleting.delete(card)); }
   };
-  document.getElementById('nx-char-del-all')?.addEventListener('click', () => {
-    if (!window.confirm('선택한 로스터의 캐릭터를 모두 삭제할까요?')) return;
-    void removeCharacters(cards.filter(card => card.dataset.charScope === selectedScope));
-  });
+  // 전체삭제 is 선택 → 전체 선택 → 삭제 now.
   const empty = document.getElementById('nx-char-empty');
   if (empty) empty.hidden = cards.length > 0;
   selectScope(selectedScope);
@@ -382,16 +380,14 @@ function bindSelection(ctx: {
   removeCharacters: (targets: HTMLElement[]) => Promise<void>;
   selection: { on: boolean; toggle: (card: HTMLElement, tile: HTMLElement) => void; clear: () => void };
 }): void {
-  // Beside the search, not in the dock: the dock is a fixed six-cell grid.
-  const search = document.getElementById('nx-char-search');
-  const anchor = document.getElementById('nx-char-create-llm');
-  if (!search || !anchor || document.getElementById('nx-char-select')) return;
-  const toggleButton = document.createElement('button');
-  toggleButton.type = 'button'; toggleButton.id = 'nx-char-select'; toggleButton.className = anchor.className; toggleButton.textContent = '선택';
-  search.after(toggleButton);
+  // In the current character's row: when on, its own buttons give way to the bar, so no line is added.
+  const toggleButton = document.getElementById('nx-char-select');
+  const row = toggleButton?.parentElement;
+  if (!toggleButton || !row || toggleButton.dataset.nxBound) return;
+  toggleButton.dataset.nxBound = '1';
   const bar = document.createElement('div');
   bar.id = 'nx-char-select-bar'; bar.hidden = true; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '고른 캐릭터');
-  (search.closest('.preset-search') || search).after(bar);
+  toggleButton.after(bar);
   const picked = new Set<HTMLElement>();
   const other = () => ctx.scope() === 'global' ? '이 봇으로' : '전역으로';
   bar.innerHTML = '<span data-sel-count></span><button type="button" class="dock-btn" data-sel="all">전체 선택</button>'
@@ -419,7 +415,14 @@ function bindSelection(ctx: {
   };
   ctx.selection.toggle = (card) => { const on = !picked.has(card); if (on) picked.add(card); else picked.delete(card); setTile(card, on); paint(); };
   ctx.selection.clear = () => { for (const card of picked) setTile(card, false); picked.clear(); paint(); };
-  const setMode = (on: boolean) => { ctx.selection.on = on; bar.hidden = !on; if (!on) ctx.selection.clear(); paint(); };
+  const setMode = (on: boolean) => {
+    ctx.selection.on = on; bar.hidden = !on;
+    // A class, not hidden: the scope switch owns which of the row's buttons are hidden.
+    row.classList.toggle('nx-selecting', on);
+    if (!on) ctx.selection.clear();
+    paint();
+  };
+  toggleButton.textContent = '선택';
   toggleButton.addEventListener('click', () => setMode(!ctx.selection.on));
   const run = async (work: (cards: HTMLElement[]) => Promise<void>) => {
     const cards = chosen(); if (!cards.length) return;

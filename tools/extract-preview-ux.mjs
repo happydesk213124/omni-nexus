@@ -143,13 +143,9 @@ html.nx-ux-on #nx-shell.nx-ux [hidden] { display: none !important; }
 @media (max-width: 425px) {
   #nx-shell.nx-ux :is(.actions,.preset-dock) { display: flex; flex-wrap: wrap; }
   #nx-shell.nx-ux :is(.actions,.preset-dock) > button { flex: 1 1 120px; white-space: normal; }
-  #nx-shell.nx-ux #characters .preset-current .actions {
-    display: grid;
-    grid-template-columns: minmax(76px,1.45fr) repeat(4,minmax(42px,1fr));
-    flex-wrap: initial;
-  }
+  /* The character row wraps by its labels (the preview CSS sizes them); the generic 120px basis would put one per line. */
   #nx-shell.nx-ux #characters .preset-current .actions > button {
-    flex: initial;
+    flex: 1 1 auto;
     white-space: nowrap;
   }
   #nx-shell.nx-ux :is(.row-text,.field,.block) { min-width: 0; overflow-wrap: anywhere; }
