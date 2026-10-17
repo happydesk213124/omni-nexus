@@ -92,6 +92,30 @@ test('automatic JEV assignment uses lore directly, persists once and reuses the 
 });
 
 
+test('a speaker no lorebook knows is chosen from the message being voiced, and only that message goes',async()=>{
+  const saved=new Map();let sent;
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
+    nativeFetch:async(_url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({answers:{0:{choice:'1001'}}})};}};
+  try{
+    const data=await api.loadTtsData();data.settings.enabled=true;data.settings.autoAssign=true;data.settings.selector='jev';data.settings.jev.key='fake';data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male','old'],folder:''}];data.characters=[];
+    const messages=[{role:'char',chatId:'old',data:'An unrelated earlier message.'},
+      {role:'char',chatId:'now',data:['The old blacksmith Gorn wiped his beard.','[[@inray::card::inxshot_card.webp::832::1216]]','Gorn: "Back in my day, lad, we forged by hand."','[[inx1]]{"place":"forge"}[[/inx1]]'].join('\n')}];
+    const context={scope:'jev-chat',rosterScope:'bot:chat-char',characterId:'chat-char',chatId:'chat',sessionId:'s',character:{},chat:{},messages};
+    await api.ensureTtsSpeakers(context,['Gorn'],()=>true,['now']);
+    const chat=sent.questions[0].instructions.sources.chat;
+    assert.equal(chat.length,1,'only the message being voiced');
+    assert.match(chat[0],/old blacksmith Gorn[\s\S]*Back in my day, lad/,'its whole text, so his age and manner show');
+    assert.doesNotMatch(chat[0],/inray::|inx1|"place"/,'never our tokens or blocks');
+    assert.doesNotMatch(JSON.stringify(sent),/unrelated earlier/,'never the rest of the chat');
+    // 「음성 고를 때 채팅 내용 포함」 off: the message stays home.
+    data.settings.assignWithChat=false;data.characters=[];sent=null;
+    await api.ensureTtsSpeakers(context,['Gorn'],()=>true,['now']);
+    assert.ok(sent,'a voice is still chosen');
+    assert.equal(sent.questions[0].instructions.sources.chat,undefined);
+    assert.doesNotMatch(JSON.stringify(sent),/Back in my day/);
+  }finally{delete globalThis.risuai;}
+});
+
 test('LLM auto-fill assigns a supplied preset and known speakers require no repeat model call',async()=>{
   let calls=0;const saved=new Map();
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[{key:'하린',content:'하린은 차분한 청년 여성이다.'}],getDatabase:async()=>({personas:[]}),runLLMModel:async options=>{calls++;const data=JSON.parse(options.messages.at(-1).content);assert.deepEqual(data.requested_names,['하린']);assert.match(JSON.stringify(data.sources),/차분한/);return {success:true,content:'[[-1,"하린","","하린",["Harin"],["청년","차분한"],"female",1]]'};}};

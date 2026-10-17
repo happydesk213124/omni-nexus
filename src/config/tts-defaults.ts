@@ -15,7 +15,7 @@ export function ttsLlmDefaults(): LlmSettings {
 }
 export function ttsDefaults(): TtsSettings {
   return {
-    enabled: false, narration: true, narrationVoice: '', autoAssign: true, selector: 'llm',
+    enabled: false, narration: true, narrationVoice: '', autoAssign: true, assignWithChat: true, selector: 'llm',
     clickPlay: true, hoverPlay: false, autoReply: false, continuous: true,
     illustration: true, hideName: false, hideTone: false, passageLine: true, excludeText: TTS_DEFAULT_EXCLUDES.join(', '), excludeSeed: 1, stripBrackets: true, skipSymbolOnly: true, omitCharacters: TTS_DEFAULT_OMITS.join(', '), omitSeed: 1, omitParenText: false, controlGutter: false, tone: '', skipChars: 1,
     toast: true, viewer: true, minimized: false, viewerAnchor: null, panel: '', characterFilter: 'all', characterFolder: '*',

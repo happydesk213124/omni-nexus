@@ -5,6 +5,7 @@ import { objectValue } from '../providers/tts/http';
 import { listCharacters } from './characters';
 import { ensureBotTtsCharacters } from '../storage/tts-store';
 import { ttsBotScope } from '../storage/tts-roster';
+import { voicedMessages } from '../domain/tts/excerpts';
 
 export interface TtsChatContext {
   scope: string;
@@ -28,7 +29,8 @@ export async function currentTtsContext(): Promise<TtsChatContext> {
   await ensureBotTtsCharacters(characterId);
   return { scope: JSON.stringify([characterId, chatId]), rosterScope: ttsBotScope(characterId), characterId, chatId, sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, character, chat, messages: Array.isArray(chat.message) ? chat.message.map(objectValue) : [] };
 }
-export interface TtsSourceOptions { lore: boolean; persona: boolean; illustration: boolean }
+/** `messages`: ids of the chat messages being voiced; their text goes along. */
+export interface TtsSourceOptions { lore: boolean; persona: boolean; illustration: boolean; messages?: string[] }
 export async function ttsCharacterSources(context: TtsChatContext, options: TtsSourceOptions, names: string[] = []): Promise<Record<string, unknown>> {
   const host = risuHost(), result: Record<string, unknown> = {};
   if (options.lore) {
@@ -51,6 +53,10 @@ export async function ttsCharacterSources(context: TtsChatContext, options: TtsS
   if (options.illustration) {
     const rows = [...await listCharacters(GLOBAL_SCOPE), ...await listCharacters(unifiedSessionIdForCharacter(context.characterId))];
     result.illustration = rows.filter(c => !names.length || names.some(n => c.name === n || c.aliases.includes(n))).slice(0, 100).map(c => [c.name, c.surname, c.given_name, c.aliases, c.gender, c.age]);
+  }
+  if (options.messages?.length) {
+    const chat = voicedMessages(context.messages, options.messages);
+    if (chat.length) result.chat = chat;
   }
   result.character = [String(context.character.name || ''), String(context.character.desc || '').slice(0, 6000)];
   return result;
