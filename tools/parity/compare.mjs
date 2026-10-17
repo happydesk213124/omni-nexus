@@ -484,6 +484,9 @@ function expectedAssetChange(a,b,at) {
   // 원본으로 저장 is opt-in; settings.image_output asserts its save and export, and
   // tests/image-publish-preview asserts the PNG is stored and previewed untouched.
   if (/\.value\.(?:settings|json)\.card\.image_png_original$/.test(at)) return a === undefined && b === false;
+  // WebP 메타데이터 쓰기 is on by default, which is the old behaviour; settings.image_output
+  // asserts turning it off saves and exports, generation-image-data asserts what it skips.
+  if (/\.value\.(?:settings|json)\.card\.image_webp_metadata$/.test(at)) return a === undefined && b === true;
   // 명령수정 lb-xnai / 로어북 참조 switches are opt-in; tests/char-command-refs and the
   // stream-services 명령수정 test assert their save and what they send.
   if (/\.value\.(?:settings|json)\.card\.char_command_(?:xnai|lore)$/.test(at)) return a === undefined && b === false;

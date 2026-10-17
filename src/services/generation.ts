@@ -786,6 +786,11 @@ export function keepsOriginalPng(): boolean {
   return getConfig().card.image_png_original === true && imageBackendKind(getConfig().nai) !== 'comfy';
 }
 
+/** 메타데이터 쓰기 off, for NAI only, for the same reason: ComfyUI has no stealth alpha. */
+export function omitsImageData(): boolean {
+  return getConfig().card.image_webp_metadata === false && imageBackendKind(getConfig().nai) !== 'comfy';
+}
+
 /** Replay image prompts/settings, with only the seed and current reference inputs changed. */
 export async function generateFromNaiReplay(req: T2iRequest, cast: Array<{id?:string;scope?:string;name?:string}> = []): Promise<GeneratedImage> {
   if (!cleanText(req.model)) throw new Error('이미지 메타에 모델이 없습니다.');

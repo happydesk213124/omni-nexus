@@ -355,8 +355,15 @@ try {
   await quality.fill('73'); await quality.dispatchEvent('change');
   await page.evaluate(()=>uxTestRuntime.flush());
   assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_webp_quality),73);
-  // 원본으로 저장 sits right under the quality, saves, and survives a repaint.
-  assert.equal(await page.locator('#nx-image-webp-quality').evaluate(el=>el.closest('.row')?.nextElementSibling?.querySelector('input')?.id),'nx-image-png-original');
+  // WebP 메타데이터 쓰기 then 원본으로 저장 sit right under the quality, save, and survive a repaint.
+  assert.deepEqual(await page.locator('#nx-image-webp-quality').evaluate(el=>{const a=el.closest('.row')?.nextElementSibling;return [a?.querySelector('input')?.id,a?.nextElementSibling?.querySelector('input')?.id];}),['nx-image-webp-metadata','nx-image-png-original']);
+  const webpMeta=page.locator('#nx-image-webp-metadata');
+  assert.equal(await webpMeta.isChecked(),true,'on by default');
+  await webpMeta.setChecked(false);
+  await page.evaluate(()=>uxTestRuntime.flush());
+  assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_webp_metadata),false);
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
+  assert.equal(await page.locator('#nx-image-webp-metadata').isChecked(),false);
   const pngOriginal=page.locator('#nx-image-png-original');
   assert.equal(await pngOriginal.isChecked(),false,'off by default');
   await pngOriginal.setChecked(true);
