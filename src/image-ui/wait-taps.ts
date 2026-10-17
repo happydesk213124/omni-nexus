@@ -7,12 +7,14 @@ import { inlineWaitCount, subscribeInlineWaits } from '../storage/inline-wait-st
 import { hitHost, releaseHost, safeArray, type HostPoint } from '../tts-ui/host-utils';
 
 /**
- * Pink waiting slots (streaming tags): a tap generates that slot. Chat clicks are
+ * Pink waiting slots (streaming tags): a double tap generates that slot. Chat clicks are
  * watched while streaming tags are on (a waiting block lives in the message, from
  * this session or an earlier one) or an older stored slot waits, so a chat without
  * them pays nothing. The frozen UI's pointer pipeline is not touched.
  */
 let installed = false;
+/** Two taps on the same slot within this long count as one double tap. */
+export const DOUBLE_TAP_MS = 450;
 let synchronize: () => Promise<void> = async () => {};
 
 /** Called once the chat is known with streaming tags on; boot itself reads nothing. */
@@ -48,10 +50,15 @@ export function installWaitTaps(): void {
     } finally { for (const item of owned) await releaseHost(item); }
   };
 
+  // A double tap on one slot makes it; a single tap (scrolling, a stray touch) never spends a request.
+  let last = { key: '', at: 0 };
   const tap = async (event: HostPoint) => {
     if (busy) return;
     const slot = await slotAt(event);
     if (!slot) return;
+    const key = `${slot.index}:${slot.id}`, now = Date.now();
+    if (last.key !== key || now - last.at > DOUBLE_TAP_MS) { last = { key, at: now }; return; }
+    last = { key: '', at: 0 };
     busy = true;
     try {
       const host = risuHost()!;

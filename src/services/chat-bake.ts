@@ -1,5 +1,5 @@
 import { insertAtAnalysisLine, analysisBody } from '../domain/prompt/message-body';
-import { parkInlineShotBlock, replaceInlineShotBlock, stripInlineShotBlocks } from '../domain/prompt/inline-shots';
+import { replaceInlineShotBlock, stripOpenInlineShotBlock } from '../domain/prompt/inline-shots';
 import { streamLineRange } from '../domain/prompt/stream-lines';
 import { measureWrite } from '../core/write-metrics';
 /**
@@ -327,8 +327,8 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
     if(final)next=removeJobSpinners(next,batch.jobId);
   }
   if(!final)for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0]))next=insertAtAnalysisLine(next,line,normalizeInlineChatTextSide(getConfig().card.inline_chat_text_side),tokens.join(''));
-  // Blocks no job placed (broken, cancelled) never stay in the saved reply.
-  if(final)next=stripInlineShotBlocks(next);
+  // A block no job placed (broken, cancelled) stays as a pink slot; only one cut off mid-JSON goes.
+  if(final)next=stripOpenInlineShotBlock(next);
   if(next===previousBody)return;
   setMessageBody(msg,next);
   await writeChat(loaded.host,target.charIndex,target.chatIndex,loaded.chat,{messageIndex:target.messageIndex,previousBody});
@@ -449,16 +449,6 @@ export async function shotBakeToken(cardId: string, width?: number, height?: num
   return bakeTokenForCard(cardId, asset.name, await dimensionsForCard(cardId) || bakeDimensions(width, height)) || '';
 }
 
-/**
- * Streaming tags with 「이미지 바로 생성」 off: every block becomes its waiting
- * (pink) slot in one write, and blocks without a slot leave the reply.
- */
-/** The reply's blocks become waiting blocks in place, their JSON kept; others left over go. */
-export async function parkInlineBlocks(target: MessageTarget, blocks: readonly number[]): Promise<boolean> {
-  const card = getConfig().card;
-  await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, { enabled: card.inline_msg_fan === true, userchat: card.userchat === true });
-  return rewriteMessageById(target, body => stripInlineShotBlocks(blocks.reduce((text, n) => parkInlineShotBlock(text, n), body)));
-}
 /** A tapped waiting slot becomes this job's spinner, in place: nothing else in the reply moves. */
 export async function writeWaitSpinner(target: MessageTarget & { waitId: string; jobId: string; width?: number; height?: number }): Promise<boolean> {
   let found = false;

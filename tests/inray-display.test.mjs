@@ -45,8 +45,18 @@ test('a waiting slot is the spinner frame with a thick pink ring, so it reads as
   assert.match(loading, /stroke="#7132f5" stroke-width="10"/);
   assert.match(wait, /stroke="#ec4899" stroke-width="22"/);
   assert.doesNotMatch(wait, /#7132f5/);
-  assert.ok(inlineShotDisplayScripts(100, true).some(rule => rule.out.includes('stroke-width="22"')), 'a pending block uses the same pink ring');
-  assert.ok(!inlineShotDisplayScripts(100, false).some(rule => rule.out.includes('stroke-width="22"')));
+  // A streaming block is the pink slot from the start, with 「이미지 바로 생성」 on or off:
+  // tappable as block N (data-inray-wait="bN"), and still the preview's slot (data-inx-slot).
+  for (const pending of [true, false]) {
+    const slots = inlineShotDisplayScripts(100, pending).filter(rule => /-(?:portrait|landscape|square)$/.test(rule.comment));
+    assert.equal(slots.length, 3);
+    for (const rule of slots) {
+      assert.match(rule.out, /stroke="#ec4899" stroke-width="22"/, 'pink ring');
+      const out = '[[inx2]]{"characters":[]}[[/inx2]]'.replace(new RegExp(rule.in, rule.flag.replace(/<[^>]*>/g, '')), rule.out);
+      if (out.startsWith('[[inx2]]')) continue;
+      assert.match(out, /data-inray-wait="b2" data-inx-slot="2"/, 'block 2: double-tap target and preview slot');
+    }
+  }
 });
 
 test('spinner exposes a stable preview slot independent of Risu class prefixes', async () => {

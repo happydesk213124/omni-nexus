@@ -105,21 +105,28 @@ export function replaceInlineShotBlock(raw: unknown, n: number, replacement: str
   return text.slice(0, block.start) + replacement + text.slice(block.end);
 }
 
-/** `[[inxN]]{json}[[/inxN]]` → `[[inxwN]]{json}[[/inxwN]]`: the same JSON, now a waiting slot. */
+/**
+ * A block with no image yet, written back after a failed or cancelled run: the
+ * same `[[inxN]]{json}[[/inxN]]` it was. Blocks are no longer renamed to `inxw`
+ * once a reply ends — that extra chat write could land late or not at all in
+ * Risu — so a block that has no image is itself the pink slot.
+ */
 export function waitingInlineBlock(n: number, body: string): string {
-  return `[[inxw${n}]]${body}[[/inxw${n}]]`;
+  return `[[inx${n}]]${body}[[/inx${n}]]`;
 }
-/** Turns block n into its waiting form, keeping its JSON exactly. Unchanged when there is no such block. */
-export function parkInlineShotBlock(raw: unknown, n: number): string {
-  const text = String(raw ?? '');
-  const block = inlineShotBlocks(text).find(row => row.n === n);
-  return block ? text.slice(0, block.start) + waitingInlineBlock(n, block.body) + text.slice(block.end) : text;
-}
-/** The waiting block n in a message: its full text, its JSON, and where it starts. */
+/** The slot of block n in a message: an older `inxw` block first, else the `inx` block itself. */
 export function waitingBlock(raw: unknown, n: number): { text: string; body: string; start: number } | null {
   const text = String(raw ?? '');
   for (const hit of text.matchAll(new RegExp(INLINE_WAIT_BLOCK_SOURCE, 'g'))) if (Number(hit[1]) === n) return { text: hit[0], body: hit[2] ?? '', start: hit.index ?? 0 };
-  return null;
+  const block = inlineShotBlocks(text).find(row => row.n === n);
+  return block ? { text: text.slice(block.start, block.end), body: block.body, start: block.start } : null;
+}
+/** Only a block still open at the end (the reply stopped inside it): closed blocks are slots and stay. */
+export function stripOpenInlineShotBlock(raw: unknown): string {
+  const text = String(raw ?? ''), closed = inlineShotBlocks(text);
+  const tail = closed.length ? closed[closed.length - 1]!.end : 0;
+  const open = /\[\[inx\d{1,3}\]\]/.exec(text.slice(tail));
+  return open ? text.slice(0, tail + open.index).replace(/[ \t]*\n?$/, '').replace(/\n{3,}/g, '\n\n') : text;
 }
 /** Removes every block (and a still-open one at the end), keeping the prose as written. */
 export function stripInlineShotBlocks(raw: unknown): string {

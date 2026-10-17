@@ -147,10 +147,16 @@ export function waitDisplayRegexScript(scalePct: unknown = 100) {
 }
 
 /** `pending`: 「이미지 바로 생성」 is off, so a closed block is a waiting (pink) slot. */
-export function inlineShotDisplayScripts(scalePct: unknown = 100, pending = false) {
-  const frame = pending ? pink(spinnerDisplayRegexScript(scalePct).out) : spinnerDisplayRegexScript(scalePct).out;
-  const slot = (w: number, h: number) => frame.replaceAll('$2', String(w)).replaceAll('$3', String(h)).replaceAll('$1', 'inxslot$1')
-    .replace('data-inray-spinner=', 'data-inx-slot="$1" data-inray-spinner=');
+/**
+ * A block is the pink slot from the start, whether or not 「이미지 바로 생성」 draws it
+ * on its own: a double tap makes it (refused while the reply streams or its job runs),
+ * and a streaming preview still paints into it by `data-inx-slot`. `_pending` is kept
+ * for callers; both settings now draw the same.
+ */
+export function inlineShotDisplayScripts(scalePct: unknown = 100, _pending = false) {
+  const frame = waitDisplayRegexScript(scalePct).out;
+  const slot = (w: number, h: number) => frame.replaceAll('$2', String(w)).replaceAll('$3', String(h)).replaceAll('$1', 'b$1')
+    .replace('data-inray-wait="b$1"', 'data-inray-wait="b$1" data-inx-slot="$1"');
   return [
     // A shot drafted inside <Thoughts>/<think> is never drawn: an opening reasoning
     // tag before it with no closing tag in between (closed later, or still streaming).

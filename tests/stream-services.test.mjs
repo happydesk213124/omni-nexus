@@ -231,7 +231,7 @@ test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still bein
   assert.ok(!db.enabledModules.includes('omni-inline-tags'));assert.ok(db.modules.some(m=>m.id==='omni-inline-tags'),'off keeps it installed, disabled');
 });
 
-test('이미지 바로 생성 off: blocks park in place as waiting blocks, JSON kept; a tap draws one there, a failed one waits again',async()=>{
+test('이미지 바로 생성 off: blocks stay as written and are the pink slots; a double-tapped one draws there, a failed one waits again; never while streaming or already drawing',async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,stream_inline_autogen:false,llm_json_retry:false});
   const first='First narrative paragraph long enough for generating images.';
   const shot='{"place":"garden","aspect":"landscape","characters":[]}',broken='{"place":"bro';
@@ -239,35 +239,44 @@ test('이미지 바로 생성 off: blocks park in place as waiting blocks, JSON 
   await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',message:[{role:'char',chatId:'m',data:reply}]}]});
   const target={character_id:'c',chat_id:'chat',char_index:0,chat_index:0,host_message_id:'m',message_index:0};
   const tagged={new_characters:[],scenes:[{place:'garden',shots:[{aspect:'landscape',characters:[],line:1,paragraph:0}]}]};
-  assert.equal((await f.api.parkInlineShots({...target,host_message_id:'other',blocks:[{n:1,line:1,tagged}]})).ok,false,'another message is never rewritten');
-  // Found by id, like the stream bake: a reply a regex already changed still parks.
+  // The reply's end renames nothing any more (that write could land late or not at all in Risu).
   const parked=await f.api.parkInlineShots({...target,assistant_text:reply+' changed',blocks:[{n:1,line:1,tagged},{n:2,line:2,tagged:null}]});
   assert.equal(parked.ok,true);assert.deepEqual(parked.wait_ids,['b1','b2']);
   let saved=(await f.chat()).message[0].data;
-  assert.equal(saved,`${first}\n[[inxw1]]${shot}[[/inxw1]]\nSecond dialogue in the scene.\n[[inxw2]]${broken}[[/inxw2]]\nLast line.`,'each block stays where it is, its JSON as written: the waiting block is the slot');
+  assert.equal(saved,reply,'nothing is written: each block, as the model wrote it, is the slot');
   assert.equal(await f.api.inlineWaitCount(),0,'nothing goes to plugin storage');
   assert.equal(f.host.naiRequests.length,0);assert.equal(f.host.llmRequests.length,0,'parking costs nothing');
-  const display=(await risuai.getDatabase()).modules.find(m=>m.id==='inlay-inray-display').regex;
-  const draw=text=>{for(const r of display.filter(r=>r.type==='editdisplay'&&/^omni-wait-block-display/.test(r.comment)))text=text.replace(new RegExp(r.in,'g'),r.out);return text;};
-  assert.match(draw(saved),/data-inray-wait="b1"[^]*viewBox="0 0 1216 832"/,'drawn as the pink waiting frame, tappable as b1, sized by its aspect');
-  assert.match(draw(saved),/data-inray-wait="b2"[^]*viewBox="0 0 832 1216"/);
-  assert.doesNotMatch(draw(saved),/inxw|"place"/,'no JSON shows');
-  const request=display.find(r=>r.comment==='omni-wait-block-request');
+  await f.api.ensureInlineTagModule(true,100,true);
+  const display=(await risuai.getDatabase()).modules.find(m=>m.id==='omni-inline-tags').regex;
+  const order=r=>Number(/<order (-?\d+)/.exec(r.flag)?.[1]??0);
+  const draw=text=>{for(const r of display.filter(r=>r.type==='editdisplay'&&/^omni-inline-shot-display/.test(r.comment)).sort((a,b)=>order(b)-order(a)))text=text.replace(new RegExp(r.in,r.flag.replace(/<[^>]*>/g,'')),r.out);return text;};
+  assert.match(draw(saved),/data-inray-wait="b1" data-inx-slot="1"[^]*viewBox="0 0 1216 832"/,'drawn as the pink waiting frame, double-tappable as b1, sized by its aspect');
+  assert.match(draw(saved),/data-inray-wait="b2" data-inx-slot="2"[^]*viewBox="0 0 832 1216"/);
+  assert.match(draw(saved),/stroke="#ec4899"/);assert.doesNotMatch(draw(saved),/inx\d\]\]|"place"/,'no JSON shows');
+  const request=display.find(r=>r.comment==='omni-inline-shot-request');
   assert.equal(saved.replace(new RegExp(request.in,request.flag),request.out),`${first}\nSecond dialogue in the scene.\nLast line.`,'and no request carries it');
   const tap=async id=>f.api.generateInlineWait({...target,session_id:'session',wait_id:id});
+  // Never while the reply is still being written, nor while this block's own streaming job draws it.
+  const live=await risuai.getChatFromIndex(0,0);await risuai.setChatToIndex(0,0,{...live,isStreaming:true});
+  assert.equal((await tap('b1')).error?.code,'busy','not during streaming');
+  await risuai.setChatToIndex(0,0,{...live,isStreaming:false});
+  f.api.registerStreamJob('drawing',{defer_attachment:true,stream_id:'s2',host_message_id:'m',inline_block:1,character_id:'c',chat_id:'chat',session_id:'session',stream_line_start:1,stream_line_end:1});
+  assert.equal((await tap('b1')).error?.code,'busy','not while its streaming job runs');
+  f.api.closeStreamJob('drawing');
+  assert.equal(f.host.naiRequests.length,0,'refused taps spend nothing');
   const job=await tap('b1');assert.equal(job.accepted,true);
   await f.wait(job.job_id,j=>j.state==='done');
   saved=(await f.chat()).message[0].data;
   assert.match(saved,new RegExp(`^${first}\\n\\[\\[@inrayspinner::${job.job_id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]\\nSecond dialogue`),'the image sits where the block was');
-  assert.ok(saved.includes(`[[inxw2]]${broken}[[/inxw2]]`),'the other block is untouched');
+  assert.ok(saved.includes(`[[inx2]]${broken}[[/inx2]]`),'the other block is untouched');
   assert.equal(f.host.llmRequests.length,0,'the block\'s own JSON is the shot: no tagger');
   assert.equal((await tap('b1')).ok,false,'a block already drawn cannot be generated twice');
   // A broken block: fixed first, then the tagger; both failing gives the block back as it was.
   f.host.setLlmReply('not json');
   const retry=await tap('b2');await f.wait(retry.job_id,j=>j.state==='error');
-  for(let i=0;i<100 && !(await f.chat()).message[0].data.includes('[[inxw2]]');i++)await sleep();
+  for(let i=0;i<100 && !(await f.chat()).message[0].data.includes('[[inx2]]');i++)await sleep();
   saved=(await f.chat()).message[0].data;
-  assert.ok(saved.includes(`[[inxw2]]${broken}[[/inxw2]]`),'a failed block waits again, its JSON exactly as written');
+  assert.ok(saved.includes(`[[inx2]]${broken}[[/inx2]]`),'a failed block waits again, its JSON exactly as written');
   assert.doesNotMatch(saved,new RegExp(`inrayspinner::${retry.job_id}`));
   const asked=f.host.llmRequests.map(r=>r.messages.map(m=>m.content).join('\n')).join('\n');
   assert.match(asked,/broken_block/,'the broken JSON is sent to be fixed');assert.match(asked,/ONLY from L2 through L2/,'then the tagger draws its own line');
@@ -279,7 +288,7 @@ test('이미지 바로 생성 off: blocks park in place as waiting blocks, JSON 
     const failed=await tap('b2');await f.wait(failed.job_id,j=>j.state==='error');
     for(let i=0;i<200 && (await f.chat()).message[0].data.includes(`inrayspinner::${failed.job_id}`);i++)await sleep();
     saved=(await f.chat()).message[0].data;
-    assert.ok(saved.includes(`[[inxw2]]${broken}[[/inxw2]]`),'the block waits again after a failed generation');
+    assert.ok(saved.includes(`[[inx2]]${broken}[[/inx2]]`),'the block waits again after a failed generation');
     assert.doesNotMatch(saved,new RegExp(`inrayspinner::${failed.job_id}`));
   } finally {risuai.nativeFetch=nativeFetch;}
 });
@@ -295,7 +304,7 @@ test('an older stored waiting slot ([[@inraywait]]) still generates from its sav
   assert.equal(f.host.llmRequests.length,0);assert.equal(await f.api.getInlineWait('wold1'),undefined);
 });
 
-test('a broken block is fixed from its own JSON with the shape; one that ends without an image waits in place with its JSON',{timeout:15000},async()=>{
+test('a broken block is fixed from its own JSON with the shape; one that ends without an image stays in place as its block with its JSON',{timeout:15000},async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,llm_json_retry:false});
   const lines=['First narrative paragraph long enough for generating images.','Second dialogue in the scene.','Third line of the reply here.'];
   const brokenA='{"place":"garden","aspect":"portrait","characters":[{"name":"A","action":"waving"}',brokenC='{"place":"roof" "characters":[{"name":"C"}]}';
@@ -322,12 +331,15 @@ test('a broken block is fixed from its own JSON with the shape; one that ends wi
     const b=await job(2,{inline_body:good,inline_tagged:{new_characters:[],scenes:[{place:'hall',shots:[{aspect:'portrait',characters:[],line:2,paragraph:0}]}]}});
     await f.commit(a.job_id,{job_ids:[a.job_id,b.job_id,c.job_id]});
     for(const id of [a.job_id,b.job_id,c.job_id])await f.wait(id,j=>j.state==='done' || j.state==='error');
-    for(let i=0;i<200 && ((saved=(await f.chat()).message[0].data).match(/\[\[inxw\d\]\]/g)||[]).length<2;i++)await sleep();
+    // Done: one image, no spinner left without one, block 1 gone, blocks 2 and 3 back.
+    const settled=t=>/\[\[@inray::/.test(t) && !/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/.test(t) && !t.includes('[[inx1]]') && t.includes('[[inx2]]') && t.includes('[[inx3]]');
+    for(let i=0;i<200 && !settled(saved=(await f.chat()).message[0].data);i++)await sleep();
   } finally {risuai.nativeFetch=nativeFetch;}
-  assert.equal(saved,`${lines[0]}\n${saved.match(/\[\[@inrayspinner::[^\]]+\]\]\[\[@inray::[^\]]+\]\]/)[0]}\n${lines[1]}\n[[inxw2]]${good}[[/inxw2]]\n${lines[2]}\n[[inxw3]]${brokenC}[[/inxw3]]\nLast line.`,
-    'the fixed block has its image; the failed one and the unfixable one wait in their places with the JSON the model wrote');
+  assert.equal(saved,`${lines[0]}\n${saved.match(/\[\[@inrayspinner::[^\]]+\]\]\[\[@inray::[^\]]+\]\]/)[0]}\n${lines[1]}\n[[inx2]]${good}[[/inx2]]\n${lines[2]}\n[[inx3]]${brokenC}[[/inx3]]\nLast line.`,
+    'the fixed block has its image; the failed one and the unfixable one stay in their places as the blocks the model wrote');
   assert.equal(await f.api.inlineWaitCount(),0,'nothing goes to plugin storage');
-  // A tap fixes the unfixable one again first, reading it from the message.
+  // The reply is over: a double tap fixes the unfixable one again first, reading it from the message.
+  const ended=await risuai.getChatFromIndex(0,0);await risuai.setChatToIndex(0,0,{...ended,isStreaming:false});
   const before=f.host.llmRequests.length;
   f.host.setLlmReply('{"place":"roof","characters":[{"name":"C"}]}');
   const tap=await f.api.generateInlineWait({character_id:'c',chat_id:'chat',char_index:0,chat_index:0,host_message_id:'m',message_index:0,session_id:'session',wait_id:'b3'});
@@ -335,7 +347,7 @@ test('a broken block is fixed from its own JSON with the shape; one that ends wi
   assert.equal(f.host.llmRequests.length,before+1);assert.match(asked(before),/broken_block/);assert.doesNotMatch(asked(before),/ONLY from L/);
   saved=(await f.chat()).message[0].data;
   assert.match(saved,new RegExp(`${lines[2]}\\n\\[\\[@inrayspinner::${tap.job_id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]\\nLast line\\.$`));
-  assert.ok(saved.includes(`[[inxw2]]${good}[[/inxw2]]`),'the other waiting block is untouched');
+  assert.ok(saved.includes(`[[inx2]]${good}[[/inx2]]`),'the other waiting block is untouched');
 });
 
 test('zero-shot line batches wait for output without NAI, spinners, errors or JSON retries',async()=>{
