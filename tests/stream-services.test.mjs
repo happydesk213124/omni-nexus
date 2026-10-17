@@ -71,8 +71,9 @@ test('streaming tags: each block is its own tagger-free slot at its position; a 
   for(const id of [a.job_id,b.job_id,c.job_id])await f.wait(id,j=>j.state==='done');
   const saved=(await f.chat()).message[0].data;
   assert.doesNotMatch(saved,/\[\[\/?inx/,'no block survives in the saved reply');
-  const slot=id=>`\\[\\[@inrayspinner::${id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]`;
-  assert.match(saved,new RegExp(`^${first}\\n${slot(a.job_id)}\\n${slot(b.job_id)}\\nSecond dialogue in the scene\\.\\n${slot(c.job_id)}\\nLast line\\.$`),'each image sits exactly where its block was');
+  const slot='\\[\\[@inray::[^\\]]+\\]\\]';
+  assert.match(saved,new RegExp(`^${first}\\n${slot}\\n${slot}\\nSecond dialogue in the scene\\.\\n${slot}\\nLast line\\.$`),'each image sits exactly where its block was');
+  assert.doesNotMatch(saved,/inrayspinner/,'no block ever becomes a purple spinner');
   for(const id of [a.job_id,b.job_id,c.job_id])await assertRuntimeReleased(f,id);
 });
 
@@ -95,17 +96,20 @@ test('streaming tags bake by message id: an edited reply or a shifted index stil
   chat.message.unshift({role:'user',chatId:'u',data:'hello'});await risuai.setChatToIndex(0,0,chat);
   const result=await f.api.commitStreamOutput({...f.request,job_id:ids[0],job_ids:ids,assistant_text:reply,content_hash:'final',message_index:0});
   assert.equal(result.ok,true,'the reply text is not compared, and the message is found by its id');
-  const frame=id=>new RegExp(`\\[\\[@inrayspinner::${id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::`);
+  const images=t=>(t.match(/\[\[@inray::[^\]]+\]\]/g) || []).length;
   let saved=(await f.chat()).message[1].data;
-  for(const id of ids.slice(0,2))assert.match(saved,frame(id),'images finished before the reply ended bake in the first write');
+  assert.equal(images(saved),2,'images finished before the reply ended bake in the first write');
+  assert.match(saved,new RegExp(`^${lines[0]}\\n\\[\\[@inray::[^\\]]+\\]\\]\\nSecond \\(edited\\)`),'each in place of its own block');
+  assert.ok(saved.includes(block(3)) && saved.includes(block(4)),'the two still drawing stay their blocks: the pink slot, their previews painted over it');
+  assert.doesNotMatch(saved,/inrayspinner/,'no block becomes a purple spinner');
   // A slot that is gone before the last write (the user deleted it) leaves only its own image out.
-  const now=await f.chat();now.message[1].data=now.message[1].data.replace(new RegExp(`\\[\\[@inrayspinner::${ids[2]}_0::\\d+::\\d+\\]\\]`),'');
+  const now=await f.chat();now.message[1].data=now.message[1].data.replace(block(3),'');
   await risuai.setChatToIndex(0,0,now);
   gate.release();
   for(const id of ids)await f.wait(id,j=>j.state==='done');
   saved=(await f.chat()).message[1].data;
-  for(const id of [ids[0],ids[1],ids[3]])assert.match(saved,frame(id));
-  assert.ok(!saved.includes(ids[2]),'the image without a place is left out alone');
+  assert.equal(images(saved),3,'the image without a place is left out alone');
+  assert.match(saved,new RegExp(`Fourth line closes it.\\n\\[\\[@inray::`),'the last one where its block was');
   assert.doesNotMatch(saved,/\[\[\/?inx/);assert.match(saved,/Second \(edited\) dialogue/);
   assert.equal((await f.chat()).message[0].data,'hello');
   assert.equal((await f.api.getJob(ids[3])).progress.line_group.unplaced,1,'the toast can say one image had no place');
@@ -338,7 +342,7 @@ test('a broken block is fixed from its own JSON with the shape; one that ends wi
     const settled=t=>/\[\[@inray::/.test(t) && !/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/.test(t) && !t.includes('[[inx1]]') && t.includes('[[inx2]]') && t.includes('[[inx3]]');
     for(let i=0;i<200 && !settled(saved=(await f.chat()).message[0].data);i++)await sleep();
   } finally {risuai.nativeFetch=nativeFetch;}
-  assert.equal(saved,`${lines[0]}\n${saved.match(/\[\[@inrayspinner::[^\]]+\]\]\[\[@inray::[^\]]+\]\]/)[0]}\n${lines[1]}\n[[inx2]]${good}[[/inx2]]\n${lines[2]}\n[[inx3]]${brokenC}[[/inx3]]\nLast line.`,
+  assert.equal(saved,`${lines[0]}\n${saved.match(/\[\[@inray::[^\]]+\]\]/)[0]}\n${lines[1]}\n[[inx2]]${good}[[/inx2]]\n${lines[2]}\n[[inx3]]${brokenC}[[/inx3]]\nLast line.`,
     'the fixed block has its image; the failed one and the unfixable one stay in their places as the blocks the model wrote');
   assert.equal(await f.api.inlineWaitCount(),0,'nothing goes to plugin storage');
   // The reply is over: a double tap fixes the unfixable one again first, reading it from the message.

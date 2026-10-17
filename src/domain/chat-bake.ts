@@ -68,14 +68,20 @@ export function stripBakeTokens(text: unknown): string {
 }
 
 /** A later streaming batch must retain slots owned by every earlier sibling. */
-export function stripBakeTokensExceptJobs(text: string, jobIds: readonly string[]): string {
+/**
+ * `cardIds`: bare tokens of these images stay too. A streaming-tag reply bakes its
+ * finished images in place of their blocks when it ends, with no spinner around them,
+ * and a later write for the same reply must not take them out again.
+ */
+export function stripBakeTokensExceptJobs(text: string, jobIds: readonly string[], cardIds: readonly string[] = []): string {
   const kept: string[]=[];
   let prefix='\u0000omni-stream-frame-';
   while(text.includes(prefix))prefix+='\u0000';
+  const keep=(token:string)=>{kept.push(token);return prefix+(kept.length-1)+'\u0000';};
   const masked=text.replace(/\[\[@inrayspinner::([a-zA-Z0-9_-]+)_\d+::\d+::\d+\]\](?:\[\[@inray::[^\]]+\]\])*/g,(token,id)=>{
     if(!jobIds.includes(id))return token;
-    kept.push(token);return prefix+(kept.length-1)+'\u0000';
-  });
+    return keep(token);
+  }).replace(/\[\[@inray::([^:\]]+)::[^\]]*\]\]/g,(token,id)=>cardIds.includes(id)?keep(token):token);
   return stripBakeTokens(masked).replace(new RegExp(prefix+'(\\d+)\u0000','g'),(_token,index)=>kept[Number(index)]);
 }
 

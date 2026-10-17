@@ -1,5 +1,5 @@
 import { dbg } from '../core/debug';
-import { attachBakeToSpinner, removeJobSpinners, replaceSpinner, spinnerDimensions, spinnerToken, stripBakeTokensExceptJobs } from '../domain/chat-bake';
+import { attachBakeToSpinner, messageHasBakeTokenForCard, removeJobSpinners, replaceSpinner, spinnerDimensions, stripBakeTokensExceptJobs } from '../domain/chat-bake';
 import { replaceInlineShotBlock, stripOpenInlineShotBlock, waitingInlineBlock } from '../domain/prompt/inline-shots';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { getConfig } from './context';
@@ -9,8 +9,13 @@ import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBat
  * Streaming tags keep the line-batch timing (one write when the reply ends, one
  * when every image is done) but not its checks. The block itself is the slot, so
  * the reply text is never compared: line batches compare it because they place
- * by L number, which an edited reply would shift. Each image goes to its own
- * spinner or block; one that has neither is left out alone, never with the rest.
+ * by L number, which an edited reply would shift.
+ *
+ * The block stays the slot until its image exists: the reply-end write bakes only
+ * the images already done, in place of their blocks, so they are saved early; a
+ * block still drawing stays the pink slot, its preview painted over it by
+ * `data-inx-slot`, and the last write puts its image there. No block ever turns
+ * into a purple spinner. An image with no block or slot is left out alone.
  * A block that ends with no image (broken JSON, a failed or cancelled request)
  * stays, or goes back, as the block it was: the pink slot, holding its shot, so a
  * double tap makes exactly it.
@@ -34,25 +39,30 @@ export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTar
     if (Number.isInteger(shot.inline_block) && batch.retry.body) waits.set(key(batch.jobId, shot.shot_index), waitingInlineBlock(shot.inline_block!, batch.retry.body));
   }
   const missing: Array<{ job: string; n?: number; reason: string }> = [];
+  const ours = batches.flatMap(batch => [...batch.completed.values()]);
   const written = await rewriteMessageById(target, body => {
     missing.length = 0;
-    let next = final ? body : stripBakeTokensExceptJobs(body, batches.map(batch => batch.jobId));
+    let next = final ? body : stripBakeTokensExceptJobs(body, batches.map(batch => batch.jobId), ours);
     for (const batch of batches) {
       for (const shot of batch.shots) {
         const token = tokens.get(key(batch.jobId, shot.shot_index)) || '', made = batch.completed.has(shot.shot_index);
+        const cardId = batch.completed.get(shot.shot_index) || '';
         const wait = waits.get(key(batch.jobId, shot.shot_index));
         if (wait) {
           next = spinnerDimensions(next, batch.jobId, shot.shot_index) ? replaceSpinner(next, batch.jobId, shot.shot_index, wait) : replaceInlineShotBlock(next, shot.inline_block!, wait);
           continue;
         }
         if (spinnerDimensions(next, batch.jobId, shot.shot_index)) {
+          // A spinner from an older build's reply-end write: fill it as before.
           if (token) next = attachBakeToSpinner(next, batch.jobId, shot.shot_index, token);
-        } else if (Number.isInteger(shot.inline_block) && (token || !final)) {
-          // The first write missed this block, or it never ran: the block still marks the place.
-          const placed = replaceInlineShotBlock(next, shot.inline_block!, spinnerToken(batch.jobId, shot.shot_index, shot.width, shot.height) + token);
+        } else if (token && messageHasBakeTokenForCard(next, cardId)) {
+          // Baked at the reply's end already.
+        } else if (token && Number.isInteger(shot.inline_block)) {
+          const placed = replaceInlineShotBlock(next, shot.inline_block!, token);
           if (placed === next && final) missing.push({ job: batch.jobId, n: shot.inline_block, reason: 'no slot' });
           next = placed;
         } else if (final && token) missing.push({ job: batch.jobId, reason: 'no slot' });
+        // No image yet: the block is left exactly as written, the pink slot.
         if (final && made && !token) missing.push({ job: batch.jobId, n: shot.inline_block, reason: 'no asset' });
       }
       if (final) next = removeJobSpinners(next, batch.jobId);
