@@ -63,3 +63,14 @@ test('the block itself becomes the slot; stripping keeps the prose as written', 
   assert.equal(api.stripInlineShotBlocks(reply), '하린이 문을 열었다.\n하린 (calm): "누구야?"\n복도는 조용했다.\n그리고');
   assert.equal(api.stripInlineShotBlocks('본문\n[[inx3]]{"pla'), '본문\n', 'an unfinished block at the end goes too');
 });
+
+test('a block with no image is the slot as written: read from inx (or an older inxw); only one cut off mid-JSON is dropped', () => {
+  const shot = '{"place":"hall","characters":[]}';
+  const text = `앞 줄\n[[inx2]]${shot}[[/inx2]]\n뒷 줄`;
+  assert.deepEqual(api.waitingBlock(text, 2), { text: `[[inx2]]${shot}[[/inx2]]`, body: shot, start: 4 }, 'an inx block is its own slot');
+  assert.equal(api.waitingBlock(`[[inxw2]]${shot}[[/inxw2]]`, 2).text, `[[inxw2]]${shot}[[/inxw2]]`, 'older inxw slots still read');
+  assert.equal(api.waitingBlock(text, 3), null);
+  assert.equal(api.waitingInlineBlock(2, shot), `[[inx2]]${shot}[[/inx2]]`, 'a failed run puts back an inx block, never a renamed one');
+  assert.equal(api.stripOpenInlineShotBlock(text), text, 'closed blocks stay');
+  assert.equal(api.stripOpenInlineShotBlock(`${text}\n[[inx3]]{"place":"ro`), text, 'a block the reply stopped inside goes');
+});

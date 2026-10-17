@@ -1,6 +1,6 @@
 import { dbg } from '../core/debug';
 import { attachBakeToSpinner, removeJobSpinners, replaceSpinner, spinnerDimensions, spinnerToken, stripBakeTokensExceptJobs } from '../domain/chat-bake';
-import { replaceInlineShotBlock, stripInlineShotBlocks, waitingInlineBlock } from '../domain/prompt/inline-shots';
+import { replaceInlineShotBlock, stripOpenInlineShotBlock, waitingInlineBlock } from '../domain/prompt/inline-shots';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { getConfig } from './context';
 import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBatch } from './chat-bake';
@@ -12,7 +12,8 @@ import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBat
  * by L number, which an edited reply would shift. Each image goes to its own
  * spinner or block; one that has neither is left out alone, never with the rest.
  * A block that ends with no image (broken JSON, a failed or cancelled request)
- * becomes a pink waiting slot holding its shot, so a tap makes exactly it.
+ * stays, or goes back, as the block it was: the pink slot, holding its shot, so a
+ * double tap makes exactly it.
  */
 export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTarget>, batches: LineBakeBatch[], final = false): Promise<{ written: boolean; unplaced: number }> {
   if (!batches.some(batch => batch.shots.length)) return { written: true, unplaced: 0 };
@@ -56,8 +57,8 @@ export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTar
       }
       if (final) next = removeJobSpinners(next, batch.jobId);
     }
-    // Blocks no job placed (broken, cancelled) never stay in the saved reply.
-    return final ? stripInlineShotBlocks(next) : next;
+    // A block no job placed (broken, cancelled) stays as a pink slot; only one cut off mid-JSON goes.
+    return final ? stripOpenInlineShotBlock(next) : next;
   });
   for (const row of written ? missing : []) dbg('inline.bake.unplaced', { job_id: row.job, block: row.n ?? '', reason: row.reason }, 'warn');
   return { written, unplaced: written ? missing.length : 0 };

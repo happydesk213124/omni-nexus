@@ -19,7 +19,7 @@ function node(html, box, parent = null, classes = []) {
     async getBoundingClientRect() { return this.box; } };
 }
 
-test('a tap on a pink slot generates that slot in its message; nothing listens while no slot waits', async () => {
+test('a double tap on a pink slot generates that slot in its message; a single tap never does; nothing listens while no slot waits', async () => {
   const kv = new Map(), listeners = new Map();
   globalThis.generated = []; globalThis.tracked = [];
   const chat = node('<div class="risu-chat" data-chat-index="2" data-chat-id="m2">…</div>', { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500 }, null, ['risu-chat']);
@@ -42,24 +42,28 @@ test('a tap on a pink slot generates that slot in its message; nothing listens w
   await api.syncWaitTaps();
   assert.equal(listeners.size, 1, 'a waiting slot: one click listener');
   const click = async (x, y) => { for (const { fn } of listeners.values()) fn({ clientX: x, clientY: y }); await new Promise(r => setTimeout(r, 20)); };
-  await click(10, 10);
-  assert.equal(globalThis.generated.length, 0, 'a click beside the slot does nothing');
+  await click(10, 10); await click(10, 10);
+  assert.equal(globalThis.generated.length, 0, 'clicks beside the slot do nothing');
   await click(150, 200);
-  assert.equal(globalThis.generated.length, 1);
+  assert.equal(globalThis.generated.length, 0, 'one tap is not enough: no stray request');
+  await new Promise(r => setTimeout(r, api.DOUBLE_TAP_MS + 50)); await click(150, 200);
+  assert.equal(globalThis.generated.length, 0, 'two taps too far apart are two single taps');
+  await click(150, 200);
+  assert.equal(globalThis.generated.length, 1, 'a double tap makes it');
   assert.deepEqual({ ...globalThis.generated[0] }, { wait_id: 'w123', session_id: 'risu_s', character_id: 'c', chat_id: 'chat', char_index: 4, chat_index: 1, host_message_id: 'm2', message_index: 2 });
   assert.deepEqual(globalThis.tracked, [['risu_s', 'job-1']], 'the frozen UI follows the job with its usual toast');
   await api.dropInlineWait('w123');
   await api.syncWaitTaps();
   assert.equal(listeners.size, 0, 'the last slot drawn: the listener goes away');
-  assert.ok(queries <= 2, 'slots are looked up only on a click');
+  assert.equal(queries, 5, 'slots are looked up only on a click, once per click');
   // A waiting block lives in the message, from this session or an earlier one: with
   // streaming tags on, clicks are watched from the start, store or no store.
   api.getConfig().card.stream_inline_tags = true;
   await api.syncWaitTaps();
   assert.equal(listeners.size, 1, 'streaming tags on: a block slot is tappable after a restart');
   slot.html = '<div class="omni-spinner" data-inray-wait="b3" data-inray-preview-slot="wait_b3" role="button">';
-  await click(150, 200);
-  assert.equal(globalThis.generated.at(-1).wait_id, 'b3', 'a tap on block 3 generates block 3');
+  await click(150, 200); await click(150, 200);
+  assert.equal(globalThis.generated.at(-1).wait_id, 'b3', 'a double tap on block 3 generates block 3');
   api.getConfig().card.stream_inline_tags = false;
   await api.syncWaitTaps();
   assert.equal(listeners.size, 0, 'off again: nothing listens');

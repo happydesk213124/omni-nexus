@@ -68,6 +68,12 @@ export function cancelStreamJob(id: string): void {
     jobLlmControllers.get(id)?.abort();
   }
 }
+/** A streaming-tag job of this message is still making block n (not cancelled, not closed). */
+export function streamBlockBusy(hostMessageId: string, block: number): boolean {
+  if (!hostMessageId) return false;
+  for (const row of pending.values()) if (!row.cancelled && row.request.host_message_id === hostMessageId && row.request.inline_block === block) return true;
+  return false;
+}
 export function streamOwnsMessage(request: Partial<JobRequest>): string | undefined {
   for (const [id, row] of pending) if (!row.cancelled &&
     row.request.character_id === request.character_id && row.request.chat_id === request.chat_id &&
