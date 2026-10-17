@@ -269,3 +269,43 @@ test('manual upscale replaces the displayed revision with doubled geometry and p
   await assert.rejects(f.api.upscaleCard(sourceId),/402/);
   assert.equal((await f.chat()).message[0].data,current,'failure cannot replace the existing image');
 });
+
+// 원본으로 저장 keeps a NAI PNG as NAI delivered it. Two things must survive that.
+const rawPng = () => PNG_NAI_1X1.buffer.slice(PNG_NAI_1X1.byteOffset, PNG_NAI_1X1.byteOffset + PNG_NAI_1X1.byteLength);
+
+test('원본으로 저장 never applies to ComfyUI: its recipe exists only in the Omni data we embed', async () => {
+  const f = await fixture();
+  f.config.card.image_png_original = true; f.api.setConfig(f.config);
+  const reroll = await f.api.rerollCard('root');
+  assert.equal(reroll.ok, true);
+  const stored = Buffer.from((await f.api.idbGet('images', reroll.card.id)).png);
+  assert.notDeepEqual(stored, Buffer.from(PNG_NAI_1X1), 'the Comfy result carries Omni data, not the bare file Comfy sent');
+  assert.equal((await f.api.rerollCard(reroll.card.id)).ok, true, 'so it can be rerolled again');
+});
+
+test('원본으로 저장: a NAI PNG is stored bare, and its reroll finds the cast\'s reference by its file name', async () => {
+  const f = await fixture();
+  Object.assign(f.config.card, { image_png_original: true, char_ref_mode: 'image' });
+  f.config.nai = { ...f.config.nai, backend: 'nai', api_key: 'test' };
+  f.api.setConfig(f.config);
+  const a = await f.api.upsertCharacter('owner', { name: '하나', appearance: 'girl, red hair' });
+  const ref = await f.api.putCharRefAsset(png(64, 64));
+  await f.api.idbPut('characters', { ...(await f.api.idbGet('characters', { scope: a.scope, id: a.id })), ref_hash: ref.hash });
+  const ids = await f.api.ensureStudioCastIds([a], 'owner');
+  const location = { session_id: 'session', character_id: 'owner', character_name: 'Owner', chat_id: 'chat', char_index: 0, chat_index: 0, message_index: 0, shot_index: 0, cast_ids: ids };
+  await f.api.publishImage('bare', rawPng(), location, { original: true, characters: [{ id: a.id, scope: a.scope, name: a.name }] });
+  await f.api.idbPut('cards', { id: 'bare', session_id: 'session', job_id: 'job', shot_index: 0, paragraph: 0, characters_json: '[]', main_prompt: '', negative_prompt: '', seed: 1, meta_json: JSON.stringify({ ...location, width: 832, height: 1216 }), created_at: 2 });
+  assert.deepEqual(Buffer.from((await f.api.idbGet('images', 'bare')).png), Buffer.from(PNG_NAI_1X1), 'stored exactly as delivered: no Omni data inside');
+  const asset = await f.api.imageAssetRef('bare');
+  assert.match(asset.name, new RegExp('c' + ids.join('-')), 'the file name carries the cast');
+  const chat = await f.chat();
+  chat.message[0].data = `text [[@inray::bare::${asset.name}::832::1216]]`;
+  await risuai.setChatToIndex(0, 0, chat);
+  const reads = [];
+  const readImage = risuai.readImage;
+  risuai.readImage = async path => { reads.push(path); return readImage(path); };
+  const reroll = await f.api.rerollCard('bare');
+  risuai.readImage = readImage;
+  assert.equal(reroll.ok, true, JSON.stringify(reroll.error || ''));
+  assert.ok(reads.includes(ref.path), 'the reroll read 하나\'s reference, named only by the file name');
+});
