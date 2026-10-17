@@ -1991,9 +1991,15 @@ export async function runScenario(N, handles) {
     const before = await get('/v1/author-note-presets');
     const saved = await post('/v1/author-note-presets', { items: [{ id: 'parity-note', name: 'Parity', text: 'pov' }, ...(before?.items || [])] });
     const after = await get('/v1/author-note-presets');
-    const mine = rows => (rows?.items || []).filter(row => !row.builtin).map(row => row.id).join();
+    const mine = rows => (rows?.items || []).filter(row => !row.builtin && !row.id.startsWith('kept-')).map(row => row.id).join();
+    // First list after the update keeps the host's own note as a preset.
+    const note = ((await get('/v1/prompts'))?.prompts || []).find(row => row.key === 'author_note')?.text || '';
+    const kept = (before?.items || []).filter(row => row.id.startsWith('kept-'));
     return { examples: (before?.items || []).filter(row => row.builtin).length, savedMine: mine(saved), listedMine: mine(after),
-      examplesKept: (after?.items || []).filter(row => row.builtin).length };
+      examplesKept: (after?.items || []).filter(row => row.builtin).length,
+      kept: kept.map(row => row.name).join(), keptIsNote: kept.length === 1 && kept[0].text === note.trim(),
+      keptStays: (after?.items || []).some(row => row.id === kept[0]?.id),
+      shipped: (before?.items || []).some(row => row.id === 'example-default' && row.builtin) };
   });
   // 2.0 only: 「LLM한테 시키기」 over the roster: a plan first, then applied. Last, since it edits the roster.
   const rosterRows = (await get('/v1/characters?session_id=sess_main'))?.characters || [];
