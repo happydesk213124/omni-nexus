@@ -267,7 +267,8 @@ test('이미지 바로 생성 off: blocks stay as written and are the pink slots
   const job=await tap('b1');assert.equal(job.accepted,true);
   await f.wait(job.job_id,j=>j.state==='done');
   saved=(await f.chat()).message[0].data;
-  assert.match(saved,new RegExp(`^${first}\\n\\[\\[@inrayspinner::${job.job_id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]\\nSecond dialogue`),'the image sits where the block was');
+  assert.match(saved,new RegExp(`^${first}\\n\\[\\[@inray::[^\\]]+\\]\\]\\nSecond dialogue`),'the image sits where the block was, in one write: no spinner was ever written');
+  assert.doesNotMatch(saved,/inrayspinner/);
   assert.ok(saved.includes(`[[inx2]]${broken}[[/inx2]]`),'the other block is untouched');
   assert.equal(f.host.llmRequests.length,0,'the block\'s own JSON is the shot: no tagger');
   assert.equal((await tap('b1')).ok,false,'a block already drawn cannot be generated twice');
@@ -280,15 +281,17 @@ test('이미지 바로 생성 off: blocks stay as written and are the pink slots
   assert.doesNotMatch(saved,new RegExp(`inrayspinner::${retry.job_id}`));
   const asked=f.host.llmRequests.map(r=>r.messages.map(m=>m.content).join('\n')).join('\n');
   assert.match(asked,/broken_block/,'the broken JSON is sent to be fixed');assert.match(asked,/ONLY from L2 through L2/,'then the tagger draws its own line');
-  // Generation fails after the block became a spinner: the block comes back, not a dead spinner.
+  // Generation fails: the block was never written while it was drawn, so nothing changes.
   f.host.setLlmReply(JSON.stringify({new_characters:[],scenes:[{place:'garden',shots:[{line:2,composition:'flowers'}]}]}));
   const nativeFetch=risuai.nativeFetch;
   risuai.nativeFetch=async(url,opts)=>String(url).includes('generate-image')?new Response('down',{status:500}):nativeFetch(url,opts);
   try {
+    const untouched=(await f.chat()).message[0].data;
     const failed=await tap('b2');await f.wait(failed.job_id,j=>j.state==='error');
     for(let i=0;i<200 && (await f.chat()).message[0].data.includes(`inrayspinner::${failed.job_id}`);i++)await sleep();
     saved=(await f.chat()).message[0].data;
     assert.ok(saved.includes(`[[inx2]]${broken}[[/inx2]]`),'the block waits again after a failed generation');
+    assert.equal(saved,untouched,'a failed run writes nothing at all');
     assert.doesNotMatch(saved,new RegExp(`inrayspinner::${failed.job_id}`));
   } finally {risuai.nativeFetch=nativeFetch;}
 });
@@ -300,7 +303,7 @@ test('an older stored waiting slot ([[@inraywait]]) still generates from its sav
   await f.api.putInlineWaits([{id:'wold1',tagged:{new_characters:[],scenes:[{place:'hall',shots:[{characters:[],line:1,paragraph:0}]}]},line:1,characterId:'c',chatId:'chat',hostMessageId:'m',createdAt:1}]);
   const job=await f.api.generateInlineWait({character_id:'c',chat_id:'chat',char_index:0,chat_index:0,host_message_id:'m',message_index:0,session_id:'session',wait_id:'wold1'});
   assert.equal(job.accepted,true);await f.wait(job.job_id,j=>j.state==='done');
-  assert.match((await f.chat()).message[0].data,new RegExp(`^${first}\\n\\[\\[@inrayspinner::${job.job_id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::`));
+  assert.match((await f.chat()).message[0].data,new RegExp(`^${first}\\n\\[\\[@inray::`),'the image replaces the old slot token');
   assert.equal(f.host.llmRequests.length,0);assert.equal(await f.api.getInlineWait('wold1'),undefined);
 });
 
@@ -346,7 +349,7 @@ test('a broken block is fixed from its own JSON with the shape; one that ends wi
   assert.equal(tap.accepted,true);await f.wait(tap.job_id,j=>j.state==='done');
   assert.equal(f.host.llmRequests.length,before+1);assert.match(asked(before),/broken_block/);assert.doesNotMatch(asked(before),/ONLY from L/);
   saved=(await f.chat()).message[0].data;
-  assert.match(saved,new RegExp(`${lines[2]}\\n\\[\\[@inrayspinner::${tap.job_id}_0::\\d+::\\d+\\]\\]\\[\\[@inray::[^\\]]+\\]\\]\\nLast line\\.$`));
+  assert.match(saved,new RegExp(`${lines[2]}\\n\\[\\[@inray::[^\\]]+\\]\\]\\nLast line\\.$`));
   assert.ok(saved.includes(`[[inx2]]${good}[[/inx2]]`),'the other waiting block is untouched');
 });
 

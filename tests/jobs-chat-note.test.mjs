@@ -25,6 +25,7 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
       jobEpochByKey:new Map([['message',{jobId:mode.includes('superseded')?'new':'old',epoch:mode.includes('superseded')?2:1}]]),
       enqueueBakeWrite: async work => work(), jobChatTarget: () => ({}),
       finishJobSpinners: async opts => {calls.push(opts);return true;},
+      inlineWait:'', writeWaitImage: async () => { throw new Error('a message job never writes a slot image'); },
     };
     const finish = await compile(`${finishBody}\nreturn finishCompletedSpinners;`, scope);
     const expected = !mode.includes('superseded');
@@ -37,6 +38,24 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
     } else assert.deepEqual(meta.publishedIds,['a','b']);
   });
 }
+
+test('a tapped slot is written once, at the end: its image replaces the slot, no spinner is finished', async () => {
+  const images = [], spinners = [];
+  const meta = {key:'wait',epoch:1,publishedIds:['a'],cancelRequested:false,userStop:false};
+  const scope = {
+    deferred:undefined,durableSpinners:true,completedSpinnerCards:new Map([[0,'a']]),jobId:'tap',request:{},inlineWait:'b2',
+    jobRunMeta:new Map([['tap',meta]]),jobEpochByKey:new Map([['wait',{jobId:'tap',epoch:1}]]),
+    enqueueBakeWrite: async work => work(), jobChatTarget: () => ({target:1}),
+    finishJobSpinners: async opts => {spinners.push(opts);return true;},
+    writeWaitImage: async opts => {images.push(opts);return true;},
+  };
+  const finish = await compile(`${finishBody}
+return finishCompletedSpinners;`, scope);
+  assert.equal(await finish(), true);
+  assert.deepEqual(images,[{target:1,waitId:'b2',cardId:'a'}]);assert.equal(spinners.length,0);
+  assert.deepEqual(meta.publishedIds,[]);
+  assert.equal(await finish(), false, 'written once');
+});
 
 test('error/stop finalizer bakes completed shots before spinner cleanup and scroll release', async () => {
   const body = between('    try {\n      // A later shot may fail', '\n  }\n}');
