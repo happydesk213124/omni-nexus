@@ -17,6 +17,7 @@ try {
     const roster = [
       { id: 'alpha', name: 'Alpha', aliases: ['Alpha'], appearance: 'girl, red hair', schema_version: 2 },
       { id: 'beta', name: 'Beta', aliases: ['Beta'], appearance: 'boy, black hair', schema_version: 2 },
+      { id: 'gamma', name: 'Gamma', aliases: ['Gamma'], appearance: 'girl, blue hair', schema_version: 2 },
     ];
     let character = { chaId: 'select-bot', name: 'Select', chats: [{ id: 'select-chat', message: [] }],
       globalLore: [{ comment: 'omni.nexus.data.global', key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0,
@@ -54,7 +55,7 @@ try {
   assert.equal(await page.locator('#nx-char-sheet.open').count(), 0, 'a tap in selection mode never opens the editor');
 
   await page.locator('#nx-char-select-bar [data-sel="off"]').click();
-  await page.waitForFunction(() => rosterNow().every(row => row.disabled === true));
+  await page.waitForFunction(() => rosterNow().filter(row => row.id !== 'gamma').every(row => row.disabled === true));
   await page.waitForFunction(() => document.querySelectorAll('[data-ux-character-tile].nx-off').length === 2);
   // Picks stay; enable only Beta again.
   await tile('Alpha').click();
@@ -69,22 +70,41 @@ try {
   await page.locator('[data-rc-close]').click();
 
   await page.locator('#nx-char-select-bar [data-sel="delete"]').click();
-  await page.waitForFunction(() => rosterNow().map(row => row.id).join() === 'alpha');
+  await page.waitForFunction(() => rosterNow().map(row => row.id).join() === 'alpha,gamma');
   assert.equal(await tile('Beta').count(), 0);
-  await page.locator('#nx-char-select-bar [data-sel="done"]').click();
+  assert.equal(await page.locator('#nx-char-select-bar [data-sel="done"]').count(), 0, 'no 완료: 선택 itself turns it off');
+  for (const gone of ['copy', 'move']) assert.equal(await page.locator(`#nx-char-select-bar [data-sel="${gone}"]`).count(), 0, gone + ' gave way to 참고컷 생성 · vibe레퍼로');
+  await select.click();
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);
   assert.equal(await page.locator('#nx-char-dup').isVisible(), true, 'the row comes back');
   assert.equal(await page.locator('#nx-char-add-global').isVisible(), false, 'a scope-hidden button stays hidden');
   assert.equal(await page.locator('[data-ux-character-tile].nx-picked').count(), 0);
-  // 전역으로 복사: the bot keeps Alpha, the global roster gets her too.
-  await select.click();
-  await tile('Alpha').click();
-  assert.match(await page.locator('#nx-char-select-bar [data-sel="copy"]').textContent(), /전역으로 복사/);
-  await page.locator('#nx-char-select-bar [data-sel="copy"]').click();
-  await page.waitForFunction(async () => {
-    const db = await risuai.getDatabase(), entry = db.modules.flatMap(m => m.lorebook || []).find(e => e.comment === 'omni.nexus.data.globalcharacter');
-    return !!entry && JSON.parse(entry.content).roster.some(row => row.id === 'alpha');
+  // 참고컷 생성 / vibe레퍼로 over the picked: one card at a time, in tile order, each painted on its own card.
+  await page.evaluate(() => {
+    const nat = globalThis.__INLAY_NATIVE__, real = nat.fetch.bind(nat);
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    globalThis.shotLog = [];
+    nat.fetch = async (path, init, timeout) => {
+      const id = init?.body?.character_id;
+      if (path === '/v1/characters/example-shot' && init?.body?.generate) {
+        shotLog.push('gen ' + id); await new Promise(r => setTimeout(r, 300)); shotLog.push('gen-done ' + id);
+        return { ok: true, preview_url: PNG + '#' + id, image_b64: PNG.split(',')[1] };
+      }
+      if (path === '/v1/characters/ref' && init?.method === 'POST') { shotLog.push('vibe ' + id); return { ok: true, preview_url: PNG }; }
+      return real(path, init, timeout);
+    };
   });
-  assert.deepEqual(await page.evaluate(() => rosterNow().map(row => row.id)), ['alpha'], 'a copy leaves the bot roster as it was');
-  console.log('[character select] PASS: pick, 비활성화/활성화 saved and shown, LLM command for the picked, bulk delete, copy to global');
+  await select.click();
+  await page.locator('#nx-char-select-bar [data-sel="all"]').click();
+  await page.locator('#nx-char-select-bar [data-sel="look-gen"]').click();
+  await page.waitForFunction(() => /참고컷 2명 완료/.test(document.querySelector('#nx-char-select-bar [data-sel-count]').textContent));
+  assert.deepEqual(await page.evaluate(() => shotLog), ['gen alpha', 'gen-done alpha', 'gen gamma', 'gen-done gamma'], 'the next starts only after the last is done');
+  assert.deepEqual(await page.evaluate(() => ['alpha', 'gamma'].map(id => document.querySelector(`.char-card[data-char-id="${id}"] [data-char-ex-preview] img`)?.getAttribute('src')?.split('#')[1])), ['alpha', 'gamma']);
+  await page.locator('#nx-char-select-bar [data-sel="look-vibe"]').click();
+  await page.waitForFunction(() => /vibe 2명 완료/.test(document.querySelector('#nx-char-select-bar [data-sel-count]').textContent));
+  assert.deepEqual(await page.evaluate(() => shotLog.filter(line => line.startsWith('vibe'))), ['vibe alpha', 'vibe gamma']);
+  await select.click();
+  assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true, '선택 off ends selection');
+  assert.equal(await page.locator('[data-ux-character-tile].nx-picked').count(), 0);
+  console.log('[character select] PASS: pick, 비활성화/활성화 saved and shown, LLM command for the picked, bulk delete, 참고컷 생성·vibe레퍼로 one by one, no 완료');
 } finally { await browser.close(); }
