@@ -25,8 +25,10 @@ export function chatImageSizeStyle(value: unknown = 100): string {
   return `width:min(${Math.min(100, scale)}%,var(--inray-desktop-width,100%));height:auto;max-width:100%;max-height:none`;
 }
 
+// Every frame that carries --inray-native-width must be listed: the waiting slot drops
+// data-inray-spinner for data-inray-wait, and unlisted it filled the chat width on desktop.
 export function chatImageResponsiveCss(): string {
-  return '@media(min-width:601px){[data-inray-history-host],[data-inray-spinner],[data-inlay-inline-stack]{--inray-desktop-width:var(--inray-native-width,100%)}}';
+  return '@media(min-width:601px){[data-inray-history-host],[data-inray-spinner],[data-inray-wait],[data-inlay-inline-stack]{--inray-desktop-width:var(--inray-native-width,100%)}}';
 }
 
 /** Identical capped frame for the loading SVG and the unloaded final image. */

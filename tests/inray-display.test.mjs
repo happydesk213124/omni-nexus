@@ -59,6 +59,21 @@ test('a waiting slot is the spinner frame with a thick pink ring, so it reads as
   }
 });
 
+test('on desktop the pink slot is capped like the purple spinner, at every chat scale', async () => {
+  const { spinnerDisplayRegexScript, waitDisplayRegexScript, inlineShotDisplayScripts, chatImageResponsiveCss } = await import('../.test-build/inray-display.mjs');
+  const capped = chatImageResponsiveCss().match(/{([^{}]+){--inray-desktop-width/)[1].split(',').map(s => s.trim().slice(1, -1));
+  for (const scale of [50, 100, 150]) {
+    const slot = inlineShotDisplayScripts(scale).find(rule => rule.comment.endsWith('-portrait')).out;
+    for (const [name, out] of [['purple', spinnerDisplayRegexScript(scale).out], ['wait', waitDisplayRegexScript(scale).out], ['pink', slot]]) {
+      // The element that sets --inray-native-width must match a selector of the desktop rule.
+      const frame = out.match(/<div class="omni-spinner"([^>]*)>/)[1];
+      assert.match(frame, /--inray-native-width:/, name + ' frame sets its native width');
+      const attrs = [...frame.matchAll(/ ([a-z-]+)=/g)].map(m => m[1]);
+      assert.ok(capped.some(sel => attrs.includes(sel)), name + ' @' + scale + '%: no desktop cap selector among ' + attrs.join(' '));
+    }
+  }
+});
+
 test('spinner exposes a stable preview slot independent of Risu class prefixes', async () => {
   const { spinnerDisplayRegexScript } = await import('../.test-build/inray-display.mjs');
   const script = spinnerDisplayRegexScript();
