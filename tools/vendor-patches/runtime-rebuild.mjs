@@ -119,6 +119,8 @@ export function rebuildMessageRuntime(source) {
   for (const name of ['stopStreamKeywordTick', 'parsedStreamKeywords', 'tickStreamKeywords', 'ensureStreamKeywordTick']) fn('  function '+name+'(', '');
   for (const name of ['runAutoGenFromDom', 'scheduleAutoGenOnReply']) fn('  async function '+name+'(', '');
   fn('  async function onScriptOutput(', read('stream-keyword-runtime.js')+'\n'+read('stream-lines-runtime.js')+'\n'+read('stream-inline-runtime.js'));
+  // Registered only on a chat-scope read, an early double tap ran without its toast.
+  if(!out.includes('still gets its toast.\nglobalThis.__OMNI_TRACK_JOB__=omniTrackJob;'))throw new Error('[runtime rebuild] the tap job tracker must be registered at load');
   once('            <label class="toggle-row" data-nx-help-id="nx-llm-anchor"><input type="checkbox" id="nx-llm-anchor" ${i.llm_anchor_percent ? "checked" : ""}><span>LLM 읽기 위치 배치</span></label>', '');
   once('llm_anchor_percent: ee("nx-llm-anchor"),', 'llm_anchor_percent: false,');
   return protectSavedFrames(retirePercentPlacement(out));

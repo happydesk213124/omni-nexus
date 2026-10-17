@@ -6,6 +6,8 @@ function omniStreamMode(card) {
 }
 // A tapped waiting slot is an ordinary job; the frozen poller shows its toast.
 function omniTrackJob(sessionId,jobId) {if(!jobId || t.unloading)return;t.activeJobId=jobId;ua(sessionId,jobId,'');}
+// Registered at load: a double tap before any chat scope was read still gets its toast.
+globalThis.__OMNI_TRACK_JOB__=omniTrackJob;
 function omniInlineAutogen(card) { return card?.stream_inline_autogen!==false; }
 function omniScanInlineRun(run, final=false) {
   const SK=globalThis.__INLAY_STREAM_KW__;
