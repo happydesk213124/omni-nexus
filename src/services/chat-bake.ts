@@ -6,6 +6,7 @@ import { measureWrite } from '../core/write-metrics';
  * Write / strip `[[@inray::cardId::inxshot_…]]` on one Risu chat message.
  */
 import { serializeSessionStorage } from '../storage/chat-session-store';
+import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
 import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, waitTokenDimensions } from '../domain/chat-bake';
@@ -197,12 +198,13 @@ export async function rewriteBakedCardInChatMessage(opts: {
   height?: number;
 }): Promise<boolean> {
   if (opts.characterId && opts.chatId) {
-    const db=await risuHost()?.getDatabase?.(['characters']);
-    const matches=(db?.characters || []).flatMap((char,ci)=> {
-      const row=char as unknown as Record<string,unknown>;
-      if(String(row.chaId || row.id)!==opts.characterId)return [];
-      return (Array.isArray(row.chats)?row.chats:[]).flatMap((chat,ti)=>String(chat.id || chat.chatId)===opts.chatId?[{ci,ti}]:[]);
+    const find=async(fresh:boolean)=>(await characterDirectory({fresh}) || []).flatMap(row=> {
+      if((row.chaId || row.id)!==opts.characterId)return [];
+      return row.chats.flatMap(chat=>(chat.id || chat.chatId)===opts.chatId?[{ci:row.index,ti:chat.index}]:[]);
     });
+    const warm=directoryWarm();
+    let matches=await find(false);
+    if(matches.length!==1 && warm)matches=await find(true);
     if(matches.length!==1)throw new Error('박제 이미지를 교체할 채팅을 찾을 수 없습니다.');
     opts={...opts,charIndex:matches[0].ci,chatIndex:matches[0].ti};
   }
@@ -468,10 +470,10 @@ export async function writeWaitImage(target: MessageTarget & { waitId: string; c
 /** A new plugin instance cannot own any previously persisted loading placeholders. */
 export async function clearAbandonedSpinners():Promise<void> {
   const host=risuHost();if(!host?.getChatFromIndex || !host.setChatToIndex)return;
-  const db=await host.getDatabase?.(['characters']);if(!Array.isArray(db?.characters))return;
-  for(let ci=0;ci<db.characters.length;ci++) {
-    const char=db.characters[ci];if(!Array.isArray(char?.chats))continue;
-    for(let ti=0;ti<char.chats.length;ti++) {
+  const rows=await characterDirectory({fresh:true});if(!rows)return;
+  for(const row of rows) {
+    const ci=row.index;
+    for(let ti=0;ti<row.chats.length;ti++) {
       const loaded=await loadTargetChat(ci,ti);if(!loaded)continue;
       const messages=chatMessageList(loaded.chat);
       for(let mi=0;mi<messages.length;mi++) {

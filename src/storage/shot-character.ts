@@ -4,15 +4,16 @@ import { risuHost } from '../core/host';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import type { BytesLike } from '../core/util/bytes';
 import { serializeSessionStorage } from './chat-session-store';
+import { characterDirectory, directoryWarm } from './character-directory';
 import { storeShotBytes, readShotAssetBytes, type ShotAssetRow } from './shot-module';
 import { isShotAssetName, idFromShotAssetName, sessionFromShotAssetName } from '../domain/gallery/shot-assets';
 export { readShotAssetBytes };
 type Row=Record<string,unknown>;
 type Target={id:string;index:number};
 const obj=(v:unknown):Row=>v && typeof v==='object' && !Array.isArray(v)?v as Row:{};
-async function directory() {
- const db=await risuHost()?.getDatabase?.(['characters']);
- return (Array.isArray(db?.characters)?db.characters:[]).map((v:unknown,index:number)=>({char:obj(v),index}));
+/** Asset lists change with every saved shot, so this reads fresh (joining a read in flight). */
+async function directory(fresh=true) {
+ return (await characterDirectory({fresh}) || []).map(row=>({char:{chaId:row.chaId,id:row.id,name:row.name,additionalAssets:row.additionalAssets,chats:row.chats.map(chat=>({id:chat.id,name:chat.name}))} as Row,index:row.index}));
 }
 export async function resolveShotOwner(location:Row={}):Promise<Target> {
  const id=String(location.asset_owner_character_id || location.character_id || ''),sid=String(location.session_id || '');
@@ -21,12 +22,15 @@ export async function resolveShotOwner(location:Row={}):Promise<Target> {
   const char=obj(await risuHost()?.getCharacterFromIndex?.(hint));
   if(String(char.chaId || char.id)===id)return {id,index:hint};
  }
- const rows=await directory();
- let matches=rows.filter(({char})=>{
+ const pick=(list:Array<{char:Row;index:number}>)=>list.filter(({char})=>{
   const key=String(char.chaId || char.id || '');
   if(id) return key===id;
   return sid && (sid===key || sid===unifiedSessionIdForCharacter(key) || (Array.isArray(char.chats)?char.chats:[]).some(v=>sid==='risu_'+sessionIdHash(key+'|'+String(obj(v).id || ''))));
  });
+ const warm=directoryWarm();
+ let rows=await directory(false);
+ let matches=pick(rows);
+ if(matches.length!==1 && warm){rows=await directory(true);matches=pick(rows);}
  if (!id && matches.length===0) {
   const current=await risuHost()?.getCurrentCharacterIndex?.();
   matches=rows.filter(({char,index})=>String(char.chaId || char.id)===String(current) || index===Number(current));
@@ -39,7 +43,7 @@ async function read(target:Target) {
  if(!host?.getCharacterFromIndex || !host.setCharacterToIndex)throw new Error('Character assets unavailable');
  let index=target.index,char=obj(await host.getCharacterFromIndex(index));
  if(String(char.chaId || char.id)!==target.id) {
-  const match=(await directory()).filter(r=>String(r.char.chaId || r.char.id)===target.id);
+  const match=(await directory(true)).filter(r=>String(r.char.chaId || r.char.id)===target.id);
   if(match.length!==1)throw new Error('Character assets unavailable');
   index=match[0]!.index;char=obj(await host.getCharacterFromIndex(index));
  }

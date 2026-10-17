@@ -4,6 +4,7 @@ import type { CharacterRecord } from '../core/types';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { serializeSessionStorage } from './chat-session-store';
 import { COSTUME_FIELDS } from '../domain/character/costume';
+import { characterDirectory, directoryWarm } from './character-directory';
 
 export const CHARACTER_ROSTER_LORE = 'omni.nexus.data.global';
 type Row = Record<string, unknown>;
@@ -20,25 +21,28 @@ function clean(row: Row): CharacterRecord {
   if (/data:image\/|data:application\//i.test(JSON.stringify(out))) throw new Error('Image bytes cannot be stored in character lore');
   return out as CharacterRecord;
 }
-async function targets(): Promise<Array<Target & {aliases:string[]}>> {
-  const db=await risuHost()?.getDatabase?.(['characters']);
-  if (!Array.isArray(db?.characters)) return [];
-  return db.characters.flatMap((value:unknown,index:number)=> {
-    const char=object(value); const id=String(char?.chaId || char?.id || '');
+async function targets(fresh = false): Promise<Array<Target & {aliases:string[]}>> {
+  return (await characterDirectory({ fresh }) || []).flatMap(char=> {
+    const id=char.chaId || char.id;
     if(!id) return [];
     const scope=unifiedSessionIdForCharacter(id);
-    const aliases=[id,scope,...(Array.isArray(char?.chats)?char.chats:[]).flatMap(value=> {
-      const chat=object(value);const cid=String(chat?.id || chat?.chatId || '');
+    const aliases=[id,scope,...char.chats.flatMap(chat=> {
+      const cid=chat.id || chat.chatId;
       return cid?[`risu_${sessionIdHash(`${id}|${cid}`)}`]:[];
     })];
-    return [{index,id,scope,aliases}];
+    return [{index:char.index,id,scope,aliases}];
   });
 }
-async function target(scope:string):Promise<Target|null> {
+/** Reads may use the shared directory; a miss in a reused one reads again. Writes ask for `fresh`. */
+async function target(scope:string, fresh = false):Promise<Target|null> {
   if(!scope || scope==='__global__') return null;
-  const matches=(await targets()).filter(row=>row.aliases.includes(scope));
-  if(matches.length>1) throw new Error('Ambiguous character identity');
-  return matches[0] || null;
+  const pick = async (again: boolean) => {
+    const matches=(await targets(again)).filter(row=>row.aliases.includes(scope));
+    if(matches.length>1) throw new Error('Ambiguous character identity');
+    return matches[0] || null;
+  };
+  const warm = !fresh && directoryWarm();
+  return await pick(fresh) || (warm ? pick(true) : null);
 }
 /** Resolve bot ownership without consulting the currently open chat. */
 export async function characterIdForRosterScope(scope: string): Promise<string> {
@@ -95,7 +99,7 @@ export async function readCharacterEntryKey(scope: string, key: string): Promise
 }
 
 export async function writeCharacterEntryKey(scope: string, key: string, value: unknown): Promise<void> {
-  const t = await target(scope);
+  const t = await target(scope, true);
   if (!t) throw new Error('Risu character required for lore save');
   await serializeSessionStorage(async () => {
     const host = risuHost();
@@ -166,7 +170,7 @@ export async function viewerCharacterRosters(onReadError?: (scope: string, error
 }
 export async function mutateCharacterRoster(scope:string,change:(rows:CharacterRecord[])=>CharacterRecord[]):Promise<void> {
   if(scope==='__global__') return mutateShared(change);
-  const t=await target(scope);
+  const t=await target(scope, true);
   if(!t) throw new Error('Risu character required for roster save');
   await serializeSessionStorage(async()=> {
     const host=risuHost();if(!host?.setCharacterToIndex) throw new Error('Character lorebook writing unavailable');
