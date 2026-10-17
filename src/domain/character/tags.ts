@@ -457,6 +457,13 @@ export function stripPersonCountTags(tags: unknown): string {
 }
 
 /** Per-character captions may only say `girl`/`boy`, never a count. */
+/** True when one of these tags is `upper body` (any weight, brackets or underscore). */
+export function tagsFrameUpperBody(...values: unknown[]): boolean {
+  return splitTagTokens(joinTags(...values)).some(tag => tag.toLowerCase()
+    .replace(/^-?\d+(?:\.\d+)?::|::$/g, '').replace(/[(){}[\]]/g, '').replace(/:-?\d+(?:\.\d+)?$/, '')
+    .replace(/_/g, ' ').trim() === 'upper body');
+}
+
 export function normalizeCharacterCaptionTags(tags: unknown): string {
   const kept: string[] = [];
   const seen = new Set<string>();
@@ -723,7 +730,10 @@ export function composeCharacterCaptionTags(
   const weapon = flagOn(shot?.weapon);
   const gender = resolveCharacterGender(shot, stored);
   const penis = gender === 'm' ? normalizePenisSize(stored?.penis_size) : '';
-  const wear = wearTagsForWearState(joinTags(attire, bottoms), wearState, gender, penis);
+  // `upper body` among this character's own tags: their legs are out of frame, so
+  // their bottoms are never drawn and no bottoms tags are sent.
+  const upperBody = tagsFrameUpperBody(shot?.pose, shot?.action, shot?.gaze, shot?.left_hand, shot?.right_hand);
+  const wear = wearTagsForWearState(joinTags(attire, upperBody ? '' : bottoms), wearState, gender, penis);
   const explicitGender = normalizeGender(shot?.gender ?? stored?.gender ?? stored?.sex);
   const heightCap = options.character_height === false ? '' : formatHeightCaption(
     stored?.height ?? (shot as { height?: unknown } | null | undefined)?.height,

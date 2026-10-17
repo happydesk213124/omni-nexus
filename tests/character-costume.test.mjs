@@ -209,3 +209,22 @@ test("composeCharacterCaptionTags uses shot.costume over attire mirror", () => {
   assert.match(fallback, /casual clothes/);
   assert.doesNotMatch(fallback, /bikini/);
 });
+
+test("`upper body` in a character's own tags drops only their bottoms, in any wear state", () => {
+  const stored = {
+    appearance: "girl, black hair",
+    costumes: [{ name: "default", attire: "white shirt", bottoms: "pleated skirt, black thighhighs", accessories: "ribbon" }],
+  };
+  const full = composeCharacterCaptionTags(stored, { pose: "standing" });
+  assert.match(full, /white shirt/);
+  assert.match(full, /pleated skirt/, "framed whole: bottoms stay");
+  for (const pose of ["upper body", "1.2::upper body::", "upper_body, arms crossed", "(upper body:1.1)"]) {
+    const framed = composeCharacterCaptionTags(stored, { pose });
+    assert.doesNotMatch(framed, /pleated skirt|thighhighs/, `${pose}: no bottoms`);
+    assert.match(framed, /white shirt/, "the top stays");
+    assert.match(framed, /black hair/, "looks stay");
+  }
+  assert.doesNotMatch(composeCharacterCaptionTags(stored, { action: "waving, upper body" }), /pleated skirt/, "from the action too");
+  assert.doesNotMatch(composeCharacterCaptionTags(stored, { pose: "upper body", wear_state: "bottomless" }), /pleated skirt/, "whatever the wear state");
+  assert.match(composeCharacterCaptionTags(stored, { pose: "cowboy shot" }), /pleated skirt/, "only upper body counts");
+});
