@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
-test('character creation dialog supports help, batching, retry and captured scope in a Risu sandbox',async()=>{
+// 「LLM한테 시키기」: one instruction over the roster, previewed before anything is saved.
+test('LLM한테 시키기 previews a plan, saves only on 적용, and keeps the scope it opened with', async () => {
  const bundle=await build({stdin:{contents:`
  export * from './src/settings-ux/character-create';
+ export * from './src/settings-ux/roster-command';
  export * from './src/settings-ux/tab-html';
  export * from './src/settings-ux/styles';
- `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'iife',globalName:'CharacterCreateTest'});
+ `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,format:'iife',globalName:'RosterUi'});
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
  try {
   const page=await browser.newPage();
@@ -19,85 +20,86 @@ test('character creation dialog supports help, batching, retry and captured scop
   await ui.addScriptTag({content:bundle.outputFiles[0].text});
   await ui.evaluate(()=>{
    document.documentElement.className='nx-ux-on';
-   document.head.innerHTML='<style>'+CharacterCreateTest.settingsUxCss+'</style>';
-   document.body.innerHTML='<div id="nx-shell" class="nx-ux">'+CharacterCreateTest.previewChrome()+'</div>';
-   document.getElementById('nx-main').innerHTML=CharacterCreateTest.tabHtml('characters','',{});
+   document.head.innerHTML='<style>'+RosterUi.settingsUxCss+'</style>';
+   document.body.innerHTML='<div id="nx-shell" class="nx-ux">'+RosterUi.previewChrome()+'</div>';
+   document.getElementById('nx-main').innerHTML=RosterUi.tabHtml('characters','',{});
    window.calls=[];window.flushes=0;window.cache=[];window.refresh=[];
    window.target={session_id:'selected_bot',character_id:'selected_bot'};
    globalThis.__OMNI_FLUSH_CHARACTERS__=async()=>{flushes++};
    globalThis.__OMNI_REPLACE_CHARACTER_CACHE__=(scope,rows)=>{cache.push({scope,rows})};
    globalThis.__OMNI_REFRESH_CHARACTER_SCOPE__=async scope=>{refresh.push(scope)};
+   const plan={edits:[{id:'harin',name:'하린',log:'remove_costumes: school',character:{id:'harin',name:'하린'}}],deletes:[{id:'minji',name:'민지'}],adds:[{name:'지수',description:'파란 단발'}]};
    globalThis.__OMNI_SETTINGS_ACTIONS__={characterTarget:()=>target,request:async(path,body,timeout)=>{
-    calls.push({path,body,timeout});
-    if(window.failNext){window.failNext=false;throw new Error('LLM 연결 실패');}
+    calls.push({path,body:JSON.parse(JSON.stringify(body)),timeout});
     if(window.pauseNext){window.pauseNext=false;await new Promise(resolve=>{window.finish=resolve})}
-    return {ok:true,added:2,names:['하진','민지'],message:'2명 추가됨',characters:[{id:'hajin',name:'하진'},{id:'minji',name:'민지'}]};
+    if(path.endsWith('/command-plan'))return {ok:true,plan,empty:false,targets:2};
+    return {ok:true,edited:1,deleted:1,added:1,characters:[{id:'harin',name:'하린'},{id:'jisu',name:'지수'}]};
    }};
-   CharacterCreateTest.bindCharacterCreate();CharacterCreateTest.bindCharacterCreate();
+   RosterUi.bindCharacterCreate();RosterUi.bindCharacterCreate();
   });
   const button=ui.locator('#nx-char-create-llm');
   assert.equal(await button.textContent(),'LLM한테 시키기');
-  assert.deepEqual(await button.evaluate(el=>[el.previousElementSibling.id,el.previousElementSibling.previousElementSibling.id]),['nx-char-import-global','nx-char-import-session']);
   await button.click();
-  assert.equal(await ui.locator('#nx-char-create-modal').count(),1);
-  assert.equal(await ui.locator('#nx-char-create-description').getAttribute('maxlength'),'20000');
-  assert.equal(await ui.locator('#nx-char-create-description').getAttribute('placeholder'),'주호 검은머리 짧은 언더컷 25살 검은 눈\n\n민지 파란머리 파란눈을 가진 여성 긴생머리 회색 후드 청바지');
-  assert.match(await ui.locator('#nx-char-create-hint').textContent(),/입력하지 않은.*알아서 채웁니다/);
-  const theme=await ui.evaluate(()=>({shell:getComputedStyle(document.getElementById('nx-shell')).getPropertyValue('--surface').trim(),popup:getComputedStyle(document.querySelector('#nx-char-create-modal [role=dialog]')).backgroundColor,text:getComputedStyle(document.querySelector('#nx-char-create-modal [role=dialog]')).color}));
-  assert.equal(theme.popup,'rgb(16, 22, 34)');assert.equal(theme.text,'rgb(244, 247, 251)');
-  // Shell-local overrides must reach a popup appended to body, too.
-  await ui.locator('[data-create-close]').click();
-  await ui.evaluate(()=>document.getElementById('nx-shell').style.setProperty('--surface','#242635'));
-  await button.click();
-  assert.equal(await ui.locator('[role=dialog]').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(36, 38, 53)');
-  assert.equal(await ui.locator('#nx-char-create-help').isVisible(),false);
-  await ui.locator('[data-create-help]').click();
-  const help=await ui.locator('#nx-char-create-help').textContent();
-  for(const term of ['주호','25살','민지','트리거','한국어·영어','줄바꿈','자료가 없으면 LLM이 어울리게 채웁니다']) assert.ok(help.includes(term));
-  assert.ok(!help.includes('하진'));
-  await mkdir('.test-build/character-create',{recursive:true});
-  for(const width of [320,375,768,1440]) {
-   await page.setViewportSize({width,height:900});
-   const metrics=await ui.locator('[role=dialog]').evaluate(el=>({scroll:el.scrollWidth,client:el.clientWidth,rect:{left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right},viewport:innerWidth}));
-   assert.ok(metrics.scroll<=metrics.client+1,`${width}px dialog fits horizontally`);
-   assert.ok(metrics.rect.left>=0&&metrics.rect.right<=metrics.viewport);
-   await ui.locator('[data-create-run]').scrollIntoViewIfNeeded();
-   await page.screenshot({path:`.test-build/character-create/dialog-${width}.png`});
-  }
-  await ui.locator('[data-create-run]').click();
-  assert.match(await ui.locator('[data-create-status]').textContent(),/이름과 외형/);
+  assert.equal(await ui.locator('#nx-roster-command-modal').count(),1,'bound once, one dialog');
+  assert.match(await ui.locator('#nx-roster-command-modal').textContent(),/지금 캐릭터 목록 전체/);
+  assert.equal(await ui.locator('[data-rc-apply]').isEnabled(),false,'nothing to apply before a preview');
+  await ui.locator('[data-rc-preview]').click();
+  assert.match(await ui.locator('[data-rc-plan]').textContent(),/할 일을 적어/);
   assert.equal(await ui.evaluate(()=>calls.length),0);
-  const instruction='하진: 갈색 머리와 갈색 눈, 사이드테일.\n\n민지: 파란 머리와 파란 눈.';
-  await ui.locator('#nx-char-create-description').fill(instruction);
-  await ui.evaluate(()=>{window.failNext=true;});
-  await ui.locator('[data-create-run]').click();
-  await ui.waitForFunction(()=>document.querySelector('[data-create-status]').textContent==='LLM 연결 실패');
-  assert.equal(await ui.locator('#nx-char-create-description').inputValue(),instruction);
-  assert.equal(await ui.locator('[data-create-run]').isEnabled(),true);
-  await ui.evaluate(()=>{window.pauseNext=true;document.querySelector('[data-create-run]').click();document.querySelector('[data-create-run]').click();});
+  await ui.locator('[data-rc-help]').click();
+  assert.match(await ui.locator('[data-rc-help-body]').textContent(),/미리보기[\s\S]*적용」을 눌러야 저장/);
+
+  const instruction='하린 교복 코스튬 지워 줘\n민지는 삭제\n지수 추가: 파란 단발';
+  await ui.locator('[data-rc-text]').fill(instruction);
+  await ui.locator('[data-rc-xnai]').check();
+  await ui.evaluate(()=>{window.pauseNext=true;document.querySelector('[data-rc-preview]').click();document.querySelector('[data-rc-preview]').click();});
   await ui.waitForFunction(()=>window.finish);
-  assert.equal(await ui.locator('[data-create-run]').isEnabled(),false);
-  await ui.locator('#nx-char-create-description').press('Escape');
-  assert.equal(await ui.locator('#nx-char-create-modal').count(),1,'busy dialog preserves pending work');
+  await ui.locator('[data-rc-text]').press('Escape');
+  assert.equal(await ui.locator('#nx-roster-command-modal').count(),1,'a busy dialog keeps its work');
   await ui.evaluate(()=>{target={session_id:'other_bot',character_id:'other_bot'};finish()});
-  await ui.waitForFunction(()=>document.querySelector('[data-create-status]').textContent.includes('2명 추가됨'));
-  const state=await ui.evaluate(()=>({calls,flushes,cache,refresh}));
-  assert.equal(state.calls.length,2,'double clicks start only one additional call');
-  assert.equal(state.flushes,2);
-  assert.deepEqual(state.calls[1],{path:'/v1/characters/create-from-description',body:{session_id:'selected_bot',character_id:'selected_bot',scope:'selected_bot',instruction},timeout:300_000});
+  await ui.waitForFunction(()=>/수정 · 1/.test(document.querySelector('[data-rc-plan]').textContent));
+  const shown=await ui.locator('[data-rc-plan]').textContent();
+  assert.match(shown,/하린[\s\S]*remove_costumes[\s\S]*삭제 · 1[\s\S]*민지[\s\S]*추가 · 1[\s\S]*지수/);
+  let state=await ui.evaluate(()=>({calls,flushes,cache,refresh}));
+  assert.equal(state.calls.length,1,'a double click asks once');
+  assert.deepEqual(state.calls[0],{path:'/v1/characters/command-plan',timeout:300_000,
+   body:{session_id:'selected_bot',character_id:'selected_bot',scope:'selected_bot',ids:[],instruction,xnai:true,lore:false}});
+  assert.equal(state.cache.length,0,'a preview saves nothing');
+
+  await ui.locator('[data-rc-apply]').click();
+  await ui.waitForFunction(()=>/적용했습니다/.test(document.querySelector('[data-rc-plan]').textContent));
+  state=await ui.evaluate(()=>({calls,flushes,cache,refresh}));
+  assert.equal(state.calls[1].path,'/v1/characters/command-apply');
+  assert.equal(state.calls[1].body.scope,'selected_bot','the scope it opened with, not the later one');
+  assert.deepEqual(state.calls[1].body.plan.deletes,[{id:'minji',name:'민지'}]);
   assert.equal(state.cache[0].scope,'selected_bot');assert.deepEqual(state.refresh,['selected_bot']);
-  await ui.locator('[data-create-close]').click();
-  assert.equal(await ui.locator('#nx-char-create-modal').count(),0);
+  assert.equal(state.flushes,2,'pending form edits are saved before each request');
+  assert.equal(await ui.locator('[data-rc-apply]').isEnabled(),false,'an applied plan cannot be applied twice');
+
+  // A changed instruction drops the shown plan.
+  await ui.locator('[data-rc-preview]').click();
+  await ui.waitForFunction(()=>!document.querySelector('[data-rc-apply]').disabled);
+  await ui.locator('[data-rc-text]').fill('다른 명령');
+  assert.equal(await ui.locator('[data-rc-apply]').isEnabled(),false);
+  await ui.locator('[data-rc-close]').click();
+  assert.equal(await ui.locator('#nx-roster-command-modal').count(),0);
+
+  // The global list in view is the global roster.
   await ui.evaluate(()=>{document.getElementById('nx-char-scope-bar').dataset.uxSelectedScope='global'});
   await button.click();
-  await ui.locator('#nx-char-create-description').fill('민지: 파란 머리');
-  await ui.locator('[data-create-run]').click();
-  await ui.waitForFunction(()=>window.calls.length===3&&!document.querySelector('[data-create-run]').disabled);
+  await ui.locator('[data-rc-text]').fill('모두 머리 자세히');
+  await ui.locator('[data-rc-preview]').click();
+  await ui.waitForFunction(()=>window.calls.length===4&&!document.querySelector('[data-rc-preview]').disabled);
   assert.equal(await ui.evaluate(()=>calls.at(-1).body.scope),'__global__');
-  await ui.locator('[data-create-run]').focus();
-  await ui.locator('[data-create-run]').press('Tab');
-  assert.equal(await ui.evaluate(()=>document.activeElement.hasAttribute('data-create-help')),true);
-  await ui.locator('[data-create-help]').press('Escape');
-  assert.equal(await ui.locator('#nx-char-create-modal').count(),0);
+  // The selection bar opens the same dialog for the picked ones only.
+  await ui.locator('[data-rc-close]').click();
+  await ui.evaluate(()=>RosterUi.openRosterCommand(__OMNI_SETTINGS_ACTIONS__,'selected_bot',['harin'],['하린']));
+  assert.match(await ui.locator('#nx-roster-command-modal').textContent(),/고른 1명: 하린/);
+  await ui.locator('[data-rc-apply]').focus();
+  await ui.locator('[data-rc-preview]').focus();
+  await ui.locator('[data-rc-preview]').press('Tab');
+  assert.equal(await ui.evaluate(()=>document.activeElement.hasAttribute('data-rc-help')),true,'focus stays in the dialog');
+  await ui.locator('[data-rc-help]').press('Escape');
+  assert.equal(await ui.locator('#nx-roster-command-modal').count(),0);
  } finally {await browser.close()}
 });

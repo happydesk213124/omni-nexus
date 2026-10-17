@@ -693,6 +693,7 @@ const NEW_ONLY_STEPS = new Map([
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
   ['speech.style_on',v=>JSON.stringify(v?.saved)==='[2,true]' && JSON.stringify(v?.exported)==='[2,true]' ? null : 'Speech bubble weight/huge text must persist and export'],
   ['cards.history_delete_missing',v=>v?.ok === false && v.error?.code === 'not_found' ? null : 'Deleting an unknown history revision must say not_found'],
+  ['chars.roster_command',v=>v?.target && v.edits===1 && v.deletes===0 && v.edited===1 && v.mole ? null : 'Roster command must plan one edit (an unlisted delete dropped) and apply it: '+JSON.stringify(v)],
   ['backup.full_roundtrip',v=>v?.type==='omni-nexus-full-backup' && v.parts && v.keyKept && v.restored && v.same ? null : 'Full backup must carry every part with its keys and restore to the same state: '+JSON.stringify(v)],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],
   // Revisions intentionally keep the original entity; assert identity and the complete family.

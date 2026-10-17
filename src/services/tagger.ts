@@ -28,7 +28,7 @@ import { cleanText, stripCbs } from '../core/util/text';
 import { filterTaggerContextMessages, stripBakeTokens } from '../domain/chat-bake';
 import { normalizeAssetNaiTagsMode, normalizeFocusCharacterMode, normalizeFocusPromptMode, normalizeNaturalBaseMode, type NaturalBaseMode } from '../config/schema';
 import type { FocusCharacterMode, FocusPromptMode } from '../core/types';
-import { characterTriggers, dedupeShotCharacters, matchCharactersInText } from '../domain/character/roster';
+import { activeRoster, characterTriggers, dedupeShotCharacters, matchCharactersInText } from '../domain/character/roster';
 import { characterHasAppearance, characterMaxLimit, formatWearStateForPrompt } from '../domain/character/tags';
 import { normalizeEyeColorSlot, normalizeHairColorSlot } from '../domain/character/looks-fields';
 import { ensureCostumes, formatCostumeCatalog } from '../domain/character/costume';
@@ -350,12 +350,12 @@ export async function buildCharacterLooksMessages(
   const sourceSessionIds = Array.isArray(request.source_session_ids)
     ? request.source_session_ids.map((s) => cleanText(s, 200)).filter(Boolean)
     : [];
-  const rosterEarly: CharacterRecord[] = await rosterForSession(
+  const rosterEarly: CharacterRecord[] = activeRoster(await rosterForSession(
     sessionId,
     cleanText(request.unified_session_id || '', 200),
     cleanText(request.character_id || '', 200),
     sourceSessionIds,
-  );
+  ));
 
   pushReferenceUser(messages, 'NovelAI asset tags', assetBlock);
 

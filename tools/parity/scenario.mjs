@@ -1986,5 +1986,17 @@ export async function runScenario(N, handles) {
     return { type: doc.type, parts: ['settings', 'prompts', 'tts', 'sound'].every(k => doc[k] && typeof doc[k] === 'object'),
       keyKept: /(?:sk|pst)-parity/.test(JSON.stringify(doc.settings || {})), restored: restored?.ok === true, same: strip(doc) === strip(again) };
   });
+  // 2.0 only: 「LLM한테 시키기」 over the roster: a plan first, then applied. Last, since it edits the roster.
+  const rosterRows = (await get('/v1/characters?session_id=sess_main'))?.characters || [];
+  const rosterTarget = rosterRows[0]?.id || '';
+  handles.setLlmReply?.(JSON.stringify({ edit: rosterTarget ? [{ id: rosterTarget, deltas: { appearance: { add: ['parity mole'] } } }] : [], delete: ['not-listed'], add: [] }));
+  await rec('chars.roster_command', async () => {
+    const planned = await post('/v1/characters/command-plan', { scope: 'sess_main', session_id: 'sess_main', character_id: 'char_parity', instruction: 'add a mole', ids: rosterTarget ? [rosterTarget] : [] });
+    const applied = await post('/v1/characters/command-apply', { scope: 'sess_main', session_id: 'sess_main', character_id: 'char_parity', plan: planned?.plan });
+    const after = ((await get('/v1/characters?session_id=sess_main'))?.characters || []).find(row => row.id === rosterTarget);
+    return { target: Boolean(rosterTarget), edits: planned?.plan?.edits?.length ?? -1, deletes: planned?.plan?.deletes?.length ?? -1,
+      edited: applied?.edited ?? -1, mole: String(after?.appearance || '').includes('parity mole') };
+  });
+  handles.setLlmReply?.(DEFAULT_LLM_REPLY);
   return transcript;
 }
