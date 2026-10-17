@@ -1,4 +1,5 @@
 import { bindPromptUpdates } from './prompt-updates';
+import { bindAuthorNotePresets } from './author-note-presets';
 import { bindSettingsPresets } from './settings-presets';
 import { bindCharacterOptions } from './character-options';
 import { bindCharacterCreate } from './character-create';
@@ -313,6 +314,7 @@ export function afterPaint(): void {
     markAutoGenForInlineTags(actions?.config?.()?.card?.stream_inline_tags === true);
   }
   if (tab === 'gen_options') { bindGuardrailPreset(); bindInlineTagToggles(); }
+  if (tab === 'prompts') bindAuthorNotePresets();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');
   if (line && tab !== 'curation') line.textContent = TAB_LABELS[tab] || '설정';

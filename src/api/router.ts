@@ -43,6 +43,7 @@ import * as settingsPresets from '../services/settings-presets';
 import * as fullBackup from '../services/full-backup';
 import * as storageMigrate from '../services/storage-migrate';
 import * as sessionAuthorNote from '../services/session-author-note';
+import * as authorNotePresets from '../services/author-note-presets';
 import * as charCommandPresets from '../services/char-command-presets';
 import * as charCommand from '../services/char-command';
 import * as characterPreview from '../services/character-preview';
@@ -223,6 +224,7 @@ const GET_ROUTES: readonly Route[] = [
     match: exact('/v1/session-author-note-presets'),
     handler: async () => ok(await sessionAuthorNote.listSessionAuthorNotePresets()),
   },
+  { match: exact('/v1/author-note-presets'), handler: async () => ok(await authorNotePresets.listAuthorNotePresets()) },
   {
     match: exact('/v1/characters/example-shot'),
     handler: async ({ query }) => {
@@ -486,6 +488,7 @@ const WRITE_ROUTES: readonly Route[] = [
     match: exact('/v1/session-author-note-presets'),
     handler: async ({ body }) => ok(await sessionAuthorNote.saveSessionAuthorNotePresets(body.items ?? body)),
   },
+  { match: exact('/v1/author-note-presets'), handler: async ({ body }) => ok(await authorNotePresets.saveAuthorNotePresets(body.items ?? body)) },
   {
     match: exact('/v1/character-command-presets'),
     handler: async ({ body }) => ok(await charCommandPresets.saveCommandPresets(body.items ?? body)),

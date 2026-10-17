@@ -1986,6 +1986,15 @@ export async function runScenario(N, handles) {
     return { type: doc.type, parts: ['settings', 'prompts', 'tts', 'sound'].every(k => doc[k] && typeof doc[k] === 'object'),
       keyKept: /(?:sk|pst)-parity/.test(JSON.stringify(doc.settings || {})), restored: restored?.ok === true, same: strip(doc) === strip(again) };
   });
+  // 2.0 only: main author's note presets. Examples are listed but never stored; a saved row round-trips.
+  await rec('prompts.author_note_presets', async () => {
+    const before = await get('/v1/author-note-presets');
+    const saved = await post('/v1/author-note-presets', { items: [{ id: 'parity-note', name: 'Parity', text: 'pov' }, ...(before?.items || [])] });
+    const after = await get('/v1/author-note-presets');
+    const mine = rows => (rows?.items || []).filter(row => !row.builtin).map(row => row.id).join();
+    return { examples: (before?.items || []).filter(row => row.builtin).length, savedMine: mine(saved), listedMine: mine(after),
+      examplesKept: (after?.items || []).filter(row => row.builtin).length };
+  });
   // 2.0 only: 「LLM한테 시키기」 over the roster: a plan first, then applied. Last, since it edits the roster.
   const rosterRows = (await get('/v1/characters?session_id=sess_main'))?.characters || [];
   const rosterTarget = rosterRows[0]?.id || '';
