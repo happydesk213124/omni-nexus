@@ -49,7 +49,8 @@ function createHost({ readback = true } = {}) {
       host.saveAssetArgumentCounts.push(arguments.length);
       host.saveAssetCalls += 1;
       host.savedPath = `assets/risu-generated-${host.saveAssetCalls}.webp`;
-      stored.set(host.savedPath, Uint8Array.from(bytes));
+      // RisuNest's native store calls data.subarray, which an ArrayBuffer lacks.
+      stored.set(host.savedPath, Uint8Array.from(bytes.subarray(0)));
       return host.savedPath;
     },
     async readImage(path) {

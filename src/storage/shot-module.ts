@@ -214,8 +214,13 @@ export async function readShotAssetBytes(path: string): Promise<ArrayBuffer | nu
   }
 }
 
-function copyBytes(bytes: BytesLike): ArrayBuffer {
-  return u8ToArrayBuffer(asU8(bytes));
+/**
+ * A private Uint8Array, never an ArrayBuffer: `saveAsset` is declared Uint8Array,
+ * and RisuNest's native store calls `data.subarray`, which an ArrayBuffer lacks.
+ * PocketRisu stores either shape, so the ArrayBuffer only ever worked by luck.
+ */
+function copyBytes(bytes: BytesLike): Uint8Array {
+  return new Uint8Array(u8ToArrayBuffer(asU8(bytes)));
 }
 
 /** Saves bytes and proves they can be read back, or null. No DB write. */

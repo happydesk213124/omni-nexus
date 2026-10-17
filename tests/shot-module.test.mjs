@@ -37,7 +37,9 @@ function createHost({ readback = true } = {}) {
     async saveAsset(bytes) {
       host.saveAssetCalls += 1;
       const path = `assets/shot-${host.saveAssetCalls}.webp`;
-      const u8 = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : Uint8Array.from(bytes);
+      // RisuNest's native store calls data.subarray: an ArrayBuffer throws there
+      // ("n.subarray is not a function"), so this mock throws for one too.
+      const u8 = Uint8Array.from(bytes.subarray(0));
       stored.set(path, u8);
       return path;
     },
