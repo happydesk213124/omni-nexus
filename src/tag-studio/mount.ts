@@ -609,12 +609,16 @@ export async function openTagStudio(card: unknown): Promise<void> {
     noteAttr?: string;
     noteValue?: string;
     notePlaceholder?: string;
+    /** The caret opens this action (a popup) instead of the native list. */
+    popAct?: string;
   }): string {
     return `<div class="optstack">
       <div class="optbar">
         <div class="optcombo">
           <input type="text" ${args.nameAttr} value="${esc(args.nameValue)}" placeholder="${esc(args.placeholder)}" />
-          <div class="optcaret"><span>▾</span><select ${args.selectAttr}>${args.options}</select></div>
+          <div class="optcaret"><span>▾</span>${args.popAct
+            ? `<button type="button" data-act="${esc(args.popAct)}" aria-label="목록 열기"></button>`
+            : `<select ${args.selectAttr}>${args.options}</select>`}</div>
         </div>
         <button class="btn sm" data-act="${esc(args.saveAct)}" type="button">저장</button>
         <button class="btn sm warn" data-act="${esc(args.delAct)}" type="button">삭제</button>
@@ -627,8 +631,9 @@ export async function openTagStudio(card: unknown): Promise<void> {
   }
 
   /**
-   * Image presets as tiles, name inside: a long list of similar names is easier to
-   * pick by sight. The look preview fills a tile when the preset has one.
+   * The preset list as image tiles, the name inside each image at the bottom: a long
+   * list of similar names is easier to pick by sight. A preset without a look image
+   * keeps the tile, empty above its name.
    */
   function styleTiles(): string {
     const current = state.main.presetId;
@@ -636,10 +641,63 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const id = cleanText(p.id, 120), name = cleanText(p.name, 200) || '이름 없음';
       const raw = typeof p.look_preview_url === 'string' ? p.look_preview_url : '';
       const thumb = /^(?:data:image\/|blob:|https?:)/.test(raw) ? raw : '';
-      return `<button class="stile${id === current ? ' on' : ''}${thumb ? ' img' : ''}" data-style-pick="${esc(id)}" type="button" title="${esc(name)}">`
-        + `${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" />` : ''}<span>${esc(name)}</span></button>`;
+      return `<button class="stile${id === current ? ' on' : ''}" data-style-pick="${esc(id)}" type="button" title="${esc(name)}">`
+        + `${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" />` : '<i class="noimg"></i>'}<span><b>${esc(name)}</b></span></button>`;
     }).join('');
-    return `<div class="stiles"><button class="stile add${current ? '' : ' on'}" data-style-pick="__add__" type="button"><span>＋ 추가</span></button>${tiles}</div>`;
+    return `<div class="stiles"><button class="stile add${current ? '' : ' on'}" data-style-pick="__add__" type="button"><i class="noimg">＋</i><span><b>추가</b></span></button>${tiles}</div>`;
+  }
+
+  /** Opens under the name box, like the list it replaces. Picking, the backdrop or Esc closes it. */
+  function openStylePop(): void {
+    closeStylePop();
+    const combo = $<HTMLElement>('#panel .optcombo');
+    const pop = document.createElement('div');
+    pop.className = 'spop';
+    pop.id = 'stylePop';
+    pop.innerHTML = `<div class="spop-card" role="dialog" aria-label="이미지 프리셋">${styleTiles()}</div>`;
+    root.append(pop);
+    const card = pop.firstElementChild as HTMLElement;
+    const place = () => {
+      const r = combo?.getBoundingClientRect();
+      const width = Math.min(window.innerWidth - 16, Math.max(r?.width || 0, 380));
+      card.style.width = width + 'px';
+      card.style.left = Math.max(8, Math.min((r?.left ?? 8), window.innerWidth - width - 8)) + 'px';
+      card.style.top = Math.min((r?.bottom ?? 60) + 6, window.innerHeight - 160) + 'px';
+      card.style.maxHeight = Math.max(160, window.innerHeight - ((r?.bottom ?? 60) + 6) - 12) + 'px';
+    };
+    const showPicked = () => card.querySelector<HTMLElement>('.stile.on')?.scrollIntoView({ block: 'nearest' });
+    place();
+    showPicked();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); closeStylePop(); } };
+    document.addEventListener('keydown', onKey, true);
+    popCleanup = () => document.removeEventListener('keydown', onKey, true);
+    // Look images are read on demand; tiles fill in when they land.
+    void hydrateStyleLooks().then((changed) => {
+      if (!changed || !pop.isConnected) return;
+      card.innerHTML = styleTiles();
+      showPicked();
+    });
+  }
+
+  let popCleanup: (() => void) | null = null;
+  function closeStylePop(): void {
+    popCleanup?.(); popCleanup = null;
+    root.querySelector('#stylePop')?.remove();
+  }
+
+  async function hydrateStyleLooks(): Promise<boolean> {
+    const native = (globalThis as { __INLAY_NATIVE__?: { hydrateSettingsPreviews?: (tab: string) => Promise<boolean> } }).__INLAY_NATIVE__;
+    try { await native?.hydrateSettingsPreviews?.('style_presets'); } catch { return false; }
+    if (!namedStyle(stylePresets).some((p) => cleanText(p.look_hash, 80) && !p.look_preview_url)) return false;
+    const fresh = asRecord(asRecord(await loadSettings().catch(() => ({}))).card).presets;
+    if (!Array.isArray(fresh)) return false;
+    let changed = false;
+    for (const row of stylePresets) {
+      const hit = fresh.find((p) => cleanText(asRecord(p).id, 120) === cleanText(row.id, 120));
+      const url = hit ? asRecord(hit).look_preview_url : undefined;
+      if (typeof url === 'string' && url && url !== row.look_preview_url) { row.look_preview_url = url; changed = true; }
+    }
+    return changed;
   }
 
   function optAdd(listHtml: string): string {
@@ -707,8 +765,8 @@ export async function openTagStudio(card: unknown): Promise<void> {
           }).join('')),
           saveAct: 'styleSave',
           delAct: 'styleDel',
+          popAct: 'stylePop',
         })}
-        ${styleTiles()}
         <div class="seg">
           <button class="${negPane ? '' : 'on'}" data-act="presetPos" type="button">선행 프리셋</button>
           <button class="${negPane ? 'on' : ''}" data-act="presetNeg" type="button">네거티브</button>
@@ -857,14 +915,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
     const t = state.tabs.find((x) => x.id === state.active) || state.tabs[0];
     const hostEl = $('#panel');
     if (!hostEl || !t) return;
-    const tiles = hostEl.querySelector<HTMLElement>('.stiles'), kept = tiles?.scrollTop ?? -1;
     hostEl.innerHTML = t.kind === 'main' ? panelMain() : t.kind === 'llm' ? panelLlm() : panelChar(t.id);
-    // Every edit repaints the panel: keep the tile list where it was, and show the picked tile.
-    const grid = hostEl.querySelector<HTMLElement>('.stiles'), on = grid?.querySelector<HTMLElement>('.stile.on');
-    if (grid && kept >= 0) grid.scrollTop = kept;
-    if (grid && on && (on.offsetTop < grid.scrollTop || on.offsetTop + on.offsetHeight > grid.scrollTop + grid.clientHeight)) {
-      grid.scrollTop = on.offsetTop - (grid.clientHeight - on.offsetHeight) / 2;
-    }
   }
 
   function renderHistory(): void {
@@ -1837,6 +1888,9 @@ export async function openTagStudio(card: unknown): Promise<void> {
         state.main.presetPane = 'neg';
         renderPanel();
         break;
+      case 'stylePop':
+        openStylePop();
+        break;
       case 'styleSave':
         void saveStylePreset();
         break;
@@ -1965,6 +2019,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
   }
 
   function bindPanel(): void {
+    cleanups.push(closeStylePop);
     on(root, 'click', (e) => {
       const t = e.target;
       if (!(t instanceof Element)) return;
@@ -1978,9 +2033,11 @@ export async function openTagStudio(card: unknown): Promise<void> {
       }
       const pick = t.closest('[data-style-pick]');
       if (pick instanceof HTMLElement) {
+        closeStylePop();
         onOptPick('style', pick.dataset.stylePick || '', '');
         return;
       }
+      if (t.id === 'stylePop') { closeStylePop(); return; }
       const a = t.closest('[data-act]');
       if (a instanceof HTMLElement && a.dataset.act) {
         act(a.dataset.act);

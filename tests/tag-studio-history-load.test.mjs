@@ -70,7 +70,7 @@ test('history tiles reload their own tags, delete from the right, and 불러오�
     await page.evaluate(() => window.release());
     await page.waitForFunction(() => /민아/.test(document.querySelector('#charTabsBar')?.textContent || ''));
     assert.match(await charTabs(), /C1 하나[\s\S]*C2 민아/, 'C1/C2 from that image');
-    assert.equal(await page.locator('[data-opt="style"]').inputValue(), 'p', 'and its preset');
+    assert.equal(await page.locator('[data-m="presetName"]').inputValue(), '프리셋P', 'and its preset');
     assert.equal(await page.locator('.metaload').count(), 0);
     assert.equal(await tiles.nth(1).evaluate(el => el.classList.contains('loading')), false);
 
@@ -111,7 +111,7 @@ test('history tiles reload their own tags, delete from the right, and 불러오�
     assert.equal(sent.file_name, 'inxshot_scene_c47c6-ae47.png', 'the file name goes along (its cast ids)');
     await page.waitForFunction(() => /C1 민아/.test(document.querySelector('#charTabsBar')?.textContent || ''));
     assert.match(await charTabs(), /C1 민아[\s\S]*C2 하나/, 'people saved under another scope still find their roster rows');
-    assert.equal(await page.locator('[data-opt="style"]').inputValue(), 'p');
+    assert.equal(await page.locator('[data-m="presetName"]').inputValue(), '프리셋P');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
