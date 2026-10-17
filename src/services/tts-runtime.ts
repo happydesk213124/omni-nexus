@@ -235,7 +235,8 @@ export class OmniTtsRuntime {
     if (!requests.length || !valid()) return [];
     const context = requests[0].context;
     this.stage = '화자 확인'; this.emit();
-    await ensureTtsSpeakers(context, requests.filter(r => !r.fishId).map(r => r.segment.speaker).filter(Boolean), valid);
+    const speaking = requests.filter(r => !r.fishId && r.segment.speaker);
+    await ensureTtsSpeakers(context, speaking.map(r => r.segment.speaker), valid, [...new Set(speaking.map(r => r.messageId))]);
     if (!valid()) return [];
     const settings = JSON.parse(JSON.stringify(ttsData().settings)) as TtsSettings;
     const prepared = requests.flatMap(request => {

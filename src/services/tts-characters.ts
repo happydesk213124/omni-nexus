@@ -57,7 +57,8 @@ export function deleteTtsCharacters(rows: readonly TtsCharacter[]): void {
 const assignments = new Map<string, Promise<void>>();
 const scopeTails = new Map<string, Promise<void>>();
 const failed = new Map<string, number>();
-export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean): Promise<void> {
+/** `messageIds`: the messages being voiced; their text is the evidence for a new speaker. */
+export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = []): Promise<void> {
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
   const data = ttsData();
   // A ready voice must not join the scope-wide queue for unrelated new people.
@@ -72,12 +73,13 @@ export function ensureTtsSpeakers(context: TtsChatContext, names: string[], curr
   const task=(scopeTails.get(context.rosterScope)||Promise.resolve()).catch(()=>{}).then(async()=>{
     if(!current()||!ttsData().settings.enabled)return;
     if((failed.get(key)||0)>Date.now()-30_000)throw new Error('화자 자동 배정 재시도 대기 중입니다. 모델 설정을 확인해 주세요.');
-    try { await assignSpeakers(context,names);failed.delete(key); }
+    // 「음성 고를 때 채팅 내용 포함」 off: lore, persona and the image roster only.
+    try { await assignSpeakers(context,names,ttsData().settings.assignWithChat===false?[]:messageIds);failed.delete(key); }
     catch(error){failed.set(key,Date.now());if(failed.size>100)failed.delete(failed.keys().next().value!);throw error;}
   }).finally(()=>{assignments.delete(key);if(scopeTails.get(context.rosterScope)===task)scopeTails.delete(context.rosterScope);});
   assignments.set(key,task);scopeTails.set(context.rosterScope,task);return task;
 }
-async function assignSpeakers(context: TtsChatContext, names: string[]): Promise<void> {
+async function assignSpeakers(context: TtsChatContext, names: string[], messageIds: string[] = []): Promise<void> {
   const data = ttsData();
   if (!data.settings.autoAssign) return;
   const unknown = [...new Set(names)].filter(name => {
@@ -89,11 +91,12 @@ async function assignSpeakers(context: TtsChatContext, names: string[]): Promise
     const engine=data.settings.selector;
     // Names already came from the parser. JEV can select from lore directly;
     // it must not require a second, independently configured LLM connection.
-    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true }, context.rosterScope, unknown);
+    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true, messages: messageIds }, context.rosterScope, unknown);
     for(const name of unknown)if(!proposals.some(p=>ttsNameKey(p.draft.name)===ttsNameKey(name)))proposals.push({draft:blankTtsCharacter(context.rosterScope,name)});
     if (!ttsData().settings.enabled) return;
     if (engine === 'jev' && proposals.length) {
-      const sources=await ttsCharacterSources(context,{lore:true,persona:true,illustration:true},unknown);
+      // The message being voiced is the evidence for a speaker no lorebook describes.
+      const sources=await ttsCharacterSources(context,{lore:true,persona:true,illustration:true,messages:messageIds},unknown);
       const selected = await selectTtsVoices(proposals.map(p => p.draft), ttsCandidateVoices(), ttsData().settings, 'jev',sources);
       for (const proposal of proposals) { const voice = selected.get(proposal.draft.id)![0]; proposal.draft.voiceKey = voice.key; proposal.draft.fishId = voice.fishId; adoptVoiceTags(proposal.draft, voice); }
     }

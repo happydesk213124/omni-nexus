@@ -69,6 +69,8 @@ export interface TtsSettings {
   narration: boolean;
   narrationVoice: string;
   autoAssign: boolean;
+  /** Send the message being voiced along when a new speaker's voice is chosen. */
+  assignWithChat: boolean;
   selector: 'llm' | 'jev';
   clickPlay: boolean;
   hoverPlay: boolean;
