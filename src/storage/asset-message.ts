@@ -1,4 +1,5 @@
 import { risuHost } from '../core/host';
+import { characterDirectory } from './character-directory';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { imageHistoryRoot } from '../domain/gallery/image-history';
 
@@ -35,10 +36,8 @@ export async function messageAssetIds(sessionId: string, messageIndex: number): 
 
 async function* chatTargets(hint: Row): AsyncGenerator<{chat:Row;location:Row}> {
   const host = risuHost();
-  const db = await host?.getDatabase?.(['characters']);
-  const chars = Array.isArray(db?.characters) ? db.characters : [];
-  for (let ci=0; ci<chars.length; ci++) {
-    const entry=obj(chars[ci]), cid=String(entry.chaId || entry.id || '');
+  for (const entry of await characterDirectory() || []) {
+    const ci=entry.index, cid=entry.chaId || entry.id;
     if (hint.character_id && hint.character_id!==cid) continue;
     const char=obj(await host?.getCharacterFromIndex?.(ci));
     const chats=Array.isArray(char.chats)?char.chats:[];

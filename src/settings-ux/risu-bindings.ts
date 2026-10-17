@@ -1,4 +1,5 @@
 import { risuHost } from '../core/host';
+import { characterDirectory } from '../storage/character-directory';
 import { RailImageCache, type RailImage } from '../storage/rail-image-cache';
 
 /** Use the vendor scope selector: it flushes edits and selects the bot-owned lorebook. */
@@ -215,18 +216,14 @@ export async function fillRisuTiles(box: HTMLElement | null): Promise<void> {
   releaseRail?.(); releaseRail = null;
   box.textContent = '불러오는 중…';
   try {
-    const host = risuHost();
-    const db = await host?.getDatabase?.(['characters']);
-    const characters = Array.isArray(db?.characters) ? db.characters : [];
+    const characters = await characterDirectory() || [];
     // Global roster is local navigation; it must not change the bot-owned lorebook.
     const rows: RailRow[] = [
       { value: 'live', label: '현재 캐릭터 챗' },
       { value: '__global__', label: '전역 로스터' },
       ...[...(select?.options || [])].filter(option => option.value !== 'live').map(option => {
         const character = /^\d+$/.test(option.value) ? characters[Number(option.value)] : undefined;
-        const path = character && typeof character === 'object' && 'image' in character
-          ? (character as { image?: unknown }).image
-          : undefined;
+        const path = character?.image;
         return {
           value: option.value,
           label: option.textContent || '',

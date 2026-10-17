@@ -2,6 +2,7 @@ import { risuHost } from '../core/host';
 import { CARD_PACK_KEY, SESSION_AUTHOR_NOTE_KEY, STORE_KEY, ROOM_INDEX_KEY } from '../core/constants';
 import { cleanText, sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import type { KvApi } from './device-store';
+import { characterDirectory, directoryWarm } from './character-directory';
 
 export const SESSION_LORE_NAME = 'omni.nexus.data';
 type RecordValue = Record<string, unknown>;
@@ -24,24 +25,22 @@ export function serializeSessionStorage<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-async function targets(): Promise<Target[]> {
+/** Writes route rows by this list, so they pass `fresh`; reads retry fresh on a miss. */
+async function targets(fresh = false): Promise<Target[]> {
   const host = risuHost();
   if (!host?.getDatabase || !host.getCharacterFromIndex || !host.getChatFromIndex || !host.setChatToIndex) return [];
-  const db = await host.getDatabase(['characters']);
-  if (!Array.isArray(db?.characters)) return [];
   const result: Target[] = [];
-  db.characters.forEach((raw: unknown, character: number) => {
-    const row = object(raw);
+  for (const row of await characterDirectory({ fresh }) || []) {
     // Names and array indices are not durable identity. Older chats without an
     // id remain in the original store until Risu gives them one.
-    const characterId = cleanText(row?.chaId || row?.id, 200);
-    if (!characterId || !Array.isArray(row?.chats)) return;
-    row.chats.forEach((rawChat: unknown, chat: number) => {
-      const chatId = cleanText(object(rawChat)?.id || object(rawChat)?.chatId, 200);
-      if (!chatId || chatId === '__unified__') return;
-      result.push({ character, chat, characterId, chatId, sid: `risu_${sessionIdHash(`${characterId}|${chatId}`)}` });
-    });
-  });
+    const characterId = cleanText(row.chaId || row.id, 200);
+    if (!characterId) continue;
+    for (const entry of row.chats) {
+      const chatId = cleanText(entry.id || entry.chatId, 200);
+      if (!chatId || chatId === '__unified__') continue;
+      result.push({ character: row.index, chat: entry.index, characterId, chatId, sid: `risu_${sessionIdHash(`${characterId}|${chatId}`)}` });
+    }
+  }
   // Duplicate identities cannot be safely assigned, even if one is selected.
   return result.filter(t => result.filter(other => other.sid === t.sid).length === 1);
 }
@@ -145,7 +144,9 @@ export async function readSessionStorage(key: string, legacy: unknown): Promise<
   // write-only weight. Nothing stored, nothing merged.
   if (key === STORE_KEY('jobs')) return legacy;
   return serializeSessionStorage(async () => {
-    const all = await targets();
+    const warm = directoryWarm();
+    let all = await targets();
+    if (warm && !directTarget(key, all) && !packedTargets(key, all).length) all = await targets(true);
     const target = directTarget(key, all);
     if (target) {
       const data = payload(await readChat(target), target);
@@ -190,7 +191,7 @@ export async function writeSessionStorage(key: string, value: unknown, api: KvAp
   // failure; reroll reads image metadata through its own logic now.
   if (key === STORE_KEY('jobs')) return;
   return serializeSessionStorage(async () => {
-    const all = await targets();
+    const all = await targets(true);
     // directTarget matches pack keys and per-chat note keys only, and neither
     // is written anywhere any more (memory + Risu assets only; the user clears
     // old values by hand). Reads of existing lorebook entries keep working.
@@ -230,7 +231,7 @@ export async function removeSessionStorage(key: string): Promise<boolean> {
   // neither the lorebook nor the save file is touched here.
   if (!mixedKeys.has(key)) return true;
   return serializeSessionStorage(async () => {
-    const all = await targets();
+    const all = await targets(true);
     const target = directTarget(key, all);
     if (!target) {
       const packed = packedTargets(key, all);
@@ -246,7 +247,8 @@ export async function removeSessionStorage(key: string): Promise<boolean> {
 /** Dedicated note entry: intentionally never consult the legacy plugin key. */
 export async function readChatNote(sid:string):Promise<unknown> {
   return serializeSessionStorage(async()=> {
-    const target=(await targets()).find(t=>t.sid===sid);
+    const warm=directoryWarm();
+    const target=(await targets()).find(t=>t.sid===sid) || (warm ? (await targets(true)).find(t=>t.sid===sid) : undefined);
     if(!target) return null;
     return notePayload(await readChat(target));
   });
@@ -261,7 +263,7 @@ function notePayload(chat:RecordValue):unknown {
 }
 export async function writeChatNote(sid:string,note:unknown):Promise<unknown> {
   return serializeSessionStorage(async()=> {
-    const target=(await targets()).find(t=>t.sid===sid);
+    const target=(await targets(true)).find(t=>t.sid===sid);
     if(!target)throw new Error('Chat required for author note');
     const chat=await readChat(target);
     const previous = object(notePayload(chat)) ?? {};

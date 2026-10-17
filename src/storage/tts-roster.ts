@@ -1,6 +1,7 @@
 import { risuHost } from '../core/host';
 import type { TtsCharacter } from '../core/tts-types';
 import { serializeSessionStorage } from './chat-session-store';
+import { characterDirectory, directoryWarm } from './character-directory';
 
 /**
  * A bot's TTS characters live in that bot's own lorebook, next to the
@@ -29,10 +30,12 @@ async function locate(characterId: string): Promise<{ index: number; char: Row }
   };
   const current = Number(await host?.getCurrentCharacterIndex?.());
   if (Number.isInteger(current) && current >= 0) { const hit = await read(current); if (hit) return hit; }
-  const db = await host?.getDatabase?.(['characters']);
-  const list = Array.isArray(db?.characters) ? db.characters : [];
-  const index = list.findIndex((value: unknown) => { const c = object(value); return String(c?.chaId || c?.id || '') === characterId; });
-  return index >= 0 ? read(index) : null;
+  for (const fresh of directoryWarm() ? [false, true] : [false]) {
+    const row = (await characterDirectory({ fresh }) || []).find(c => (c.chaId || c.id) === characterId);
+    const hit = row ? await read(row.index) : null;
+    if (hit) return hit;
+  }
+  return null;
 }
 function entry(char: Row): { entries: unknown[]; at: number; rows: TtsCharacter[] } {
   if (char.globalLore != null && !Array.isArray(char.globalLore)) throw new Error('Invalid character lorebook');
