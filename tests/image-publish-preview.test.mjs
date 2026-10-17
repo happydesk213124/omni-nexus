@@ -86,3 +86,15 @@ test('PNG fallback still previews and saves; paint failures do not discard the s
   const failed = await fixture({ storeError: true });
   await assert.rejects(failed.api.publishImage('bad', png, {}, { onPreview: async () => {} }), /store failed/);
 });
+
+test('원본으로 저장: the PNG is stored and previewed as delivered, with no encode at all', async () => {
+  const { api, state } = await fixture();
+  let preview;
+  const result = await api.publishImage('raw', png, {}, { original: true, recipe: { prompt: 'unused' }, onPreview: async url => { preview = url; } });
+  assert.equal(state.encodes, 0, 'no decode, WebP or metadata step runs');
+  assert.equal(state.saved[0].png, png, 'the delivered bytes themselves are stored');
+  assert.equal(state.saved[0].mime, 'image/png');
+  assert.match(preview, /^data:image\/png;base64,/);
+  assert.deepEqual(Buffer.from(preview.split(',')[1], 'base64'), Buffer.from(png), 'the preview is that same PNG');
+  assert.equal(result, preview);
+});

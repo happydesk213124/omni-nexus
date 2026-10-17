@@ -132,13 +132,15 @@ export async function publishImage(
   id: string,
   png: ArrayBuffer,
   location: Record<string, unknown> | null = null,
-  options: GenerationEncodingOptions & { warmUrl?: boolean; onPreview?: (url: string) => Promise<void> } = {},
+  options: GenerationEncodingOptions & { warmUrl?: boolean; original?: boolean; onPreview?: (url: string) => Promise<void> } = {},
 ): Promise<string> {
   const span = dbgSpan('image.publish');
   dropBlobUrl(id);
   let bytes: ArrayBuffer = png;
   let mime = sniffImageMime(png);
-  try {
+  // 원본으로 저장: NAI's PNG is stored and previewed as delivered. Its own text chunks
+  // and stealth alpha still carry the recipe a reroll reads.
+  if (!options.original) try {
     const webp = await encodePublishedImage(() => encodeGenerationWebp(png, options));
     if (webp) {
       bytes = webp;

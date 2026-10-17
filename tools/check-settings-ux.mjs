@@ -355,6 +355,15 @@ try {
   await quality.fill('73'); await quality.dispatchEvent('change');
   await page.evaluate(()=>uxTestRuntime.flush());
   assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_webp_quality),73);
+  // 원본으로 저장 sits right under the quality, saves, and survives a repaint.
+  assert.equal(await page.locator('#nx-image-webp-quality').evaluate(el=>el.closest('.row')?.nextElementSibling?.querySelector('input')?.id),'nx-image-png-original');
+  const pngOriginal=page.locator('#nx-image-png-original');
+  assert.equal(await pngOriginal.isChecked(),false,'off by default');
+  await pngOriginal.setChecked(true);
+  await page.evaluate(()=>uxTestRuntime.flush());
+  assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_png_original),true);
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
+  assert.equal(await page.locator('#nx-image-png-original').isChecked(),true);
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
   assert.equal(await page.locator('#nx-nai-auto-upscale').isChecked(),true);
   const locationWeight = page.locator('#nx-location-tag-weight');
