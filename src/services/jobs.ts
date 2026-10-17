@@ -6,7 +6,7 @@ import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-
 import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage, runStreamImageTask } from './stream-jobs';
 export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
-import { writeJobSpinners, finishJobSpinners, writeWaitSpinner, restoreWaitSlot } from './chat-bake';
+import { writeJobSpinners, finishJobSpinners, writeWaitImage } from './chat-bake';
 import { dropInlineWait } from '../storage/inline-wait-store';
 /**
  * The generation job engine.
@@ -799,7 +799,9 @@ async function runJob(jobId: string): Promise<void> {
         // preview DOM stays visible until Risu replaces that message.
         const closePreview = Reflect.get(globalThis, '__OMNI_CLEAR_SPINNER_PREVIEW__');
         if (typeof closePreview === 'function') await closePreview(jobId);
-        if(!await finishJobSpinners({...jobChatTarget(request),jobId,cards})) throw new Error('Spinner slots missing');
+        // A tapped slot never became a spinner: its image replaces the slot itself, in one write.
+        if (inlineWait) { if (!await writeWaitImage({...jobChatTarget(request),waitId:inlineWait,cardId:cards[0]!.cardId})) throw new Error('Wait slot missing'); }
+        else if(!await finishJobSpinners({...jobChatTarget(request),jobId,cards})) throw new Error('Spinner slots missing');
         for(const card of cards) bakedSpinnerShots.add(card.shot);
         meta.publishedIds=(meta.publishedIds || []).filter(id=>!cards.some(card=>card.cardId===id));
       }
@@ -1230,8 +1232,9 @@ async function runJob(jobId: string): Promise<void> {
     if (deferred) deferred.attach = attach;
     if (!deferred || deferred.committed) await attach();
     async function enqueueJobSpinners() {
-      // A waiting slot turns into this job's frame in place; the rest of the reply is untouched.
-      if (inlineWait) return enqueueBakeWrite(() => writeWaitSpinner({...jobChatTarget(request),waitId:inlineWait,jobId,width:pendingInline[0]?.width,height:pendingInline[0]?.height}));
+      // A tapped slot is not written while it is drawn: the toast shows progress, and the
+      // finished image replaces the slot in one write (finishCompletedSpinners).
+      if (inlineWait) return true;
       return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})}));
     }
     await setJob(
@@ -1765,11 +1768,8 @@ async function runJob(jobId: string): Promise<void> {
         if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
       }
       await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
-      // A waiting slot that got its image is done; one that did not goes back to pink.
-      if (inlineWait) {
-        if (completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
-        else await enqueueBakeWrite(() => restoreWaitSlot({...jobChatTarget(request),waitId:inlineWait,jobId,block:typeof request.inline_wait_block==='string'?request.inline_wait_block.slice(0,13000):undefined})).catch(err => dbg('job.wait.restore.fail', { message: String(err) }, 'warn'));
-      }
+      // A slot that got its image is done; one that did not was never written: it is still the pink slot.
+      if (inlineWait && completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
       // Unfinished frames remain retryable; successful frames are permanent.
       const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");
       if(typeof endScroll==="function") try {await endScroll(jobId);} catch(error) {dbg("scroll.end.fail",{message:String(error)},"warn");}

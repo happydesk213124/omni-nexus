@@ -8,7 +8,7 @@ import { measureWrite } from '../core/write-metrics';
 import { serializeSessionStorage } from '../storage/chat-session-store';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, waitToken, waitTokenDimensions } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -449,26 +449,20 @@ export async function shotBakeToken(cardId: string, width?: number, height?: num
   return bakeTokenForCard(cardId, asset.name, await dimensionsForCard(cardId) || bakeDimensions(width, height)) || '';
 }
 
-/** A tapped waiting slot becomes this job's spinner, in place: nothing else in the reply moves. */
-export async function writeWaitSpinner(target: MessageTarget & { waitId: string; jobId: string; width?: number; height?: number }): Promise<boolean> {
+/**
+ * A tapped slot's one write: its finished image, in place of the slot. Nothing is
+ * written while it is drawn (the toast shows that), so a run that fails leaves the
+ * slot exactly as it was and needs no write at all.
+ */
+export async function writeWaitImage(target: MessageTarget & { waitId: string; cardId: string }): Promise<boolean> {
+  const token = await shotBakeToken(target.cardId);
+  if (!token) return false;
   let found = false;
   const ok = await rewriteMessage(target, body => {
-    const size = waitTokenDimensions(body, target.waitId);
-    found = !!size;
-    return replaceWaitToken(body, target.waitId, spinnerToken(target.jobId, 0, target.width ?? size?.width, target.height ?? size?.height));
+    found = !!waitTokenDimensions(body, target.waitId);
+    return found ? replaceWaitToken(body, target.waitId, token) : body;
   });
   return ok && found;
-}
-/**
- * A wait job that ends without an image gives the slot back as a waiting one, so a
- * tap can retry: a block slot gets its own waiting block (its JSON) back.
- */
-export async function restoreWaitSlot(target: MessageTarget & { waitId: string; jobId: string; block?: string }): Promise<void> {
-  await rewriteMessage(target, body => {
-    const size = spinnerDimensions(body, target.jobId, 0);
-    const back = target.block || (size ? waitToken(target.waitId, size.width, size.height) : '');
-    return size && back ? body.replace(new RegExp(`\\[\\[@inrayspinner::${target.jobId}_0::[0-9]+::[0-9]+\\]\\](?!\\[\\[@inray::)`), () => back) : body;
-  });
 }
 
 /** A new plugin instance cannot own any previously persisted loading placeholders. */
