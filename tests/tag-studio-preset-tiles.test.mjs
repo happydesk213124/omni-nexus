@@ -18,14 +18,17 @@ test('the image preset caret opens a popup of image tiles, name inside at the bo
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.evaluate(png => {
       const url = 'data:image/png;base64,' + png;
+      window.requests = [];
       globalThis.__INLAY_NATIVE__ = {
         ensureImageUrl: async () => url,
-        fetch: async (path) => {
+        fetch: async (path, options) => {
+          window.requests.push({ path, body: options?.body });
+          if (path === '/v1/presets/look') return { ok: true, look_hash: 'h'.repeat(64), preview_url: url };
           if (path.endsWith('/nai-prompt')) return { ok: true, model: 'nai-diffusion-4-5-full', width: 832, height: 1216, main_prompt: 'cafe', characters: [] };
           if (path.endsWith('/history')) return { ok: true, cards: [{ id: 'img', seed: 1 }] };
           if (path === '/v1/settings') return { settings: { card: { presets: [
             { id: 'thick', name: 'nai v5 thick line', positive: 'thick lineart' },
-            { id: 'real', name: '프리셋 리얼', positive: 'photorealistic', look_preview_url: url },
+            { id: 'real', name: '프리셋 리얼', positive: 'photorealistic', look_preview_url: url, model_family: 'v5', cfg_scale: 6.5, cfg_rescale: 0.2, steps: 23 },
           ] } } };
           if (path.startsWith('/v1/characters')) return { characters: [], global: [] };
           return { ok: true };
@@ -50,6 +53,11 @@ test('the image preset caret opens a popup of image tiles, name inside at the bo
     await page.waitForFunction(() => document.querySelector('[data-m="presetPrompt"]')?.value === 'photorealistic');
     assert.equal(await page.locator('#stylePop').count(), 0, 'picking closes the popup');
     assert.equal(await page.locator('[data-m="presetName"]').inputValue(), '프리셋 리얼');
+    // The preset's model and settings come with it.
+    assert.equal(await page.locator('[data-model].on').getAttribute('data-model'), 'nai-diffusion-5-full', 'its model family');
+    assert.equal(await page.locator('[data-g="cfg"]').inputValue(), '6.5');
+    assert.equal(await page.locator('[data-g="rescale"]').inputValue(), '0.2');
+    assert.equal(await page.locator('[data-g="steps"]').inputValue(), '23');
 
     await open();
     assert.equal(await page.locator('#stylePop .stile.on').getAttribute('data-style-pick'), 'real', 'the picked preset is marked');
@@ -58,9 +66,21 @@ test('the image preset caret opens a popup of image tiles, name inside at the bo
     await open();
     await page.mouse.click(5, 895);
     assert.equal(await page.locator('#stylePop').count(), 0, 'the backdrop closes');
+    // ＋ 추가: made at once from the name typed in the box, this 선행 and this image.
+    await page.locator('[data-m="presetName"]').fill('새 그림체');
     await open();
     await page.locator('#stylePop .stile[data-style-pick="__add__"]').click();
-    await page.waitForFunction(() => document.querySelector('[data-m="presetName"]')?.value === '');
+    await page.locator('#askYes').click();
+    await page.waitForFunction(() => window.requests.some(r => r.path === '/v1/presets/look'));
+    const look = (await page.evaluate(() => window.requests)).find(r => r.path === '/v1/presets/look');
+    assert.match(String(look.body.image_b64), /^data:image\/png;base64,/, 'the picture shown becomes its look image');
+    assert.equal(await page.locator('[data-m="presetName"]').inputValue(), '새 그림체', 'named by the box');
+    await open();
+    const made = page.locator('#stylePop .stile.on');
+    assert.equal((await made.innerText()).trim(), '새 그림체');
+    assert.equal(await made.locator('img').count(), 1, 'its tile shows that image');
+    assert.notEqual(await made.getAttribute('data-style-pick'), 'real', 'a new preset, not the picked one renamed');
+    await page.keyboard.press('Escape');
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

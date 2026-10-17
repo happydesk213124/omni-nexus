@@ -1083,6 +1083,16 @@ export async function openTagStudio(card: unknown): Promise<void> {
     state.main.presetName = cleanText(p.name, 200);
     state.main.presetPrompt = cleanText(p.positive, 8000);
     state.main.neg = cleanText(p.negative, 8000);
+    // The preset's model and settings come with it; a field it leaves empty keeps the
+    // current value (that preset follows the model settings there).
+    state.gen.model = p.model_family === 'v5' ? 'nai-diffusion-5-full' : 'nai-diffusion-4-5-full';
+    const num = (value: unknown) => value == null || value === '' ? NaN : Number(value);
+    const cfg = num(p.cfg_scale), rescale = num(p.cfg_rescale), steps = num(p.steps);
+    if (Number.isFinite(cfg)) state.gen.cfg = cfg;
+    if (Number.isFinite(rescale)) state.gen.rescale = rescale;
+    if (Number.isFinite(steps) && steps > 0) state.gen.steps = String(Math.floor(steps));
+    if (cleanText(p.sampler, 80)) state.gen.sampler = cleanText(p.sampler, 80);
+    if (cleanText(p.scheduler, 80)) state.gen.scheduler = cleanText(p.scheduler, 80);
     renderPanel();
     renderPeek();
   }
@@ -1117,6 +1127,63 @@ export async function openTagStudio(card: unknown): Promise<void> {
       toast(String((err as Error).message || err));
     }
     renderPanel();
+  }
+
+  /**
+   * ＋ 추가: a new preset from what is on screen: the name in the box, this 선행 and
+   * negative, the current settings, and the picture shown as its look image. A name
+   * left as the picked preset's own gets a number, so the two stay apart.
+   */
+  async function addStylePresetFromImage(): Promise<void> {
+    const picked = styleById(state.main.presetId);
+    let name = cleanText(state.main.presetName, 200) || '새 프리셋';
+    if (stylePresets.some((p) => cleanText(p.name, 200) === name)) {
+      let n = 2;
+      while (stylePresets.some((p) => cleanText(p.name, 200) === `${name} ${n}`)) n++;
+      name = `${name} ${n}`;
+    }
+    if (!await askYesNo(`「${name}」 프리셋을 새로 만들까요? 지금 선행 태그와 설정, 이 이미지로 만듭니다.`)) return;
+    const id = nextId('p');
+    const v5 = state.gen.model ? state.gen.model.includes('diffusion-5') : picked?.model_family === 'v5';
+    const steps = Math.floor(Number(state.gen.steps));
+    const row: StyleRow = {
+      id, name, positive: state.main.presetPrompt, negative: state.main.neg, model_family: v5 ? 'v5' : 'v4',
+      cfg_scale: state.gen.cfg, cfg_rescale: state.gen.rescale,
+      ...(Number.isFinite(steps) && steps > 0 ? { steps } : {}),
+      ...(state.gen.sampler ? { sampler: state.gen.sampler } : {}),
+      ...(state.gen.scheduler ? { scheduler: state.gen.scheduler } : {}),
+    };
+    stylePresets.push(row);
+    state.main.presetId = id;
+    state.main.presetName = name;
+    renderPanel();
+    try {
+      await persistCard({ presets: stylePresets });
+      const image = await imageDataUrl(state.imageUrl);
+      if (image) {
+        const look = await studioPost('/v1/presets/look', { preset_id: id, image_b64: image });
+        // Kept on the row: the next preset save sends the whole list back.
+        if (cleanText(look.look_hash, 80)) row.look_hash = cleanText(look.look_hash, 80);
+        if (typeof look.preview_url === 'string' && look.preview_url) row.look_preview_url = look.preview_url;
+      }
+      toast(image ? `「${name}」 프리셋을 이 이미지로 만들었습니다.` : `「${name}」 프리셋을 만들었습니다. 이미지는 넣지 못했습니다.`);
+    } catch (err) {
+      toast(String((err as Error).message || err));
+    }
+  }
+
+  async function imageDataUrl(url: string): Promise<string> {
+    if (!url) return '';
+    if (/^data:image\//.test(url)) return url;
+    try {
+      const blob = await (await fetch(url)).blob();
+      return await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
+    } catch { return ''; }
   }
 
   async function deleteStylePreset(): Promise<void> {
@@ -1422,9 +1489,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
   function onOptPick(kind: string, value: string, tabId: string): void {
     if (kind === 'style') {
       if (value === '__add__') {
-        state.main.presetId = '';
-        state.main.presetName = '';
-        renderPanel();
+        void addStylePresetFromImage();
         return;
       }
       const p = styleById(value);
