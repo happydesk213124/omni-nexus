@@ -372,6 +372,24 @@ export function tagStudioCss(): string {
   width: 100%; height: 100%; margin: 0; padding: 0; border: 0;
 }
 #nx-tag-studio .optbar .btn { height: 36px; }
+#nx-tag-studio .stiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px;
+  max-height: 212px; overflow-y: auto; padding: 1px; position: relative;
+}
+#nx-tag-studio .stile {
+  position: relative; height: 64px; padding: 0 6px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 9px; background: #0e1017; color: var(--ink);
+  display: grid; place-items: center; cursor: pointer; font-size: 11.5px; line-height: 1.2;
+}
+#nx-tag-studio .stile span {
+  position: relative; z-index: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  overflow: hidden; text-align: center; word-break: break-all;
+}
+#nx-tag-studio .stile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .55; }
+#nx-tag-studio .stile.img span { align-self: end; margin-bottom: 4px; -webkit-line-clamp: 2; text-shadow: 0 1px 3px #000; }
+#nx-tag-studio .stile.add { color: var(--muted); border-style: dashed; }
+#nx-tag-studio .stile.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: #fff; }
+#nx-tag-studio .stile:hover { border-color: var(--line-2); }
 
 #nx-tag-studio .spinveil {
   position: absolute; inset: 0; z-index: 9;
