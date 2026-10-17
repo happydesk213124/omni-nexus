@@ -4999,15 +4999,52 @@ function omniNewKeywordRun(target) {
   if(target!==undefined)run.target=Promise.resolve(target).catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
   return run;
 }
-function omniArmKeywordExpiry(run, delay=30000) {
+// Quiet for 3 seconds: read the chat once. Risu ends a reply that failed or was
+// stopped without its completion signal but keeps the text it got, and turns
+// streaming off either way. Streaming off and no completion 2 seconds later (a
+// completed reply sends it right after its finishing passes) means it ended without
+// one: that text is the reply, committed like a completed one, so the images
+// already made bake into it. A stream still running (a long pause) is read again
+// at 6, 12, 24, then every 30 seconds, for up to five minutes.
+const OMNI_QUIET_MS=3000, OMNI_END_GRACE_MS=2000, OMNI_STALL_LIMIT_MS=5*60*1000;
+// Replies committed that way: their completion, if it comes late, is not a second one.
+const omniEndedReplies=new Set();
+function omniArmKeywordExpiry(run, delay=OMNI_QUIET_MS) {
   if(run.expiry)return;
   run.expiry=setTimeout(()=>{
     run.expiry=0;
     if(run!==omniKeywordRun || run.cancelled || run.committing)return;
-    const remaining=30000-(Date.now()-run.activeAt);
+    const remaining=OMNI_QUIET_MS-(Date.now()-run.activeAt);
     if(remaining>0)omniArmKeywordExpiry(run,remaining);
-    else omniCancelKeywordRun(run);
+    else void omniEndWithoutOutput(run);
   },delay);
+}
+async function omniEndWithoutOutput(run) {
+  try {
+    const identity=run.identity;
+    if(!identity){omniCancelKeywordRun(run);return;}
+    const {charIndex,chatIndex,characterId,chatId}=identity.scope;
+    const chat=await k.getChatFromIndex(charIndex,chatIndex);
+    if(run!==omniKeywordRun || run.cancelled || run.committing)return;
+    if(!chat || String(chat.id || chat.chatId || '')!==chatId){omniCancelKeywordRun(run);return;}
+    if(chat.isStreaming || chat.is_streaming) {
+      run.endSeenAt=0;run.stalls=(run.stalls || 0)+1;
+      if(Date.now()-run.activeAt>OMNI_STALL_LIMIT_MS){omniCancelKeywordRun(run);return;}
+      omniArmKeywordExpiry(run,Math.min(OMNI_QUIET_MS*2**run.stalls,30000));return;
+    }
+    const messages=Array.isArray(chat.message)?chat.message:[];
+    const index=messages.findIndex(msg=>String(msg?.chatId || msg?.id || '')===identity.id);
+    if(index<0){omniCancelKeywordRun(run);return;}
+    if(!run.endSeenAt){run.endSeenAt=Date.now();omniArmKeywordExpiry(run,OMNI_END_GRACE_MS);return;}
+    const msg=messages[index],text=String(msg.data ?? msg.content ?? '');
+    y('warn','stream.end.without.output','reply ended without completion · committing its text');
+    const committed=omniCommitStreamReply({char:{chaId:characterId},chat,characterIndex:charIndex,chatIndex,messageIndex:index},msg,text);
+    if(!committed){omniCancelKeywordRun(run);return;}
+    omniEndedReplies.add(characterId+'|'+chatId+'|'+identity.id);
+    if(omniEndedReplies.size>64)omniEndedReplies.delete(omniEndedReplies.values().next().value);
+  } catch(error) {
+    y('warn','stream.end.check',String(error));omniCancelKeywordRun(run);
+  }
 }
 function onScriptOutput(content) {
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
@@ -5097,6 +5134,7 @@ function omniCommitStreamReply(arg, msg, text) {
   const id=String(msg.chatId || msg.id || ''), key=JSON.stringify([characterId,chatId,id,ye(globalThis.__INLAY_STREAM_KW__.analysisBody(text))]);
   if (!id || !characterId || !chatId) return false;
   if (omniKeywordSeen.has(key)) return true;
+  if (omniEndedReplies.has(characterId+'|'+chatId+'|'+id)) return true;
   const mode=omniStreamMode(t.backendSettings?.card);
   if(omniKeywordRun && omniKeywordRun.mode!==mode)omniCancelKeywordRun();
   if(mode!=='keywords') return omniCommitLineReply(arg,msg,text,key);
