@@ -626,6 +626,22 @@ export async function openTagStudio(card: unknown): Promise<void> {
     </div>`;
   }
 
+  /**
+   * Image presets as tiles, name inside: a long list of similar names is easier to
+   * pick by sight. The look preview fills a tile when the preset has one.
+   */
+  function styleTiles(): string {
+    const current = state.main.presetId;
+    const tiles = namedStyle(stylePresets).map((p) => {
+      const id = cleanText(p.id, 120), name = cleanText(p.name, 200) || '이름 없음';
+      const raw = typeof p.look_preview_url === 'string' ? p.look_preview_url : '';
+      const thumb = /^(?:data:image\/|blob:|https?:)/.test(raw) ? raw : '';
+      return `<button class="stile${id === current ? ' on' : ''}${thumb ? ' img' : ''}" data-style-pick="${esc(id)}" type="button" title="${esc(name)}">`
+        + `${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" />` : ''}<span>${esc(name)}</span></button>`;
+    }).join('');
+    return `<div class="stiles"><button class="stile add${current ? '' : ' on'}" data-style-pick="__add__" type="button"><span>＋ 추가</span></button>${tiles}</div>`;
+  }
+
   function optAdd(listHtml: string): string {
     return `<option value="__add__">＋ 추가</option>${listHtml}`;
   }
@@ -692,6 +708,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
           saveAct: 'styleSave',
           delAct: 'styleDel',
         })}
+        ${styleTiles()}
         <div class="seg">
           <button class="${negPane ? '' : 'on'}" data-act="presetPos" type="button">선행 프리셋</button>
           <button class="${negPane ? 'on' : ''}" data-act="presetNeg" type="button">네거티브</button>
@@ -840,7 +857,14 @@ export async function openTagStudio(card: unknown): Promise<void> {
     const t = state.tabs.find((x) => x.id === state.active) || state.tabs[0];
     const hostEl = $('#panel');
     if (!hostEl || !t) return;
+    const tiles = hostEl.querySelector<HTMLElement>('.stiles'), kept = tiles?.scrollTop ?? -1;
     hostEl.innerHTML = t.kind === 'main' ? panelMain() : t.kind === 'llm' ? panelLlm() : panelChar(t.id);
+    // Every edit repaints the panel: keep the tile list where it was, and show the picked tile.
+    const grid = hostEl.querySelector<HTMLElement>('.stiles'), on = grid?.querySelector<HTMLElement>('.stile.on');
+    if (grid && kept >= 0) grid.scrollTop = kept;
+    if (grid && on && (on.offsetTop < grid.scrollTop || on.offsetTop + on.offsetHeight > grid.scrollTop + grid.clientHeight)) {
+      grid.scrollTop = on.offsetTop - (grid.clientHeight - on.offsetHeight) / 2;
+    }
   }
 
   function renderHistory(): void {
@@ -1950,6 +1974,11 @@ export async function openTagStudio(card: unknown): Promise<void> {
         state.fold[id] = !state.fold[id];
         fold.parentElement?.classList.toggle('fold', !!state.fold[id]);
         void persistCard({ studio_folds: { ...state.fold } }).catch(() => {});
+        return;
+      }
+      const pick = t.closest('[data-style-pick]');
+      if (pick instanceof HTMLElement) {
+        onOptPick('style', pick.dataset.stylePick || '', '');
         return;
       }
       const a = t.closest('[data-act]');
