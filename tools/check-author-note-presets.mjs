@@ -39,8 +39,8 @@ try {
   assert.match(await note.inputValue(), /pov hands/);
   assert.equal(await page.locator('#nx-anp-delete').isDisabled(), true, 'an example cannot be deleted');
   // The pick reaches the prompt writer itself, not just the textarea (a later API read would flush the DOM anyway).
-  assert.match(await page.evaluate(() => globalThis.noteRuntime.t.promptDrafts?.author_note || ''), /faceless male/, 'picking a preset queues the note save');
-  await page.waitForFunction(async () => ((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/prompts')).prompts || []).find(r => r.key === 'author_note')?.text?.includes('faceless male'));
+  assert.match(await page.evaluate(() => globalThis.noteRuntime.t.promptDrafts?.author_note || ''), /never a character/, 'picking a preset queues the note save');
+  await page.waitForFunction(async () => ((await globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/prompts')).prompts || []).find(r => r.key === 'author_note')?.text?.includes('never a character'));
 
   // Saving an edited example makes it mine; examples stay unstored.
   await note.fill((await note.inputValue()) + '\n추가 지침');

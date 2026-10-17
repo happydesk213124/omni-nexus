@@ -17,9 +17,12 @@ test('examples carry the POV and cinematic tag rules the tagger needs', () => {
   const examples = api.authorNotePresetExamples();
   const pov = examples.find(row => row.id === 'example-pov');
   assert.ok(examples.every(row => row.builtin && row.id.startsWith('example-') && row.text.length > 100));
-  for (const tag of ['pov hands', 'pov crotch', 'head out of frame', 'faceless male', 'faceless female', 'looking at viewer', 'muscular male', 'fat man', 'the viewer'])
+  for (const tag of ['pov hands', 'pov crotch', 'looking at viewer', 'muscular male', 'fat man', 'dark-skinned female', 'the viewer'])
     assert.ok(pov.text.includes(tag), tag);
-  assert.match(pov.text, /안 보이는 샷\(보기만 함\): 넣지 마세요/,'an unseen viewer stays out of the cast');
+  // A cast entry would bring the persona's whole registered look (hair, face) into the picture.
+  for (const row of examples.filter(item => item.id.startsWith('example-pov')))
+    assert.match(row.text, /Never put them in characters\[\] or new_characters, not even when their hands or body are in frame/, row.id + ': the persona is never a character');
+  assert.doesNotMatch(examples.map(row => row.text).join('\n'), /source: headpat|target: headpat/, 'no contact pair with a viewer who is not in the cast');
   assert.match(examples.find(row => row.id === 'example-cinematic').text, /wide shot[\s\S]*close-up/);
 });
 
