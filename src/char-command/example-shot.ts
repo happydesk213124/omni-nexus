@@ -53,6 +53,11 @@ function paintHeadShot(root: ParentNode, url: string): void {
   head.innerHTML = url ? `<img src="${url}" alt="" style="width:100%;height:100%;object-fit:cover">` : '';
 }
 
+/** What a bound card can do when driven by something other than its own buttons (선택 모드, one card at a time). */
+export interface ExampleShotActions { generate: () => Promise<boolean>; toVibe: () => Promise<boolean> }
+const boundActions = new WeakMap<ParentNode, ExampleShotActions>();
+export function exampleShotActions(root: ParentNode): ExampleShotActions | undefined { return boundActions.get(root); }
+
 export function bindCharacterExampleShot(root: ParentNode, opts: ExampleShotOpts): void {
   const slot = root.querySelector('[data-ce-ex-slot], [data-char-ex-preview]') as HTMLElement | null;
   const vibeBtn = root.querySelector('[data-ce-ex-vibe], [data-char-ex-vibe]') as HTMLElement | null;
@@ -140,9 +145,8 @@ export function bindCharacterExampleShot(root: ParentNode, opts: ExampleShotOpts
     }
   });
 
-  genBtn?.addEventListener('click', async (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
+  // Resolves when this card's shot is done, so a batch can wait for one before starting the next.
+  const generate = async (): Promise<boolean> => {
     const own=++revision;
     setGenSpin([genBtn, slot], true);
     try {
@@ -159,16 +163,21 @@ export function bindCharacterExampleShot(root: ParentNode, opts: ExampleShotOpts
       }, 180000);
       if(own===revision)paint(String(res?.preview_url || ''), String(res?.image_b64 || ''));
       toast(res?.ok ? '예제샷 완료' : '예제샷 실패', !!res?.ok);
+      return !!res?.ok;
     } catch (err) {
       toast(String((err as Error)?.message || err), false);
+      return false;
     } finally {
       if(own===revision)setGenSpin([genBtn, slot], false);
     }
-  });
-
-  vibeBtn?.addEventListener('click', async (ev) => {
+  };
+  genBtn?.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
+    void generate();
+  });
+
+  const toVibe = async (): Promise<boolean> => {
     try {
       if (!shotB64) {
         const img = slot?.querySelector('img') as HTMLImageElement | null;
@@ -187,7 +196,7 @@ export function bindCharacterExampleShot(root: ParentNode, opts: ExampleShotOpts
       }
       if (!shotB64) {
         toast('예제샷이 없습니다', false);
-        return;
+        return false;
       }
       const id = owner.id;
       if (!id) throw new Error('character_id required');
@@ -204,10 +213,18 @@ export function bindCharacterExampleShot(root: ParentNode, opts: ExampleShotOpts
       const url = String(res?.preview_url || '');
       paintHeaderRefSlot(root, url);
       toast('참고이미지로 등록됨');
+      return true;
     } catch (err) {
       toast(String((err as Error)?.message || err), false);
+      return false;
     }
+  };
+  vibeBtn?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    void toVibe();
   });
+  boundActions.set(root, { generate, toVibe });
 
   const id = owner.id;
   const scope = owner.scope;

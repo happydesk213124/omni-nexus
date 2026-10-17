@@ -1,3 +1,4 @@
+import { exampleShotActions } from '../char-command/example-shot';
 import { uuid } from '../core/util/text';
 import { openRosterCommand, type RosterCommandActions } from './roster-command';
 import { bindCharacterPaste, selectPasteCharacter } from './character-paste';
@@ -389,21 +390,19 @@ function bindSelection(ctx: {
   bar.id = 'nx-char-select-bar'; bar.hidden = true; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '고른 캐릭터');
   toggleButton.after(bar);
   const picked = new Set<HTMLElement>();
-  const other = () => ctx.scope() === 'global' ? '이 봇으로' : '전역으로';
+  // No 완료: turning 선택 off is how selection ends.
   bar.innerHTML = '<span data-sel-count></span><button type="button" class="dock-btn" data-sel="all">전체 선택</button>'
     + '<button type="button" class="dock-btn" data-sel="off">비활성화</button><button type="button" class="dock-btn" data-sel="on">활성화</button>'
-    + '<button type="button" class="dock-btn" data-sel="llm">LLM 명령</button><button type="button" class="dock-btn" data-sel="copy"></button>'
-    + '<button type="button" class="dock-btn" data-sel="move"></button><button type="button" class="dock-btn" data-sel="delete">삭제</button>'
-    + '<button type="button" class="dock-btn" data-sel="done">완료</button>';
+    + '<button type="button" class="dock-btn" data-sel="llm">LLM 명령</button><button type="button" class="dock-btn" data-sel="look-gen">참고컷 생성</button>'
+    + '<button type="button" class="dock-btn" data-sel="look-vibe">vibe레퍼로</button><button type="button" class="dock-btn" data-sel="delete">삭제</button>';
   const chosen = () => [...picked].filter(card => card.isConnected && card.dataset.charScope === ctx.scope());
+  let note = '';
   const paint = () => {
     const n = chosen().length;
-    bar.querySelector('[data-sel-count]')!.textContent = `${n}명 선택`;
-    bar.querySelector('[data-sel="copy"]')!.textContent = `${other()} 복사`;
-    bar.querySelector('[data-sel="move"]')!.textContent = `${other()} 이동`;
-    // A run locks every button; this is also what unlocks them, 전체 선택·완료 included.
+    bar.querySelector('[data-sel-count]')!.textContent = `${n}명 선택${note ? ' · ' + note : ''}`;
+    // A run locks every button; this is also what unlocks them, 전체 선택 included.
     for (const button of bar.querySelectorAll<HTMLButtonElement>('[data-sel]')) {
-      button.disabled = !['all', 'done'].includes(button.dataset.sel || '') && n === 0;
+      button.disabled = button.dataset.sel !== 'all' && n === 0;
     }
     toggleButton.classList.toggle('on', ctx.selection.on);
     toggleButton.setAttribute('aria-pressed', String(ctx.selection.on));
@@ -426,15 +425,14 @@ function bindSelection(ctx: {
   toggleButton.addEventListener('click', () => setMode(!ctx.selection.on));
   const run = async (work: (cards: HTMLElement[]) => Promise<void>) => {
     const cards = chosen(); if (!cards.length) return;
+    note = '';
     bar.querySelectorAll('button').forEach(button => { button.disabled = true; });
     try { await work(cards); } catch (error) { window.alert(String((error as Error)?.message || error)); }
     finally { paint(); }
   };
-  const refresh = () => document.getElementById('nx-refresh-chars')?.click();
   bar.addEventListener('click', event => {
     const action = (event.target as Element).closest<HTMLElement>('[data-sel]')?.dataset.sel;
     if (!action) return;
-    if (action === 'done') { setMode(false); return; }
     if (action === 'all') { for (const card of ctx.cards()) if (card.dataset.charScope === ctx.scope() && !tileFor(card)?.hidden) { picked.add(card); setTile(card, true); } paint(); return; }
     if (action === 'delete') void run(async cards => {
       if (!window.confirm(`고른 ${cards.length}명을 삭제할까요?`)) return;
@@ -453,16 +451,18 @@ function bindSelection(ctx: {
       openRosterCommand(actions, rosterOf(cards[0], ctx.scope()), cards.map(card => card.dataset.charId || ''),
         cards.map(card => card.querySelector<HTMLInputElement>('[data-char-name]')?.value || ''));
     });
-    if (action === 'copy' || action === 'move') void run(async cards => {
-      const from = rosterOf(cards[0], ctx.scope());
-      const to = ctx.scope() === 'global' ? (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '' : '__global__';
-      if (!from || !to) throw new Error('옮길 캐릭터 목록을 찾을 수 없습니다.');
-      await (globalThis as Bridge).__OMNI_FLUSH_CHARACTERS__?.();
-      const ids = new Set(cards.map(card => card.dataset.charId || ''));
-      const rows = (await listCharacters(from)).filter(row => ids.has(row.id));
-      for (const row of rows) await upsertCharacter(to, row);
-      if (action === 'move') await mutateCharacterRoster(from, list => list.filter(row => !ids.has(row.id)));
-      setMode(false); refresh();
+    // One card after another, in tile order: the next starts only when the last is done.
+    if (action === 'look-gen' || action === 'look-vibe') void run(async cards => {
+      const label = action === 'look-gen' ? '참고컷' : 'vibe';
+      const ordered = ctx.cards().filter(card => cards.includes(card));
+      let done = 0;
+      for (const [i, card] of ordered.entries()) {
+        note = `${label} ${i + 1}/${ordered.length}…`; paint();
+        bar.querySelectorAll('button').forEach(button => { button.disabled = true; });
+        const shot = exampleShotActions(card);
+        if (shot && await (action === 'look-gen' ? shot.generate() : shot.toVibe())) done++;
+      }
+      note = done === ordered.length ? `${label} ${done}명 완료` : `${label} ${done}/${ordered.length}명 완료`;
     });
   });
   paint();
