@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.3.2';
+const PLUGIN_VERSION = '1.3.3';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -985,6 +985,20 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.3.3 · 스트리밍 슬롯 정리 · RisuNest 지원 · 이미지 저장 옵션</strong>
+          <div class="muted" style="margin-top:8px">2026.10.17 · 스트리밍 태그 슬롯이 보라 스피너로 바뀌지 않고, RisuNest에서도 이미지가 저장되며, 원본 PNG 저장과 프리셋 타일이 생겼습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li>스트리밍 태그: 블록은 처음부터 분홍 슬롯이고 두 번 눌러야 생성합니다(답변 중이거나 이미 만드는 중이면 막습니다). 응답이 끝나면 다 된 그림만 바로 박제하고, 아직인 칸은 분홍 그대로 그 위에 미리보기를 띄웁니다. 보라 스피너로 바뀌지 않습니다.</li>
+            <li>두 번 누른 슬롯은 생성 중에 채팅을 건드리지 않고 토스트만 보여 주며, 끝나면 그 자리에서 한 번에 그림으로 바뀝니다. 스크롤도 그 그림 기준으로 고정됩니다.</li>
+            <li>Risu가 답변 도중 오류가 나거나 중지되어도 몇 초 안에 남은 답변을 확정해, 이미 만든 그림은 박제됩니다.</li>
+            <li>RisuNest: 생성한 이미지가 저장되지 않던 문제(n.subarray)를 고쳤고, 캐릭터 목록을 한 번만 읽어 함께 쓰도록 해 반복 읽기를 줄였습니다. PocketRisu도 그대로 동작합니다.</li>
+            <li>채팅 그림: 「WebP 메타데이터 쓰기」와 「원본으로 저장」(NAI PNG 그대로) 스위치를 추가했습니다. 리롤은 NAI가 그림에 넣은 정보로, 참고이미지는 파일 이름의 캐릭터로 찾습니다. ComfyUI 그림은 항상 정보를 넣어 저장합니다.</li>
+            <li>샷 태그 수정: 이미지 프리셋을 ▾ 팝업의 정사각 그림 타일로 고릅니다. 고르면 모델·CFG·스텝·rescale도 그 프리셋 값이 되고, ＋ 추가는 지금 선행·설정·이 그림으로 바로 새 프리셋을 만듭니다.</li>
+            <li>명령수정에 lb-xnai·로어북 참조 스위치, 디버그에 모든 설정 내보내기·불러오기(API 키 포함, 공유 금지)를 추가했습니다.</li>
+            <li>PC에서 분홍 슬롯이 보라 스피너보다 크게 그려지던 문제와, 두 번 누른 생성의 진행 토스트가 뜨지 않던 문제를 고쳤습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.3.2 · [[…]]를 쓰는 다른 모듈과의 충돌 방지</strong>
@@ -15082,7 +15096,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.3.2 · [[…]]를 링크로 바꾸는 모듈(위키화 등)을 켜도 그림·스피너·스트리밍 슬롯·BGM ♪가 깨지지 않습니다. 1.3.1 · 스트리밍 중인 답변은 줄바꿈까지 끝난 줄만 TTS를 미리 만들어 같은 줄을 여러 번 만들지 않고, OpenRouter 연결에서도 미리 만들기가 동작합니다. 1.3.0 · BGM·효과음 메뉴와 TTS 플로팅 뷰어 BGM 바, 메인 모델 스트리밍 중 태그 생성, 말풍선 강조·글씨 크게, 샷 태그 수정 히스토리 다시 불러오기·삭제와 불러오기 버튼을 추가했습니다. 1.2.3 · 나레이션·혼잣말 카드(글로벌 따라가기·캐릭터별 속도·성별 기타), TTS 설정 내보내기·불러오기, Fish 모델 직접 입력과 오류 안내를 추가했고, 이미지 태그 바로 아래 줄에도 재생 버튼이 붙습니다. 1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
+    body: "1.3.3 · 스트리밍 슬롯은 분홍 그대로 두 번 눌러 생성하고 다 된 그림만 바로 박제합니다. RisuNest 이미지 저장, 원본 PNG·메타데이터 저장 스위치, 샷 태그 수정 프리셋 타일과 ＋ 추가를 넣었고, 답변 오류·중지 때도 그림이 박제됩니다. 1.3.2 · [[…]]를 링크로 바꾸는 모듈(위키화 등)을 켜도 그림·스피너·스트리밍 슬롯·BGM ♪가 깨지지 않습니다. 1.3.1 · 스트리밍 중인 답변은 줄바꿈까지 끝난 줄만 TTS를 미리 만들어 같은 줄을 여러 번 만들지 않고, OpenRouter 연결에서도 미리 만들기가 동작합니다. 1.3.0 · BGM·효과음 메뉴와 TTS 플로팅 뷰어 BGM 바, 메인 모델 스트리밍 중 태그 생성, 말풍선 강조·글씨 크게, 샷 태그 수정 히스토리 다시 불러오기·삭제와 불러오기 버튼을 추가했습니다. 1.2.3 · 나레이션·혼잣말 카드(글로벌 따라가기·캐릭터별 속도·성별 기타), TTS 설정 내보내기·불러오기, Fish 모델 직접 입력과 오류 안내를 추가했고, 이미지 태그 바로 아래 줄에도 재생 버튼이 붙습니다. 1.2.2 · TTS 캐릭터는 봇 로어북(omni.nexus.tts)에 저장됩니다. 플로팅 뷰어에 지금 줄 찾기·다시 만들기 버튼, 한 줄 목록과 억양 칩을 추가했고, 나뉜 대사 상자·숫자만 있는 줄·[ ] 괄호 처리와 캐릭터 선택 삭제를 고쳤습니다."
   };`;
 
 /** Message select gesture: options + help + save + reader. */
