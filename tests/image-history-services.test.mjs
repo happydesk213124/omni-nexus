@@ -273,9 +273,9 @@ test('manual upscale replaces the displayed revision with doubled geometry and p
 // 원본으로 저장 keeps a NAI PNG as NAI delivered it. Two things must survive that.
 const rawPng = () => PNG_NAI_1X1.buffer.slice(PNG_NAI_1X1.byteOffset, PNG_NAI_1X1.byteOffset + PNG_NAI_1X1.byteLength);
 
-test('원본으로 저장 never applies to ComfyUI: its recipe exists only in the Omni data we embed', async () => {
+test('원본으로 저장 and 메타데이터 쓰기 off never apply to ComfyUI: its recipe exists only in the Omni data we embed', async () => {
   const f = await fixture();
-  f.config.card.image_png_original = true; f.api.setConfig(f.config);
+  Object.assign(f.config.card, { image_png_original: true, image_webp_metadata: false }); f.api.setConfig(f.config);
   const reroll = await f.api.rerollCard('root');
   assert.equal(reroll.ok, true);
   const stored = Buffer.from((await f.api.idbGet('images', reroll.card.id)).png);

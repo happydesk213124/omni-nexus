@@ -77,6 +77,24 @@ test('wrapper encodes at 0.9 and attaches metadata after canvas alpha is lost', 
 });
 
 
+test('WebP 메타데이터 쓰기 off: the same WebP at the same quality, with no Omni data in it', async () => {
+  const prevBitmap = globalThis.createImageBitmap, prevCanvas = globalThis.OffscreenCanvas;
+  let quality;
+  globalThis.createImageBitmap = async () => ({ width: 1, height: 1, close() {} });
+  globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; }
+    async convertToBlob(opts) { quality = opts.quality; return new Blob([webp], { type: 'image/webp' }); } };
+  try {
+    const out = await api.encodeGenerationWebp(png, { ...metadata, qualityPercent: 73, withoutData: true });
+    assert.equal(quality, 0.73);
+    assert.deepEqual(Buffer.from(out), webp, 'exactly the encoder\'s WebP');
+    assert.equal(api.readGenerationImageData(out), null);
+  } finally { globalThis.createImageBitmap = prevBitmap; globalThis.OffscreenCanvas = prevCanvas; }
+  // No encoder at all: the delivered file is kept as it came, not wrapped.
+  globalThis.createImageBitmap = undefined;
+  try { assert.deepEqual(Buffer.from(await api.encodeGenerationWebp(png, { ...metadata, withoutData: true })), png); }
+  finally { globalThis.createImageBitmap = prevBitmap; }
+});
+
 for (const mode of ["blob", "empty", "wrong-format", "throw", "missing", "both-fail"]) {
   test("DOM WebP encoding releases pixels and preserves metadata: " + mode, async () => {
     const previous = { document: globalThis.document, bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };

@@ -1121,6 +1121,7 @@
           <div class="stack">
             <label class="row"><span class="row-text"><b>이미지 채팅에</b><small>생성 중에만 스피너·겹침</small></span><span class="sw"><input id="nx-inline-chat" type="checkbox" checked disabled></span></label>
             <div class="row"><label class="row-text" for="nx-image-webp-quality"><b>이미지 WebP 품질 (%)</b><small>새로 저장하는 이미지에 적용 · 기본 90%</small></label><input class="ctrl" id="nx-image-webp-quality" type="number" min="1" max="100" step="1" value="90"></div>
+            <label class="row" data-nx-help-id="nx-image-webp-metadata"><span class="row-text"><b>WebP 메타데이터 쓰기</b><small>캐릭터·코스튬·생성시각 · 꺼도 리롤은 알파값으로</small></span><span class="sw"><input id="nx-image-webp-metadata" type="checkbox" checked></span></label>
             <label class="row" data-nx-help-id="nx-image-png-original"><span class="row-text"><b>원본으로 저장</b><small>NAI PNG 그대로 · WebP 변환·메타데이터 없음</small></span><span class="sw"><input id="nx-image-png-original" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked disabled></span></label>
             <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
@@ -2535,6 +2536,10 @@
   "nx-nai5-speech": {
     "title": "NAI5 대사삽입",
     "body": "V5 샷에서 말한 캐릭터의 캡션 끝에 말풍선을 넣습니다. 여러 명이 말하면 각자 자기 대사만 가집니다. 프리셋의 spoken bubble 억제는 그 샷에서 빼입니다."
+  },
+  "nx-image-webp-metadata": {
+    "title": "WebP 메타데이터 쓰기",
+    "body": "켜면 WebP에 Omni 정보(등장 캐릭터·코스튬·wear state·생성 시각)를 같이 넣습니다. 꺼도 NAI가 알파값에 숨긴 생성 정보는 남아서 리롤이 되고, 참고이미지는 파일 이름의 캐릭터로 찾습니다. 꺼지면 샷 스튜디오에서 다시 열 때 코스튬·wear state가 비어 있습니다. ComfyUI 이미지는 알파값 정보가 없어 항상 씁니다. 원본으로 저장이 켜져 있으면 적용되지 않습니다."
   },
   "nx-image-png-original": {
     "title": "원본으로 저장",

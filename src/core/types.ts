@@ -273,6 +273,8 @@ export interface CardSettings {
   toast_anchor?: 'tl' | 'bl' | 'tr' | 'br' | 'tc';
   /** Play a one-shot completion sound when an image generation job completes. */
   image_webp_quality?: number;
+  /** Off: WebP without embedded Omni data. NAI's stealth alpha survives the encode and still carries the recipe. */
+  image_webp_metadata?: boolean;
   /** Keep NAI's PNG as delivered: no decode, no WebP, no embedded generation data. */
   image_png_original?: boolean;
   nai_auto_upscale?: boolean;
