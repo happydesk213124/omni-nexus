@@ -39,6 +39,7 @@ import * as charImport from '../services/char-import';
 import * as characterCreate from '../services/character-create';
 import * as settings from '../services/settings';
 import * as settingsPresets from '../services/settings-presets';
+import * as fullBackup from '../services/full-backup';
 import * as storageMigrate from '../services/storage-migrate';
 import * as sessionAuthorNote from '../services/session-author-note';
 import * as charCommandPresets from '../services/char-command-presets';
@@ -129,6 +130,8 @@ function uploadBase64(body: Record<string, unknown>): string {
 // never be reached.
 const GET_ROUTES: readonly Route[] = [
   { match: exact('/v1/settings/export'), handler: async () => ok({ ok: true, json: await settings.exportSettingsJson() }) },
+  // 디버그 → 백업: keys included, unlike every other export (see services/full-backup).
+  { match: exact('/v1/backup/full-export'), handler: async () => ok({ ok: true, json: await fullBackup.exportFullBackup() }) },
   { match: exact('/v1/settings'), handler: () => ok({ ok: true, settings: settings.publicSettings() }) },
   {
     match: exact('/v1/storage/migrate/status'),
@@ -296,6 +299,8 @@ const WRITE_ROUTES: readonly Route[] = [
   { match: exact('/v1/settings-presets/apply'), handler: async ({ body }) => ok(await settingsPresets.applySettingsPreset(body)) },
   { match: exact('/v1/settings-presets/delete'), handler: async ({ body }) => ok(await settingsPresets.deleteSettingsPreset(body)) },
   { match: exact('/v1/settings/reset'), handler: async () => ok(await settings.resetSettings()) },
+  // 디버그 → 백업 restore: keys from the file (see services/full-backup).
+  { match: exact('/v1/backup/full-import'), handler: async ({ body }) => ok(await fullBackup.importFullBackup(String(body.json || ''))) },
   {
     match: exact('/v1/settings/import'),
     handler: async ({ body }) => ok(await settings.importSettingsJson(String(body.json || body.text || ''))),
