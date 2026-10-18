@@ -130,9 +130,7 @@ export function requestMarkerStripScript() {
  * ⚛️ omni 스트리밍태그 display: a closed `[[inxN]]…[[/inxN]]` is drawn as the
  * same spinner frame as a stored slot, sized by its aspect, and tagged with
  * `data-inx-slot="N"` so a streaming preview can paint into it before the
- * reply is saved. A block still being written is hidden, never shown as JSON.
- * Unless a closing tag follows: a misnumbered block stays visible rather than
- * hiding the story after it.
+ * reply is saved. A block not closed (yet) shows as written: nothing after it is hidden.
  */
 export const INLINE_SHOT_DISPLAY_COMMENT = 'omni-inline-shot-display';
 const INLINE_BODY = String.raw`(?:(?!\[\[\/?inx)[\s\S]){0,12000}?`;
@@ -170,8 +168,9 @@ export function inlineShotDisplayScripts(scalePct: unknown = 100, _pending = fal
       in: String.raw`\[\[inx(\d{1,3})\]\]` + (aspect ? String.raw`(?=${INLINE_BODY}"aspect"\s*:\s*"${aspect}")` : '') + INLINE_BODY + String.raw`\[\[\/inx\1\]\]`,
       out: slot(w, h),
     })),
-    { comment: `${INLINE_SHOT_DISPLAY_COMMENT}-open`, type: 'editdisplay' as const, ableFlag: true, flag: 'g<order -10044>',
-      in: String.raw`\[\[inx\d{1,3}\]\](?![\s\S]*\[\[\/inx\d)[\s\S]{0,12000}$`, out: '' },
+    // No rule hides an unclosed block any more: it hid everything from the block to
+    // the end of the message, so a block the model forgot to close took the story
+    // after it off the screen, and Risu ran that scan again on every streamed chunk.
   ];
 }
 /**
