@@ -185,6 +185,23 @@ test('another module that restyles §쾅§ into its own box carries ▶ inside i
   assert.doesNotMatch(after, /data-omni-sfx/, 'switched off it is the old behaviour: nothing left to put ▶ on');
 });
 
+test('a *…* rule never touches a <style> or <script> block: a CSS comment kept its */', () => {
+  // A character's CSS, as one user's had it: with *효과음*, every comment lost its */
+  // to the ▶ and commented out each rule after it, so the cards drew unstyled.
+  const css = '<style>\n.a { color: red; }\n/* 다음 로그가 있으면 경계선을 제거한다. */\n.b { border: 0; }\n/* Status Window */\n.c { width: 100%; }\n</style>';
+  const script = '<script>\nconst x = 2 *3* 4;\n</script>';
+  const story = '그가 문을 닫았다.\n*쾅*\n정적이 흘렀다.';
+  for (const sfxFirst of [true, false]) {
+    const settings = { ...api.soundDefaults(), sfxFirst, sfxRules: [{ id: 'star', name: '*효과음*', open: '*', close: '*', enabled: true }] };
+    const rules = api.soundModule('sfx', settings, []).regex;
+    const shown = render(rules, `${css}\n${script}\n${story}\n${css}`);
+    assert.equal(shown.split(css).length, 3, `sfxFirst=${sfxFirst}: both style blocks exactly as written`);
+    assert.ok(shown.includes(script), `sfxFirst=${sfxFirst}: the script block as written`);
+    assert.equal((shown.match(/data-omni-sfx="1"/g) || []).length, 1, `sfxFirst=${sfxFirst}: the story's *쾅* still gets its ▶`);
+    assert.deepEqual(api.sfxHits(`${css}\n${story}`, settings.sfxRules).map(hit => hit.word), ['쾅'], 'the played cues skip the CSS too, so ▶ and cue stay paired');
+  }
+});
+
 test('compound effects: split into sounds, a longer sound plays longer, all fit the longest length, joined into one clip', () => {
   assert.deepEqual(api.sfxParts('콰아앙 치이익 또르르'), ['콰아앙', '치이익', '또르르']);
   assert.deepEqual(api.sfxParts('끼이이익── 쿠구구구궁!'), ['끼이이익', '쿠구구구궁']);
