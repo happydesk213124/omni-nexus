@@ -273,7 +273,7 @@ export function resolveCostumeWear(
 
 type ShotCostumeLike = { characters?: Array<{ name?: unknown; costume?: unknown } | null> | null };
 
-function costumePickReadable(pick: unknown): boolean {
+export function costumePickReadable(pick: unknown): boolean {
   if (pick == null || pick === '') return false;
   if (typeof pick === 'number') return Number.isFinite(pick);
   if (typeof pick === 'object' && !Array.isArray(pick)) return Boolean(normalizeCostume(pick, 0));
