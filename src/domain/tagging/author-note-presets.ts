@@ -50,26 +50,21 @@ V5 natural: call the viewpoint person "the viewer" (e.g. the viewer's hand reach
 
 type Example = [id: string, name: string, text: string];
 const EXAMPLES: Example[] = [
-  // Supplied by the user verbatim as a general quality pass.
-  ['quality', '퀄리티 향상', `1 Dialogue: Korean, ≤6 chars, fit context
-2 Continuity: keep pose/sex position/location(bed) across shots; no random stand/sit jumps
-3 Main prompt (natural language): precisely describe layout, poses, hand positions, actions, camera angle like manual rendering. Camera angle/view (upper body, dutch angle, from above...) in BOTH main & char prompts. Vary angles, pick exact one needed (high/low). Face-only/close-up needed -> close-up composition. Heart eyes -> "heart-shaped pupils" + more detailed expression
-4 Char tags:
--Appearance: MUST hair_color+hair_style (infer if unknown, e.g. blue clothes->blue hair). NEVER expressions here
--Expression/gaze/pose -> action (e.g. "looking at brown hair boy")
--Mostly upper body -> ALWAYS add 2::upper body:: to action
--Register all new chars/animals/creatures/monsters
--Original: Danbooru "character (series)"
-5 Contact:
--Source: performer
--Target: receiver; EXACT same English action tag as Source (no passive/names e.g. "being sucked")
--Mutual: both do same action simultaneously
--Expression/gaze/posture separate in action; no unmentioned actions
-6 NSFW: position+NSFW tags+positions -> mutual; continue positions from prior shots; insertion -> 'deep penetration'; facing -> 'face to face'
-7 Structure:
--Distribute 'line' (L12, L15...) evenly across scenes, no one-side bias
--Location precise (e.g. "on bed") to prevent accidental standing
--Keep char coords well apart (think real hitboxes); too close -> tags overlap -> malformed chars`],
+  // The user's quality pass, with their additions (keep wear_state, heart eyes, back view
+  // + x-ray, the goal), compacted to English by request.
+  ['quality', '퀄리티 향상', `1 Speech text: Korean, ≤6 chars, fits context.
+2 Continuity: keep pose, sex position, location (e.g. bed) and wear_state across shots; no random stand/sit jumps, no clothes coming back.
+3 Main prompt (natural language): describe layout, poses, hand positions, actions and camera like a hand-made render. Camera view (upper body, dutch angle, from above...) goes in BOTH main and character prompts; vary angles, pick the exact one needed (high/low). Face focus -> close-up. Aroused or ecstatic faces: use heart eyes often, written as "heart-shaped pupils" + a detailed expression.
+4 Character tags:
+- appearance: always hair_color + hair_style (infer if unknown, e.g. blue clothes -> blue hair); never expressions.
+- expression/gaze/pose -> action (e.g. "looking at brown hair boy").
+- mostly upper body -> add 2::upper body:: to action.
+- seen from behind -> add "back view" to action, plus 2::x-ray::.
+- register every new character/animal/creature/monster; original = Danbooru "character (series)".
+5 Contact: source = performer; target = receiver, with the EXACT same English verb (no passive/names, never "being sucked"); mutual = both at once. Expression/gaze/posture stay in action; no unmentioned acts.
+6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face".
+7 Structure: spread "line" (L12, L15...) evenly, no bias; precise location ("on bed") so no one stands by accident; keep character coords far apart (real hitboxes), too close merges tags into malformed bodies.
+Goal: intensely arousing images with striking composition and mood.`],
   ['pov', 'POV · 1인칭 시점', `[POV]
 ${POV_CORE}`],
   ['pov-touch', 'POV · 손과 스킨십', `[POV · hands and touch]
