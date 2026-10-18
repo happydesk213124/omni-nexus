@@ -137,6 +137,7 @@ test('streaming tag rules reach only the chat model: after the first message, on
   card.stream_inline_tags=true;
   const rules=await f.api.inlineTagRules();
   assert.ok(rules.startsWith(f.api.INLINE_RULES_MARK));assert.match(rules,/\[\[inx1\]\]\{\.\.\.\}\[\[\/inx1\]\]/);assert.match(rules,/between 1 and 1 blocks|exactly 1 blocks/);
+  assert.match(rules,/Always close every block with its own closing tag[^\n]*\[\[\/inxN\]\] is discarded/,'models drop [[/inxN]] now and then: the rules insist on it');
   assert.doesNotMatch(rules,/Matched Lorebook|Characters in this message" packs|LINE: `line` is the matching/,'no lore or reference-pack how-to: Risu already sends lore and descriptions');
   assert.equal(await f.api.inlineTagRules(),rules,'same settings, same text: the cached prefix holds');
   const sent=await replacer(chat,'model');

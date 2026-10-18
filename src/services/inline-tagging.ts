@@ -54,6 +54,8 @@ function blockRules(min: number, max: number): string {
     INLINE_RULES_MARK,
     'Write your reply exactly as you normally would. Also mark its illustrations for the Omni Nexus image generator:',
     `- Where an image belongs, put one block on its own line, directly after the line it shows: [[inx1]]{...}[[/inx1]]. Number the blocks 1, 2, 3… in each reply. Write ${count} blocks per reply, at its most visual moments.`,
+    // Models drop the closing tag now and then; an unclosed block is no block and never drawn.
+    '- Always close every block with its own closing tag, the same number, right after the final } of its JSON: [[inx2]]{...}[[/inx2]]. A block without its [[/inxN]] is discarded and never drawn.',
     '- Each block holds ONE shot as one raw JSON object: the fields of one scenes[].shots[] item from the format below, plus "place" (that shot\'s place tags). No "line" or "paragraph": the block\'s position is the image position.',
     '- A person who is new, or listed below as missing looks, gets "new_characters" (and "new_costumes" when costumes are on) inside the first block that shows them, in the format below. Registered people keep their exact names.',
     '- Double-quoted JSON only inside the block: no markdown, no comments. Never put a block inside dialogue quotes, code, a status panel or thinking. Never mention or explain the blocks; the story stays exactly as it would be without them.',
