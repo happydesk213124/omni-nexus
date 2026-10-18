@@ -77,13 +77,13 @@ test('streaming tags: each block is its own tagger-free slot at its position; a 
   for(const id of [a.job_id,b.job_id,c.job_id])await assertRuntimeReleased(f,id);
 });
 
-test('streaming blocks of one reply carry wear_state on: a block that leaves it out keeps the earlier block\'s, and the note gets the last once',{timeout:15000},async()=>{
+test('streaming blocks of one reply carry wear_state and location on: a block that leaves them out keeps the earlier block\'s, and the note gets the last once',{timeout:15000},async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3});
   await f.api.upsertCharacter('c',{name:'세라',aliases:['Sera'],gender:'girl',appearance:'1girl, red hair',attire:'office suit',bottoms:'pencil skirt'});
   const first='First narrative paragraph long enough for generating images.';
-  const shot=character=>({new_characters:[],scenes:[{place:'office, indoor',shots:[{aspect:'portrait',characters:[{name:'세라',action:'standing',...character}],line:1,paragraph:0}]}]});
+  const shot=(character,location)=>({new_characters:[],scenes:[{place:'office, indoor',shots:[{aspect:'portrait',characters:[{name:'세라',action:'standing',...character}],...(location?{location}:{}),line:1,paragraph:0}]}]});
   // The alias in block 2: the same person, so the same running state.
-  const blocks=[shot({wear_state:'nude'}),shot({name:'Sera'}),shot({wear_state:'topless'}),shot({})];
+  const blocks=[shot({wear_state:'nude'},'manager office, indoor'),shot({name:'Sera'}),shot({wear_state:'topless'},'bedroom, indoor'),shot({})];
   const ids=[];
   for(const [i,tagged] of blocks.entries())ids.push((await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:i+1,inline_tagged:tagged})).job_id);
   for(const id of ids)await f.wait(id,j=>j.progress.phase==='waiting_output');
@@ -95,20 +95,25 @@ test('streaming blocks of one reply carry wear_state on: a block that leaves it 
   assert.match(captions[1],nude,'block 2 says nothing: still nude, not back in the suit');
   assert.match(captions[2],chest);assert.doesNotMatch(captions[2],nude,'block 3 states topless');
   assert.match(captions[3],chest);assert.doesNotMatch(captions[3],nude,'block 4 keeps block 3, not block 1');
+  const prompts=f.host.naiRequests.filter(r=>r.kind==='generate').map(r=>String(r.body.input));
+  assert.match(prompts[1],/manager office/,'block 2 states no place: still the office, not the last reply\'s');
+  assert.match(prompts[3],/bedroom/);assert.doesNotMatch(prompts[3],/manager office/,'block 4 keeps block 3\'s place');
   const note=async()=>JSON.parse((await f.chat()).localLore?.find(e=>e.comment==='omni.nexus.note')?.content ?? '{"note":{}}').note;
-  assert.equal((await note()).wear,undefined,'nothing written to the chat while the reply streams');
+  assert.equal((await note()).wear,undefined,'nothing written to the chat while the reply streams');assert.equal((await note()).location,undefined);
   await f.commit(ids[0],{job_ids:ids});
   for(const id of ids)await f.wait(id,j=>j.state==='done');
   const wear=Object.values((await note()).wear ?? {});
   assert.deepEqual(wear.map(row=>[row.name,row.wear]),[['세라','topless']],'the reply\'s last stated state, once the reply is done');
+  assert.equal((await note()).location,'bedroom, indoor','and its last stated place, whichever block finished last');
 });
 
 test('a pink slot tapped later follows its own message\'s earlier block, not the chat\'s state now',{timeout:15000},async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,stream_inline_autogen:false,llm_json_retry:false});
   const first='First narrative paragraph long enough for generating images.';
-  const block=(n,extra)=>`[[inx${n}]]{"place":"office, indoor","aspect":"portrait","characters":[{"name":"세라","action":"standing"${extra}}]}[[/inx${n}]]`;
-  const reply=`${first}\n${block(1,',"wear_state":"nude"')}\nSecond dialogue in the scene.\n${block(2,'')}\nLast line.`;
-  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',message:[{role:'char',chatId:'m',data:reply}]}]});
+  const block=(n,extra,more='')=>`[[inx${n}]]{"place":"office, indoor","aspect":"portrait"${more},"characters":[{"name":"세라","action":"standing"${extra}}]}[[/inx${n}]]`;
+  const reply=`${first}\n${block(1,',"wear_state":"nude"',',"location":"gym kitchen, indoor"')}\nSecond dialogue in the scene.\n${block(2,'')}\nLast line.`;
+  // A newer reply follows: tapping this older slot must not move the chat's state back.
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',message:[{role:'char',chatId:'m',data:reply},{role:'user',chatId:'u',data:'계속'},{role:'char',chatId:'n',data:'A later reply.'}]}]});
   // After the chat is in place: the roster lives in the character.
   await f.api.upsertCharacter('c',{name:'세라',gender:'girl',appearance:'1girl, red hair',attire:'office suit',bottoms:'pencil skirt'});
   const tapped=await f.api.generateInlineWait({character_id:'c',chat_id:'chat',char_index:0,chat_index:0,host_message_id:'m',message_index:0,session_id:'session',wait_id:'b2'});
@@ -116,6 +121,9 @@ test('a pink slot tapped later follows its own message\'s earlier block, not the
   await f.wait(tapped.job_id,j=>j.state==='done'||j.state==='error');
   const caption=JSON.stringify(f.host.naiRequests.filter(r=>r.kind==='generate').at(-1)?.body.parameters?.v4_prompt?.caption?.char_captions);
   assert.match(caption,/pussy/,'block 1 left her nude; block 2 says nothing, so it stays nude');
+  assert.match(String(f.host.naiRequests.filter(r=>r.kind==='generate').at(-1)?.body.input),/gym kitchen/,'and in block 1\'s place');
+  const note=JSON.parse((await f.chat()).localLore?.find(e=>e.comment==='omni.nexus.note')?.content ?? '{"note":{}}').note;
+  assert.equal(note.location,undefined,'an older reply\'s slot never moves the chat\'s place');assert.equal(note.wear,undefined,'nor its outfits');
 });
 
 test('streaming tags bake by message id: an edited reply or a shifted index still bakes, and a lost slot holds back only itself',{timeout:15000},async()=>{
