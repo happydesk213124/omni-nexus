@@ -8,7 +8,8 @@ export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
 import { writeJobSpinners, finishJobSpinners, writeWaitImage } from './chat-bake';
 import { dropInlineWait } from '../storage/inline-wait-store';
-import { outfitsFromRequest, recordStreamBlock, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
+import { outfitsFromRequest, recordStreamBlock, streamLocation, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
+import { risuHost } from '../core/host';
 /**
  * The generation job engine.
  *
@@ -1153,8 +1154,24 @@ async function runJob(jobId: string): Promise<void> {
     try {
       sessionLocation = cleanText((await getSessionAuthorNote(noteSessionId) as { location?: unknown }).location, 800);
     } catch { /* no session note yet */ }
-    sessionLocation = applyLocationContinuityToShots(shots, sessionLocation);
-    if (!deferred || deferred.committed) await persistSessionLocation(noteSessionId, sessionLocation);
+    const noteLocation = sessionLocation;
+    // The place an earlier block of this reply (or of a tapped slot's message) states comes first.
+    const priorLocation = inlineBlock !== null ? streamLocation(request) : cleanText(request.inline_prior_location, 800);
+    sessionLocation = applyLocationContinuityToShots(shots, priorLocation || sessionLocation);
+    // A streaming reply saves the last place any of its blocks states, whichever block finishes last.
+    const locationToSave = (): string => inlineBlock !== null ? streamLocation(request, false) || noteLocation : sessionLocation;
+    // A slot tapped on an older reply draws in that reply's state, but never moves the
+    // chat's current place or outfits back to it.
+    let newest: Promise<boolean> | undefined;
+    const savesSessionState = (): Promise<boolean> => newest ??= (async () => {
+      if (!inlineWait) return true;
+      const chat = await Promise.resolve(risuHost()?.getChatFromIndex?.(Number(request.char_index), Number(request.chat_index))).catch(() => null) as { message?: Array<{ role?: unknown }> } | null;
+      const messages = Array.isArray(chat?.message) ? chat!.message : [];
+      let last = messages.length - 1;
+      while (last >= 0 && !['char', 'assistant', 'bot'].includes(String(messages[last]?.role))) last--;
+      return last === Number(request.message_index);
+    })();
+    if ((!deferred || deferred.committed) && await savesSessionState()) await persistSessionLocation(noteSessionId, locationToSave());
 
     const ready = new Set<number>();
     const done = new Set<number>();
@@ -1192,7 +1209,7 @@ async function runJob(jobId: string): Promise<void> {
         applyWearContinuityToShots(shots, wearPrev);
 
         sessionLocation = applyLocationContinuityToShots(shots, sessionLocation);
-        if (!deferred || deferred.committed) await persistSessionLocation(noteSessionId, sessionLocation);
+        if ((!deferred || deferred.committed) && await savesSessionState()) await persistSessionLocation(noteSessionId, locationToSave());
         for (const idx of assigned) ready.add(idx);
         dbg('job.comic.done', { assigned: assigned.size, comics: shots.filter((s) => isComicShot(s)).length });
       } catch (err) {
@@ -1246,7 +1263,7 @@ async function runJob(jobId: string): Promise<void> {
       else if (!durableSpinners) durableSpinners = await enqueueJobSpinners();
       await finishCompletedSpinners();
       if (deferred?.committed && (!deferred.lineAttachments || deferred.lineAttachments.stats().settled===deferred.lineAttachments.stats().batches)) {
-        await persistSessionLocation(noteSessionId, sessionLocation);
+        await persistSessionLocation(noteSessionId, locationToSave());
         // A streaming reply saves what all its blocks state, in block order and image
         // or not, once: blocks finishing out of order once let an earlier one overwrite.
         const replyOutfits = inlineBlock !== null ? streamReplyOutfitsToSave(request) : undefined;
@@ -1645,7 +1662,7 @@ async function runJob(jobId: string): Promise<void> {
         completedSpinnerCards.set(idx,cardId);
         if (deferred?.committed && durableSpinners) await finishCompletedSpinners();
         successfulOutfitShots.set(idx, shot);
-        if (isJobCurrent(jobId) && !deferred?.lineAttachments && (!deferred || deferred.committed)) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
+        if (isJobCurrent(jobId) && !deferred?.lineAttachments && (!deferred || deferred.committed) && await savesSessionState()) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,value])=>value), roster, outfitRevision);
         dbg('job.shot.saved', { shot: idx, card_id: cardId });
         await setJob(
           jobId,

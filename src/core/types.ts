@@ -619,6 +619,8 @@ export interface JobRequest {
   inline_block?: number;
   /** A tapped slot: the outfits its message's earlier blocks state, in block order (stream-continuity). */
   inline_prior?: Array<Array<{ name: string; wear?: string; costume?: unknown }>>;
+  /** A tapped slot: the last location its message's earlier blocks state. */
+  inline_prior_location?: string;
   /** A streaming-tag block whose JSON did not parse, as the model wrote it: fixed before anything else. */
   inline_raw?: string;
   /** A block slot's waiting block as written: put back when its job ends without an image. */

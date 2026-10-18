@@ -8,7 +8,7 @@ import { dropInlineWait, getInlineWait } from '../storage/inline-wait-store';
 import { readStoredMessageBody } from './chat-bake';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { streamBlockBusy } from './stream-jobs';
-import { statedOutfits } from './stream-continuity';
+import { statedLocation, statedOutfits } from './stream-continuity';
 import { getConfig } from './context';
 import { createJob } from './jobs';
 
@@ -64,7 +64,9 @@ export async function generateInlineWait(body: Record<string, unknown>): Promise
   const raw = block ? (tagged ? '' : block.body.slice(0, 4000)) : wait?.raw || '';
   // Outfits the message's earlier blocks still state (a baked one is no longer JSON):
   // a slot tapped later follows its own reply, not wherever the chat is now.
-  const prior = blockN ? inlineShotBlocks(stored).filter(row => row.n < blockN).map(row => statedOutfits(inlineShotTagged(row.body, 1))) : [];
+  const earlier = blockN ? inlineShotBlocks(stored).filter(row => row.n < blockN).map(row => inlineShotTagged(row.body, 1)) : [];
+  const prior = earlier.map(statedOutfits);
+  const priorLocation = earlier.map(statedLocation).filter(Boolean).at(-1) || '';
   return createJob({
     ...body,
     message_role: 'char',
@@ -78,5 +80,6 @@ export async function generateInlineWait(body: Record<string, unknown>): Promise
     // A failed run puts the block back exactly as it was, ready for another tap.
     ...(block ? { inline_wait_block: block.text } : {}),
     ...(prior.some(list => list.length) ? { inline_prior: prior } : {}),
+    ...(priorLocation ? { inline_prior_location: priorLocation } : {}),
   });
 }

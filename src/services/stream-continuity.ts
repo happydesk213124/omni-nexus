@@ -2,10 +2,11 @@ import type { JobRequest, TaggerResult } from '../core/types';
 import { cleanText } from '../core/util/text';
 import { parseWearState, type WearState } from '../domain/character/wear-state';
 import { costumePickReadable } from '../domain/character/costume';
+import { cleanLocationTags } from '../domain/tagging/location';
 
 /**
  * Streaming-tag blocks of one reply are separate jobs but one story: a block that
- * leaves out wear_state or costume keeps what an earlier block of the same reply
+ * leaves out wear_state, costume or location keeps what an earlier block of the same reply
  * set, as the shots of one tagger call do. Each block used to read only the
  * session note, which is written when the reply ends, so between blocks the clothes
  * came back and went again.
@@ -15,7 +16,7 @@ import { costumePickReadable } from '../domain/character/costume';
  * their jobs are created and read by block number, never in the order images finish.
  */
 export interface StreamOutfit { name: string; wear?: WearState; costume?: unknown }
-type Reply = { blocks: Map<number, StreamOutfit[]>; saved: string };
+type Reply = { blocks: Map<number, StreamOutfit[]>; places: Map<number, string>; saved: string };
 const replies = new Map<string, Reply>();
 /** Replies kept: a regenerated reply has a new stream id, so old ones only age out. */
 const KEEP = 16;
@@ -42,17 +43,32 @@ export function statedOutfits(tagged: TaggerResult | null | undefined): StreamOu
   return out;
 }
 
-/** A block's stated outfits, again after a broken block is repaired. */
+/** The location a shot states outright, cleaned; '' when it leaves it out. */
+export function statedLocation(tagged: TaggerResult | null | undefined): string {
+  return cleanLocationTags((tagged?.scenes?.[0]?.shots?.[0] as { location?: unknown } | undefined)?.location);
+}
+
+/** A block's stated outfits and location, again after a broken block is repaired. */
 export function recordStreamBlock(request: Partial<JobRequest>, tagged?: TaggerResult | null): void {
   const key = replyKey(request);
   if (!key) return;
   let reply = replies.get(key);
   if (!reply) {
-    reply = { blocks: new Map(), saved: '' };
+    reply = { blocks: new Map(), places: new Map(), saved: '' };
     replies.set(key, reply);
     while (replies.size > KEEP) replies.delete(replies.keys().next().value!);
   }
   reply.blocks.set(request.inline_block!, statedOutfits(tagged ?? request.inline_tagged));
+  reply.places.set(request.inline_block!, statedLocation(tagged ?? request.inline_tagged));
+}
+
+/** The last location the reply's blocks state, before block N or (no N) in all of it; '' when none does. */
+export function streamLocation(request: Partial<JobRequest>, before = true): string {
+  const reply = replies.get(replyKey(request));
+  if (!reply) return '';
+  let last = '';
+  for (const [n, place] of [...reply.places].sort((a, b) => a[0] - b[0])) if (place && (!before || n < request.inline_block!)) last = place;
+  return last;
 }
 
 /** A tap's earlier blocks as sent in the request: only well-formed rows survive. */
