@@ -8,6 +8,7 @@ export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
 import { writeJobSpinners, finishJobSpinners, writeWaitImage } from './chat-bake';
 import { dropInlineWait } from '../storage/inline-wait-store';
+import { outfitsFromRequest, recordStreamBlock, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
 /**
  * The generation job engine.
  *
@@ -635,6 +636,7 @@ export async function createJob(request: IncomingRequest): Promise<ApiResult> {
   const now = Date.now() / 1000;
   beginJobEpoch(jobId, payload, sessionId);
   registerStreamJob(jobId, payload);
+  recordStreamBlock(payload);
   // Baked tokens own placement. Retagging must not scan/unlink gallery assets.
   try {
     await idbPut('jobs', {
@@ -824,6 +826,7 @@ async function runJob(jobId: string): Promise<void> {
       inline = await repairInlineShot(inlineRaw, lines.at(-1) || '', lineRange?.end || lines.length || 1, llmOptions)
         .catch(error => { dbg('job.inline_repair.fail', { message: String((error as Error)?.message || error).slice(0, 200) }, 'warn'); return null; });
       dbg('job.inline_repair', { fixed: !!inline });
+      if (inline && inlineBlock !== null) recordStreamBlock(request, inline);
       if (await cancelJobIfStale(jobId, 'superseded after block repair')) return;
       // Still broken: a pink slot at the block, so a tap can try again (a tap's own job falls back to the tagger).
       if (!inline && inlineBlock !== null && lineRange) {
@@ -1105,9 +1108,25 @@ async function runJob(jobId: string): Promise<void> {
         }
       }
     } catch { /* no session note yet */ }
+    // Earlier blocks of this streaming reply (or of a tapped slot's message) come
+    // first: the note only learns them when the reply ends.
+    // Folded by who they are, so an alias in one block and the name in the next agree.
+    const priorKey = (name: string): string => {
+      const rec = resolveCharacter(name, roster);
+      return rec?.id ? 'id:' + rec.id : 'name:' + String(name || '').toLowerCase();
+    };
+    const priorWear = new Map<string, string>(), priorCostume = new Map<string, unknown>();
+    for (const list of inlineBlock !== null ? streamOutfitsBefore(request) : outfitsFromRequest(request.inline_prior)) {
+      for (const row of list) {
+        const key = priorKey(row.name);
+        if (row.wear) priorWear.set(key, row.wear);
+        if (row.costume !== undefined) priorCostume.set(key, row.costume);
+      }
+    }
     const wearPrev = (name: string): unknown => {
       const rec = resolveCharacter(name, roster);
-      return rec?.wear_state
+      return (priorWear.size ? priorWear.get(priorKey(name)) : undefined)
+        ?? rec?.wear_state
         ?? (rec?.id ? noteWearById.get(String(rec.id)) : undefined)
         ?? noteWearByName.get(String(name || '').toLowerCase());
     };
@@ -1123,6 +1142,8 @@ async function runJob(jobId: string): Promise<void> {
     );
     reuseCreatedCostumePicks(shots, collectCostumePairs({new_costumes: tagged.new_costumes, new_characters: tagged.new_characters, shots}), roster);
     applyCostumeContinuityToShots(shots, (name) => {
+      const stated = priorCostume.size ? priorCostume.get(priorKey(name)) : undefined;
+      if (stated !== undefined) return stated;
       const rec = resolveCharacter(name, roster);
       if (!rec) return undefined;
       const { costumes, active_costume } = ensureCostumes(rec);
@@ -1226,7 +1247,11 @@ async function runJob(jobId: string): Promise<void> {
       await finishCompletedSpinners();
       if (deferred?.committed && (!deferred.lineAttachments || deferred.lineAttachments.stats().settled===deferred.lineAttachments.stats().batches)) {
         await persistSessionLocation(noteSessionId, sessionLocation);
-        await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,shot])=>shot), roster, outfitRevision);
+        // A streaming reply saves what all its blocks state, in block order and image
+        // or not, once: blocks finishing out of order once let an earlier one overwrite.
+        const replyOutfits = inlineBlock !== null ? streamReplyOutfitsToSave(request) : undefined;
+        if (replyOutfits) await persistSessionOutfits(noteSessionId, replyOutfits, roster, outfitRevision);
+        else if (inlineBlock === null) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,shot])=>shot), roster, outfitRevision);
       }
     });
     if (deferred) deferred.attach = attach;
