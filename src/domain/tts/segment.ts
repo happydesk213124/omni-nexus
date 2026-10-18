@@ -71,6 +71,10 @@ export function parseCueLine(line: string, id: string): TtsSegment | null {
   return { id, speaker: '', tone: '', text: value, kind: 'narration', start: 0, end: line.length };
 }
 const VOID_TAG = /^<(?:img|br|hr|input|source|meta|link|wbr|audio|video)\b[^>]*>$/i;
+// Only real HTML containers open a block to skip. Anything else that starts with
+// "<" is text on screen: a model copying a preset's `<47>` or `<43 date="…">`
+// message header hid every line below it until the next blank line.
+const BLOCK_TAG = /^<(?:div|details|summary|table|thead|tbody|tfoot|tr|td|th|section|article|aside|header|footer|nav|main|figure|figcaption|ul|ol|li|dl|dt|dd|pre|blockquote|form|fieldset|center|style|script|svg|iframe|textarea|select|template|noscript|canvas|object|math)(?=[\s>/])/i;
 function oneLineTag(line: string): boolean {
   return VOID_TAG.test(line) || /^<[a-z][\w-]*\b[^>]*\/>$/i.test(line) || /^<!--.*-->$/.test(line) || /^<([a-z][\w-]*)\b[^>]*>.*<\/\1\s*>$/i.test(line);
 }
@@ -113,7 +117,7 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
     else if (!fenced) {
       // Only a tag that opens a block (<div>, <details>…) hides the lines after it;
       // a one-line tag such as <img …> or <span>…</span> hides just its own line.
-      if (trimmed.startsWith('<') && !html && !oneLineTag(trimmed)) html = true;
+      if (!html && BLOCK_TAG.test(trimmed) && !oneLineTag(trimmed)) html = true;
       if (!trimmed) html = false;
       if(!html && /[:：]\s*$/.test(trimmed)){
         const header=cueHeader(trimmed),next=lines[index+1],speech=next===undefined?null:quotedCue(next);

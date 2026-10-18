@@ -381,6 +381,16 @@ test('a one-line tag hides only its own line; a block tag still hides its block'
   assert.deepEqual(kinds('<span class="x">장면</span>\n그녀가 웃었다.'), [['narration', '']]);
   assert.deepEqual(kinds('<br/>\n그녀가 웃었다.'), [['narration', '']]);
   assert.deepEqual(kinds('<div class="panel">\n상태 패널 안의 글\n<img src=a.webp>\n여전히 패널 안\n</div>\n\n바깥 나레이션이다.'), [['narration', '']], 'lines inside a <div> block stay hidden');
+  assert.deepEqual(kinds('<details>\n<summary>상태</summary>\n접힌 글\n</details>\n\n바깥.'), [['narration', '']], 'a <details> block stays hidden');
+});
+
+test('a "<" line that is no HTML block hides nothing: a copied <47> message header', () => {
+  const kinds = text => api.parseTtsMessage(text).map(s => s.kind);
+  const body = '세레나가 손을 흔들었다.\nSerena: "안녕, 오랜만이야!"\n피카츄가 울었다.';
+  assert.deepEqual(kinds(body), ['narration', 'dialogue', 'narration']);
+  for (const head of ['<47>', '<43 date="2023-04-03" time="15:02">', '<47 user>'])
+    assert.deepEqual(kinds(head + '\n' + body), ['narration', 'dialogue', 'narration'], head);
+  assert.deepEqual(kinds('<divine>\n신의 목소리가 울렸다.'), ['narration'], 'a name that only starts like a tag');
 });
 
 test('narration with parentheses gets its control; a speaker header alone does not', () => {
