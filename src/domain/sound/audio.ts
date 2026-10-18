@@ -29,10 +29,14 @@ const escapeClass = (text: string) => text.replace(/[\]\\^-]/g, '\\$&');
  * the model forgot to close cannot swallow the rest of the reply. Marks inside a
  * tag (text followed by `>` before any `<`, an attribute) are not effects: the
  * chat button and the played cue are paired in order, so both sides skip them.
+ * Neither are marks inside a <style> or <script> block (a `</style>` comes before
+ * any other style tag): with `*…*`, a CSS comment `/* … *\/` lost its closing
+ * `*\/` to the ▶ and commented out every rule after it.
  */
+const INSIDE_RAW_BLOCK = String.raw`(?!(?:[^<]|<(?!\/?(?:style|script)\b))*<\/(?:style|script)\s*>)`;
 export function sfxRuleMarks(rule: Pick<SfxRule, 'open' | 'close'>): { open: string; word: string; close: string } {
   const marks = escapeClass([...new Set([...rule.open, ...rule.close])].join(''));
-  return { open: escapeRegex(rule.open), word: `[^${marks}\\n<>]{1,60}`, close: `${escapeRegex(rule.close)}(?![^<>]*>)` };
+  return { open: escapeRegex(rule.open), word: `[^${marks}\\n<>]{1,60}`, close: `${escapeRegex(rule.close)}(?![^<>]*>)${INSIDE_RAW_BLOCK}` };
 }
 export function sfxRuleSource(rule: Pick<SfxRule, 'open' | 'close'>): string {
   const marks = sfxRuleMarks(rule);
