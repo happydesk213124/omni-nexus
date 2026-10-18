@@ -214,7 +214,7 @@ test('the chat model gets this chat\'s people, most recently named first, with t
   assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
 });
 
-test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still being written, and keeps them out of requests',async()=>{
+test('⚛️ omni 스트리밍태그 draws blocks as slots, never hides the story after an unclosed one, and keeps them out of requests',async()=>{
   const f=await fixture();
   await risuai.setDatabase({modules:[],enabledModules:[]});
   assert.equal(await f.api.ensureInlineTagModule(false),true);assert.equal((await risuai.getDatabase()).modules.length,0,'never used: nothing installed');
@@ -225,7 +225,9 @@ test('⚛️ omni 스트리밍태그 draws blocks as slots, hides one still bein
   const wide=display('앞\n[[inx2]]{"aspect":"landscape","characters":[]}[[/inx2]]\n뒤');
   assert.match(wide,/data-inx-slot="2"/);assert.match(wide,/viewBox="0 0 1216 832"/);assert.doesNotMatch(wide,/inx2\]\]|"aspect"/);
   assert.match(display('[[inx1]]{"characters":[]}[[/inx1]]'),/viewBox="0 0 832 1216"/,'portrait unless the block says otherwise');
-  assert.equal(display('본문\n[[inx3]]{"place":"ro'),'본문\n','a block still streaming is hidden');
+  // An unclosed block once hid everything after it to the end of the message: a forgotten [[/inxN]] took the story off the screen.
+  assert.equal(display('본문\n[[inx3]]{"place":"room"}\n뒤 이야기가 이어진다.'),'본문\n[[inx3]]{"place":"room"}\n뒤 이야기가 이어진다.','an unclosed block hides nothing after it');
+  assert.ok(!module.regex.some(r=>r.comment==='omni-inline-shot-display-open'),'the hide-to-the-end rule is gone');
   assert.equal(display('<Thoughts>\n생각 [[inx1]]{"characters":[]}[[/inx1]]\n</Thoughts>\n본문'),'<Thoughts>\n생각 \n</Thoughts>\n본문','a draft in the thoughts is never drawn');
   assert.equal(display('<think>생각 중 [[inx1]]{"characters":[]}[[/inx1]] 더'),'<think>생각 중  더','nor while the thoughts are still streaming');
   assert.match(display('<Thoughts>a</Thoughts>\n본문\n[[inx1]]{"characters":[]}[[/inx1]]'),/data-inx-slot="1"/,'a story block after the thoughts is a slot');
