@@ -1,11 +1,15 @@
 import { AUTHOR_NOTE_PRESETS_KEY } from '../core/constants';
 import type { ApiResult } from '../core/types';
 import { promptText } from '../config/prompts';
-import { authorNotePresetExamples, normalizeAuthorNotePresets, type AuthorNotePreset } from '../domain/tagging/author-note-presets';
+import { AUTHOR_NOTE_PRESET_TEXT_LIMIT, authorNotePresetExamples, normalizeAuthorNotePresets, type AuthorNotePreset } from '../domain/tagging/author-note-presets';
 import { psGet, psSet } from '../storage/device-store';
 import { getPrompt } from './settings';
 
 const same = (a: string, b: string) => a.replace(/\r\n/g, '\n').trim() === b.replace(/\r\n/g, '\n').trim();
+const clipText = (value: unknown) => String(value ?? '').replace(/\r\n/g, '\n').slice(0, AUTHOR_NOTE_PRESET_TEXT_LIMIT);
+const clipId = (value: unknown) => String(value ?? '').trim().slice(0, 80);
+/** The 직접 입력 entry of the picker: the user's own note, which no pick ever overwrites. */
+export const CUSTOM_NOTE_ID = 'custom';
 
 /** The shipped note, so picking it always gives back what the note was before any preset. */
 function examples(): AuthorNotePreset[] {
@@ -13,28 +17,49 @@ function examples(): AuthorNotePreset[] {
   return [...(shipped.trim() ? [{ id: 'example-default', name: '기존 노트 (기본값)', text: shipped, builtin: true }] : []), ...authorNotePresetExamples()];
 }
 
+type Stored = { items: AuthorNotePreset[]; custom: string; selected: string };
+
 /**
- * First run after the update: a note the user wrote themselves becomes a preset
- * before any pick can replace it. Runs once — the row exists afterwards, even empty.
+ * Saved presets, the 직접 입력 text and which entry is picked. A save from before
+ * 직접 입력 existed (or none at all) is upgraded once: the note written by hand,
+ * else the 「내 기존 노트」 kept on the first run, becomes 직접 입력, so going back
+ * to one's own writing is always one pick away.
  */
-async function savedRows(): Promise<AuthorNotePreset[]> {
-  const stored = await psGet(AUTHOR_NOTE_PRESETS_KEY);
-  if (stored != null) return normalizeAuthorNotePresets(stored);
+async function load(): Promise<Stored> {
+  const raw = await psGet(AUTHOR_NOTE_PRESETS_KEY);
+  const rec = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+  const items = normalizeAuthorNotePresets(raw);
+  if (rec && typeof rec.custom === 'string') return { items, custom: clipText(rec.custom), selected: clipId(rec.selected) || CUSTOM_NOTE_ID };
   const note = await getPrompt('author_note');
-  const own = note.trim() && !examples().some(row => same(row.text, note));
-  const items = own ? normalizeAuthorNotePresets([{ id: `kept-${Date.now().toString(36)}`, name: '내 기존 노트', text: note }]) : [];
-  await psSet(AUTHOR_NOTE_PRESETS_KEY, { items });
-  return items;
+  const all = [...items, ...examples()];
+  const own = note.trim() && !all.some(row => same(row.text, note)) ? note : '';
+  const kept = items.find(row => row.id.startsWith('kept-'));
+  const match = all.find(row => same(row.text, note));
+  const stored = { items, custom: clipText(own || kept?.text || ''), selected: own || !match ? CUSTOM_NOTE_ID : match.id };
+  await psSet(AUTHOR_NOTE_PRESETS_KEY, stored);
+  return stored;
 }
 
-/** Saved presets first, then the shipped ones (read-only, never stored). */
+const shape = (stored: Stored): ApiResult => ({ ok: true, items: [...stored.items, ...examples()], custom: stored.custom, selected: stored.selected });
+
+/** Saved presets first, then the shipped ones (read-only, never stored), with 직접 입력 and the pick. */
 export async function listAuthorNotePresets(): Promise<ApiResult> {
-  return { ok: true, items: [...await savedRows(), ...examples()] };
+  return shape(await load());
 }
 
-/** Replaces the saved list; examples sent back by the UI are dropped, not stored. */
-export async function saveAuthorNotePresets(items: unknown): Promise<ApiResult> {
-  const next = normalizeAuthorNotePresets(items);
-  await psSet(AUTHOR_NOTE_PRESETS_KEY, { items: next });
-  return { ok: true, items: [...next, ...examples()] };
+/**
+ * Updates what the body names: `items` (examples sent back are dropped, not stored),
+ * `custom` (직접 입력) and `selected`. A bare array is a list of presets.
+ */
+export async function saveAuthorNotePresets(body: unknown): Promise<ApiResult> {
+  const current = await load();
+  const rec = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  const items = Array.isArray(body) ? body : rec.items;
+  const next: Stored = {
+    items: items !== undefined ? normalizeAuthorNotePresets(items) : current.items,
+    custom: typeof rec.custom === 'string' ? clipText(rec.custom) : current.custom,
+    selected: typeof rec.selected === 'string' ? clipId(rec.selected) || CUSTOM_NOTE_ID : current.selected,
+  };
+  await psSet(AUTHOR_NOTE_PRESETS_KEY, next);
+  return shape(next);
 }
