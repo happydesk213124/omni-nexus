@@ -487,6 +487,8 @@ function expectedAssetChange(a,b,at) {
   // 원본으로 저장 is opt-in; settings.image_output asserts its save and export, and
   // tests/image-publish-preview asserts the PNG is stored and previewed untouched.
   if (/\.value\.(?:settings|json)\.card\.image_png_original$/.test(at)) return a === undefined && b === false;
+  // 박제는 PNG 원본 is opt-in; settings.image_output asserts persistence/export.
+  if (/\.value\.(?:settings|json)\.card\.image_png_bake$/.test(at)) return a === undefined && b === false;
   // WebP 메타데이터 쓰기 is on by default, which is the old behaviour; settings.image_output
   // asserts turning it off saves and exports, generation-image-data asserts what it skips.
   if (/\.value\.(?:settings|json)\.card\.image_webp_metadata$/.test(at)) return a === undefined && b === true;

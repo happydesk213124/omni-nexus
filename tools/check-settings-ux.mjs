@@ -377,6 +377,15 @@ try {
   assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_png_original),true);
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
   assert.equal(await page.locator('#nx-image-png-original').isChecked(),true);
+  // 박제는 PNG 원본 sits right under 원본으로 저장, saves, and survives a repaint.
+  assert.equal(await page.locator('#nx-image-png-original').evaluate(el=>el.closest('.row')?.nextElementSibling?.querySelector('input')?.id),'nx-image-png-bake');
+  const pngBake=page.locator('#nx-image-png-bake');
+  assert.equal(await pngBake.isChecked(),false,'off by default');
+  await pngBake.setChecked(true);
+  await page.evaluate(()=>uxTestRuntime.flush());
+  assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_png_bake),true);
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
+  assert.equal(await page.locator('#nx-image-png-bake').isChecked(),true);
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
   assert.equal(await page.locator('#nx-nai-auto-upscale').isChecked(),true);
   const locationWeight = page.locator('#nx-location-tag-weight');

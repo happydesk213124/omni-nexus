@@ -783,7 +783,13 @@ export async function generateImage(
  * the Omni data we embed, so ComfyUI images are always encoded with it.
  */
 export function keepsOriginalPng(): boolean {
-  return getConfig().card.image_png_original === true && imageBackendKind(getConfig().nai) !== 'comfy';
+  const card = getConfig().card;
+  return (card.image_png_original === true || card.image_png_bake === true) && imageBackendKind(getConfig().nai) !== 'comfy';
+}
+
+/** 박제는 PNG 원본: the PNG is stored and baked as delivered; only the chat preview is a WebP. */
+export function previewsWebp(): boolean {
+  return getConfig().card.image_png_bake === true && keepsOriginalPng();
 }
 
 /** 메타데이터 쓰기 off, for NAI only, for the same reason: ComfyUI has no stealth alpha. */

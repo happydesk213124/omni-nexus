@@ -69,6 +69,7 @@ import {
   cardMetaFromLocation,
   generateFromNaiReplay,
   keepsOriginalPng,
+  previewsWebp,
   omitsImageData,
   locationFieldsForCard,
   readImageLocation,
@@ -744,7 +745,7 @@ async function createRerollRevision(
     content_hash: cleanText(prevLoc.content_hash || '', 128),
     assistant_preview: cleanText(prevLoc.assistant_preview || meta.assistant_preview || '', ASSISTANT_PREVIEW_LIMIT),
   };
-  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, original: keepsOriginalPng(), withoutData: omitsImageData(), recipe:recipe || replayRequest,characters:replayCast,generatedAt:Date.now()});
+  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, original: keepsOriginalPng(), webpPreview: previewsWebp(), withoutData: omitsImageData(), recipe:recipe || replayRequest,characters:replayCast,generatedAt:Date.now()});
 
   const genMeta = cardMetaFromLocation({ ...meta, ...genMetaExtra }, location, bytes.byteLength);
   // The old card's y position lives under three historical key names; drop all

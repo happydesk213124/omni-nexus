@@ -1139,6 +1139,7 @@
             <div class="row"><label class="row-text" for="nx-image-webp-quality"><b>이미지 WebP 품질 (%)</b><small>새로 저장하는 이미지에 적용 · 기본 90%</small></label><input class="ctrl" id="nx-image-webp-quality" type="number" min="1" max="100" step="1" value="90"></div>
             <label class="row" data-nx-help-id="nx-image-webp-metadata"><span class="row-text"><b>WebP 메타데이터 쓰기</b><small>캐릭터·코스튬·생성시각 · 꺼도 리롤은 알파값으로</small></span><span class="sw"><input id="nx-image-webp-metadata" type="checkbox" checked></span></label>
             <label class="row" data-nx-help-id="nx-image-png-original"><span class="row-text"><b>원본으로 저장</b><small>NAI PNG 그대로 · WebP 변환·메타데이터 없음</small></span><span class="sw"><input id="nx-image-png-original" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-image-png-bake"><span class="row-text"><b>박제는 PNG 원본</b><small>박제·저장은 PNG 그대로 · 채팅 미리보기만 위 WebP 품질로 가볍게</small></span><span class="sw"><input id="nx-image-png-bake" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked disabled></span></label>
             <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>채팅안에 바로가기툴 추가</b></span><span class="sw"><input id="nx-inline-msg-fan" type="checkbox"></span></label>
@@ -2577,6 +2578,10 @@
   "nx-image-png-original": {
     "title": "원본으로 저장",
     "body": "켜면 NAI가 준 PNG를 그대로 저장하고, 화면에도 그 PNG를 띄웁니다. WebP 변환과 Omni 메타데이터 쓰기를 건너뛰어 그만큼 빨리 뜨지만 파일은 몇 배 큽니다. 리롤은 PNG에 NAI가 넣은 정보로 합니다. 새로 저장하는 이미지에만 적용됩니다."
+  },
+  "nx-image-png-bake": {
+    "title": "박제는 PNG 원본",
+    "body": "켜면 NAI가 준 PNG를 그대로 저장하고 채팅에 박제합니다. 박제 전에 채팅에 먼저 뜨는 미리보기만 위 WebP 품질로 작게 만들어 넘깁니다(품질 50이면 장당 약 70KB, PNG는 약 2MB). 미리보기용 인코딩이 장당 한 번 듭니다. 원본으로 저장과 같이 켜면 이 설정이 우선합니다. PNG에는 Omni 메타데이터를 쓰지 않습니다. ComfyUI 이미지에는 적용되지 않습니다. 새로 저장하는 이미지에만 적용됩니다."
   },
   "nx-speech-bubble-weight": {
     "title": "말풍선 강조",
