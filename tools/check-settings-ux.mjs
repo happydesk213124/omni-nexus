@@ -356,6 +356,16 @@ try {
   await page.locator('#nx-nai-auto-upscale').setChecked(true);
   await page.evaluate(()=>uxTestRuntime.flush());
   assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.nai_auto_upscale),true);
+  // 🆙 버튼 방식 is the option bar right under that toggle: three ways, PNG 원본 by default.
+  const upscaleMode=page.locator('#nx-upscale-button-mode');
+  assert.equal(await page.locator('#nx-nai-auto-upscale').evaluate(el=>el.closest('.row')?.nextElementSibling?.querySelector('select')?.id),'nx-upscale-button-mode');
+  assert.deepEqual(await upscaleMode.evaluate(el=>[...el.options].map(o=>o.value)),['original','upscale','upscale_webp']);
+  assert.equal(await upscaleMode.inputValue(),'original');
+  await upscaleMode.selectOption('upscale_webp');
+  await page.evaluate(()=>uxTestRuntime.flush());
+  assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.upscale_button_mode),'upscale_webp');
+  await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
+  assert.equal(await page.locator('#nx-upscale-button-mode').inputValue(),'upscale_webp','survives a repaint');
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
   const quality=page.locator('#nx-image-webp-quality');
   await quality.fill('73'); await quality.dispatchEvent('change');

@@ -95,7 +95,7 @@ test('frozen sheet exposes close during loading and reuses all nodes on reopen',
   assert.deepEqual(Array.from(c.inspectZones,z=>z.act),['retag','regen','reroll','base','upscale','close']);
   assert.deepEqual(Array.from(c.inspectZones,z=>z.el.text),['⚛️','🔃','🎲','🔮','🆙','닫기']);
   const upscale=c.inspectZones.find(z=>z.act==='upscale').el;
-  assert.match(upscale.html,/🆙/);assert.match(upscale.html,/NAI 업스케일/);
+  assert.match(upscale.html,/🆙/);assert.match(upscale.html,/PNG 원본 · 업스케일/);
   const edit=c.inspectZones.find(z=>z.act==='base').el,reroll=c.inspectZones.find(z=>z.act==='reroll').el;
   assert.equal(edit.style.split(';background:')[0],reroll.style.split(';background:')[0]);
   assert.match(edit.style,/background:rgba\(255,255,255,.08\)/);
@@ -198,18 +198,20 @@ test('inspect toggle repairs apply to the frozen bundle and reject drift',async(
 });
 
 
-test('fullscreen upscale action calls the paid endpoint and updates the displayed revision',async()=>{
+for (const [mode,route,label,kind] of [[undefined,'original',/PNG 원본/,'original'],['upscale','upscale',/업스케일/,'upscale'],['upscale_webp','upscale',/업스케일/,'upscale']])
+test(`fullscreen 🆙 with 🆙 버튼 방식 ${mode || 'default'} calls /${route} and updates the displayed revision`,async()=>{
   const source=config.replaceAll('\r\n','\n');
   const at=source.indexOf('const VENDOR_INSPECT_REROLL_INLINE_PATCH =');
   const start=source.indexOf('`',at),end=source.indexOf('`;\n',start)+1;
   const action=runInNewContext(source.slice(start,end));
-  const calls=[],paints=[],ctx={act:'upscale',card:{id:'root'},t:{hostDoc:{}},
-    hideInspect:async()=>{},withImageRerollToast:async(label,run)=>{assert.match(label,/업스케일/);return run();},
-    K:async(path,opts)=>{calls.push([path,opts]);return {ok:true,card:{id:'root_s1',image_url:'data:image/webp;base64,DONE'}};},
+  const calls=[],paints=[],toasts=[],ctx={act:'upscale',card:{id:'root'},t:{hostDoc:{},backendSettings:{card:{upscale_button_mode:mode}}},
+    hideInspect:async()=>{},withImageRerollToast:async(text,run,opts)=>{toasts.push([text,opts.kind]);return run();},
+    K:async(path,opts)=>{calls.push([path,opts]);return {ok:true,card:{id:'root_s1',image_url:'data:image/png;base64,DONE'}};},
     Z:async()=>null,ce:async()=>{},he:async()=>{},y:()=>{},
     nxCardDisplaySrc:card=>card.image_url,nxInlineRootKeyForCard:()=>'',
     nxPatchInlinePhotoByCardId:async(...args)=>paints.push(args)};
   await runInNewContext('(async()=>{'+action+'})()',ctx);
-  assert.equal(calls.length,1);assert.equal(calls[0][0],'/v1/cards/root/upscale');
-  assert.deepEqual(paints[0].slice(0,3),['root_s1','data:image/webp;base64,DONE','root']);
+  assert.equal(calls.length,1);assert.equal(calls[0][0],'/v1/cards/root/'+route);
+  assert.match(toasts[0][0],label);assert.equal(toasts[0][1],kind);
+  assert.deepEqual(paints[0].slice(0,3),['root_s1','data:image/png;base64,DONE','root']);
 });

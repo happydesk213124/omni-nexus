@@ -89,7 +89,7 @@ showFullscreen = async (f) => {
       [closeRow, "닫기", "close", `${actStyle};font-size:14px;background:rgba(255,255,255,.08);color:#fff`]
     ];
     const buttons = await Promise.all(specs.map(([, text, , style]) => H(e, "button", { text, style })));
-    const names = ['태그 생성','메시지 이미지 재생성','이 이미지 리롤','샷 태그 수정','NAI 업스케일 (Anlas 소모)','닫기'];
+    const names = ['태그 생성','메시지 이미지 재생성','이 이미지 리롤','샷 태그 수정','PNG 원본 · 업스케일','닫기'];
     await Promise.all(buttons.map((button, i) => button.setInnerHTML(`<span data-inray-inspect-action="1" role="img" aria-label="${names[i]}">${specs[i][1]}</span>`)));
     // Keep action identity beside its node for coordinate hit testing.
     await Promise.all(buttons.map((button, i) => specs[i][0].appendChild(button)));

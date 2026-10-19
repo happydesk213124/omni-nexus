@@ -247,7 +247,9 @@ export function requireNaiReplayScene(meta: unknown): NaiScene {
     scale: raw.scale ?? raw.cfg_scale,
     noise_schedule: raw.noise_schedule ?? raw.noiseSchedule ?? raw.scheduler,
     cfg_rescale: raw.cfg_rescale ?? raw.cfgRescale ?? 0,
-    var_plus: raw.var_plus ?? raw.variety_plus ?? false,
+    // NAI's own metadata has no variety+ flag, only what it does: a numeric
+    // skip_cfg_above_sigma. Reading it back keeps a replay the same request.
+    var_plus: raw.var_plus ?? raw.variety_plus ?? (typeof raw.skip_cfg_above_sigma === 'number'),
   };
   const missing: string[] = [];
   const finite = (key: keyof typeof normalized, min: number): void => {
