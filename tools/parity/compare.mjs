@@ -183,6 +183,8 @@ const normalize = (root) => {
             .filter((k) => k !== 'onx_nximg_*' && k !== 'inx_nximg_*' && !String(k).startsWith('onx_nximg_') && !String(k).startsWith('inx_nximg_'))
             // 2.5.27 session note + command presets — no 1.x keys.
             .filter((k) => !String(k).startsWith('onx_session_author_note_') && !String(k).startsWith('inx_session_author_note_') && k !== 'onx_char_command_presets' && k !== 'inx_char_command_presets')
+            // Main author's note picker (직접 입력, presets) — no 1.x key; prompts.author_note_presets asserts what it holds.
+            .filter((k) => k !== 'onx_author_note_presets')
             // 2.5.33 boot stamp: a diagnostic written once per boot so the debug
             // dump can tell "iframe reloaded" from "shell failed to paint". No
             // 1.x key, and nothing reads it for behaviour.
@@ -492,6 +494,9 @@ function expectedAssetChange(a,b,at) {
   if (/\.value\.(?:settings|json)\.card\.char_command_(?:xnai|lore)$/.test(at)) return a === undefined && b === false;
   // New default-on field injection switches; scenario asserts disabling, export and restore.
   if (/\.value\.(?:settings|json)\.card\.character_(?:height|age)$/.test(at)) return a === undefined && b === true;
+  // The header EXPORT carries the author's note picker (직접 입력, saved presets, the pick);
+  // tests/author-note-presets asserts its restore and an older file's note becoming 직접 입력.
+  if (/^settings.export(?:_for_import)?.value.json.author_note_presets$/.test(at)) return a === undefined && !!b && Array.isArray(b.items) && typeof b.custom === 'string' && typeof b.selected === 'string';
   // 1.0.1 no longer exports the service-account credential field, even when empty.
   // settings.vertex_credentials separately proves nonempty secrets are removed
   // and reimporting the shared file preserves the device's existing credentials.
@@ -693,7 +698,7 @@ const NEW_ONLY_STEPS = new Map([
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
   ['speech.style_on',v=>JSON.stringify(v?.saved)==='[2,true]' && JSON.stringify(v?.exported)==='[2,true]' ? null : 'Speech bubble weight/huge text must persist and export'],
   ['cards.history_delete_missing',v=>v?.ok === false && v.error?.code === 'not_found' ? null : 'Deleting an unknown history revision must say not_found'],
-  ['prompts.author_note_presets',v=>v?.examples>=8 && v.examplesKept===v.examples && v.savedMine==='parity-note' && v.listedMine==='parity-note' && v.customIsNote && v.customStays && v.selected==='custom,example-pov' && v.shipped ? null : 'Author note presets must list examples without storing them and keep a saved row: '+JSON.stringify(v)],
+  ['prompts.author_note_presets',v=>v?.examples>=8 && v.examplesKept===v.examples && v.savedMine==='parity-note' && v.listedMine==='parity-note' && v.customStays && v.picked==='example-pov' && v.shipped ? null : 'Author note presets must list examples without storing them and keep a saved row: '+JSON.stringify(v)],
   ['chars.roster_command',v=>v?.target && v.edits===1 && v.deletes===0 && v.edited===1 && v.mole ? null : 'Roster command must plan one edit (an unlisted delete dropped) and apply it: '+JSON.stringify(v)],
   ['backup.full_roundtrip',v=>v?.type==='omni-nexus-full-backup' && v.parts && v.keyKept && v.restored && v.same ? null : 'Full backup must carry every part with its keys and restore to the same state: '+JSON.stringify(v)],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],

@@ -44,6 +44,7 @@ import * as fullBackup from '../services/full-backup';
 import * as storageMigrate from '../services/storage-migrate';
 import * as sessionAuthorNote from '../services/session-author-note';
 import * as authorNotePresets from '../services/author-note-presets';
+import * as settingsTransfer from '../services/settings-transfer';
 import * as charCommandPresets from '../services/char-command-presets';
 import * as charCommand from '../services/char-command';
 import * as characterPreview from '../services/character-preview';
@@ -131,7 +132,7 @@ function uploadBase64(body: Record<string, unknown>): string {
 // before the auth check and returns unconditionally, so an entry here could
 // never be reached.
 const GET_ROUTES: readonly Route[] = [
-  { match: exact('/v1/settings/export'), handler: async () => ok({ ok: true, json: await settings.exportSettingsJson() }) },
+  { match: exact('/v1/settings/export'), handler: async () => ok({ ok: true, json: await settingsTransfer.exportSettingsFile() }) },
   // 디버그 → 백업: keys included, unlike every other export (see services/full-backup).
   { match: exact('/v1/backup/full-export'), handler: async () => ok({ ok: true, json: await fullBackup.exportFullBackup() }) },
   { match: exact('/v1/settings'), handler: () => ok({ ok: true, settings: settings.publicSettings() }) },
@@ -306,7 +307,7 @@ const WRITE_ROUTES: readonly Route[] = [
   { match: exact('/v1/backup/full-import'), handler: async ({ body }) => ok(await fullBackup.importFullBackup(String(body.json || ''))) },
   {
     match: exact('/v1/settings/import'),
-    handler: async ({ body }) => ok(await settings.importSettingsJson(String(body.json || body.text || ''))),
+    handler: async ({ body }) => ok(await settingsTransfer.importSettingsFile(String(body.json || body.text || ''))),
   },
   {
     match: exact('/v1/settings', '/v1/settings/update'),
@@ -315,7 +316,7 @@ const WRITE_ROUTES: readonly Route[] = [
   {
     match: exact('/v1/prompts/import'),
     handler: async ({ body }) =>
-      ok(await settings.importPromptsPack(body?.json != null ? body.json : body?.prompts != null ? body : body)),
+      ok(await settingsTransfer.importPromptsFile(body?.json != null ? body.json : body?.prompts != null ? body : body)),
   },
   {
     match: exact('/v1/prompts/reset-defaults'),

@@ -63,3 +63,27 @@ export async function saveAuthorNotePresets(body: unknown): Promise<ApiResult> {
   await psSet(AUTHOR_NOTE_PRESETS_KEY, next);
   return shape(next);
 }
+
+/** What a settings file carries: the saved presets, 직접 입력 and the pick (examples ship with the plugin). */
+export async function exportAuthorNotePresets(): Promise<Stored> {
+  const stored = await load();
+  return { items: stored.items, custom: stored.custom, selected: stored.selected };
+}
+
+/** A file from a version with 직접 입력: restored as it was. */
+export async function restoreAuthorNotePresets(raw: unknown): Promise<void> {
+  const rec = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  await saveAuthorNotePresets({ items: Array.isArray(rec.items) ? rec.items : [], custom: typeof rec.custom === 'string' ? rec.custom : '', selected: typeof rec.selected === 'string' ? rec.selected : CUSTOM_NOTE_ID });
+}
+
+/**
+ * A file from before 직접 입력 only carries the note itself. That note is the
+ * user's own writing, so it becomes 직접 입력 and is picked; one that is exactly
+ * a preset's or example's text picks that entry and leaves 직접 입력 alone.
+ */
+export async function adoptImportedAuthorNote(): Promise<void> {
+  const note = await getPrompt('author_note');
+  const stored = await load();
+  const match = note.trim() ? [...stored.items, ...examples()].find(row => same(row.text, note)) : undefined;
+  await saveAuthorNotePresets(match ? { selected: match.id } : { custom: note, selected: CUSTOM_NOTE_ID });
+}

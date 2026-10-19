@@ -14,7 +14,8 @@ const built = await build({ stdin: { contents: `
   export { getConfig, setConfig } from './src/services/context';
   export { loadTtsData, ttsData, updateTtsSettings } from './src/storage/tts-store';
   export { loadSoundData, soundData, updateSoundSettings } from './src/storage/sound-store';
-  export { listCommandPresets, saveCommandPresets } from './src/services/char-command-presets';`, resolveDir: process.cwd() },
+  export { listCommandPresets, saveCommandPresets } from './src/services/char-command-presets';
+  export { listAuthorNotePresets, saveAuthorNotePresets } from './src/services/author-note-presets';`, resolveDir: process.cwd() },
   bundle: true, write: false, format: 'esm', platform: 'node', loader: { '.txt': 'text' } });
 const code = built.outputFiles[0].text;
 let n = 0;
@@ -35,6 +36,7 @@ test('모든 설정 내보내기 carries every key; 불러오기 restores all of
   await a.updateTtsSettings({ fish: { ...a.ttsData().settings.fish, key: 'fish-secret-123456' }, speed: 1.5 });
   await a.updateSoundSettings({ elevenKey: 'eleven-secret-123', bgmVolume: 0.3 });
   await a.saveCommandPresets([{ id: 'p1', name: '교복', cmd: '교복으로', cmd_post: '' }]);
+  await a.saveAuthorNotePresets({ items: [{ id: 'n1', name: '내 노트', text: 'saved preset' }], custom: 'my own writing', selected: 'n1' });
   const text = await a.exportFullBackup();
   const doc = JSON.parse(text);
   assert.equal(doc.type, a.FULL_BACKUP_TYPE); assert.match(doc.warning, /공유하지 마세요/);
@@ -49,7 +51,10 @@ test('모든 설정 내보내기 carries every key; 불러오기 restores all of
   assert.notEqual(b.getConfig().llm.api_key, 'llm-secret-123456');
   const result = await b.importFullBackup(text);
   assert.equal(result.ok, true, JSON.stringify(result));
-  assert.deepEqual(result.restored, ['삽화 설정', '프롬프트', '명령 프리셋', 'TTS', 'BGM·효과음']);
+  assert.deepEqual(result.restored, ['삽화 설정', '프롬프트', '작가의 노트 프리셋', '명령 프리셋', 'TTS', 'BGM·효과음']);
+  const notes = await b.listAuthorNotePresets();
+  assert.equal(notes.custom, 'my own writing', '직접 입력 moves with the backup');assert.equal(notes.selected, 'n1');
+  assert.deepEqual(notes.items.filter(row => !row.builtin).map(row => row.name), ['내 노트']);
   assert.equal(b.getConfig().llm.api_key, 'llm-secret-123456'); assert.equal(b.getConfig().nai.api_key, 'nai-secret-123456');
   assert.equal(b.getConfig().nai.width, 1024); assert.equal(b.getConfig().card.image_max, 4);
   assert.equal(b.ttsData().settings.fish.key, 'fish-secret-123456'); assert.equal(b.ttsData().settings.speed, 1.5);
