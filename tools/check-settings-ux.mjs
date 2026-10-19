@@ -440,6 +440,13 @@ try {
   await page.waitForFunction(expected => globalThis.uxTestRuntime.t.backendSettings.card.scroll_hold === expected, !previous);
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='models'; await paint(); t.uiTab='dashboard'; await paint(); });
   assert.equal(await page.locator('#nx-scroll-hold').isChecked(), !previous, 'real checkbox persists through tab remount');
+  for (const on of [true,false]) {
+    await page.locator('#nx-stream-scroll-hold').setChecked(on);
+    await page.evaluate(async () => { await globalThis.uxTestRuntime.flush(); });
+    await page.waitForFunction(expected => globalThis.uxTestRuntime.t.backendSettings.card.stream_scroll_hold === expected, on);
+    await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='models'; await paint(); t.uiTab='dashboard'; await paint(); });
+    assert.equal(await page.locator('#nx-stream-scroll-hold').isChecked(), on, '스트리밍 스크롤 붙잡기 saves and persists through tab remount');
+  }
   for (const checked of [true,false]) {
     await page.evaluate(async () => {const {t,paint}=globalThis.uxTestRuntime;t.uiTab='gen_options';await paint();});
     for(const id of ['nx-appearance','nx-llm-json-retry','nx-llm-tag-cal','nx-preprocess','nx-stream-keywords-on','nx-stream-lines-on']) await page.locator('#'+id).setChecked(checked);
