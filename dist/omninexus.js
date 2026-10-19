@@ -353,10 +353,10 @@ V5 natural: call the viewpoint person "the viewer" (e.g. the viewer's hand reach
 - appearance: always hair_color + hair_style (infer if unknown, e.g. blue clothes -> blue hair); never expressions.
 - expression/gaze/pose -> action (e.g. "looking at brown hair boy").
 - mostly upper body -> add 2::upper body:: to action.
-- seen from behind -> add "back view" to action, plus 2::x-ray::.
+- seen from behind -> add "back view" to action.
 - register every new character/animal/creature/monster; original = Danbooru "character (series)".
 5 Contact: source = performer; target = receiver, with the EXACT same English verb (no passive/names, never "being sucked"); mutual = both at once. Expression/gaze/posture stay in action; no unmentioned acts.
-6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face".
+6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face"; when an x-ray view of the insertion would make the shot hotter, add 2::x-ray:: (judge per shot, not always).
 7 Structure: spread "line" (L12, L15...) evenly, no bias; precise location ("on bed") so no one stands by accident; keep character coords far apart (real hitboxes), too close merges tags into malformed bodies.
 Goal: intensely arousing images with striking composition and mood.`],["pov","POV · 1인칭 시점",`[POV]
 ${Q4}`],["pov-touch","POV · 손과 스킨십",`[POV · hands and touch]
