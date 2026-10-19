@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../tools/vendor-patches/scroll-runtime.js',import.meta.url),'utf8');
 const load=(t,hold,scope,k)=>new Function('t','nxScrollHoldOn','nxScrollContext','nxUnwrapSafeNodes','k','y',source+';return {hold:omniWithScrollWrite,track:omniStreamScrollTrack,end:omniStreamScrollEnd};')(t,hold,scope,async a=>a,k,()=>{});
 const listening=handlers=>({addEventListener:async(kind,fn)=>{const id=String(handlers.size+Math.random());handlers.set(id,{kind,fn});return id;},removeEventListener:async(kind,id)=>{assert.equal(handlers.get(id)?.kind,kind);handlers.delete(id);}});
-for(const mode of ['replace','manual','chat-switch','failure'])test('write-scoped scroll: '+mode,async()=>{
+for(const mode of ['replace','manual','host-scroll','chat-switch','failure'])test('write-scoped scroll: '+mode,async()=>{
  let top=20,scope='a',corrections=0,disconnected=0;
  const handlers=new Map();let mutated;
  const rect=()=>({top,bottom:top+40,height:40});
@@ -17,12 +17,14 @@ for(const mode of ['replace','manual','chat-switch','failure'])test('write-scope
  const work=async()=>{
    top=400;mutated();
    if(mode==='manual')for(const {kind,fn} of handlers.values())if(kind==='keydown')fn({key:'PageDown'});
+   // A picture finishing its load scrolls the view a while after the last DOM change.
+   if(mode==='host-scroll'){await new Promise(r=>setTimeout(r,100));for(const {kind,fn} of [...handlers.values()])if(kind==='scroll')fn({});}
    if(mode==='chat-switch')scope='b';
    if(mode==='failure')throw Error('failed write');
    return 'saved';
  };
  if(mode==='failure')await assert.rejects(()=>run(work),/failed write/);else assert.equal(await run(work),'saved');
- if(mode==='replace'){assert.equal(top,20);assert.equal(corrections,1);}else assert.equal(corrections,0);
+ if(mode==='replace' || mode==='host-scroll'){assert.equal(top,20);assert.equal(corrections,1);}else assert.equal(corrections,0);
  assert.equal(handlers.size,0);assert.equal(disconnected,1);
 });
 
@@ -109,6 +111,7 @@ test('a hold marks the scroll busy for the TTS scan until it ends',async()=>{
 // view lands on the start of the message.
 function streamFixture() {
  const handlers=new Map();let mutated,view=0,ends=0,reads=0;
+ const fire=kind=>{for(const h of [...handlers.values()])if(h.kind===kind)h.fn({});};
  const reply={top:()=>200-view,height:1400,getBoundingClientRect:async()=>{reads++;return {top:reply.top(),bottom:reply.top()+reply.height,height:reply.height};},
   scrollIntoView:async opts=>{assert.equal(opts.block,'end');ends++;view+=reply.top()+reply.height-800;}};
  const older={getBoundingClientRect:async()=>({top:-600-view,bottom:150-view,height:750})};
@@ -124,8 +127,11 @@ function streamFixture() {
  const k={createMutationObserver:async cb=>{mutated=cb;return{observe:async()=>{},disconnect:async()=>{}};}};
  const api=load(t,()=>false,async()=>'chat',k);
  return {t,api,handlers,
-  scrollTo:v=>{view=v;for(const {kind,fn} of handlers.values())if(kind==='scroll')fn();},
-  redraw:v=>{view=v;mutated?.();},
+  // The reader's scroll: a finger down, the view moving, the finger up.
+  scrollTo:v=>{fire('pointerdown');view=v;fire('scroll');fire('pointerup');},
+  // Risu's: the reply drawn again lands somewhere else, and the view scrolls with no hand on it.
+  redraw:v=>{view=v;mutated?.();fire('scroll');},
+  glide:v=>{view=v;fire('scroll');},
   get view(){return view;},get ends(){return ends;},get reads(){return reads;}};
 }
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -168,4 +174,27 @@ test('streaming scroll hold: a reply output once (not streamed), or the setting 
  const off=streamFixture();off.t.backendSettings.card.stream_scroll_hold=false;
  off.api.track();await off.api.track();off.redraw(0);await off.api.end();
  assert.equal(off.reads,0);assert.equal(off.handlers.size,0);
+});
+
+// The bug: Risu takes the finished reply out and draws a new bubble, which throws the
+// view to its start, and tells plugins the reply ended only after that.
+for (const late of [false, true])
+test(`streaming scroll hold: Risu's redraw before the end is never taken for the reader (${late ? 'end a while after it' : 'end right after it'})`,async()=>{
+ const f=streamFixture();
+ f.api.track();await f.api.track();
+ f.scrollTo(400);await wait(350);           // the reader stops in the middle of the reply
+ f.redraw(0);                                // Risu: new bubble, view at the message start
+ if(late)await wait(350);                    // its triggers ran; the end notice comes later
+ await f.api.end();
+ assert.equal(f.view,400,'back where the reader was, not at the start of the reply');
+});
+
+test('streaming scroll hold: a glide after the finger lifts is still the reader',async()=>{
+ const f=streamFixture();
+ f.api.track();await f.api.track();
+ f.scrollTo(300);
+ for(const v of [340,380,400]){await wait(20);f.glide(v);}
+ await wait(350);
+ const done=f.api.end();await wait(60);f.redraw(0);await done;
+ assert.equal(f.view,400);
 });
