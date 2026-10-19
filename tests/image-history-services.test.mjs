@@ -309,3 +309,18 @@ test('원본으로 저장: a NAI PNG is stored bare, and its reroll finds the ca
   assert.equal(reroll.ok, true, JSON.stringify(reroll.error || ''));
   assert.ok(reads.includes(ref.path), 'the reroll read 하나\'s reference, named only by the file name');
 });
+
+test('박제는 PNG 원본: a NAI reroll stores the PNG as delivered and previews a WebP; ComfyUI never', async () => {
+  const f = await fixture();
+  Object.assign(f.config.card, { image_png_bake: true }); f.api.setConfig(f.config);
+  assert.equal(f.api.keepsOriginalPng(), false, 'ComfyUI keeps its Omni data');
+  assert.equal(f.api.previewsWebp(), false);
+  f.config.nai = { ...f.config.nai, backend: 'nai', api_key: 'test' }; f.api.setConfig(f.config);
+  assert.equal(f.api.keepsOriginalPng(), true);
+  assert.equal(f.api.previewsWebp(), true);
+  const reroll = await f.api.rerollCard('root');
+  assert.equal(reroll.ok, true, JSON.stringify(reroll.error || ''));
+  assert.deepEqual(Buffer.from((await f.api.idbGet('images', reroll.card.id)).png), Buffer.from(PNG_NAI_1X1), 'baked from the bare PNG');
+  Object.assign(f.config.card, { image_png_bake: false, image_png_original: true }); f.api.setConfig(f.config);
+  assert.equal(f.api.previewsWebp(), false, '원본으로 저장 alone previews the PNG itself');
+});

@@ -279,6 +279,8 @@ export interface CardSettings {
   image_webp_metadata?: boolean;
   /** Keep NAI's PNG as delivered: no decode, no WebP, no embedded generation data. */
   image_png_original?: boolean;
+  /** Store and bake the NAI PNG as delivered; preview it in chat as a WebP. */
+  image_png_bake?: boolean;
   nai_auto_upscale?: boolean;
   image_done_sound?: boolean;
   image_done_sound_type?: 'ding' | 'soft' | 'bell' | 'loud';

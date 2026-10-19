@@ -132,7 +132,7 @@ export async function publishImage(
   id: string,
   png: ArrayBuffer,
   location: Record<string, unknown> | null = null,
-  options: GenerationEncodingOptions & { warmUrl?: boolean; original?: boolean; onPreview?: (url: string) => Promise<void> } = {},
+  options: GenerationEncodingOptions & { warmUrl?: boolean; original?: boolean; webpPreview?: boolean; onPreview?: (url: string) => Promise<void> } = {},
 ): Promise<string> {
   const span = dbgSpan('image.publish');
   dropBlobUrl(id);
@@ -149,13 +149,27 @@ export async function publishImage(
   } catch (err) {
     dbg('image.webp', { message: String((err as Error)?.message || err), id }, 'warn');
   }
+  // 박제는 PNG 원본: the PNG is what is stored and baked, but a PNG is ~2 MB of base64
+  // per picture on its way into the chat. The preview is a WebP at the quality
+  // setting instead, never stored; this session's viewers keep showing it.
+  let previewBytes = bytes, previewMime = mime;
+  if (options.original && options.webpPreview) try {
+    const webp = await encodePublishedImage(() => encodeGenerationWebp(png, { qualityPercent: options.qualityPercent, withoutData: true }));
+    // A failed encode hands back the PNG; then the PNG is the preview, as before.
+    if (webp && sniffImageMime(webp) === 'image/webp') {
+      previewBytes = webp;
+      previewMime = 'image/webp';
+    }
+  } catch (err) {
+    dbg('image.webp_preview', { message: String((err as Error)?.message || err), id }, 'warn');
+  }
   if (options.onPreview) {
     // Register the URL task before storage can yield to a viewer request. All
     // consumers join one encode of the final bytes, without reading the asset.
-    const encodedBytes = bytes;
+    const encodedBytes = previewBytes, encodedMime = previewMime;
     const urlTask = Promise.resolve().then(async () => {
       encodeCount += 1;
-      const url = await bytesToDataUrlAsync(encodedBytes, mime);
+      const url = await bytesToDataUrlAsync(encodedBytes, encodedMime);
       setBlobUrl(id, url, encodedBytes.byteLength);
       notifyImageUrl(id, url);
       return url;
@@ -184,6 +198,14 @@ export async function publishImage(
   // The encode can stall on a busy main thread. Wait briefly so the common case
   // returns a ready URL, then hand off rather than blocking the job.
   let url = '';
+  if (previewBytes !== bytes) {
+    encodeCount += 1;
+    url = await bytesToDataUrlAsync(previewBytes, previewMime);
+    setBlobUrl(id, url, previewBytes.byteLength);
+    notifyImageUrl(id, url);
+    span.end({ message: id, bytes: bytes.byteLength, preview_bytes: previewBytes.byteLength, mime, has_url: Boolean(url), focus: true });
+    return url;
+  }
   try {
     const pending = ensureBlobUrl(id);
     url = await Promise.race([pending, sleep(5000).then(() => resolveImageUrl(id) || '')]);

@@ -98,3 +98,30 @@ test('원본으로 저장: the PNG is stored and previewed as delivered, with no
   assert.deepEqual(Buffer.from(preview.split(',')[1], 'base64'), Buffer.from(png), 'the preview is that same PNG');
   assert.equal(result, preview);
 });
+
+test('박제는 PNG 원본: the PNG is stored as delivered, and only the preview is a WebP at the quality setting', async () => {
+  const { api, state } = await fixture();
+  let preview;
+  const result = await api.publishImage('bake', png, {}, { original: true, webpPreview: true, qualityPercent: 50, recipe: { prompt: 'unused' }, onPreview: async url => { preview = url; } });
+  assert.equal(state.saved[0].png, png, 'the PNG itself is stored and baked');
+  assert.equal(state.saved[0].mime, 'image/png');
+  assert.equal(state.encodes, 1, 'one encode, for the preview');
+  assert.equal(state.options.qualityPercent, 50);
+  assert.equal(state.options.withoutData, true, 'a preview is never stored, so it carries no data');
+  assert.match(preview, /^data:image\/webp;base64,/);
+  assert.deepEqual(Buffer.from(preview.split(',')[1], 'base64'), Buffer.from(state.webp));
+  assert.equal(result, preview);
+  assert.equal(await api.ensureBlobUrl('bake'), preview, 'this session keeps showing the light preview');
+  assert.equal(state.reads, 0);
+});
+
+test('박제는 PNG 원본 without a painter still hands back the WebP; a failed encode previews the PNG', async () => {
+  const { api, state } = await fixture();
+  const url = await api.publishImage('warm', png, {}, { original: true, webpPreview: true });
+  assert.match(url, /^data:image\/webp;base64,/);
+  assert.equal(state.saved[0].png, png);
+  const failed = await fixture({ fallback: true });
+  const raw = await failed.api.publishImage('raw', png, {}, { original: true, webpPreview: true, onPreview: async () => {} });
+  assert.match(raw, /^data:image\/png;base64,/);
+  assert.equal(failed.state.saved[0].png, png);
+});

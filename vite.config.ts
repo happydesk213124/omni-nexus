@@ -9778,6 +9778,7 @@ const VENDOR_INLINE_SAVE_PATCH =
       image_webp_quality: document.getElementById("nx-image-webp-quality") ? Math.min(100, Math.max(1, Number(N("nx-image-webp-quality")) || 90)) : (t.backendSettings?.card?.image_webp_quality ?? 90),
       image_webp_metadata: document.getElementById("nx-image-webp-metadata") ? ee("nx-image-webp-metadata") : t.backendSettings?.card?.image_webp_metadata !== false,
       image_png_original: document.getElementById("nx-image-png-original") ? ee("nx-image-png-original") : t.backendSettings?.card?.image_png_original === true,
+      image_png_bake: document.getElementById("nx-image-png-bake") ? ee("nx-image-png-bake") : t.backendSettings?.card?.image_png_bake === true,
       image_done_sound: document.getElementById("nx-image-done-sound") ? N("nx-image-done-sound") !== "off" : !!t.backendSettings?.card?.image_done_sound,
       image_done_sound_type: document.getElementById("nx-image-done-sound") && N("nx-image-done-sound") !== "off" ? N("nx-image-done-sound") : (t.backendSettings?.card?.image_done_sound_type || "ding"),
       toast_anchor: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeToastAnchor == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeToastAnchor(N("nx-toast-anchor")) : String(N("nx-toast-anchor") || "tc")),

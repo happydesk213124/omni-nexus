@@ -94,7 +94,7 @@ import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessio
 import { parseWearState } from '../domain/character/wear-state';
 import { shotKeepsComicSlots } from '../domain/comic/page';
 import { fillComicPagesForShots } from './comic';
-import { buildComicGenerationForShot, buildGenerationForShot, buildImageLocation, cardMetaFromLocation, generateImage, isComicShot, keepsOriginalPng, omitsImageData, readImageLocation } from './generation';
+import { buildComicGenerationForShot, buildGenerationForShot, buildImageLocation, cardMetaFromLocation, generateImage, isComicShot, keepsOriginalPng, previewsWebp, omitsImageData, readImageLocation } from './generation';
 import { buildCharacterLooksMessages, buildTaggerMessages, collectGenerationAssets, flattenShots } from './tagger';
 import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import {
@@ -1595,6 +1595,7 @@ async function runJob(jobId: string): Promise<void> {
         await publishImage(cardId, raw, location, {
           qualityPercent: card.image_webp_quality,
           original: keepsOriginalPng(),
+          webpPreview: previewsWebp(),
           withoutData: omitsImageData(),
           warmUrl: true,
           recipe,
