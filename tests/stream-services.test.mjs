@@ -107,6 +107,26 @@ test('streaming blocks of one reply carry wear_state and location on: a block th
   assert.equal((await note()).location,'bedroom, indoor','and its last stated place, whichever block finished last');
 });
 
+test('someone block 1 registers is known by name in block 2, even when block 1 registers late',{timeout:15000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3});
+  const first='First narrative paragraph long enough for generating images.';
+  // Block 1 is broken JSON: its repair runs first, so 세라 reaches the roster after block 2 has started.
+  const repaired={place:'office, indoor',aspect:'portrait',characters:[{name:'세라',action:'standing'}],
+    new_characters:[{name:'세라',gender:'girl',appearance:'1girl',hair_color:'crimson hair',hair_style:'long hair',eye_color:'green eyes',attire:'office suit'}]};
+  f.host.setLlmReply(JSON.stringify(repaired));
+  // The repair answers late, as a real model does: block 2 is long underway by then.
+  const fetchFirst=risuai.nativeFetch;
+  risuai.nativeFetch=async(url,options)=>{if(String(url).includes('completions'))await new Promise(r=>setTimeout(r,300));return fetchFirst(url,options);};
+  const one=await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:1,inline_raw:'{"place":"office, indoor","characters":[{"name":"세라"'});
+  const two=await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:2,
+    inline_tagged:{new_characters:[],scenes:[{place:'office, indoor',shots:[{aspect:'portrait',characters:[{name:'세라',action:'sitting'}],line:1,paragraph:0}]}]}});
+  for(const id of [one.job_id,two.job_id])await f.wait(id,j=>j.progress.phase==='waiting_output');
+  const captions=f.host.naiRequests.filter(r=>r.kind==='generate').map(r=>JSON.stringify(r.body.parameters?.v4_prompt?.caption?.char_captions));
+  assert.equal(captions.length,2);
+  const sitting=captions.find(c=>/sitting/.test(c));
+  assert.match(sitting,/crimson hair/,'block 2 draws 세라 with the looks block 1 registered');
+});
+
 test('a pink slot tapped later follows its own message\'s earlier block, not the chat\'s state now',{timeout:15000},async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,stream_inline_autogen:false,llm_json_retry:false});
   const first='First narrative paragraph long enough for generating images.';

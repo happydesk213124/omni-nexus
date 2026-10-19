@@ -16,7 +16,9 @@ import { cleanLocationTags } from '../domain/tagging/location';
  * their jobs are created and read by block number, never in the order images finish.
  */
 export interface StreamOutfit { name: string; wear?: WearState; costume?: unknown }
-type Reply = { blocks: Map<number, StreamOutfit[]>; places: Map<number, string>; saved: string };
+/** A block's roster write: later blocks read the roster only once it is done. */
+type Gate = { creates: boolean; done: Promise<void>; open: () => void };
+type Reply = { blocks: Map<number, StreamOutfit[]>; places: Map<number, string>; gates: Map<number, Gate>; saved: string };
 const replies = new Map<string, Reply>();
 /** Replies kept: a regenerated reply has a new stream id, so old ones only age out. */
 const KEEP = 16;
@@ -54,12 +56,38 @@ export function recordStreamBlock(request: Partial<JobRequest>, tagged?: TaggerR
   if (!key) return;
   let reply = replies.get(key);
   if (!reply) {
-    reply = { blocks: new Map(), places: new Map(), saved: '' };
+    reply = { blocks: new Map(), places: new Map(), gates: new Map(), saved: '' };
     replies.set(key, reply);
     while (replies.size > KEEP) replies.delete(replies.keys().next().value!);
   }
   reply.blocks.set(request.inline_block!, statedOutfits(tagged ?? request.inline_tagged));
   reply.places.set(request.inline_block!, statedLocation(tagged ?? request.inline_tagged));
+  // A block that registers people (or is still broken JSON, so it may) holds later blocks' roster read.
+  const shot = tagged ?? request.inline_tagged;
+  const creates = !shot || (Array.isArray(shot.new_characters) && shot.new_characters.length > 0);
+  const gate = reply.gates.get(request.inline_block!);
+  if (gate) gate.creates = creates;
+  else { let open!: () => void; const done = new Promise<void>(resolve => { open = resolve; }); reply.gates.set(request.inline_block!, { creates, done, open }); }
+}
+
+/**
+ * Waits until every earlier block of the reply that registers people has written
+ * the roster, so a person block 1 introduced is known by name in block 2. Blocks
+ * that register no one are not waited for; a stuck one is given up after limitMs.
+ */
+export async function earlierRosterWrites(request: Partial<JobRequest>, limitMs = 20_000): Promise<void> {
+  const reply = replies.get(replyKey(request));
+  if (!reply) return;
+  const waits = [...reply.gates].filter(([n, gate]) => n < request.inline_block! && gate.creates).map(([, gate]) => gate.done);
+  if (!waits.length) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([Promise.all(waits), new Promise<void>(resolve => { timer = setTimeout(resolve, limitMs); })]);
+  clearTimeout(timer);
+}
+
+/** This block's roster write is done (or the job ended without one). Safe to call twice. */
+export function rosterWritten(request: Partial<JobRequest>): void {
+  replies.get(replyKey(request))?.gates.get(request.inline_block!)?.open();
 }
 
 /** The last location the reply's blocks state, before block N or (no N) in all of it; '' when none does. */
