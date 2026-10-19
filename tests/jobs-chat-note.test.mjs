@@ -67,10 +67,12 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
       await compile(`return (async () => {${body}})();`, {
         finishCompletedSpinners:async()=>{calls.push('bake');if(fails)throw Error('write failed');},
         closeStreamJob:()=>calls.push('close-stream'),setJobContext:()=>calls.push('restore-context'),prevCtx:'',deferred:undefined,
+        releaseShotAssets:()=>calls.push('register-shots'),releaseChatNote:()=>calls.push('write-note'),noteSessionId:'note',
         dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
         clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],inlineWait:'',
       });
-      assert.deepEqual(calls,['bake','end-scroll','close-stream','restore-context']);
+      // Shots waiting for registration and note changes no bake carried go out last, after every bake.
+      assert.deepEqual(calls,['bake','end-scroll','close-stream','restore-context','register-shots','write-note']);
     } finally {globalThis.__OMNI_END_SCROLL__=old;}
   }
 });

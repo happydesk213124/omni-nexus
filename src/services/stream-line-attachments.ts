@@ -17,6 +17,9 @@ export class StreamLineAttachments {
   private resolveFinished!: () => void;
   private finished = new Promise<void>(resolve=>{this.resolveFinished=resolve;});
   inserted = false;
+  private beforeWrites = new Set<() => Promise<void>>();
+  /** Runs before every placement write, so each job's session-note changes ride that write. */
+  onBeforeWrite(fn: () => Promise<void>): void { this.beforeWrites.add(fn); }
   stats() {
     const entries=[...this.entries.values()];
     return {batches:entries.length,tagged:entries.filter(entry=>entry.plan || entry.ended).length,
@@ -64,6 +67,7 @@ export class StreamLineAttachments {
     return this.insertion;
   }
   private async write(plans: LineBakeBatch[], final: boolean): Promise<void> {
+    for (const fn of this.beforeWrites) await fn().catch(() => {});
     if(!this.inline)return writeLineGroupSlots(this.target!,plans,final);
     const result=await writeInlineGroupSlots(this.target!,plans,final);
     if(!result.written)throw Object.assign(new Error('응답 메시지를 찾을 수 없어 이미지 박제를 멈췄습니다.'),{code:'message_changed'});

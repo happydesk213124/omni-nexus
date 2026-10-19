@@ -182,6 +182,7 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_session_author_note_<sessionId>` | per-chat author's note (`{prefix,suffix,preset_id}`; not the global `author_note` prompt) |
 | `onx_session_author_note_presets` | reusable session-note phrases |
 | `onx_author_note_presets` | saved texts for the main tagger author's note (`{items[{id,name,text}]}`); shipped examples are not stored |
+| `onx_pending_shot_assets` | shots saved while an image job ran but not yet registered in the character (`[{target:{id,index},rows:[{name,path}]}]`); registered with the bake, or at the next start |
 | `onx_char_command_presets` | LLM 명령수정 phrase presets (legacy device row; live list is `card.command_presets`) |
 | `onx_settings_presets` | Dashboard settings presets, hidden examples and last applied id; no style collections or credentials. |
 | `omnitts.data` | TTS settings, voice library, folders and **global** TTS characters (`src/storage/tts-store.ts`). |

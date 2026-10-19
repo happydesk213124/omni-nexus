@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 const bundle=await build({entryPoints:['src/services/chat-bake.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{
  name:'bake-dependencies',setup(b){
-  b.onResolve({filter:/storage\/(stores|chat-session-store|inray-display-module)$|services\/context$|^\.\/context$/},args=>({path:args.path,namespace:'bake-test'}));
+  b.onResolve({filter:/storage\/(stores|chat-session-store|inray-display-module|shot-character)$|services\/context$|^\.\/context$/},args=>({path:args.path,namespace:'bake-test'}));
   b.onLoad({filter:/.*/,namespace:'bake-test'},args=>({loader:'js',contents:args.path.endsWith('/stores')?`
     export async function imageAssetRef(id){return globalThis.fixture.assets[id] || null;}
     export async function imagePng(id){globalThis.fixture.pixelReads++;return globalThis.fixture.pixels[id] || null;}
     export async function imageMeta(id){return globalThis.fixture.images[id];}
     export async function idbGet(store,id){if(store!=='cards')throw Error('Unexpected pixel hydration');return globalThis.fixture.cards[id];}
-   `:args.path.endsWith('chat-session-store')?'export async function serializeSessionStorage(fn){return fn();}':args.path.endsWith('inray-display-module')?'export async function ensureInrayDisplayModule(){}':'export function getConfig(){return {card:{}};}'}));
+   `:args.path.endsWith('chat-session-store')?'export async function serializeSessionStorage(fn){return fn();} export function pendingNotesForChat(){return null;}':args.path.endsWith('shot-character')?'export async function flushShotAssets(){}':args.path.endsWith('inray-display-module')?'export async function ensureInrayDisplayModule(){}':'export function getConfig(){return {card:{}};}'}));
  }
 }]});
 const api=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));

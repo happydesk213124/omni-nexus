@@ -42,6 +42,8 @@ function seedTextFor(row: { name?: unknown; aliases?: unknown; original?: unknow
 export async function ensureCastIds(
   scope: string,
   wants: ReadonlyArray<{ id?: unknown; name?: unknown }>,
+  /** An image job: a new id waits for its bake's character write (character-roster). */
+  opts: { buffer?: boolean } = {},
 ): Promise<Record<string, string>> {
   const scopeKey = cleanText(scope, 200) || GLOBAL_SCOPE;
   if (!wants.some(w => cleanText(w.id, 80))) return {};
@@ -68,7 +70,7 @@ export async function ensureCastIds(
     if (taken.has(candidate)) continue;
     taken.add(candidate);
     out[id] = candidate;
-    if (row) await upsertCharacter(scopeKey, { id, name: row.name, cast_id: candidate });
+    if (row) await upsertCharacter(scopeKey, { id, name: row.name, cast_id: candidate }, { buffer: opts.buffer });
   }
   return out;
 }

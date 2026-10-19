@@ -88,6 +88,8 @@ import { getConfig, jobEpochByKey, jobRunMeta, jobLlmControllers, requestMessage
 import { mergeRosterFromTagged } from './characters';
 import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
+import { holdChatNote, releaseChatNote } from '../storage/chat-session-store';
+import { holdShotAssets, releaseShotAssets } from '../storage/shot-character';
 import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessionOutfitRevision, rosterWithSessionOutfits, persistSessionOutfits } from './session-author-note';
 import { parseWearState } from '../domain/character/wear-state';
 import { shotKeepsComicSlots } from '../domain/comic/page';
@@ -743,6 +745,10 @@ async function runJob(jobId: string): Promise<void> {
   const llmOptions = { signal: llmController.signal };
   const prevCtx = getJobContext();
   setJobContext(jobId);
+  // While this job runs, the note changes it makes wait for its bake (chat-session-store),
+  // and its shots register together with that bake, not one character write per image.
+  holdChatNote(noteSessionId);
+  holdShotAssets();
   const jobSpan = dbgSpan('job.run');
   dbg('job.start', {
     job_id: jobId,
@@ -942,6 +948,7 @@ async function runJob(jobId: string): Promise<void> {
               sourceSessionIds,
               assetLooks: true,
               originalHints: assetCollected?.originalHints || {},
+              bufferWrites: true,
             });
           }
           const filledLooks = newChars.filter((c) => characterHasAppearance(c)).length;
@@ -1084,6 +1091,8 @@ async function runJob(jobId: string): Promise<void> {
       unifiedSessionId,
       characterId,
       sourceSessionIds,
+      // People it registers go out with its bake's character write (character-roster).
+      bufferWrites: true,
     });
     if (inlineBlock !== null) rosterWritten(request);
     roster = rosterWithSessionOutfits(roster, await getSessionAuthorNote(noteSessionId));
@@ -1266,15 +1275,20 @@ async function runJob(jobId: string): Promise<void> {
       if(deferred?.lineAttachments)durableSpinners=deferred.lineAttachments.inserted && pendingInline.length>0;
       else if (!durableSpinners) durableSpinners = await enqueueJobSpinners();
       await finishCompletedSpinners();
-      if (deferred?.committed && (!deferred.lineAttachments || deferred.lineAttachments.stats().settled===deferred.lineAttachments.stats().batches)) {
-        await persistSessionLocation(noteSessionId, locationToSave());
-        // A streaming reply saves what all its blocks state, in block order and image
-        // or not, once: blocks finishing out of order once let an earlier one overwrite.
-        const replyOutfits = inlineBlock !== null ? streamReplyOutfitsToSave(request) : undefined;
-        if (replyOutfits) await persistSessionOutfits(noteSessionId, replyOutfits, roster, outfitRevision);
-        else if (inlineBlock === null) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,shot])=>shot), roster, outfitRevision);
-      }
+      if (deferred?.committed && (!deferred.lineAttachments || deferred.lineAttachments.stats().settled===deferred.lineAttachments.stats().batches)) await persistReplyState();
     });
+    // The reply's place and outfits, queued for the session note (chat-session-store). Run
+    // right before each placement write as well, so that write carries them.
+    async function persistReplyState(): Promise<void> {
+      if (!deferred?.committed || deferred.cancelled) return;
+      await persistSessionLocation(noteSessionId, locationToSave());
+      // A streaming reply saves what all its blocks state, in block order and image
+      // or not, once: blocks finishing out of order once let an earlier one overwrite.
+      const replyOutfits = inlineBlock !== null ? streamReplyOutfitsToSave(request) : undefined;
+      if (replyOutfits) await persistSessionOutfits(noteSessionId, replyOutfits, roster, outfitRevision);
+      else if (inlineBlock === null) await persistSessionOutfits(noteSessionId, [...successfulOutfitShots].sort((a,b)=>a[0]-b[0]).map(([,shot])=>shot), roster, outfitRevision);
+    }
+    deferred?.lineAttachments?.onBeforeWrite(persistReplyState);
     if (deferred) deferred.attach = attach;
     if (!deferred || deferred.committed) await attach();
     async function enqueueJobSpinners() {
@@ -1571,7 +1585,7 @@ async function runJob(jobId: string): Promise<void> {
         }
         const castIds: string[] = [];
         for (const [castScope, wants] of castWants) {
-          const issued = await ensureCastIds(castScope, wants);
+          const issued = await ensureCastIds(castScope, wants, { buffer: true });
           for (const w of wants) {
             const got = issued[String(w.id || '')];
             if (got && !castIds.includes(got)) castIds.push(got);
@@ -1828,6 +1842,9 @@ async function runJob(jobId: string): Promise<void> {
     } finally {
       closeStreamJob(jobId);
       setJobContext(prevCtx);
+      // Its bakes are done: what they did not carry is written now, unless another job holds the chat.
+      releaseShotAssets();
+      releaseChatNote(noteSessionId);
     }
   }
 }
