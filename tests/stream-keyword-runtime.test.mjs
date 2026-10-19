@@ -24,7 +24,7 @@ function fixture(card={},syncProgressToast,readScope) {
     __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,inlineShotBlocks,inlineShotLine,inlineShotTagged,
       createStreamSignalScanner:()=>{const scanner=createStreamSignalScanner();return {scan:(...args)=>{scans++;return scanner.scan(...args);}};}},
     Z:async()=>{reads++;return readScope?readScope(scope,reads):scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},
-    omniStreamOutput:()=>{},scheduleHashRelinkAfterReply:()=>{},D:async(_name,read)=>read(),w:value=>String(value),
+    omniStreamOutput:()=>{},omniStreamScrollTrack:()=>{},omniStreamScrollEnd:()=>{},scheduleHashRelinkAfterReply:()=>{},D:async(_name,read)=>read(),w:value=>String(value),
     Be:async(scope,text,force)=>autoGenerations.push({scope,text,force}),
     nxPlayImageDoneSoundOnce:id=>{if(t.backendSettings.card.image_done_sound && !sounds.includes(id))sounds.push(id);},
     isSelectedCharRole:role=>role==='char',messageBodyChars:s=>s.length,ve:async()=>({enabled:true}),la:async()=>[],

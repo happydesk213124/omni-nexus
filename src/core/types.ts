@@ -265,6 +265,8 @@ export interface CardSettings {
   persist_chat_images_folded?: boolean;
   /** Keep the on-screen bubble put when inline inject changes height. */
   scroll_hold?: boolean;
+  /** When a streamed reply ends, put the view back where the reader was. */
+  stream_scroll_hold?: boolean;
   /** Spinner/photo before the line text, or after it. */
   inline_chat_text_side?: 'before' | 'after';
   /** Eligible message bubbles retained on each side of the selection. */

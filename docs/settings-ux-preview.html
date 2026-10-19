@@ -1120,6 +1120,7 @@
               <select class="ctrl" id="nx-toast-anchor"><option value="tl">좌상단</option><option value="bl">좌하단</option><option value="tr">우상단</option><option value="br">우하단</option><option value="tc" selected>중상단</option></select>
             </div>
             <label class="row"><span class="row-text"><b>스크롤 붙잡기</b></span><span class="sw"><input id="nx-scroll-hold" type="checkbox"></span></label>
+            <label class="row"><span class="row-text"><b>스트리밍 스크롤 붙잡기</b></span><span class="sw"><input id="nx-stream-scroll-hold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>할당량 끝나면 NAI4 폴백</b></span><span class="sw"><input id="nx-nai4-fallback" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>응답 후 자동 생성</b></span><span class="sw"><input id="nx-auto-gen-reply" type="checkbox"></span></label>
             <div class="row" data-nx-help-id="nx-auto-gen-char-limit" style="gap:8px;flex-wrap:nowrap"><label for="nx-auto-gen-char-limit-on" style="font-size:14px;font-weight:600;white-space:nowrap">글자수 제한</label><span style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input class="ctrl" id="nx-auto-gen-char-limit" type="number" min="0" step="1" value="500" aria-label="자동생성을 건너뛸 기준 글자 수" style="width:88px;min-width:88px;flex:0 0 88px;padding-left:8px;padding-right:8px"><span>자 이하</span></span><label class="sw" style="margin-left:auto" aria-label="글자수 제한 켜기"><input id="nx-auto-gen-char-limit-on" type="checkbox"></label></div>
@@ -2516,6 +2517,10 @@
   "nx-persist-fold": {
     "title": "박제이미지 접혀있는게 기본",
     "body": "켜면 박제 그림이 위쪽만 살짝 보인 채로 시작합니다. ▲로 펼칩니다. 이미 열린 채팅은 한 번 다시 그리면 적용됩니다."
+  },
+  "nx-stream-scroll-hold": {
+    "title": "스트리밍 스크롤 붙잡기",
+    "body": "스트리밍 응답이 끝나면 Risu가 메시지를 다시 그리면서 화면이 메시지 처음으로 튑니다. 켜면 그 자리로 되돌립니다. 맨 아래를 따라가고 있었으면 맨 아래로, 위로 올려 읽고 있었으면 읽던 문단으로. 화면 위치는 스크롤을 멈췄을 때만 읽고, 조각마다 읽지 않습니다."
   },
   "nx-scroll-hold": {
     "title": "스크롤 붙잡기",

@@ -74,6 +74,7 @@ async function omniEndWithoutOutput(run) {
     y('warn','stream.end.without.output','reply ended without completion · committing its text');
     const committed=omniCommitStreamReply({char:{chaId:characterId},chat,characterIndex:charIndex,chatIndex,messageIndex:index},msg,text);
     if(!committed){omniCancelKeywordRun(run);return;}
+    void omniStreamScrollEnd();
     omniEndedReplies.add(characterId+'|'+chatId+'|'+identity.id);
     if(omniEndedReplies.size>64)omniEndedReplies.delete(omniEndedReplies.values().next().value);
   } catch(error) {
@@ -82,6 +83,7 @@ async function omniEndWithoutOutput(run) {
 }
 function onScriptOutput(content) {
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
+  omniStreamScrollTrack();
   let run = omniKeywordRun;
   if(run && run.mode!==omniStreamMode(t.backendSettings?.card)) {omniCancelKeywordRun(run);run=null;}
   if (!run) omniKeywordRun = run = omniNewKeywordRun();

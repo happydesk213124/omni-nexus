@@ -297,6 +297,13 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(await page.evaluate(()=>window.outerReads),0,'chat changes during a drag wait');
     await page.evaluate(()=>{window.__OMNI_VIEWER_DRAGGING__=false;});
     await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
+    // Nor with a scroll hold putting the view back; it is read once the hold ends.
+    await page.waitForTimeout(600);
+    await page.evaluate(()=>{window.scrollHeld=true;window.__OMNI_SCROLL_BUSY__=()=>window.scrollHeld;window.outerReads=0;const p=document.createElement('p');p.textContent='스크롤 붙잡는 중 추가';document.querySelector('.default-chat-screen').append(p);});
+    await page.waitForTimeout(700);
+    assert.equal(await page.evaluate(()=>window.outerReads),0,'chat changes during a scroll hold wait');
+    await page.evaluate(()=>{window.scrollHeld=false;});
+    await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
     await page.evaluate(()=>{document.querySelector('.default-chat-screen').remove();});
     await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');
     await page.evaluate(()=>window.updateTtsSettings({enabled:false}));await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none',undefined,{timeout:12000});

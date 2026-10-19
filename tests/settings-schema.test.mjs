@@ -70,6 +70,13 @@ test("scroll_hold defaults off and accepts truthy flags", () => {
   assert.equal(migrateSettings({ card: { scroll_hold: 0 } }).card.scroll_hold, false);
 });
 
+test("stream_scroll_hold defaults off and accepts truthy flags", () => {
+  assert.equal(migrateSettings({ card: {} }).card.stream_scroll_hold, false);
+  assert.equal(migrateSettings({ card: { stream_scroll_hold: true } }).card.stream_scroll_hold, true);
+  assert.equal(migrateSettings({ card: { stream_scroll_hold: "1" } }).card.stream_scroll_hold, true);
+  assert.equal(migrateSettings({ card: { stream_scroll_hold: "no" } }).card.stream_scroll_hold, false);
+});
+
 test("person_tag_weight migrates to 0–5 (default 3)", () => {
   assert.equal(migrateSettings({ card: {} }).card.person_tag_weight, 3);
   assert.equal(migrateSettings({ card: { person_tag_weight: 0 } }).card.person_tag_weight, 0);
