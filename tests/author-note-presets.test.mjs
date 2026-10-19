@@ -31,22 +31,43 @@ test('examples carry the POV and cinematic tag rules the tagger needs', () => {
   assert.match(examples.find(row => row.id === 'example-cinematic').text, /wide shot[\s\S]*close-up/);
 });
 
-test('first run keeps a hand-written note as 내 기존 노트, once', async () => {
+test('직접 입력 holds the hand-written note: picking a preset never touches it', async () => {
   await api.setPrompt('author_note', 'my own rules');
   const first = await api.listAuthorNotePresets();
-  const kept = first.items.filter(row => !row.builtin);
-  assert.deepEqual(kept.map(row => [row.name, row.text]), [['내 기존 노트', 'my own rules']]);
-  // A later pick changes the note; the kept copy stays and is not made twice.
-  await api.setPrompt('author_note', 'something else');
-  assert.deepEqual((await api.listAuthorNotePresets()).items.filter(row => !row.builtin).map(row => row.id), [kept[0].id]);
+  assert.equal(first.custom, 'my own rules', 'the note written before the update is 직접 입력');
+  assert.equal(first.selected, 'custom');
+  assert.deepEqual(first.items.filter(row => !row.builtin), [], 'no extra preset is made for it');
+  // A pick: the note shows the example, the selection is saved, 직접 입력 stays.
+  const pov = first.items.find(row => row.id === 'example-pov');
+  await api.setPrompt('author_note', pov.text);
+  const picked = await api.saveAuthorNotePresets({ selected: 'example-pov' });
+  assert.equal(picked.custom, 'my own rules');assert.equal(picked.selected, 'example-pov');
+  const again = await api.listAuthorNotePresets();
+  assert.equal(again.custom, 'my own rules', 'going back to 직접 입력 brings the writing back');
+  // Typing in 직접 입력 is what changes it.
+  assert.equal((await api.saveAuthorNotePresets({ custom: 'edited rules' })).custom, 'edited rules');
   const shipped = first.items.find(row => row.id === 'example-default');
   assert.ok(shipped?.builtin && shipped.name === '기존 노트 (기본값)' && shipped.text === api.promptText('author_note') && shipped.text.length > 0, 'the shipped note is always pickable');
   kv.clear();
 });
 
-test('first run with the untouched shipped note saves nothing extra', async () => {
+test('an older save (before 직접 입력) moves 「내 기존 노트」 into 직접 입력 when the note is now an example', async () => {
+  const pov = api.authorNotePresetExamples().find(row => row.id === 'example-pov');
+  await api.saveAuthorNotePresets([{ id: 'kept-x', name: '내 기존 노트', text: 'the note before the update' }]);
+  // Simulate the older shape: items only.
+  for (const [key, value] of kv) if (value && typeof value === 'object') kv.set(key, { items: value.items });
+  await api.setPrompt('author_note', pov.text);
+  const listed = await api.listAuthorNotePresets();
+  assert.equal(listed.custom, 'the note before the update');
+  assert.equal(listed.selected, 'example-pov', 'the note on screen is still the example it is');
+  kv.clear();
+});
+
+test('first run with the untouched shipped note: empty 직접 입력, the shipped note picked', async () => {
   await api.setPrompt('author_note', api.promptText('author_note'));
-  assert.deepEqual((await api.listAuthorNotePresets()).items.filter(row => !row.builtin), []);
+  const listed = await api.listAuthorNotePresets();
+  assert.deepEqual(listed.items.filter(row => !row.builtin), []);
+  assert.equal(listed.custom, '');assert.equal(listed.selected, 'example-default');
   kv.clear();
 });
 
@@ -60,6 +81,7 @@ test('saved presets round-trip; examples and example ids are never stored', asyn
     ...examples,
   ]);
   const stored = [...kv.values()].find(value => Array.isArray(value?.items));
+  assert.equal(typeof stored.custom, 'string', '직접 입력 is kept beside the presets');
   assert.deepEqual(stored.items, [{ id: 'mine', name: '내 POV', text: 'a\nb' }]);
   assert.deepEqual(saved.items.map(row => row.id), ['mine', 'example-default', ...examples.map(row => row.id)]);
   assert.deepEqual((await api.listAuthorNotePresets()).items, saved.items);

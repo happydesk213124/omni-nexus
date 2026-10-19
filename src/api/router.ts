@@ -488,7 +488,7 @@ const WRITE_ROUTES: readonly Route[] = [
     match: exact('/v1/session-author-note-presets'),
     handler: async ({ body }) => ok(await sessionAuthorNote.saveSessionAuthorNotePresets(body.items ?? body)),
   },
-  { match: exact('/v1/author-note-presets'), handler: async ({ body }) => ok(await authorNotePresets.saveAuthorNotePresets(body.items ?? body)) },
+  { match: exact('/v1/author-note-presets'), handler: async ({ body }) => ok(await authorNotePresets.saveAuthorNotePresets(body)) },
   {
     match: exact('/v1/character-command-presets'),
     handler: async ({ body }) => ok(await charCommandPresets.saveCommandPresets(body.items ?? body)),
