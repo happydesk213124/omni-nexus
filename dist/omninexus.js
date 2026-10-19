@@ -20733,70 +20733,147 @@ async function omniWithScrollWrite(work,options={}) {
 // bubble out and draws a new one, which throws the view to the start of the message.
 // It tells plugins the reply ended only after that. So while a reply streams, the
 // place the reader is at is marked — the bottom when they follow the newest line,
-// else the paragraph at the top — when the stream starts and whenever the reader's
-// own scrolling stops, never per chunk and never for a scroll Risu made. When the
-// reply ends, the view goes back there.
+// else the paragraph across the middle of the screen and where it stood — when the
+// stream starts and after the view moves, at most every half second. Whoever moved
+// it: a finger, a wheel, Risu's own jump to a new reply. Never per chunk.
+// The newest bubble's x-hashed stays the same while it streams and changes only
+// when Risu draws it anew; from then on nothing is marked, and when the reply ends
+// the view goes back to the last mark taken before.
 let omniStreamScroll=null;
-const OMNI_STREAM_SCROLL_IDLE_MS=300, OMNI_STREAM_SCROLL_STALE_MS=15000;
+const OMNI_STREAM_MARK_MS=500, OMNI_STREAM_SCROLL_STALE_MS=15000;
 function omniStreamScrollOn() {return t.backendSettings?.card?.stream_scroll_hold===!0;}
+async function omniNewestHash(screen) {
+  const container=await screen.querySelector('[x-hashed]');
+  return container ? String(await container.getAttribute('x-hashed') || '') : '';
+}
+// The node across height y, by halving: nodes are stacked, either way up. Looked up
+// by position only; the nearest one when y falls in a gap.
+async function omniNodeAt(nodes,y) {
+  if(!nodes.length)return null;
+  let best=null;
+  const at=async i=>{
+    const rect=await nodes[i].getBoundingClientRect();
+    const d=y<rect.top?rect.top-y:y>=rect.bottom?y-rect.bottom:0;
+    if(rect.height>0 && (!best || d<best.d))best={i,node:nodes[i],rect,d};
+    return rect;
+  };
+  let lo=0,hi=nodes.length-1;
+  const first=await at(lo),last=hi?await at(hi):first;
+  const downward=first.top<=last.top;
+  while(lo<=hi && best?.d!==0) {
+    const mid=(lo+hi)>>1,rect=await at(mid);
+    if(rect.top<=y && y<rect.bottom)break;
+    if((rect.bottom<=y)===downward)lo=mid+1;else hi=mid-1;
+  }
+  return best;
+}
+async function omniStreamPlace(run) {
+  const screen=run.screen,sr=await screen.getBoundingClientRect();
+  const bubbles=await nxUnwrapSafeNodes(await screen.querySelectorAll('.risu-chat'));
+  if(!bubbles.length)return null;
+  // Following the newest line: the newest bubble ends on screen. It is at one end.
+  let lowest=null;
+  for(const node of new Set([bubbles[0],bubbles[bubbles.length-1]])) {
+    const rect=await node.getBoundingClientRect();
+    if(rect.height>0 && (!lowest || rect.bottom>lowest.bottom))lowest=rect;
+  }
+  if(lowest && lowest.bottom<=sr.bottom+8)return {scope:run.scope,bottom:true};
+  const y=(sr.top+sr.bottom)/2;
+  // Half a second later the reader is mostly in the same bubble: try it first.
+  let bubble=null;
+  if(run.lastBubble) {
+    const rect=await run.lastBubble.getBoundingClientRect();
+    if(rect.height>0 && rect.top<=y && y<rect.bottom)bubble={node:run.lastBubble,rect};
+  }
+  bubble=bubble || await omniNodeAt(bubbles,y);
+  if(!bubble)return null;
+  run.lastBubble=bubble.node;
+  const index=Number(/data-chat-index="(\d+)"/.exec(await omniOpeningTag(bubble.node))?.[1] ?? -1);
+  const body=index>=0 && await bubble.node.querySelector('.chattext');
+  if(!body)return null;
+  const paragraphs=await nxUnwrapSafeNodes(await body.querySelectorAll('p'));
+  const hit=await omniNodeAt(paragraphs,y);
+  if(hit) {
+    const text=String(await hit.node.textContent() || '').trim();
+    if(text)return {scope:run.scope,index,paragraph:hit.i,text,offset:hit.rect.top-sr.top};
+  }
+  const rect=await body.getBoundingClientRect();
+  return rect.height>0 ? {scope:run.scope,index,paragraph:-1,text:'',offset:rect.top-sr.top} : null;
+}
 async function omniStreamMark(run) {
   const mark=(async()=>{
-    const scope=await omniScrollContext(),lowest=await omniLowestBubble(run.screen);
-    if(!lowest)return null;
-    const sr=await run.screen.getBoundingClientRect();
-    if(lowest.rect.bottom<=sr.bottom+8)return {scope,bottom:true};
-    return omniReadAnchor();
+    if(run.frozen)return;
+    const before=await omniNewestHash(run.screen);
+    if(run.hash==null)run.hash=before;
+    else if(before!==run.hash){run.frozen=true;return;}
+    const place=await omniStreamPlace(run);
+    // Drawn anew while this was being read: what was read may be the jump.
+    if(await omniNewestHash(run.screen)!==run.hash){run.frozen=true;return;}
+    if(place)run.mark=place;
   })();
   run.marking=mark;
-  const anchor=await mark.catch(()=>null);
-  if(run.marking===mark){run.mark=anchor;run.marking=null;}
+  await mark.catch(error=>y('warn','scroll.stream.mark',String(error)));
+  if(run.marking===mark)run.marking=null;
+}
+// At most one mark per half second while the view moves, and one after it stops.
+function omniStreamMoved(run) {
+  if(run.closed || run.frozen)return;
+  run.dirty=true;
+  if(run.timer)return;
+  run.timer=setTimeout(async()=>{
+    run.timer=0;
+    if(run.closed || run.frozen || !run.dirty)return;
+    run.dirty=false;run.markedAt=performance.now();
+    await omniStreamMark(run);
+    if(run.dirty)omniStreamMoved(run);
+  },Math.max(60,OMNI_STREAM_MARK_MS-(performance.now()-run.markedAt)));
 }
 async function omniStreamScrollStop(run) {
   run.closed=true;clearTimeout(run.timer);run.timer=0;
   if(omniStreamScroll===run)omniStreamScroll=null;
   for(const [name,id] of run.listeners.splice(0))try{await run.screen.removeEventListener(name,id);}catch{}
-  const observer=run.observer;run.observer=null;
-  if(observer)try{await observer.disconnect();}catch{}
 }
 function omniStreamScrollTrack() {
   let run=omniStreamScroll;
   if(run && Date.now()-run.chunkAt>OMNI_STREAM_SCROLL_STALE_MS){void omniStreamScrollStop(run);run=null;}
   if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
-  if(!run){omniStreamScroll={chunkAt:Date.now(),mark:null,marking:null,timer:0,listeners:[],observer:null,screen:null,closed:false,ready:null};return;}
+  if(!run) {
+    omniStreamScroll={chunkAt:Date.now(),mark:null,marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
+      screen:null,scope:'',hash:null,frozen:false,perChunk:false,lastBubble:null,reader:null,closed:false,ready:null};
+    return;
+  }
   run.chunkAt=Date.now();
+  // Risu's 끄기 mode draws the bubble anew on every chunk: a chunk after a new draw
+  // means the stream goes on. From then on each chunk resets what the bubble is
+  // compared with; that mode never draws it anew at the end, so nothing is lost.
+  if(run.frozen)run.perChunk=true;
+  if(run.perChunk){run.frozen=false;run.hash=null;}
   // A reply that is not streamed reaches the output script once; only a second
   // chunk means Risu is drawing it light and will draw it again.
   if(run.ready)return run.ready;
   return run.ready=(async()=>{
     const doc=t.hostDoc || await ue(),screen=doc && await doc.querySelector('.default-chat-screen');
     if(!screen || run.closed)return;
-    run.screen=screen;
-    const reader=omniReaderScrolls();
-    const moved=()=>{
-      if(!reader.scroll())return;
-      clearTimeout(run.timer);run.timer=setTimeout(()=>{run.timer=0;if(!run.closed)void omniStreamMark(run);},OMNI_STREAM_SCROLL_IDLE_MS);
-    };
-    for(const [name,fn] of [...reader.listeners,['scroll',moved]]) {
+    run.screen=screen;run.scope=await omniScrollContext();
+    // Pointer events only tell whether a finger is still on the screen at the end.
+    run.reader=omniReaderScrolls();
+    for(const [name,fn] of [...run.reader.listeners,['scroll',()=>omniStreamMoved(run)]]) {
       await omniListen(screen,name,fn,run.listeners);
       if(run.closed){await omniStreamScrollStop(run);return;}
     }
-    try {
-      run.observer=await k.createMutationObserver(()=>reader.changed());
-      await run.observer.observe(screen,{childList:true,subtree:true});
-    } catch(error) {y('warn','scroll.observe',String(error));}
-    if(run.closed){await omniStreamScrollStop(run);return;}
+    run.markedAt=performance.now();
     await omniStreamMark(run);
   })().catch(error=>y('warn','scroll.stream',String(error)));
 }
 function omniStreamScrollEnd() {
   const run=omniStreamScroll;if(!run)return Promise.resolve();
   if(!run.ready)return omniStreamScrollStop(run);
-  // Still scrolling as it ended: the reader is placing the view themselves.
-  const moving=!!run.timer;
+  // A finger still on the screen as it ended: the reader is placing the view.
+  const touching=!!run.reader?.pressed();
   return omniScrollQueue(async()=>{
     await run.ready;await run.marking;
     await omniStreamScrollStop(run);
-    if(moving || !run.mark || !omniStreamScrollOn() || t.uiOpen)return;
+    if(touching || !run.mark || !omniStreamScrollOn() || t.uiOpen)return;
     await omniHoldAnchor(run.mark,async()=>{},{requireMutation:true});
   }).catch(error=>y('warn','scroll.stream',String(error)));
 }
