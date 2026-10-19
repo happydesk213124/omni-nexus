@@ -2375,6 +2375,7 @@ body:has(.explorer-shell){overflow:hidden;height:100dvh;max-height:100dvh}
 #nx-shell:not(:has(.explorer-shell)) #nx-save-all,
 #nx-save-dash,#nx-save-card,#nx-save-card-head,#nx-save-gen-options,#nx-save-comic,#nx-curation-save,#nx-fixed-prompt-save,#nx-save-models,button[data-save-prompt],
 label[data-nx-help-id="nx-scroll-hold"]{display:flex}
+label[data-nx-help-id="nx-stream-scroll-hold"]{display:flex}
 #nx-shell:not(:has(.explorer-shell)) #nx-export-all,
 #nx-shell:not(:has(.explorer-shell)) #nx-import-all{display:inline-flex!important;visibility:visible!important;opacity:1!important;font-weight:700}
 #nx-shell:not(:has(.explorer-shell)) #nx-save-flash{visibility:visible!important;opacity:1!important}
@@ -9692,6 +9693,7 @@ const VENDOR_INLINE_HELP_PATCH =
     "nx-inline-chat": { title: "이미지 채팅에", body: "선택 기준에서 설정한 탐색 숫자만큼 위·아래의 char 말풍선을 유지합니다. 유저·라이트보드(본문 30자 이하)는 건너뜁니다. 켜면 스티키 활성 이미지는 마우스에 가장 가까운 샷을 우선합니다. 길게 누르면 크게보기/태그·재생성·리롤 메뉴. 「모든 메시지 이미지 생성」이 켜지면 선택 옆도 역할 무관하되 라이트보드는 건너뜁니다. 나머지는 지워서 메모리를 막습니다. 배율(%)은 기본 100(말풍선 폭 약 78%·높이 상한 70vh)이며 25–200으로 조절합니다." },
     "nx-persist-chat": { title: "생성완료 시 채팅에 박제", body: "한 장 생성이 끝나면 그 줄에 Risu 에셋으로 넣습니다. 글을 고쳐도 남습니다. 태그를 누르면 박제한 그림만 빼고 다시 만듭니다. 선택 때는 스피너만 꽂고, 끝난 장은 인라인으로 다시 넣지 않습니다." },
     "nx-persist-fold": { title: "박제이미지 접혀있는게 기본", body: "켜면 박제 그림이 위쪽만 살짝 보인 채로 시작합니다. ▲로 펼칩니다. 이미 열린 채팅은 한 번 다시 그리면 적용됩니다." },
+    "nx-stream-scroll-hold": { title: "스트리밍 스크롤 붙잡기", body: "스트리밍 응답이 끝나면 Risu가 메시지를 다시 그리면서 화면이 메시지 처음으로 튑니다. 켜면 그 자리로 되돌립니다. 맨 아래를 따라가고 있었으면 맨 아래로, 위로 올려 읽고 있었으면 읽던 문단으로. 화면 위치는 스크롤을 멈췄을 때만 읽고, 조각마다 읽지 않습니다." },
     "nx-scroll-hold": { title: "스크롤 붙잡기", body: "보고 있는 말풍선이 화면에서 같은 자리에 남도록 채팅 칸의 scrollTop만 보정합니다. 맨 아래 최신 말을 보고 있으면 Risu 자동 스크롤을 그대로 둡니다. 창 전체가 아니라 채팅 스크롤만 움직입니다." },
     "nx-inline-text-side": { title: "선택된글 위치", body: "줄에 맞는 문단 안에서 스피너·삽화를 글 앞 또는 글 뒤에 둡니다. 이미 꽂힌 프레임은 그대로이고, 새로 넣거나 새로고침할 때 적용됩니다." },
     "nx-inline-msg-actions": { title: "메시지 안에 생성 버튼", body: "사용안함 / 편의성(오류율 있음, DIV도 호스트로 씀) / 호환성(문단만 호스트). 둘 다 위 바는 본문 상자 맨 앞, 아래 바는 상자 맨 뒤. 헤더가 비면 채팅 카드 복구를 쓰세요. 태그=LLM 태그 재생성, 재생성=첫 생성 또는 전체 리롤, 중단=남은 생성 멈추기, 캐릭터=메시지에서 트리거된 캐릭터 태그 수정, 프리셋=설정 스타일 프리셋 탭." },
@@ -9713,6 +9715,7 @@ const VENDOR_INLINE_TOGGLE_PATCH =
             <label class="toggle-row" data-nx-help-id="nx-persist-chat"><input type="checkbox" id="nx-persist-chat" \${i.persist_chat_images ? "checked" : ""}><span>생성완료 시 채팅에 박제</span></label>
             <label class="toggle-row" data-nx-help-id="nx-persist-fold"><input type="checkbox" id="nx-persist-fold" \${i.persist_chat_images_folded ? "checked" : ""}><span>박제이미지 접혀있는게 기본</span></label>
             <label class="toggle-row" data-nx-help-id="nx-scroll-hold"><input type="checkbox" id="nx-scroll-hold" \${i.scroll_hold ? "checked" : ""}><span>스크롤 붙잡기</span></label>
+            <label class="toggle-row" data-nx-help-id="nx-stream-scroll-hold"><input type="checkbox" id="nx-stream-scroll-hold" \${i.stream_scroll_hold ? "checked" : ""}><span>스트리밍 스크롤 붙잡기</span></label>
             <label data-nx-help-id="nx-inline-text-side"><span>선택된글 위치</span>
               <select id="nx-inline-text-side">
                 <option value="before" \${!i.inline_chat_text_side || i.inline_chat_text_side === "before" ? "selected" : ""}>글자 앞</option>
@@ -9765,6 +9768,7 @@ const VENDOR_INLINE_SAVE_PATCH =
       persist_chat_images: ee("nx-persist-chat"),
       persist_chat_images_folded: ee("nx-persist-fold"),
       scroll_hold: ee("nx-scroll-hold"),
+      stream_scroll_hold: document.getElementById("nx-stream-scroll-hold") ? ee("nx-stream-scroll-hold") : t.backendSettings?.card?.stream_scroll_hold === true,
       inline_chat_text_side: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeInlineChatTextSide == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeInlineChatTextSide(N("nx-inline-text-side")) : (String(N("nx-inline-text-side") || "before") === "after" ? "after" : "before")),
       inline_msg_actions: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeInlineMsgActions == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeInlineMsgActions(N("nx-inline-msg-actions")) : String(N("nx-inline-msg-actions") || "off")),
       inline_msg_fan: ee("nx-inline-msg-fan"),

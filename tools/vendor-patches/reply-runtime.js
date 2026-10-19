@@ -10,6 +10,7 @@ function omniReplyMinChars(card) {
 async function onChatOutput(arg) {
   if(t.unloading)return;
   omniStreamOutput();
+  void omniStreamScrollEnd();
   stopStreamKeywordTick();
   t._scriptStreaming=false;
   t._scriptStreamPrevLen=0;

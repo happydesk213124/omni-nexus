@@ -288,6 +288,11 @@ completes, persist bakes `[[@inray]]` tokens and the overlay is not
 re-attached on later clicks. Message-body chips are off; tag/regen sit on
 the baked image overlay.
 `card.scroll_hold` may still exist in saved settings but is not read.
+`card.stream_scroll_hold` (default `false`, dashboard toggle under 스크롤 붙잡기):
+while a reply streams, the reader's place is marked when their scrolling stops
+(the bottom, or the paragraph/picture at the top), never per chunk; when the reply
+ends and Risu draws it whole, the view goes back there for up to two seconds,
+until the reader moves. A reply output only once (not streamed) is left alone.
 Newest-at-bottom leaves Risu autoscroll alone.
 Scroll-end sticky activate is one scheduler (`nxScheduleStickyScrollSnap`);
 sticky thumb innerHTML is `data:image` only (`composeStickyV2ThumbHtml` — blob

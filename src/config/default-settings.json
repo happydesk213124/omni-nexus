@@ -249,6 +249,7 @@
     "persist_chat_images": true,
     "persist_chat_images_folded": false,
     "scroll_hold": true,
+    "stream_scroll_hold": false,
     "inline_chat_text_side": "before",
     "inline_msg_actions": "off",
     "inline_msg_fan": true,

@@ -305,6 +305,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   else card.persist_chat_images_folded = card.persist_chat_images_folded === true || card.persist_chat_images_folded === 'true' || card.persist_chat_images_folded === 1 || card.persist_chat_images_folded === '1';
   if (card.scroll_hold == null) card.scroll_hold = false;
   else card.scroll_hold = card.scroll_hold === true || card.scroll_hold === 'true' || card.scroll_hold === 1 || card.scroll_hold === '1';
+  card.stream_scroll_hold = card.stream_scroll_hold === true || card.stream_scroll_hold === 'true' || card.stream_scroll_hold === 1 || card.stream_scroll_hold === '1';
   card.inline_chat_text_side = normalizeInlineChatTextSide(card.inline_chat_text_side);
   card.inline_msg_actions = normalizeInlineMsgActions(card.inline_msg_actions);
   if (card.inline_msg_fan == null) card.inline_msg_fan = false;

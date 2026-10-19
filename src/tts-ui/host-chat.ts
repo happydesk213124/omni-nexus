@@ -268,7 +268,10 @@ export async function installTtsHost(): Promise<void> {
   };
   // While either floating viewer is dragged no scan runs; it waits for the drop.
   const dragging = () => Reflect.get(globalThis,'__OMNI_VIEWER_DRAGGING__') === true;
-  const schedule = (delay=400) => { if (disposed || timer || !active()) return; timer=setTimeout(()=>{timer=undefined;if(dragging()){schedule(250);return;}void requestScan();},delay); };
+  // Nor while a scroll hold is putting the view back: a scan reads every message on
+  // screen, and those reads would queue in front of the hold's own.
+  const scrollHeld = () => { const busy=Reflect.get(globalThis,'__OMNI_SCROLL_BUSY__'); return typeof busy === 'function' && busy() === true; };
+  const schedule = (delay=400) => { if (disposed || timer || !active()) return; timer=setTimeout(()=>{timer=undefined;if(dragging() || scrollHeld()){schedule(250);return;}void requestScan();},delay); };
   // Like the illustration viewer: watch only the chat screen, and never ask the
   // host about each record. The old whole-page watcher made 2-3 bridge calls per
   // DOM change and then re-read every message, which competed with a drag.

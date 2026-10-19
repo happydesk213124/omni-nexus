@@ -49,19 +49,21 @@ try {
   assert.equal(changelog.entries, 2);
   assert.doesNotMatch(changelog.text, /선택해도 겹침을 안 붙임|말 끝 단추/);
   const values = await page.evaluate(() => {
-    const vendor = '<div id="legacy-parent"><input id="nx-power" type="checkbox"><input id="nx-scroll-hold" type="checkbox" checked></div><textarea id="nx-preset-positive">custom &lt;tag&gt;</textarea>';
+    const vendor = '<div id="legacy-parent"><input id="nx-power" type="checkbox"><input id="nx-scroll-hold" type="checkbox" checked><input id="nx-stream-scroll-hold" type="checkbox" checked></div><textarea id="nx-preset-positive">custom &lt;tag&gt;</textarea>';
     document.body.innerHTML = SettingsTabs.tabHtml('dashboard', vendor);
     const power = document.getElementById('nx-power').checked;
     const scroll = document.getElementById('nx-scroll-hold').checked;
+    const streamScroll = document.getElementById('nx-stream-scroll-hold')?.checked;
     const ids = [...document.querySelectorAll('[id]')].map(el => el.id);
     const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
     document.body.innerHTML = SettingsTabs.tabHtml('style_presets', '<textarea id="nx-preset-positive">custom &lt;tag&gt;</textarea><input id="nx-preset-name" value="saved name">');
     const positive=document.getElementById('nx-preset-positive')?.value, name=document.getElementById('nx-preset-name')?.value;
     document.body.innerHTML = SettingsTabs.tabHtml('characters', '<details id="nx-lorefilter"><summary>캐릭터 로어북</summary><button id="nx-lorefilter-rescan">자동채우기</button></details>');
-    return { power, scroll, duplicates, positive, name, loreParent:document.getElementById('nx-lorefilter')?.parentElement?.id, loreRescan:document.querySelectorAll('#nx-lorefilter-rescan').length };
+    return { power, scroll, streamScroll, duplicates, positive, name, loreParent:document.getElementById('nx-lorefilter')?.parentElement?.id, loreRescan:document.querySelectorAll('#nx-lorefilter-rescan').length };
   });
   assert.equal(values.power, false, 'unchecked saved value must override preview checked default');
   assert.equal(values.scroll, true, 'checked saved value survives HTML serialization');
+  assert.equal(values.streamScroll, true, 'streaming scroll hold sits on the dashboard and keeps its saved value');
   assert.deepEqual(values.duplicates, [], 'one live node per id');
   assert.equal(values.positive, 'custom <tag>');
   assert.equal(values.name, 'saved name');

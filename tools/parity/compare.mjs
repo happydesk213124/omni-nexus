@@ -325,8 +325,9 @@ const normalize = (root) => {
         // Defaults false; UI/schema + unit tests assert behaviour.
         // 2.0 inline chat on/off + text-side (before/after the line) — no 1.x fields.
         // scroll_hold is 2.0-only (keep bubble put after inject); no 1.x field.
+        // stream_scroll_hold likewise (view put back when a streamed reply ends).
         // One-shot completion sound is a 2.0-only dashboard preference; 1.x has no matching field.
-        if (k === 'inline_chat_images' || k === 'inline_chat_text_side' || k === 'inline_msg_actions' || k === 'inline_msg_fan' || k === 'progress_toast' || k === 'toast_anchor' || k === 'image_done_sound' || k === 'image_press_inspect' || k === 'scroll_hold' || k === 'persist_chat_images' || k === 'persist_chat_images_folded') continue;
+        if (k === 'inline_chat_images' || k === 'inline_chat_text_side' || k === 'inline_msg_actions' || k === 'inline_msg_fan' || k === 'progress_toast' || k === 'toast_anchor' || k === 'image_done_sound' || k === 'image_press_inspect' || k === 'scroll_hold' || k === 'stream_scroll_hold' || k === 'persist_chat_images' || k === 'persist_chat_images_folded') continue;
         // Omni Nexus keeps JSON in save-file pluginStorage. 1.x labeled the same
         // rows as device IndexedDB. The label is not behaviour we can compare.
         if (k === 'database_path' || k === 'images_dir' || k === 'storage_api' || k === 'storage_scope' || k === 'storage') continue;

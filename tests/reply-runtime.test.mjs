@@ -12,7 +12,7 @@ function fixture(options={}) {
  const scope={characterId:'c',chatId:'chat',sessionId:'s',chat:structuredClone(arg.chat),charIndex:0,chatIndex:0};
  const t={backendSettings:{card:{power:true,auto_gen_on_reply:true,execute:'manual',...options.card}},jobsInFlight:new Map()};
  const calls=[],errors=[],hostCalls=[];let scopeReads=0;
- const deps={t,omniStreamOutput:()=>{},stopStreamKeywordTick:()=>{},isSelectedCharRole:r=>r==='char',scheduleHashRelinkAfterReply:()=>{},
+ const deps={t,omniStreamOutput:()=>{},omniStreamScrollEnd:()=>{},stopStreamKeywordTick:()=>{},isSelectedCharRole:r=>r==='char',scheduleHashRelinkAfterReply:()=>{},
   messageBodyChars:messageBodyCharCount,ye:s=>s,w:(s,n)=>String(s).slice(0,n),ve:async()=>{options.onEnabled?.(t);return {enabled:options.enabled!==false};},Z:async()=>{scopeReads++;throw Error('unexpected full scope read');},
   D:async(name,fn)=>{hostCalls.push(name);return fn();},k:{getCurrentCharacterIndex:async()=>scope.charIndex,getCurrentChatIndex:async()=>scope.chatIndex,getChatFromIndex:async()=>scope.chat},
   K:async()=>{options.onBusy?.(t);return {busy:!!options.busy};},Be:async(...args)=>{calls.push(args);if(options.pending)await options.pending;},y:(...a)=>errors.push(a)};
