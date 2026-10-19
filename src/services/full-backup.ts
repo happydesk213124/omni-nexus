@@ -12,6 +12,8 @@ import type { SoundSettings } from '../core/sound-types';
 import { getConfig, setConfig } from './context';
 import { exportPromptsPack, importPromptsPack, publicSettings, saveConfig } from './settings';
 import { listCommandPresets, saveCommandPresets } from './char-command-presets';
+import { exportAuthorNotePresets } from './author-note-presets';
+import { afterAuthorNoteImport } from './settings-transfer';
 
 /**
  * 디버그 → 백업: every setting of this device in one file, API keys included,
@@ -36,6 +38,7 @@ export async function exportFullBackup(): Promise<string> {
     prompts: (await exportPromptsPack()).prompts,
     settings_presets: (await psGet(SETTINGS_PRESETS_KEY)) ?? null,
     command_presets: Array.isArray(presets.items) ? presets.items : [],
+    author_note_presets: await exportAuthorNotePresets(),
     tts: deepcopy(ttsData().settings),
     sound: deepcopy(soundData().settings),
   }, null, 2);
@@ -61,6 +64,9 @@ export async function importFullBackup(json: string): Promise<ApiResult> {
   }
   const prompts = object(doc.prompts);
   if (prompts) { await importPromptsPack({ prompts }); restored.push('프롬프트'); }
+  if (object(doc.author_note_presets) || prompts && Object.prototype.hasOwnProperty.call(prompts, 'author_note')) {
+    await afterAuthorNoteImport(doc.author_note_presets, true); restored.push('작가의 노트 프리셋');
+  }
   if (object(doc.settings_presets)) { await psSet(SETTINGS_PRESETS_KEY, doc.settings_presets); restored.push('설정 프리셋'); }
   if (Array.isArray(doc.command_presets)) { await saveCommandPresets(doc.command_presets); restored.push('명령 프리셋'); }
   const tts = object(doc.tts);

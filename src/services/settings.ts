@@ -163,7 +163,7 @@ export async function resetPromptsToDefaults(opts?: { keep_author_note?: boolean
   return { ok: true, updated, keep_author_note: keepAuthor, prompts: await listPrompts() };
 }
 
-function parsePromptsImport(raw: unknown): Record<string, string> {
+export function parsePromptsImport(raw: unknown): Record<string, string> {
   let data: unknown = raw;
   if (typeof raw === 'string') {
     const text = raw.trim();

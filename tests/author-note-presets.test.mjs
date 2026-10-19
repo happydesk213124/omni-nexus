@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 const bundle = await build({
   stdin: { contents: `export {listAuthorNotePresets,saveAuthorNotePresets} from './src/services/author-note-presets';
 export {normalizeAuthorNotePresets,authorNotePresetExamples} from './src/domain/tagging/author-note-presets';
-export {setPrompt} from './src/services/settings';
+export {setPrompt,getPrompt} from './src/services/settings';
+export {exportSettingsFile,importSettingsFile,importPromptsFile} from './src/services/settings-transfer';
 export {promptText} from './src/config/prompts';`, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, write: false, format: 'esm', platform: 'node', loader: { '.txt': 'text' },
   define: { __PLUGIN_ID__: '"omni-nexus"', __PLUGIN_VERSION__: '"test"' },
@@ -85,4 +86,51 @@ test('saved presets round-trip; examples and example ids are never stored', asyn
   assert.deepEqual(stored.items, [{ id: 'mine', name: '내 POV', text: 'a\nb' }]);
   assert.deepEqual(saved.items.map(row => row.id), ['mine', 'example-default', ...examples.map(row => row.id)]);
   assert.deepEqual((await api.listAuthorNotePresets()).items, saved.items);
+});
+
+// Settings files touch the settings row too: only the picker's own row is reset between these.
+const resetNotes = () => { for (const key of [...kv.keys()]) if (String(key).includes('author_note_presets')) kv.delete(key); };
+
+test('header EXPORT carries 직접 입력, presets and the pick; IMPORT restores them', async () => {
+  await api.setPrompt('author_note', 'note on screen');
+  await api.saveAuthorNotePresets({ items: [{ id: 'mine', name: '내 것', text: 'my preset' }], custom: 'my own writing', selected: 'mine' });
+  const file = await api.exportSettingsFile();
+  const doc = JSON.parse(file);
+  assert.deepEqual(doc.author_note_presets, { items: [{ id: 'mine', name: '내 것', text: 'my preset' }], custom: 'my own writing', selected: 'mine' });
+  resetNotes();
+  await api.setPrompt('author_note', 'something else');
+  const result = await api.importSettingsFile(file);
+  assert.equal(result.ok, true);
+  const listed = await api.listAuthorNotePresets();
+  assert.equal(listed.custom, 'my own writing');assert.equal(listed.selected, 'mine');
+  assert.deepEqual(listed.items.filter(row => !row.builtin).map(row => row.name), ['내 것']);
+  resetNotes();
+});
+
+test('an older settings file (no picker) puts its note into 직접 입력 and picks it', async () => {
+  await api.setPrompt('author_note', 'current');
+  await api.saveAuthorNotePresets({ custom: 'before', selected: 'example-pov' });
+  const doc = JSON.parse(await api.exportSettingsFile());
+  delete doc.author_note_presets; doc.prompts = { ...doc.prompts, author_note: 'the note from the old file' };
+  assert.equal((await api.importSettingsFile(JSON.stringify(doc))).ok, true);
+  const listed = await api.listAuthorNotePresets();
+  assert.equal(await api.getPrompt('author_note'), 'the note from the old file');
+  assert.equal(listed.custom, 'the note from the old file', 'the old note is 직접 입력');assert.equal(listed.selected, 'custom');
+  // A note that is exactly an example's text picks it and leaves 직접 입력 alone.
+  const pov = api.authorNotePresetExamples().find(row => row.id === 'example-pov');
+  doc.prompts.author_note = pov.text;
+  await api.importSettingsFile(JSON.stringify(doc));
+  const again = await api.listAuthorNotePresets();
+  assert.equal(again.custom, 'the note from the old file');assert.equal(again.selected, 'example-pov');
+  resetNotes();
+});
+
+test('the prompts tab import puts an imported author note into 직접 입력', async () => {
+  await api.saveAuthorNotePresets({ custom: 'before', selected: 'custom' });
+  await api.importPromptsFile({ prompts: { author_note: 'imported note' } });
+  const listed = await api.listAuthorNotePresets();
+  assert.equal(listed.custom, 'imported note');assert.equal(listed.selected, 'custom');
+  await api.importPromptsFile({ prompts: { tagger: 'x' } });
+  assert.equal((await api.listAuthorNotePresets()).custom, 'imported note', 'a file without the note leaves 직접 입력 alone');
+  resetNotes();
 });
