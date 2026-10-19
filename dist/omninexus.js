@@ -20659,8 +20659,14 @@ function omniReaderScrolls() {
   };
 }
 // A listener Risu refuses must never stop the work it was meant to watch.
+// PocketRisu adds every plugin listener to the document, not to the element, and a
+// scroll does not bubble: only a capturing listener hears the chat scroll there
+// (as the TTS scan does). It removes one only with the same capture flag, so the
+// options are kept beside the id.
+const OMNI_SCROLL_LISTEN={capture:true,passive:true};
 async function omniListen(target,name,fn,into) {
-  try {into.push([name,await target.addEventListener(name,fn)]);}
+  const options=name==='scroll'?OMNI_SCROLL_LISTEN:undefined;
+  try {into.push([name,await target.addEventListener(name,fn,options),options]);}
   catch(error) {y('warn','scroll.listen',name+': '+String(error));}
 }
 // Run the work, then keep the anchor where it was for up to two seconds, until the
@@ -20719,7 +20725,7 @@ async function omniHoldAnchor(anchor,work,options={}) {
     return result;
   } finally {
     await observer?.disconnect();
-    for(const [name,id] of registered)await screen.removeEventListener(name,id);
+    for(const [name,id,options] of registered)await screen.removeEventListener(name,id,options);
   }
 }
 async function omniWithScrollWrite(work,options={}) {
@@ -20831,7 +20837,7 @@ function omniStreamMoved(run) {
 async function omniStreamScrollStop(run) {
   run.closed=true;clearTimeout(run.timer);run.timer=0;
   if(omniStreamScroll===run)omniStreamScroll=null;
-  for(const [name,id] of run.listeners.splice(0))try{await run.screen.removeEventListener(name,id);}catch{}
+  for(const [name,id,options] of run.listeners.splice(0))try{await run.screen.removeEventListener(name,id,options);}catch{}
 }
 function omniStreamScrollTrack() {
   let run=omniStreamScroll;
