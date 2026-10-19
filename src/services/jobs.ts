@@ -8,7 +8,7 @@ export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
 import { writeJobSpinners, finishJobSpinners, writeWaitImage } from './chat-bake';
 import { dropInlineWait } from '../storage/inline-wait-store';
-import { outfitsFromRequest, recordStreamBlock, streamLocation, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
+import { earlierRosterWrites, outfitsFromRequest, recordStreamBlock, rosterWritten, streamLocation, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
 import { risuHost } from '../core/host';
 /**
  * The generation job engine.
@@ -1074,6 +1074,9 @@ async function runJob(jobId: string): Promise<void> {
     shots = applyComicAspect(shots, card.comic_aspect);
 
     const allChars = shots.flatMap((shot) => shot.characters || []);
+    // A streaming block reads the roster after the reply's earlier blocks wrote theirs:
+    // someone block 1 registered is then known by name in block 2, even when both close at once.
+    if (inlineBlock !== null) await earlierRosterWrites(request);
     let roster = await mergeRosterFromTagged({
       sessionId,
       tagged,
@@ -1082,6 +1085,7 @@ async function runJob(jobId: string): Promise<void> {
       characterId,
       sourceSessionIds,
     });
+    if (inlineBlock !== null) rosterWritten(request);
     roster = rosterWithSessionOutfits(roster, await getSessionAuthorNote(noteSessionId));
     const successfulOutfitShots = new Map<number, TaggedShot>();
     dbg('job.roster', { roster: roster.length });
@@ -1799,6 +1803,8 @@ async function runJob(jobId: string): Promise<void> {
       errText,
     );
   } finally {
+    // Never leave a later block waiting on this one, however this job ended.
+    if (inlineBlock !== null) rosterWritten(request);
     llmController.abort();
     jobLlmControllers.delete(jobId);
     deferred?.lineAttachments?.settle(jobId);
