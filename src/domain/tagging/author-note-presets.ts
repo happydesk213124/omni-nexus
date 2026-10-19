@@ -50,8 +50,8 @@ V5 natural: call the viewpoint person "the viewer" (e.g. the viewer's hand reach
 
 type Example = [id: string, name: string, text: string];
 const EXAMPLES: Example[] = [
-  // The user's quality pass, with their additions (keep wear_state, heart eyes, back view
-  // + x-ray, the goal), compacted to English by request.
+  // The user's quality pass, with their additions (keep wear_state, heart eyes, back view,
+  // x-ray when it helps an insertion shot, the goal), compacted to English by request.
   ['quality', '퀄리티 향상', `1 Speech text: Korean, ≤6 chars, fits context.
 2 Continuity: keep pose, sex position, location (e.g. bed) and wear_state across shots; no random stand/sit jumps, no clothes coming back.
 3 Main prompt (natural language): describe layout, poses, hand positions, actions and camera like a hand-made render. Camera view (upper body, dutch angle, from above...) goes in BOTH main and character prompts; vary angles, pick the exact one needed (high/low). Face focus -> close-up. Aroused or ecstatic faces: use heart eyes often, written as "heart-shaped pupils" + a detailed expression.
@@ -59,10 +59,10 @@ const EXAMPLES: Example[] = [
 - appearance: always hair_color + hair_style (infer if unknown, e.g. blue clothes -> blue hair); never expressions.
 - expression/gaze/pose -> action (e.g. "looking at brown hair boy").
 - mostly upper body -> add 2::upper body:: to action.
-- seen from behind -> add "back view" to action, plus 2::x-ray::.
+- seen from behind -> add "back view" to action.
 - register every new character/animal/creature/monster; original = Danbooru "character (series)".
 5 Contact: source = performer; target = receiver, with the EXACT same English verb (no passive/names, never "being sucked"); mutual = both at once. Expression/gaze/posture stay in action; no unmentioned acts.
-6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face".
+6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face"; when an x-ray view of the insertion would make the shot hotter, add 2::x-ray:: (judge per shot, not always).
 7 Structure: spread "line" (L12, L15...) evenly, no bias; precise location ("on bed") so no one stands by accident; keep character coords far apart (real hitboxes), too close merges tags into malformed bodies.
 Goal: intensely arousing images with striking composition and mood.`],
   ['pov', 'POV · 1인칭 시점', `[POV]
