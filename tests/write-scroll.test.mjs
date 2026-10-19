@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../tools/vendor-patches/scroll-runtime.js',import.meta.url),'utf8');
 const load=(t,hold,scope,k)=>new Function('t','nxScrollHoldOn','nxScrollContext','nxUnwrapSafeNodes','k','y',source+';return {hold:omniWithScrollWrite,track:omniStreamScrollTrack,end:omniStreamScrollEnd};')(t,hold,scope,async a=>a,k,()=>{});
-const listening=handlers=>({addEventListener:async(kind,fn)=>{const id=String(handlers.size+Math.random());handlers.set(id,{kind,fn});return id;},removeEventListener:async(kind,id)=>{assert.equal(handlers.get(id)?.kind,kind);handlers.delete(id);}});
-for(const mode of ['replace','manual','host-scroll','chat-switch','failure'])test('write-scoped scroll: '+mode,async()=>{
+// Risu's SafeElement accepts only these and throws for anything else (apiV3/v3.svelte.ts).
+const RISU_EVENTS=new Set(['click','dblclick','contextmenu','mousedown','mouseup','mousemove','mouseover','mouseleave','pointercancel','pointerdown',
+ 'pointerenter','pointerleave','pointermove','pointerout','pointerover','pointerup','scroll','scrollend','keydown','keyup','keypress']);
+const refused=[];
+const listening=handlers=>({addEventListener:async(kind,fn)=>{if(!RISU_EVENTS.has(kind)&&refused.push(kind))throw Error(`Event listener of type '${kind}' is not allowed for security reasons.`);const id=String(handlers.size+Math.random());handlers.set(id,{kind,fn});return id;},removeEventListener:async(kind,id)=>{assert.equal(handlers.get(id)?.kind,kind);handlers.delete(id);}});
+for(const mode of ['replace','manual','host-scroll','wheel','chat-switch','failure'])test('write-scoped scroll: '+mode,async()=>{
  let top=20,scope='a',corrections=0,disconnected=0;
  const handlers=new Map();let mutated;
  const rect=()=>({top,bottom:top+40,height:40});
@@ -17,8 +21,10 @@ for(const mode of ['replace','manual','host-scroll','chat-switch','failure'])tes
  const work=async()=>{
    top=400;mutated();
    if(mode==='manual')for(const {kind,fn} of handlers.values())if(kind==='keydown')fn({key:'PageDown'});
-   // A picture finishing its load scrolls the view a while after the last DOM change.
-   if(mode==='host-scroll'){await new Promise(r=>setTimeout(r,100));for(const {kind,fn} of [...handlers.values()])if(kind==='scroll')fn({});}
+   // The chat changing scrolls the view with it, right after the change: not the reader.
+   if(mode==='host-scroll'){mutated();for(const {kind,fn} of [...handlers.values()])if(kind==='scroll')fn({});}
+   // A wheel (Risu forwards none) is a scroll with nothing changed just before it.
+   if(mode==='wheel'){await new Promise(r=>setTimeout(r,100));for(const {kind,fn} of [...handlers.values()])if(kind==='scroll')fn({});}
    if(mode==='chat-switch')scope='b';
    if(mode==='failure')throw Error('failed write');
    return 'saved';
@@ -124,7 +130,8 @@ function streamFixture() {
  const screen={getBoundingClientRect:async()=>({top:0,bottom:800,height:800}),querySelectorAll:async()=>[reply,older],
   querySelector:async sel=>sel==='.risu-chat[data-chat-index="7"]'?reply:null,...listening(handlers)};
  const t={hostDoc:{querySelector:async()=>screen},backendSettings:{card:{stream_scroll_hold:true}}};
- const k={createMutationObserver:async cb=>{mutated=cb;return{observe:async()=>{},disconnect:async()=>{}};}};
+ const observers=new Set();mutated=()=>{for(const cb of [...observers])cb([]);};
+ const k={createMutationObserver:async cb=>{const o={observe:async()=>{observers.add(cb);},disconnect:async()=>{observers.delete(cb);}};return o;}};
  const api=load(t,()=>false,async()=>'chat',k);
  return {t,api,handlers,
   // The reader's scroll: a finger down, the view moving, the finger up.
@@ -197,4 +204,10 @@ test('streaming scroll hold: a glide after the finger lifts is still the reader'
  await wait(350);
  const done=f.api.end();await wait(60);f.redraw(0);await done;
  assert.equal(f.view,400);
+});
+
+// Last: nothing above asked Risu for an event it refuses. A refused type once threw
+// before the write it guarded, and no picture was baked.
+test('every listener the scroll code adds is one Risu forwards',()=>{
+ assert.deepEqual(refused,[]);
 });

@@ -20631,27 +20631,37 @@ function omniScrollQueue(run) {
   const wrapped=async()=>{omniScrollBusy++;try{return await run();}finally{omniScrollBusy--;}};
   const pending=omniScrollTail.then(wrapped,wrapped);omniScrollTail=pending.catch(()=>{});return pending;
 }
-// Risu scrolls the chat as well: it draws a streamed reply again once it ends, and
-// pictures in it load later. Only a scroll the reader makes is theirs — a finger or
-// the mouse held down, a wheel or scroll key just now, or the glide after them.
+// Risu scrolls the chat as well: once a streamed reply ends it takes the bubble out
+// and draws a new one, and the view jumps with that. A scroll is the reader's when a
+// finger or the mouse is held down, a scroll key was just pressed, it glides on from
+// one of those, or nothing in the chat changed just before it — which is how a mouse
+// wheel or the scroll bar looks, since Risu forwards no wheel events to plugins.
+// Only these event types may be listened to: Risu throws for any other.
 const OMNI_SCROLL_KEYS=['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '];
 function omniReaderScrolls() {
-  let pressedAt=0,inputAt=-Infinity,glideAt=-Infinity;
-  const touch=()=>{inputAt=performance.now();};
+  let pressedAt=0,inputAt=-Infinity,glideAt=-Infinity,changedAt=-Infinity;
   // A host that never forwards the release must not make every later scroll the reader's.
   const pressed=()=>pressedAt>0 && performance.now()-pressedAt<8000;
   return {
     pressed,
+    // From a mutation observer on the chat: a scroll right after it is the chat's own.
+    changed:()=>{changedAt=performance.now();},
     // A lifted finger is not input: only the glide that runs on from it, frame by frame.
+    // keydown reaches plugins up to 99 ms late, so its window allows for that.
     listeners:[['pointerdown',()=>{pressedAt=performance.now();}],['pointerup',()=>{if(pressed())glideAt=performance.now();pressedAt=0;}],
-      ['pointercancel',()=>{if(pressed())glideAt=performance.now();pressedAt=0;}],['wheel',touch],['keydown',e=>{if(OMNI_SCROLL_KEYS.includes(e?.key))touch();}]],
+      ['pointercancel',()=>{if(pressed())glideAt=performance.now();pressedAt=0;}],['keydown',e=>{if(OMNI_SCROLL_KEYS.includes(e?.key))inputAt=performance.now();}]],
     // From a scroll listener: whether the reader made this scroll.
     scroll:()=>{
-      const now=performance.now(),mine=pressed() || now-inputAt<400 || now-glideAt<150;
+      const now=performance.now(),mine=pressed() || now-inputAt<400 || now-glideAt<150 || now-changedAt>80;
       if(mine)glideAt=now;
       return mine;
     },
   };
+}
+// A listener Risu refuses must never stop the work it was meant to watch.
+async function omniListen(target,name,fn,into) {
+  try {into.push([name,await target.addEventListener(name,fn)]);}
+  catch(error) {y('warn','scroll.listen',name+': '+String(error));}
 }
 // Run the work, then keep the anchor where it was for up to two seconds, until the
 // layout settles or the reader moves.
@@ -20664,12 +20674,14 @@ async function omniHoldAnchor(anchor,work,options={}) {
   const input=()=>{userMoved=true;};
   // The scroll our own correction causes arrives a frame after it returns.
   const scroll=()=>{if(!own && performance.now()-ownAt>120 && reader.scroll())input();};
-  const listeners=[...reader.listeners,['pointermove',()=>{if(reader.pressed())input();}],['wheel',input],
+  const listeners=[...reader.listeners,['pointermove',()=>{if(reader.pressed())input();}],
     ['keydown',e=>{if(OMNI_SCROLL_KEYS.includes(e?.key))input();}],['scroll',scroll]];
   try {
-    for(const [name,fn] of listeners)registered.push([name,await screen.addEventListener(name,fn)]);
-    observer=await k.createMutationObserver(()=>{dirty++;});
-    await observer.observe(screen,{childList:true,subtree:true});
+    for(const [name,fn] of listeners)await omniListen(screen,name,fn,registered);
+    try {
+      observer=await k.createMutationObserver(()=>{dirty++;reader.changed();});
+      await observer.observe(screen,{childList:true,subtree:true});
+    } catch(error) {observer=null;y('warn','scroll.observe',String(error));}
     const result=await work();
     let stable=0,settled=false,lastDirty=-1,lastHeight=-1,held=null;
     const end=performance.now()+2000;
@@ -20743,12 +20755,14 @@ async function omniStreamScrollStop(run) {
   run.closed=true;clearTimeout(run.timer);run.timer=0;
   if(omniStreamScroll===run)omniStreamScroll=null;
   for(const [name,id] of run.listeners.splice(0))try{await run.screen.removeEventListener(name,id);}catch{}
+  const observer=run.observer;run.observer=null;
+  if(observer)try{await observer.disconnect();}catch{}
 }
 function omniStreamScrollTrack() {
   let run=omniStreamScroll;
   if(run && Date.now()-run.chunkAt>OMNI_STREAM_SCROLL_STALE_MS){void omniStreamScrollStop(run);run=null;}
   if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
-  if(!run){omniStreamScroll={chunkAt:Date.now(),mark:null,marking:null,timer:0,listeners:[],screen:null,closed:false,ready:null};return;}
+  if(!run){omniStreamScroll={chunkAt:Date.now(),mark:null,marking:null,timer:0,listeners:[],observer:null,screen:null,closed:false,ready:null};return;}
   run.chunkAt=Date.now();
   // A reply that is not streamed reaches the output script once; only a second
   // chunk means Risu is drawing it light and will draw it again.
@@ -20763,9 +20777,14 @@ function omniStreamScrollTrack() {
       clearTimeout(run.timer);run.timer=setTimeout(()=>{run.timer=0;if(!run.closed)void omniStreamMark(run);},OMNI_STREAM_SCROLL_IDLE_MS);
     };
     for(const [name,fn] of [...reader.listeners,['scroll',moved]]) {
-      run.listeners.push([name,await screen.addEventListener(name,fn)]);
+      await omniListen(screen,name,fn,run.listeners);
       if(run.closed){await omniStreamScrollStop(run);return;}
     }
+    try {
+      run.observer=await k.createMutationObserver(()=>reader.changed());
+      await run.observer.observe(screen,{childList:true,subtree:true});
+    } catch(error) {y('warn','scroll.observe',String(error));}
+    if(run.closed){await omniStreamScrollStop(run);return;}
     await omniStreamMark(run);
   })().catch(error=>y('warn','scroll.stream',String(error)));
 }
