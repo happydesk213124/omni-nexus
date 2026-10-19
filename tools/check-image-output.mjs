@@ -15,8 +15,9 @@ try {
     const original=image(832,1216);window.calls=[];window.urls={root:original};
     window.__INLAY_NATIVE__={ensureImageUrl:async id=>urls[id]||'',fetch:async(path,opts)=>{
       if(path.endsWith('/nai-prompt'))return {ok:true,main_prompt:'garden',negative_prompt:'bad',model:'nai-diffusion-5-full',width:832,height:1216,characters:[],seed:1};
-      if(path==='/v1/settings')return {settings:{card:{presets:[],studio_folds:{}},nai:{}}};
+      if(path==='/v1/settings')return {settings:{card:{presets:[],studio_folds:{},upscale_button_mode:window.upscaleMode},nai:{}}};
       if(path.endsWith('/history'))return {cards:[{id:'root',seed:1}]};
+      if(path.endsWith('/original')){calls.push({path,body:opts.body});urls.root_s0=image(832,1216);return {ok:true,card:{id:'root_s0',image_url:urls.root_s0,width:832,height:1216,seed:1}};}
       if(path.endsWith('/upscale')){calls.push({path,body:opts.body});await new Promise(r=>window.releaseUpscale=r);urls.root_s1=image(1664,2432);return {ok:true,card:{id:'root_s1',image_url:urls.root_s1,width:1664,height:2432,seed:1}};}
       return {ok:true,characters:[],global:[]};
     }};
@@ -37,13 +38,31 @@ try {
     await page.screenshot({path:`.test-build/image-output/studio-${width}.png`});
   }
   await page.setViewportSize({width:1440,height:1000});
+  // 🆙 버튼 방식 default: PNG 원본 받아오기, at once, with no dialog: same size, from
+  // the selected revision's stored recipe (never the canvas), into the history.
+  assert.equal(await page.locator('[data-act="upscale"]:visible').first().textContent(),'🆙 PNG 원본');
   await page.locator('[data-act="upscale"]:visible').first().click();
   await page.waitForFunction(()=>calls.length===1);
+  assert.equal(await page.locator('#ask').isVisible(),false,'no dialog: the setting decides');
+  assert.equal(await page.evaluate(()=>calls[0].path),'/v1/cards/root/original');
+  assert.equal(await page.evaluate(()=>calls[0].body.history_only),true);
+  assert.equal(await page.evaluate(()=>calls[0].body.source_id),'root');
+  assert.equal(await page.evaluate(()=>'image_data_url' in calls[0].body),false,'the stored recipe is replayed, not the canvas');
+  await page.waitForFunction(()=>document.querySelector('[data-act="upscale"]')?.textContent==='🆙 PNG 원본');
+  assert.deepEqual(await page.locator('#cv').evaluate(c=>[c.width,c.height]),[832,1216]);
+  // 🆙 버튼 방식 Anlas 업스케일: the paid route, guarded against a second spend.
+  await page.evaluate(()=>{calls.length=0;window.upscaleMode='upscale';});
+  await page.locator('#cancel').click();
+  await page.evaluate(()=>{void Studio.openTagStudio({id:'root',session_id:'session',image_url:urls.root});});
+  await page.waitForFunction(()=>document.querySelector('[data-act="upscale"]')?.textContent==='🆙 업스케일');
+  await page.locator('[data-act="upscale"]:visible').first().click();
+  await page.waitForFunction(()=>calls.length===1);
+  assert.equal(await page.evaluate(()=>calls[0].path),'/v1/cards/root/upscale');
   assert.match(await page.locator('[data-act="upscale"]:visible').first().textContent(),/업스케일 중/);
   await page.locator('[data-act="upscale"]:visible').first().click();
   assert.equal(await page.evaluate(()=>calls.length),1,'repeat click cannot spend twice');
   assert.equal(await page.evaluate(()=>calls[0].body.history_only),true);
-  assert.equal(await page.evaluate(()=>calls[0].body.source_id),'root');
+  assert.ok(await page.evaluate(()=>calls[0].body.source_id),'upscales the selected revision');
   await page.evaluate(()=>releaseUpscale());
   await page.waitForFunction(()=>document.querySelector('#cv')?.width===1664);
   assert.deepEqual(await page.locator('#cv').evaluate(c=>[c.width,c.height]),[1664,2432]);

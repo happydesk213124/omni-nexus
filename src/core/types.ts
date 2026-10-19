@@ -282,6 +282,8 @@ export interface CardSettings {
   /** Store and bake the NAI PNG as delivered; preview it in chat as a WebP. */
   image_png_bake?: boolean;
   nai_auto_upscale?: boolean;
+  /** What 🆙 does in the studio and the fullscreen viewer: NAI's PNG again, or a paid 2x upscale kept as PNG or WebP. */
+  upscale_button_mode?: 'original' | 'upscale' | 'upscale_webp';
   image_done_sound?: boolean;
   image_done_sound_type?: 'ding' | 'soft' | 'bell' | 'loud';
   /** How a long-press on an inline/sticky shot opens the enlarge sheet. */

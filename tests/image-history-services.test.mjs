@@ -6,7 +6,7 @@ import { emptyState, hydrateFromNai } from '../.test-build/tag-studio-model.mjs'
 import { sessionIdHash } from '../.test-build/text-util.mjs';
 let serial=0;
 async function fixture() {
-  installHost({promptsDir:'prompts'});
+  const host=installHost({promptsDir:'prompts'});
   const api=await import('../.test-build/history-services.mjs?instance='+ ++serial);
   await api.openDb();
   const config=api.getConfig();
@@ -32,7 +32,7 @@ async function fixture() {
   const asset=await api.imageAssetRef('root');
   chat.message[0].data=`text [[@inrayspinner::job_0::832::1216]][[@inray::root::${asset.name}::832::1216]]`;
   await risuai.setChatToIndex(0,0,chat);
-  return {api,requests,config,recipe,chat:()=>risuai.getChatFromIndex(0,0)};
+  return {api,host,requests,config,recipe,chat:()=>risuai.getChatFromIndex(0,0)};
 }
 
 test('Comfy reroll and studio generation share conversion and preserve durable revision history',async()=>{
@@ -323,4 +323,63 @@ test('박제는 PNG 원본: a NAI reroll stores the PNG as delivered and preview
   assert.deepEqual(Buffer.from((await f.api.idbGet('images', reroll.card.id)).png), Buffer.from(PNG_NAI_1X1), 'baked from the bare PNG');
   Object.assign(f.config.card, { image_png_bake: false, image_png_original: true }); f.api.setConfig(f.config);
   assert.equal(f.api.previewsWebp(), false, '원본으로 저장 alone previews the PNG itself');
+});
+
+// A browser that can encode WebP, so storing a PNG is a choice rather than the
+// only thing Node can do.
+const WEBP_1X1 = Buffer.from('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA', 'base64');
+async function withWebpEncoder(run) {
+  const previous = { document: globalThis.document, bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+  const canvas = { width: 0, height: 0, getContext() { return { drawImage() {} }; },
+    toBlob(callback) { callback(new Blob([WEBP_1X1], { type: 'image/webp' })); },
+    toDataURL() { return 'data:image/webp;base64,' + WEBP_1X1.toString('base64'); } };
+  globalThis.OffscreenCanvas = undefined;
+  globalThis.createImageBitmap = async () => ({ width: 1, height: 1, close() {} });
+  globalThis.document = { createElement() { return canvas; } };
+  try { return await run(); }
+  finally { globalThis.document = previous.document; globalThis.createImageBitmap = previous.bitmap; globalThis.OffscreenCanvas = previous.canvas; }
+}
+const isPng = bytes => Buffer.from(bytes).subarray(1, 4).toString() === 'PNG';
+
+test("PNG 원본 받아오기 replays the image's own recipe and seed and keeps NAI's PNG; the image it replaces stays", async () => {
+  const f = await fixture();
+  f.config.nai = { ...f.config.nai, backend: 'nai', api_key: 'test' }; f.api.setConfig(f.config);
+  const before = f.host.naiRequests.length;
+  const result = await withWebpEncoder(() => f.api.fetchOriginalCard('root'));
+  assert.equal(result.ok, true, JSON.stringify(result.error || ''));
+  const sent = f.host.naiRequests.slice(before).filter(r => r.kind === 'generate');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body.parameters.seed, f.recipe.seed, 'the same seed, not a new one');
+  assert.equal(sent[0].body.parameters.width, f.recipe.width);
+  const kept = Buffer.from((await f.api.idbGet('images', result.card.id)).png);
+  assert.ok(isPng(kept), "NAI's PNG, though WebP was available");
+  assert.deepEqual(kept.subarray(0, 33), Buffer.from(PNG_NAI_1X1).subarray(0, 33), 'its header as delivered: not drawn again');
+  assert.equal(f.api.readGenerationImageData(kept).recipe.seed, f.recipe.seed, 'and it carries its recipe for the next reroll');
+  assert.match((await f.chat()).message[0].data, new RegExp(result.card.id), "it takes the image's place in the chat");
+  assert.ok(await f.api.idbGet('cards', 'root'), 'the image it replaced stays in the history');
+});
+
+test('PNG 원본 받아오기 refuses ComfyUI and a missing card before drawing anything', async () => {
+  const f = await fixture();
+  await assert.rejects(f.api.fetchOriginalCard('root'), /NovelAI/);
+  assert.equal(f.requests.length, 0);
+  f.config.nai = { ...f.config.nai, backend: 'nai', api_key: 'test' }; f.api.setConfig(f.config);
+  assert.equal((await f.api.fetchOriginalCard('not-there')).error.code, 'not_found');
+});
+
+test("a 🆙 upscale keeps NAI's PNG even where WebP is available; a studio save does not", async () => {
+  const f = await fixture();
+  f.config.nai = { ...f.config.nai, backend: 'nai', api_key: 'test' }; f.api.setConfig(f.config);
+  risuai.nativeFetch = async () => new Response(zipStore('image.png', png(2, 2)));
+  const up = await withWebpEncoder(() => f.api.upscaleCard('root', {}));
+  assert.equal(up.ok, true, JSON.stringify(up.error || ''));
+  const upscaled = (await f.api.idbGet('images', up.card.id)).png;
+  assert.ok(isPng(upscaled), 'upscale stored as PNG');
+  assert.deepEqual([f.api.readGenerationImageData(upscaled).recipe.width, f.api.readGenerationImageData(upscaled).recipe.height], [2, 2], 'its recipe has the new size');
+  f.config.card.upscale_button_mode = 'upscale_webp'; f.api.setConfig(f.config);
+  const squeezed = await withWebpEncoder(() => f.api.upscaleCard('root', {}));
+  assert.equal(squeezed.ok, true, JSON.stringify(squeezed.error || ''));
+  assert.equal(Buffer.from((await f.api.idbGet('images', squeezed.card.id)).png).subarray(0, 4).toString(), 'RIFF', 'Anlas 업스케일 · WebP 압축 저장 stores a WebP');
+  const saved = await withWebpEncoder(() => f.api.studioCommit('root', { image_data_url: 'data:image/png;base64,' + png(832, 1216).toString('base64'), recipe: { ...f.recipe, seed: 5 }, seed: 5, width: 832, height: 1216 }));
+  assert.equal(Buffer.from((await f.api.idbGet('images', saved.card.id)).png).subarray(0, 4).toString(), 'RIFF', 'an ordinary studio save is still a WebP');
 });

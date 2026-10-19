@@ -70,6 +70,12 @@ test("scroll_hold defaults off and accepts truthy flags", () => {
   assert.equal(migrateSettings({ card: { scroll_hold: 0 } }).card.scroll_hold, false);
 });
 
+test("upscale_button_mode defaults to the free PNG fetch and keeps its three ways", () => {
+  assert.equal(migrateSettings({ card: {} }).card.upscale_button_mode, "original");
+  for (const mode of ["original", "upscale", "upscale_webp"]) assert.equal(migrateSettings({ card: { upscale_button_mode: mode } }).card.upscale_button_mode, mode);
+  assert.equal(migrateSettings({ card: { upscale_button_mode: "lossless" } }).card.upscale_button_mode, "original");
+});
+
 test("stream_scroll_hold defaults off and accepts truthy flags", () => {
   assert.equal(migrateSettings({ card: {} }).card.stream_scroll_hold, false);
   assert.equal(migrateSettings({ card: { stream_scroll_hold: true } }).card.stream_scroll_hold, true);

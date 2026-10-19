@@ -173,7 +173,7 @@ const SHELL = `
         <button class="btn sm" data-act="grid" type="button">좌표보기</button>
         <button class="btn sm" data-act="fit" type="button">화면맞춤</button>
         <button class="btn sm" data-act="peek" type="button">조립</button>
-        <button class="btn sm" data-act="upscale" type="button" title="NAI 업스케일 · Anlas 소모">🆙 업스케일</button>
+        <button class="btn sm" data-act="upscale" type="button" title="PNG 원본 받아오기 · NAI 업스케일(Anlas 소모)">🆙 업스케일</button>
       </div>
       <div class="viewport" id="viewport">
         <div class="frame" id="frame"><canvas id="cv"></canvas></div>
@@ -209,7 +209,7 @@ const SHELL = `
       <button class="btn sm" data-act="grid" type="button">좌표보기</button>
       <button class="btn sm" data-act="fit" type="button">화면맞춤</button>
       <button class="btn sm" data-act="peek" type="button">조립</button>
-      <button class="btn sm" data-act="upscale" type="button" title="NAI 업스케일 · Anlas 소모">🆙 업스케일</button>
+      <button class="btn sm" data-act="upscale" type="button" title="PNG 원본 받아오기 · NAI 업스케일(Anlas 소모)">🆙 업스케일</button>
       <button class="btn sm" data-act="history" type="button">히스토리</button>
       <button class="btn sm loop" id="loop" type="button"><b>연속생성</b> <span class="hint">꺼짐</span></button>
     </nav>
@@ -1678,6 +1678,44 @@ export async function openTagStudio(card: unknown): Promise<void> {
     }
   }
 
+  // 🆙 follows 생성 옵션 → 🆙 버튼 방식: by default the same picture again as NAI's
+  // PNG, for no Anlas; or NAI's upscale, twice the size, kept as PNG or WebP.
+  const upscaleSpendsAnlas = (): boolean => cardSettings.upscale_button_mode === 'upscale' || cardSettings.upscale_button_mode === 'upscale_webp';
+  const upscaleLabel = (): string => upscaleSpendsAnlas() ? '🆙 업스케일' : '🆙 PNG 원본';
+  function paintUpscaleButtons(): void {
+    $$<HTMLButtonElement>('[data-act="upscale"]').forEach(b => {
+      b.textContent = upscaleLabel();
+      b.title = upscaleSpendsAnlas() ? (cardSettings.upscale_button_mode === 'upscale_webp' ? 'NAI 업스케일 · 가로세로 2배 · Anlas 소모 · WebP 압축 저장' : 'NAI 업스케일 · 가로세로 2배 · Anlas 소모 · PNG 원본 저장') : 'PNG 원본 받아오기 · 같은 시드로 다시 받아 PNG 그대로 저장';
+    });
+  }
+
+  async function fetchOriginal(): Promise<void> {
+    if (state.busy || !loaded) return;
+    stopLoop();
+    setBusy(true);
+    const buttons = $$<HTMLButtonElement>('[data-act="upscale"]');
+    buttons.forEach(b => { b.textContent = 'PNG 원본 받는 중…'; });
+    try {
+      const res = await studioPost(`/v1/cards/${encodeURIComponent(state.cardId)}/original`, {
+        ...assembleOverrides(state, roster), source_id:state.history[state.historySel]?.id, history_only:true,
+      });
+      if (res.ok === false) throw new Error(errMsg(res, 'PNG 원본을 받지 못했습니다'));
+      const saved = asRecord(res.card);
+      const id = cleanText(saved.id, 80);
+      const url = await resolveCardUrl(id, cleanText(saved.image_url, 40_000_000));
+      if (!url) throw new Error('PNG 원본을 불러오지 못했습니다.');
+      state.gen.w = Number(saved.width) || cv.width;
+      state.gen.h = Number(saved.height) || cv.height;
+      state.history.unshift({ url, id, seed:Number(saved.seed) || 0 });
+      state.historySel = 0;
+      await showImage(url);
+      renderAll();
+      toast('PNG 원본을 받았습니다 · 저장하면 채팅 이미지가 교체됩니다.');
+      void refreshQuota();
+    } catch (err) { toast(String((err as Error).message || err)); }
+    finally { setBusy(false); paintUpscaleButtons(); }
+  }
+
   async function upscale(): Promise<void> {
     if (state.busy || !loaded) return;
     const cost = upscaleAnlas(loaded.naturalWidth, loaded.naturalHeight);
@@ -1705,7 +1743,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
       toast('업스케일 완료 · 저장하면 채팅 이미지가 교체됩니다.');
       void refreshQuota();
     } catch (err) { toast(String((err as Error).message || err)); }
-    finally { setBusy(false); buttons.forEach(b => { b.textContent = '🆙 업스케일'; }); }
+    finally { setBusy(false); paintUpscaleButtons(); }
   }
 
   async function commitAndClose(): Promise<void> {
@@ -1902,7 +1940,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
         fitView();
         break;
       case 'upscale':
-        void upscale();
+        void (upscaleSpendsAnlas() ? upscale() : fetchOriginal());
         return;
       case 'peek':
         state.peek = !state.peek;
@@ -2376,6 +2414,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
     ]);
 
     cardSettings = { ...asRecord(asRecord(settingsRes).card) };
+    paintUpscaleButtons();
     const rawPresets = Array.isArray(cardSettings.presets) ? cardSettings.presets : [];
     stylePresets = rawPresets.filter((p): p is StyleRow => !!p && typeof p === 'object');
     const rawCmds = Array.isArray(cardSettings.command_presets) ? cardSettings.command_presets : [];

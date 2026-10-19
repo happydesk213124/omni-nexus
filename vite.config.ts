@@ -535,6 +535,7 @@ const VENDOR_PERSON_TAG_WEIGHT_CT_PATCH =
   `      include_max: Number(N("nx-include-max") || e.include_max || 0),
       person_tag_weight: document.getElementById("nx-person-tag-weight") ? re(N("nx-person-tag-weight"), 0, 5, re(e.person_tag_weight, 0, 5, 3)) : re(e.person_tag_weight, 0, 5, 3),
       nai_auto_upscale: document.getElementById("nx-nai-auto-upscale") ? !!document.getElementById("nx-nai-auto-upscale").checked : (e.nai_auto_upscale ?? false),
+      upscale_button_mode: (m => m === "upscale" || m === "upscale_webp" ? m : "original")(document.getElementById("nx-upscale-button-mode") ? N("nx-upscale-button-mode") : e.upscale_button_mode),
       location_tag_weight: document.getElementById("nx-location-tag-weight") ? (() => { const r = N("nx-location-tag-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.location_tag_weight ?? 1),
 `;
 
@@ -16043,17 +16044,19 @@ const VENDOR_INSPECT_REROLL_INLINE_NEEDLE =
 const VENDOR_INSPECT_REROLL_INLINE_PATCH =
   `      if (act === "reroll" || act === "upscale") {
         await hideInspect();
+        // 🆙 follows 생성 옵션 → 🆙 버튼 방식: NAI's PNG again (default) or a paid 2x upscale.
+        const route = act === "reroll" ? "reroll" : /^upscale/.test(t.backendSettings?.card?.upscale_button_mode || "") ? "upscale" : "original";
         try {
           let rolled = null;
-          await withImageRerollToast(act === "upscale" ? "업스케일 중… (Anlas 소모)" : "이미지 리롤 중…", async () => {
-            rolled = await K(\`/v1/cards/\${encodeURIComponent(card.id)}/\${act === "upscale" ? "upscale" : "reroll"}\`, {
+          await withImageRerollToast(route === "upscale" ? "업스케일 중… (Anlas 소모)" : route === "original" ? "PNG 원본 받는 중…" : "이미지 리롤 중…", async () => {
+            rolled = await K(\`/v1/cards/\${encodeURIComponent(card.id)}/\${route}\`, {
               method: "POST",
               body: {
                 mode: "nai"
               }
             }, 18e4);
             return rolled;
-          }, {kind: act === "upscale" ? "upscale" : "reroll"});
+          }, {kind: route});
           const W = await Z({
             useOverride: !1
           }).catch(() => null);

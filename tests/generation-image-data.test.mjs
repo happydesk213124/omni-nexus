@@ -163,6 +163,10 @@ test('strict replay preserves explicit flags and rejects missing recipe values',
   const legacy = { ...request }; delete legacy.var_plus; delete legacy.use_coords; delete legacy.cfg_rescale;
   const legacyScene = api.requireNaiReplayScene(legacy);
   assert.equal(legacyScene.var_plus, false); assert.equal(legacyScene.cfg_rescale, 0);
+  // NAI's own metadata says variety+ only through skip_cfg_above_sigma.
+  const comment = { ...legacy, scale: 5, noise_schedule: 'native', uc: '' };
+  assert.equal(api.requireNaiReplayScene({ Comment: { ...comment, skip_cfg_above_sigma: 58 } }).var_plus, true);
+  assert.equal(api.requireNaiReplayScene({ Comment: { ...comment, skip_cfg_above_sigma: null } }).var_plus, false);
 });
 
 test('PNG fallback preserves associations without canvas and detects corrupted metadata CRC', async () => {

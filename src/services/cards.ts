@@ -41,7 +41,7 @@ import { slimCardCharacters } from '../domain/gallery/slim-cast';
 import { castFromShotAssetName } from '../domain/gallery/shot-assets';
 import { stripStoredCardMeta } from '../domain/gallery/strip-stored-meta';
 import { resolveRerollCharacters } from '../domain/gallery/reroll-captions';
-import { aspectFromCanvas, extractNaiMetadata, readGenerationImageData } from '../domain/nai-meta';
+import { aspectFromCanvas, extractNaiMetadata, readGenerationImageData, writeGenerationImageData } from '../domain/nai-meta';
 import {
   applyNaiSceneOverrides,
   isComicNaiScene,
@@ -76,6 +76,7 @@ import {
 } from './generation';
 import { persistChatImagesOn, rewriteBakedCardInChatMessage } from './chat-bake';
 import { getImageBytes } from './gallery';
+import { imageBackendKind } from '../providers/comfy/client';
 import { busyReplyForRequest, jobKey } from './job-locks';
 import { createJob } from './jobs';
 import { getPrompt } from './settings';
@@ -331,9 +332,42 @@ export function upscaleCard(cardId: string, body: Record<string, unknown> = {}):
     const seed = Number(scene.seed) || Number(row.seed);
     const recipe = { ...t2iRequestFromScene(scene, seed), ...dims };
     const saved = await commitStudioRevision(cardId, { ...body, revision_id: '', recipe, seed, ...dims,
-      image_data_url: await bytesToDataUrlAsync(output, 'image/png') }) as Record<string, unknown>;
+      // 🆙 버튼 방식: Anlas 업스케일 · WebP 압축 저장 is the one that does not keep the PNG.
+      image_data_url: await bytesToDataUrlAsync(output, 'image/png'), keep_png: getConfig().card.upscale_button_mode !== 'upscale_webp' }) as Record<string, unknown>;
     if (saved.ok === false) return saved;
     return { ...saved, card:{ ...(saved.card as Record<string, unknown>), seed, ...dims } };
+  });
+}
+
+/**
+ * PNG 원본 받아오기: draws the image again from its own recipe, seed included, with
+ * the references a reroll would use, and keeps NAI's PNG as delivered. The same
+ * request gives the same picture; the image it replaces stays in the history.
+ */
+export function fetchOriginalCard(cardId: string, body: Record<string, unknown> = {}): Promise<ApiResult> {
+  return imageRevisionLock.run(async () => {
+    const row = await idbGet('cards', cardId);
+    if (!row) return { ok: false, error: { code: 'not_found', message: 'card not found' } };
+    if (imageBackendKind(getConfig().nai) === 'comfy') throw new Error('PNG 원본 받아오기는 NovelAI 이미지에서만 쓸 수 있습니다.');
+    const loc = await readImageLocation(cardId);
+    const busy = await busyReplyForRequest({ ...loc, session_id: row.session_id }, row.session_id);
+    if (busy) return busy;
+    const sourceId = cleanText(body.source_id, 80) || cardId;
+    if (imageHistoryRoot(sourceId) !== imageHistoryRoot(cardId)) throw new Error('같은 이미지의 히스토리만 받아올 수 있습니다.');
+    let replay: { scene: NaiScene; cast: ReplayCast };
+    try {
+      replay = await storedReplay(sourceId, row.session_id);
+    } catch (err) {
+      return { ok: false, error: { code: 'no_meta', message: String((err as Error)?.message || err) } };
+    }
+    const seed = Number(replay.scene.seed);
+    if (!Number.isInteger(seed) || seed <= 0) return { ok: false, error: { code: 'no_seed', message: '이미지 메타데이터에 시드가 없어 같은 그림을 받을 수 없습니다.' } };
+    const generated = await generateFromNaiReplay(t2iRequestFromScene(replay.scene, seed), replay.cast);
+    const dims = upscaleDimensions(generated.bytes);
+    const saved = await commitStudioRevision(cardId, { ...body, revision_id: '', recipe: generated.recipe, seed: generated.seed, ...dims,
+      image_data_url: await bytesToDataUrlAsync(generated.bytes, 'image/png'), keep_png: true }) as Record<string, unknown>;
+    if (saved.ok === false) return saved;
+    return { ...saved, card:{ ...(saved.card as Record<string, unknown>), seed: generated.seed, ...dims } };
   });
 }
 
@@ -462,7 +496,14 @@ async function commitStudioRevision(cardId: string, body: Record<string, unknown
         ...(c.costume ? { costume: cleanText(c.costume, 4000) } : {}),
         ...(c.wear_state ? { wear_state: cleanText(c.wear_state, 40) } : {}) }))
     : embedded?.characters || source?.characters || [];
-  await publishImage(newId, bytes, location, { qualityPercent: getConfig().card.image_webp_quality, recipe, characters, generatedAt: Date.now() });
+  // 🆙 results (업스케일, PNG 원본 받아오기) keep NAI's PNG; the chat preview follows 박제는 PNG 원본.
+  // Their recipe (an upscale's new size, the seed) and cast still go into it, as one
+  // more chunk: the pixels are not encoded again.
+  const keepPng = body.keep_png === true;
+  const generatedAt = Date.now();
+  const stored = keepPng ? writeGenerationImageData(bytes, { version: 1, recipe, characters, generatedAt }) : bytes;
+  await publishImage(newId, stored, location, { qualityPercent: getConfig().card.image_webp_quality, recipe, characters, generatedAt,
+    ...(keepPng ? { original: true, webpPreview: getConfig().card.image_png_bake === true } : {}) });
   const slimCast = slimCardCharacters(parseJsonOr(row.characters_json || '[]', []));
   const genMetaExtra: Record<string, unknown> = {
     kind: cleanText(meta.kind, 20) || 'illustration',
@@ -578,6 +619,29 @@ export async function stampCardCostume(
   return { ok: true, card_id: id, costume };
 }
 
+type ReplayCast = Array<{scope:string;id:string;name:string}>;
+
+/** The recipe an image was drawn from, and the cast whose references it used. */
+async function storedReplay(cardId: string, sessionId: unknown): Promise<{ scene: NaiScene; cast: ReplayCast }> {
+  const oldBytes = await getImageBytes(cardId);
+  if (!oldBytes) throw new Error('이미지를 읽지 못했습니다.');
+  const stored = readGenerationImageData(oldBytes);
+  let cast: ReplayCast = stored?.characters || [];
+  const scene = requireNaiReplayScene(stored?.recipe ?? await extractNaiMetadata(oldBytes));
+  // A PNG kept as NAI delivered it (원본으로 저장) has no Omni data, but its file name
+  // still names the cast, as it does for the chips: the reroll's references come from there.
+  if (!cast.length) {
+    try {
+      const { ids } = await shotCastIds(cardId);
+      if (ids.length) {
+        const owner = cleanText((await readImageLocation(cardId)).character_id || sessionId, 200);
+        cast = (await resolveCastCharacters(ids, owner)).characters.map(({ scope, id, name }) => ({ scope, id, name }));
+      }
+    } catch { /* castless: the reroll draws without references, as before */ }
+  }
+  return { scene, cast };
+}
+
 /**
  * Regenerates one card's image, replacing it with a new card at the same place.
  *
@@ -642,26 +706,11 @@ async function createRerollRevision(
   }
 
   let scene: NaiScene;
-  let embeddedCast: Array<{scope:string;id:string;name:string}> = [];
+  let embeddedCast: ReplayCast = [];
   try {
-    const oldBytes = await getImageBytes(cardId);
-    if (!oldBytes) throw new Error('이미지를 읽지 못했습니다.');
-    const stored = readGenerationImageData(oldBytes);
-    embeddedCast = stored?.characters || [];
-    scene = requireNaiReplayScene(stored?.recipe ?? await extractNaiMetadata(oldBytes));
+    ({ scene, cast: embeddedCast } = await storedReplay(cardId, row.session_id));
   } catch (err) {
     return { ok: false, error: { code: 'no_meta', message: String((err as Error)?.message || err) } };
-  }
-  // A PNG kept as NAI delivered it (원본으로 저장) has no Omni data, but its file name
-  // still names the cast, as it does for the chips: the reroll's references come from there.
-  if (!embeddedCast.length) {
-    try {
-      const { ids } = await shotCastIds(cardId);
-      if (ids.length) {
-        const owner = cleanText((await readImageLocation(cardId)).character_id || row.session_id, 200);
-        embeddedCast = (await resolveCastCharacters(ids, owner)).characters.map(({ scope, id, name }) => ({ scope, id, name }));
-      }
-    } catch { /* castless: the reroll draws without references, as before */ }
   }
 
   const ov = overrides as Record<string, unknown> | null;

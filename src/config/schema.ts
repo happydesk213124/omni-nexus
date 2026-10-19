@@ -270,6 +270,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.image_png_original = card.image_png_original === true;
   card.image_png_bake = card.image_png_bake === true;
   card.nai_auto_upscale = card.nai_auto_upscale === true;
+  card.upscale_button_mode = card.upscale_button_mode === 'upscale' || card.upscale_button_mode === 'upscale_webp' ? card.upscale_button_mode : 'original';
   card.location_tag_weight = normalizeLocationWeight(card.location_tag_weight);
   card.message_select_gesture = normalizeMessageSelectGesture(card.message_select_gesture);
   // costume: main-tagger catalog inject (char_looks always builds costumes[])

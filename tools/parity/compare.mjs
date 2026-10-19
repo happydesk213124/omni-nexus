@@ -466,6 +466,8 @@ function expectedAssetChange(a,b,at) {
   // New defaults keep prior image storage quality and leave paid upscale opt-in; image_output asserts persistence/export.
   if (/\.value\.(?:settings|json)\.card\.image_webp_quality$/.test(at)) return a === undefined && b === 90;
   if (/\.value\.(?:settings|json)\.card\.nai_auto_upscale$/.test(at)) return a === undefined && b === false;
+  // 🆙 버튼 방식 defaults to the free PNG fetch; settings.image_output asserts persistence/export.
+  if (/\.value\.(?:settings|json)\.card\.upscale_button_mode$/.test(at)) return a === undefined && b === 'original';
   // Neutral place weighting adds a saved default without changing old prompts;
   // settings.location_weight asserts decimal persistence and export explicitly.
   if (/\.value\.(?:settings|json)\.card\.location_tag_weight$/.test(at)) return a === undefined && b === 1;
@@ -697,6 +699,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
 const NEW_ONLY_STEPS = new Map([
   ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale/원본 저장 persistence failed'],
   ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
+  ['cards.original_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'PNG 원본 받아오기 must reject missing cards before generating'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
   ['speech.style_on',v=>JSON.stringify(v?.saved)==='[2,true]' && JSON.stringify(v?.exported)==='[2,true]' ? null : 'Speech bubble weight/huge text must persist and export'],

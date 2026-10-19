@@ -101,7 +101,7 @@ test('shipped fullscreen hides navigation and pin, shows count on hover and high
     assert.deepEqual(labels,['⚛️','🔃','🎲','🔮','🆙','닫기']);
     assert.equal(await page.evaluate(()=>fixture.reads.length),1,'fullscreen navigation caches metadata and loads only the chosen pixels');
     assert.deepEqual(await page.evaluate(()=>fixture.pixels),['shot_r1','shot_r2']);
-    for(const [name,act] of [['태그 생성','retag'],['메시지 이미지 재생성','regen'],['이 이미지 리롤','reroll'],['샷 태그 수정','base'],['NAI 업스케일 (Anlas 소모)','upscale']]) {
+    for(const [name,act] of [['태그 생성','retag'],['메시지 이미지 재생성','regen'],['이 이미지 리롤','reroll'],['샷 태그 수정','base'],['PNG 원본 · 업스케일','upscale']]) {
       const button=page.getByRole('button',{name,exact:true});
       await page.mouse.move(0,0);
       await page.waitForFunction(want=>{const n=[...document.querySelectorAll('button')].find(n=>n.textContent===want);return getComputedStyle(n).backgroundColor==='rgba(255, 255, 255, 0.08)';},await button.textContent());
