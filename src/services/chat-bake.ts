@@ -5,7 +5,8 @@ import { measureWrite } from '../core/write-metrics';
 /**
  * Write / strip `[[@inray::cardId::inxshot_…]]` on one Risu chat message.
  */
-import { serializeSessionStorage } from '../storage/chat-session-store';
+import { pendingNotesForChat, serializeSessionStorage } from '../storage/chat-session-store';
+import { flushShotAssets } from '../storage/shot-character';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
@@ -89,6 +90,9 @@ async function writeChat(
   chat: Record<string, unknown>,
   opts: { refreshAssets?: boolean; messageIndex: number; previousBody: string; scrollSlot?: { waitId: string; cardId: string } },
 ): Promise<void> {
+  // The tokens this write bakes name shots that must be registered first: the
+  // waiting ones go out now, in one character write.
+  await flushShotAssets();
   const work = async () => {
     // Character asset registration refreshes host lookup without toggling modules.
     await serializeSessionStorage(async () => {
@@ -102,7 +106,11 @@ async function writeChat(
       setMessageBody(target, messageBody(chatMessageList(chat)[opts.messageIndex]));
       if (Array.isArray(fresh.message)) fresh.message = messages;
       else fresh.messages = messages;
+      // The session note's waiting changes ride this write: one chat write, one redraw.
+      const note = pendingNotesForChat(fresh, charIndex);
+      if (note) fresh.localLore = note.localLore;
       await measureWrite('chat','image-tokens',()=>host.setChatToIndex!(charIndex, chatIndex, fresh));
+      note?.done();
     });
   };
   const bridge = (globalThis as typeof globalThis & {

@@ -244,13 +244,102 @@ export async function removeSessionStorage(key: string): Promise<boolean> {
   });
 }
 
+/**
+ * Automatic note changes (place, outfits, recent cast) wait here instead of
+ * rewriting the chat at once. A note lives in the chat, and the plugin API can
+ * only write a chat whole, so each change was one more full chat write (and on
+ * PocketRisu one more redraw) beside the bake. Now the next bake write of the same
+ * chat carries them; what no bake carries is written once the chat's image jobs
+ * are done, or after NOTE_SAFETY_MS. User edits still write at once and win.
+ * Reads see the waiting changes, so the next job is never behind.
+ */
+type PendingNote = { patch: RecordValue; target?: Target; holds: number; timer?: ReturnType<typeof setTimeout> };
+const pendingNotes = new Map<string, PendingNote>();
+const NOTE_SAFETY_MS = 120_000;
+function pendingRow(sid: string): PendingNote {
+  let row = pendingNotes.get(sid);
+  if (!row) { row = { patch: {}, holds: 0 }; pendingNotes.set(sid, row); }
+  return row;
+}
+/** An image job of this chat is running: its bake will carry the note. */
+export function holdChatNote(sid: string): void { if (sid) pendingRow(sid).holds++; }
+/** That job ended: with no other job holding the chat, what is left is written now. */
+export function releaseChatNote(sid: string): void {
+  const row = pendingNotes.get(sid);
+  if (!row) return;
+  row.holds = Math.max(0, row.holds - 1);
+  if (!row.holds) void flushChatNote(sid);
+}
+/** Resolves at once while a job holds the chat; with none, once the change is written. */
+export function queueChatNote(sid: string, patch: RecordValue): Promise<void> {
+  if (!sid) return Promise.resolve();
+  const row = pendingRow(sid);
+  row.patch = { ...row.patch, ...patch };
+  clearTimeout(row.timer);
+  row.timer = setTimeout(() => void flushChatNote(sid, true), NOTE_SAFETY_MS);
+  // Bakes find the note by chat; the list is the warm directory, not a fresh read.
+  if (!row.target) void targets().then(list => { const target = list.find(t => t.sid === sid); if (target && pendingNotes.get(sid) === row) row.target = target; }).catch(() => {});
+  return row.holds ? Promise.resolve() : flushChatNote(sid);
+}
+/** Writes what waits for this chat; `force` also while a job still holds it. */
+export async function flushChatNote(sid: string, force = false): Promise<void> {
+  const row = pendingNotes.get(sid);
+  if (!row || (row.holds && !force)) return;
+  clearTimeout(row.timer); row.timer = undefined;
+  const patch = row.patch;
+  row.patch = {};
+  if (!row.holds) pendingNotes.delete(sid);
+  if (!Object.keys(patch).length) return;
+  try {
+    await writeNote(sid, patch);
+  } catch (error) {
+    // Kept for the next bake or flush; anything newer that arrived meanwhile wins.
+    const again = pendingRow(sid);
+    again.patch = { ...patch, ...again.patch };
+    again.target ??= row.target;
+    clearTimeout(again.timer);
+    again.timer = setTimeout(() => void flushChatNote(sid, true), NOTE_SAFETY_MS);
+    console.warn('[omni] session note write deferred', error);
+  }
+}
+/**
+ * For a bake write of this chat: its localLore with every waiting note change
+ * applied, and `done` to call once that write succeeded. Null when nothing waits.
+ */
+export function pendingNotesForChat(chat: RecordValue, character: number): { localLore: unknown[]; done: () => void } | null {
+  const chatId = cleanText(chat.id || chat.chatId, 200);
+  const rows = [...pendingNotes].filter(([, row]) => row.target && row.target.character === character && row.target.chatId === chatId && Object.keys(row.patch).length);
+  if (rows.length !== 1) return null;
+  const [sid, row] = rows[0]!;
+  let previous: RecordValue;
+  try { previous = object(notePayload(chat)) ?? {}; } catch { return null; }
+  const snapshot = row.patch, note = { ...previous, ...snapshot };
+  const done = () => {
+    // Only what this write carried; a change queued meanwhile still waits.
+    const current = pendingNotes.get(sid);
+    if (!current) return;
+    for (const key of Object.keys(snapshot)) if (JSON.stringify(current.patch[key]) === JSON.stringify(snapshot[key])) delete current.patch[key];
+    if (!Object.keys(current.patch).length && !current.holds) { clearTimeout(current.timer); pendingNotes.delete(sid); }
+  };
+  if (JSON.stringify(previous) === JSON.stringify(note)) { done(); return null; }
+  return { localLore: noteLore(chat, note), done };
+}
+function noteLore(chat: RecordValue, note: unknown): unknown[] {
+  const lore = (chat.localLore as unknown[] || []).filter(v => object(v)?.comment !== 'omni.nexus.note');
+  lore.push({ comment: 'omni.nexus.note', key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0, content: JSON.stringify({ version: 1, note }) });
+  return lore;
+}
+
 /** Dedicated note entry: intentionally never consult the legacy plugin key. */
 export async function readChatNote(sid:string):Promise<unknown> {
   return serializeSessionStorage(async()=> {
     const warm=directoryWarm();
     const target=(await targets()).find(t=>t.sid===sid) || (warm ? (await targets(true)).find(t=>t.sid===sid) : undefined);
-    if(!target) return null;
-    return notePayload(await readChat(target));
+    const waiting=pendingNotes.get(sid)?.patch;
+    const hasWaiting=!!waiting && Object.keys(waiting).length>0;
+    if(!target) return hasWaiting ? { ...waiting } : null;
+    const stored=notePayload(await readChat(target));
+    return hasWaiting ? { ...(object(stored) ?? {}), ...waiting } : stored;
   });
 }
 function notePayload(chat:RecordValue):unknown {
@@ -261,7 +350,13 @@ function notePayload(chat:RecordValue):unknown {
   if(e.key!=='' || e.alwaysActive!==false || data.version!==1 || !object(data.note))throw new Error('Invalid omni.nexus.note');
   return data.note;
 }
+/** A user's edit: written at once, and a waiting automatic change to the same field is dropped. */
 export async function writeChatNote(sid:string,note:unknown):Promise<unknown> {
+  const waiting=pendingNotes.get(sid);
+  if(waiting)for(const key of Object.keys(object(note) ?? {}))delete waiting.patch[key];
+  return writeNote(sid,note);
+}
+function writeNote(sid:string,note:unknown):Promise<unknown> {
   return serializeSessionStorage(async()=> {
     const target=(await targets(true)).find(t=>t.sid===sid);
     if(!target)throw new Error('Chat required for author note');
@@ -271,9 +366,7 @@ export async function writeChatNote(sid:string,note:unknown):Promise<unknown> {
     // never replay a stale location or erase a concurrent note edit.
     note = { ...previous, ...object(note) };
     if (JSON.stringify(previous) === JSON.stringify(note)) return note;
-    const lore=(chat.localLore as unknown[] || []).filter(v=>object(v)?.comment!=='omni.nexus.note');
-    lore.push({comment:'omni.nexus.note',key:'',secondkey:'',alwaysActive:false,selective:false,mode:'normal',insertorder:0,content:JSON.stringify({version:1,note})});
-    await risuHost()!.setChatToIndex!(target.character,target.chat,{...chat,localLore:lore});
+    await risuHost()!.setChatToIndex!(target.character,target.chat,{...chat,localLore:noteLore(chat,note)});
     if(JSON.stringify(notePayload(await readChat(target)))!==JSON.stringify(note))throw new Error('Author note verification failed');
     return note;
   });

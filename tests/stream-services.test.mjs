@@ -1,5 +1,6 @@
 import { png } from './fixtures/upscale-image.mjs';
 import test from 'node:test';
+import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import {installHost,PNG_1X1,zipStore} from '../tools/parity/host.mjs';
 import {analysisBody} from '../.test-build/message-body.mjs';
@@ -105,6 +106,111 @@ test('streaming blocks of one reply carry wear_state and location on: a block th
   const wear=Object.values((await note()).wear ?? {});
   assert.deepEqual(wear.map(row=>[row.name,row.wear]),[['세라','topless']],'the reply\'s last stated state, once the reply is done');
   assert.equal((await note()).location,'bedroom, indoor','and its last stated place, whichever block finished last');
+});
+
+test('the session note rides the bake write: no chat write of its own once a reply is done',{timeout:15000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3});
+  const first='First narrative paragraph long enough for generating images.';
+  const block=n=>`[[inx${n}]]{"place":"office, indoor","aspect":"portrait","characters":[{"name":"세라"}]}[[/inx${n}]]`;
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',isStreaming:true,message:[{role:'char',chatId:'m',data:`${first}\n${block(1)}\n${block(2)}\nLast line.`}]}]});
+  await f.api.upsertCharacter('c',{name:'세라',gender:'girl',appearance:'1girl, red hair',attire:'office suit'});
+  const shot=(character,location)=>({new_characters:[],scenes:[{place:'office, indoor',shots:[{aspect:'portrait',characters:[{name:'세라',action:'standing',...character}],...(location?{location}:{}),line:1,paragraph:0}]}]});
+  const ids=[];
+  for(const [i,tagged] of [shot({wear_state:'nude'},'manager office, indoor'),shot({})].entries())ids.push((await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:i+1,inline_tagged:tagged})).job_id);
+  for(const id of ids)await f.wait(id,j=>j.progress.phase==='waiting_output');
+  // Every chat write from here on: did it change a message, or only the note?
+  const writes=[],setChat=risuai.setChatToIndex;
+  risuai.setChatToIndex=async(ci,ti,chat)=>{const before=await risuai.getChatFromIndex(ci,ti);writes.push({message:JSON.stringify(before.message)!==JSON.stringify(chat.message),note:JSON.stringify(before.localLore)!==JSON.stringify(chat.localLore)});return setChat(ci,ti,chat);};
+  await f.commit(ids[0],{job_ids:ids});
+  for(const id of ids)await f.wait(id,j=>j.state==='done');
+  await new Promise(r=>setTimeout(r,50));
+  risuai.setChatToIndex=setChat;
+  const note=JSON.parse((await f.chat()).localLore?.find(e=>e.comment==='omni.nexus.note')?.content ?? '{"note":{}}').note;
+  assert.equal(note.location,'manager office, indoor');assert.deepEqual(Object.values(note.wear??{}).map(r=>r.wear),['nude']);
+  assert.ok(writes.some(w=>w.message&&w.note),'the note went out with a bake write');
+  assert.deepEqual(writes.filter(w=>w.note&&!w.message),[],'no chat write was the note alone');
+});
+
+test('a reply\'s shots register in one character write at its bake, none while it streams',{timeout:15000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3});
+  const first='First narrative paragraph long enough for generating images.';
+  const block=n=>`[[inx${n}]]{"place":"office, indoor","aspect":"portrait","characters":[]}[[/inx${n}]]`;
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',isStreaming:true,message:[{role:'char',chatId:'m',data:`${first}\n${block(1)}\n${block(2)}\n${block(3)}\nLast line.`}]}]});
+  // Every character write: did it add to the asset list?
+  const registrations=[],setChar=risuai.setCharacterToIndex;
+  risuai.setCharacterToIndex=async(i,char)=>{const before=await risuai.getCharacterFromIndex(i);if((char.additionalAssets||[]).length!==(before?.additionalAssets||[]).length)registrations.push((char.additionalAssets||[]).length-(before?.additionalAssets||[]).length);return setChar(i,char);};
+  const tagged={new_characters:[],scenes:[{place:'office, indoor',shots:[{aspect:'portrait',characters:[],line:1,paragraph:0}]}]};
+  const ids=[];
+  for(const n of [1,2,3])ids.push((await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:n,inline_tagged:tagged})).job_id);
+  for(const id of ids)await f.wait(id,j=>j.progress.phase==='waiting_output');
+  assert.deepEqual(registrations,[],'three images made, the character not written once while the reply streams');
+  // The listing already sees them.
+  assert.equal((await f.api.galleryIndexNewestFirst()).length>=3,true,'waiting shots are listed as if registered');
+  await f.commit(ids[0],{job_ids:ids});
+  for(const id of ids)await f.wait(id,j=>j.state==='done');
+  risuai.setCharacterToIndex=setChar;
+  assert.deepEqual(registrations,[3],'all three registered in one character write, at the bake');
+  const saved=(await f.chat()).message[0].data, names=((await risuai.getCharacterFromIndex(0)).additionalAssets||[]).map(a=>a[0]);
+  for(const name of saved.match(/inxshot_[^:\]]+/g)||[])assert.ok(names.includes(name),'every baked token names a registered shot: '+name);
+  assert.equal((saved.match(/\[\[@inray::/g)||[]).length,3);
+});
+
+test('a person block 1 introduces: known in block 2 at once, written with the shots in the bake\'s one character write',{timeout:15000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3});
+  const first='First narrative paragraph long enough for generating images.';
+  const block=n=>`[[inx${n}]]{"place":"office, indoor","aspect":"portrait","characters":[{"name":"세라"}]}[[/inx${n}]]`;
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',isStreaming:true,message:[{role:'char',chatId:'m',data:`${first}\n${block(1)}\n${block(2)}\nLast line.`}]}]});
+  const writes=[],setChar=risuai.setCharacterToIndex;
+  risuai.setCharacterToIndex=async(i,char)=>{writes.push(char);return setChar(i,char);};
+  const shot=(extra,newChars=[])=>({new_characters:newChars,scenes:[{place:'office, indoor',shots:[{aspect:'portrait',characters:[{name:'세라',...extra}],line:1,paragraph:0}]}]});
+  const sera={name:'세라',gender:'girl',appearance:'1girl',hair_color:'crimson hair',hair_style:'long hair',eye_color:'green eyes',attire:'office suit'};
+  const ids=[];
+  ids.push((await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:1,inline_tagged:shot({action:'standing'},[sera])})).job_id);
+  ids.push((await f.api.createJob({...f.request,assistant_text:first,stream_line_start:1,stream_line_end:1,inline_block:2,inline_tagged:shot({action:'sitting'})})).job_id);
+  for(const id of ids)await f.wait(id,j=>j.progress.phase==='waiting_output');
+  assert.equal(writes.length,0,'nothing written to the character while the reply streams');
+  const sitting=f.host.naiRequests.filter(r=>r.kind==='generate').map(r=>JSON.stringify(r.body.parameters?.v4_prompt?.caption?.char_captions)).find(c=>/sitting/.test(c));
+  assert.match(sitting,/crimson hair/,'block 2 already draws her with the looks block 1 registered');
+  await f.commit(ids[0],{job_ids:ids});
+  for(const id of ids)await f.wait(id,j=>j.state==='done');
+  risuai.setCharacterToIndex=setChar;
+  assert.equal(writes.length,1,'one character write at the bake');
+  const roster=JSON.parse(writes[0].globalLore.find(e=>e.comment==='omni.nexus.data.global').content).roster;
+  assert.ok(roster.some(row=>row.name==='세라'),'her registration rode it');
+  assert.equal(writes[0].additionalAssets.filter(a=>/^inxshot_/.test(a[0])).length,2,'and both shots');
+});
+
+test('a user\'s roster edit while a job\'s new person waits writes both, the user\'s change kept',async()=>{
+  const f=await fixture();
+  const stored=async()=>JSON.parse((await risuai.getCharacterFromIndex(0)).globalLore?.find(e=>e.comment==='omni.nexus.data.global')?.content ?? '{"roster":[]}').roster;
+  await f.api.upsertCharacter('c',{name:'하나',appearance:'1girl, blue hair'});
+  // A job registers 세라: waiting, but every read already has her.
+  await f.api.upsertCharacter('c',{name:'세라',appearance:'1girl, red hair'},{buffer:true});
+  assert.ok(!(await stored()).some(r=>r.name==='세라'),'not written yet');
+  assert.ok((await f.api.listCharacters('c')).some(r=>r.name==='세라'),'but listed');
+  // The user edits 하나 in the character tab: written at once, and it carries 세라 along.
+  await f.api.upsertCharacter('c',{...(await f.api.listCharacters('c')).find(r=>r.name==='하나'),appearance:'1girl, green hair'});
+  const rows=await stored();
+  assert.match(rows.find(r=>r.name==='하나').appearance,/green hair/,'the user\'s change');
+  assert.ok(rows.some(r=>r.name==='세라'&&/red hair/.test(r.appearance)),'and the waiting person, in the same write');
+  assert.equal((await f.api.listCharacters('c')).filter(r=>r.name==='세라').length,1,'never twice');
+});
+
+test('a shot saved but not registered when the app closed is registered at the next start',{timeout:15000},async()=>{
+  await fixture();
+  // shot-character on its own: putShotAsset also names shot-module's export in the shared bundle.
+  const built=await build({entryPoints:['src/storage/shot-character.ts'],bundle:true,write:false,format:'esm',platform:'node',define:{__PLUGIN_ID__:'"omni-nexus"',__PLUGIN_VERSION__:'"t"'}});
+  const sc=await import('data:text/javascript;base64,'+Buffer.from(built.outputFiles[0].text).toString('base64'));
+  const assets=async()=>((await risuai.getCharacterFromIndex(0)).additionalAssets||[]).map(a=>a[0]);
+  const before=(await assets()).length;
+  sc.holdShotAssets();
+  const saved=await sc.putShotAsset('restartshot1',png(64,64),'',{id:'c',index:0});
+  assert.ok(saved?.path,'the file itself is saved at once');
+  assert.equal((await assets()).length,before,'its registration waits while a job holds it');
+  // The app closes here: the waiting list survives in plugin storage, and the next start registers it.
+  await sc.restorePendingShotAssets();
+  assert.ok((await assets()).includes(saved.name),'registered at the next start');
+  sc.releaseShotAssets();
 });
 
 test('someone block 1 registers is known by name in block 2, even when block 1 registers late',{timeout:15000},async()=>{

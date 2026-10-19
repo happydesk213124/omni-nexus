@@ -17,6 +17,7 @@ import { installSettingsUx } from './settings-ux/mount';
 import { installTtsHost } from './tts-ui/host-chat';
 import { installInlineTags } from './services/inline-tagging';
 import { installWaitTaps } from './image-ui/wait-taps';
+import { restorePendingShotAssets } from './storage/shot-character';
 
 installUiContractGlobals();
 installSettingsUx();
@@ -24,4 +25,6 @@ installNativeBridge();
 void installTtsHost().catch(error => dbg('tts.boot.failed', { message: String(error) }, 'warn'));
 void installInlineTags({ ready }).catch(error => dbg('inline-tags.boot', { message: String(error) }, 'warn'));
 installWaitTaps();
+// Shots saved but not registered when the app last closed (shot-character).
+void restorePendingShotAssets().catch(error => dbg('shot.pending.restore', { message: String(error) }, 'warn'));
 dbg('boot.loaded', { message: VERSION });

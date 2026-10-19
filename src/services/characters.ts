@@ -67,6 +67,8 @@ export interface MergeRosterArgs {
   assetLooks?: boolean;
   /** Compact trigger/name → NAI identity tag; wins over LLM `original` when set. */
   originalHints?: Record<string, string>;
+  /** An image job: roster writes wait for the bake's character write (character-roster). */
+  bufferWrites?: boolean;
 }
 
 interface SessionEditCount {
@@ -325,7 +327,7 @@ export async function matchTriggeredCharactersPayload(
 
 // ── writes ─────────────────────────────────────────────────────────────────
 
-export async function upsertCharacter(scope: string, raw: unknown, opts: UpsertOptions = {}): Promise<CharacterRecord | null> {
+export async function upsertCharacter(scope: string, raw: unknown, opts: UpsertOptions & { buffer?: boolean } = {}): Promise<CharacterRecord | null> {
   if (!normalizeCharacterRecord(raw)) return null;
   const scopeKey = cleanText(scope, 200) || GLOBAL_SCOPE;
   let saved: CharacterRecord | null = null;
@@ -333,7 +335,7 @@ export async function upsertCharacter(scope: string, raw: unknown, opts: UpsertO
     const next = prepareCharacterUpsert(scopeKey, raw, characterRosterView(rows, scopeKey), Date.now() / 1000, opts);
     saved = next?.saved || null;
     return next ? [...rows.filter(row => !next.replacedIds.has(row.id)), next.saved] : rows;
-  });
+  }, { buffer: opts.buffer });
   return saved;
 }
 
@@ -569,6 +571,8 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
   const characterId = cleanText(args.characterId || '', 200);
   const assetLooks = !!args.assetLooks;
   const assetPriorityFloor = assetLooks ? ASSET_LOOKS_PRIORITY : 0;
+  // An image job's roster writes wait for its bake's character write (character-roster).
+  const writeOpts = { buffer: !!args.bufferWrites };
   const originalHints = args.originalHints && typeof args.originalHints === 'object' ? args.originalHints : {};
   const originalFromHint = (raw: unknown): string => {
     if (!raw || typeof raw !== 'object') return '';
@@ -703,7 +707,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
           ...(rec.age != null && rec.age !== '' ? { age: rec.age } : {}),
           ...(cleanText(rec.penis_size || '') ? { penis_size: rec.penis_size } : {}),
           ...(rec.gender ? { gender: rec.gender } : {}),
-        });
+        }, writeOpts);
       } else {
         const writeScope = existing.scope === GLOBAL_SCOPE ? GLOBAL_SCOPE : (existing.scope || writeSessionId);
         await upsertCharacter(writeScope, {
@@ -711,7 +715,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
           name: existing.name,
           costumes: appendDuplicateCostumes(existing, [rec]),
           active_costume: existing.active_costume,
-        });
+        }, writeOpts);
         savedCostumeOwners.add(rec.name);
       }
       roster = await readRoster();
@@ -748,7 +752,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
       ...(attire ? { attire } : {}),
       ...(bottoms ? { bottoms } : {}),
       ...(accessories ? { accessories } : {}),
-    });
+    }, writeOpts);
     savedCostumeOwners.add(rec.name);
     roster = await readRoster();
   }
@@ -774,7 +778,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
       name: existing.name,
       costumes: merged,
       active_costume: existing.active_costume,
-    });
+    }, writeOpts);
     roster = await readRoster();
   }
 
@@ -801,7 +805,7 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
         ...(attire ? { attire } : {}),
         ...(bottoms ? { bottoms } : {}),
         ...(accessories ? { accessories } : {}),
-      });
+      }, writeOpts);
     }
     roster = await readRoster();
   }

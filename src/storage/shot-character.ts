@@ -7,6 +7,8 @@ import { serializeSessionStorage } from './chat-session-store';
 import { characterDirectory, directoryWarm } from './character-directory';
 import { storeShotBytes, readShotAssetBytes, type ShotAssetRow } from './shot-module';
 import { isShotAssetName, idFromShotAssetName, sessionFromShotAssetName } from '../domain/gallery/shot-assets';
+import { psGet, psRemove, psSet } from './device-store';
+import { bufferedRosterLore, bufferedRosterTargets } from './character-roster';
 export { readShotAssetBytes };
 type Row=Record<string,unknown>;
 type Target={id:string;index:number};
@@ -51,19 +53,108 @@ async function read(target:Target) {
  if(String(char.chaId || char.id)!==target.id || !Array.isArray(char.additionalAssets) || (char.additionalAssets.length===0 && char.additionalAssetManifest!=null)) throw new Error('Character asset list unavailable; refusing overwrite');
  return {host,index,char,assets:char.additionalAssets as unknown[]};
 }
+/**
+ * Registering a shot in the character's asset list rewrites the whole character
+ * (its chats too), once per image. While an image job runs, registrations wait
+ * here and go out together in one character write: before the bake that needs
+ * them (chat-bake), or when the jobs end. The file itself is saved at once, and
+ * the waiting list is kept in plugin storage, so a restart still registers it.
+ * Listings already see a waiting shot as if it were registered.
+ */
+type PendingShot = { name: string; path: string };
+const pendingShots = new Map<string, { target: Target; rows: PendingShot[] }>();
+const PENDING_SHOTS_KEY = 'onx_pending_shot_assets';
+const SHOT_SAFETY_MS = 120_000;
+let shotHolds = 0, shotTimer: ReturnType<typeof setTimeout> | undefined;
+export function holdShotAssets(): void { shotHolds++; }
+export function releaseShotAssets(): void {
+  shotHolds = Math.max(0, shotHolds - 1);
+  if (!shotHolds) void flushShotAssets().catch(error => console.warn('[omni] shot registration deferred', error));
+}
+// The key exists only while something waits: nothing is written for a job whose shots all registered.
+let pendingStored = false;
+async function rememberPendingShots(): Promise<void> {
+  const waiting = [...pendingShots.values()].filter(entry => entry.rows.length);
+  if (waiting.length) { await psSet(PENDING_SHOTS_KEY, waiting); pendingStored = true; }
+  else if (pendingStored) { await psRemove(PENDING_SHOTS_KEY); pendingStored = false; }
+}
+/**
+ * One character write carrying its waiting shot registrations and its waiting
+ * roster changes (character-roster) together, verified after.
+ */
+async function writeCharacter(target: Target, rows: readonly PendingShot[]): Promise<void> {
+  await serializeSessionStorage(async()=>{
+    const {host,index,char,assets}=await read(target);
+    const adds: unknown[] = [];
+    for (const row of rows) {
+      const hits=assets.filter(v=>Array.isArray(v)&&v[0]===row.name);
+      if(hits.some(v=>(v as unknown[])[1]!==row.path)) throw new Error('Image asset name collision');
+      if(!hits.length && !adds.some(v=>(v as unknown[])[0]===row.name)) adds.push([row.name,row.path,row.name.split('.').pop() || 'webp']);
+    }
+    const roster = bufferedRosterLore(char, target.id);
+    if(adds.length || roster) await measureWrite('character','asset-register',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:[...assets,...adds],...(roster ? { globalLore: roster.globalLore } : {})} as never));
+    const verified=await read(target);
+    for (const row of rows) if(!verified.assets.some(v=>Array.isArray(v)&&v[0]===row.name&&v[1]===row.path)) throw new Error('Image asset registration failed');
+    if (roster) {
+      if (!roster.check(verified.char)) throw new Error('Character roster save verification failed');
+      roster.done();
+    }
+  });
+  invalidateShotListing(target.id);
+}
+/** Registers every waiting shot and roster change: one character write per character. */
+export async function flushShotAssets(): Promise<void> {
+  clearTimeout(shotTimer); shotTimer = undefined;
+  let failure: unknown;
+  const ids = new Set([...pendingShots.keys(), ...bufferedRosterTargets().map(t => t.id)]);
+  for (const key of ids) {
+    const entry = pendingShots.get(key);
+    const target = entry?.target ?? bufferedRosterTargets().find(t => t.id === key);
+    if (!target) continue;
+    const rows = [...(entry?.rows || [])];
+    try {
+      await writeCharacter(target, rows);
+      if (entry) {
+        entry.rows = entry.rows.filter(row => !rows.some(done => done.name === row.name));
+        if (!entry.rows.length) pendingShots.delete(key);
+      }
+    } catch (error) { failure = error; }
+  }
+  await rememberPendingShots().catch(() => {});
+  if (failure) { shotTimer = setTimeout(() => void flushShotAssets().catch(() => {}), SHOT_SAFETY_MS); throw failure; }
+}
+/** At boot: shots saved but not yet registered when the app last closed. */
+export async function restorePendingShotAssets(): Promise<void> {
+  const raw = await psGet(PENDING_SHOTS_KEY);
+  if (!Array.isArray(raw) || !raw.length) return;
+  pendingStored = true;
+  for (const value of raw) {
+    const entry = obj(value), target = obj(entry.target), rows = Array.isArray(entry.rows) ? entry.rows : [];
+    const id = String(target.id || ''), index = Number(target.index);
+    if (!id || !Number.isInteger(index)) continue;
+    const kept = rows.map(obj).filter(row => isShotAssetName(row.name) && typeof row.path === 'string').map(row => ({ name: String(row.name), path: String(row.path) }));
+    if (kept.length) pendingShots.set(id, { target: { id, index }, rows: kept });
+  }
+  await flushShotAssets();
+}
+function pendingAssetsFor(characterId: string): unknown[] {
+  return (pendingShots.get(characterId)?.rows || []).map(row => [row.name, row.path, row.name.split('.').pop() || 'webp']);
+}
 export async function putShotAsset(id:string,bytes:BytesLike,sessionId='',owner?:Target,castIds?:readonly unknown[]) {
   const target=owner || await resolveShotOwner({session_id:sessionId});
   const saved=await storeShotBytes(id,bytes,sessionId,castIds);
  if(!saved) throw new Error('Image asset file save failed');
- await serializeSessionStorage(async()=>{
-  const {host,index,char,assets}=await read(target);
-  const hits=assets.filter(v=>Array.isArray(v)&&v[0]===saved.name);
-  if(hits.some(v=>(v as unknown[])[1]!==saved.path)) throw new Error('Image asset name collision');
-  if(!hits.length) await measureWrite('character','asset-register',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:[...assets,[saved.name,saved.path,saved.name.split('.').pop() || 'webp']]} as never));
-  const verified=await read(target);
-  if(!verified.assets.some(v=>Array.isArray(v)&&v[0]===saved.name&&v[1]===saved.path)) throw new Error('Image asset registration failed');
- });
- invalidateShotListing(target.id);
+ if (shotHolds > 0) {
+  const entry = pendingShots.get(target.id) ?? { target, rows: [] };
+  if (!entry.rows.some(row => row.name === saved.name)) entry.rows.push({ name: saved.name, path: saved.path });
+  pendingShots.set(target.id, entry);
+  await rememberPendingShots().catch(() => {});
+  clearTimeout(shotTimer);
+  shotTimer = setTimeout(() => void flushShotAssets().catch(() => {}), SHOT_SAFETY_MS);
+  invalidateShotListing(target.id);
+  return saved;
+ }
+ await writeCharacter(target, [{ name: saved.name, path: saved.path }]);
  return saved;
 }
 export type CharacterShotAsset = ShotAssetRow & { location: Row };
@@ -112,8 +203,10 @@ async function scanShotAssets(rows:Awaited<ReturnType<typeof directory>>):Promis
  for(const row of rows) {
   // Some hosts return full characters in the directory; do not fetch them again.
   const char=Array.isArray(row.char.additionalAssets) ? row.char : obj(await risuHost()?.getCharacterFromIndex?.(row.index));
-  const assets = Array.isArray(char.additionalAssets) ? char.additionalAssets : [];
   const characterId=String(char.chaId || char.id || '');
+  // A shot waiting for its registration is listed as if it were registered.
+  const registered = Array.isArray(char.additionalAssets) ? char.additionalAssets : [];
+  const assets = [...registered, ...pendingAssetsFor(characterId).filter(v => !registered.some(r => Array.isArray(r) && r[0] === (v as unknown[])[0]))];
   const chats=Array.isArray(char.chats)?char.chats:[];
   const chatSessions=new Map(chats.map((c,index)=>['risu_'+sessionIdHash(characterId+'|'+String(obj(c).id || '')),index]));
   for(const [assetOrder, v] of assets.entries()) {
@@ -133,6 +226,12 @@ async function scanShotAssets(rows:Awaited<ReturnType<typeof directory>>):Promis
 }
 export async function dropShotAsset(id:string):Promise<boolean> {
  let changed=false;
+ for (const entry of pendingShots.values()) {
+  const before = entry.rows.length;
+  entry.rows = entry.rows.filter(row => idFromShotAssetName(row.name) !== id);
+  if (entry.rows.length !== before) { changed = true; invalidateShotListing(entry.target.id); }
+ }
+ if (changed) await rememberPendingShots().catch(() => {});
  for(const row of await directory()) await serializeSessionStorage(async()=>{
   const target={id:String(row.char.chaId || row.char.id),index:row.index};
   if(!Array.isArray(row.char.additionalAssets) || !row.char.additionalAssets.some(v=>Array.isArray(v)&&isShotAssetName(v[0])&&idFromShotAssetName(String(v[0]))===id)) return;

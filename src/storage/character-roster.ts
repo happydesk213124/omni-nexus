@@ -84,7 +84,60 @@ function entryData(char: Row | null, t: Target): { char: Row; data: Row } {
 
 async function read(t: Target): Promise<{ char: Row; roster: CharacterRecord[] }> {
   const { char, data } = await readEntryData(t);
-  return { char, roster: (data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope: t.scope })) };
+  return { char, roster: withBuffered(t, (data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope: t.scope }))) };
+}
+
+/**
+ * Roster changes an image job makes (people it registers or completes) wait here,
+ * per bot, instead of rewriting the whole character at once. They go out in the
+ * same character write as the reply's shot registrations, at its bake
+ * (shot-character). Every read sees them already, so within the reply someone
+ * block 1 registered is known by name in block 2. Not kept across a restart: a
+ * person not yet written is registered again the next time the model names them.
+ */
+type BufferedRoster = { target: Target; put: Map<string, CharacterRecord>; drop: Set<string> };
+const bufferedRosters = new Map<string, BufferedRoster>();
+function withBuffered(t: Target, rows: CharacterRecord[]): CharacterRecord[] {
+  const ops = bufferedRosters.get(t.id);
+  if (!ops) return rows;
+  return [...rows.filter(row => !ops.drop.has(row.id) && !ops.put.has(row.id)), ...[...ops.put.values()].map(row => ({ ...row, scope: t.scope }))];
+}
+/** Bots with roster changes waiting for their character write. */
+export function bufferedRosterTargets(): Array<{ index: number; id: string }> {
+  return [...bufferedRosters.values()].filter(ops => ops.put.size || ops.drop.size).map(ops => ({ index: ops.target.index, id: ops.target.id }));
+}
+/**
+ * For one character write (shot-character): this bot's globalLore with its waiting
+ * roster changes applied, `check` to verify a re-read character, and `done` to
+ * call once that write succeeded. Null when nothing waits for it.
+ */
+export function bufferedRosterLore(char: Row, characterId: string): { globalLore: unknown[]; check: (char: Row) => boolean; done: () => void } | null {
+  const ops = bufferedRosters.get(characterId);
+  if (!ops || (!ops.put.size && !ops.drop.size)) return null;
+  const t = ops.target, { data } = entryData(char, t);
+  const stored = (data.roster as unknown[]).map(value => clean(object(value) || {}));
+  const next = [...stored.filter(row => !ops.drop.has(row.id) && !ops.put.has(row.id)), ...[...ops.put.values()].map(clean)];
+  const put = new Map(ops.put), drop = new Set(ops.drop);
+  return {
+    globalLore: rosterLore(char, t, data, next),
+    check: reread => JSON.stringify((entryData(reread, t).data.roster as unknown[]).map(value => clean(object(value) || {}))) === JSON.stringify(next),
+    done: () => {
+      const current = bufferedRosters.get(characterId);
+      if (!current) return;
+      // Only what this write carried; a change buffered meanwhile still waits.
+      for (const [id, row] of put) if (current.put.get(id) === row) current.put.delete(id);
+      for (const id of drop) current.drop.delete(id);
+      if (!current.put.size && !current.drop.size) bufferedRosters.delete(characterId);
+    },
+  };
+}
+function rosterLore(char: Row, t: Target, data: Row, next: CharacterRecord[]): unknown[] {
+  const content = JSON.stringify({ ...data, version: 1, characterId: t.id, roster: next });
+  const entries = [...(char.globalLore as unknown[] || [])];
+  const index = entries.findIndex(v => object(v)?.comment === CHARACTER_ROSTER_LORE);
+  const entry = { ...(index >= 0 ? object(entries[index]) : {}), comment: CHARACTER_ROSTER_LORE, key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0, content };
+  if (index < 0) entries.push(entry); else entries[index] = entry;
+  return entries;
 }
 
 /**
@@ -164,27 +217,39 @@ export async function viewerCharacterRosters(onReadError?: (scope: string, error
     if (!id) return rows;
     scope = unifiedSessionIdForCharacter(id);
     const { data } = entryData(char, { index, id, scope });
-    rows.push(...(data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope })));
+    rows.push(...withBuffered({ index, id, scope }, (data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope }))));
   } catch (error) { if (!onReadError) throw error; onReadError(scope, error); }
   return rows;
 }
-export async function mutateCharacterRoster(scope:string,change:(rows:CharacterRecord[])=>CharacterRecord[]):Promise<void> {
+export async function mutateCharacterRoster(scope:string,change:(rows:CharacterRecord[])=>CharacterRecord[],opts:{buffer?:boolean}={}):Promise<void> {
   if(scope==='__global__') return mutateShared(change);
   const t=await target(scope, true);
   if(!t) throw new Error('Risu character required for roster save');
+  if(opts.buffer) return serializeSessionStorage(async()=> {
+    // Waits for the bake's character write; reads see it from now on.
+    const {roster}=await read(t);
+    const next=change(roster).map(clean);
+    if(new Set(next.map(row=>row.id)).size!==next.length) throw new Error('Duplicate roster IDs');
+    const ops=bufferedRosters.get(t.id) ?? { target: t, put: new Map<string, CharacterRecord>(), drop: new Set<string>() };
+    ops.target=t;
+    const before=new Map(roster.map(row=>[row.id,JSON.stringify(clean(row))]));
+    const after=new Set(next.map(row=>row.id));
+    for(const id of before.keys()) if(!after.has(id)) { ops.drop.add(id); ops.put.delete(id); }
+    for(const row of next) if(before.get(row.id)!==JSON.stringify(row)) { ops.put.set(row.id,row); ops.drop.delete(row.id); }
+    if(ops.put.size || ops.drop.size) bufferedRosters.set(t.id,ops);
+  });
   await serializeSessionStorage(async()=> {
     const host=risuHost();if(!host?.setCharacterToIndex) throw new Error('Character lorebook writing unavailable');
     const {char,data}=await readEntryData(t);
-    const roster=(data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope}));
+    // Built on what reads show, waiting changes included: this write carries them too.
+    const roster=withBuffered(t,(data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope})));
     const next=change(roster).map(clean);
     if(new Set(next.map(row=>row.id)).size!==next.length) throw new Error('Duplicate roster IDs');
-    if(data.characterId===t.id && JSON.stringify(roster.map(clean))===JSON.stringify(next)) return;
-    const content=JSON.stringify({...data,version:1,characterId:t.id,roster:next});
-    const entries=[...(char.globalLore as unknown[] || [])];
-    const index=entries.findIndex(v=>object(v)?.comment===CHARACTER_ROSTER_LORE);
-    const entry={...(index>=0?object(entries[index]):{}),comment:CHARACTER_ROSTER_LORE,key:'',secondkey:'',alwaysActive:false,selective:false,mode:'normal',insertorder:0,content};
-    if(index<0) entries.push(entry);else entries[index]=entry;
-    await host.setCharacterToIndex(t.index,{...char,globalLore:entries});
+    const stored=(data.roster as unknown[]).map(value=>clean(object(value)||{}));
+    if(data.characterId===t.id && JSON.stringify(stored)===JSON.stringify(next)) { bufferedRosters.delete(t.id); return; }
+    await host.setCharacterToIndex(t.index,{...char,globalLore:rosterLore(char,t,data,next)});
+    // This write already holds every waiting change it was built on (reads include them).
+    bufferedRosters.delete(t.id);
     if(JSON.stringify((await read(t)).roster.map(clean))!==JSON.stringify(next)) throw new Error('Character roster save verification failed');
   });
 }

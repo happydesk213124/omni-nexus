@@ -1,4 +1,4 @@
-import { readChatNote, writeChatNote } from '../storage/chat-session-store';
+import { queueChatNote, readChatNote, writeChatNote } from '../storage/chat-session-store';
 import { SESSION_AUTHOR_NOTE_PRESETS_KEY } from '../core/constants';
 import type { ApiResult } from '../core/types';
 import { cleanText, sessionIdHash } from '../core/util/text';
@@ -144,7 +144,8 @@ async function setSessionAuthorNoteUnlocked(
 function persistSessionLocationUnlocked(sessionId: unknown, location: unknown): Promise<void> {
   const id = cleanText(sessionId, 200);
   if (!id) return Promise.resolve();
-  return writeChatNote(id, { location: cleanText(location, 800) }).then(() => {});
+  // Rides the reply's bake write (chat-session-store); written alone only if no bake comes.
+  return queueChatNote(id, { location: cleanText(location, 800) });
 }
 
 /**
@@ -203,7 +204,7 @@ export function saveRecentCasts(): Promise<void> {
   const ids = [...unsavedCasts];
   unsavedCasts.clear();
   return updateNote(async () => {
-    for (const id of ids) await writeChatNote(id, { recent_cast: recentCasts.get(id) ?? [] }).catch(() => { unsavedCasts.add(id); });
+    for (const id of ids) await queueChatNote(id, { recent_cast: recentCasts.get(id) ?? [] });
   });
 }
 
@@ -255,7 +256,7 @@ export function persistSessionOutfits(id: string, shots: Array<{characters?: unk
       }
     }
     if (sessionOutfitRevision(id) !== revision) return;
-    await writeChatNote(id, { wear, costumes });
+    await queueChatNote(id, { wear, costumes });
   });
 }
 
