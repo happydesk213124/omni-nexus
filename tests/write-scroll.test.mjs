@@ -7,7 +7,14 @@ const load=(t,hold,scope,k)=>new Function('t','nxScrollHoldOn','nxScrollContext'
 const RISU_EVENTS=new Set(['click','dblclick','contextmenu','mousedown','mouseup','mousemove','mouseover','mouseleave','pointercancel','pointerdown',
  'pointerenter','pointerleave','pointermove','pointerout','pointerover','pointerup','scroll','scrollend','keydown','keyup','keypress']);
 const refused=[];
-const listening=handlers=>({addEventListener:async(kind,fn)=>{if(!RISU_EVENTS.has(kind)&&refused.push(kind))throw Error(`Event listener of type '${kind}' is not allowed for security reasons.`);const id=String(handlers.size+Math.random());handlers.set(id,{kind,fn});return id;},removeEventListener:async(kind,id)=>{assert.equal(handlers.get(id)?.kind,kind);handlers.delete(id);}});
+// As PocketRisu does it (apiV3/v3.svelte.ts): every listener goes on the document.
+// A scroll does not bubble, so a listener that does not capture never hears the
+// chat scroll; and one is removed only with the same capture flag, else it stays.
+const capturing=options=>typeof options==='boolean'?options:!!options?.capture;
+const listening=handlers=>({addEventListener:async(kind,fn,options)=>{if(!RISU_EVENTS.has(kind)&&refused.push(kind))throw Error(`Event listener of type '${kind}' is not allowed for security reasons.`);
+  const id=String(handlers.size+Math.random()),deaf=kind==='scroll'&&!capturing(options);
+  handlers.set(id,{kind,fn:deaf?()=>{}:fn,capture:capturing(options)});return id;},
+ removeEventListener:async(kind,id,options)=>{const h=handlers.get(id);assert.equal(h?.kind,kind);if(h.capture===capturing(options))handlers.delete(id);}});
 for(const mode of ['replace','manual','host-scroll','wheel','chat-switch','failure'])test('write-scoped scroll: '+mode,async()=>{
  let top=20,scope='a',corrections=0,disconnected=0;
  const handlers=new Map();let mutated;
