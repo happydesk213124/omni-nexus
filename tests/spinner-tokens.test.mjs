@@ -97,3 +97,21 @@ test('reroll follows stable bot/chat and baked token after indices move; second 
  await assert.rejects(()=>api.rewriteBakedCardInChatMessage({...where,prevCardId:'again',nextCardId:'missing'}),/에셋/);
  assert.equal(chat.message[1].data,before);
 });
+
+test('a whole-message tag (태그 재생성) takes the pink waiting slots out with the old spinners and baked images; a line batch keeps them',async()=>{
+ const block='[[inxw1]]{"aspect":"square","shot":"two girls"}[[/inxw1]]',older='[[@inraywait::w1::832::1216]]';
+ const old='[[@inrayspinner::old_0::832::1216]][[@inray::old::inxshot_old.webp]]';
+ const body=`first\n${block}\nsecond ${older}\n${old}\nthird`;
+ let chat={id:'chat-waits',message:[{data:body}]};let db={modules:[],enabledModules:[]};
+ globalThis.risuai={getChatFromIndex:async()=>structuredClone(chat),setChatToIndex:async(_i,_j,c)=>{chat=structuredClone(c);},getDatabase:async()=>structuredClone(db),setDatabase:async next=>{db={...db,...next};}};
+ api.setConfig({card:{inline_chat_text_side:'after'}});
+ assert.equal(await api.writeJobSpinners({...target,shots:[{line:2,shot_index:0}]}),true);
+ const text=chat.message[0].data;
+ assert.doesNotMatch(text,/inxw1|@inraywait|old_0|inxshot_old/,'waiting slots, old spinner and baked image are all gone');
+ assert.ok(text.indexOf(api.spinnerToken('job-a',0))>text.indexOf('second'),'the new spinner sits on line 2 as the tagger counted it');
+ assert.ok(text.indexOf(api.spinnerToken('job-a',0))<text.indexOf('third'));
+ assert.equal(api.proseForHash(text).replace(/\s+/g,' ').trim(),'first second third');
+ chat={id:'chat-waits',message:[{data:body}]};
+ await api.writeJobSpinners({...target,jobId:'batch-b',preserveJobIds:['batch-a'],shots:[{line:1,shot_index:0}]});
+ assert.ok(chat.message[0].data.includes(block) && chat.message[0].data.includes(older),'a streaming line batch leaves the slots alone');
+});

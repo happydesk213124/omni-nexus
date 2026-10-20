@@ -8,6 +8,7 @@ import { isShotAssetName, sanitizeShotId } from './gallery/shot-assets.ts';
 import { cleanText } from '../core/util/text.ts';
 import { imageHistoryRoot } from './gallery/image-history';
 import { waitingBlock } from './prompt/inline-shots';
+import { INLINE_WAIT_BLOCK_SOURCE } from './prompt/inline-shot-pattern';
 
 const INRAY_TOKEN_RE = /\[\[@inray::[^\]]+\]\]/g;
 const LEGACY_BAKE_RE = /\{\{#asset::inxbake_[^}]+\}\}/g;
@@ -65,6 +66,16 @@ export function stripBakeTokens(text: unknown): string {
     .replace(/(^|\n?)(?:\[\[@inray::[^\]]+\]\])+(\n?)/g, (_m, before, after, offset) => offset === 0 && !before ? '' : after)
     .replace(/\{\{#asset::inxbake_[^}]+\}\}\n?/g, '')
     .replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Pink waiting slots: the streaming-tag blocks in their waiting form and older
+ * [[@inraywait]] tokens. A tag job that lays its spinners out afresh takes them
+ * out with the old spinners and baked images: the message's pictures start over,
+ * and a slot left behind would draw one of the same scenes again.
+ */
+export function stripWaitSlots(text: string): string {
+  return text.replace(new RegExp(INLINE_WAIT_BLOCK_SOURCE, 'g'), '').replace(/\[\[@inraywait::[^\]]+\]\]/g, '');
 }
 
 /** A later streaming batch must retain slots owned by every earlier sibling. */
