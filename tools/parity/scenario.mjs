@@ -147,6 +147,17 @@ export async function runScenario(N, handles) {
   await rec('cards.upscale_missing', () => post('/v1/cards/not-existing/upscale', {}));
   await rec('cards.original_missing', () => post('/v1/cards/not-existing/original', {}));
   // 2.0 only: 설정 검색 → LLM한테 물어보기 refuses an empty question before calling any LLM.
+  // 2.0 only: 봇·세션 프리셋. Nothing bound follows Omni; an unknown preset is refused; a choice clears.
+  await rec('preset_bindings.roundtrip', async () => {
+    const q = '?character_id=parity-bot&session_id=parity-session';
+    const before = await get('/v1/preset-bindings' + q);
+    const bad = await post('/v1/preset-bindings', { character_id: 'parity-bot', session_id: 'parity-session', session: 'no-such-preset' });
+    const omni = await post('/v1/preset-bindings', { character_id: 'parity-bot', session_id: 'parity-session', session: 'omni' });
+    const cleared = await post('/v1/preset-bindings', { character_id: 'parity-bot', session_id: 'parity-session', session: '' });
+    return { defaults: before?.ok === true && before.character === '' && before.session === '' && before.effective?.source === 'omni', bad: bad?.error?.code, omni: omni?.effective?.source, cleared: cleared?.ok === true && cleared.session === '' };
+  });
+  // 2.0 only: 캐릭터 작가의 노트 needs a bot.
+  await rec('character_note.missing', () => get('/v1/character-author-note'));
   await rec('settings.ask_empty', () => post('/v1/settings/ask', { question: ' ', tabs: [{ tab: '대시보드', items: [{ n: 1, title: 'Power ON' }] }] }));
   await rec('settings.studio_coords_visible', async () => {
     const initial = (await get('/v1/settings')).settings.card;

@@ -64,6 +64,8 @@ export const CHAR_COMMAND_PRESETS_KEY = 'onx_char_command_presets';
 export const SESSION_AUTHOR_NOTE_PRESETS_KEY = 'onx_session_author_note_presets';
 /** Saved texts for the main tagger author's note (`author_note`); examples are not stored. */
 export const AUTHOR_NOTE_PRESETS_KEY = 'onx_author_note_presets';
+/** Image preset per bot and per session: {characters:{[chaId]:presetId}, sessions:{[noteSessionId]:'omni'|presetId}}. */
+export const PRESET_BINDINGS_KEY = 'onx_preset_bindings';
 export const SETTINGS_PRESETS_KEY = 'onx_settings_presets';
 export const IMAGE_KEY = (id: string): string => `onx_nximg_${String(id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 /** Wall-clock of the previous boot — a diagnostic stamp, never read for behaviour. */

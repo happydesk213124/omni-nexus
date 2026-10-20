@@ -167,6 +167,41 @@ export async function writeCharacterEntryKey(scope: string, key: string, value: 
     if (JSON.stringify((await readEntryData(t)).data[key]) !== JSON.stringify(value)) throw new Error('Character lore save verification failed');
   });
 }
+/**
+ * A lorebook entry of our own on the bot, apart from the roster's: its text. Kept
+ * disabled like the roster's (no key, never always active), so Risu never injects it.
+ */
+export async function readCharacterLoreText(scope: string, comment: string): Promise<string | null> {
+  const t = await target(scope);
+  if (!t) return null;
+  const char = object(await risuHost()?.getCharacterFromIndex?.(t.index));
+  if (!char || String(char.chaId || char.id) !== t.id) throw new Error('Character moved during lore access');
+  const entry = (Array.isArray(char.globalLore) ? char.globalLore : []).find(v => object(v)?.comment === comment);
+  return entry ? String(object(entry)?.content ?? '') : '';
+}
+
+/** Writes that entry, or takes it out when the text is empty; one character write. */
+export async function writeCharacterLoreText(scope: string, comment: string, content: string): Promise<void> {
+  const t = await target(scope, true);
+  if (!t) throw new Error('Risu character required for lore save');
+  await serializeSessionStorage(async () => {
+    const host = risuHost();
+    if (!host?.setCharacterToIndex) throw new Error('Character lorebook writing unavailable');
+    const char = object(await host.getCharacterFromIndex?.(t.index));
+    if (!char || String(char.chaId || char.id) !== t.id) throw new Error('Character moved during lore save');
+    if (char.globalLore != null && !Array.isArray(char.globalLore)) throw new Error('Invalid character lorebook');
+    const entries = [...(char.globalLore as unknown[] || [])];
+    const index = entries.findIndex(v => object(v)?.comment === comment);
+    if (!content && index < 0) return;
+    if (!content) entries.splice(index, 1);
+    else {
+      const entry = { ...(index >= 0 ? object(entries[index]) : {}), comment, key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0, content };
+      if (index < 0) entries.push(entry); else entries[index] = entry;
+    }
+    await host.setCharacterToIndex(t.index, { ...char, globalLore: entries });
+  });
+}
+
 export async function readCharacterRoster(scope:string):Promise<CharacterRecord[]> {
   if(scope==='__global__') return (await readShared()).roster;
   const t=await target(scope);return t?(await read(t)).roster:[];

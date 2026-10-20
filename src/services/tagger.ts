@@ -57,6 +57,8 @@ import { compactAssetKey } from '../domain/nai-meta/match';
 import { characterPrompt } from './character-prompt';
 import { collectAssetNaiTags, collectBestLookAssets, setLastAssetWeightMap, type AssetLookPreview } from './asset-tags';
 import { loadTaggerRoster, rosterForSession } from './characters';
+import { effectivePresetIdFor } from './preset-bindings';
+import { cardWithPreset } from '../domain/style-presets/binding';
 import { cardFlagOn, taggerShouldUseV5Rules, normalizeV5NaturalLang } from '../domain/nai/routing';
 import { getConfig } from './context';
 import { getPrompt } from './settings';
@@ -517,8 +519,9 @@ export async function buildTaggerMessages(
   opts: BuildTaggerOptions = {},
 ): Promise<LlmMessage[]> {
   await hydrateTaggerCharUser(request);
-  const card = deepMerge(getConfig().card, (request.card as Record<string, unknown>) || {});
   const sessionId = cleanText(request.session_id, 200);
+  const bound = await effectivePresetIdFor(request.character_id, chatNoteSessionId(request.session_id, request as Record<string, unknown>));
+  const card = cardWithPreset(deepMerge(getConfig().card, (request.card as Record<string, unknown>) || {}), bound);
   const assetMode = normalizeAssetNaiTagsMode(card.asset_nai_tags);
   const includeAssetHow = !opts.skipAssetInject && assetMode !== 'off';
   const lineLimits=streamLineRange(request) ? opts.lineImageLimits ?? streamLineImageLimits(card) : null;

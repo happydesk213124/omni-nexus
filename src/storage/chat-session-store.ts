@@ -331,6 +331,12 @@ function noteLore(chat: RecordValue, note: unknown): unknown[] {
 }
 
 /** Dedicated note entry: intentionally never consult the legacy plugin key. */
+/** The bot a note session belongs to (its chat's character), or "" when none is known. */
+export async function characterIdForNoteSession(sid:string):Promise<string> {
+  const warm=directoryWarm();
+  const target=(await targets()).find(t=>t.sid===sid) || (warm ? (await targets(true)).find(t=>t.sid===sid) : undefined);
+  return target?.characterId || '';
+}
 export async function readChatNote(sid:string):Promise<unknown> {
   return serializeSessionStorage(async()=> {
     const warm=directoryWarm();

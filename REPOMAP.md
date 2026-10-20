@@ -143,6 +143,8 @@ main.ts                     entry: builds the bridge, publishes globals
 | TTS 설정 도움말 | `src/tts-ui/help.ts` — keyed by control id, served through `previewHelp` |
 | 캐릭터 LLM 명령수정 / 헤더 참고 | `src/char-command/` — `mount.ts`, `src/domain/character/command-edit.ts` |
 | 이 세션 작가 노트 | `src/services/session-author-note.ts`, tagger inject in `src/services/tagger.ts` |
+| 캐릭터 작가의 노트 (봇 노트, 세션 노트 앞에 붙음) | `src/services/character-note.ts`, `src/domain/tagging/character-note.ts`, tab UI in `src/image-ui/note-extras.ts` |
+| 봇·세션 이미지 프리셋 (세션 → 봇 → Omni) | `src/services/preset-bindings.ts`, `src/domain/style-presets/binding.ts`; jobs/tagger read `effectivePresetIdFor` once per request |
 | Reaching the Risu host API | `src/core/host.ts` — the only place that touches `globalThis.risuai` |
 
 ---
@@ -182,6 +184,7 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_nximg_<id>` | leftover 1.x / old-fallback bytes, base64 (read-only; new shots never write this) |
 | `onx_session_author_note_<sessionId>` | per-chat author's note (`{prefix,suffix,preset_id}`; not the global `author_note` prompt) |
 | `onx_session_author_note_presets` | reusable session-note phrases |
+| `onx_preset_bindings` | image preset per bot and per session (`{characters:{[chaId]:presetId},sessions:{[noteSessionId]:'omni'|presetId}}`); unset follows the bot, then Omni |
 | `onx_author_note_presets` | saved texts for the main tagger author's note (`{items[{id,name,text}]}`); shipped examples are not stored |
 | `onx_pending_shot_assets` | shots saved while an image job ran but not yet registered in the character (`[{target:{id,index},rows:[{name,path}]}]`); registered with the bake, or at the next start |
 | `onx_char_command_presets` | LLM 명령수정 phrase presets (legacy device row; live list is `card.command_presets`) |
@@ -191,6 +194,7 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `omniinline.waits` | Streaming-tag waiting slots: older slots only (new ones are `[[inxwN]]` blocks in the message itself): the shot each pink `[[@inraywait::id…]]` will draw, newest 300 (`src/storage/inline-wait-store.ts`). |
 | `omnisound.bgm.index`, `omnisound.bgm.<hash>` | **Device-local** (`getLocalPluginStorage`, never in the save file): BGM link tracks kept for the next play, base64, least recently played dropped past `bgmCacheMb`. Read through the index only, never by listing the store (`src/storage/bgm-cache.ts`). |
 | bot lorebook entry `omni.nexus.tts` | A bot's own TTS characters (`src/storage/tts-roster.ts`): disabled, empty key, never injected; same write queue as `omni.nexus.data.global`. 1.2.0 per-chat rows migrate here when the bot is opened. |
+| bot lorebook entry `omni.nexus.note.character` | 캐릭터 작가의 노트 (`{version:1,prefix,suffix}`; hand-typed text reads as 선행): disabled, empty key, never injected by Risu; Omni prepends it to the session note for the tagger. Removed when emptied. |
 
 **Keys are frozen.** Renaming one silently orphans every existing user's data.
 The same is true of `//@name omni-nexus` in `vite.config.ts` — Risu
