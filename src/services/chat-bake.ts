@@ -10,7 +10,7 @@ import { flushShotAssets } from '../storage/shot-character';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, waitTokenDimensions } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -357,7 +357,9 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   const groups=new Map<number,string[]>();
   // All generation modes replace old marks atomically, using the same clean
   // prose as tagging so previous slot positions cannot override the new shots.
-  let next=opts.preserveJobIds ? stripBakeTokensExceptJobs(previousBody,opts.preserveJobIds.filter(id=>id!==opts.jobId)) : stripBakeTokens(previousBody);
+  // Laid out afresh (태그 재생성 and every other whole-message tag): the pink waiting
+  // slots go with the old spinners and baked images. A line batch keeps them.
+  let next=opts.preserveJobIds ? stripBakeTokensExceptJobs(previousBody,opts.preserveJobIds.filter(id=>id!==opts.jobId)) : stripBakeTokens(stripWaitSlots(previousBody));
   const lines=chatBodyLineCount(next);
   for(const shot of opts.shots) {
     const requested=Math.floor(Number(shot.line)||lines);
