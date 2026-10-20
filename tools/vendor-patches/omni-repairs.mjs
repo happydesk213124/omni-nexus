@@ -448,7 +448,7 @@ export function repairOmniUi(source) {
     presetSave.onclick=()=>mutatePresets(false);presetDelete.onclick=()=>mutatePresets(true);
     group.append(select,name,presetSave,presetDelete);content.append(group);
     const noteFields=document.createElement("div");noteFields.style.cssText="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px";content.append(noteFields);
-    for(const [key,label] of [["prefix","선행"],["suffix","후행"],["location","장소"]]) {
+    for(const [key,label] of [["prefix","세션 작노 선행"],["suffix","세션 작노 후행"],["location","장소"]]) {
       const lab=document.createElement("label");lab.style.minWidth="0";lab.textContent=label;const input=document.createElement("textarea");input.value=value[key]||"";input.maxLength=key==="location"?800:8000;input.style.cssText="display:block;box-sizing:border-box;width:100%;min-height:90px;resize:vertical;background:#192230;color:#eee;border:1px solid #394358;border-radius:12px;padding:10px;margin:8px 0 16px";input.oninput=event=>{if(!event?.isComposing)schedule();};input.oncompositionend=schedule;input.onblur=save;fields[key]=input;saved[key]=input.value;lab.append(input);noteFields.append(lab);
     }
     const wearTitle=document.createElement("div");wearTitle.textContent="옷 상태";wearTitle.style.cssText="margin:0 0 8px;font-size:13px;color:#9fb0c3";content.append(wearTitle);
@@ -525,7 +525,7 @@ export function repairOmniUi(source) {
     if(cancelled || loading.parentNode!==document.body){await cancel();return;}
     loading.remove();if(t._omniNoteLoading===loading)t._omniNoteLoading=null;t._omniNoteRoot=root;
     footer.append(status,close);panel.append(footer);root.append(panel);document.body.append(root);fields.prefix.focus();
-    extras=globalThis.__OMNI_NOTE_EXTRAS__?.mount?.({panel,title,content,footer,sid,characterId:scope.characterId||"",request:K})||null;
+    extras=globalThis.__OMNI_NOTE_EXTRAS__?.mount?.({panel,title,content,footer,sid,characterId:scope.characterId||"",request:K,notePresetsChanged:async()=>{if(presetBusy)return;const r=await K("/v1/session-author-note-presets");if(r?.ok===false)return;const keep=select.value;presets=r.items||[];renderPresets(keep);}})||null;
     select.disabled=presetSave.disabled=presetDelete.disabled=true;
     try {
       const result=await K("/v1/session-author-note-presets");
