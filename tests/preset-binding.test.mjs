@@ -39,8 +39,9 @@ test('stored bindings keep only string choices under sane keys', () => {
 });
 
 test('the bot note: JSON round trip, hand-typed text leads, empty means no entry, session wins in the prompt', () => {
-  assert.deepEqual(note.parseCharacterNote(note.serializeCharacterNote({ prefix: 'soft light', suffix: 'film grain' })), { prefix: 'soft light', suffix: 'film grain' });
-  assert.deepEqual(note.parseCharacterNote('typed in the lorebook'), { prefix: 'typed in the lorebook', suffix: '' });
+  assert.deepEqual(note.parseCharacterNote(note.serializeCharacterNote({ prefix: 'soft light', suffix: 'film grain', preset_id: 'np-1' })), { prefix: 'soft light', suffix: 'film grain', preset_id: 'np-1' });
+  assert.deepEqual(note.parseCharacterNote('typed in the lorebook'), { prefix: 'typed in the lorebook', suffix: '', preset_id: '' });
+  assert.equal(note.serializeCharacterNote({ prefix: '', suffix: '', preset_id: 'np-1' }), '', 'a picked preset alone keeps no entry');
   assert.equal(note.serializeCharacterNote({ prefix: '  ', suffix: '' }), '');
   const content = note.characterNoteSystemContent({ prefix: 'soft light', suffix: '' });
   assert.match(content, /^# 캐릭터 작가의 노트\n## 선행\nsoft light\n> .*session's own instructions below take precedence/);

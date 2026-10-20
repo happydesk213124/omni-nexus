@@ -17,7 +17,7 @@ export async function saveCharacterAuthorNote(body: Record<string, unknown>): Pr
   if (!characterId) return { ok: false, error: { code: 'bad_request', message: 'character_id required' } };
   const before = await readCharacterLoreText(characterId, CHARACTER_NOTE_LORE);
   if (before === null) return { ok: false, error: { code: 'not_found', message: 'Risu 캐릭터를 찾지 못했습니다.' } };
-  const next = serializeCharacterNote({ prefix: String(body.prefix ?? ''), suffix: String(body.suffix ?? '') });
+  const next = serializeCharacterNote({ prefix: String(body.prefix ?? ''), suffix: String(body.suffix ?? ''), preset_id: String(body.preset_id ?? '') });
   // The same text again rewrites nothing.
   if (next !== serializeCharacterNote(parseCharacterNote(before))) await writeCharacterLoreText(characterId, CHARACTER_NOTE_LORE, next);
   return { ok: true, character_id: characterId, ...parseCharacterNote(next) };
