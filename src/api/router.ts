@@ -44,6 +44,7 @@ import * as fullBackup from '../services/full-backup';
 import * as storageMigrate from '../services/storage-migrate';
 import * as sessionAuthorNote from '../services/session-author-note';
 import * as authorNotePresets from '../services/author-note-presets';
+import { askSettings } from '../services/settings-ask';
 import * as settingsTransfer from '../services/settings-transfer';
 import * as charCommandPresets from '../services/char-command-presets';
 import * as charCommand from '../services/char-command';
@@ -491,6 +492,7 @@ const WRITE_ROUTES: readonly Route[] = [
     handler: async ({ body }) => ok(await sessionAuthorNote.saveSessionAuthorNotePresets(body.items ?? body)),
   },
   { match: exact('/v1/author-note-presets'), handler: async ({ body }) => ok(await authorNotePresets.saveAuthorNotePresets(body)) },
+  { match: exact('/v1/settings/ask'), handler: async ({ body }) => ok(await askSettings(body)) },
   {
     match: exact('/v1/character-command-presets'),
     handler: async ({ body }) => ok(await charCommandPresets.saveCommandPresets(body.items ?? body)),

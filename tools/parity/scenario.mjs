@@ -146,6 +146,8 @@ export async function runScenario(N, handles) {
   });
   await rec('cards.upscale_missing', () => post('/v1/cards/not-existing/upscale', {}));
   await rec('cards.original_missing', () => post('/v1/cards/not-existing/original', {}));
+  // 2.0 only: 설정 검색 → LLM한테 물어보기 refuses an empty question before calling any LLM.
+  await rec('settings.ask_empty', () => post('/v1/settings/ask', { question: ' ', tabs: [{ tab: '대시보드', items: [{ n: 1, title: 'Power ON' }] }] }));
   await rec('settings.studio_coords_visible', async () => {
     const initial = (await get('/v1/settings')).settings.card;
     if (!('studio_coords_visible' in initial)) return { unsupported: true };

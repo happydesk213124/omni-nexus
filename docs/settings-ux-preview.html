@@ -75,10 +75,46 @@
       background: var(--surface-2);
       color: var(--text);
     }
-    .help-toggle {
+    /* A 42px line plus the border made ? taller than EXPORT/IMPORT/닫기, and taller
+       still where phones pad the header buttons: centre the glyph instead. */
+    .help-toggle, .search-toggle {
       width: 42px; min-height: 42px; padding: 0;
-      font: 700 18px/42px var(--font);
+      display: inline-flex; align-items: center; justify-content: center;
+      font: 700 18px/1 var(--font);
     }
+    .search-toggle { font-size: 16px; }
+    .search-toggle[aria-expanded="true"] {
+      background: var(--accent-soft);
+      border-color: rgba(113, 50, 245, .45);
+    }
+    .nx-search {
+      position: fixed; z-index: 60; top: 60px; right: 12px;
+      width: min(440px, calc(100vw - 24px)); max-height: min(70vh, 640px);
+      display: flex; flex-direction: column; gap: 8px; padding: 10px;
+      box-sizing: border-box; overflow: hidden;
+      border: 1px solid var(--border); border-radius: 14px;
+      background: var(--surface); box-shadow: 0 18px 48px rgba(0, 0, 0, .45);
+    }
+    .nx-search[hidden] { display: none; }
+    .nx-search-bar { display: flex; gap: 6px; }
+    .nx-search-bar input { flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); font: 15px var(--font); }
+    .nx-search-bar .icon-btn { width: 40px; min-height: 40px; padding: 0; }
+    .nx-search-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+    .nx-search-ask button { min-height: 34px; padding: 0 12px; border: 1px solid rgba(113, 50, 245, .45); border-radius: 10px; background: var(--accent-soft); color: var(--text); font: 600 13px var(--font); }
+    .nx-search-ask button:disabled { opacity: .6; }
+    .nx-search-ask small { color: var(--muted); font-size: 11px; }
+    .nx-search-answer { padding: 8px 10px; border-radius: 10px; background: rgba(113, 50, 245, .08); color: var(--text); font-size: 13px; line-height: 1.5; }
+    .nx-search-answer p { margin: 0 0 6px; }
+    .nx-search-list { overflow: auto; min-height: 0; color: var(--muted); font-size: 13px; }
+    .nx-search-hit { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; margin: 0 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); text-align: left; }
+    .nx-search-hit:hover, .nx-search-hit:focus-visible { border-color: rgba(113, 50, 245, .55); }
+    .nx-search-hit b { font-size: 14px; }
+    .nx-search-hit small { color: var(--muted); font-size: 11px; }
+    @keyframes nxFound {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(133, 91, 251, 0); }
+      50% { box-shadow: 0 0 0 3px rgba(133, 91, 251, .9); background-color: rgba(133, 91, 251, .16); }
+    }
+    .nx-found { animation: nxFound .8s ease-in-out 3; border-radius: 10px; }
     .help-toggle[aria-pressed="true"] {
       background: var(--accent-soft);
       color: var(--accent);
@@ -1062,6 +1098,7 @@
       </div>
       <div class="top-right">
         <span class="live" id="live">바로 저장됨</span>
+        <button class="icon-btn search-toggle" type="button" id="nx-search-toggle" aria-expanded="false" aria-label="설정 검색" title="설정 검색">🔍</button>
         <button class="icon-btn help-toggle" type="button" id="nx-help-toggle" aria-pressed="false" aria-label="도움말">?</button>
         <button class="icon-btn" type="button" id="nx-export-all" title="인증정보를 제외한 설정 JSON 내보내기">EXPORT</button>
         <button class="icon-btn" type="button" id="nx-import-all">IMPORT</button>
