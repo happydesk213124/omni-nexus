@@ -88,6 +88,7 @@ import {
 } from '../providers/nai/payload';
 import { imageLocation, putImageLocation } from '../storage/stores';
 import { findAssetMessage } from '../storage/asset-message';
+import { cardWithPreset } from '../domain/style-presets/binding';
 import { getConfig } from './context';
 import { ensureCharRefVibeEncoded, ensurePresetVibeEncoded, ensureVibeEncoded, getCharRefImageBytes, getReferenceImageBytes } from './nai-assets';
 import { getPrompt } from './settings';
@@ -193,6 +194,8 @@ export interface ShotArgs {
   lockedSetup?: string;
   /** Forced route (quota fallback to V4). */
   route?: ShotNaiRoute;
+  /** The preset bound to this bot or session (봇·세션 프리셋); Omni's when unset. */
+  presetId?: string;
 }
 
 /** Bind a ref to this roster row only — never fall back session ↔ global. */
@@ -264,7 +267,7 @@ export type CardLocationFields = {
 /** Builds the prompt, negative prompt and per-character captions for one shot. */
 export async function buildGenerationForShot(args: ShotArgs): Promise<GenerationPlan> {
   const { shot, roster } = args;
-  const card = getConfig().card;
+  const card = cardWithPreset(getConfig().card, args.presetId);
   const nai = getConfig().nai;
   const charMax = characterMaxLimit(card);
   const chars = dedupeShotCharacters(shot.characters || [], roster, charMax).slice(0, charMax);
@@ -412,7 +415,7 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
 /** Comic page → V5 plan. Costume is resolved per slot; layout is row/position text. */
 export async function buildComicGenerationForShot(args: ShotArgs): Promise<GenerationPlan> {
   const { shot, roster } = args;
-  const card = getConfig().card;
+  const card = cardWithPreset(getConfig().card, args.presetId);
   const nai = getConfig().nai;
   const page = (shot.comic_page || {}) as Partial<ComicPage>;
   const slots = takeComicGenerationSlots(Array.isArray(shot.characters) ? shot.characters : []);
@@ -535,7 +538,7 @@ export async function generateImage(
   const routeFamily = isNaiV5(routeModelEarly) ? 'v5' : 'v4';
   if (imageBackendKind(nai) === 'comfy') {
     const card = getConfig().card;
-    const active = (card.presets || []).find(p => p.id === card.active_preset_id);
+    const active = plan.preset ?? (card.presets || []).find(p => p.id === card.active_preset_id);
     const markers = String(active?.positive || '').match(/@ch\d+@/g) || [];
     const sourceMain = plan.replay ? plan.main.replace(/@ch\d+@/g, '') : plan.main;
     const comfyPlan = insertCharacterPlaceholders(/@ch\d+@/.test(sourceMain) ? sourceMain : joinTags(sourceMain, ...markers), plan.neg, plan.captions, true);

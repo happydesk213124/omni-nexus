@@ -513,16 +513,19 @@ export function repairOmniUi(source) {
       wearSearch.value=[...new Set(names)].join(", ");wearSearch.oninput();
     }catch{status.textContent="트리거된 캐릭터를 불러오지 못했습니다. 이름을 직접 검색할 수 있습니다.";}
     presetSave.onclick=()=>mutatePresets(false);presetDelete.onclick=()=>mutatePresets(true);
+    // 캐릭터 tab, image presets: src/image-ui/note-extras.ts. Its note saves with the close.
+    let extras=null;
     const close=document.createElement("button");close.textContent="닫기";close.style.cssText="flex:none;min-height:36px;padding:6px 16px";
     close.onclick=async()=>{
       if(closing||presetBusy)return;closing=true;close.disabled=true;content.inert=true;
-      const ok=await save();
+      const ok=await save() && await (extras?.flush?.() ?? true);
       if(!ok){closing=false;close.disabled=false;content.inert=false;return;}
       root.remove();if(t._omniNoteRoot===root)t._omniNoteRoot=null;if(owned && !t.uiOpen)await k.hideContainer?.();
     };
     if(cancelled || loading.parentNode!==document.body){await cancel();return;}
     loading.remove();if(t._omniNoteLoading===loading)t._omniNoteLoading=null;t._omniNoteRoot=root;
     footer.append(status,close);panel.append(footer);root.append(panel);document.body.append(root);fields.prefix.focus();
+    extras=globalThis.__OMNI_NOTE_EXTRAS__?.mount?.({panel,title,content,footer,sid,characterId:scope.characterId||"",request:K})||null;
     select.disabled=presetSave.disabled=presetDelete.disabled=true;
     try {
       const result=await K("/v1/session-author-note-presets");

@@ -44,6 +44,8 @@ import * as fullBackup from '../services/full-backup';
 import * as storageMigrate from '../services/storage-migrate';
 import * as sessionAuthorNote from '../services/session-author-note';
 import * as authorNotePresets from '../services/author-note-presets';
+import * as presetBindings from '../services/preset-bindings';
+import * as characterNote from '../services/character-note';
 import { askSettings } from '../services/settings-ask';
 import * as settingsTransfer from '../services/settings-transfer';
 import * as charCommandPresets from '../services/char-command-presets';
@@ -227,6 +229,8 @@ const GET_ROUTES: readonly Route[] = [
     handler: async () => ok(await sessionAuthorNote.listSessionAuthorNotePresets()),
   },
   { match: exact('/v1/author-note-presets'), handler: async () => ok(await authorNotePresets.listAuthorNotePresets()) },
+  { match: exact('/v1/preset-bindings'), handler: async ({ query }) => ok(await presetBindings.getPresetBindings({ character_id: q(query, 'character_id'), session_id: q(query, 'session_id') })) },
+  { match: exact('/v1/character-author-note'), handler: async ({ query }) => ok(await characterNote.getCharacterAuthorNote({ character_id: q(query, 'character_id') })) },
   {
     match: exact('/v1/characters/example-shot'),
     handler: async ({ query }) => {
@@ -492,6 +496,8 @@ const WRITE_ROUTES: readonly Route[] = [
     handler: async ({ body }) => ok(await sessionAuthorNote.saveSessionAuthorNotePresets(body.items ?? body)),
   },
   { match: exact('/v1/author-note-presets'), handler: async ({ body }) => ok(await authorNotePresets.saveAuthorNotePresets(body)) },
+  { match: exact('/v1/preset-bindings'), handler: async ({ body }) => ok(await presetBindings.savePresetBindings(body)) },
+  { match: exact('/v1/character-author-note'), handler: async ({ body }) => ok(await characterNote.saveCharacterAuthorNote(body)) },
   { match: exact('/v1/settings/ask'), handler: async ({ body }) => ok(await askSettings(body)) },
   {
     match: exact('/v1/character-command-presets'),

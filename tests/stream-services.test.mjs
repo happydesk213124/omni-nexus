@@ -1138,3 +1138,52 @@ test('automatic upscale failure saves the original once without regenerating or 
   assert.equal(f.host.naiRequests.filter(r=>r.kind==='generate').length,1);
   assert.equal(done.result.warnings.length,1);assert.match(done.result.message,/원본 저장/);
 });
+
+// 봇·세션 프리셋 and 캐릭터 작가의 노트, through a real job.
+const noteSid='risu_'+sessionIdHash('c|chat');
+const drawn=async(f,hash)=>{
+  const before=f.host.naiRequests.filter(r=>r.kind==='generate').length;
+  const created=await f.api.createJob({...f.request,content_hash:hash});
+  const done=await f.wait(created.job_id,j=>j.progress.phase==='waiting_output'||j.state==='done');
+  if(done.progress.phase==='waiting_output')await f.commit(created.job_id);
+  await assertRuntimeReleased(f,created.job_id);   // the next job is a new one, not this one again
+  const sent=f.host.naiRequests.filter(r=>r.kind==='generate');
+  assert.equal(sent.length,before+1,'the job drew one image: '+JSON.stringify(done.progress)+' llm '+f.host.llmRequests.length);
+  return String(sent.at(-1)?.body.input);
+};
+test('a job draws with its session\'s preset, else its bot\'s, else Omni\'s; the secondary stays global',async()=>{
+  const f=await fixture();
+  Object.assign(f.api.getConfig().card,{presets:[{id:'p-omni',name:'Omni',positive:'omnistyletag'},{id:'p-water',name:'수채화',positive:'watercolorstyletag'},{id:'p-anime',name:'애니',positive:'animestyletag'}],active_preset_id:'p-omni',secondary_preset_id:''});
+  assert.match(await drawn(f,'omni-1'),/omnistyletag/,'nothing bound: Omni');
+  assert.equal((await f.api.savePresetBindings({character_id:'c',character:'p-water'})).character_effective.id,'p-water');
+  assert.match(await drawn(f,'bot-1'),/watercolorstyletag/,'the session follows its bot');
+  const picked=await f.api.savePresetBindings({character_id:'c',session_id:noteSid,session:'p-anime'});
+  assert.deepEqual([picked.effective.id,picked.effective.source,picked.effective.name],['p-anime','session','애니']);
+  const input=await drawn(f,'session-1');
+  assert.match(input,/animestyletag/,'the session picks its own');assert.doesNotMatch(input,/watercolorstyletag|omnistyletag/);
+  await f.api.savePresetBindings({character_id:'c',session_id:noteSid,session:'omni'});
+  assert.match(await drawn(f,'omni-2'),/omnistyletag/,'the session follows Omni past its bot');
+  assert.equal(f.api.getConfig().card.active_preset_id,'p-omni','Omni\'s own choice is never changed');
+  assert.equal((await f.api.savePresetBindings({character_id:'c',session_id:noteSid,session:'gone'})).error.code,'bad_request');
+  const listed=await f.api.getPresetBindings({character_id:'c',session_id:noteSid});
+  assert.deepEqual(listed.presets.map(p=>p.id),['p-omni','p-water','p-anime']);
+  assert.deepEqual([listed.character,listed.session],['p-water','omni']);
+});
+
+test('the bot\'s note reaches the tagger before the session\'s, as a disabled lore entry that an empty note removes',async()=>{
+  const f=await fixture();
+  await f.api.setSessionAuthorNote(noteSid,{prefix:'SESSION NOTE MARK'});
+  const saved=await f.api.saveCharacterAuthorNote({character_id:'c',prefix:'BOT NOTE MARK',suffix:'BOT AFTER'});
+  assert.deepEqual([saved.ok,saved.prefix,saved.suffix],[true,'BOT NOTE MARK','BOT AFTER']);
+  const lore=(await risuai.getCharacterFromIndex(0)).globalLore.filter(e=>e.comment==='omni.nexus.note.character');
+  assert.equal(lore.length,1);
+  assert.deepEqual([lore[0].key,lore[0].alwaysActive,lore[0].mode,lore[0].selective],['',false,'normal',false],'Risu never injects it');
+  assert.deepEqual(await f.api.getCharacterAuthorNote({character_id:'c'}).then(r=>[r.prefix,r.suffix]),['BOT NOTE MARK','BOT AFTER']);
+  await drawn(f,'note-1');
+  const prompt=f.host.llmRequests.map(r=>r.messages.map(m=>typeof m.content==='string'?m.content:JSON.stringify(m.content)).join('\n')).find(p=>p.includes('BOT NOTE MARK'))||'';
+  assert.ok(prompt.includes('# 캐릭터 작가의 노트'),'the bot note reached the tagger');
+  assert.ok(prompt.indexOf('BOT NOTE MARK')<prompt.indexOf('SESSION NOTE MARK'),'before the session\'s, which wins');
+  await f.api.saveCharacterAuthorNote({character_id:'c',prefix:'',suffix:''});
+  assert.equal((await risuai.getCharacterFromIndex(0)).globalLore.some(e=>e.comment==='omni.nexus.note.character'),false,'an empty note takes the entry out');
+  assert.equal((await f.api.getCharacterAuthorNote({character_id:'nobody'})).error.code,'not_found');
+});

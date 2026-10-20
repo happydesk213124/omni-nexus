@@ -1,4 +1,5 @@
-import { queueChatNote, readChatNote, writeChatNote } from '../storage/chat-session-store';
+import { characterIdForNoteSession, queueChatNote, readChatNote, writeChatNote } from '../storage/chat-session-store';
+import { characterNoteLlmContent } from './character-note';
 import { SESSION_AUTHOR_NOTE_PRESETS_KEY } from '../core/constants';
 import type { ApiResult } from '../core/types';
 import { cleanText, sessionIdHash } from '../core/util/text';
@@ -89,7 +90,9 @@ export async function sessionAuthorNoteLlmContent(sessionId: unknown): Promise<s
     const rec = note as unknown as Record<string, unknown>;
     const sys = sessionAuthorNoteSystemContent(note);
     const ref = formatSessionWearReference(parseSessionWear(rec.wear));
-    return [sys, ref, formatSessionCostumeReference(parseSessionCostumes(rec.costumes))].filter(Boolean).join('\n\n');
+    // The bot's note goes first: the session's own, after it, wins where they disagree.
+    const bot = await characterNoteLlmContent(await characterIdForNoteSession(id).catch(() => ''));
+    return [bot, sys, ref, formatSessionCostumeReference(parseSessionCostumes(rec.costumes))].filter(Boolean).join('\n\n');
   } catch {
     return '';
   }

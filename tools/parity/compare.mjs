@@ -185,6 +185,8 @@ const normalize = (root) => {
             .filter((k) => !String(k).startsWith('onx_session_author_note_') && !String(k).startsWith('inx_session_author_note_') && k !== 'onx_char_command_presets' && k !== 'inx_char_command_presets')
             // Main author's note picker (직접 입력, presets) — no 1.x key; prompts.author_note_presets asserts what it holds.
             .filter((k) => k !== 'onx_author_note_presets')
+            // 봇·세션 이미지 프리셋 — no 1.x key; preset_bindings.roundtrip asserts what it holds.
+            .filter((k) => k !== 'onx_preset_bindings')
             // 2.5.33 boot stamp: a diagnostic written once per boot so the debug
             // dump can tell "iframe reloaded" from "shell failed to paint". No
             // 1.x key, and nothing reads it for behaviour.
@@ -699,6 +701,8 @@ const INTENTIONAL_DIFF_STEPS = new Set([
 const NEW_ONLY_STEPS = new Map([
   ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale/원본 저장 persistence failed'],
   ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
+  ['preset_bindings.roundtrip', v => v?.defaults && v.bad === 'bad_request' && v.omni === 'omni' && v.cleared ? null : 'Preset bindings must follow Omni by default, refuse an unknown preset and clear: ' + JSON.stringify(v)],
+  ['character_note.missing', v => v?.ok === false && v.error?.code === 'bad_request' ? null : 'A bot note needs its bot'],
   ['settings.ask_empty', v => v?.ok === false && v.error?.code === 'bad_request' ? null : 'An empty settings question must be refused before any LLM call'],
   ['cards.original_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'PNG 원본 받아오기 must reject missing cards before generating'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],

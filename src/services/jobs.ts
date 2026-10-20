@@ -90,6 +90,8 @@ import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
 import { holdChatNote, releaseChatNote } from '../storage/chat-session-store';
 import { holdShotAssets, releaseShotAssets } from '../storage/shot-character';
+import { effectivePresetIdFor } from './preset-bindings';
+import { cardWithPreset } from '../domain/style-presets/binding';
 import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessionOutfitRevision, rosterWithSessionOutfits, persistSessionOutfits } from './session-author-note';
 import { parseWearState } from '../domain/character/wear-state';
 import { shotKeepsComicSlots } from '../domain/comic/page';
@@ -739,6 +741,8 @@ async function runJob(jobId: string): Promise<void> {
   request.analysis_lines = true;
   const sessionId = String(row.session_id ?? '');
   const noteSessionId = chatNoteSessionId(request.session_id, request);
+  // 봇·세션 프리셋: looked up once, so every shot of the job draws with the same one.
+  const presetId = await effectivePresetIdFor(request.character_id, noteSessionId);
   const outfitRevision = sessionOutfitRevision(noteSessionId);
   const llmController = new AbortController();
   jobLlmControllers.set(jobId, llmController);
@@ -1341,8 +1345,8 @@ async function runJob(jobId: string): Promise<void> {
       const shot = shots[idx];
       if (isComicShot(shot) && !shot.comic_page) return;
       const built = isComicShot(shot)
-        ? await buildComicGenerationForShot({ shot, roster, sessionId })
-        : await buildGenerationForShot({ shot, roster, sessionId });
+        ? await buildComicGenerationForShot({ shot, roster, sessionId, presetId })
+        : await buildGenerationForShot({ shot, roster, sessionId, presetId });
       let { main, neg, captions, meta, route, use_coords, cfg } = built;
       const cardId = uuid();
       const now = Date.now() / 1000;
@@ -1466,11 +1470,11 @@ async function runJob(jobId: string): Promise<void> {
           const v4Route: ShotNaiRoute = {
             family: 'v4',
             model: modelForFamily(getConfig().nai, 'v4'),
-            preset: pickPresetForFamily(card, 'v4'),
+            preset: pickPresetForFamily(cardWithPreset(card, presetId), 'v4'),
             useV5Natural: false,
             useSpeech: false,
           };
-          const rebuilt = await buildGenerationForShot({ shot, roster, sessionId, route: v4Route });
+          const rebuilt = await buildGenerationForShot({ shot, roster, sessionId, route: v4Route, presetId });
           main = rebuilt.main;
           neg = rebuilt.neg;
           captions = rebuilt.captions;
