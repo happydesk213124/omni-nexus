@@ -11,6 +11,11 @@ export function previewChrome(): string {
 
 const pack = preview as PreviewPack;
 
+/** Each tab's preview markup as shipped, before vendor values are copied in: what 설정 검색 indexes. */
+export function previewPanes(): Readonly<Record<string, string>> {
+  return pack.panes;
+}
+
 function copyNode(dst: Element, src: Element): void {
   // Provider-dependent values can be hidden inputs where the preview has a select.
   // Keep their native type/value so role switches cannot save an empty fallback.

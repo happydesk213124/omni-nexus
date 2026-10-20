@@ -20,6 +20,7 @@ import { bindSoundNav, markSoundNav } from '../sound-ui/page';
 import { settingsUxCss } from './styles';
 import { previewChrome, tabHtml, previewHelp } from './tab-html';
 import { bindFullBackup } from './full-backup';
+import { bindSettingsSearch } from './settings-search';
 
 let explorerOpen = false;
 let explorerCharacter = '';
@@ -303,6 +304,7 @@ export function afterPaint(): void {
   ensureCss();
   if (shell.dataset.nxUxApp !== '1') replaceShell();
   bindMenu();
+  bindSettingsSearch();
   bindSoundNav();
   bindLiveFlash();
   syncModelWarning();

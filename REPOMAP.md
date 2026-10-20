@@ -136,6 +136,7 @@ main.ts                     entry: builds the bridge, publishes globals
 | Shot-tag 도화지 (갤러리 「샷 태그 수정」) | `src/tag-studio/` — peel/assemble in `peel.ts`/`model.ts`, overlay in `mount.ts` |
 | 설정창 크롬 / TTS 탭 afterPaint | `src/settings-ux/` — CSS inject + `__INLAY_SETTINGS_UX__.afterPaint` |
 | 대시보드 설정 프리셋 | `src/services/settings-presets.ts`, `src/domain/settings-preset.ts`, `src/settings-ux/settings-presets.ts` — 일반 설정 + 노트 4종, 기존 스타일/연결 유지 |
+| 설정 검색 · LLM한테 물어보기 (헤더 🔍) | 화면 `src/settings-ux/settings-search.ts` (탭 마크업에서 설정 목록·검색·이동/깜빡임, 질문 본문 만들기), 프롬프트·답 해석 `src/domain/settings-ask.ts` (번호+이름만, 상위 몇 개만 도움말), 호출 `src/services/settings-ask.ts` (`/v1/settings/ask`, 메인 LLM 1회, plain) |
 | 박제 후 읽기 | `src/services/tts.ts` (`card.tts_*`) |
 | TTS 채팅 재생 버튼 (OmniTTS 모듈) | `src/domain/tts/module.ts` — display regexes only, all ordered after every other module; never edit the reply before other modules see it. Controls are zero-width so wrapping never changes |
 | TTS 버튼 ↔ 원문 줄 연결 | `src/domain/tts/anchors.ts` (rendered line text → parsed segment), `src/tts-ui/host-chat.ts` (bind, dead/narration/playing attributes) |

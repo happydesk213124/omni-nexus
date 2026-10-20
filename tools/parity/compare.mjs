@@ -699,6 +699,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
 const NEW_ONLY_STEPS = new Map([
   ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale/원본 저장 persistence failed'],
   ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
+  ['settings.ask_empty', v => v?.ok === false && v.error?.code === 'bad_request' ? null : 'An empty settings question must be refused before any LLM call'],
   ['cards.original_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'PNG 원본 받아오기 must reject missing cards before generating'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
