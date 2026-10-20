@@ -20799,16 +20799,13 @@ async function omniWithScrollWrite(work,options={}) {
 // else the paragraph across the middle of the screen and where it stood — when the
 // stream starts and after the view moves, at most every half second. Whoever moved
 // it: a finger, a wheel, Risu's own jump to a new reply. Never per chunk.
-// The newest bubble's x-hashed stays the same while it streams and changes only
-// when Risu draws it anew; from then on nothing is marked, and when the reply ends
-// the view goes back to the last mark taken before.
+// Each mark notes how many chunks had come. Risu draws the reply anew only after
+// its last chunk, so when the reply ends the view goes back to the newest mark
+// taken before that chunk: whatever came after may be the jump. (Telling the jump
+// by the bubble's x-hashed failed: it also changes mid-stream, a picture going in.)
 let omniStreamScroll=null;
-const OMNI_STREAM_MARK_MS=500, OMNI_STREAM_SCROLL_STALE_MS=15000;
+const OMNI_STREAM_MARK_MS=500, OMNI_STREAM_SCROLL_STALE_MS=15000, OMNI_STREAM_MARKS=12;
 function omniStreamScrollOn() {return t.backendSettings?.card?.stream_scroll_hold===!0;}
-async function omniNewestHash(screen) {
-  const container=await screen.querySelector('[x-hashed]');
-  return container ? String(await container.getAttribute('x-hashed') || '') : '';
-}
 // The node across height y, by halving: nodes are stacked, either way up. Looked up
 // by position only; the nearest one when y falls in a gap.
 async function omniNodeAt(nodes,y) {
@@ -20865,14 +20862,10 @@ async function omniStreamPlace(run) {
 }
 async function omniStreamMark(run) {
   const mark=(async()=>{
-    if(run.frozen)return;
-    const before=await omniNewestHash(run.screen);
-    if(run.hash==null)run.hash=before;
-    else if(before!==run.hash){run.frozen=true;return;}
-    const place=await omniStreamPlace(run);
-    // Drawn anew while this was being read: what was read may be the jump.
-    if(await omniNewestHash(run.screen)!==run.hash){run.frozen=true;return;}
-    if(place)run.mark=place;
+    const chunk=run.chunks,place=await omniStreamPlace(run);
+    if(!place)return;
+    run.marks.push({chunk,place});
+    if(run.marks.length>OMNI_STREAM_MARKS)run.marks.shift();
   })();
   run.marking=mark;
   await mark.catch(error=>y('warn','scroll.stream.mark',String(error)));
@@ -20880,12 +20873,12 @@ async function omniStreamMark(run) {
 }
 // At most one mark per half second while the view moves, and one after it stops.
 function omniStreamMoved(run) {
-  if(run.closed || run.frozen)return;
+  if(run.closed)return;
   run.dirty=true;
   if(run.timer)return;
   run.timer=setTimeout(async()=>{
     run.timer=0;
-    if(run.closed || run.frozen || !run.dirty)return;
+    if(run.closed || !run.dirty)return;
     run.dirty=false;run.markedAt=performance.now();
     await omniStreamMark(run);
     if(run.dirty)omniStreamMoved(run);
@@ -20901,16 +20894,11 @@ function omniStreamScrollTrack() {
   if(run && Date.now()-run.chunkAt>OMNI_STREAM_SCROLL_STALE_MS){void omniStreamScrollStop(run);run=null;}
   if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
   if(!run) {
-    omniStreamScroll={chunkAt:Date.now(),mark:null,marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
-      screen:null,scope:'',hash:null,frozen:false,perChunk:false,lastBubble:null,reader:null,closed:false,ready:null};
+    omniStreamScroll={chunkAt:Date.now(),chunks:1,marks:[],marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
+      screen:null,scope:'',lastBubble:null,reader:null,closed:false,ready:null};
     return;
   }
-  run.chunkAt=Date.now();
-  // Risu's 끄기 mode draws the bubble anew on every chunk: a chunk after a new draw
-  // means the stream goes on. From then on each chunk resets what the bubble is
-  // compared with; that mode never draws it anew at the end, so nothing is lost.
-  if(run.frozen)run.perChunk=true;
-  if(run.perChunk){run.frozen=false;run.hash=null;}
+  run.chunkAt=Date.now();run.chunks++;
   // A reply that is not streamed reaches the output script once; only a second
   // chunk means Risu is drawing it light and will draw it again.
   if(run.ready)return run.ready;
@@ -20936,8 +20924,10 @@ function omniStreamScrollEnd() {
   return omniScrollQueue(async()=>{
     await run.ready;await run.marking;
     await omniStreamScrollStop(run);
-    if(touching || !run.mark || !omniStreamScrollOn() || t.uiOpen)return;
-    await omniHoldAnchor(run.mark,async()=>{},{requireMutation:true});
+    // The newest mark from before the last chunk; with none, the first, taken as the stream began.
+    const mark=run.marks.filter(row=>row.chunk<run.chunks).at(-1) || run.marks[0];
+    if(touching || !mark || !omniStreamScrollOn() || t.uiOpen)return;
+    await omniHoldAnchor(mark.place,async()=>{},{requireMutation:true});
   }).catch(error=>y('warn','scroll.stream',String(error)));
 }
 
