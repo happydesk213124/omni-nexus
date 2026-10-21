@@ -735,3 +735,46 @@ test('the scroll a ‹ › press causes cannot swap the picture back; the hold g
     await assert.rejects(() => verifyNavHold(bad, broken), /the pressed picture stays/);
   } finally { await browser.close(); }
 });
+
+// PocketRisu/Risu (Chats.svelte): each message sits in its own div.chat-message-container
+// [x-hashed] under one list; a message that changes (stream end, a bake) gets a new
+// wrapper and the old one is removed. The viewer has to hear that list, not the
+// first message's own wrapper.
+async function verifyWrappedList(page, runtimeSource = runtime, settleMs = 0) {
+  await setup(page, 1000, true, runtimeSource);
+  const img = id => `<img src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27/%3E#${id}">`;
+  const wrap = (i, shot) => `<div class="chat-message-container" x-hashed="h${i}${shot || ''}"><div class="risu-chat" data-chat-index="${i}" data-chat-id="m${i}" style="min-height:400px"><div class="chattext">text ${i}`
+    + (shot ? `<div class="shot" x-inlay-inline-shot="${shot}" data-inlay-inline-shot="${shot}">${img(shot)}</div>` : '') + '</div></div></div>';
+  await page.evaluate(html => { document.querySelector('.default-chat-screen').innerHTML = '<div class="list">' + html + '</div>'; },
+    [0, 1, 2, 3, 4, 5].map(i => wrap(i, i === 3 ? 'old' : '')).join(''));
+  await page.evaluate(() => new Promise(r => setTimeout(r, 20)));
+  await page.evaluate(() => { document.querySelector('[x-inlay-inline-shot="old"]').scrollIntoView({block: 'center'}); return fixture.api.scan(); });
+  assert.equal(await page.evaluate(() => fixture.api.state().id), 'old');
+  // Message 4 is baked: Risu swaps its wrapper for a new one holding the picture.
+  await page.evaluate(html => { const old = document.querySelector('[x-hashed="h4"]'); old.insertAdjacentHTML('afterend', html); old.remove(); }, wrap(4, 'fresh'));
+  await page.evaluate(() => new Promise(r => setTimeout(r, 20)));
+  await page.evaluate(() => { document.querySelector('[x-inlay-inline-shot="fresh"]').scrollIntoView({block: 'center'}); return fixture.api.scan(); });
+  if (settleMs) { await page.evaluate(ms => new Promise(r => setTimeout(r, ms)), settleMs); await page.evaluate(() => fixture.api.scan()); }
+  assert.equal(await page.evaluate(() => fixture.api.state().id), 'fresh', 'a picture baked after the viewer opened is found');
+  await page.evaluate(() => fixture.api.dispose());
+}
+
+test('a message Risu redraws in a new wrapper (stream end, bake) is read again; the guard detects watching the wrong parent', async () => {
+  const browser = await chromium.launch({headless: true, ...(process.platform === 'win32' ? {channel: 'msedge'} : {})});
+  try {
+    const page = await browser.newPage(); await verifyWrappedList(page); await page.close();
+    const climb = "if (wrapped && nxFloatListParent) {";
+    const noClimb = runtime.replace(climb, 'if (false) {');
+    assert.notEqual(noClimb, runtime);
+    let p = await browser.newPage();
+    await assert.rejects(() => verifyWrappedList(p, noClimb), /a picture baked after the viewer opened/, 'watching the wrapper misses the swap');
+    await p.close();
+    // The size check alone still recovers, a scan later.
+    p = await browser.newPage(); await verifyWrappedList(p, noClimb, 300); await p.close();
+    const neither = noClimb.replace('if (!nxFloatStaleChecked) {', 'if (false) {');
+    assert.notEqual(neither, noClimb);
+    p = await browser.newPage();
+    await assert.rejects(() => verifyWrappedList(p, neither, 300), /a picture baked after the viewer opened/, 'without either the stale list stays');
+    await p.close();
+  } finally { await browser.close(); }
+});
