@@ -1,6 +1,6 @@
 // Keep the host's array lazy: unwrapping it would create a proxy per message.
 let nxFloatBubbleList = null, nxFloatBubbleCount = 0, nxFloatReadingSlot = -1;
-let nxFloatListParent = null, nxFloatScrollAt = null;
+let nxFloatListParent = null, nxFloatScrollAt = null, nxFloatStaleChecked = false;
 const nxFloatBubbleCache = new Map(), nxFloatBubbleWatches = new Map();
 async function nxFloatArrayLength(rows) {
   return Array.isArray(rows) ? rows.length : Number(await rows?.length?.()) || 0;
@@ -20,10 +20,21 @@ async function nxFloatBubbleAt(slot, refs) {
 }
 async function nxFloatRefreshPosition(h, refs) {
   await nxFloatDropPosition();
-  nxFloatBubbleList = await h.root.querySelectorAll('.risu-chat');
+  // Asked together with the list, so knowing the shape costs no extra round trip.
+  const [list, wrapped] = await Promise.all([h.root.querySelectorAll('.risu-chat'),
+    Promise.resolve(h.root.querySelector('[x-hashed] > .risu-chat')).catch(() => null)]);
+  nxFloatBubbleList = list; refs.own(wrapped);
   nxFloatBubbleCount = await nxFloatArrayLength(nxFloatBubbleList);
   const first = await nxFloatBubbleAt(0, refs);
   nxFloatListParent = await first?.getParent?.();
+  // Risu (Chats.svelte) wraps each message in its own div[x-hashed] and swaps that
+  // wrapper when the message changes (stream end, a bake). Watching the first
+  // message's wrapper heard none of that; the list is the wrappers' parent.
+  if (wrapped && nxFloatListParent) {
+    const wrapper = nxFloatListParent;
+    nxFloatListParent = await wrapper.getParent?.();
+    await omniRelease(wrapper);
+  }
   // List membership changes are separate from mutations inside a message.
   await nxFloatObserver?.disconnect();
   await nxFloatObserver?.observe(h.root, {childList:true});
@@ -143,6 +154,11 @@ async function nxFloatReadPosition() {
       nxFloatReadingSlot = anchor.slot;
       for (const row of await Promise.all([anchor.slot-1,anchor.slot,anchor.slot+1].map(read))) if (row) rows.push(row);
     }
+    // A row sized 0x0 was taken out of the page (a remount the list watch missed).
+    // Read the list again, once: a message that is merely hidden cannot loop it.
+    if (rows.some(row => !row.rect.width && !row.rect.height)) {
+      if (!nxFloatStaleChecked) { nxFloatStaleChecked = true; nxFloatStructureDirty = true; nxFloatScheduleScan(); return; }
+    } else nxFloatStaleChecked = false;
     await nxFloatWatchBubbles(rows,refs);
     let best = null, distance = Infinity, reading = null, readingGap = Infinity;
     const visible = row => row.rect.height > 0 && row.rect.bottom > top && row.rect.top < bottom;
