@@ -32,36 +32,58 @@ const NX_FLOAT_CSS = `
 [x-nx-float-foldgrid] button:hover{background:rgba(255,255,255,.2) !important;}
 [x-nx-float-foldgrid] button:active{transform:scale(.92) !important;}
 [x-nx-float-icon]{font-size:26px;line-height:1;touch-action:none;}
+[x-nx-float-nav]{transition:opacity .45s ease;}
+[x-nx-float-nav] button{border:1px solid rgba(255,255,255,.12) !important;background:rgba(20,24,36,.72) !important;padding:0 !important;font:700 24px/1 system-ui !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;touch-action:manipulation !important;}
+[x-nx-float-nav] button:hover{background:rgba(255,255,255,.2) !important;}
+[x-nx-float-nav] button:active{transform:scale(.92) !important;}
+[x-nx-float-prev-off="true"] [x-nx-float-btn="prev"],[x-nx-float-next-off="true"] [x-nx-float-btn="next"]{opacity:.35;}
+[x-nx-float-nav="main"]{flex-direction:column;align-items:center;gap:4px;}
+[x-nx-float-navinfo]{align-items:center;gap:6px;padding:2px 8px;border-radius:10px;background:rgba(20,24,36,.72);font:600 12px/18px system-ui;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;}
+[x-nx-float-dots]{letter-spacing:2px;font-size:10px;}
+[x-nx-float-navbtns]{display:flex;gap:2px;}
+[x-nx-float-nav="main"] button{width:var(--nx-float-button,40px) !important;min-width:var(--nx-float-button,40px) !important;height:40px !important;min-height:40px !important;}
+[x-nx-float-nav="fold"]{position:absolute;left:0;top:0;align-items:center;gap:2px;height:44px;}
+[x-nx-float-nav="fold"] button{width:40px !important;min-height:44px !important;height:44px !important;}
+[x-nx-float-nav="fold"] [x-nx-float-count]{order:1;min-width:30px;text-align:center;font:600 12px/1 system-ui;letter-spacing:0;color:#fff;font-variant-numeric:tabular-nums;}
+[x-nx-float-nav="fold"] [x-nx-float-btn="next"]{order:2;}
 [x-nx-float-overlay="true"] [x-nx-float-head]{position:absolute;inset:0;min-height:0;padding:0;z-index:2;pointer-events:none;}
 [x-nx-float-overlay="true"] [x-nx-float-headbtns="l"]{position:absolute;left:8px;top:8px;}
 [x-nx-float-overlay="true"] [x-nx-float-headbtns="r"]{position:absolute;right:8px;top:8px;}
 [x-nx-float-overlay="true"] [x-nx-float-headbtns]{gap:2px;}
 [x-nx-float-overlay="true"] [x-nx-float-head] button{border-radius:12px!important;background:rgba(20,24,36,.72)!important;}
 [x-nx-float-overlay="true"] [x-nx-float-bar]{position:absolute;left:8px;bottom:8px;gap:2px;padding:0;z-index:2;}
+/* Bottom right, left of the resize corner. */
+[x-nx-float-overlay="true"] [x-nx-float-nav="main"]{position:absolute;right:46px;bottom:8px;z-index:2;}
 /* Both top rows stay on one line, including the smallest 240px frame. */
 [x-nx-float-overlay="true"] [x-nx-float-head] button,
 [x-nx-float-overlay="true"] [x-nx-float-bar] button{width:var(--nx-float-button,40px)!important;min-width:var(--nx-float-button,40px)!important;height:40px!important;min-height:40px!important;padding:2px!important;font-size:var(--nx-float-glyph,20px)!important;background:rgba(20,24,36,.72)!important;}
 [x-nx-float-overlay="true"] [x-nx-float-head],
 [x-nx-float-overlay="true"] [x-nx-float-headbtns],
-[x-nx-float-overlay="true"] [x-nx-float-bar]{opacity:0!important;pointer-events:none;transition:opacity .2s ease;}
+[x-nx-float-overlay="true"] [x-nx-float-bar],
+[x-nx-float-overlay="true"] [x-nx-float-nav="main"]{opacity:0!important;pointer-events:none;transition:opacity .2s ease;}
 @media(hover:hover){
   [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-head],
   [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar]{opacity:1!important;}
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-nav="main"]{opacity:1!important;}
   [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar]{pointer-events:auto;}
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-nav="main"]{pointer-events:auto;}
 }
 @media(hover:none){
   [x-nx-float-overlay="true"] [x-nx-float-head],
   [x-nx-float-overlay="true"] [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"] [x-nx-float-bar]{opacity:var(--nx-float-touch-opacity,0)!important;}
+  [x-nx-float-overlay="true"] [x-nx-float-bar],
+  [x-nx-float-overlay="true"] [x-nx-float-nav="main"]{opacity:var(--nx-float-touch-opacity,0)!important;}
   [x-nx-float-overlay="true"] [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"] [x-nx-float-bar]{pointer-events:var(--nx-float-touch-events,none);}
+  [x-nx-float-overlay="true"] [x-nx-float-bar],
+  [x-nx-float-overlay="true"] [x-nx-float-nav="main"]{pointer-events:var(--nx-float-touch-events,none);}
 }
 `;
 const NX_FLOAT_HEAD_L = [["tag", "⚛️"], ["regen", "🔃"], ["stop", "🟥"]];
 const NX_FLOAT_HEAD_R = [["compact", "−"], ["fold", "▴"], ["full", "⛶"]];
 const NX_FLOAT_BAR_BTNS = [["note", "✒️"], ["preset", "📚"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"]];
+const NX_FLOAT_NAV_BTNS = [["prev", "‹"], ["next", "›"]];
 const NX_FLOAT_GRID_BTNS = [["single", "🎲"], ["stop", "🟥"], ["preset", "📚"], ["note", "✒️"], ["unfold", "▾"], ["tag", "⚛️"], ["regen", "🔃"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"], ["full", "⛶"]];
 function nxFloatMode() {
   const m = String(t.backendSettings?.card?.viewer_minimize_mode || "buttons");

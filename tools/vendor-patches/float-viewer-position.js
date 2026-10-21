@@ -156,7 +156,7 @@ async function nxFloatReadPosition() {
         const shotTop = row.rect.top+shot.top, shotBottom = row.rect.top+shot.bottom;
         if (shotBottom <= top || shotTop >= bottom || !shot.src) continue;
         const d = Math.abs((shotTop+shotBottom)/2-y);
-        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml}; distance = d; }
+        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml,ids:snapshot.shots.map(s => s.id)}; distance = d; }
       }
     }
     if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
@@ -166,7 +166,17 @@ async function nxFloatReadPosition() {
     } else omniFooterTargets.delete(nxFloatKey);
     // A local miss keeps the existing pixels without painting or a wider search.
     if (!best) return;
-    if (best.id === nxFloatCardId && best.src === nxFloatLastDomSrc) return;
+    // ‹ › or a double tap just chose a picture: the scroll it caused must not
+    // swap it for a neighbour that ended up nearer the middle.
+    if (nxFloatNavHold && Date.now() < nxFloatNavHold.until && best.id !== nxFloatNavHold.id) return;
+    const ids = nxFloatNavIds.join('|');
+    if (best.id === nxFloatCardId && best.src === nxFloatLastDomSrc) {
+      nxFloatNavShots(best.ids);
+      if (nxFloatNavIds.join('|') !== ids) await nxFloatApply();
+      return;
+    }
     await nxFloatSelect(best.id,best.bubbleHtml,best.asset,best.src);
+    nxFloatNavShots(best.ids);
+    await nxFloatApply();
   } finally { await refs.close(); }
 }

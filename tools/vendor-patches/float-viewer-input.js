@@ -35,13 +35,17 @@ async function nxFloatBindInputs(h) {
   wait.push(nxFloatListen(h.body, 'click', async e => {
     const pos = nxFloatEvPos(e);
     if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
+    // The tap that only woke the faded controls still counts as a double tap's first.
+    const doubled=nxFloatDoubleTap(pos);
     if(nxFloatTouchReveal){nxFloatTouchReveal=false;return;}
     const refs=omniDomScope();
     try {
     const buttons = await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
     const hits=await Promise.all(buttons.map(button=>hitEl(button,pos.x,pos.y)));
     const button=buttons[hits.indexOf(true)];
-    if(button)await nxFloatClick(await button.getAttribute('x-nx-float-btn'));
+    if(button){nxFloatLastTap=null;await nxFloatClick(await button.getAttribute('x-nx-float-btn'));return;}
+    // Two taps on the picture: the chat goes to where it is.
+    if(doubled && !nxFloatCollapsed && !nxFloatCompact && nxFloatStage && await hitEl(nxFloatStage,pos.x,pos.y))await nxFloatRevealCurrent();
     } finally {await refs.close();}
   }));
   wait.push(nxFloatListen(h.body, 'pointerdown', async e => {

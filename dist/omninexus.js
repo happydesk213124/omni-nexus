@@ -21025,36 +21025,58 @@ const NX_FLOAT_CSS = `
 [x-nx-float-foldgrid] button:hover{background:rgba(255,255,255,.2) !important;}
 [x-nx-float-foldgrid] button:active{transform:scale(.92) !important;}
 [x-nx-float-icon]{font-size:26px;line-height:1;touch-action:none;}
+[x-nx-float-nav]{transition:opacity .45s ease;}
+[x-nx-float-nav] button{border:1px solid rgba(255,255,255,.12) !important;background:rgba(20,24,36,.72) !important;padding:0 !important;font:700 24px/1 system-ui !important;cursor:pointer !important;border-radius:12px !important;color:#fff !important;touch-action:manipulation !important;}
+[x-nx-float-nav] button:hover{background:rgba(255,255,255,.2) !important;}
+[x-nx-float-nav] button:active{transform:scale(.92) !important;}
+[x-nx-float-prev-off="true"] [x-nx-float-btn="prev"],[x-nx-float-next-off="true"] [x-nx-float-btn="next"]{opacity:.35;}
+[x-nx-float-nav="main"]{flex-direction:column;align-items:center;gap:4px;}
+[x-nx-float-navinfo]{align-items:center;gap:6px;padding:2px 8px;border-radius:10px;background:rgba(20,24,36,.72);font:600 12px/18px system-ui;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;}
+[x-nx-float-dots]{letter-spacing:2px;font-size:10px;}
+[x-nx-float-navbtns]{display:flex;gap:2px;}
+[x-nx-float-nav="main"] button{width:var(--nx-float-button,40px) !important;min-width:var(--nx-float-button,40px) !important;height:40px !important;min-height:40px !important;}
+[x-nx-float-nav="fold"]{position:absolute;left:0;top:0;align-items:center;gap:2px;height:44px;}
+[x-nx-float-nav="fold"] button{width:40px !important;min-height:44px !important;height:44px !important;}
+[x-nx-float-nav="fold"] [x-nx-float-count]{order:1;min-width:30px;text-align:center;font:600 12px/1 system-ui;letter-spacing:0;color:#fff;font-variant-numeric:tabular-nums;}
+[x-nx-float-nav="fold"] [x-nx-float-btn="next"]{order:2;}
 [x-nx-float-overlay="true"] [x-nx-float-head]{position:absolute;inset:0;min-height:0;padding:0;z-index:2;pointer-events:none;}
 [x-nx-float-overlay="true"] [x-nx-float-headbtns="l"]{position:absolute;left:8px;top:8px;}
 [x-nx-float-overlay="true"] [x-nx-float-headbtns="r"]{position:absolute;right:8px;top:8px;}
 [x-nx-float-overlay="true"] [x-nx-float-headbtns]{gap:2px;}
 [x-nx-float-overlay="true"] [x-nx-float-head] button{border-radius:12px!important;background:rgba(20,24,36,.72)!important;}
 [x-nx-float-overlay="true"] [x-nx-float-bar]{position:absolute;left:8px;bottom:8px;gap:2px;padding:0;z-index:2;}
+/* Bottom right, left of the resize corner. */
+[x-nx-float-overlay="true"] [x-nx-float-nav="main"]{position:absolute;right:46px;bottom:8px;z-index:2;}
 /* Both top rows stay on one line, including the smallest 240px frame. */
 [x-nx-float-overlay="true"] [x-nx-float-head] button,
 [x-nx-float-overlay="true"] [x-nx-float-bar] button{width:var(--nx-float-button,40px)!important;min-width:var(--nx-float-button,40px)!important;height:40px!important;min-height:40px!important;padding:2px!important;font-size:var(--nx-float-glyph,20px)!important;background:rgba(20,24,36,.72)!important;}
 [x-nx-float-overlay="true"] [x-nx-float-head],
 [x-nx-float-overlay="true"] [x-nx-float-headbtns],
-[x-nx-float-overlay="true"] [x-nx-float-bar]{opacity:0!important;pointer-events:none;transition:opacity .2s ease;}
+[x-nx-float-overlay="true"] [x-nx-float-bar],
+[x-nx-float-overlay="true"] [x-nx-float-nav="main"]{opacity:0!important;pointer-events:none;transition:opacity .2s ease;}
 @media(hover:hover){
   [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-head],
   [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar]{opacity:1!important;}
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-nav="main"]{opacity:1!important;}
   [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar]{pointer-events:auto;}
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-bar],
+  [x-nx-float-overlay="true"]:is(:hover,:focus-within) [x-nx-float-nav="main"]{pointer-events:auto;}
 }
 @media(hover:none){
   [x-nx-float-overlay="true"] [x-nx-float-head],
   [x-nx-float-overlay="true"] [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"] [x-nx-float-bar]{opacity:var(--nx-float-touch-opacity,0)!important;}
+  [x-nx-float-overlay="true"] [x-nx-float-bar],
+  [x-nx-float-overlay="true"] [x-nx-float-nav="main"]{opacity:var(--nx-float-touch-opacity,0)!important;}
   [x-nx-float-overlay="true"] [x-nx-float-headbtns],
-  [x-nx-float-overlay="true"] [x-nx-float-bar]{pointer-events:var(--nx-float-touch-events,none);}
+  [x-nx-float-overlay="true"] [x-nx-float-bar],
+  [x-nx-float-overlay="true"] [x-nx-float-nav="main"]{pointer-events:var(--nx-float-touch-events,none);}
 }
 `;
 const NX_FLOAT_HEAD_L = [["tag", "⚛️"], ["regen", "🔃"], ["stop", "🟥"]];
 const NX_FLOAT_HEAD_R = [["compact", "−"], ["fold", "▴"], ["full", "⛶"]];
 const NX_FLOAT_BAR_BTNS = [["note", "✒️"], ["preset", "📚"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"]];
+const NX_FLOAT_NAV_BTNS = [["prev", "‹"], ["next", "›"]];
 const NX_FLOAT_GRID_BTNS = [["single", "🎲"], ["stop", "🟥"], ["preset", "📚"], ["note", "✒️"], ["unfold", "▾"], ["tag", "⚛️"], ["regen", "🔃"], ["char", "👨‍👩‍👧‍👦"], ["counts", "🔢"], ["full", "⛶"]];
 function nxFloatMode() {
   const m = String(t.backendSettings?.card?.viewer_minimize_mode || "buttons");
@@ -21191,6 +21213,9 @@ async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
     card={id,session_id:nxFloatSession,character_id:scope.characterId,chat_id:scope.chatId,message_index:Number.isInteger(index)?index:undefined};
   }
   nxFloatSelectedCard = card;
+  const shotIndex = Number(/data-chat-index="(\d+)"/.exec(bubbleHtml)?.[1] ?? card.message_index ?? -1);
+  nxFloatShotIndex = Number.isInteger(shotIndex) ? shotIndex : -1;
+  if (changed) nxFloatNavShots(null);
   const index = (t.gallery || []).findIndex(c => c.id === id);
   if (index >= 0) t.viewerIndex = index;
   // The reading message target is independent of the displayed image.
@@ -21228,6 +21253,7 @@ async function nxFloatClickPrepared(kind) {
     if (kind === 'compact') { nxFloatCompact = !nxFloatCompact; await nxFloatApply(); return; }
     if (kind === 'counts') { await nxFloatToggleCounts(); return; }
     if (/^(min|max)-(up|down)$/.test(kind)) { await nxFloatChangeCount(kind); return; }
+    if (kind === "prev" || kind === "next") { await nxFloatNavGo(kind === "next" ? 1 : -1); return; }
     if (kind === "fold") { await nxFloatSetCollapsed(true); return; }
     if (kind === "unfold") { await nxFloatSetCollapsed(false); return; }
     if (kind === "stop") { await omniFooterAction("stop", nxFloatKey); return; }
@@ -21341,6 +21367,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatDirty = true;
     nxFloatStructureDirty = true; nxFloatReadingIndex = -1;
     nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
+    nxFloatNavIds = []; nxFloatShotIndex = -1; nxFloatNavHold = null;
     omniFooterTargets.delete(nxFloatKey);
     await nxFloatPaintImg('');
   }
@@ -21385,10 +21412,21 @@ async function nxFloatMountTimed(mark) {
       make("span", { text: "⋯⋯", style: 'line-height:20px;' }),
       make("div", {}, [["x-nx-float-foldgrid", "1"]]),
     ]);
+    // ‹ › with this message's dots: bottom right when open, beside the grip when folded.
+    const [navMain, navInfo, navDots, navCount, navBtns, navFold, navFoldCount] = await Promise.all([
+      make("div", {style:"display:none;"}, [["x-nx-float-nav", "main"]]),
+      make("div", {style:"display:none;"}, [["x-nx-float-navinfo", "1"]]),
+      make("span", {}, [["x-nx-float-dots", "1"]]),
+      make("span", {}, [["x-nx-float-count", "1"]]),
+      make("div", {}, [["x-nx-float-navbtns", "1"]]),
+      make("div", {style:"display:none;"}, [["x-nx-float-nav", "fold"]]),
+      make("span", {style:"display:none;"}, [["x-nx-float-count", "1"]]),
+    ]);
     const chain = async (parent, kids) => { for (const kid of kids) await parent.appendChild(kid); };
     await Promise.all([
-      chain(root, [icon, head, stage, bar, resize, foldGrip, foldGrid]),
-      chain(head, [spanL, spanR]), chain(stage, [pixels]), chain(spanL, [reroll]), chain(foldGrip, [gripLabel]),
+      chain(root, [icon, head, stage, bar, navMain, resize, foldGrip, foldGrid]),
+      chain(head, [spanL, spanR]), chain(stage, [pixels]), chain(spanL, [reroll]), chain(foldGrip, [gripLabel, navFold]),
+      chain(navMain, [navInfo, navBtns]), chain(navInfo, [navDots, navCount]), chain(navFold, [navFoldCount]),
     ]);
     await omniRelease(gripLabel);
     nxFloatImage = pixels;
@@ -21398,6 +21436,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatRoot = root; nxFloatHead = head; nxFloatStage = stage; nxFloatBar = bar;
     nxFloatResize = resize; nxFloatFoldGrip = foldGrip; nxFloatFoldGrid = foldGrid;
     nxFloatIcon = icon; nxFloatImgReroll = reroll;
+    nxFloatNav = {main: navMain, info: navInfo, dots: navDots, count: navCount, fold: navFold, foldCount: navFoldCount, edges: null};
     // Event routing is attached once to the host after all controls exist.
     const wireBtns = async (pairs, host) => {
       // Independent button creation crosses the bridge together; insertion
@@ -21419,8 +21458,9 @@ async function nxFloatMountTimed(mark) {
       wireBtns(NX_FLOAT_HEAD_L,spanL),wireBtns(NX_FLOAT_HEAD_R,spanR),
       wireBtns(NX_FLOAT_BAR_BTNS,bar),wireBtns(NX_FLOAT_GRID_BTNS,foldGrid),
       wireBtns([["compact","−"]],foldGrip),
+      wireBtns(NX_FLOAT_NAV_BTNS,navBtns),wireBtns(NX_FLOAT_NAV_BTNS,navFold),
     ]);
-    await omniRelease(spanL);await omniRelease(spanR);
+    await omniRelease(spanL);await omniRelease(spanR);await omniRelease(navBtns);
     await nxFloatBindInputs(h);
     if (t.unloading || mountEpoch !== nxFloatEpoch || t.backendSettings?.card?.floating_viewer === false) {
       await nxFloatDispose();
@@ -21464,6 +21504,7 @@ async function nxFloatShow() {
 async function nxFloatDispose(resetSession = true) {
   ++nxFloatGen; ++nxFloatSelecting; ++nxFloatEpoch;
   await nxFloatUnbindInputs();
+  await nxFloatDropNav();
   clearTimeout(nxFloatIdleTimer);
   nxFloatIdleTimer = 0; nxFloatIdle = false; nxFloatHovered = false;
   await nxFloatPainting.catch(() => {});
@@ -21584,6 +21625,7 @@ async function nxFloatRender() {
   const changed = nxFloatStyleCache.get(nxFloatRoot) !== css;
   await nxFloatStyle(nxFloatRoot,css);
   await nxFloatPaintChrome();
+  await nxFloatPaintNav();
   if(changed || !nxFloatBounds)nxFloatBounds = await nxFloatRoot.getBoundingClientRect();
   await nxFloatPaintCounts();
 }
@@ -21653,6 +21695,7 @@ async function nxFloatPaintChrome() {
   const writes=[];
   const show=(el,css)=>writes.push(nxFloatStyle(el,css));
   writes.push(nxFloatText(nxFloatCompactBtn,nxFloatCompact ? '+' : '−'));
+  const nav=nxFloatNav;
   show(nxFloatCompactBtn, nxFloatCompact ? 'position:static;width:44px;min-height:44px;flex:none;' : 'position:absolute;right:0;top:0;width:40px;min-height:44px;');
   if (nxFloatCompact) {
     show(nxFloatIcon, "display:none;");
@@ -21661,6 +21704,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatBar, "display:none;");
     show(nxFloatResize, "display:none;");
     show(nxFloatFoldGrid, "display:none;");
+    show(nav?.main, "display:none;");
+    show(nav?.fold, "display:none;");
     show(nxFloatFoldGrip, `display:flex;flex-direction:column;gap:4px;min-height:0;opacity:${nxFloatIdle ? '0.1' : '1'};`);
     await Promise.all(writes); return;
   }
@@ -21673,6 +21718,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatResize, "display:none;");
     show(nxFloatFoldGrip, "display:none;");
     show(nxFloatFoldGrid, "display:none;");
+    show(nav?.main, "display:none;");
+    show(nav?.fold, "display:none;");
     await Promise.all(writes); return;
   }
   show(nxFloatIcon, "display:none;");
@@ -21683,6 +21730,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatResize, "display:none;");
     show(nxFloatFoldGrip, `display:flex;opacity:${idleOp};pointer-events:${nxFloatIdle ? "none" : "auto"};`);
     show(nxFloatFoldGrid, `display:grid;opacity:${idleOp};`);
+    show(nav?.main, "display:none;");
+    show(nav?.fold, "display:flex;");
     try { if (nxFloatFoldBtn && nxFloatFoldBtn.setTextContent) writes.push(nxFloatText(nxFloatFoldBtn,"▾")); } catch {}
   } else {
     show(nxFloatHead, `display:flex;opacity:${idleOp};`);
@@ -21691,6 +21740,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatResize, `display:block;opacity:${idleOp};`);
     show(nxFloatFoldGrip, "display:none;");
     show(nxFloatFoldGrid, "display:none;");
+    show(nav?.main, "display:flex;");
+    show(nav?.fold, "display:none;");
     try { if (nxFloatFoldBtn && nxFloatFoldBtn.setTextContent) writes.push(nxFloatText(nxFloatFoldBtn,"▴")); } catch {}
   }
   await Promise.all(writes);
@@ -21733,13 +21784,17 @@ async function nxFloatBindInputs(h) {
   wait.push(nxFloatListen(h.body, 'click', async e => {
     const pos = nxFloatEvPos(e);
     if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
+    // The tap that only woke the faded controls still counts as a double tap's first.
+    const doubled=nxFloatDoubleTap(pos);
     if(nxFloatTouchReveal){nxFloatTouchReveal=false;return;}
     const refs=omniDomScope();
     try {
     const buttons = await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
     const hits=await Promise.all(buttons.map(button=>hitEl(button,pos.x,pos.y)));
     const button=buttons[hits.indexOf(true)];
-    if(button)await nxFloatClick(await button.getAttribute('x-nx-float-btn'));
+    if(button){nxFloatLastTap=null;await nxFloatClick(await button.getAttribute('x-nx-float-btn'));return;}
+    // Two taps on the picture: the chat goes to where it is.
+    if(doubled && !nxFloatCollapsed && !nxFloatCompact && nxFloatStage && await hitEl(nxFloatStage,pos.x,pos.y))await nxFloatRevealCurrent();
     } finally {await refs.close();}
   }));
   wait.push(nxFloatListen(h.body, 'pointerdown', async e => {
@@ -21985,7 +22040,7 @@ async function nxFloatReadPosition() {
         const shotTop = row.rect.top+shot.top, shotBottom = row.rect.top+shot.bottom;
         if (shotBottom <= top || shotTop >= bottom || !shot.src) continue;
         const d = Math.abs((shotTop+shotBottom)/2-y);
-        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml}; distance = d; }
+        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml,ids:snapshot.shots.map(s => s.id)}; distance = d; }
       }
     }
     if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
@@ -21995,8 +22050,18 @@ async function nxFloatReadPosition() {
     } else omniFooterTargets.delete(nxFloatKey);
     // A local miss keeps the existing pixels without painting or a wider search.
     if (!best) return;
-    if (best.id === nxFloatCardId && best.src === nxFloatLastDomSrc) return;
+    // ‹ › or a double tap just chose a picture: the scroll it caused must not
+    // swap it for a neighbour that ended up nearer the middle.
+    if (nxFloatNavHold && Date.now() < nxFloatNavHold.until && best.id !== nxFloatNavHold.id) return;
+    const ids = nxFloatNavIds.join('|');
+    if (best.id === nxFloatCardId && best.src === nxFloatLastDomSrc) {
+      nxFloatNavShots(best.ids);
+      if (nxFloatNavIds.join('|') !== ids) await nxFloatApply();
+      return;
+    }
     await nxFloatSelect(best.id,best.bubbleHtml,best.asset,best.src);
+    nxFloatNavShots(best.ids);
+    await nxFloatApply();
   } finally { await refs.close(); }
 }
 
@@ -22116,6 +22181,173 @@ async function nxFloatEndDrag(cancel=false) {
     }
     nxFloatArmIdle();
   })();
+}
+
+// ‹ › and the dots: one message's illustrations, then the next message's. The dots
+// come from what the position scan already read (no extra host work). Which
+// message holds the next illustration comes from the chat text, read once per
+// press: the baked token [[@inray::cardId::…]] is the record, the DOM only holds
+// what Risu has rendered so far.
+let nxFloatNavCache = null, nxFloatNavIds = [], nxFloatShotIndex = -1;
+let nxFloatNavHold = null, nxFloatNavBusy = false, nxFloatLastTap = null;
+let nxFloatNav = null;
+const NX_FLOAT_NAV_FRESH_MS = 4000, NX_FLOAT_NAV_HOLD_MS = 1500, NX_FLOAT_DOTS_MAX = 8;
+function nxFloatNavParse(chat) {
+  const rows = chat?.message || chat?.messages;
+  if (!Array.isArray(rows)) return null;
+  const list = [];
+  for (let index = 0; index < rows.length; index++) {
+    const text = String(rows[index]?.data ?? rows[index]?.saying ?? '');
+    if (!text.includes('[[@inray::')) continue;
+    const ids = [...new Set([...text.matchAll(/\[\[@inray::([^:\]]+)::/g)].map(match => match[1]))];
+    if (ids.length) list.push({index, ids});
+  }
+  return list;
+}
+// What is already known, without asking the host: the last press's read, or the
+// chat the session scope copied when this chat opened. Good for dimming only.
+function nxFloatNavKnown() {
+  if (nxFloatNavCache?.session === nxFloatSession) return nxFloatNavCache.list;
+  const scope = omniScope.scope;
+  if (scope?.sessionId !== nxFloatSession || !scope.chat) return null;
+  const list = nxFloatNavParse(scope.chat);
+  if (list) nxFloatNavCache = {session: nxFloatSession, at: 0, list};
+  return list;
+}
+async function nxFloatNavList() {
+  const scope = await omniReadScope().catch(() => null);
+  if (!scope?.sessionId || scope.sessionId !== nxFloatSession) return null;
+  if (nxFloatNavCache?.session === scope.sessionId && Date.now() - nxFloatNavCache.at < NX_FLOAT_NAV_FRESH_MS) return nxFloatNavCache.list;
+  if (!Number.isInteger(scope.charIndex) || !Number.isInteger(scope.chatIndex)) return null;
+  const list = nxFloatNavParse(await k.getChatFromIndex?.(scope.charIndex, scope.chatIndex));
+  if (!list || scope.sessionId !== nxFloatSession) return null;
+  nxFloatNavCache = {session: scope.sessionId, at: Date.now(), list};
+  return list;
+}
+function nxFloatNavWhere(list, id = nxFloatCardId) {
+  const at = list.findIndex(row => row.ids.includes(id));
+  return at >= 0 ? {at, pos: list[at].ids.indexOf(id)} : null;
+}
+function nxFloatNavStep(list, dir) {
+  const here = nxFloatNavWhere(list);
+  if (here) {
+    const row = list[here.at], pos = here.pos + dir;
+    if (pos >= 0 && pos < row.ids.length) return {index: row.index, id: row.ids[pos], ids: row.ids};
+    const next = list[here.at + dir];
+    return next ? {index: next.index, id: next.ids[dir > 0 ? 0 : next.ids.length - 1], ids: next.ids} : null;
+  }
+  // No illustration on screen yet: step from the message being read.
+  const base = nxFloatShotIndex >= 0 ? nxFloatShotIndex : nxFloatReadingIndex;
+  const next = dir > 0 ? list.find(row => row.index > base) : [...list].reverse().find(row => base < 0 || row.index < base);
+  return next ? {index: next.index, id: next.ids[dir > 0 ? 0 : next.ids.length - 1], ids: next.ids} : null;
+}
+function nxFloatNavEdges() {
+  const list = nxFloatNavKnown();
+  if (!list || !nxFloatCardId || !nxFloatNavWhere(list)) return {prev: false, next: false};
+  return {prev: !nxFloatNavStep(list, -1), next: !nxFloatNavStep(list, 1)};
+}
+// The dots name this message's illustrations: the chat text's order when it
+// knows the picture, else what the scan saw.
+function nxFloatNavShots(domIds) {
+  const list = nxFloatNavKnown(), here = list && nxFloatNavWhere(list);
+  nxFloatNavIds = here ? list[here.at].ids : (Array.isArray(domIds) && domIds.length ? domIds : nxFloatCardId ? [nxFloatCardId] : []);
+}
+async function nxFloatNavGo(dir) {
+  if (nxFloatNavBusy || !nxFloatRoot) return;
+  nxFloatNavBusy = true;
+  try {
+    const list = await nxFloatNavList();
+    if (!list) return;
+    const target = nxFloatNavStep(list, dir);
+    if (!target) { await nxFloatApply(); return; }
+    // The scan that follows the scroll must not snap back to a neighbour.
+    nxFloatNavHold = {id: target.id, until: Date.now() + NX_FLOAT_NAV_HOLD_MS};
+    if (!nxFloatFind(target.id)) {
+      const scope = omniScope.scope;
+      nxFloatSelectedCard = {id: target.id, session_id: nxFloatSession, character_id: scope?.characterId, chat_id: scope?.chatId, message_index: target.index};
+    }
+    await nxFloatSelect(target.id, '<div data-chat-index="' + target.index + '" data-chat-id="">');
+    nxFloatNavIds = target.ids;
+    await nxFloatApply();
+    await nxFloatReveal(target.index, target.id);
+  } catch (e) { nxFloatLog('nav', String(e?.message || e)); }
+  finally { nxFloatNavBusy = false; }
+}
+// Scrolls the chat to that picture. A message Risu has not drawn yet is pulled
+// in by showing the oldest one it has, a few times at most.
+async function nxFloatReveal(index, id) {
+  if (!Number.isInteger(index) || index < 0) return false;
+  const safeId = /^[\w-]+$/.test(String(id || '')) ? String(id) : '';
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const refs = omniDomScope();
+    try {
+      const h = await nxFloatChat(); if (!h) return false;
+      refs.own(h.root); refs.own(h.body);
+      const bubble = refs.own(await h.root.querySelector('.risu-chat[data-chat-index="' + index + '"]'));
+      if (bubble) {
+        const shot = safeId ? refs.own(await bubble.querySelector('[data-inlay-inline-shot="' + safeId + '"],[x-inlay-inline-shot="' + safeId + '"]')) : null;
+        if (nxFloatNavHold?.id === id) nxFloatNavHold.until = Date.now() + NX_FLOAT_NAV_HOLD_MS;
+        const before = await h.root.getBoundingClientRect();
+        await (shot || bubble).scrollIntoView({block: 'center', inline: 'nearest'});
+        // Near the chat's end the browser may push the whole page instead; undo it.
+        const after = await h.root.getBoundingClientRect();
+        if (Math.abs(after.top - before.top) > 1 || Math.abs(after.left - before.left) > 1) await h.doc.scrollIntoView?.({block: 'start', inline: 'start'});
+        return true;
+      }
+      const rows = await h.root.querySelectorAll('.risu-chat'), count = await nxFloatArrayLength(rows);
+      if (!count) return false;
+      const ends = [0, count - 1].map(async slot => refs.own(Array.isArray(rows) ? rows[slot] : await rows.at(slot)));
+      const [first, last] = await Promise.all(ends);
+      if (!Array.isArray(rows)) await omniRelease(rows);
+      const [a, b] = await Promise.all([first?.getBoundingClientRect(), last?.getBoundingClientRect()]);
+      const oldest = !b || (a && a.top <= b.top) ? first : last;
+      if (!oldest) return false;
+      await oldest.scrollIntoView({block: 'start', inline: 'nearest'});
+    } finally { await refs.close(); }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  return false;
+}
+async function nxFloatRevealCurrent() {
+  if (!nxFloatCardId) return;
+  const index = nxFloatShotIndex >= 0 ? nxFloatShotIndex : Number(nxFloatSelectedCard?.message_index ?? -1);
+  nxFloatNavHold = {id: nxFloatCardId, until: Date.now() + NX_FLOAT_NAV_HOLD_MS};
+  await nxFloatReveal(index, nxFloatCardId);
+}
+// Two taps on the picture within 400ms, in about the same place.
+function nxFloatDoubleTap(pos) {
+  const now = Date.now(), last = nxFloatLastTap;
+  nxFloatLastTap = {at: now, x: pos.x, y: pos.y};
+  if (!last || now - last.at > 400 || Math.hypot(pos.x - last.x, pos.y - last.y) > 32) return false;
+  nxFloatLastTap = null;
+  return true;
+}
+async function nxFloatPaintNav() {
+  if (!nxFloatNav) return;
+  const ids = nxFloatNavIds.length ? nxFloatNavIds : nxFloatCardId ? [nxFloatCardId] : [];
+  const total = ids.length, pos = Math.max(0, ids.indexOf(nxFloatCardId));
+  const count = total > 1 ? (pos + 1) + '/' + total : '';
+  const dots = total > 1 && total <= NX_FLOAT_DOTS_MAX ? ids.map((_, i) => i === pos ? '●' : '○').join('') : '';
+  const edges = nxFloatNavEdges();
+  const writes = [
+    nxFloatText(nxFloatNav.dots, dots), nxFloatText(nxFloatNav.count, count), nxFloatText(nxFloatNav.foldCount, count),
+    nxFloatStyle(nxFloatNav.info, total > 1 ? 'display:flex;' : 'display:none;'),
+    nxFloatStyle(nxFloatNav.dots, dots ? 'display:inline;' : 'display:none;'),
+    nxFloatStyle(nxFloatNav.foldCount, count ? 'display:inline;' : 'display:none;'),
+  ];
+  const key = (edges.prev ? 'p' : '') + (edges.next ? 'n' : '');
+  if (nxFloatNav.edges !== key) {
+    nxFloatNav.edges = key;
+    for (const node of [nxFloatNav.main, nxFloatNav.fold]) {
+      writes.push(node.setAttribute('x-nx-float-prev-off', String(edges.prev)), node.setAttribute('x-nx-float-next-off', String(edges.next)));
+    }
+  }
+  await Promise.all(writes);
+}
+async function nxFloatDropNav() {
+  const nav = nxFloatNav; nxFloatNav = null;
+  if (nav) for (const node of [nav.main, nav.info, nav.dots, nav.count, nav.fold, nav.foldCount]) await omniRelease(node);
+  nxFloatNavIds = []; nxFloatShotIndex = -1; nxFloatNavHold = null; nxFloatLastTap = null;
 }
 
   // Generated images show in their slot before the reply is saved. They are CSS,
