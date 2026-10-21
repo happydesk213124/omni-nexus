@@ -161,9 +161,14 @@ function omniReaderScrolls() {
 // (as the TTS scan does). It removes one only with the same capture flag, so the
 // options are kept beside the id.
 const OMNI_SCROLL_LISTEN={capture:true,passive:true};
+// Keys go to the focused element (the input box, say), not to the chat: upstream Risu
+// (#1610) binds a listener to the element it was added to, so keydown is heard on the
+// document. The listener is removed through the same wrapper that added it.
 async function omniListen(target,name,fn,into) {
   const options=name==='scroll'?OMNI_SCROLL_LISTEN:undefined;
-  try {into.push([name,await target.addEventListener(name,fn,options),options]);}
+  const doc=name==='keydown'?(t.hostDoc || await ue()):null;
+  const on=typeof doc?.addEventListener==='function'?doc:target;
+  try {into.push([name,await on.addEventListener(name,fn,options),options,on]);}
   catch(error) {y('warn','scroll.listen',name+': '+String(error));}
 }
 // Run the work, then keep the anchor where it was for up to two seconds, until the
@@ -222,7 +227,7 @@ async function omniHoldAnchor(anchor,work,options={}) {
     return result;
   } finally {
     await observer?.disconnect();
-    for(const [name,id,options] of registered)await screen.removeEventListener(name,id,options);
+    for(const [name,id,options,on] of registered)await (on||screen).removeEventListener(name,id,options);
   }
 }
 async function omniWithScrollWrite(work,options={}) {
@@ -327,7 +332,7 @@ function omniStreamMoved(run) {
 async function omniStreamScrollStop(run) {
   run.closed=true;clearTimeout(run.timer);run.timer=0;
   if(omniStreamScroll===run)omniStreamScroll=null;
-  for(const [name,id,options] of run.listeners.splice(0))try{await run.screen.removeEventListener(name,id,options);}catch{}
+  for(const [name,id,options,on] of run.listeners.splice(0))try{await (on||run.screen).removeEventListener(name,id,options);}catch{}
 }
 function omniStreamScrollTrack() {
   let run=omniStreamScroll;

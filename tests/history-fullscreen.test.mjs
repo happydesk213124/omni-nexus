@@ -42,7 +42,8 @@ async function setup(page) {
         async appendChild(n){this.node.appendChild(n.node);}
         async cloneNode(deep){return new Safe(this.node.cloneNode(deep));}
         async remove(){this.node.remove();}
-        async addEventListener(kind,fn){document.addEventListener(kind,event=>{void fn({clientX:event.clientX,clientY:event.clientY,key:event.key});});}
+        // Upstream Risu (#1610): on the element itself; the document wrapper binds to document.
+        async addEventListener(kind,fn){(this.node===document.documentElement?document:this.node).addEventListener(kind,event=>{void fn({clientX:event.clientX,clientY:event.clientY,key:event.key});});}
       }
       globalThis.__INLAY_VIEWER_CORE__=HistoryUi;
       const doc=new Safe(document.documentElement),body=new Safe(document.body),pins=[],actions=[],pixels=[],reads=[],errors=[];

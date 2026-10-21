@@ -104,7 +104,19 @@ test('studio imports Medium, switches effort in requests, and fits the seed row 
       await effort.waitFor();
       assert.equal(await auto.evaluate(el => el.classList.contains('on')), false, 'manual mode also persists');
       assert.equal(await grid.evaluate(el => el.classList.contains('on')), false, 'manual mode can reopen with the overlay hidden');
+      // Ctrl+Enter draws as 생성 does, from inside a field; Enter alone does not.
+      const drawn = await page.evaluate(() => window.requests.length);
+      await page.locator('[data-g="seed"]').focus();
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Control+Enter');
+      await page.waitForFunction(n => window.requests.length === n + 1, drawn);
+      await page.evaluate(() => new Promise(r => setTimeout(r, 100)));
+      assert.equal(await page.evaluate(() => window.requests.length), drawn + 1, 'one press, one picture');
       await page.evaluate(() => Studio.closeTagStudio());
+      // Closed: the key belongs to the chat again.
+      await page.keyboard.press('Control+Enter');
+      await page.evaluate(() => new Promise(r => setTimeout(r, 100)));
+      assert.equal(await page.evaluate(() => window.requests.length), drawn + 1, 'a closed studio draws nothing');
       await page.close();
     }
   } finally { await browser.close(); }
