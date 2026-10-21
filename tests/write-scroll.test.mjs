@@ -17,17 +17,18 @@ const listening=handlers=>({addEventListener:async(kind,fn,options)=>{if(!RISU_E
  removeEventListener:async(kind,id,options)=>{const h=handlers.get(id);assert.equal(h?.kind,kind);if(h.capture===capturing(options))handlers.delete(id);}});
 for(const mode of ['replace','manual','host-scroll','wheel','chat-switch','failure'])test('write-scoped scroll: '+mode,async()=>{
  let top=20,scope='a',corrections=0,disconnected=0;
- const handlers=new Map();let mutated;
+ const handlers=new Map(),docHandlers=new Map();let mutated;
  const rect=()=>({top,bottom:top+40,height:40});
  const paragraph={textContent:async()=> 'same paragraph',getBoundingClientRect:async()=>rect(),getStyleAttribute:async()=> 'color:red',setStyle:async(k,v)=>{assert.equal(k,'scrollMarginTop');paragraph.margin=Number.parseFloat(v);},setStyleAttribute:async value=>assert.equal(value,'color:red'),scrollIntoView:async()=>{top=paragraph.margin;corrections++;}};
  const body={querySelectorAll:async sel=>sel==='p'?[paragraph]:[]};
  const bubble={getBoundingClientRect:async()=>rect(),getOuterHTML:async()=>'<div data-chat-index="3"></div>',querySelector:async()=>body};
  const screen={getBoundingClientRect:async()=>({top:0,bottom:800,height:800}),querySelectorAll:async()=>[bubble],querySelector:async()=>bubble,...listening(handlers)};
- const doc={querySelector:async()=>screen};
+ // Upstream Risu (#1610): the focused input box sends keys to the document, never to the chat.
+ const doc={querySelector:async()=>screen,...listening(docHandlers)};
  const {hold:run}=load({hostDoc:doc},()=>true,async()=>scope,{createMutationObserver:async cb=>{mutated=cb;return{observe:async()=>{},disconnect:async()=>{disconnected++;}};}});
  const work=async()=>{
    top=400;mutated();
-   if(mode==='manual')for(const {kind,fn} of handlers.values())if(kind==='keydown')fn({key:'PageDown'});
+   if(mode==='manual')for(const {kind,fn} of docHandlers.values())if(kind==='keydown')fn({key:'PageDown'});
    // The chat changing scrolls the view with it, right after the change: not the reader.
    if(mode==='host-scroll'){mutated();for(const {kind,fn} of [...handlers.values()])if(kind==='scroll')fn({});}
    // A wheel (Risu forwards none) is a scroll with nothing changed just before it.
@@ -38,7 +39,7 @@ for(const mode of ['replace','manual','host-scroll','wheel','chat-switch','failu
  };
  if(mode==='failure')await assert.rejects(()=>run(work),/failed write/);else assert.equal(await run(work),'saved');
  if(mode==='replace' || mode==='host-scroll'){assert.equal(top,20);assert.equal(corrections,1);}else assert.equal(corrections,0);
- assert.equal(handlers.size,0);assert.equal(disconnected,1);
+ assert.equal(handlers.size,0);assert.equal(docHandlers.size,0,'the document listener is removed too');assert.equal(disconnected,1);
 });
 
 test('a tapped slot anchors its own image while it is baked, not a paragraph below it',async()=>{

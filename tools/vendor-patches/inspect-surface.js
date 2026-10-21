@@ -38,7 +38,9 @@ nxEnsureInspectSurface = async () => {
         if (live() && !openingClick) await runInspectAction("close", card, -1);
       } catch (error) { y("error", "shots.asset.inspect.action.fail", String(error?.message || error)); }
     });
-    await root.addEventListener("keydown", async event => {
+    // Keys go to the focused element, never to this layer: upstream Risu (#1610) binds a
+    // listener to the element it was added to, so the document (e) has to hear them.
+    await e.addEventListener("keydown", async event => {
       if (inspectOpen && !t.uiOpen && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         try { await omniInspectHistoryAction(event.key === 'ArrowLeft' ? 'prev' : 'next', actionCard); }
         catch (error) { y('error','inspect.history',String(error)); }

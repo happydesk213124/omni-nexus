@@ -13,7 +13,8 @@ function section(startText,endText) {
 const down=section('p = f => {','    }, resolvePointerDown = async')+'}';
 const up=section('onPointerUp = async (f) => {','      if (t.uiOpen || t._hostChromeBlocked)')+'}';
 const show=section('showStickyInspect = async (f) => {','findActHit = async').trim().replace(/,$/,'');
-const click=section('await root.addEventListener("click", async event => {','    await root.addEventListener("keydown"')
+// The click handler runs up to the key listener, which now sits on the document (e).
+const click=section('await root.addEventListener("click", async event => {','    // Keys go to the focused element, never to this layer')
   .trim().replace(/^await root\.addEventListener\("click", /,'').replace(/\);$/,'');
 const button=section('      // Baked Inray fullscreen chip','      // Baked overlay: 새로고침');
 const tap=section('      const nxFireTap = async','      const nxArmInspect =');

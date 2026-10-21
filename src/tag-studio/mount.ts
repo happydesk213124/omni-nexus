@@ -2346,7 +2346,16 @@ export async function openTagStudio(card: unknown): Promise<void> {
       const fn = () => { void generate(); };
       gen.addEventListener('click', fn);
       cleanups.push(() => gen.removeEventListener('click', fn));
+      (gen as HTMLElement).title = '생성 (Ctrl+Enter)';
     }
+    // Ctrl+Enter (⌘+Enter) draws from any field, as the 생성 button does. Not while a
+    // Korean syllable is still being composed: that Enter belongs to the IME.
+    on(document, 'keydown', (e) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.isComposing || e.repeat || !root.isConnected) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void generate();
+    }, { capture: true });
     const save = $('#save');
     if (save) {
       const fn = () => { void commitAndClose(); };
