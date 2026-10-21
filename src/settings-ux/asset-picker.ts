@@ -3,6 +3,7 @@ import { parseRisuAssetRows } from '../domain/nai-meta/risu-asset-list';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 import { characterAssetTerms, rankedReferenceAssets } from '../domain/nai-meta/reference-search';
 import { parseAliasList } from '../core/util/text';
+import { MODULE_ASSET_RETRIES, moduleAssetManifest, moduleAssetsMissing, refillModuleAssets } from '../storage/module-assets';
 
 function imageBlob(data: unknown): Blob | null {
   if (data instanceof Blob) return data;
@@ -199,8 +200,26 @@ export async function pickCharacterAsset(card: HTMLElement, source: 'character' 
       });
       moduleSelect.add(new Option('모듈을 선택하세요', ''));
       modules.forEach((mod, i) => moduleSelect.add(new Option(String(mod.name || mod.id), String(i))));
-      moduleSelect.onchange = () => {
-        assets = moduleSelect.value === '' ? [] : parseRisuAssetRows(modules[Number(moduleSelect.value)]?.assets);
+      let picking = 0;
+      moduleSelect.onchange = async () => {
+        const token = ++picking;
+        const mod = moduleSelect.value === '' ? undefined : modules[Number(moduleSelect.value)];
+        if (mod && moduleAssetsMissing(mod)) {
+          // PocketRisu keeps a module's asset list on the server and fills it into
+          // getDatabase() on the way out; a slow link can fail that fill, and the
+          // module then arrives with only its descriptor. Ask again a few times.
+          assets = []; list.replaceChildren();
+          const filled = await refillModuleAssets(mod, attempt => {
+            if (token === picking && !closed) status.textContent = `PocketRisu에서 모듈 에셋 목록을 받는 중… (${attempt}/${MODULE_ASSET_RETRIES})`;
+          }, () => closed || token !== picking);
+          if (closed || token !== picking) return;
+          if (!filled) {
+            status.textContent = `PocketRisu가 이 모듈의 에셋 목록(${moduleAssetManifest(mod)?.count ?? '?'}개)을 넘겨주지 못했습니다. 잠시 뒤 다시 열어 보세요.`;
+            return;
+          }
+          mod.assets = filled as typeof mod.assets;
+        }
+        assets = mod ? parseRisuAssetRows(mod.assets) : [];
         render();
       };
       if (!modules.length) status.textContent = '활성 모듈이 없습니다.';
