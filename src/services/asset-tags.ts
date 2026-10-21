@@ -5,6 +5,7 @@ import { characterSource } from './character-source';
 import { dbg } from '../core/debug';
 import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { hostHas, risuHost } from '../core/host';
+import { withRefilledModules } from '../storage/module-assets';
 import type { ApiResult, LoreEntry } from '../core/types';
 import { cleanText } from '../core/util/text.ts';
 import { normalizeAssetNaiTagsMode } from '../config/schema.ts';
@@ -205,12 +206,14 @@ export async function listSearchableAssets(character: unknown): Promise<AssetPoo
           moduleIntergration: db.moduleIntergration,
           personaEmbeddedModuleId: embeddedRec?.id,
         });
-        const dbModules = Array.isArray(db.modules) ? db.modules : [];
+        // PocketRisu can hand a large module over without its asset list (see module-assets).
+        const idSet = new Set(enabledModuleIds);
+        const dbModules = await withRefilledModules(Array.isArray(db.modules) ? db.modules : [],
+          mod => [mod.id, mod.namespace].some(id => idSet.has(cleanText(id, 200))));
         moduleAssets = assetsFromEnabledModules(dbModules, enabledModuleIds, embedded ? [embedded] : []);
         if (embeddedRec) embeddedAssets = parseRisuAssetRows(embeddedRec.assets);
 
         // Probe-friendly: how many assets each enabled id actually has on the module row.
-        const idSet = new Set(enabledModuleIds);
         const perMod: Array<{ id: string; name: string; assets: number }> = [];
           for (const raw of dbModules) {
           if (!raw || typeof raw !== 'object') continue;

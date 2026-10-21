@@ -18,11 +18,16 @@ try {
  await page.evaluate(()=>{
   const kv=new Map();
   const chars=Array.from({length:50},(_,i)=>({chaId:'bot-'+i,name:'Bot '+i,additionalAssets:[['Asset '+i,'asset-'+i]],modules:['m'],globalLore:[],chats:[{id:'chat-'+i,message:[]}]}));
-  let modules=[{id:'m',name:'Active module',assets:[['Module asset','module-asset']]},{id:'inlay-inray-display',namespace:'inlay.inray_display',lorebook:[],assets:[]}];
+  let modules=[{id:'m',name:'Active module',assets:[['Module asset','module-asset']]},{id:'big',name:'Big module',assets:[['Jieun_angry','big-asset','png']]},{id:'inlay-inray-display',namespace:'inlay.inray_display',lorebook:[],assets:[]}];
   globalThis.risuai={
    pluginStorage:{getItem:async k=>kv.get(k),setItem:async(k,v)=>kv.set(k,v),removeItem:async k=>kv.delete(k)},
-   getArgument:async()=>'',readImage:async()=>new Uint8Array([1,2,3]),getDatabase:async()=>({characters:structuredClone(chars),modules:structuredClone(modules),enabledModules:['m']}),
-   setDatabase:async value=>{if(value.modules)modules=structuredClone(value.modules)},
+   getArgument:async()=>'',readImage:async()=>new Uint8Array([1,2,3]),// PocketRisu: a large module's list is filled on the way out and that can fail;
+   // the first read for the list alone comes back without it too.
+   getDatabase:async keys=>{const list=structuredClone(modules);const big=list.find(m=>m.id==='big');const alone=keys?.length===1&&keys[0]==='modules';
+    if(big&&!(alone&&--globalThis.bigFails<0)){globalThis.bigLazyReads=(globalThis.bigLazyReads||0)+1;delete big.assets;big.assetManifest={id:'man-big',count:1};}
+    return {characters:structuredClone(chars),modules:list,enabledModules:['m','big']};},
+   // PocketRisu keeps the stored list when a write carries only the descriptor (restoreModuleManifest).
+   setDatabase:async value=>{if(value.modules)modules=structuredClone(value.modules).map(m=>!Array.isArray(m.assets)&&m.assetManifest?{...modules.find(o=>o.id===m.id),...m,assets:modules.find(o=>o.id===m.id)?.assets,assetManifest:undefined}:m)},
    getCharacterFromIndex:async i=>structuredClone(chars[i]),setCharacterToIndex:async(i,c)=>{await new Promise(r=>setTimeout(r,80));chars[i]=structuredClone(c);},
    getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async i=>structuredClone(chars[i].chats[0]),
   };
@@ -144,6 +149,12 @@ try {
  await page.locator('dialog input[type="search"]').fill('');
  await page.locator('dialog select').selectOption('0');
  assert.match(await page.locator('dialog').textContent(),/Module asset/);
+ // A module PocketRisu sent without its list: asked for again, then shown.
+ await page.evaluate(()=>{globalThis.bigFails=1;});
+ await page.locator('dialog select').selectOption('1');
+ await page.waitForFunction(()=>/PocketRisu에서 모듈 에셋 목록을 받는 중/.test(document.querySelector('dialog [role="status"]').textContent));
+ await page.waitForFunction(()=>/Jieun_angry/.test(document.querySelector('dialog').textContent),null,{timeout:8000});
+ assert.equal(await page.evaluate(()=>globalThis.bigFails),-1,'the second read for the list brought it');
  await page.getByRole('button',{name:'닫기',exact:true}).last().click();
  await page.evaluate(()=>{const input=document.querySelector('#nx-char-edit-body [data-char-given]');globalThis.savedGiven=input.value;input.value='지호';input.dispatchEvent(new Event('input',{bubbles:true}));});
  await page.locator('#nx-char-from-asset').click();
