@@ -128,6 +128,9 @@ async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
     card={id,session_id:nxFloatSession,character_id:scope.characterId,chat_id:scope.chatId,message_index:Number.isInteger(index)?index:undefined};
   }
   nxFloatSelectedCard = card;
+  const shotIndex = Number(/data-chat-index="(\d+)"/.exec(bubbleHtml)?.[1] ?? card.message_index ?? -1);
+  nxFloatShotIndex = Number.isInteger(shotIndex) ? shotIndex : -1;
+  if (changed) nxFloatNavShots(null);
   const index = (t.gallery || []).findIndex(c => c.id === id);
   if (index >= 0) t.viewerIndex = index;
   // The reading message target is independent of the displayed image.
@@ -160,6 +163,7 @@ async function nxFloatClick(kind) {
     if (kind === 'compact') { nxFloatCompact = !nxFloatCompact; await nxFloatApply(); return; }
     if (kind === 'counts') { await nxFloatToggleCounts(); return; }
     if (/^(min|max)-(up|down)$/.test(kind)) { await nxFloatChangeCount(kind); return; }
+    if (kind === "prev" || kind === "next") { await nxFloatNavGo(kind === "next" ? 1 : -1); return; }
     if (kind === "fold") { await nxFloatSetCollapsed(true); return; }
     if (kind === "unfold") { await nxFloatSetCollapsed(false); return; }
     if (kind === "stop") { await omniFooterAction("stop", nxFloatKey); return; }
@@ -273,6 +277,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatDirty = true;
     nxFloatStructureDirty = true; nxFloatReadingIndex = -1;
     nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
+    nxFloatNavIds = []; nxFloatShotIndex = -1; nxFloatNavHold = null;
     omniFooterTargets.delete(nxFloatKey);
     await nxFloatPaintImg('');
   }
@@ -317,10 +322,21 @@ async function nxFloatMountTimed(mark) {
       make("span", { text: "⋯⋯", style: 'line-height:20px;' }),
       make("div", {}, [["x-nx-float-foldgrid", "1"]]),
     ]);
+    // ‹ › with this message's dots: bottom right when open, beside the grip when folded.
+    const [navMain, navInfo, navDots, navCount, navBtns, navFold, navFoldCount] = await Promise.all([
+      make("div", {style:"display:none;"}, [["x-nx-float-nav", "main"]]),
+      make("div", {style:"display:none;"}, [["x-nx-float-navinfo", "1"]]),
+      make("span", {}, [["x-nx-float-dots", "1"]]),
+      make("span", {}, [["x-nx-float-count", "1"]]),
+      make("div", {}, [["x-nx-float-navbtns", "1"]]),
+      make("div", {style:"display:none;"}, [["x-nx-float-nav", "fold"]]),
+      make("span", {style:"display:none;"}, [["x-nx-float-count", "1"]]),
+    ]);
     const chain = async (parent, kids) => { for (const kid of kids) await parent.appendChild(kid); };
     await Promise.all([
-      chain(root, [icon, head, stage, bar, resize, foldGrip, foldGrid]),
-      chain(head, [spanL, spanR]), chain(stage, [pixels]), chain(spanL, [reroll]), chain(foldGrip, [gripLabel]),
+      chain(root, [icon, head, stage, bar, navMain, resize, foldGrip, foldGrid]),
+      chain(head, [spanL, spanR]), chain(stage, [pixels]), chain(spanL, [reroll]), chain(foldGrip, [gripLabel, navFold]),
+      chain(navMain, [navInfo, navBtns]), chain(navInfo, [navDots, navCount]), chain(navFold, [navFoldCount]),
     ]);
     await omniRelease(gripLabel);
     nxFloatImage = pixels;
@@ -330,6 +346,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatRoot = root; nxFloatHead = head; nxFloatStage = stage; nxFloatBar = bar;
     nxFloatResize = resize; nxFloatFoldGrip = foldGrip; nxFloatFoldGrid = foldGrid;
     nxFloatIcon = icon; nxFloatImgReroll = reroll;
+    nxFloatNav = {main: navMain, info: navInfo, dots: navDots, count: navCount, fold: navFold, foldCount: navFoldCount, edges: null};
     // Event routing is attached once to the host after all controls exist.
     const wireBtns = async (pairs, host) => {
       // Independent button creation crosses the bridge together; insertion
@@ -351,8 +368,9 @@ async function nxFloatMountTimed(mark) {
       wireBtns(NX_FLOAT_HEAD_L,spanL),wireBtns(NX_FLOAT_HEAD_R,spanR),
       wireBtns(NX_FLOAT_BAR_BTNS,bar),wireBtns(NX_FLOAT_GRID_BTNS,foldGrid),
       wireBtns([["compact","−"]],foldGrip),
+      wireBtns(NX_FLOAT_NAV_BTNS,navBtns),wireBtns(NX_FLOAT_NAV_BTNS,navFold),
     ]);
-    await omniRelease(spanL);await omniRelease(spanR);
+    await omniRelease(spanL);await omniRelease(spanR);await omniRelease(navBtns);
     await nxFloatBindInputs(h);
     if (t.unloading || mountEpoch !== nxFloatEpoch || t.backendSettings?.card?.floating_viewer === false) {
       await nxFloatDispose();
@@ -396,6 +414,7 @@ async function nxFloatShow() {
 async function nxFloatDispose(resetSession = true) {
   ++nxFloatGen; ++nxFloatSelecting; ++nxFloatEpoch;
   await nxFloatUnbindInputs();
+  await nxFloatDropNav();
   clearTimeout(nxFloatIdleTimer);
   nxFloatIdleTimer = 0; nxFloatIdle = false; nxFloatHovered = false;
   await nxFloatPainting.catch(() => {});

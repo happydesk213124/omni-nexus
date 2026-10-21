@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 
 const streamSource=readFileSync(new URL('../tools/vendor-patches/stream-runtime.js',import.meta.url),'utf8');
 const streamHelpers=streamSource.slice(streamSource.indexOf('async function omniRelease'),streamSource.indexOf('let omniObserverWork'));
-const parts = ['style', '', 'render', 'input', 'position', 'drag'];
+const parts = ['style', '', 'render', 'input', 'position', 'drag', 'nav'];
 let runtime = parts.map(part => readFileSync(new URL(`../tools/vendor-patches/float-viewer${part ? '-'+part : ''}.js`,import.meta.url),'utf8')).join('\n');
 if(process.env.BREAK_FLOAT_INSPECT) runtime=runtime.replace('t.uiOpen || t._nxHostInspectOpen ||','t.uiOpen ||');
 const inspectRuntime=readFileSync(new URL('../tools/vendor-patches/inspect-runtime.js',import.meta.url),'utf8');
@@ -66,6 +66,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
       async setTextContent(v) { stats.textWrites++;this.n.textContent = v; }
       async appendChild(n) { this.n.appendChild(n.n); }
       async remove() { this.n.remove(); }
+      async scrollIntoView(o) { this.n.scrollIntoView(o); window.fixture?.onScrollInto?.(this.n); }
       async addEventListener(kind,fn,options) {
         // Risu apiV3/v3.svelte.ts: callbacks attach to document, even when
         // registered through an individual SafeElement, and omit the target.
@@ -107,7 +108,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
     };
     globalThis.__INLAY_NATIVE__ = {resolveImageUrl:c=>'data:image/png;base64,'+c.id,ensureImageUrl:async id=>'data:image/png;base64,'+id};
     t._nxInspectOpener = async (...args) => calls.push(['full',...args]);
-    const k = {createMutationObserver:async fn=>{const observer=new MutationObserver(fn);return {observe:async(node,opts)=>observer.observe(node.n,opts),disconnect:async()=>observer.disconnect()};}};
+    const k = {getChatFromIndex:async()=>{stats.chatReads=(stats.chatReads||0)+1;return structuredClone(window.fixture?.chat ?? null);},createMutationObserver:async fn=>{const observer=new MutationObserver(fn);return {observe:async(node,opts)=>observer.observe(node.n,opts),disconnect:async()=>observer.disconnect()};}};
     const deps = {omniScope:{pending:null},omniPerf:{released:0,viewerPasses:0},omniReadScope:async()=>scope,t,H,k,pe:async patch=>{await new Promise(r=>setTimeout(r,10));Object.assign(t.backendSettings.card,patch.card);calls.push(['save',patch]);},ue:async()=>doc,Z:async()=>scope,ce:async sid=>{stats.galleryLoads++;t.gallery=sid==='s'?cards:[];t._galleryCache={sessionId:sid};},
       Aa:async()=>({left:10,top:10,w:360,h:560}),loadViewerIconGeo:async()=>({left:10,top:10}),loadViewerMinimized:async()=>false,
       saveViewerMinimized:async v=>calls.push(['collapsed',v]),saveViewerIconGeo:async v=>v,qt:async v=>calls.push(['geo',v]),
@@ -394,12 +395,12 @@ test('floating counts opens below viewer, edits saved min/max and works folded w
     await clickAt(page,'[x-nx-float-foldgrip] [x-nx-float-btn="compact"]');
     const compact=await page.locator('[x-nx-float]').boundingBox();
     assert.equal(compact.width,64);assert.equal(compact.height,82);
-    const compactGrip=await page.locator('[x-nx-float-foldgrip] span').boundingBox();
-    const restoreButton=await page.locator('[x-nx-float-foldgrip] button').boundingBox();
+    const compactGrip=await page.locator('[x-nx-float-foldgrip] > span').boundingBox();
+    const restoreButton=await page.locator('[x-nx-float-foldgrip] > button').boundingBox();
     assert.ok(restoreButton.y>=compactGrip.y+compactGrip.height,'restore sits below the header');
     assert.ok(compact.width<folded.width && compact.height<folded.height,'header-only mode shrinks both dimensions');
     assert.equal(await page.locator('[x-nx-float] button:visible').count(),1,'only the restore button remains');
-    assert.equal(await page.locator('[x-nx-float-foldgrip] button').textContent(),'+');
+    assert.equal(await page.locator('[x-nx-float-foldgrip] > button').textContent(),'+');
     assert.equal(await panel.isVisible(),false,'compact mode hides open count controls');
     await page.evaluate(()=>{fixture.t.uiOpen=true;return fixture.api.hide();});
     await page.evaluate(()=>{fixture.t.uiOpen=false;return fixture.api.show();});
@@ -609,4 +610,128 @@ test('building the viewer crosses the bridge in a few rounds, not one per node',
     assert.equal(await page.locator('[x-nx-float] [x-nx-float-head] [x-nx-float-headbtns="l"] [x-nx-float-reroll]').count(),1,'the tree is still built in order');
     await page.evaluate(()=>fixture.api.dispose());
   }finally{await browser.close();}
+});
+
+
+// ‹ › and the dots: a chat of 21 messages, pictures in 2 (x,y), 9 (z) and 15 (w1..w3).
+// Risu has drawn only 8..20; showing the oldest drawn one draws the rest, as Risu does.
+async function setupNav(page, runtimeSource = runtime) {
+  await setup(page, 1000, true, runtimeSource);
+  await page.evaluate(() => {
+    const shots = {2: ['x', 'y'], 9: ['z'], 15: ['w1', 'w2', 'w3']};
+    const img = 'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27/%3E';
+    const msg = i => `<div class="risu-chat" data-chat-index="${i}" data-chat-id="m${i}" style="min-height:300px"><div class="chattext">text ${i}`
+      + (shots[i] || []).map(id => `<div class="shot" x-inlay-inline-shot="${id}" data-inlay-inline-shot="${id}"><img src="${img}#${id}"></div>`).join('') + '</div></div>';
+    const screen = document.querySelector('.default-chat-screen');
+    screen.innerHTML = Array.from({length: 13}, (_, i) => msg(i + 8)).join('');
+    fixture.chat = {message: Array.from({length: 21}, (_, i) => ({data: 'line ' + i + (shots[i] || []).map(id => `\n[[@inray::${id}::inxshot_${id}::512::768]]`).join('')}))};
+    fixture.onScrollInto = node => {
+      if (node.matches('.risu-chat[data-chat-index="8"]') && !screen.querySelector('[data-chat-index="0"]'))
+        setTimeout(() => node.insertAdjacentHTML('beforebegin', Array.from({length: 8}, (_, i) => msg(i)).join('')), 50);
+    };
+  });
+  const center = async id => page.evaluate(id => {
+    const node = document.querySelector(`[x-inlay-inline-shot="${id}"]`);
+    if (!node) return false;
+    const r = node.getBoundingClientRect();
+    return r.top < 700 && r.bottom > 0;
+  }, id);
+  const look = () => page.evaluate(() => ({
+    id: fixture.api.state().id,
+    dots: document.querySelector('[x-nx-float-nav="main"] [x-nx-float-dots]').textContent,
+    count: document.querySelector('[x-nx-float-nav="main"] [x-nx-float-count]').textContent,
+    info: getComputedStyle(document.querySelector('[x-nx-float-navinfo]')).display,
+    nextOff: document.querySelector('[x-nx-float-nav="main"]').getAttribute('x-nx-float-next-off'),
+    prevOff: document.querySelector('[x-nx-float-nav="main"]').getAttribute('x-nx-float-prev-off'),
+    reads: fixture.stats.chatReads || 0,
+  }));
+  const settle = async () => {
+    await page.evaluate(() => new Promise(r => setTimeout(r, 30)));
+    await page.evaluate(() => fixture.api.scan());
+    await page.evaluate(() => fixture.api.apply());
+  };
+  const press = async (kind, where = 'main') => {
+    await clickAt(page, `[x-nx-float-nav="${where}"] [x-nx-float-btn="${kind}"]`);
+    await settle();
+  };
+  return {center, look, press, settle};
+}
+
+test('‹ › step through a message\'s pictures and on to the next message\'s, the chat following; the dots count one message', async () => {
+  const browser = await chromium.launch({headless: true, ...(process.platform === 'win32' ? {channel: 'msedge'} : {})});
+  try {
+    const page = await browser.newPage();
+    const {center, look, press, settle} = await setupNav(page);
+    // Reading w2: its message's three dots, the second filled, and no chat read for it.
+    await page.evaluate(() => { document.querySelector('[x-inlay-inline-shot="w2"]').scrollIntoView({block: 'center'}); return fixture.api.scan(); });
+    await page.evaluate(() => fixture.api.apply());
+    assert.deepEqual(await look(), {id: 'w2', dots: '○●○', count: '2/3', info: 'flex', nextOff: 'false', prevOff: 'false', reads: 0});
+    // › within the message, then at the chat's last picture: dimmed, nothing moves.
+    await press('next');
+    assert.deepEqual(await look(), {id: 'w3', dots: '○○●', count: '3/3', info: 'flex', nextOff: 'true', prevOff: 'false', reads: 1});
+    assert.ok(await center('w3'), 'the chat follows to w3');
+    await press('next');
+    assert.equal((await look()).id, 'w3', 'the last picture stays');
+    // ‹ across messages: back through w2, w1 to z (one picture: no dots); the chat read once.
+    await press('prev'); await press('prev');
+    assert.deepEqual(await look(), {id: 'w1', dots: '●○○', count: '1/3', info: 'flex', nextOff: 'false', prevOff: 'false', reads: 1});
+    await press('prev');
+    const z = await look();
+    assert.equal(z.id, 'z');
+    assert.equal(z.info, 'none', 'one picture in the message: no dots');
+    assert.ok(await center('z'), 'the chat follows to message 9');
+    // Message 2 is not drawn yet: ‹ pulls the older messages in and lands on its last picture.
+    await press('prev');
+    await page.waitForFunction(() => { const n = document.querySelector('[x-inlay-inline-shot="y"]'); if (!n) return false; const r = n.getBoundingClientRect(); return r.top < 700 && r.bottom > 0; });
+    await settle();
+    assert.deepEqual(await look(), {id: 'y', dots: '○●', count: '2/2', info: 'flex', nextOff: 'false', prevOff: 'false', reads: 1});
+    await press('prev');
+    assert.deepEqual(await look(), {id: 'x', dots: '●○', count: '1/2', info: 'flex', nextOff: 'false', prevOff: 'true', reads: 1}, 'the first picture dims ‹');
+
+    // Two taps on the picture bring the chat back to it after reading elsewhere.
+    await page.evaluate(() => { document.querySelector('.default-chat-screen').scrollTop = 1e6; });
+    assert.equal(await center('x'), false);
+    const stage = await page.locator('[x-nx-float-body]').boundingBox();
+    const tap = () => page.locator('body').dispatchEvent('click', {clientX: stage.x + stage.width / 2, clientY: stage.y + stage.height / 2, button: 0});
+    await tap(); await page.evaluate(() => new Promise(r => setTimeout(r, 450))); await tap();
+    assert.equal(await center('x'), false, 'two taps far apart in time are not a double tap');
+    await tap(); await tap();
+    await page.waitForFunction(() => { const r = document.querySelector('[x-inlay-inline-shot="x"]').getBoundingClientRect(); return r.top < 700 && r.bottom > 0; });
+    assert.equal((await look()).id, 'x');
+
+    // Folded: ‹ count › at the grip's top left, and they work there too.
+    await clickAt(page, '[x-nx-float-head] [x-nx-float-btn="fold"]');
+    assert.equal(await page.locator('[x-nx-float-nav="fold"]').isVisible(), true);
+    assert.equal(await page.locator('[x-nx-float-nav="main"]').isVisible(), false);
+    assert.equal(await page.locator('[x-nx-float-nav="fold"] [x-nx-float-count]').textContent(), '1/2');
+    const grip = await page.locator('[x-nx-float-foldgrip]').boundingBox(), nav = await page.locator('[x-nx-float-nav="fold"]').boundingBox();
+    assert.ok(Math.abs(nav.x - grip.x) < 2 && Math.abs(nav.y - grip.y) < 2, 'top left of the folded viewer');
+    await press('next', 'fold');
+    assert.equal((await look()).id, 'y');
+    assert.equal(await page.locator('[x-nx-float-nav="fold"] [x-nx-float-count]').textContent(), '2/2');
+    assert.ok(await center('y'));
+    await page.evaluate(() => fixture.api.dispose());
+  } finally { await browser.close(); }
+});
+
+async function verifyNavHold(page, runtimeSource) {
+  const {settle} = await setupNav(page, runtimeSource);
+  await page.evaluate(() => { document.querySelector('[x-inlay-inline-shot="w2"]').scrollIntoView({block: 'center'}); return fixture.api.scan(); });
+  await clickAt(page, '[x-nx-float-nav="main"] [x-nx-float-btn="next"]');
+  await page.evaluate(() => new Promise(r => setTimeout(r, 30)));
+  // The scroll lands with the neighbour nearer the middle (the chat's end can stop it short).
+  await page.evaluate(() => { document.querySelector('[x-inlay-inline-shot="w2"]').scrollIntoView({block: 'center'}); });
+  await settle();
+  assert.equal(await page.evaluate(() => fixture.api.state().id), 'w3', 'the pressed picture stays while its scroll settles');
+}
+
+test('the scroll a ‹ › press causes cannot swap the picture back; the hold guard detects its removal', async () => {
+  const browser = await chromium.launch({headless: true, ...(process.platform === 'win32' ? {channel: 'msedge'} : {})});
+  try {
+    const page = await browser.newPage(); await verifyNavHold(page, runtime); await page.close();
+    const broken = runtime.replace('if (nxFloatNavHold && Date.now() < nxFloatNavHold.until && best.id !== nxFloatNavHold.id) return;', '');
+    assert.notEqual(broken, runtime);
+    const bad = await browser.newPage();
+    await assert.rejects(() => verifyNavHold(bad, broken), /the pressed picture stays/);
+  } finally { await browser.close(); }
 });

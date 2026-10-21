@@ -78,6 +78,7 @@ async function nxFloatRender() {
   const changed = nxFloatStyleCache.get(nxFloatRoot) !== css;
   await nxFloatStyle(nxFloatRoot,css);
   await nxFloatPaintChrome();
+  await nxFloatPaintNav();
   if(changed || !nxFloatBounds)nxFloatBounds = await nxFloatRoot.getBoundingClientRect();
   await nxFloatPaintCounts();
 }
@@ -147,6 +148,7 @@ async function nxFloatPaintChrome() {
   const writes=[];
   const show=(el,css)=>writes.push(nxFloatStyle(el,css));
   writes.push(nxFloatText(nxFloatCompactBtn,nxFloatCompact ? '+' : '−'));
+  const nav=nxFloatNav;
   show(nxFloatCompactBtn, nxFloatCompact ? 'position:static;width:44px;min-height:44px;flex:none;' : 'position:absolute;right:0;top:0;width:40px;min-height:44px;');
   if (nxFloatCompact) {
     show(nxFloatIcon, "display:none;");
@@ -155,6 +157,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatBar, "display:none;");
     show(nxFloatResize, "display:none;");
     show(nxFloatFoldGrid, "display:none;");
+    show(nav?.main, "display:none;");
+    show(nav?.fold, "display:none;");
     show(nxFloatFoldGrip, `display:flex;flex-direction:column;gap:4px;min-height:0;opacity:${nxFloatIdle ? '0.1' : '1'};`);
     await Promise.all(writes); return;
   }
@@ -167,6 +171,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatResize, "display:none;");
     show(nxFloatFoldGrip, "display:none;");
     show(nxFloatFoldGrid, "display:none;");
+    show(nav?.main, "display:none;");
+    show(nav?.fold, "display:none;");
     await Promise.all(writes); return;
   }
   show(nxFloatIcon, "display:none;");
@@ -177,6 +183,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatResize, "display:none;");
     show(nxFloatFoldGrip, `display:flex;opacity:${idleOp};pointer-events:${nxFloatIdle ? "none" : "auto"};`);
     show(nxFloatFoldGrid, `display:grid;opacity:${idleOp};`);
+    show(nav?.main, "display:none;");
+    show(nav?.fold, "display:flex;");
     try { if (nxFloatFoldBtn && nxFloatFoldBtn.setTextContent) writes.push(nxFloatText(nxFloatFoldBtn,"▾")); } catch {}
   } else {
     show(nxFloatHead, `display:flex;opacity:${idleOp};`);
@@ -185,6 +193,8 @@ async function nxFloatPaintChrome() {
     show(nxFloatResize, `display:block;opacity:${idleOp};`);
     show(nxFloatFoldGrip, "display:none;");
     show(nxFloatFoldGrid, "display:none;");
+    show(nav?.main, "display:flex;");
+    show(nav?.fold, "display:none;");
     try { if (nxFloatFoldBtn && nxFloatFoldBtn.setTextContent) writes.push(nxFloatText(nxFloatFoldBtn,"▴")); } catch {}
   }
   await Promise.all(writes);
