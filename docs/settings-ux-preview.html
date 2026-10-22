@@ -1789,8 +1789,12 @@
         </div>
         <div data-debug-pane="scroll" hidden>
           <div class="stack">
-            <div class="block"><b>스크롤 파이프라인</b><p class="lead" style="margin:6px 0 0">채팅을 움직이면 여기만 모입니다. 지금은 초안이라 샘플만 둡니다.</p></div>
+            <div class="block"><b>스트리밍 스크롤 붙잡기 기록</b><p class="lead" style="margin:6px 0 0">답변이 스트리밍될 때 읽던 자리를 어떻게 표시하고, 끝날 때 무엇으로 되돌리려 했는지(안 했다면 왜인지) 남깁니다. 최신이 맨 위. 문제가 생기면 이 화면을 캡처해 보내 주세요.</p></div>
           </div>
+          <div class="actions" style="padding-left:0">
+            <button class="btn-ghost" type="button" id="nx-debug-scroll-clear">기록 비우기</button>
+          </div>
+          <pre id="nx-debug-scroll" style="margin:0;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);font:12px/1.45 Consolas,monospace;min-height:200px;white-space:pre-wrap;overflow-wrap:anywhere">(아직 기록 없음 · 스트리밍 중에 위로 올려 읽어 보세요)</pre>
         </div>
         <div data-debug-pane="tagging" hidden>
           <div class="actions" style="padding-left:0">

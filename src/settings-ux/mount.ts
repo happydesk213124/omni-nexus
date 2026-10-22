@@ -237,6 +237,10 @@ function bindDebugBar(): void {
   bar.dataset.nxUxDebug = '1';
   bar.querySelectorAll<HTMLElement>('[data-debug-panel]').forEach(el => el.classList.toggle('on', el.dataset.debugPanel === debugPanel));
   document.querySelectorAll<HTMLElement>('[data-debug-pane]').forEach(el => { el.hidden = el.dataset.debugPane !== debugPanel; });
+  // The streaming scroll trace lives in the runtime; it paints itself while this pane exists.
+  const trace = () => Reflect.get(globalThis, '__OMNI_SCROLL_TRACE__') as { paint?: () => void; clear?: () => void } | undefined;
+  trace()?.paint?.();
+  document.getElementById('nx-debug-scroll-clear')?.addEventListener('click', () => trace()?.clear?.());
   bar.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-debug-panel]');
     if (!btn) return;
@@ -246,6 +250,7 @@ function bindDebugBar(): void {
     document.querySelectorAll('[data-debug-pane]').forEach((el) => {
       (el as HTMLElement).hidden = el.getAttribute('data-debug-pane') !== name;
     });
+    if (name === 'scroll') trace()?.paint?.();
     document.querySelector<HTMLElement>(`[data-nx-debug-panel="${name}"]`)?.click();
   });
 }
