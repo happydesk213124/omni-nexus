@@ -20987,6 +20987,11 @@ async function omniStreamMark(run) {
     const swaps=run.swaps,place=await omniStreamPlace(run),chunk=run.chunks;
     if(!place)return;
     if(run.swaps!==swaps){omniScrollTrace(run,'표시 버림: 재는 동안 메시지 갈아끼움');return;}
+    // After the end the place is the one put back; only the reader's hand moves it on.
+    if(run.after) {
+      if(omniStreamHandBusy(run) && (!run.placed || omniPlaceText(run.placed)!==omniPlaceText(place))){run.placed=place;omniScrollTrace(run,'끝난 뒤 손가락으로 옮김: '+omniPlaceText(place));}
+      return;
+    }
     const last=run.marks.at(-1)?.place;
     run.marks.push({chunk,place});
     if(run.marks.length>OMNI_STREAM_MARKS)run.marks.shift();
@@ -21020,7 +21025,7 @@ function omniStreamPick(run) {return run.marks.filter(row=>row.chunk<run.chunks)
 // at most (a phone once spent two seconds moving 31 times).
 async function omniStreamPut(run,place,watchMs=0) {
   run.screenRect ||= await run.screen.getBoundingClientRect();
-  const sr=run.screenRect,until=performance.now()+watchMs;
+  const sr=run.screenRect,until=performance.now()+watchMs,swaps=run.swaps;
   let off=0,moves=0,fresh=true,filledBy=performance.now()+3000;
   for(;;) {
     let reply=await omniStreamReply(run,fresh);fresh=false;
@@ -21038,6 +21043,7 @@ async function omniStreamPut(run,place,watchMs=0) {
     }
     if(!omniStreamJumped(run,off))return '그대로: 손가락이 옮기는 중 ('+Math.round(off)+'px'+(moves?', '+moves+'번 옮긴 뒤':'')+')';
     if(moves>=3)return '3번 옮겨도 '+Math.round(off)+'px 어긋남';
+    omniScrollTrace(run,'  '+(moves+1)+'번째 옮김: '+Math.round(off)+'px 어긋남 · 답변 높이 '+Math.round(reply.rect.height)+'px'+(run.swaps!==swaps?' · 그새 갈아끼움':''));
     const node=reply.node;
     if(place.bottom)await node.scrollIntoView({behavior:'instant',block:'end',inline:'nearest'});
     else {
@@ -21087,27 +21093,49 @@ async function omniStreamAfterSwap(run) {
   if(run.closed)return;
   if(!omniStreamScrollOn() || t.uiOpen){omniScrollTrace(run,'갈아끼움 → 건너뜀: 설정 꺼짐 또는 설정창 열림');return;}
   await run.marking;
+  const hand=omniStreamHandBusy(run)?' · 손가락 움직이는 중':'';
+  if(run.after) {
+    omniScrollTrace(run,'끝난 뒤 갈아끼움 → 복원 시도: '+omniPlaceText(run.placed)+hand);
+    omniScrollTrace(run,'끝난 뒤 복원 결과: '+await omniStreamPut(run,run.placed,600));
+    return;
+  }
   const mark=omniStreamPick(run);
   if(!mark){omniScrollTrace(run,'갈아끼움 → 건너뜀: 표시 없음');return;}
-  omniScrollTrace(run,'갈아끼움 → 복원 시도: '+omniPlaceText(mark.place)+' (조각'+mark.chunk+'/'+run.chunks+')'+(omniStreamHandBusy(run)?' · 손가락 움직이는 중':''));
+  omniScrollTrace(run,'갈아끼움 → 복원 시도: '+omniPlaceText(mark.place)+' (조각'+mark.chunk+'/'+run.chunks+')'+hand);
   const result=await omniStreamPut(run,mark.place,600);
   omniScrollTrace(run,'갈아끼움 복원 결과: '+result);
-  if(!result.startsWith('포기'))run.swapRestored=true;
+  if(!result.startsWith('포기')){run.swapRestored=true;run.placed=mark.place;}
+}
+// After the end Risu may draw the reply again (a picture or a spinner written into it):
+// the list stays watched this long, and each swap puts the place back again.
+const OMNI_STREAM_AFTER_MS=6000;
+let omniStreamAfterRun=null;
+function omniStreamAfter(run) {
+  if(!run.placed){void omniStreamScrollStop(run);return;}
+  run.after=true;
+  if(omniStreamScroll===run)omniStreamScroll=null;
+  omniStreamAfterRun=run;
+  run.afterTimer=setTimeout(()=>{omniScrollTrace(run,'끝난 뒤 지켜보기 끝');void omniStreamScrollStop(run);},OMNI_STREAM_AFTER_MS);
 }
 async function omniStreamScrollStop(run) {
-  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);
+  if(run.closed)return;
+  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);clearTimeout(run.afterTimer);
   if(omniStreamScroll===run)omniStreamScroll=null;
+  if(omniStreamAfterRun===run)omniStreamAfterRun=null;
   void omniStreamUnwatch(run);
   for(const [name,id,options,on] of run.listeners.splice(0))try{await (on||run.screen).removeEventListener(name,id,options);}catch{}
+  await omniStreamRelease(run.reply);run.reply=null;
 }
 function omniStreamScrollTrack() {
   let run=omniStreamScroll;
   if(run && Date.now()-run.chunkAt>OMNI_STREAM_SCROLL_STALE_MS){omniScrollTrace(run,'15초 동안 조각 없음 → 이 추적 끝');void omniStreamScrollStop(run);run=null;}
   if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
   if(!run) {
+    // A new reply: the last one's watch after its end would restore into this one.
+    if(omniStreamAfterRun)void omniStreamScrollStop(omniStreamAfterRun);
     omniStreamScroll={chunkAt:Date.now(),chunks:1,marks:[],marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
       screen:null,screenRect:null,reply:null,scope:'',reader:null,closed:false,ready:null,watch:null,redrawTimer:0,swaps:0,
-      swapRestored:false,no:++omniScrollTraceRuns,startedAt:performance.now()};
+      swapRestored:false,placed:null,after:false,afterTimer:0,no:++omniScrollTraceRuns,startedAt:performance.now()};
     omniScrollTrace(omniStreamScroll,'답변 조각 도착 (추적 준비)');
     return;
   }
@@ -21124,7 +21152,7 @@ function omniStreamScrollTrack() {
       await omniListen(screen,name,fn,run.listeners);
       if(run.closed){await omniStreamScrollStop(run);return;}
     }
-    omniScrollTrace(run,'추적 시작 (조각'+run.chunks+')');
+    omniScrollTrace(run,'추적 시작 (조각'+run.chunks+') · 끝난 뒤 '+OMNI_STREAM_AFTER_MS/1000+'초 더 지켜봄');
     run.markedAt=performance.now();
     await omniStreamMark(run);
     await omniStreamWatchList(run);
@@ -21135,16 +21163,19 @@ function omniStreamScrollEnd() {
   if(!run.ready){omniScrollTrace(run,'끝 알림: 조각이 하나뿐(스트리밍 아님) → 아무것도 안 함');return omniStreamScrollStop(run);}
   return omniScrollQueue(async()=>{
     await run.ready;await run.marking;
+    if(run.closed)return;
     const mark=omniStreamPick(run);
-    // The put still hears the hand: the listeners come off after it.
+    // The put still hears the hand; the listeners stay on for the watch after the end.
     try {
       const head='끝 알림 (조각'+run.chunks+', 표시 '+run.marks.length+'개)';
       if(run.swapRestored){omniScrollTrace(run,head+' → 건너뜀: 갈아끼울 때 이미 복원함');return;}
       if(!mark){omniScrollTrace(run,head+' → 건너뜀: 표시 없음');return;}
-      if(!omniStreamScrollOn() || t.uiOpen){omniScrollTrace(run,head+' → 건너뜀: 설정 꺼짐 또는 설정창 열림');return;}
+      if(!omniStreamScrollOn() || t.uiOpen){omniScrollTrace(run,head+' → 건너뜀: 설정 꺼짐 또는 설정창 열림');run.placed=null;return;}
       omniScrollTrace(run,head+' → 복원 시도: '+omniPlaceText(mark.place)+' (조각'+mark.chunk+')'+(omniStreamHandBusy(run)?' · 손가락 움직이는 중':''));
-      omniScrollTrace(run,'끝 복원 결과: '+await omniStreamPut(run,mark.place,1500));
-    } finally {await omniStreamScrollStop(run);await omniStreamRelease(run.reply);run.reply=null;}
+      const result=await omniStreamPut(run,mark.place,1500);
+      omniScrollTrace(run,'끝 복원 결과: '+result);
+      run.placed=result.startsWith('포기')?null:mark.place;
+    } finally {omniStreamAfter(run);}
   }).catch(error=>y('warn','scroll.stream',String(error)));
 }
 
