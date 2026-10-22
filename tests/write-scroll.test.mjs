@@ -323,6 +323,25 @@ test('streaming scroll hold: a finger on the screen as the reply is swapped is l
  assert.equal(f.view,0,'the reader is placing the view');
 });
 
+// 디버그 > 스크롤 reads a phone's runs from this trace: what was marked, what was decided.
+test('streaming scroll hold: the trace says what it marked, restored, and why it skipped',async()=>{
+ globalThis.__OMNI_SCROLL_TRACE__?.clear();
+ let f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();f.redraw(0);await wait(300);
+ await f.api.end();
+ let lines=globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | ');
+ for(const want of ['추적 시작','표시 (조각','목록 감시 켜짐','갈아끼움 → 복원 시도: 메시지7','갈아끼움 복원 결과: 자리 맞춤','끝 알림','손가락 닿음','손가락 뗌'])
+  assert.ok(lines.includes(want),want+' missing in: '+lines);
+ globalThis.__OMNI_SCROLL_TRACE__.clear();
+ f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);f.chunk();
+ for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
+ f.redraw(0);await wait(300);await f.api.end();
+ lines=globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | ');
+ assert.match(lines,/건너뜀: 손가락 닿아 있음/);
+});
+
 // Last: nothing above asked Risu for an event it refuses. A refused type once threw
 // before the write it guarded, and no picture was baked.
 test('every listener the scroll code adds is one Risu forwards',()=>{
