@@ -323,6 +323,71 @@ test('streaming scroll hold: a finger on the screen as the reply is swapped is l
  assert.equal(f.view,0,'the reader is placing the view');
 });
 
+// From a phone's trace (디버그 > 스크롤): reading the screen took seconds there, marks
+// piled up eight at once, and one measured after the end's redraw carried an earlier
+// chunk's number, so the end sent the reader to that redraw's view.
+function slowScreen(f, ms) {
+ const q=f.screen.querySelectorAll;let inflight=0;const state={max:0,get inflight(){return inflight;}};
+ f.screen.querySelectorAll=async sel=>{inflight++;state.max=Math.max(state.max,inflight);try{await wait(ms);return await q(sel);}finally{inflight--;}};
+ return state;
+}
+test('streaming scroll hold: a slow screen is read one mark at a time, never piled up',async()=>{
+ const f=streamFixture();await start(f);
+ const slow=slowScreen(f,900);
+ for(let i=0;i<20;i++){f.moveTo(400+i);await wait(100);}
+ await wait(2000);
+ assert.equal(slow.max,1,'marks overlapped: '+slow.max);
+ f.chunk();await f.api.end();
+});
+test('streaming scroll hold: a mark still being read when the reply is redrawn is not taken as the place before it',async()=>{
+ const f=streamFixture();await start(f);
+ f.scrollTo(400);await wait(SETTLE);          // a good mark of the reader's place
+ const slow=slowScreen(f,400);
+ f.moveTo(401);                              // a mark starts, reading slowly
+ for(let i=0;i<40 && !slow.inflight;i++)await wait(20);
+ f.chunk();f.redraw(0);                      // the last chunk and the redraw, mid-read
+ await wait(900);
+ await f.api.end();
+ assert.equal(f.view,400,'the reader\'s place, not the redraw\'s view the slow mark measured');
+});
+test('streaming scroll hold: a finger down as the reply is swapped delays the restore until it lifts',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
+ f.redraw(0);await wait(150);
+ assert.equal(f.view,0,'not while the finger is down');
+ for(const h of [...f.handlers.values()])if(h.kind==='pointercancel')h.fn({});
+ await wait(900);
+ assert.equal(f.view,400,'back once it lifted without moving the view');
+ await f.api.end();
+});
+
+test('streaming scroll hold: a finger that took the view elsewhere after the swap is followed, not undone',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.screen.getProperty=async key=>key==='scrollTop'?-f.view:undefined;
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
+ f.redraw(0);await wait(50);
+ for(const h of [...f.handlers.values()])if(h.kind==='pointercancel')h.fn({});
+ f.moveTo(250);await wait(900);              // the drag goes on with no pointer events
+ assert.equal(f.view,250,'where the hand put it');
+ assert.match(globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | '),/손가락으로 250px 옮김/);
+ await f.api.end();
+ assert.equal(f.view,250,'the end does not pull the reader back either');
+});
+test('streaming scroll hold: a place already restored at the swap is not pulled again when the end comes late',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();f.redraw(0);await wait(300);
+ assert.equal(f.view,400);
+ f.scrollTo(300);await wait(SETTLE);        // the reader reads on, by hand
+ await f.api.end();
+ assert.equal(f.view,300,'the end leaves the reader where they went');
+ assert.match(globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | '),/갈아끼울 때 이미 복원함/);
+});
+
 // 디버그 > 스크롤 reads a phone's runs from this trace: what was marked, what was decided.
 test('streaming scroll hold: the trace says what it marked, restored, and why it skipped',async()=>{
  globalThis.__OMNI_SCROLL_TRACE__?.clear();

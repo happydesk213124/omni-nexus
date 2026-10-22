@@ -20848,7 +20848,7 @@ async function omniHoldAnchor(anchor,work,options={}) {
   const doc=t.hostDoc || await ue(),screen=doc && await doc.querySelector('.default-chat-screen');
   if(!screen)return work();
   let userMoved=false,own=false,ownAt=-Infinity,dirty=0,observer=null;
-  const registered=[],reader=omniReaderScrolls();
+  const registered=[],reader=options.reader || omniReaderScrolls();
   let movedBy='',fixes=0,everFound=false;
   const input=(why='')=>{if(!userMoved)movedBy=why;userMoved=true;};
   // The scroll our own correction causes arrives a frame after it returns.
@@ -20856,7 +20856,7 @@ async function omniHoldAnchor(anchor,work,options={}) {
   // bridge late, after this starts listening and before any change is heard to blame
   // it on. There, only a hand on the screen (or a key) means the reader moved.
   const scroll=()=>{if(!own && performance.now()-ownAt>120 && (options.byHand ? reader.byHand() : reader.scroll()))input('스크롤');};
-  const listeners=[...reader.listeners,['pointermove',()=>{if(reader.pressed())input('손가락 끌기');}],
+  const listeners=[...(options.reader?[]:reader.listeners),['pointermove',()=>{if(reader.pressed())input('손가락 끌기');}],
     ['keydown',e=>{if(OMNI_SCROLL_KEYS.includes(e?.key))input('키');}],['scroll',scroll]];
   try {
     for(const [name,fn] of listeners)await omniListen(screen,name,fn,registered);
@@ -20994,7 +20994,10 @@ async function omniStreamPlace(run) {
   if(!body)return null;
   const paragraphs=await nxUnwrapSafeNodes(await body.querySelectorAll('p'));
   const hit=await omniNodeAt(paragraphs,y);
-  if(hit) {
+  // The nearest paragraph can lie far off screen (a message of pictures with one line
+  // at its top): restoring it put the reader 17,000px away. Off screen, the message's
+  // own start is the place instead.
+  if(hit && hit.rect.bottom>sr.top && hit.rect.top<sr.bottom) {
     const text=String(await hit.node.textContent() || '').trim();
     if(text)return {scope:run.scope,index,paragraph:hit.i,text,offset:hit.rect.top-sr.top};
   }
@@ -21003,8 +21006,12 @@ async function omniStreamPlace(run) {
 }
 async function omniStreamMark(run) {
   const mark=(async()=>{
-    const chunk=run.chunks,place=await omniStreamPlace(run);
+    // Reading the screen takes seconds on a phone. The chunk count is taken when it
+    // ends: one taken at the start labelled a view measured after the end's redraw as
+    // from before it, and the end sent the reader there.
+    const swaps=run.swaps,place=await omniStreamPlace(run),chunk=run.chunks;
     if(!place)return;
+    if(run.swaps!==swaps){omniScrollTrace(run,'표시 버림: 재는 동안 메시지 갈아끼움');return;}
     run.marks.push({chunk,place});
     omniScrollTrace(run,'표시 (조각'+chunk+'): '+omniPlaceText(place));
     if(run.marks.length>OMNI_STREAM_MARKS)run.marks.shift();
@@ -21018,11 +21025,13 @@ function omniStreamMoved(run) {
   if(run.closed)return;
   run.dirty=true;
   if(run.timer)return;
+  // The timer stays set until the mark is read: on a slow phone a new one started every
+  // half second piled up (eight at once) and jammed the bridge for everything else.
   run.timer=setTimeout(async()=>{
-    run.timer=0;
-    if(run.closed || !run.dirty)return;
+    if(run.closed || !run.dirty){run.timer=0;return;}
     run.dirty=false;run.markedAt=performance.now();
     await omniStreamMark(run);
+    run.timer=0;
     if(run.dirty)omniStreamMoved(run);
   },Math.max(60,OMNI_STREAM_MARK_MS-(performance.now()-run.markedAt)));
 }
@@ -21057,12 +21066,13 @@ async function omniStreamUnwatch(run) {
 }
 function omniStreamRedrawn(run) {
   if(run.closed)return;
-  if(run.reader?.pressed()){omniScrollTrace(run,'갈아끼움 감지 → 건너뜀: 손가락 닿아 있음('+run.reader.pressedFor()+' 전부터)');return;}
+  run.swaps=(run.swaps || 0)+1;run.swapRestored=false;run.userPlaced=false;
+  if(run.reader?.pressed()){omniStreamAwaitHand(run,'갈아끼움 감지');return;}
   // One restore for a swap's out-and-in.
   clearTimeout(run.redrawTimer);
   run.redrawTimer=setTimeout(()=>{void omniScrollQueue(async()=>{
     if(run.closed)return;
-    if(run.reader?.pressed()){omniScrollTrace(run,'갈아끼움 → 건너뜀: 손가락 닿아 있음('+run.reader.pressedFor()+' 전부터)');return;}
+    if(run.reader?.pressed()){omniStreamAwaitHand(run,'갈아끼움');return;}
     if(!omniStreamScrollOn() || t.uiOpen){omniScrollTrace(run,'갈아끼움 → 건너뜀: 설정 꺼짐 또는 설정창 열림');return;}
     await run.marking;
     const mark=omniStreamPick(run);
@@ -21070,11 +21080,43 @@ function omniStreamRedrawn(run) {
     if(!mark){omniScrollTrace(run,'갈아끼움 → 건너뜀: 표시 없음');return;}
     if(mark.place.bottom){omniScrollTrace(run,'갈아끼움 → 그대로: 맨 아래를 따라보던 중');return;}
     omniScrollTrace(run,'갈아끼움 → 복원 시도: '+omniPlaceText(mark.place)+' (조각'+mark.chunk+'/'+run.chunks+')');
-    await omniHoldAnchor(mark.place,async()=>{},{byHand:true,report:text=>omniScrollTrace(run,'갈아끼움 복원 결과: '+text)});
+    await omniHoldAnchor(mark.place,async()=>{},{byHand:true,reader:run.reader,report:text=>{
+      omniScrollTrace(run,'갈아끼움 복원 결과: '+text);
+      if(text.startsWith('포기: 읽는 사람'))run.userPlaced=true;else if(!text.startsWith('포기'))run.swapRestored=true;
+    }});
   }).catch(error=>y('warn','scroll.stream',String(error)));},40);
 }
+// A swap that came with a finger down: once the hand is off and the view has been
+// still for half a second, the place comes back only if the view is still where the
+// swap threw it. If the hand took it elsewhere, that is where the reader wants it.
+function omniStreamAwaitHand(run,what) {
+  omniScrollTrace(run,what+' → 손가락 닿아 있음('+run.reader.pressedFor()+' 전부터): 뗄 때까지 기다림');
+  run.handWait={top:null};
+  const wait=run.handWait;
+  void Promise.resolve(run.screen?.getProperty?.('scrollTop')).then(top=>{if(run.handWait===wait)wait.top=Number(top);}).catch(()=>{});
+}
+function omniStreamHandSettled(run) {
+  const wait=run.handWait;
+  if(!wait || run.closed || run.reader?.pressed())return;
+  clearTimeout(run.handTimer);
+  run.handTimer=setTimeout(async()=>{
+    if(run.handWait!==wait || run.closed || run.reader?.pressed())return;
+    run.handWait=null;
+    let top=NaN;
+    try {top=Number(await run.screen?.getProperty?.('scrollTop'));} catch {}
+    if(Number.isFinite(top) && Number.isFinite(wait.top) && Math.abs(top-wait.top)>60) {
+      omniScrollTrace(run,'손가락 뗌 → 그대로: 손가락으로 '+Math.round(Math.abs(top-wait.top))+'px 옮김');
+      run.userPlaced=true;wait.done?.();return;
+    }
+    // At the end the end's own restore follows; mid-stream the swap's restore runs now.
+    if(run.ending){omniScrollTrace(run,'손가락 뗌 → 튄 자리 그대로: 끝 복원으로 넘김');wait.done?.();return;}
+    omniScrollTrace(run,'손가락 뗌 → 튄 자리 그대로라 복원');
+    wait.done?.();
+    omniStreamRedrawn(run);
+  },500);
+}
 async function omniStreamScrollStop(run) {
-  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);
+  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);clearTimeout(run.handTimer);run.handWait=null;
   void omniStreamUnwatch(run);
   if(omniStreamScroll===run)omniStreamScroll=null;
   for(const [name,id,options,on] of run.listeners.splice(0))try{await (on||run.screen).removeEventListener(name,id,options);}catch{}
@@ -21085,7 +21127,7 @@ function omniStreamScrollTrack() {
   if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
   if(!run) {
     omniStreamScroll={chunkAt:Date.now(),chunks:1,marks:[],marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
-      screen:null,scope:'',lastBubble:null,reader:null,closed:false,ready:null,watch:null,redrawTimer:0,no:++omniScrollTraceRuns,startedAt:performance.now()};
+      screen:null,scope:'',lastBubble:null,reader:null,closed:false,ready:null,watch:null,redrawTimer:0,swaps:0,handWait:null,handTimer:0,ending:false,swapRestored:false,userPlaced:false,no:++omniScrollTraceRuns,startedAt:performance.now()};
     omniScrollTrace(omniStreamScroll,'답변 조각 도착 (추적 준비)');
     return;
   }
@@ -21098,8 +21140,8 @@ function omniStreamScrollTrack() {
     if(!screen || run.closed)return;
     run.screen=screen;run.scope=await omniScrollContext();
     // Pointer events only tell whether a finger is still on the screen at the end.
-    run.reader=omniReaderScrolls(text=>omniScrollTrace(run,text));
-    for(const [name,fn] of [...run.reader.listeners,['scroll',()=>omniStreamMoved(run)]]) {
+    run.reader=omniReaderScrolls(text=>{omniScrollTrace(run,text);if(!run.reader.pressed())omniStreamHandSettled(run);});
+    for(const [name,fn] of [...run.reader.listeners,['scroll',()=>{omniStreamMoved(run);if(run.handWait)omniStreamHandSettled(run);}]]) {
       await omniListen(screen,name,fn,run.listeners);
       if(run.closed){await omniStreamScrollStop(run);return;}
     }
@@ -21114,9 +21156,19 @@ function omniStreamScrollEnd() {
   if(!run.ready){omniScrollTrace(run,'끝 알림: 조각이 하나뿐(스트리밍 아님) → 아무것도 안 함');return omniStreamScrollStop(run);}
   // A finger still on the screen as it ended: the reader is placing the view.
   const touching=!!run.reader?.pressed(),pressedFor=run.reader?.pressedFor?.() || '';
+  run.ending=true;
   return omniScrollQueue(async()=>{
     await run.ready;await run.marking;
+    // A swap came with a finger down and the hand has not settled: its verdict first,
+    // while the listeners still hear the hand. Five seconds at most.
+    if(run.handWait) {
+      omniScrollTrace(run,'끝 알림: 손가락 판단 기다림');
+      const wait=run.handWait;
+      await new Promise(resolve=>{wait.done=resolve;setTimeout(resolve,5000);});
+    }
     await omniStreamScrollStop(run);
+    if(run.userPlaced){omniScrollTrace(run,'끝 알림 → 건너뜀: 갈아끼운 뒤 손가락으로 옮김');return;}
+    if(run.swapRestored){omniScrollTrace(run,'끝 알림 → 건너뜀: 갈아끼울 때 이미 복원함');return;}
     // The newest mark from before the last chunk; with none, the first, taken as the stream began.
     const mark=omniStreamPick(run);
     const head='끝 알림 (조각'+run.chunks+', 표시 '+run.marks.length+'개)';
