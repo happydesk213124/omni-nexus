@@ -289,6 +289,40 @@ test('streaming scroll hold: the redraw late scroll, heard as the end starts lis
  assert.equal(f.view,400,'back where the reader was');
 });
 
+// Risu swaps the reply's wrapper in the message list when it redraws it, and on a phone
+// announces the end seconds later. Heard on the list, the place comes back at once.
+function watchedList(f) {
+ const q=f.screen.querySelector,list={},wrapper={getParent:async()=>list},bubble={getParent:async()=>wrapper};
+ f.screen.querySelector=async sel=>sel==='[x-hashed] > .risu-chat'?bubble:q(sel);
+}
+test('streaming scroll hold: a reply redrawn in a new wrapper comes back at once, before the end is announced',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ f.redraw(0);                                // the swap: the view falls to the bottom
+ await wait(300);
+ assert.equal(f.view,400,'back before any end notice');
+ await f.api.end();
+ assert.equal(f.view,400);
+ assert.equal(f.handlers.size,0,'no listener outlives the reply');
+});
+test('streaming scroll hold: following the newest line, a swap leaves the view where Risu put it',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(800);await wait(SETTLE);
+ f.chunk();
+ f.redraw(800);await wait(300);
+ assert.equal(f.ends,0,'nothing pulled while following');
+ await f.api.end();
+});
+test('streaming scroll hold: a finger on the screen as the reply is swapped is left alone',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
+ f.redraw(0);await wait(300);
+ assert.equal(f.view,0,'the reader is placing the view');
+});
+
 // Last: nothing above asked Risu for an event it refuses. A refused type once threw
 // before the write it guarded, and no picture was baked.
 test('every listener the scroll code adds is one Risu forwards',()=>{
