@@ -147,7 +147,7 @@ function streamFixture() {
  const observers=new Set();mutated=()=>{for(const cb of [...observers])cb([]);};
  const k={createMutationObserver:async cb=>{const o={observe:async()=>{observers.add(cb);},disconnect:async()=>{observers.delete(cb);}};return o;}};
  const api=load(t,()=>false,async()=>'chat',k);
- return {t,api,handlers,
+ return {t,api,handlers,screen,
   // The reader's scroll: a finger down, the view moving, the finger up.
   scrollTo:v=>{fire('pointerdown');view=v;fire('scroll');fire('pointerup');},
   // A scroll with no hand on it that is still the reader's place: Risu moving to a new reply, a wheel.
@@ -272,6 +272,21 @@ test('streaming scroll hold: a finger still on the screen at the end is left alo
  f.redraw(0);
  await f.api.end();
  assert.equal(f.view,0);
+});
+
+// Seen on a phone over a remote link: the redraw's own scroll crosses Risu's bridge late
+// and reaches the end's hold the moment it starts listening, before any change it could
+// blame it on. With no hand on the screen it is not the reader, and the place comes back.
+test('streaming scroll hold: the redraw late scroll, heard as the end starts listening, is not the reader',async()=>{
+ const f=streamFixture();await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ f.redraw(0);
+ const add=f.screen.addEventListener;let late=true;
+ f.screen.addEventListener=async(kind,fn,options)=>{const id=await add(kind,fn,options);if(kind==='scroll'&&late){late=false;queueMicrotask(()=>fn({}));}return id;};
+ await f.api.end();
+ assert.equal(late,false,'the late scroll was heard');
+ assert.equal(f.view,400,'back where the reader was');
 });
 
 // Last: nothing above asked Risu for an event it refuses. A refused type once threw

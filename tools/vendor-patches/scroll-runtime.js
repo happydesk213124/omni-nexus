@@ -153,6 +153,12 @@ function omniReaderScrolls() {
       if(mine)glideAt=now;
       return mine;
     },
+    // Only a hand or a key makes it the reader's: no guessing a wheel from a quiet chat.
+    byHand:()=>{
+      const now=performance.now(),mine=pressed() || now-inputAt<400 || now-glideAt<150;
+      if(mine)glideAt=now;
+      return mine;
+    },
   };
 }
 // A listener Risu refuses must never stop the work it was meant to watch.
@@ -181,7 +187,10 @@ async function omniHoldAnchor(anchor,work,options={}) {
   const registered=[],reader=omniReaderScrolls();
   const input=()=>{userMoved=true;};
   // The scroll our own correction causes arrives a frame after it returns.
-  const scroll=()=>{if(!own && performance.now()-ownAt>120 && reader.scroll())input();};
+  // At a reply's end Risu has already redrawn it: that jump's scroll can cross the
+  // bridge late, after this starts listening and before any change is heard to blame
+  // it on. There, only a hand on the screen (or a key) means the reader moved.
+  const scroll=()=>{if(!own && performance.now()-ownAt>120 && (options.byHand ? reader.byHand() : reader.scroll()))input();};
   const listeners=[...reader.listeners,['pointermove',()=>{if(reader.pressed())input();}],
     ['keydown',e=>{if(OMNI_SCROLL_KEYS.includes(e?.key))input();}],['scroll',scroll]];
   try {
@@ -372,6 +381,6 @@ function omniStreamScrollEnd() {
     // The newest mark from before the last chunk; with none, the first, taken as the stream began.
     const mark=run.marks.filter(row=>row.chunk<run.chunks).at(-1) || run.marks[0];
     if(touching || !mark || !omniStreamScrollOn() || t.uiOpen)return;
-    await omniHoldAnchor(mark.place,async()=>{},{requireMutation:true});
+    await omniHoldAnchor(mark.place,async()=>{},{requireMutation:true,byHand:true});
   }).catch(error=>y('warn','scroll.stream',String(error)));
 }
