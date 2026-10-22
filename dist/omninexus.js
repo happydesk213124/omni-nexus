@@ -20950,7 +20950,7 @@ function omniPaintScrollTrace() {
   } catch {}
 }
 globalThis.__OMNI_SCROLL_TRACE__={lines:()=>omniScrollTraceLines.slice(),paint:omniPaintScrollTrace,clear:()=>{omniScrollTraceLines.length=0;omniPaintScrollTrace();}};
-const omniPlaceText=place=>!place?'없음':place.bottom?'맨 아래(따라보기)':'답변 윗변 '+Math.round(place.top)+'px';
+const omniPlaceText=place=>!place?'없음':place.bottom?'맨 아래(따라보기)':'답변 윗변 '+Math.round(place.top)+'px'+(place.para?' · '+(place.para.index+1)+'번째 문단':'');
 const omniStreamRelease=value=>typeof omniRelease==='function'?omniRelease(value):undefined;
 const omniStreamWait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function omniStreamHandBusy(run) {return !!(run.reader?.pressed() || run.reader?.handWithin(OMNI_STREAM_HAND_MS));}
@@ -20978,7 +20978,77 @@ async function omniStreamPlace(run) {
   const sr=run.screenRect,reply=await omniStreamReply(run);
   if(!reply)return null;
   if(reply.rect.bottom<=sr.bottom+8)return {bottom:true};
-  return {top:reply.rect.top-sr.top,height:reply.rect.height};
+  const place={top:reply.rect.top-sr.top,height:reply.rect.height};
+  place.para=await omniStreamPara(run,reply,place);
+  return place;
+}
+// The reply's top edge alone sends the reader astray once the redrawn reply differs
+// above them (a status block, a picture) or lies far off screen. The paragraph across
+// the screen's top edge is kept too: its place in the reply (d) does not change while
+// the reply streams on below it, so one reading serves every mark within half a screen
+// of it, and a new one is read at most every 0.7 s.
+const OMNI_STREAM_PARA_MS=700;
+async function omniStreamPara(run,reply,place) {
+  const kept=run.para?.swaps===run.swaps?run.para:null;
+  if(kept && Math.abs(-place.top-kept.d)<run.screenRect.height*0.5)return kept;
+  const since=performance.now()-run.paraAt;
+  // Too soon: a mark once the wait is over reads it, even if the view stops moving.
+  if(since<OMNI_STREAM_PARA_MS) {
+    if(!run.paraTimer)run.paraTimer=setTimeout(()=>{run.paraTimer=0;omniStreamMoved(run);},OMNI_STREAM_PARA_MS-since);
+    return kept;
+  }
+  run.paraAt=performance.now();
+  const swaps=run.swaps,para=await omniStreamReadPara(run,reply,place);
+  if(!para || run.swaps!==swaps)return kept;
+  run.para={...para,swaps};
+  return run.para;
+}
+// A SafeElement list is read an item at a time (length(), at(i)), so the paragraph is
+// found by halving: a handful of calls, never one per paragraph.
+const omniStreamParagraphs=node=>node.querySelectorAll?.('.chattext p');
+async function omniListLength(list) {return Number(typeof list?.length==='function'?await list.length():list?.length) || 0;}
+async function omniListAt(list,i) {return (typeof list?.at==='function'?await list.at(i):list?.[i]) || null;}
+async function omniStreamReadPara(run,reply,place) {
+  const sr=run.screenRect,list=await omniStreamParagraphs(reply.node);
+  try {
+    const n=await omniListLength(list);
+    let lo=0,hi=n-1,first=-1;
+    while(lo<=hi) {
+      const mid=(lo+hi)>>1,node=await omniListAt(list,mid),rect=node && await node.getBoundingClientRect();
+      void omniStreamRelease(node);
+      if(!rect)return null;
+      if(rect.bottom>sr.top+8){first=mid;hi=mid-1;}else lo=mid+1;
+    }
+    for(let i=Math.max(first,0);first>=0 && i<Math.min(n,first+3);i++) {
+      const node=await omniListAt(list,i);if(!node)continue;
+      try {
+        const [rect,text]=await Promise.all([node.getBoundingClientRect(),node.textContent()]);
+        // Below the screen: the reader is in an earlier message, not in this reply.
+        if(rect.top>=sr.bottom)return null;
+        const head=String(text || '').trim().slice(0,80);
+        if(head && rect.height>0)return {index:i,text:head,d:rect.top-sr.top-place.top};
+      } finally {void omniStreamRelease(node);}
+    }
+    return null;
+  } finally {void omniStreamRelease(list);}
+}
+// The kept paragraph in the redrawn reply: the same index first, then outward. A line
+// still streaming only grew, so the start it had is enough.
+async function omniStreamFindPara(reply,para) {
+  const list=await omniStreamParagraphs(reply.node);
+  try {
+    const n=await omniListLength(list);
+    for(let step=0;step<=8;step++)for(const i of step?[para.index-step,para.index+step]:[para.index]) {
+      if(i<0 || i>=n)continue;
+      const node=await omniListAt(list,i);if(!node)continue;
+      if(String(await node.textContent() || '').trim().startsWith(para.text)) {
+        const rect=await node.getBoundingClientRect();
+        if(rect?.height>0)return {node,rect};
+      }
+      void omniStreamRelease(node);
+    }
+    return null;
+  } finally {void omniStreamRelease(list);}
 }
 async function omniStreamMark(run) {
   const mark=(async()=>{
@@ -20996,7 +21066,7 @@ async function omniStreamMark(run) {
     run.marks.push({chunk,place});
     if(run.marks.length>OMNI_STREAM_MARKS)run.marks.shift();
     // The trace keeps changes only: the same place at every chunk would fill it.
-    if(!last || !!last.bottom!==!!place.bottom || Math.abs((last.top || 0)-(place.top || 0))>40)
+    if(!last || !!last.bottom!==!!place.bottom || Math.abs((last.top || 0)-(place.top || 0))>40 || last.para?.index!==place.para?.index)
       omniScrollTrace(run,'표시 (조각'+chunk+'): '+omniPlaceText(place));
   })();
   run.marking=mark;
@@ -21020,13 +21090,15 @@ function omniStreamMoved(run) {
 // The mark the reader's place is taken from: the newest from before the last chunk
 // (whatever came after may be a redraw's jump); with none, the one the stream began with.
 function omniStreamPick(run) {return run.marks.filter(row=>row.chunk<run.chunks).at(-1) || run.marks[0];}
-// Puts the reply's top edge back where the mark has it, then keeps an eye on it for
-// watchMs (one measure each 0.15 s): Risu may redraw the reply just after. Three moves
-// at most (a phone once spent two seconds moving 31 times).
+// Puts the kept paragraph back where the mark has it (the reply's top edge when there is
+// none or it is not found), then keeps an eye on it for watchMs (one measure each
+// 0.15 s): Risu may redraw the reply just after. Three moves at most (a phone once spent
+// two seconds moving 31 times).
 async function omniStreamPut(run,place,watchMs=0) {
   run.screenRect ||= await run.screen.getBoundingClientRect();
   const sr=run.screenRect,until=performance.now()+watchMs,swaps=run.swaps;
-  let off=0,moves=0,fresh=true,filledBy=performance.now()+3000;
+  let off=0,moves=0,fresh=true,filledBy=performance.now()+3000,para=null,basis='';
+  try {
   for(;;) {
     let reply=await omniStreamReply(run,fresh);fresh=false;
     // Redrawn, the reply is empty a moment before its text comes back: placing it
@@ -21036,20 +21108,28 @@ async function omniStreamPut(run,place,watchMs=0) {
       reply=await omniStreamReply(run,!reply);
     }
     if(!reply)return '포기: 답변 메시지를 못 찾음';
-    off=place.bottom?Math.max(0,reply.rect.bottom-sr.bottom-8):reply.rect.top-sr.top-place.top;
+    let target=reply,want=place.top;
+    if(place.para && !place.bottom) {
+      const rect=para && await para.node.getBoundingClientRect();
+      if(rect?.height>0)para.rect=rect;
+      else {void omniStreamRelease(para?.node);para=await omniStreamFindPara(reply,place.para);}
+      if(para){target=para;want=place.top+place.para.d;basis=' · 문단 기준';}
+      else basis=' · 문단 못 찾아 답변 윗변 기준';
+    }
+    off=place.bottom?Math.max(0,reply.rect.bottom-sr.bottom-8):target.rect.top-sr.top-want;
     if(Math.abs(off)<=4) {
-      if(performance.now()>=until)return place.bottom?(moves?'맨 아래로 맞춤':'맨 아래 그대로'):(moves?'맞춤 ('+moves+'번 옮김)':'이미 제자리');
+      if(performance.now()>=until)return (place.bottom?(moves?'맨 아래로 맞춤':'맨 아래 그대로'):(moves?'맞춤 ('+moves+'번 옮김)':'이미 제자리'))+basis;
       await omniStreamWait(150);continue;
     }
     if(!omniStreamJumped(run,off))return '그대로: 손가락이 옮기는 중 ('+Math.round(off)+'px'+(moves?', '+moves+'번 옮긴 뒤':'')+')';
     if(moves>=3)return '3번 옮겨도 '+Math.round(off)+'px 어긋남';
-    omniScrollTrace(run,'  '+(moves+1)+'번째 옮김: '+Math.round(off)+'px 어긋남 · 답변 높이 '+Math.round(reply.rect.height)+'px'+(run.swaps!==swaps?' · 그새 갈아끼움':''));
-    const node=reply.node;
+    omniScrollTrace(run,'  '+(moves+1)+'번째 옮김: '+Math.round(off)+'px 어긋남 · 답변 높이 '+Math.round(reply.rect.height)+'px'+basis+(run.swaps!==swaps?' · 그새 갈아끼움':''));
+    const node=target.node;
     if(place.bottom)await node.scrollIntoView({behavior:'instant',block:'end',inline:'nearest'});
     else {
       const original=await node.getStyleAttribute();
       try {
-        await node.setStyle('scrollMarginTop',place.top+'px');
+        await node.setStyle('scrollMarginTop',want+'px');
         await node.scrollIntoView({behavior:'instant',block:'start',inline:'nearest'});
       } finally {await node.setStyleAttribute(original || '');}
     }
@@ -21057,6 +21137,7 @@ async function omniStreamPut(run,place,watchMs=0) {
     // Pictures in the redrawn reply may still be settling: look again a little later.
     await omniStreamWait(moves===1?150:350);
   }
+  } finally {void omniStreamRelease(para?.node);}
 }
 // Risu swaps the reply's wrapper in the message list when it redraws it: at the end,
 // and when a picture goes in. Only the list's own children are watched: one call per
@@ -21119,7 +21200,7 @@ function omniStreamAfter(run) {
 }
 async function omniStreamScrollStop(run) {
   if(run.closed)return;
-  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);clearTimeout(run.afterTimer);
+  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);clearTimeout(run.afterTimer);clearTimeout(run.paraTimer);
   if(omniStreamScroll===run)omniStreamScroll=null;
   if(omniStreamAfterRun===run)omniStreamAfterRun=null;
   void omniStreamUnwatch(run);
@@ -21135,7 +21216,7 @@ function omniStreamScrollTrack() {
     if(omniStreamAfterRun)void omniStreamScrollStop(omniStreamAfterRun);
     omniStreamScroll={chunkAt:Date.now(),chunks:1,marks:[],marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
       screen:null,screenRect:null,reply:null,scope:'',reader:null,closed:false,ready:null,watch:null,redrawTimer:0,swaps:0,
-      swapRestored:false,placed:null,after:false,afterTimer:0,no:++omniScrollTraceRuns,startedAt:performance.now()};
+      swapRestored:false,placed:null,para:null,paraAt:-Infinity,paraTimer:0,after:false,afterTimer:0,no:++omniScrollTraceRuns,startedAt:performance.now()};
     omniScrollTrace(omniStreamScroll,'답변 조각 도착 (추적 준비)');
     return;
   }

@@ -134,7 +134,7 @@ function streamFixture() {
   setStyle:async(_k,v)=>{paragraph.margin=Number.parseFloat(v);},setStyleAttribute:async()=>{},scrollIntoView:async()=>{view+=paragraph.getTop()-paragraph.margin;}};
  paragraph.getTop=()=>reply.top()+300;
  const body={querySelectorAll:async sel=>sel==='p'?[paragraph]:[]};
- Object.assign(reply,{cloneNode:async()=>({getOuterHTML:async()=>'<div data-chat-index="7">'}),querySelector:async sel=>sel==='.chattext'?body:null});
+ Object.assign(reply,{cloneNode:async()=>({getOuterHTML:async()=>'<div data-chat-index="7">'}),querySelector:async sel=>sel==='.chattext'?body:null,querySelectorAll:async sel=>sel==='.chattext p'?[paragraph]:[]});
  // The message before it, which the reader may be reading instead.
  const older={getBoundingClientRect:async()=>({top:-600-view,bottom:150-view,height:750}),cloneNode:async()=>({getOuterHTML:async()=>'<div data-chat-index="6">'})};
  const olderParagraph={textContent:async()=>'a line of the message before',getBoundingClientRect:async()=>({top:olderParagraph.getTop(),bottom:olderParagraph.getTop()+40,height:40}),getStyleAttribute:async()=>'',
@@ -405,6 +405,40 @@ test('streaming scroll hold: a place already restored at the swap is not pulled 
  assert.match(globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | '),/갈아끼울 때 이미 복원함/);
 });
 
+// From a phone: the redrawn reply differed above the reader and the reply's top edge
+// lay 6,000px off screen. The paragraph the reader was at is what comes back.
+test('streaming scroll hold: a reply redrawn taller above the reader brings back the paragraph, not the top edge',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ const [paragraph]=await f.reply.querySelectorAll('.chattext p');
+ f.scrollTo(400);await wait(SETTLE);          // the paragraph 100px below the screen top
+ f.chunk();
+ const top=paragraph.getTop;paragraph.getTop=()=>top()+1400;   // a status block drawn above it
+ f.redraw(0);await wait(400);
+ assert.equal(Math.round(paragraph.getTop()),100,'the paragraph where the reader had it');
+ assert.match(globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | '),/문단 기준/);
+ await f.api.end();
+});
+test('streaming scroll hold: the paragraph is found by halving, a few reads, not one per paragraph',async()=>{
+ const f=streamFixture();watchedList(f);
+ let reads=0;
+ const lines=Array.from({length:200},(_,i)=>{
+  const p={getTop:()=>f.reply.top()+i*50,textContent:async()=>'line '+i+' of a long reply',
+   getBoundingClientRect:async()=>{reads++;return {top:p.getTop(),bottom:p.getTop()+40,height:40};},
+   getStyleAttribute:async()=>'',setStyle:async(_k,v)=>{p.margin=Number.parseFloat(v);},setStyleAttribute:async()=>{},
+   // A line moves the view by its own place in the reply.
+   scrollIntoView:async()=>{f.reply.margin=p.margin-i*50;await f.reply.scrollIntoView({block:'start'});}};
+  return p;});
+ f.reply.querySelectorAll=async sel=>sel==='.chattext p'?lines:[];
+ f.reply.height=200*50;
+ await start(f);
+ reads=0;
+ f.scrollTo(4000);await wait(SETTLE);
+ assert.ok(reads<=14,'paragraph reads for one mark: '+reads);
+ assert.match(globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | '),/77번째 문단/);
+ f.chunk();f.redraw(0);await wait(400);
+ assert.equal(f.view,4000,'back at that line');
+ await f.api.end();
+});
 // 디버그 > 스크롤 reads a phone's runs from this trace: what was marked, what was decided.
 test('streaming scroll hold: the trace says what it marked, restored, and why it skipped',async()=>{
  globalThis.__OMNI_SCROLL_TRACE__?.clear();
@@ -413,7 +447,7 @@ test('streaming scroll hold: the trace says what it marked, restored, and why it
  f.chunk();f.redraw(0);await wait(300);
  await f.api.end();
  let lines=globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | ');
- for(const want of ['추적 시작','표시 (조각','목록 감시 켜짐','갈아끼움 → 복원 시도: 답변 윗변 -200px','갈아끼움 복원 결과: 맞춤','끝 알림','손가락 닿음','손가락 뗌'])
+ for(const want of ['추적 시작','표시 (조각','목록 감시 켜짐','갈아끼움 → 복원 시도: 답변 윗변 -200px · 1번째 문단','갈아끼움 복원 결과: 맞춤','문단 기준','끝 알림','손가락 닿음','손가락 뗌'])
   assert.ok(lines.includes(want),want+' missing in: '+lines);
  globalThis.__OMNI_SCROLL_TRACE__.clear();
  f=streamFixture();watchedList(f);await start(f);
@@ -421,7 +455,7 @@ test('streaming scroll hold: the trace says what it marked, restored, and why it
  for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
  f.redraw(1400);await wait(300);f.moveTo(430);await f.api.end();
  lines=globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | ');
- assert.match(lines,/복원 시도: 답변 윗변 -200px \(조각\d+\/\d+\) · 손가락 움직이는 중/);
+ assert.match(lines,/복원 시도: 답변 윗변 -200px · 1번째 문단 \(조각\d+\/\d+\) · 손가락 움직이는 중/);
  assert.match(lines,/건너뜀: 갈아끼울 때 이미 복원함/);
  assert.equal(f.view,430);
 });
