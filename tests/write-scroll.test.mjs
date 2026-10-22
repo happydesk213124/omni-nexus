@@ -125,10 +125,11 @@ test('a hold marks the scroll busy for the TTS scan until it ends',async()=>{
 // before the end; then Risu takes the bubble out and draws a new one, the view lands
 // on the start of the message, and only after that does the end notice come.
 function streamFixture() {
- const handlers=new Map();let mutated,view=0,ends=0,reads=0,markReads=0;
+ const handlers=new Map();let mutated,view=0,ends=0,starts=0,reads=0,markReads=0;
  const fire=kind=>{for(const h of [...handlers.values()])if(h.kind===kind)h.fn({});};
  const reply={top:()=>200-view,height:1400,getBoundingClientRect:async()=>{reads++;return {top:reply.top(),bottom:reply.top()+reply.height,height:reply.height};},
-  scrollIntoView:async opts=>{assert.equal(opts.block,'end');ends++;view+=reply.top()+reply.height-800;}};
+  getStyleAttribute:async()=>'',setStyle:async(_k,v)=>{reply.margin=Number.parseFloat(v);},setStyleAttribute:async()=>{},
+  scrollIntoView:async opts=>{if(opts.block==='end'){ends++;view+=reply.top()+reply.height-800;}else{starts++;view+=reply.top()-reply.margin;}}};
  const paragraph={textContent:async()=>'an earlier paragraph of the reply',getBoundingClientRect:async()=>({top:paragraph.getTop(),bottom:paragraph.getTop()+40,height:40}),getStyleAttribute:async()=>'',
   setStyle:async(_k,v)=>{paragraph.margin=Number.parseFloat(v);},setStyleAttribute:async()=>{},scrollIntoView:async()=>{view+=paragraph.getTop()-paragraph.margin;}};
  paragraph.getTop=()=>reply.top()+300;
@@ -142,12 +143,12 @@ function streamFixture() {
  const olderBody={querySelectorAll:async sel=>sel==='p'?[olderParagraph]:[]};
  older.querySelector=async sel=>sel==='.chattext'?olderBody:null;
  const screen={getBoundingClientRect:async()=>({top:0,bottom:800,height:800}),querySelectorAll:async()=>{markReads++;return [reply,older];},
-  querySelector:async sel=>sel==='.risu-chat[data-chat-index="7"]'?reply:sel==='.risu-chat[data-chat-index="6"]'?older:null,...listening(handlers)};
+  querySelector:async sel=>sel==='.risu-chat'||sel==='.risu-chat[data-chat-index="7"]'?reply:sel==='.risu-chat[data-chat-index="6"]'?older:null,...listening(handlers)};
  const t={hostDoc:{querySelector:async()=>screen},backendSettings:{card:{stream_scroll_hold:true}}};
  const observers=new Set();mutated=()=>{for(const cb of [...observers])cb([]);};
  const k={createMutationObserver:async cb=>{const o={observe:async()=>{observers.add(cb);},disconnect:async()=>{observers.delete(cb);}};return o;}};
  const api=load(t,()=>false,async()=>'chat',k);
- return {t,api,handlers,screen,
+ return {t,api,handlers,screen,reply,
   // The reader's scroll: a finger down, the view moving, the finger up.
   scrollTo:v=>{fire('pointerdown');view=v;fire('scroll');fire('pointerup');},
   // A scroll with no hand on it that is still the reader's place: Risu moving to a new reply, a wheel.
@@ -156,10 +157,10 @@ function streamFixture() {
   chunk:()=>{api.track();},
   // Risu takes the bubble out and draws a new one; the view lands elsewhere.
   redraw:v=>{view=v;mutated?.();fire('scroll');},
-  get view(){return view;},get ends(){return ends;},get reads(){return reads;},get markReads(){return markReads;}};
+  get view(){return view;},get ends(){return ends;},get starts(){return starts;},get reads(){return reads;},get markReads(){return markReads;}};
 }
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-const SETTLE=650;   // past one half-second mark
+const SETTLE=900;   // the reader stopped: past a mark and past the hand's 0.8 s
 const start=async f=>{f.chunk();await f.api.track();};
 
 test('streaming scroll hold: following the bottom, the end of the reply goes back to the bottom',async()=>{
@@ -264,28 +265,38 @@ test('streaming scroll hold: in Risu\'s 끄기 mode, a new bubble every chunk, t
  assert.equal(f.view,300,'the last place the reader stopped while it streamed');
 });
 
-test('streaming scroll hold: a finger still on the screen at the end is left alone',async()=>{
+// People read while slowly scrolling: the hand is rarely still. Risu's redraw throws
+// the view far, a reading hand moves it a little; only the far jump is undone.
+test('streaming scroll hold: a finger on the screen at the end does not keep the jump Risu made',async()=>{
  const f=streamFixture();await start(f);
  f.scrollTo(400);await wait(SETTLE);
  f.chunk();
  for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
- f.redraw(0);
+ f.redraw(1400);                             // thrown to the newest line under the finger
  await f.api.end();
- assert.equal(f.view,0);
+ assert.equal(f.view,400);
+});
+test('streaming scroll hold: a hand scrolling slowly on is not pulled back the little it moved',async()=>{
+ const f=streamFixture();await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
+ f.moveTo(450);                              // reading on, no redraw jump
+ await f.api.end();
+ assert.equal(f.view,450,"the reader's own 50px stay");
 });
 
 // Seen on a phone over a remote link: the redraw's own scroll crosses Risu's bridge late
 // and reaches the end's hold the moment it starts listening, before any change it could
 // blame it on. With no hand on the screen it is not the reader, and the place comes back.
-test('streaming scroll hold: the redraw late scroll, heard as the end starts listening, is not the reader',async()=>{
+test('streaming scroll hold: the redraw late scroll, heard as the end starts, is not the reader',async()=>{
  const f=streamFixture();await start(f);
  f.scrollTo(400);await wait(SETTLE);
  f.chunk();
  f.redraw(0);
- const add=f.screen.addEventListener;let late=true;
- f.screen.addEventListener=async(kind,fn,options)=>{const id=await add(kind,fn,options);if(kind==='scroll'&&late){late=false;queueMicrotask(()=>fn({}));}return id;};
- await f.api.end();
- assert.equal(late,false,'the late scroll was heard');
+ const done=f.api.end();
+ f.moveTo(0);                                // the redraw's scroll crossing the bridge late
+ await done;
  assert.equal(f.view,400,'back where the reader was');
 });
 
@@ -306,6 +317,18 @@ test('streaming scroll hold: a reply redrawn in a new wrapper comes back at once
  assert.equal(f.view,400);
  assert.equal(f.handlers.size,0,'no listener outlives the reply');
 });
+// Redrawn, the reply is empty a moment before its text comes back: the place is found
+// once it has filled again, not in the blank.
+test('streaming scroll hold: a swapped reply blank for a moment is placed once its text is back',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ f.reply.height=0;f.redraw(0);
+ setTimeout(()=>{f.reply.height=1400;},400);
+ await wait(1000);
+ assert.equal(f.view,400,'back before any end notice, after the text returned');
+ await f.api.end();
+});
 test('streaming scroll hold: following the newest line, a swap leaves the view where Risu put it',async()=>{
  const f=streamFixture();watchedList(f);await start(f);
  f.scrollTo(800);await wait(SETTLE);
@@ -314,21 +337,23 @@ test('streaming scroll hold: following the newest line, a swap leaves the view w
  assert.equal(f.ends,0,'nothing pulled while following');
  await f.api.end();
 });
-test('streaming scroll hold: a finger on the screen as the reply is swapped is left alone',async()=>{
+test('streaming scroll hold: a finger on the screen as the reply is swapped gets its place back at once',async()=>{
  const f=streamFixture();watchedList(f);await start(f);
  f.scrollTo(400);await wait(SETTLE);
  f.chunk();
  for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
- f.redraw(0);await wait(300);
- assert.equal(f.view,0,'the reader is placing the view');
+ f.redraw(1400);await wait(300);
+ assert.equal(f.view,400,"the jump was Risu's, not the hand's");
+ await f.api.end();
+ assert.equal(f.view,400);
 });
 
 // From a phone's trace (디버그 > 스크롤): reading the screen took seconds there, marks
 // piled up eight at once, and one measured after the end's redraw carried an earlier
 // chunk's number, so the end sent the reader to that redraw's view.
 function slowScreen(f, ms) {
- const q=f.screen.querySelectorAll;let inflight=0;const state={max:0,get inflight(){return inflight;}};
- f.screen.querySelectorAll=async sel=>{inflight++;state.max=Math.max(state.max,inflight);try{await wait(ms);return await q(sel);}finally{inflight--;}};
+ const q=f.reply.getBoundingClientRect;let inflight=0;const state={max:0,get inflight(){return inflight;}};
+ f.reply.getBoundingClientRect=async()=>{inflight++;state.max=Math.max(state.max,inflight);try{await wait(ms);return await q();}finally{inflight--;}};
  return state;
 }
 test('streaming scroll hold: a slow screen is read one mark at a time, never piled up',async()=>{
@@ -350,33 +375,6 @@ test('streaming scroll hold: a mark still being read when the reply is redrawn i
  await f.api.end();
  assert.equal(f.view,400,'the reader\'s place, not the redraw\'s view the slow mark measured');
 });
-test('streaming scroll hold: a finger down as the reply is swapped delays the restore until it lifts',async()=>{
- const f=streamFixture();watchedList(f);await start(f);
- f.scrollTo(400);await wait(SETTLE);
- f.chunk();
- for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
- f.redraw(0);await wait(150);
- assert.equal(f.view,0,'not while the finger is down');
- for(const h of [...f.handlers.values()])if(h.kind==='pointercancel')h.fn({});
- await wait(900);
- assert.equal(f.view,400,'back once it lifted without moving the view');
- await f.api.end();
-});
-
-test('streaming scroll hold: a finger that took the view elsewhere after the swap is followed, not undone',async()=>{
- const f=streamFixture();watchedList(f);await start(f);
- f.screen.getProperty=async key=>key==='scrollTop'?-f.view:undefined;
- f.scrollTo(400);await wait(SETTLE);
- f.chunk();
- for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
- f.redraw(0);await wait(50);
- for(const h of [...f.handlers.values()])if(h.kind==='pointercancel')h.fn({});
- f.moveTo(250);await wait(900);              // the drag goes on with no pointer events
- assert.equal(f.view,250,'where the hand put it');
- assert.match(globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | '),/손가락으로 250px 옮김/);
- await f.api.end();
- assert.equal(f.view,250,'the end does not pull the reader back either');
-});
 test('streaming scroll hold: a place already restored at the swap is not pulled again when the end comes late',async()=>{
  const f=streamFixture();watchedList(f);await start(f);
  f.scrollTo(400);await wait(SETTLE);
@@ -396,15 +394,17 @@ test('streaming scroll hold: the trace says what it marked, restored, and why it
  f.chunk();f.redraw(0);await wait(300);
  await f.api.end();
  let lines=globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | ');
- for(const want of ['추적 시작','표시 (조각','목록 감시 켜짐','갈아끼움 → 복원 시도: 메시지7','갈아끼움 복원 결과: 자리 맞춤','끝 알림','손가락 닿음','손가락 뗌'])
+ for(const want of ['추적 시작','표시 (조각','목록 감시 켜짐','갈아끼움 → 복원 시도: 답변 윗변 -200px','갈아끼움 복원 결과: 맞춤','끝 알림','손가락 닿음','손가락 뗌'])
   assert.ok(lines.includes(want),want+' missing in: '+lines);
  globalThis.__OMNI_SCROLL_TRACE__.clear();
  f=streamFixture();watchedList(f);await start(f);
  f.scrollTo(400);await wait(SETTLE);f.chunk();
  for(const h of [...f.handlers.values()])if(h.kind==='pointerdown')h.fn({});
- f.redraw(0);await wait(300);await f.api.end();
+ f.redraw(1400);await wait(300);f.moveTo(430);await f.api.end();
  lines=globalThis.__OMNI_SCROLL_TRACE__.lines().join(' | ');
- assert.match(lines,/건너뜀: 손가락 닿아 있음/);
+ assert.match(lines,/복원 시도: 답변 윗변 -200px \(조각\d+\/\d+\) · 손가락 움직이는 중/);
+ assert.match(lines,/건너뜀: 갈아끼울 때 이미 복원함/);
+ assert.equal(f.view,430);
 });
 
 // Last: nothing above asked Risu for an event it refuses. A refused type once threw
