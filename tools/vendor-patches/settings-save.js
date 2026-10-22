@@ -17,6 +17,7 @@
     if (t.uiOpen) $e(message, !1);
     else if (typeof nxHostToast === "function") void Promise.resolve(nxHostToast(message, { ms: 8000 })).catch(() => {});
   }
+  const OMNI_ROSTER_IDLE_MS = 10000;
   function omniLiveWrites() {
     const live = t._omniLiveWrites || (t._omniLiveWrites = { timers: new Map(), pending: new Map(), writes: Promise.resolve() });
     live.queued ||= new Set();
@@ -56,7 +57,19 @@
     live.versions.set(key, (live.versions.get(key) || 0) + 1);
     live.pending.set(key, work);
     live.errors.delete(key);
-    live.timers.set(key, setTimeout(() => omniScheduleLiveKey(key), 500));
+    // A roster write rewrites the whole bot lorebook: it waits for 10 s without typing.
+    // Closing settings, starting a job and leaving the app write it at once.
+    const idle = key.startsWith("characters:") ? OMNI_ROSTER_IDLE_MS : 500;
+    live.timers.set(key, setTimeout(() => omniScheduleLiveKey(key), idle));
+    if (idle > 500) omniFlushWhenHidden();
+  }
+  function omniFlushWhenHidden() {
+    if (t._omniHiddenFlush || typeof document.addEventListener !== "function") return;
+    t._omniHiddenFlush = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") void omniFlushLiveWrites().catch(omniSaveError);
+    });
+    globalThis.addEventListener?.("pagehide", () => void omniFlushLiveWrites().catch(omniSaveError));
   }
   async function omniFlushLiveWrites() {
     const live = omniLiveWrites();

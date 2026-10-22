@@ -100,7 +100,6 @@ export function bindCharacterSheet(): void {
     }
     if(isField(element)){
       element.addEventListener('compositionend',()=>element.dispatchEvent(new Event('input',{bubbles:true})));
-      element.addEventListener('blur',()=>{void (globalThis as typeof globalThis & {__OMNI_FLUSH_CHARACTERS__?:()=>Promise<void>}).__OMNI_FLUSH_CHARACTERS__?.().catch(()=>{});});
     }
     if (element.matches('[data-char-costume-slot-save]')) element.hidden = true;
   }
@@ -316,12 +315,13 @@ export function bindCharacterSheet(): void {
   bar.hidden = true;
   if (bar.parentElement?.id === 'nx-char-scope-slot') bar.parentElement.hidden = true;
   document.getElementById('nx-char-search')?.addEventListener('input', event=> {
-    const query=(event.target as HTMLInputElement).value.trim().toLocaleLowerCase();
+    // Commas list several people, as in the session note's 옷 상태 search: any one matches.
+    const terms=(event.target as HTMLInputElement).value.toLocaleLowerCase().split(/[,，]/).map(term=>term.trim()).filter(Boolean);
     let visible = 0;
     for(const tile of document.querySelectorAll<HTMLElement>('[data-ux-character-tile]')) {
       const card=characterCardForTile(tile);
-      const text=query ? [...(card?.querySelectorAll('input,textarea')||[])].filter(isField).map(f=>f.value).join(' ').toLocaleLowerCase() : '';
-      tile.hidden=!text.includes(query);
+      const text=terms.length ? [...(card?.querySelectorAll('input,textarea')||[])].filter(isField).map(f=>f.value).join(' ').toLocaleLowerCase() : '';
+      tile.hidden=terms.length>0 && !terms.some(term=>text.includes(term));
       if (!tile.hidden && tile.dataset.uxCharacterScope === selectedScope) visible++;
     }
     if (empty) { empty.hidden = visible > 0; empty.classList.toggle('show', visible === 0); }

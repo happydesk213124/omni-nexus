@@ -99,7 +99,7 @@ async function omniFooterHit(doc,x,y) {
 async function omniFooterAction(kind,key) {
   if(t._nxHostInspectOpen)return;
   if(kind==='stop') {await optimisticStopJobs();return;}
-  if(kind==='char'||kind==='preset'){await openSettingsTab(kind==='char'?'characters':'style_presets');return;}
+  if(kind==='char'||kind==='preset'){await openSettingsTab(kind==='char'?'characters':'style_presets');if(kind==='char')void omniSearchMessageCharacters(key);return;}
   const target=omniFooterTargets.get(Number(key));if(!target)return;
   if(kind==='note') {
     try {
@@ -130,11 +130,40 @@ async function omniFooterAction(kind,key) {
   } catch(error){y('error','footer.action',String(error));$e(String(error?.message || error));}
   finally {await button?.setAttribute('x-omni-busy','false');}
 }
+// 👨‍👩‍👧‍👦 opens the roster at once; then its search is filled with who this message
+// names (the lookup the session note's 옷 상태 uses), comma-separated. Never over what
+// the reader is already typing there.
+async function omniSearchMessageCharacters(keyOrTarget) {
+  try {
+    const target=typeof keyOrTarget==='object'?keyOrTarget:omniFooterTargets.get(Number(keyOrTarget));
+    if(!target)return;
+    const scope=await Z({useOverride:false});
+    if(scope.characterId!==target.characterId || scope.chatId!==target.chatId)return;
+    const row=(scope.chat?.message || scope.chat?.messages || [])[target.index];
+    const text=String(row?.data ?? row?.saying ?? '');
+    if(!text)return;
+    const matched=await K('/v1/characters/triggered',{method:'POST',body:{message:text,session_id:scope.sessionId,character_id:scope.characterId||'',
+      unified_session_id:scope.unifiedSessionId||('risu_'+ye((scope.characterId||'')+'|__unified__')),source_session_ids:typeof rootChatSessionIds==='function'?rootChatSessionIds(scope):[]}});
+    const names=[...new Set((matched?.characters||[]).map(c=>String(c?.name||'').trim()).filter(Boolean))];
+    if(!names.length)return;
+    // The roster draws after the tab opens: wait for its tiles, at most 6 s.
+    for(let i=0;i<60 && t.uiOpen;i++) {
+      const input=document.getElementById('nx-char-search');
+      if(input && document.querySelector('[data-ux-character-tile]')) {
+        if(document.activeElement===input && input.value.trim())return;
+        input.value=names.join(', ');
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+  } catch(error) {if(typeof y==='function')y('warn','footer.char.search',String(error?.message || error));}
+}
 // Footer, floating viewer and inspect actions share the same request and target checks.
 async function omniMessageAction(kind,target,scope) {
     scope ||= await Z({useOverride:false});
     if(scope.characterId!==target.characterId || scope.chatId!==target.chatId)throw new Error('대화가 바뀌었습니다. 다시 눌러 주세요.');
-    if(kind==='char'||kind==='preset') {await openSettingsTab(kind==='char'?'characters':'style_presets');return;}
+    if(kind==='char'||kind==='preset') {await openSettingsTab(kind==='char'?'characters':'style_presets');if(kind==='char')void omniSearchMessageCharacters(target);return;}
     const row=(scope.chat?.message || scope.chat?.messages || [])[target.index];
     if(!row || (target.hostId && omniMessageId(row)!==target.hostId))throw new Error('메시지가 바뀌었습니다. 다시 눌러 주세요.');
     const text=String(row.data ?? row.saying ?? '');

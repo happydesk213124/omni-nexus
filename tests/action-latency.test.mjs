@@ -52,3 +52,23 @@ test('force tag request no longer unlinks and reloads gallery before job creatio
   assert.match(actions,/return omniFooterAction/);
   assert.doesNotMatch(actions,/getCachedMsgEls|omniResolveActionMessage|nxAroundScrollHold/);
 });
+
+test('👨‍👩‍👧‍👦 opens the roster first, then fills its search with the people this message names', async () => {
+  const runtime=readFileSync(new URL('../tools/vendor-patches/message-runtime.js',import.meta.url),'utf8');
+  const a=runtime.indexOf('async function omniFooterAction'),b=runtime.indexOf('async function omniToggleCounts',a);
+  const order=[],input={value:'',dispatchEvent:()=>order.push('search:'+input.value)};
+  let tiles=false;
+  const doc={getElementById:id=>id==='nx-char-search'?input:null,querySelector:()=>tiles?{}:null,activeElement:null};
+  const targets=new Map([[3,{characterId:'c',chatId:'chat',index:1}]]);
+  const scope={characterId:'c',chatId:'chat',sessionId:'s',chat:{message:[{data:'x'},{data:'지은이 웃었다. 연희도.'}]}};
+  const t={uiOpen:true};
+  const run=new Function('t','openSettingsTab','omniFooterTargets','Z','K','ye','document',runtime.slice(a,b)+';return omniFooterAction;')(
+    t,async tab=>{order.push('open:'+tab);setTimeout(()=>{tiles=true;},150);},targets,async()=>scope,
+    async(path,init)=>{order.push('ask:'+init.body.message);return {characters:[{name:'송지은'},{name:'김연희'},{name:'송지은'}]};},()=>'h',doc);
+  await run('char',3);
+  await new Promise(r=>setTimeout(r,500));
+  assert.deepEqual(order,['open:characters','ask:지은이 웃었다. 연희도.','search:송지은, 김연희'],'open at once, ask after, one name once, after the tiles drew');
+  order.length=0;input.value='내가 치는 중';doc.activeElement=input;
+  await run('char',3);await new Promise(r=>setTimeout(r,300));
+  assert.deepEqual(order,['open:characters','ask:지은이 웃었다. 연희도.'],'never over what the reader is typing');
+});
