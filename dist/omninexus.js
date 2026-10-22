@@ -21000,8 +21000,50 @@ function omniStreamMoved(run) {
     if(run.dirty)omniStreamMoved(run);
   },Math.max(60,OMNI_STREAM_MARK_MS-(performance.now()-run.markedAt)));
 }
+// The mark the reader's place is taken from: the newest from before the last chunk
+// (whatever came after may be a redraw's jump); with none, the one the stream began with.
+function omniStreamPick(run) {return run.marks.filter(row=>row.chunk<run.chunks).at(-1) || run.marks[0];}
+const omniStreamRelease=value=>typeof omniRelease==='function'?omniRelease(value):undefined;
+// Risu redraws the reply by swapping its wrapper in the message list: at the end, and
+// when a picture goes in. Heard here, the place comes back at once, not when the end
+// is announced (on a phone that is seconds later, the view sitting at the bottom).
+// Only the list's own children are watched: one call per swap, none per chunk.
+async function omniStreamWatchList(run) {
+  if(typeof k?.createMutationObserver!=='function')return;
+  try {
+    const bubble=await run.screen.querySelector('[x-hashed] > .risu-chat');
+    if(!bubble)return;
+    const wrapper=await bubble.getParent?.(),list=wrapper && await wrapper.getParent?.();
+    await omniStreamRelease(bubble);await omniStreamRelease(wrapper);
+    if(!list || run.closed){await omniStreamRelease(list);return;}
+    const observer=await k.createMutationObserver(records=>{void omniStreamRelease(records);omniStreamRedrawn(run);});
+    run.watch={observer,list};
+    await observer.observe(list,{childList:true});
+    if(run.closed)await omniStreamUnwatch(run);
+  } catch(error) {y('warn','scroll.stream.watch',String(error));}
+}
+async function omniStreamUnwatch(run) {
+  const watch=run.watch;run.watch=null;
+  if(!watch)return;
+  try {await watch.observer.disconnect();} catch {}
+  await omniStreamRelease(watch.observer);await omniStreamRelease(watch.list);
+}
+function omniStreamRedrawn(run) {
+  if(run.closed || run.reader?.pressed())return;
+  // One restore for a swap's out-and-in.
+  clearTimeout(run.redrawTimer);
+  run.redrawTimer=setTimeout(()=>{void omniScrollQueue(async()=>{
+    if(run.closed || run.reader?.pressed() || !omniStreamScrollOn() || t.uiOpen)return;
+    await run.marking;
+    const mark=omniStreamPick(run);
+    // Following the newest line: Risu leaves the view at the bottom itself.
+    if(!mark || mark.place.bottom)return;
+    await omniHoldAnchor(mark.place,async()=>{},{byHand:true});
+  }).catch(error=>y('warn','scroll.stream',String(error)));},40);
+}
 async function omniStreamScrollStop(run) {
-  run.closed=true;clearTimeout(run.timer);run.timer=0;
+  run.closed=true;clearTimeout(run.timer);run.timer=0;clearTimeout(run.redrawTimer);
+  void omniStreamUnwatch(run);
   if(omniStreamScroll===run)omniStreamScroll=null;
   for(const [name,id,options,on] of run.listeners.splice(0))try{await (on||run.screen).removeEventListener(name,id,options);}catch{}
 }
@@ -21011,7 +21053,7 @@ function omniStreamScrollTrack() {
   if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
   if(!run) {
     omniStreamScroll={chunkAt:Date.now(),chunks:1,marks:[],marking:null,timer:0,dirty:false,markedAt:-Infinity,listeners:[],
-      screen:null,scope:'',lastBubble:null,reader:null,closed:false,ready:null};
+      screen:null,scope:'',lastBubble:null,reader:null,closed:false,ready:null,watch:null,redrawTimer:0};
     return;
   }
   run.chunkAt=Date.now();run.chunks++;
@@ -21030,6 +21072,7 @@ function omniStreamScrollTrack() {
     }
     run.markedAt=performance.now();
     await omniStreamMark(run);
+    await omniStreamWatchList(run);
   })().catch(error=>y('warn','scroll.stream',String(error)));
 }
 function omniStreamScrollEnd() {
@@ -21041,7 +21084,7 @@ function omniStreamScrollEnd() {
     await run.ready;await run.marking;
     await omniStreamScrollStop(run);
     // The newest mark from before the last chunk; with none, the first, taken as the stream began.
-    const mark=run.marks.filter(row=>row.chunk<run.chunks).at(-1) || run.marks[0];
+    const mark=omniStreamPick(run);
     if(touching || !mark || !omniStreamScrollOn() || t.uiOpen)return;
     await omniHoldAnchor(mark.place,async()=>{},{requireMutation:true,byHand:true});
   }).catch(error=>y('warn','scroll.stream',String(error)));
