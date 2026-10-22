@@ -171,7 +171,6 @@ test('streaming scroll hold: following the bottom, the end of the reply goes bac
  await done;
  assert.equal(f.view,800,'the bottom of the reply is on screen again');
  assert.ok(f.ends>=1);
- assert.equal(f.handlers.size,0,'no listener outlives the reply');
 });
 
 test('streaming scroll hold: reading higher up, the paragraph across the middle returns where it was',async()=>{
@@ -315,7 +314,27 @@ test('streaming scroll hold: a reply redrawn in a new wrapper comes back at once
  assert.equal(f.view,400,'back before any end notice');
  await f.api.end();
  assert.equal(f.view,400);
- assert.equal(f.handlers.size,0,'no listener outlives the reply');
+});
+// From a phone: the end put the place back and it still ended at the bottom. After the
+// end Risu draws the reply again when a picture or a spinner is written into it.
+test('streaming scroll hold: a redraw after the end is put back too, and the watch then ends',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();f.redraw(0);await wait(300);
+ await f.api.end();
+ f.redraw(1400);await wait(400);             // a spinner written in: drawn again
+ assert.equal(f.view,400,'back again after the second redraw');
+ await wait(6000);
+ assert.equal(f.handlers.size,0,'no listener outlives the watch after the end');
+});
+test('streaming scroll hold: after the end, the place a hand moves to is the one kept',async()=>{
+ const f=streamFixture();watchedList(f);await start(f);
+ f.scrollTo(400);await wait(SETTLE);
+ f.chunk();
+ await f.api.end();
+ f.scrollTo(600);await wait(400);            // the reader reads on
+ f.redraw(1400);await wait(400);
+ assert.equal(f.view,600,"the reader's new place, not the one at the end");
 });
 // Redrawn, the reply is empty a moment before its text comes back: the place is found
 // once it has filled again, not in the blank.
