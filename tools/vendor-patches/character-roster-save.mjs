@@ -37,7 +37,12 @@ ${readFileSync(new URL('./character-roster-save.js',import.meta.url),'utf8')}
     }), `);
   }
   // The UI cache and an in-flight request must not share nested costume arrays.
-  replace('        enqueue("characters:" + scope.sessionId, async () => {', '        const snapshot = JSON.parse(JSON.stringify(body));\n        enqueue("characters:" + scope.sessionId, async () => {');
+  // Cloned when it is written, from the latest edits: a big roster was cloned on every key.
+  replace('        enqueue("characters:" + scope.sessionId, async () => {', '        enqueue("characters:" + scope.sessionId, async () => {\n          const latest = t._omniRosterCache?.get(scope.sessionId);\n          const snapshot = JSON.parse(JSON.stringify(latest ? {...body, characters: latest.characters, global: latest.global} : body));');
+  // body already holds every row with the edited one replaced; re-merging each row
+  // against the whole previous list cost roster-size squared per key.
+  replace('        const merge=(rows, previous)=>rows.map(row=>({...previous?.find(c=>c.id===row.id),...row}));\n        t.charactersSession = merge(body.characters,t.charactersSession); t.charactersGlobal = merge(body.global,t.charactersGlobal); t._charsDirty = !0;',
+    '        t.charactersSession = body.characters || t.charactersSession; t.charactersGlobal = body.global || t.charactersGlobal; t._charsDirty = !0;');
   replace('          const saved = await K("/v1/characters", { method: "POST", body });', '          const saved = await K("/v1/characters", { method: "POST", body: snapshot });');
   return out;
 }

@@ -291,3 +291,21 @@ test('reply limit settings patch captures the vendor form and updates runtime be
     assert.throws(()=>repairReplyCharLimitSettings(changed),/needle drift/);
   }
 });
+
+test('a roster edit waits 10 s without typing before it rewrites the lorebook; leaving the app writes it at once', async () => {
+  const f = ui(), listeners = {};
+  f.context.document.addEventListener = (type, fn) => { listeners[type] = fn; };
+  let writes = 0;
+  f.omniEnqueueLiveWrite('characters:a', async () => { writes++; });
+  f.omniEnqueueLiveWrite('prompt:x', async () => {});
+  const delays = [...f.timers.values()].map(timer => timer.ms).sort((a, b) => a - b);
+  assert.deepEqual(delays, [500, 10000], 'prompts keep their short wait, the roster waits 10 s');
+  // Typing again restarts the 10 s: still one write pending, none done.
+  f.omniEnqueueLiveWrite('characters:a', async () => { writes++; });
+  assert.equal([...f.timers.values()].filter(timer => timer.ms === 10000).length, 1);
+  assert.equal(writes, 0);
+  f.context.document.visibilityState = 'hidden';
+  listeners.visibilitychange();
+  await f.omniFlushLiveWrites();
+  assert.equal(writes, 1, 'the app going to the background writes the latest edit once');
+});
