@@ -2,6 +2,7 @@ import { paintReferenceProgress } from './reference-progress';
 import { getConfig, setConfig } from '../services/context';
 import type { CardSettings, StylePreset } from '../core/types';
 import { lookFilterAllows, presetModelBadge, splitLookFilter } from './preset-tiles';
+import { pickPresetAsset } from './preset-assets';
 
 interface Actions {
   config: () => { card?: CardSettings } | undefined;
@@ -101,6 +102,10 @@ export function bindPresetSheet(): void {
     open(false);
   });
   document.getElementById('nx-preset-import-cancel')?.addEventListener('click', () => open(false));
+  // 에셋에서·모듈에서: a NovelAI picture among Risu's assets becomes a preset, as 이미지 프리셋 로드 does with a file.
+  for (const [id, source] of [['nx-preset-from-asset', 'character'], ['nx-preset-from-module', 'module']] as const) {
+    document.getElementById(id)?.addEventListener('click', () => { void pickPresetAsset(source).catch(error => window.alert(String(error))); });
+  }
   // JSON 관리: one button for the three; the originals stay (hidden) for the handlers bound to them.
   document.getElementById('nx-preset-json')?.addEventListener('click', () => open(true));
   for (const [id, target] of [['nx-preset-json-export', 'nx-preset-export'], ['nx-preset-json-file', 'nx-preset-file']]) {
