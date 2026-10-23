@@ -1081,8 +1081,15 @@
     #nx-char-select-bar[hidden] { display:none; }
     #nx-char-select-bar [data-sel-count] { font-size:12px; color:var(--muted); margin-right:2px; }
     #nx-char-select.on { border-color:#7132f5; background:#7132f5; color:#fff; }
-    .actions.nx-selecting > :not(#nx-char-select):not(#nx-char-select-bar) { display:none !important; }
     .preset-tile.nx-picked { outline:2px solid #7132f5; outline-offset:2px; }
+    .preset-dock > [hidden] { display:none !important; }
+    #nx-preset-pick-bar { display:contents; }
+    #nx-preset-pick-bar[hidden] { display:none; }
+    #nx-preset-pick-bar [data-sel-count] { font-size:12px; color:var(--muted); margin-right:2px; }
+    #nx-preset-pick.on { border-color:#7132f5; background:#7132f5; color:#fff; }
+    .actions.nx-selecting > :not(#nx-preset-pick):not(#nx-preset-pick-bar):not(#nx-char-select):not(#nx-char-select-bar) { display:none !important; }
+    .preset-tile [data-preset-model] { position:absolute; top:4px; right:4px; z-index:2; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; pointer-events:none; }
+    .preset-tile [data-preset-model="v5"] { background:#5741d8; }
     .preset-tile.nx-off { opacity:.45; }
     .preset-tile.nx-off::after { content:"꺼짐"; position:absolute; top:4px; right:4px; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; }
 </style>
@@ -1369,7 +1376,7 @@
         <div class="preset-page">
           <div class="preset-top">
             <div class="preset-search">
-              <input id="nx-preset-search" type="search" placeholder="이름, NAI5, positive, negative">
+              <input id="nx-preset-search" type="search" placeholder="이름, NAI5, positive, negative, 참고컷 없는">
               <div class="preset-load-btn">
                 <button type="button" id="nx-preset-from-image">이미지 프리셋 로드</button>
                 <button type="button" id="nx-preset-from-image-head" hidden></button>
@@ -1379,6 +1386,7 @@
             <div class="preset-current">
               <b id="nx-preset-current">프리셋 1</b>
               <div class="actions">
+                <button class="btn-ghost" type="button" id="nx-preset-pick" aria-pressed="false">선택</button>
                 <button class="btn-ghost" type="button" id="nx-preset-second">2순위로 사용하기</button>
                 <button class="btn-ghost" type="button" id="nx-preset-new">새 프리셋</button>
                 <button class="btn-ghost" type="button" id="nx-preset-dup">복제</button>
@@ -1395,9 +1403,10 @@
           <div class="preset-dock">
             <button class="dock-btn" type="button" id="nx-preset-look-act">참고컷 등록</button>
             <button class="dock-btn" type="button" id="nx-preset-look-gen">참고컷 생성</button>
-            <button class="dock-btn" type="button" id="nx-preset-export">JSON 내보내기</button>
-            <button class="dock-btn" type="button" id="nx-preset-file">JSON 불러오기</button>
-            <button class="dock-btn" type="button" id="nx-preset-import">붙여넣기 가져오기</button>
+            <button class="dock-btn" type="button" id="nx-preset-json">JSON 관리</button>
+            <button class="dock-btn" type="button" id="nx-preset-export" hidden>JSON 내보내기</button>
+            <button class="dock-btn" type="button" id="nx-preset-file" hidden>JSON 불러오기</button>
+            <button class="dock-btn" type="button" id="nx-preset-import" hidden>붙여넣기 가져오기</button>
             <input id="nx-preset-look-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
             <input id="nx-preset-file-input" type="file" accept=".json,application/json,text/plain" hidden>
             <button class="dock-btn dock-up" type="button" id="nx-preset-edit-btn" aria-expanded="false" aria-controls="nx-preset-sheet">▲ 프리셋 수정</button>
@@ -1415,7 +1424,7 @@
               </div>
             </div>
             <div class="preset-search">
-              <input type="search" id="nx-char-search" placeholder="이름 · 별칭 · 원작 · 외형 태그 검색" aria-label="캐릭터 검색">
+              <input type="search" id="nx-char-search" placeholder="이름 · 별칭 · 원작 · 외형 태그 · 참고컷 없는" aria-label="캐릭터 검색">
             </div>
             <div id="nx-lorefilter-slot"></div>
             <div class="preset-current">
@@ -1983,14 +1992,18 @@
   </div>
   <div class="pop-bg" id="nx-preset-import-bg"></div>
   <div class="pop" id="nx-preset-import-pop" role="dialog" aria-labelledby="nx-preset-import-title" aria-modal="true">
-    <h3 id="nx-preset-import-title">붙여넣기 가져오기</h3>
+    <h3 id="nx-preset-import-title">JSON 관리</h3>
+    <div class="pop-actions" style="justify-content:flex-start;margin:0 0 10px">
+      <button class="btn-ghost" type="button" id="nx-preset-json-export">JSON 내보내기</button>
+      <button class="btn-ghost" type="button" id="nx-preset-json-file">JSON 파일 불러오기</button>
+    </div>
     <label class="block" style="border:0;padding:0">
       <span>card.json 또는 프리셋 JSON 붙여넣기</span>
       <textarea id="nx-preset-import-text" placeholder='{"presets":[...]}'></textarea>
     </label>
     <div class="pop-actions">
       <button class="btn-ghost" type="button" id="nx-preset-import-cancel">취소</button>
-      <button class="btn" type="button" id="nx-preset-import-ok">불러오기</button>
+      <button class="btn" type="button" id="nx-preset-import-ok">붙여넣은 JSON 가져오기</button>
     </div>
   </div>
 

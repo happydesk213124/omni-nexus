@@ -5,6 +5,7 @@ import { bindCharacterPaste, selectPasteCharacter } from './character-paste';
 import type { CharacterRecord } from '../core/types';
 import { mutateCharacterRoster } from '../storage/character-roster';
 import { pickCharacterAsset } from './asset-picker';
+import { lookFilterAllows, splitLookFilter } from './preset-tiles';
 import { bindCostumeEditor } from './costume-editor';
 import { loadCharacterPreviews } from './character-preview-loading';
 import { connectCharacterImages, paintReferenceProgress, syncCharacterTilePreviews } from './reference-progress';
@@ -316,12 +317,16 @@ export function bindCharacterSheet(): void {
   if (bar.parentElement?.id === 'nx-char-scope-slot') bar.parentElement.hidden = true;
   document.getElementById('nx-char-search')?.addEventListener('input', event=> {
     // Commas list several people, as in the session note's 옷 상태 search: any one matches.
-    const terms=(event.target as HTMLInputElement).value.toLocaleLowerCase().split(/[,，]/).map(term=>term.trim()).filter(Boolean);
+    const {look,terms}=splitLookFilter((event.target as HTMLInputElement).value.toLocaleLowerCase().split(/[,，]/).map(term=>term.trim()).filter(Boolean));
+    const rows=look ? (globalThis as typeof globalThis & {__OMNI_CHARACTER_ROWS__?:()=>{session:CharacterRecord[];global:CharacterRecord[]}}).__OMNI_CHARACTER_ROWS__?.() : undefined;
     let visible = 0;
     for(const tile of document.querySelectorAll<HTMLElement>('[data-ux-character-tile]')) {
       const card=characterCardForTile(tile);
       const text=terms.length ? [...(card?.querySelectorAll('input,textarea')||[])].filter(isField).map(f=>f.value).join(' ').toLocaleLowerCase() : '';
-      tile.hidden=terms.length>0 && !terms.some(term=>text.includes(term));
+      // 참고컷 is the example shot (참고컷 생성); its picture loads lazily, so the saved hash decides.
+      const row=look ? rows?.[tile.dataset.uxCharacterScope==='global'?'global':'session'].find(row=>row.id===tile.dataset.uxCharacterTile) : undefined;
+      const hasLook=!!(row?.example_hash || card?.querySelector('[data-char-ex-preview] img'));
+      tile.hidden=(terms.length>0 && !terms.some(term=>text.includes(term))) || !lookFilterAllows(look,hasLook);
       if (!tile.hidden && tile.dataset.uxCharacterScope === selectedScope) visible++;
     }
     if (empty) { empty.hidden = visible > 0; empty.classList.toggle('show', visible === 0); }
