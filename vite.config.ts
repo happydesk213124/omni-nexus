@@ -3986,11 +3986,13 @@ const VENDOR_PRESET_VIBE_EVT_PATCH = `    }), (() => {
         if (el) return !!el.checked;
         return t.backendSettings?.card?.preset_from_image_filter !== !1;
       };
-      const runPresetFromImage = async (file) => {
-        if (!file) return;
+      // assetName: a Risu asset picked from 에셋에서·모듈에서 names the preset after itself.
+      const runPresetFromImage = async (file, assetName) => {
+        if (!file) return !1;
         try {
           const image_b64 = await It(file);
           const res = await K("/v1/presets/from-image", { method: "POST", body: { image_b64, filter_tags: presetFilterOn() } }, 6e4);
+          assetName && res && (res.name = String(assetName));
           const a = _e();
           Array.isArray(a.presets) || (a.presets = []);
           const id = mt(res?.name || "이미지 프리셋", a.presets.length);
@@ -4029,11 +4031,14 @@ const VENDOR_PRESET_VIBE_EVT_PATCH = `    }), (() => {
             $e("참고컷 저장 실패");
           }
           await P();
+          return !0;
         } catch (err) {
           t.uiMessage = { type: "error", text: z(err?.message || err) };
           await P();
+          return !1;
         }
       };
+      globalThis.__OMNI_PRESET_FROM_IMAGE__ = runPresetFromImage;
       const paintPresetImageFocus = () => {
         document.querySelectorAll(".nx-from-image-split").forEach((w) => w.classList.toggle("armed", !!t.presetImageFocus));
         document.querySelectorAll("[data-preset-from-image]").forEach((b) => {
