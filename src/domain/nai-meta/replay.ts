@@ -276,13 +276,16 @@ export function requireNaiReplayScene(meta: unknown): NaiScene {
   const caption = asRecord(v4?.caption);
   const slots = caption?.char_captions ?? caption?.charCaptions;
   const negativeSlots = negCaption?.char_captions ?? negCaption?.charCaptions;
+  // V5 medium takes no negative prompt: its request, and so NAI's PNG of it, has no
+  // negative character slots at all. Each character's uc is then '', as it was sent.
+  const noNegatives = Array.isArray(negativeSlots) && negativeSlots.length === 0;
   if (Array.isArray(slots)) {
     for (let index = 0; index < slots.length; index++) {
       const slot = asRecord(slots[index]);
       const negativeSlot = Array.isArray(negativeSlots) ? asRecord(negativeSlots[index]) : null;
       const centers = slot?.centers;
       if (typeof (slot?.char_caption ?? slot?.charCaption) !== 'string'
-        || typeof (negativeSlot?.char_caption ?? negativeSlot?.charCaption) !== 'string') {
+        || (!noNegatives && typeof (negativeSlot?.char_caption ?? negativeSlot?.charCaption) !== 'string')) {
         missing.push(`char_captions[${index}]`);
       }
       if (scene.use_coords && (!Array.isArray(centers) || centers.length !== 1

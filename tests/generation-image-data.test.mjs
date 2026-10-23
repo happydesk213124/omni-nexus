@@ -169,6 +169,22 @@ test('strict replay preserves explicit flags and rejects missing recipe values',
   assert.equal(api.requireNaiReplayScene({ Comment: { ...comment, skip_cfg_above_sigma: null } }).var_plus, false);
 });
 
+// 원본으로 저장 keeps NAI's PNG, so a reroll reads NAI's own Comment. V5 medium is sent
+// (and so recorded) with no negative character slots; that once failed as char_captions[0].
+test('strict replay reads a V5 medium PNG whose negative has no character slots', () => {
+  const comment = { prompt: 'scene, girl', uc: '', width: 832, height: 1216, steps: 14, scale: 5, cfg_rescale: 0,
+    sampler: 'k_euler_ancestral', noise_schedule: 'karras', skip_cfg_above_sigma: null, use_coords: true,
+    v4_prompt: { caption: { base_caption: 'scene', char_captions: [{ char_caption: 'girl', centers: [{ x: 0.3, y: 0.5 }] }] }, use_coords: true, use_order: true },
+    v4_negative_prompt: { caption: { base_caption: '', char_captions: [] }, legacy_uc: false } };
+  const scene = api.requireNaiReplayScene({ Comment: comment, Source: 'NovelAI Diffusion V5 Medium' });
+  assert.equal(scene.characters.length, 1);
+  assert.equal(scene.characters[0].prompt, 'girl');
+  assert.equal(scene.characters[0].uc, '');
+  // A slot that is there but broken is still refused: only "none at all" means medium.
+  const broken = { ...comment, v4_negative_prompt: { caption: { base_caption: '', char_captions: [{}] }, legacy_uc: false } };
+  assert.throws(() => api.requireNaiReplayScene({ Comment: broken, Source: 'NovelAI Diffusion V5 Medium' }), /char_captions\[0\]/);
+});
+
 test('PNG fallback preserves associations without canvas and detects corrupted metadata CRC', async () => {
   const prev = globalThis.createImageBitmap;
   globalThis.createImageBitmap = undefined;
