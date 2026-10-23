@@ -15,7 +15,7 @@ try {
   await page.evaluate(() => {
     const kv = new Map();
     const roster = [
-      { id: 'alpha', name: 'Alpha', aliases: ['Alpha'], appearance: 'girl, red hair', schema_version: 2 },
+      { id: 'alpha', name: 'Alpha', aliases: ['Alpha'], appearance: 'girl, red hair', schema_version: 2, example_hash: 'alpha-shot' },
       { id: 'beta', name: 'Beta', aliases: ['Beta'], appearance: 'boy, black hair', schema_version: 2 },
       { id: 'gamma', name: 'Gamma', aliases: ['Gamma'], appearance: 'girl, blue hair', schema_version: 2 },
     ];
@@ -38,6 +38,12 @@ try {
   const tile = name => page.locator(`[data-ux-character-tile]:has([data-character-label]:text-is("${name}"))`);
   await tile('Alpha').waitFor();
   await tile('Beta').waitFor();
+  // "참고컷 없는" filters on the saved example shot, not on text; it holds beside text terms.
+  const shownNames = () => page.evaluate(() => [...document.querySelectorAll('[data-ux-character-tile]')].filter(t => !t.hidden).map(t => t.querySelector('[data-character-label]').textContent));
+  for (const [query, names] of [['참고컷 없는', ['Beta', 'Gamma']], ['참고컷 있는', ['Alpha']], ['참고컷 없는, blue', ['Gamma']], ['', ['Alpha', 'Beta', 'Gamma']]]) {
+    await page.locator('#nx-char-search').fill(query);
+    assert.deepEqual((await shownNames()).sort(), names, 'search ' + JSON.stringify(query));
+  }
   const select = page.locator('#nx-char-select');
   assert.equal(await select.textContent(), '선택');
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);

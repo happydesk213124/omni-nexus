@@ -2,6 +2,7 @@ import { ttsSettingsHtml, ttsHelp } from '../tts-ui/mount';
 import { ttsHelpTip } from '../tts-ui/help';
 import { soundHelpTip } from '../sound-ui/help';
 import preview from './preview-panes.json';
+import { presetModelBadge } from './preset-tiles';
 
 type PreviewPack = { panes: Record<string, string>; overlays: string; chrome: string; help?: {tips:Record<string,{title:string;body:string}>;aliases:Record<string,string>} };
 
@@ -231,6 +232,9 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     label.textContent = text.map(node => node.textContent || '').join('');
     text.forEach(node => node.remove());
     el.append(label);
+    const presets = Array.isArray(card?.presets) ? card.presets as {id?: unknown; model_family?: unknown}[] : [];
+    const preset = presets.find(p => String(p?.id) === el.dataset.presetSelect);
+    if (preset) el.append(presetModelBadge(preset.model_family));
     el.title = label.textContent;
     el.setAttribute('aria-label', label.textContent);
   });
