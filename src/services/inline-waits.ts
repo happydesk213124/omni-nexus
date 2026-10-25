@@ -1,16 +1,17 @@
 import type { ApiResult, TaggerResult } from '../core/types';
 import { risuHost } from '../core/host';
 import { cleanText, toInt } from '../core/util/text';
-import { isBlockWaitId, waitSlotBlock, waitTokenDimensions } from '../domain/chat-bake';
+import { isBlockWaitId, pendingSpinnerIds, waitSlotBlock, waitTokenDimensions } from '../domain/chat-bake';
 import { inlineShotBlocks, inlineShotTagged } from '../domain/prompt/inline-shots';
 import { analysisBody } from '../domain/prompt/message-body';
-import { dropInlineWait, getInlineWait } from '../storage/inline-wait-store';
-import { readStoredMessageBody } from './chat-bake';
+import { dropInlineWait, dropInlineWaits, getInlineWait, listInlineWaits } from '../storage/inline-wait-store';
+import { parkAbandonedSpinners, parkJobSpinners, readStoredMessageBody } from './chat-bake';
+import { dbg } from '../core/debug';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { streamBlockBusy } from './stream-jobs';
 import { statedLocation, statedOutfits } from './stream-continuity';
 import { getConfig } from './context';
-import { createJob } from './jobs';
+import { createJob, spinnerJobRunning } from './jobs';
 
 /**
  * Streaming tags with 「이미지 바로 생성」 off. At completion the blocks become
@@ -41,7 +42,16 @@ export async function parkInlineShots(body: Record<string, unknown>): Promise<Ap
 export async function generateInlineWait(body: Record<string, unknown>): Promise<ApiResult> {
   const id = cleanText(body.wait_id, 64);
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return fail('bad_request', '대기 칸 ID가 올바르지 않습니다.');
-  const stored = await readStoredMessageBody(body.char_index, body.chat_index, body.message_index);
+  let stored = await readStoredMessageBody(body.char_index, body.chat_index, body.message_index);
+  // A spinner its job left behind (the page reloaded, the app closed mid-run) is a
+  // slot too when its shot was kept: it becomes the pink slot first, then is drawn.
+  if (stored != null && !waitTokenDimensions(stored, id) && pendingSpinnerIds(stored).includes(id)) {
+    if (spinnerJobRunning(id)) return fail('busy', '이 칸은 아직 만드는 중입니다.');
+    if (!await getInlineWait(id)) return fail('not_found', '이 칸의 태그가 남아 있지 않습니다. 태그를 다시 생성해 주세요.');
+    await parkJobSpinners({ charIndex: toInt(body.char_index, -1), chatIndex: toInt(body.chat_index, -1), messageIndex: toInt(body.message_index, -1),
+      ...(cleanText(body.host_message_id, 200) ? { hostMessageId: cleanText(body.host_message_id, 200) } : {}) }, [id]);
+    stored = await readStoredMessageBody(body.char_index, body.chat_index, body.message_index);
+  }
   if (stored == null || !waitTokenDimensions(stored, id)) {
     await dropInlineWait(id).catch(() => {});
     return fail('not_found', '이 칸은 이미 만들었거나 메시지가 바뀌었습니다.');
@@ -82,4 +92,18 @@ export async function generateInlineWait(body: Record<string, unknown>): Promise
     ...(prior.some(list => list.length) ? { inline_prior: prior } : {}),
     ...(priorLocation ? { inline_prior_location: priorLocation } : {}),
   });
+}
+
+/**
+ * Boot: spinners a job left without their image when the page last closed become
+ * their pink slots, read from the kept shots only (no chat is scanned for them). A
+ * shot younger than two minutes is left: another device may still be drawing it.
+ */
+export async function parkLeftSpinners(): Promise<number> {
+  const rows = await listInlineWaits();
+  if (!rows.length) return 0;
+  const { parked, gone } = await parkAbandonedSpinners(rows, spinnerJobRunning, 2 * 60 * 1000);
+  if (gone.length) await dropInlineWaits(gone);
+  if (parked.length) dbg('wait.spinners.parked', { count: parked.length });
+  return rows.length - gone.length;
 }

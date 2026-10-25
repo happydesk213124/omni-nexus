@@ -39,6 +39,7 @@ import { ensureInlineTagModule } from '../storage/inline-tag-module';
 import { migrateAppearanceToCharacters, migrateCharacterIdentity } from '../services/characters';
 import { hydratePresetVibePreviews } from '../services/nai-assets';
 import { hydratePresetLookPreviews } from '../services/preset-look';
+import { parkLeftSpinners } from '../services/inline-waits';
 import { saveConfig, seedPrompts } from '../services/settings';
 import { closeTagStudio, openTagStudio } from '../tag-studio/mount';
 import {
@@ -99,6 +100,12 @@ async function boot(): Promise<void> {
   // Off is the default: no module read at boot for people who never use it.
   // Waiting slots from earlier sessions are tappable from the start.
   if (getConfig().card.stream_inline_tags === true) (Reflect.get(globalThis, '__OMNI_WAIT_TAPS__') as { sync?: () => void } | undefined)?.sync?.();
+  // Spinners left mid-run when the page last closed turn pink, after boot settles.
+  setTimeout(() => {
+    void parkLeftSpinners().then(waiting => {
+      if (waiting) (Reflect.get(globalThis, '__OMNI_WAIT_TAPS__') as { sync?: () => void } | undefined)?.sync?.();
+    }).catch(err => dbg('boot.spinners', { message: String((err as Error)?.message || err) }, 'warn'));
+  }, 5000);
   if (getConfig().card.stream_inline_tags === true) void ensureInlineTagModule(true, getConfig().card.inline_chat_scale_pct, getConfig().card.stream_inline_autogen === false).catch(err => {
     dbg('boot.inline-tags', {message:String(err)}, 'warn');
   });

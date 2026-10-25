@@ -187,6 +187,9 @@ const normalize = (root) => {
             .filter((k) => k !== 'onx_author_note_presets')
             // 봇·세션 이미지 프리셋 — no 1.x key; preset_bindings.roundtrip asserts what it holds.
             .filter((k) => k !== 'onx_preset_bindings')
+            // Each spinner's shot, kept until it is drawn so a refused one becomes a pink slot — no 1.x key;
+            // tests/spinner-park.test.mjs asserts what it holds (only the undrawn, let go once drawn).
+            .filter((k) => k !== 'omniinline.waits')
             // 2.5.33 boot stamp: a diagnostic written once per boot so the debug
             // dump can tell "iframe reloaded" from "shell failed to paint". No
             // 1.x key, and nothing reads it for behaviour.
