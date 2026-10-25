@@ -6,8 +6,8 @@ import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-
 import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage, runStreamImageTask } from './stream-jobs';
 export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
-import { writeJobSpinners, finishJobSpinners, writeWaitImage } from './chat-bake';
-import { dropInlineWait } from '../storage/inline-wait-store';
+import { writeJobSpinners, finishJobSpinners, writeWaitImage, parkJobSpinners } from './chat-bake';
+import { dropInlineWait, dropInlineWaits, putInlineWaits } from '../storage/inline-wait-store';
 import { earlierRosterWrites, outfitsFromRequest, recordStreamBlock, rosterWritten, streamLocation, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
 import { risuHost } from '../core/host';
 /**
@@ -293,6 +293,11 @@ const lastGeneratingWaiters = new Map<string, () => void>();
 function resetLastGeneratingPoll(jobId: string): void {
   lastGeneratingReady.delete(jobId);
   lastGeneratingWaiters.delete(jobId);
+}
+
+/** A spinner (`jobId_shot`) whose job is still running in this page. */
+export function spinnerJobRunning(spinnerId: string): boolean {
+  return jobRunMeta.has(spinnerId.replace(/_\d+$/, ''));
 }
 
 function releaseJobRuntime(jobId: string): void {
@@ -767,6 +772,11 @@ async function runJob(jobId: string): Promise<void> {
   let streamCardsRebound = false;
   const completedSpinnerCards = new Map<number,string>();
   const bakedSpinnerShots = new Set<number>();
+  // Each spinner's shot, kept (inline-wait-store) from the moment it is written: one
+  // that never gets its image (NovelAI busy with another app, a reload) becomes a pink
+  // slot a double tap draws from this shot, with no tagger call. Keyed `jobId_shot`.
+  const keptSpinners = new Map<string, number>();
+  const failedShots = new Map<number, unknown>();
   const requestMainTagger = async (messages: Parameters<typeof callLlm>[1]): Promise<string | null> => {
     const invoke = () => callLlm(resolveLlmRole(getConfig(), 'main'), messages, llmOptions);
     const retryEnabled = () => getConfig().card?.llm_json_retry === true;
@@ -795,6 +805,18 @@ async function runJob(jobId: string): Promise<void> {
       }
     }
   };
+  /**
+   * The job ended: spinners still without their image become pink slots keeping their
+   * shot; the shots of the drawn ones are let go. A job another run has replaced leaves
+   * the message alone (that run lays its own slots out) and lets all of them go.
+   */
+  async function settleKeptSpinners(): Promise<void> {
+    const meta = jobRunMeta.get(jobId), current = meta && jobEpochByKey.get(meta.key);
+    const owns = !!meta && current?.jobId === jobId && current.epoch === meta.epoch;
+    const unfinished = [...keptSpinners].filter(([, shot]) => !bakedSpinnerShots.has(shot)).map(([id]) => id);
+    if (owns && unfinished.length) await enqueueBakeWrite(() => parkJobSpinners(jobChatTarget(request), unfinished));
+    await dropInlineWaits([...keptSpinners.keys()].filter(id => !owns || !unfinished.includes(id)));
+  }
   async function finishCompletedSpinners(): Promise<boolean> {
     if(deferred?.lineAttachments)return false;
     if (deferred && (!deferred.committed || deferred.cancelled)) return false;
@@ -1299,7 +1321,23 @@ async function runJob(jobId: string): Promise<void> {
       // A tapped slot is not written while it is drawn: the toast shows progress, and the
       // finished image replaces the slot in one write (finishCompletedSpinners).
       if (inlineWait) return true;
-      return enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})}));
+      let written: { messageId: string; chatId: string } | undefined;
+      const ok = await enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,onMessage:ids=>{written=ids;},...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})}));
+      if (ok && !deferred) await keepSpinnerShots(written).catch(err => dbg('job.spinner.keep.fail', { message: String(err) }, 'warn'));
+      return ok;
+    }
+    async function keepSpinnerShots(written: { messageId: string; chatId: string } | undefined): Promise<void> {
+      const rows = pendingInline.flatMap(slot => {
+        const shot = shots[slot.shot_index];
+        if (!shot || isComicShot(shot)) return [];
+        const { place, line: _line, paragraph: _paragraph, ...rest } = shot as TaggedShot & { place?: unknown; paragraph?: unknown };
+        const id = `${jobId}_${slot.shot_index}`;
+        keptSpinners.set(id, slot.shot_index);
+        return [{ id, tagged: { scenes: [{ place: cleanText(place, 800), shots: [rest] }] } as TaggerResult, line: Math.max(1, Number(slot.line) || 1),
+          characterId: String(request.character_id || ''), chatId: String(request.chat_id || written?.chatId || ''),
+          hostMessageId: String(request.host_message_id || written?.messageId || ''), createdAt: Date.now() }];
+      });
+      if (rows.length) await putInlineWaits(rows);
     }
     await setJob(
       jobId,
@@ -1737,6 +1775,13 @@ async function runJob(jobId: string): Promise<void> {
         try {
           await runShot(idx, token);
           done.add(idx);
+        } catch (error) {
+          // A shot NovelAI refused (busy drawing for another app on the same key, a
+          // timeout) does not stop the rest. Its spinner turns pink when the job ends.
+          if (!keptSpinners.size || shotSaveFailed || !isJobCurrent(jobId) || (error as { name?: unknown })?.name === 'AbortError') throw error;
+          failedShots.set(idx, error);
+          done.add(idx);
+          dbg('job.shot.failed', { shot: idx, message: String((error as Error)?.message || error).slice(0, 200) }, 'warn');
         } finally {
           inflight.delete(idx);
         }
@@ -1748,16 +1793,19 @@ async function runJob(jobId: string): Promise<void> {
     if (shotSaveFailed) throw shotSaveFailed;
     if (await cancelJobIfStale(jobId, 'superseded before done')) return;
     const finalCards = cards.filter((c): c is Record<string, unknown> => Boolean(c));
+    // Nothing drawn at all: the job failed (its spinners still turn pink, below).
+    if (failedShots.size && !finalCards.length) throw failedShots.values().next().value;
     deferred?.lineAttachments?.settle(jobId);
     const result = {
       cards: finalCards,
       message_index: request.message_index != null ? Number(request.message_index) : -1,
       shot_count: shots.length,
-      shot_done: shots.length,
+      shot_done: shots.length - failedShots.size,
+      ...(failedShots.size ? { shot_failed: failedShots.size } : {}),
       progress: 100,
       phase: 'done',
       ...(deferred?.lineAttachments ? {line_group:deferred.lineAttachments.stats()} : {}),
-      message: `이미지 ${shots.length}/${shots.length} 완료${upscaleWarnings.length ? ` · 업스케일 실패 ${upscaleWarnings.length}장 원본 저장` : ""}`,
+      message: `이미지 ${shots.length - failedShots.size}/${shots.length} 완료${failedShots.size ? ` · ${failedShots.size}장은 분홍 칸으로 남김(두 번 눌러 생성)` : ''}${upscaleWarnings.length ? ` · 업스케일 실패 ${upscaleWarnings.length}장 원본 저장` : ""}`,
       ...(upscaleWarnings.length ? { warnings:upscaleWarnings } : {}),
       // Done = no spinners. Leaving pending_inline here kept circles on finished bubbles.
     };
@@ -1837,6 +1885,7 @@ async function runJob(jobId: string): Promise<void> {
         if (!streamCardsRebound) await rebindCardsHash({session_id:sessionId,card_ids:[...completedSpinnerCards.values()],to_hash:request.content_hash || '',assistant_preview:jobRunMeta.get(jobId)?.saveAssistantPreview || ''});
       }
       await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
+      if (keptSpinners.size) await settleKeptSpinners().catch(err => dbg('job.spinner.park.fail', { message: String(err) }, 'warn'));
       // A slot that got its image is done; one that did not was never written: it is still the pink slot.
       if (inlineWait && completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
       // Unfinished frames remain retryable; successful frames are permanent.

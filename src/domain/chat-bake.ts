@@ -247,6 +247,20 @@ export function removePendingSpinners(text:string, identity='[a-zA-Z0-9_-]+'):st
   return text.replace(new RegExp('(^|\\n?)(?:\\[\\[@inrayspinner::'+identity+'(?:::[0-9]+::[0-9]+)?\\]\\](?!\\[\\[@inray::))+(\\n?)','g'),(_m,before,after,offset)=>offset===0&&!before?'':after);
 }
 
+// A spinner with its image attached is done; only a bare one is still waiting for it.
+const PENDING_SPINNER = /\[\[@inrayspinner::([a-zA-Z0-9_-]{1,64})::([0-9]+)::([0-9]+)\]\](?!\s{0,128}\[\[@inray::)/g;
+/** The spinners that never got their image, by identity (`jobId_shot`). */
+export function pendingSpinnerIds(text: string): string[] {
+  return [...text.matchAll(PENDING_SPINNER)].map(match => match[1]!);
+}
+/**
+ * The named bare spinners become waiting slots of the same identity and size: the
+ * pink slot a double tap generates, from the shot kept for it (inline-wait-store).
+ */
+export function parkSpinners(text: string, ids: ReadonlySet<string>): string {
+  return text.replace(PENDING_SPINNER, (match, id: string, width: string, height: string) => ids.has(id) ? waitToken(id, Number(width), Number(height)) : match);
+}
+
 /** Read the exact reserved slot; never infer a slot from paragraph order. */
 export function spinnerDimensions(text: string, jobId: string, shot: number): BakeDimensions | undefined {
   spinnerToken(jobId, shot);

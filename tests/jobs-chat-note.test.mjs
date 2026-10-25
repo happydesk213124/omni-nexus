@@ -59,7 +59,7 @@ return finishCompletedSpinners;`, scope);
 
 test('error/stop finalizer bakes completed shots before spinner cleanup and scroll release', async () => {
   const body = between('    try {\n      // A later shot may fail', '\n  }\n}');
-  for (const fails of [false,true]) {
+  for (const [fails,kept] of [[false,false],[true,false],[false,true]]) {
     const calls=[];
     const old = globalThis.__OMNI_END_SCROLL__;
     globalThis.__OMNI_END_SCROLL__ = async () => calls.push('end-scroll');
@@ -69,10 +69,12 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
         closeStreamJob:()=>calls.push('close-stream'),setJobContext:()=>calls.push('restore-context'),prevCtx:'',deferred:undefined,
         releaseShotAssets:()=>calls.push('register-shots'),releaseChatNote:()=>calls.push('write-note'),noteSessionId:'note',
         dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
+        keptSpinners:new Map(kept?[['job_0',0]]:[]),settleKeptSpinners:async()=>calls.push('park'),
         clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],inlineWait:'',
       });
       // Shots waiting for registration and note changes no bake carried go out last, after every bake.
-      assert.deepEqual(calls,['bake','end-scroll','close-stream','restore-context','register-shots','write-note']);
+      // Spinners still without their image turn pink after the bake, before the scroll is let go.
+      assert.deepEqual(calls,['bake',...(kept?['park']:[]),'end-scroll','close-stream','restore-context','register-shots','write-note']);
     } finally {globalThis.__OMNI_END_SCROLL__=old;}
   }
 });

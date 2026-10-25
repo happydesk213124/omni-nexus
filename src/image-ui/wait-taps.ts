@@ -27,13 +27,14 @@ export function installWaitTaps(): void {
   let doc: SafeDocument | null = null, listener = '', busy = false, syncing: Promise<void> | null = null;
 
   const slotAt = async (event: HostPoint): Promise<{ id: string; index: number } | null> => {
-    const nodes = await safeArray(await doc!.querySelectorAll('[data-inray-wait]'));
+    // A spinner whose job ended without it (kept shot) is tapped like a pink slot.
+    const nodes = await safeArray(await doc!.querySelectorAll('[data-inray-wait],[data-inray-spinner]'));
     const owned: unknown[] = [...nodes];
     try {
       let hit: SafeElement | undefined;
       for (const node of nodes) if (await hitHost(node, event)) { hit = node; break; }
       if (!hit) return null;
-      const id = /\bdata-inray-wait="([a-zA-Z0-9_-]{1,64})"/.exec(String(await hit.getOuterHTML()).split('>')[0] || '')?.[1];
+      const id = /\bdata-inray-(?:wait|spinner)="([a-zA-Z0-9_-]{1,64})"/.exec(String(await hit.getOuterHTML()).split('>')[0] || '')?.[1];
       if (!id) return null;
       // The slot's message: only the matching wrapper's opening tag is read.
       let parent = await hit.getParent();

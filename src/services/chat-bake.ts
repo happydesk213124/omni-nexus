@@ -10,7 +10,7 @@ import { flushShotAssets } from '../storage/shot-character';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, removePendingSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, pendingSpinnerIds, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -346,7 +346,7 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
   await writeChat(loaded.host,target.charIndex,target.chatIndex,loaded.chat,{messageIndex:target.messageIndex,previousBody});
 }
 
-export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>}):Promise<boolean> {
+export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>;onMessage?:(ids:{messageId:string;chatId:string})=>void}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
@@ -371,7 +371,9 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0])) next=opts.analysisLines
     ? insertAtAnalysisLine(next,line,side,tokens.join('')) : insertSnippetAtStrippedLine(next,line,side,tokens.join(''));
   setMessageBody(msg,next);
-  await writeChat(loaded.host,opts.charIndex,opts.chatIndex,loaded.chat,{messageIndex:opts.messageIndex,previousBody});return true;
+  await writeChat(loaded.host,opts.charIndex,opts.chatIndex,loaded.chat,{messageIndex:opts.messageIndex,previousBody});
+  opts.onMessage?.({messageId:String(msg.chatId || msg.id || ''),chatId:String((loaded.chat as {id?:unknown;chatId?:unknown}).id || (loaded.chat as {chatId?:unknown}).chatId || '')});
+  return true;
 }
 export async function finishJobSpinner(opts: ReturnType<typeof jobChatTarget> & {jobId:string;shot:number;cardId:string;width?:number;height?:number}):Promise<boolean> {
   const asset=await imageAssetRef(opts.cardId);if(!asset?.path)throw new Error('Shot asset missing');
@@ -479,22 +481,50 @@ export async function writeWaitImage(target: MessageTarget & { waitId: string; c
   return ok && found;
 }
 
-/** A new plugin instance cannot own any previously persisted loading placeholders. */
-export async function clearAbandonedSpinners():Promise<void> {
-  const host=risuHost();if(!host?.getChatFromIndex || !host.setChatToIndex)return;
-  const rows=await characterDirectory({fresh:true});if(!rows)return;
-  for(const row of rows) {
-    const ci=row.index;
-    for(let ti=0;ti<row.chats.length;ti++) {
-      const loaded=await loadTargetChat(ci,ti);if(!loaded)continue;
-      const messages=chatMessageList(loaded.chat);
-      for(let mi=0;mi<messages.length;mi++) {
-        const msg=messages[mi],previousBody=messageBody(msg);
-        const next=removePendingSpinners(previousBody);
-        if(next===previousBody)continue;
-        setMessageBody(msg,next);
-        await writeChat(loaded.host,ci,ti,loaded.chat,{messageIndex:mi,previousBody});
+/** A job's spinners that never got their image become pink waiting slots, in one write. */
+export async function parkJobSpinners(target: MessageTarget, ids: readonly string[]): Promise<boolean> {
+  if (!ids.length) return false;
+  const named = new Set(ids);
+  return rewriteMessage(target, body => parkSpinners(body, named));
+}
+
+/**
+ * Spinners left by a job that never ended (the page reloaded, the app closed): each one
+ * whose shot was kept becomes its pink slot. Only the messages those shots name are
+ * read, and only shots older than `olderThanMs`: a younger one may still be drawing on
+ * another device. Spinners whose message is gone let their shots go.
+ */
+export async function parkAbandonedSpinners(
+  waits: ReadonlyArray<{ id: string; characterId: string; chatId: string; hostMessageId: string; createdAt: number }>,
+  live: (id: string) => boolean,
+  olderThanMs: number,
+): Promise<{ parked: string[]; gone: string[] }> {
+  const parked: string[] = [], gone: string[] = [];
+  const stale = waits.filter(row => !live(row.id) && Date.now() - row.createdAt > olderThanMs && row.characterId && row.chatId && row.hostMessageId);
+  if (!stale.length) return { parked, gone };
+  const directory = await characterDirectory({ fresh: false }) || [];
+  const byChat = new Map<string, typeof stale>();
+  for (const row of stale) {
+    const key = JSON.stringify([row.characterId, row.chatId]);
+    byChat.set(key, [...byChat.get(key) || [], row]);
+  }
+  for (const rows of byChat.values()) {
+    const { characterId, chatId } = rows[0]!;
+    const character = directory.find(row => (row.chaId || row.id) === characterId);
+    const chat = character?.chats.find(row => (row.id || row.chatId) === chatId);
+    if (!character || !chat) continue;
+    const loaded = await loadTargetChat(character.index, chat.index); if (!loaded) continue;
+    const messages = chatMessageList(loaded.chat);
+    for (const row of rows) {
+      const messageIndex = messages.findIndex(msg => String(msg.chatId || msg.id || '') === row.hostMessageId);
+      const body = messageIndex >= 0 ? messageBody(messages[messageIndex]) : '';
+      if (!pendingSpinnerIds(body).includes(row.id)) {
+        // Baked, re-tagged or deleted: unless it is a pink slot already, nothing waits for it.
+        if (!waitTokenDimensions(body, row.id)) gone.push(row.id);
+        continue;
       }
+      if (await parkJobSpinners({ charIndex: character.index, chatIndex: chat.index, messageIndex, hostMessageId: row.hostMessageId }, [row.id])) parked.push(row.id);
     }
   }
+  return { parked, gone };
 }

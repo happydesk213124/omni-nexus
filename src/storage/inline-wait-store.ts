@@ -67,6 +67,14 @@ export async function dropInlineWait(id: string): Promise<void> {
   const map = await load();
   if (map.delete(id)) await save();
 }
+/** Several at once: one save, not one per slot. */
+export async function dropInlineWaits(ids: readonly string[]): Promise<void> {
+  const map = await load();
+  let changed = false;
+  for (const id of ids) changed = map.delete(id) || changed;
+  if (changed) await save();
+}
+export async function listInlineWaits(): Promise<InlineWait[]> { return [...(await load()).values()]; }
 export async function inlineWaitCount(): Promise<number> { return (await load()).size; }
 export function subscribeInlineWaits(listener: () => void): () => void { listeners.add(listener); return () => listeners.delete(listener); }
 /** Test seam. */

@@ -24,7 +24,7 @@ for(const side of ['before','after']) test('persist spinner at '+side+' of line 
 
 
 test('completed shot replaces its exact slot, cancelled siblings disappear, restart keeps baked shots',async()=>{
- let chat={id:'chat-final',message:[{data:'first\nsecond'}]};let db={modules:[],enabledModules:[],characters:[{chaId:'bot',chats:[{id:'chat-final'}]}]};const kv=new Map();
+ let chat={id:'chat-final',message:[{data:'first\nsecond',chatId:'m-final'}]};let db={modules:[],enabledModules:[],characters:[{chaId:'bot',chats:[{id:'chat-final'}]}]};const kv=new Map();
  globalThis.risuai={pluginStorage:{getItem:async k=>kv.get(k),setItem:async(k,v)=>kv.set(k,v),removeItem:async k=>kv.delete(k)},getChatFromIndex:async()=>structuredClone(chat),setChatToIndex:async(_i,_j,c)=>{chat=structuredClone(c);},getDatabase:async()=>structuredClone(db),setDatabase:async next=>{db={...db,...next};}};
  api.resetStores();api.setConfig({card:{inline_chat_text_side:'after'}});
  await api.writeJobSpinners({...target,shots:[{line:1,shot_index:0},{line:2,shot_index:1}]});
@@ -36,10 +36,20 @@ test('completed shot replaces its exact slot, cancelled siblings disappear, rest
  const partial=chat.message[0].data;
  await assert.rejects(()=>api.finishJobSpinner({...target,shot:1,cardId:'missing'}),/asset missing/);
  assert.equal(chat.message[0].data,partial,'failed asset must not replace its spinner or the previous shot');
- await api.clearAbandonedSpinners();
+ // The page reloads with job-a gone. Its shot 1 was kept: that spinner turns pink, same size;
+ // a shot too young to be sure of (another device) and one with no message are left be.
+ const kept=(id,age,hostMessageId='m-final')=>({id,characterId:'bot',chatId:'chat-final',hostMessageId,createdAt:Date.now()-age});
+ const old=10*60*1000;
+ let result=await api.parkAbandonedSpinners([kept('job-a_1',1000)],()=>false,2*60*1000);
+ assert.deepEqual(result,{parked:[],gone:[]},'a young shot may still be drawing elsewhere');
+ result=await api.parkAbandonedSpinners([kept('job-a_1',old)],()=>true,2*60*1000);
+ assert.deepEqual(result,{parked:[],gone:[]},'a job running here owns its spinner');
+ result=await api.parkAbandonedSpinners([kept('job-a_1',old),kept('job-a_0',old),kept('job-z_0',old,'m-deleted')],()=>false,2*60*1000);
+ assert.deepEqual(result,{parked:['job-a_1'],gone:['job-a_0','job-z_0']},'baked or gone: nothing waits for it');
  assert.ok(chat.message[0].data.includes('[[@inray::ready::inxshot_ready.webp::1024::1024]]'));
  assert.ok(chat.message[0].data.includes(api.spinnerToken('job-a',0)),'completed pair survives restart');
- assert.ok(!chat.message[0].data.includes(api.spinnerToken('job-a',1)),'only failed slots are removed');
+ assert.ok(!chat.message[0].data.includes(api.spinnerToken('job-a',1)),'the bare spinner is gone');
+ assert.ok(chat.message[0].data.includes(api.waitToken('job-a_1',1024,1024)),'in its place, the pink slot of the same size');
 });
 
 test('completed shots replace all durable slots in one chat write',async()=>{
