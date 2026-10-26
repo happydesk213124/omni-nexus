@@ -439,3 +439,14 @@ test('a heart a bot draws as a picture or another emoji keeps the line\'s contro
     assert.equal(bound(html, source)[0]?.text, '내 비서 시켜서 한 시간 안에 다 깔아놓을게요..♡', name + ': and it reads that line');
   }
 });
+
+// From a user: “…!!♡” in the source was shown as "..!!♡" by a bot's regex (… is ... after NFKC).
+test('punctuation a bot rewrites (… as .., curly quotes as straight) keeps the line\'s control', () => {
+  const source = '오미선 (happy): “으아아…!!♡ 카메라가 돌아가고 있어—!!♡”';
+  const dots = { comment: 'bot-dots', type: 'editdisplay', ableFlag: true, flag: 'g<order 0>', in: '…', out: '..' };
+  const quotes = { comment: 'bot-quotes', type: 'editdisplay', ableFlag: true, flag: 'g<order 1>', in: '[“”]', out: '"' };
+  const html = apply(source, [dots, quotes, ...plain.regex]);
+  assert.match(strip(html), /으아아\.\.!!/);
+  assert.deepEqual(kinds(html), ['dialogue']);
+  assert.equal(bound(html, source)[0]?.text, '으아아…!!♡ 카메라가 돌아가고 있어—!!♡');
+});
