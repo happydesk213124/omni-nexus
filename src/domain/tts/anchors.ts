@@ -30,9 +30,12 @@ export function ttsAnchorTexts(html: string): TtsAnchorText[] {
   return result;
 }
 
-// Markdown emphasis, quote marks and spacing differ between source and display.
+// Markdown emphasis, quote marks and spacing differ between source and display. So do
+// hearts, stars and emoji: a bot's regex draws ♡ as a picture or another emoji, and the
+// line then showed none of it while its source still ended in ♡, so the control found
+// no line and was hidden. They are never read, so they are not compared either.
 export function ttsComparable(value: string): string {
-  return value.normalize('NFKC').replace(/[\s\u200b-\u200d\u2060\ufeff*_~`"“”'‘’「」『』]/g, '').toLowerCase();
+  return value.normalize('NFKC').replace(/[\s\u200b-\u200d\u2060\ufeff*_~`"“”'‘’「」『』]|[\p{So}\p{Sk}\p{Extended_Pictographic}\uFE0E\uFE0F]/gu, '').toLowerCase();
 }
 
 /**
