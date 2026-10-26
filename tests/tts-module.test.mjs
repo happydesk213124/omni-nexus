@@ -426,3 +426,16 @@ test('a line that is only an effect mark never gets a narration control, not eve
   const own = api.ttsModule(visible, [{ open: '[[', close: ']]' }]).regex;
   assert.deepEqual(kinds(apply('[[쾅]]', own)), [], 'any rule\'s marks, written literally');
 });
+
+// From a user: a line ending in ..♡" had no control, and had one with the heart gone. A bot's
+// regex drew the heart as a picture (or another emoji): the shown line no longer ended the way
+// its source did, so the control found no line and was hidden.
+test('a heart a bot draws as a picture or another emoji keeps the line\'s control', () => {
+  const source = '오미선 (happy): "내 비서 시켜서 한 시간 안에 다 깔아놓을게요..♡"';
+  for (const [name, out] of [['picture', '<img class="heart" src="heart.png" alt="">'], ['another emoji', '💗'], ['styled', '<span style="color:pink">♥</span>']]) {
+    const heart = { comment: 'bot-heart', type: 'editdisplay', ableFlag: true, flag: 'g<order 0>', in: '♡', out };
+    const html = apply(source, [heart, ...plain.regex]);
+    assert.deepEqual(kinds(html), ['dialogue'], name + ': the line keeps its control');
+    assert.equal(bound(html, source)[0]?.text, '내 비서 시켜서 한 시간 안에 다 깔아놓을게요..♡', name + ': and it reads that line');
+  }
+});

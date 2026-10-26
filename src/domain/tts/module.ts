@@ -20,7 +20,8 @@ Never label code, hidden reasoning blocks, images or status panels as dialogue o
 // that are still plain prose once every other module has finished.
 export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, hideTone: -10220, hideName: -10221, unguard: -10230 } as const;
 const GUARD_OPEN = '\uf8f0', GUARD_CLOSE = '\uf8f1';
-const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
+// img: a bot's regex may draw a heart or an emoji as a picture inside the line.
+const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|img|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
 const OPEN = `<(?:${TAGS})(?:\\s[^<>\\n]*)?/?>`;
 const CLOSE = `</(?:${TAGS})\\s*>`;
 // The sound module's ▶ (inserted earlier, inside the line) is part of the prose line,
