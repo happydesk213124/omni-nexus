@@ -481,6 +481,21 @@ export async function writeWaitImage(target: MessageTarget & { waitId: string; c
   return ok && found;
 }
 
+/** 꾹 누르기's end: every slot the run drew gets its image, in one write. Returns the slots written. */
+export async function writeWaitImages(target: MessageTarget, slots: ReadonlyArray<{ waitId: string; cardId: string }>): Promise<string[]> {
+  const tokens: Array<{ waitId: string; token: string }> = [];
+  for (const slot of slots) { const token = await shotBakeToken(slot.cardId); if (token) tokens.push({ waitId: slot.waitId, token }); }
+  if (!tokens.length) return [];
+  let written: string[] = [];
+  const ok = await rewriteMessage(target, body => {
+    written = [];
+    let next = body;
+    for (const { waitId, token } of tokens) if (waitTokenDimensions(next, waitId)) { next = replaceWaitToken(next, waitId, token); written.push(waitId); }
+    return next;
+  });
+  return ok ? written : [];
+}
+
 /** A job's spinners that never got their image become pink waiting slots, in one write. */
 export async function parkJobSpinners(target: MessageTarget, ids: readonly string[]): Promise<boolean> {
   if (!ids.length) return false;

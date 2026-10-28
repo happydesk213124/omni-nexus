@@ -635,6 +635,10 @@ export interface JobRequest {
   inline_body?: string;
   /** A tapped waiting slot (`[[@inraywait::id…]]`): this job draws that one slot in place. */
   inline_wait?: string;
+  /** 꾹 누르기: the slot's image is shown in it, not written; the run writes all of them at its end. */
+  inline_wait_defer?: boolean;
+  /** False for the run's last slot: the one write comes right after, so it is not previewed first. */
+  inline_wait_preview?: boolean;
   session_id: string;
   character_id?: string;
   character_name?: string;

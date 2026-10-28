@@ -741,6 +741,8 @@ async function runJob(jobId: string): Promise<void> {
   const inlineBlock = lineRange && request.defer_attachment && Number.isInteger(request.inline_block) ? request.inline_block! : null;
   const inlineWait = lineRange && !request.defer_attachment && typeof request.inline_wait === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(request.inline_wait) ? request.inline_wait : '';
   const oneSlot = inlineBlock !== null || !!inlineWait;
+  // 꾹 누르기 runs one slot after another and writes them all at its end (inline-waits).
+  const deferWait = !!inlineWait && request.inline_wait_defer === true;
   let inline = oneSlot && request.inline_tagged && typeof request.inline_tagged === 'object' ? request.inline_tagged : null;
   const inlineRaw = oneSlot && !inline && typeof request.inline_raw === 'string' ? request.inline_raw.slice(0, 4000) : '';
   // The block's JSON as the chat model wrote it, for its waiting block when no image comes;
@@ -836,11 +838,13 @@ async function runJob(jobId: string): Promise<void> {
         .map(([shot, cardId]) => ({ shot, cardId }));
       if(cards.length) {
         // Stop remounting previews before the one final message write. Existing
-        // preview DOM stays visible until Risu replaces that message.
+        // preview DOM stays visible until Risu replaces that message. A deferred slot
+        // keeps its preview until the run's own write.
         const closePreview = Reflect.get(globalThis, '__OMNI_CLEAR_SPINNER_PREVIEW__');
-        if (typeof closePreview === 'function') await closePreview(jobId);
+        if (!deferWait && typeof closePreview === 'function') await closePreview(jobId);
         // A tapped slot never became a spinner: its image replaces the slot itself, in one write.
-        if (inlineWait) { if (!await writeWaitImage({...jobChatTarget(request),waitId:inlineWait,cardId:cards[0]!.cardId})) throw new Error('Wait slot missing'); }
+        if (deferWait) { /* shown in its slot; the run writes it with the others */ }
+        else if (inlineWait) { if (!await writeWaitImage({...jobChatTarget(request),waitId:inlineWait,cardId:cards[0]!.cardId})) throw new Error('Wait slot missing'); }
         else if(!await finishJobSpinners({...jobChatTarget(request),jobId,cards})) throw new Error('Spinner slots missing');
         for(const card of cards) bakedSpinnerShots.add(card.shot);
         meta.publishedIds=(meta.publishedIds || []).filter(id=>!cards.some(card=>card.cardId===id));
@@ -1299,7 +1303,7 @@ async function runJob(jobId: string): Promise<void> {
     let attachment: Promise<void> = Promise.resolve();
     // Line batches wait for their slots to be written; a streaming-tag block is
     // already a slot on screen (the module draws it), so its image shows at once.
-    const previewSlot = () => inlineBlock !== null ? { inlineSlot: inlineBlock } : { deferPaint: !!deferred?.lineAttachments && !deferred.lineAttachments.inserted };
+    const previewSlot = () => inlineBlock !== null ? { inlineSlot: inlineBlock } : inlineWait ? { waitSlot: inlineWait } : { deferPaint: !!deferred?.lineAttachments && !deferred.lineAttachments.inserted };
     deferred?.lineAttachments?.plan(jobId,{jobId,shots:pendingInline,completed:completedSpinnerCards,...(retry ? { retry } : {})});
     const attach = () => attachment = attachment.catch(() => {}).then(async () => {
       if (deferred?.cancelled || !isJobCurrent(jobId)) return;
@@ -1651,7 +1655,7 @@ async function runJob(jobId: string): Promise<void> {
             ...(c.raw.wear_state ? {wear_state:String(c.raw.wear_state)} : {})})),
           generatedAt:Date.now(),
           ...(durableSpinners || deferred?.lineAttachments ? { onPreview: async (url: string) => {
-            if (!isJobCurrent(jobId)) return;
+            if (!isJobCurrent(jobId) || request.inline_wait_preview === false) return;
             const preview = Reflect.get(globalThis, '__OMNI_SPINNER_PREVIEW__');
             if (typeof preview !== 'function') {
               dbg('job.preview.unavailable', { shot: idx }, 'warn');
@@ -1892,12 +1896,12 @@ async function runJob(jobId: string): Promise<void> {
       await finishCompletedSpinners().catch(err => dbg('job.partial.bake.fail', { message: String(err) }, 'warn'));
       if (keptSpinners.size) await settleKeptSpinners().catch(err => dbg('job.spinner.park.fail', { message: String(err) }, 'warn'));
       // A slot that got its image is done; one that did not was never written: it is still the pink slot.
-      if (inlineWait && completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
+      if (inlineWait && !deferWait && completedSpinnerCards.size) await dropInlineWait(inlineWait).catch(err => dbg('job.wait.drop.fail', { message: String(err) }, 'warn'));
       // Unfinished frames remain retryable; successful frames are permanent.
       const endScroll=Reflect.get(globalThis,"__OMNI_END_SCROLL__");
       if(typeof endScroll==="function") try {await endScroll(jobId);} catch(error) {dbg("scroll.end.fail",{message:String(error)},"warn");}
       const clearPreview=Reflect.get(globalThis,"__OMNI_CLEAR_SPINNER_PREVIEW__");
-      if(typeof clearPreview==='function') await clearPreview(jobId);
+      if(typeof clearPreview==='function' && !deferWait) await clearPreview(jobId);
     } finally {
       closeStreamJob(jobId);
       setJobContext(prevCtx);
