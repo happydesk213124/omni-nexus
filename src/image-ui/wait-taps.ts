@@ -17,6 +17,14 @@ let installed = false;
 export const DOUBLE_TAP_MS = 450;
 /** A press held this long on a pink slot makes every pink slot of its message. */
 export const LONG_PRESS_MS = 1500;
+/**
+ * Only a finger still down this long is looked at. Looking on every touch measured each
+ * pink slot through the bridge, on taps and scroll starts alike, and held up other
+ * gestures (the double tap that opens an image full screen) on a phone.
+ */
+export const PRESS_LOOK_MS = 300;
+/** A reply still arriving: its slots cannot be made yet, so a press shows nothing. */
+const replyStreaming = (): boolean => { const live = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__'); return typeof live === 'function' && !!live(); };
 let synchronize: () => Promise<void> = async () => {};
 
 /** Called once the chat is known with streaming tags on; boot itself reads nothing. */
@@ -118,26 +126,30 @@ export function installWaitTaps(): void {
    * from the pressed one down, then from the top. A notice shows while it is held; a lift
    * or a scroll (the pointer is cancelled) before then is an ordinary tap.
    */
-  let press: { timer?: ReturnType<typeof setTimeout>; fired: boolean } | null = null, liftedAt = 0;
-  const down = async (event: HostPoint) => {
-    if (busy || (event.button ?? 0) !== 0) return;
+  let press: { timer?: ReturnType<typeof setTimeout>; fired: boolean; shown: boolean } | null = null;
+  const down = (event: HostPoint) => {
+    if (busy || (event.button ?? 0) !== 0 || replyStreaming()) return;
     const at = Date.now();
-    const slot = await slotAt(event, '[data-inray-wait]');
-    // Lifted while the slot was being found: a tap, not a press.
-    if (!slot || liftedAt >= at) return;
-    const held: { timer?: ReturnType<typeof setTimeout>; fired: boolean } = { fired: false };
+    const held: { timer?: ReturnType<typeof setTimeout>; fired: boolean; shown: boolean } = { fired: false, shown: false };
     press = held;
-    void say('꾹 누르는 중… 1.5초 누르면 이 메시지의 분홍 칸을 모두 만듭니다');
-    held.timer = setTimeout(() => {
+    // Nothing is asked of the page until the finger has stayed: a tap or a scroll is gone by then.
+    held.timer = setTimeout(() => { void (async () => {
+      if (press !== held || replyStreaming()) return;
+      const slot = await slotAt(event, '[data-inray-wait]');
       if (press !== held) return;
-      held.fired = true; ignoreClickUntil = Date.now() + 1000;
-      void makeAll(slot).catch(error => { void say(String((error as Error)?.message || error), 4000); });
-    }, Math.max(0, LONG_PRESS_MS - (Date.now() - at)));
+      if (!slot) { press = null; return; }
+      held.shown = true;
+      void say('꾹 누르는 중… 1.5초 누르면 이 메시지의 분홍 칸을 모두 만듭니다');
+      held.timer = setTimeout(() => {
+        if (press !== held) return;
+        held.fired = true; ignoreClickUntil = Date.now() + 1000;
+        void makeAll(slot).catch(error => { void say(String((error as Error)?.message || error), 4000); });
+      }, Math.max(0, LONG_PRESS_MS - (Date.now() - at)));
+    })().catch(error => dbg('wait.press', { message: String(error) }, 'warn')); }, PRESS_LOOK_MS);
   };
   const lift = () => {
-    liftedAt = Date.now();
     const held = press; press = null;
-    if (held && !held.fired) { clearTimeout(held.timer); void hush(); }
+    if (held && !held.fired) { clearTimeout(held.timer); if (held.shown) void hush(); }
   };
   const makeAll = async (slot: { id: string; index: number }) => {
     const target = await slotTarget(slot);
@@ -163,7 +175,7 @@ export function installWaitTaps(): void {
       if (!doc) return;
       const report = (name: string) => (error: unknown) => dbg(name, { message: String(error) }, 'warn');
       await listen('click', event => { void tap(event).catch(report('wait.tap')); });
-      await listen('pointerdown', event => { void down(event).catch(report('wait.press')); });
+      await listen('pointerdown', down);
       await listen('pointerup', lift);
       await listen('pointercancel', lift);
     } else if (!waiting && listeners.length && doc) {
