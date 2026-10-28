@@ -125,3 +125,8 @@ test('a whole-message tag (태그 재생성) takes the pink waiting slots out wi
  await api.writeJobSpinners({...target,jobId:'batch-b',preserveJobIds:['batch-a'],shots:[{line:1,shot_index:0}]});
  assert.ok(chat.message[0].data.includes(block) && chat.message[0].data.includes(older),'a streaming line batch leaves the slots alone');
 });
+
+test('pink slots of a message are listed top to bottom: kept-shot slots and streaming blocks, waiting or never drawn',()=>{
+ const text='a\n[[@inraywait::w1::832::1216]]\nb\n[[inxw2]]{"aspect":"square"}[[/inxw2]]\nc\n[[inx3]]{"x":1}[[/inx3]]\n[[@inrayspinner::job_0::832::1216]]';
+ assert.deepEqual(api.pinkSlotIds(text),['w1','b2','b3'],'a spinner may still be drawing: not a pink slot');
+});

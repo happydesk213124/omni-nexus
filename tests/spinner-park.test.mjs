@@ -8,7 +8,7 @@ import { installHost } from '../tools/parity/host.mjs';
 let instance = 0;
 const sleep = () => new Promise(r => setTimeout(r, 10));
 const body = 'First narrative paragraph long enough for generating images.\nSecond dialogue in the scene.\nThird line of the reply.';
-async function fixture() {
+async function fixture({ refuse = 2 } = {}) {
   const host = installHost({ promptsDir: 'prompts' });
   const api = await import(`../.test-build/stream-services.mjs?park=${++instance}`);
   await api.openDb(); await api.seedPrompts();
@@ -20,11 +20,11 @@ async function fixture() {
   api.setConfig(config);
   host.setLlmReply(JSON.stringify({ new_characters: [], scenes: [{ place: 'garden', shots: [1, 2, 3].map(line => ({ line, paragraph: 0, characters: [], composition: 'scene ' + line })) }] }));
   await risuai.setCharacterToIndex(0, { chaId: 'c', name: 'C', chats: [{ id: 'chat', message: [{ role: 'char', chatId: 'm', data: body }] }] });
-  // The second generation hits another app's lock.
+  // The second generation hits another app's lock (refuse: 0 lets every one through).
   const real = risuai.nativeFetch;
   let generations = 0;
   risuai.nativeFetch = async (url, options) => {
-    if (String(url).includes('generate-image') && ++generations === 2) return { ok: false, status: 429, headers: {}, data: new TextEncoder().encode('Concurrent generation is locked') };
+    if (String(url).includes('generate-image') && ++generations === refuse) return { ok: false, status: 429, headers: {}, data: new TextEncoder().encode('Concurrent generation is locked') };
     return real(url, options);
   };
   const request = { session_id: 'session', character_id: 'c', chat_id: 'chat', char_index: 0, chat_index: 0, message_index: 0, message_role: 'char', assistant_text: body, content_hash: 'h' };
@@ -78,4 +78,51 @@ test('a spinner left by a run that never ended is drawn from its kept shot on a 
   assert.doesNotMatch(text, /inrayspinner::gone-job|inraywait/);
   assert.equal((text.match(/\[\[@inray::/g) || []).length, 1);
   assert.equal(f.host.llmRequests.length, tagged, 'no tagger call');
+});
+
+// 꾹 누르기: every pink slot of the message, from the pressed one down, then from the top.
+test('pressing a pink slot long makes every pink slot of its message in order, with no tagger call', async () => {
+  const f = await fixture({ refuse: 0 });
+  const slot = id => `[[@inraywait::${id}::832::1216]]`;
+  const lines = body.split('\n');
+  const message = await risuai.getChatFromIndex(0, 0);
+  message.message[0].data = [lines[0], slot('w1'), lines[1], slot('w2'), lines[2], slot('w3')].join('\n');
+  await risuai.setChatToIndex(0, 0, message);
+  const shot = name => ({ scenes: [{ place: 'garden', shots: [{ characters: [], composition: name }] }] });
+  await f.api.putInlineWaits(['w1', 'w2', 'w3'].map((id, i) => ({ id, tagged: shot(id), line: i + 1, characterId: 'c', chatId: 'chat', hostMessageId: 'm', createdAt: Date.now() })));
+  const tagged = f.host.llmRequests.length, seen = [];
+  let finished;
+  const done = new Promise(resolve => { finished = resolve; });
+  const started = await f.api.generateAllInlineWaits({ ...f.request, wait_id: 'w2', host_message_id: 'm' }, state => { seen.push({ ...state }); if (state.finished) finished(state); });
+  assert.deepEqual(started.ids, ['w2', 'w3', 'w1'], 'from the pressed slot down, then from the top');
+  const again = await f.api.generateAllInlineWaits({ ...f.request, wait_id: 'w1', host_message_id: 'm' });
+  assert.equal(again.ok, false, 'one run at a time');
+  const end = await done;
+  assert.equal(end.made, 3); assert.equal(end.stopped, undefined);
+  const text = await f.text();
+  assert.equal((text.match(/\[\[@inray::/g) || []).length, 3, 'every slot became its image');
+  assert.doesNotMatch(text, /inraywait/);
+  assert.equal(f.host.llmRequests.length, tagged, 'drawn from the kept shots: no tagger call');
+  // One at a time: a slot's job had ended before the next one began.
+  const jobs = seen.filter(s => s.jobId && !s.finished).map(s => s.jobId);
+  assert.equal(new Set(jobs).size, 3);
+});
+
+test('a slot whose job fails stays pink and is not counted as made; the run goes on', async () => {
+  const f = await fixture({ refuse: 1 });
+  const slot = id => `[[@inraywait::${id}::832::1216]]`;
+  const lines = body.split('\n');
+  const message = await risuai.getChatFromIndex(0, 0);
+  message.message[0].data = [lines[0], slot('w1'), lines[1], slot('w2')].join('\n');
+  await risuai.setChatToIndex(0, 0, message);
+  const shot = name => ({ scenes: [{ place: 'garden', shots: [{ characters: [], composition: name }] }] });
+  await f.api.putInlineWaits(['w1', 'w2'].map((id, i) => ({ id, tagged: shot(id), line: i + 1, characterId: 'c', chatId: 'chat', hostMessageId: 'm', createdAt: Date.now() })));
+  let finished; const done = new Promise(resolve => { finished = resolve; });
+  await f.api.generateAllInlineWaits({ ...f.request, wait_id: 'w1', host_message_id: 'm' }, state => { if (state.finished) finished(state); });
+  const end = await done;
+  assert.equal(end.done, 2, 'the run went on past the refused one');
+  assert.equal(end.made, 1, 'only the drawn slot counts');
+  const text = await f.text();
+  assert.match(text, /\[\[@inraywait::w1::/, 'the refused slot is still pink');
+  assert.doesNotMatch(text, /\[\[@inraywait::w2::/);
 });

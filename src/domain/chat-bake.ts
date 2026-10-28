@@ -7,7 +7,7 @@ import { analysisBody } from './prompt/message-body';
 import { isShotAssetName, sanitizeShotId } from './gallery/shot-assets.ts';
 import { cleanText } from '../core/util/text.ts';
 import { imageHistoryRoot } from './gallery/image-history';
-import { waitingBlock } from './prompt/inline-shots';
+import { inlineShotBlocks, waitingBlock } from './prompt/inline-shots';
 import { INLINE_WAIT_BLOCK_SOURCE } from './prompt/inline-shot-pattern';
 
 const INRAY_TOKEN_RE = /\[\[@inray::[^\]]+\]\]/g;
@@ -222,6 +222,18 @@ export function waitTokenDimensions(text: string, id: string): BakeDimensions | 
   }
   const hit = new RegExp(`\\[\\[@inraywait::${id}::([0-9]+)::([0-9]+)\\]\\]`).exec(text);
   return hit ? bakeDimensions(hit[1], hit[2]) : undefined;
+}
+/**
+ * Every pink slot of a message, top to bottom: streaming blocks in their waiting form or
+ * never drawn (`bN`), and slots whose shot is kept (`[[@inraywait::id]]`).
+ */
+export function pinkSlotIds(text: string): string[] {
+  const rows: Array<{ id: string; at: number }> = [];
+  for (const hit of text.matchAll(new RegExp(INLINE_WAIT_BLOCK_SOURCE, 'g'))) rows.push({ id: `b${Number(hit[1])}`, at: hit.index! });
+  for (const block of inlineShotBlocks(text)) rows.push({ id: `b${block.n}`, at: block.start });
+  for (const hit of text.matchAll(/\[\[@inraywait::([a-zA-Z0-9_-]{1,64})::[0-9]+::[0-9]+\]\]/g)) rows.push({ id: hit[1]!, at: hit.index! });
+  const seen = new Set<string>();
+  return rows.sort((a, b) => a.at - b.at).filter(row => !seen.has(row.id) && !!seen.add(row.id)).map(row => row.id);
 }
 export function replaceWaitToken(text: string, id: string, replacement: string): string {
   if (!WAIT_ID.test(id)) return text;
