@@ -19,7 +19,8 @@
   function nxPreviewSelectors(key,row) {
     // Scoped to the message: a job/shot token, or a streaming-tag block not saved yet.
     const message='.risu-chat[data-chat-index="'+row.messageIndex+'"] ';
-    return ['[data-inray-spinner="'+key+'"]','[data-shot="'+key+'"]',...(Number.isInteger(row.inlineSlot)?['[data-inx-slot="'+row.inlineSlot+'"]']:[])].map(selector=>message+selector);
+    // A pink slot drawn by a tap or a long press shows its image before it is written.
+    return ['[data-inray-spinner="'+key+'"]','[data-shot="'+key+'"]',...(Number.isInteger(row.inlineSlot)?['[data-inx-slot="'+row.inlineSlot+'"]']:[]),...(row.waitSlot?['[data-inray-wait="'+row.waitSlot+'"]']:[])].map(selector=>message+selector);
   }
   function nxPreviewCss(key,row) {
     const slots=nxPreviewSelectors(key,row);
@@ -55,7 +56,7 @@
   }
   globalThis.__OMNI_SPINNER_PREVIEW__=async row=>{
     if(t.unloading || nxClosedSpinnerPreviews.has(row.jobId))return;
-    if(!/^[a-zA-Z0-9_-]+$/.test(row.jobId) || !/^[a-zA-Z0-9_-]+$/.test(row.cardId) || !Number.isInteger(row.shot) || row.shot<0 || !Number.isInteger(row.messageIndex) || row.messageIndex<0 || !/^data:image[/](png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(row.url) || (row.inlineSlot!==undefined && !(Number.isInteger(row.inlineSlot) && row.inlineSlot>0))) {
+    if(!/^[a-zA-Z0-9_-]+$/.test(row.jobId) || !/^[a-zA-Z0-9_-]+$/.test(row.cardId) || !Number.isInteger(row.shot) || row.shot<0 || !Number.isInteger(row.messageIndex) || row.messageIndex<0 || !/^data:image[/](png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(row.url) || (row.inlineSlot!==undefined && !(Number.isInteger(row.inlineSlot) && row.inlineSlot>0)) || (row.waitSlot!==undefined && !/^[a-zA-Z0-9_-]{1,64}$/.test(row.waitSlot))) {
       y('warn','spinner.preview','invalid payload');return;
     }
     const key=row.jobId+'_'+row.shot;
@@ -74,7 +75,7 @@
         try {if(!body)return;await body.appendChild(style);}
         finally {await omniRelease(body);}
       }
-      nxPreviewRules.set(key,{row:{jobId:row.jobId,shot:row.shot,cardId:row.cardId,messageIndex:row.messageIndex,inlineSlot:row.inlineSlot,url:row.url},style,closedAt:0});
+      nxPreviewRules.set(key,{row:{jobId:row.jobId,shot:row.shot,cardId:row.cardId,messageIndex:row.messageIndex,inlineSlot:row.inlineSlot,waitSlot:row.waitSlot,url:row.url},style,closedAt:0});
     });
   };
   globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__=async jobId=>{

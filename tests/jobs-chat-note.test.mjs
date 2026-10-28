@@ -25,7 +25,7 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
       jobEpochByKey:new Map([['message',{jobId:mode.includes('superseded')?'new':'old',epoch:mode.includes('superseded')?2:1}]]),
       enqueueBakeWrite: async work => work(), jobChatTarget: () => ({}),
       finishJobSpinners: async opts => {calls.push(opts);return true;},
-      inlineWait:'', writeWaitImage: async () => { throw new Error('a message job never writes a slot image'); },
+      inlineWait:'', deferWait:false, writeWaitImage: async () => { throw new Error('a message job never writes a slot image'); },
     };
     const finish = await compile(`${finishBody}\nreturn finishCompletedSpinners;`, scope);
     const expected = !mode.includes('superseded');
@@ -43,7 +43,7 @@ test('a tapped slot is written once, at the end: its image replaces the slot, no
   const images = [], spinners = [];
   const meta = {key:'wait',epoch:1,publishedIds:['a'],cancelRequested:false,userStop:false};
   const scope = {
-    deferred:undefined,durableSpinners:true,completedSpinnerCards:new Map([[0,'a']]),jobId:'tap',request:{},inlineWait:'b2',
+    deferred:undefined,durableSpinners:true,completedSpinnerCards:new Map([[0,'a']]),jobId:'tap',request:{},inlineWait:'b2',deferWait:false,
     jobRunMeta:new Map([['tap',meta]]),jobEpochByKey:new Map([['wait',{jobId:'tap',epoch:1}]]),
     enqueueBakeWrite: async work => work(), jobChatTarget: () => ({target:1}),
     finishJobSpinners: async opts => {spinners.push(opts);return true;},
@@ -70,7 +70,7 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
         releaseShotAssets:()=>calls.push('register-shots'),releaseChatNote:()=>calls.push('write-note'),noteSessionId:'note',
         dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
         keptSpinners:new Map(kept?[['job_0',0]]:[]),settleKeptSpinners:async()=>calls.push('park'),
-        clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],inlineWait:'',
+        clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],inlineWait:'',deferWait:false,
       });
       // Shots waiting for registration and note changes no bake carried go out last, after every bake.
       // Spinners still without their image turn pink after the bake, before the scroll is let go.
@@ -126,4 +126,25 @@ test('an aborted job exits through cancellation rather than changing stopped sta
     setJob:async(_id,state)=>states.push(state),getLastStage:()=>'',eventsForJob:()=>[],
   });
   assert.deepEqual(states,['cancelled']);
+});
+
+test('a slot of a long-press run is shown, not written: the run writes all of them at its end', async () => {
+  const images = [], closed = [];
+  const meta = {key:'wait',epoch:1,publishedIds:['a'],cancelRequested:false,userStop:false};
+  const old = globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__;
+  globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__ = async job => closed.push(job);
+  try {
+    const finish = await compile(`${finishBody}
+return finishCompletedSpinners;`, {
+      deferred:undefined,durableSpinners:true,completedSpinnerCards:new Map([[0,'a']]),jobId:'tap',request:{},inlineWait:'b2',deferWait:true,
+      jobRunMeta:new Map([['tap',meta]]),jobEpochByKey:new Map([['wait',{jobId:'tap',epoch:1}]]),
+      enqueueBakeWrite: async work => work(), jobChatTarget: () => ({target:1}),
+      finishJobSpinners: async () => { throw new Error('no spinner'); },
+      writeWaitImage: async opts => {images.push(opts);return true;},
+    });
+    assert.equal(await finish(), true);
+    assert.deepEqual(images, [], 'not written by the job');
+    assert.deepEqual(closed, [], 'its preview stays until the run writes it');
+    assert.deepEqual(meta.publishedIds, [], 'the card is the user\'s');
+  } finally { globalThis.__OMNI_CLEAR_SPINNER_PREVIEW__ = old; }
 });

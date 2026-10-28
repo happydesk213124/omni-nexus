@@ -91,6 +91,12 @@ test('pressing a pink slot long makes every pink slot of its message in order, w
   const shot = name => ({ scenes: [{ place: 'garden', shots: [{ characters: [], composition: name }] }] });
   await f.api.putInlineWaits(['w1', 'w2', 'w3'].map((id, i) => ({ id, tagged: shot(id), line: i + 1, characterId: 'c', chatId: 'chat', hostMessageId: 'm', createdAt: Date.now() })));
   const tagged = f.host.llmRequests.length, seen = [];
+  // As in a tag job: each image shows in its slot as it comes, and one write puts them all in.
+  const previews = [];
+  globalThis.__OMNI_SPINNER_PREVIEW__ = async row => { previews.push(row); };
+  let writes = 0;
+  const write = risuai.setChatToIndex;
+  risuai.setChatToIndex = async (...args) => { writes++; return write(...args); };
   let finished;
   const done = new Promise(resolve => { finished = resolve; });
   const started = await f.api.generateAllInlineWaits({ ...f.request, wait_id: 'w2', host_message_id: 'm' }, state => { seen.push({ ...state }); if (state.finished) finished(state); });
@@ -98,7 +104,10 @@ test('pressing a pink slot long makes every pink slot of its message in order, w
   const again = await f.api.generateAllInlineWaits({ ...f.request, wait_id: 'w1', host_message_id: 'm' });
   assert.equal(again.ok, false, 'one run at a time');
   const end = await done;
+  risuai.setChatToIndex = write; delete globalThis.__OMNI_SPINNER_PREVIEW__;
   assert.equal(end.made, 3); assert.equal(end.stopped, undefined);
+  assert.equal(writes, 1, 'one message write for the whole run');
+  assert.deepEqual(previews.map(row => row.waitSlot), ['w2', 'w3'], 'shown in their slots as they came; the last went straight into the write');
   const text = await f.text();
   assert.equal((text.match(/\[\[@inray::/g) || []).length, 3, 'every slot became its image');
   assert.doesNotMatch(text, /inraywait/);
