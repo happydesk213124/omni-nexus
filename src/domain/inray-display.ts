@@ -142,7 +142,9 @@ const pink = (out: string) => out.replace('stroke="#7132f5" stroke-width="10"', 
 export function waitDisplayRegexScript(scalePct: unknown = 100) {
   const out = pink(spinnerDisplayRegexScript(scalePct).out)
     .replace('data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1"', 'data-inray-wait="$1" data-inray-preview-slot="wait_$1" role="button" tabindex="0" aria-label="이미지 대기 · 눌러서 생성"')
-    .replace('aria-label="이미지 슬롯 · 다시 생성 가능"', 'aria-label="이미지 대기 · 눌러서 생성"');
+    .replace('aria-label="이미지 슬롯 · 다시 생성 가능"', 'aria-label="이미지 대기 · 눌러서 생성"')
+    // 꾹 누르기 (wait-taps): a held finger must not select the slot or open the phone's image menu.
+    .replace('style="position:relative;display:block;', 'style="position:relative;display:block;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;');
   return { comment: 'omni-wait-display', in: '\\[\\[@inraywait::([a-zA-Z0-9_-]{1,64})::([0-9]{1,6})::([0-9]{1,6})\\]\\]', out, type: 'editdisplay' as const, ableFlag: true, flag: 'g' };
 }
 

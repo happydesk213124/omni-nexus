@@ -74,3 +74,10 @@ test('a block with no image is the slot as written: read from inx (or an older i
   assert.equal(api.stripOpenInlineShotBlock(text), text, 'closed blocks stay');
   assert.equal(api.stripOpenInlineShotBlock(`${text}\n[[inx3]]{"place":"ro`), text, 'a block the reply stopped inside goes');
 });
+
+// Long replies illustrated heavily went past 20 and every block after it stayed pink.
+test('a reply\'s blocks are drawn up to 100; more than that is a model running away', () => {
+  const many = n => Array.from({ length: n }, (_, i) => `line ${i + 1}\n[[inx${i + 1}]]{"composition":"s${i + 1}"}[[/inx${i + 1}]]`).join('\n');
+  assert.equal(api.inlineShotBlocks(many(30)).length, 30, 'thirty blocks: all thirty');
+  assert.equal(api.inlineShotBlocks(many(120)).length, 100);
+});

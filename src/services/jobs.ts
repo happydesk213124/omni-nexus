@@ -295,6 +295,11 @@ function resetLastGeneratingPoll(jobId: string): void {
   lastGeneratingWaiters.delete(jobId);
 }
 
+/** A job still running in this page (its runtime is let go when it ends). */
+export function jobRunning(jobId: string): boolean {
+  return jobRunMeta.has(jobId);
+}
+
 /** A spinner (`jobId_shot`) whose job is still running in this page. */
 export function spinnerJobRunning(spinnerId: string): boolean {
   return jobRunMeta.has(spinnerId.replace(/_\d+$/, ''));

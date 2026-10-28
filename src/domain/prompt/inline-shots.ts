@@ -10,7 +10,9 @@ export { INLINE_SHOT_MASK_SOURCE };
  * belongs, `[[inxN]]{one shot as JSON}[[/inxN]]`, so no separate tagger call is
  * needed. The block's position is the image position; it never becomes an L line.
  */
-export const INLINE_SHOT_MAX_BLOCKS = 20;
+// A safety stop for a model that runs away with blocks. Users who illustrate long replies
+// heavily reached 20, and every block past it stayed pink for a tap of its own.
+export const INLINE_SHOT_MAX_BLOCKS = 100;
 
 export interface InlineShotBlock { n: number; start: number; end: number; body: string }
 
