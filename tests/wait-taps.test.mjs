@@ -77,8 +77,9 @@ test('a press held 1.5 s on a pink slot makes every pink slot of its message; a 
   globalThis.generated = []; globalThis.tracked = []; globalThis.bulk = [];
   const chat = node('<div class="risu-chat" data-chat-index="2">', { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500 }, null, ['risu-chat']);
   const slot = node('<div class="omni-spinner" data-inray-wait="w123" role="button">', { left: 100, top: 100, right: 300, bottom: 400, width: 200, height: 300 }, chat);
+  let looks = 0;
   const doc = {
-    async querySelectorAll() { return [slot]; },
+    async querySelectorAll() { looks++; return [slot]; },
     async querySelector(selector) { return selector === 'body' ? { async appendChild(n) { n.attached = true; } } : null; },
     async createElement() { const n = { text: '', removed: false, async setAttribute() {}, async setStyleAttribute(css) { n.css = css; }, async setTextContent(t) { n.text = t; n.texts.push(t); }, async remove() { n.removed = true; }, texts: [] }; toasts.push(n); return n; },
     async addEventListener(type, fn) { const id = 'p' + (listeners.size + 1); listeners.set(id, { type, fn }); return id; },
@@ -95,6 +96,19 @@ test('a press held 1.5 s on a pink slot makes every pink slot of its message; a 
   await fresh.syncWaitTaps();
   const fire = (type, x = 150, y = 200) => { for (const l of listeners.values()) if (l.type === type) l.fn({ clientX: x, clientY: y, button: 0 }); };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // A tap and a scroll start ask the page nothing: other gestures (double tap to full
+  // screen) are not held up behind a lookup on every touch.
+  fire('pointerdown'); await sleep(100); fire('pointerup'); await sleep(fresh.PRESS_LOOK_MS + 100);
+  fire('pointerdown'); await sleep(150); fire('pointercancel'); await sleep(fresh.PRESS_LOOK_MS + 100);
+  assert.equal(looks, 0, 'no slot lookup for a touch that did not stay');
+  assert.equal(toasts.length, 0, 'and no notice');
+  // While a reply streams its slots cannot be made: a press shows nothing and does nothing.
+  globalThis.__OMNI_REPLY_STREAMING__ = () => true;
+  fire('pointerdown'); await sleep(fresh.LONG_PRESS_MS + 150); fire('pointerup');
+  delete globalThis.__OMNI_REPLY_STREAMING__;
+  assert.equal(looks, 0, 'streaming: not even looked at');
+  assert.equal(toasts.length, 0, 'streaming: no notice');
+  assert.equal(globalThis.bulk.length, 0, 'streaming: no run');
   // Lifted after half a second: no run, the notice goes.
   fire('pointerdown'); await sleep(500); fire('pointerup'); await sleep(50);
   assert.equal(toasts.length, 1); assert.match(toasts[0].texts[0], /꾹 누르는 중/);

@@ -83,6 +83,10 @@ async function omniEndWithoutOutput(run) {
 }
 function onScriptOutput(content) {
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
+  // A reply is streaming while its chunks keep coming: what 꾹 누르기 (wait-taps) asks
+  // before it does anything. No end event is needed, so a stopped reply clears itself.
+  t._omniReplyChunkAt=Date.now();
+  globalThis.__OMNI_REPLY_STREAMING__ ||= ()=>Date.now()-(t._omniReplyChunkAt || 0)<4000;
   omniStreamScrollTrack();
   let run = omniKeywordRun;
   if(run && run.mode!==omniStreamMode(t.backendSettings?.card)) {omniCancelKeywordRun(run);run=null;}
