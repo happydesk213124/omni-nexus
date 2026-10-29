@@ -4,8 +4,8 @@ import { cleanText, toInt } from '../core/util/text';
 import { isBlockWaitId, pendingSpinnerIds, pinkSlotIds, waitSlotBlock, waitTokenDimensions } from '../domain/chat-bake';
 import { inlineShotBlocks, inlineShotTagged } from '../domain/prompt/inline-shots';
 import { analysisBody } from '../domain/prompt/message-body';
-import { dropInlineWait, dropInlineWaits, getInlineWait, listInlineWaits } from '../storage/inline-wait-store';
-import { parkAbandonedSpinners, parkJobSpinners, readStoredMessageBody, writeWaitImages } from './chat-bake';
+import { dropInlineWait, dropInlineWaits, getInlineWait } from '../storage/inline-wait-store';
+import { parkJobSpinners, readStoredMessageBody, writeWaitImages } from './chat-bake';
 import { dbg } from '../core/debug';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { streamBlockBusy } from './stream-jobs';
@@ -98,19 +98,6 @@ export async function generateInlineWait(body: Record<string, unknown>): Promise
   });
 }
 
-/**
- * Boot: spinners a job left without their image when the page last closed become
- * their pink slots, read from the kept shots only (no chat is scanned for them). A
- * shot younger than two minutes is left: another device may still be drawing it.
- */
-export async function parkLeftSpinners(): Promise<number> {
-  const rows = await listInlineWaits();
-  if (!rows.length) return 0;
-  const { parked, gone } = await parkAbandonedSpinners(rows, spinnerJobRunning, 2 * 60 * 1000);
-  if (gone.length) await dropInlineWaits(gone);
-  if (parked.length) dbg('wait.spinners.parked', { count: parked.length });
-  return rows.length - gone.length;
-}
 
 export interface BulkWaitProgress { done: number; total: number; made: number; jobId?: string; finished?: boolean; stopped?: string }
 let bulk: BulkWaitProgress | null = null;
