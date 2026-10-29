@@ -6,7 +6,7 @@ import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-
 import { registerStreamJob, streamJob, closeStreamJob, cancelStreamJob, streamOwnsMessage, runStreamImageTask } from './stream-jobs';
 export { commitStreamOutput } from './stream-jobs';
 import { reuseCreatedCostumePicks } from '../domain/character/costume';
-import { writeJobSpinners, finishJobSpinners, writeWaitImage, parkJobSpinners } from './chat-bake';
+import { writeJobSpinners, finishJobSpinners, writeWaitImage, writeWaitImages } from './chat-bake';
 import { dropInlineWait, dropInlineWaits, putInlineWaits } from '../storage/inline-wait-store';
 import { earlierRosterWrites, outfitsFromRequest, recordStreamBlock, rosterWritten, streamLocation, streamOutfitsBefore, streamReplyOutfitsToSave } from './stream-continuity';
 import { risuHost } from '../core/host';
@@ -784,6 +784,9 @@ async function runJob(jobId: string): Promise<void> {
   // slot a double tap draws from this shot, with no tagger call. Keyed `jobId_shot`.
   const keptSpinners = new Map<string, number>();
   const failedShots = new Map<number, unknown>();
+  // A message's own tag job writes its slots pink from the start (`jobId_shot`): one it
+  // cannot draw stays a pink slot with no write. Other jobs keep the spinner frame.
+  const pinkSlots = !deferred && !inlineWait;
   const requestMainTagger = async (messages: Parameters<typeof callLlm>[1]): Promise<string | null> => {
     const invoke = () => callLlm(resolveLlmRole(getConfig(), 'main'), messages, llmOptions);
     const retryEnabled = () => getConfig().card?.llm_json_retry === true;
@@ -813,15 +816,14 @@ async function runJob(jobId: string): Promise<void> {
     }
   };
   /**
-   * The job ended: spinners still without their image become pink slots keeping their
-   * shot; the shots of the drawn ones are let go. A job another run has replaced leaves
-   * the message alone (that run lays its own slots out) and lets all of them go.
+   * The job ended: slots still without their image are pink already and keep their
+   * shot; the shots of the drawn ones are let go. A job another run has replaced lets
+   * all of them go (that run lays its own slots out).
    */
   async function settleKeptSpinners(): Promise<void> {
     const meta = jobRunMeta.get(jobId), current = meta && jobEpochByKey.get(meta.key);
     const owns = !!meta && current?.jobId === jobId && current.epoch === meta.epoch;
     const unfinished = [...keptSpinners].filter(([, shot]) => !bakedSpinnerShots.has(shot)).map(([id]) => id);
-    if (owns && unfinished.length) await enqueueBakeWrite(() => parkJobSpinners(jobChatTarget(request), unfinished));
     await dropInlineWaits([...keptSpinners.keys()].filter(id => !owns || !unfinished.includes(id)));
   }
   async function finishCompletedSpinners(): Promise<boolean> {
@@ -845,8 +847,13 @@ async function runJob(jobId: string): Promise<void> {
         // A tapped slot never became a spinner: its image replaces the slot itself, in one write.
         if (deferWait) { /* shown in its slot; the run writes it with the others */ }
         else if (inlineWait) { if (!await writeWaitImage({...jobChatTarget(request),waitId:inlineWait,cardId:cards[0]!.cardId})) throw new Error('Wait slot missing'); }
+        else if (pinkSlots) {
+          const written = new Set(await writeWaitImages(jobChatTarget(request), cards.map(card => ({ waitId: `${jobId}_${card.shot}`, cardId: card.cardId }))));
+          if (!written.size) throw new Error('Slots missing');
+          for (const card of cards) if (written.has(`${jobId}_${card.shot}`)) bakedSpinnerShots.add(card.shot);
+        }
         else if(!await finishJobSpinners({...jobChatTarget(request),jobId,cards})) throw new Error('Spinner slots missing');
-        for(const card of cards) bakedSpinnerShots.add(card.shot);
+        if (!pinkSlots) for(const card of cards) bakedSpinnerShots.add(card.shot);
         meta.publishedIds=(meta.publishedIds || []).filter(id=>!cards.some(card=>card.cardId===id));
       }
       return cards.length > 0;
@@ -1331,7 +1338,7 @@ async function runJob(jobId: string): Promise<void> {
       // finished image replaces the slot in one write (finishCompletedSpinners).
       if (inlineWait) return true;
       let written: { messageId: string; chatId: string } | undefined;
-      const ok = await enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,onMessage:ids=>{written=ids;},...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})}));
+      const ok = await enqueueBakeWrite(() => writeJobSpinners({...jobChatTarget(request),jobId,shots:pendingInline,pink:pinkSlots,onMessage:ids=>{written=ids;},...(deferred && streamLineRange(request) ? {preserveJobIds:[...deferred.siblings]} : {})}));
       if (ok && !deferred) await keepSpinnerShots(written).catch(err => dbg('job.spinner.keep.fail', { message: String(err) }, 'warn'));
       return ok;
     }

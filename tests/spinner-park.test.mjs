@@ -35,10 +35,17 @@ async function fixture({ refuse = 2 } = {}) {
 
 test('a shot NovelAI refuses leaves a pink slot; the others are drawn; a double tap draws it without the tagger', async () => {
   const f = await fixture();
+  // Message writes only (the session note may share the API without changing a message).
+  const writes = [], write = risuai.setChatToIndex;
+  risuai.setChatToIndex = async (...args) => { writes.push(args[2].message?.[0]?.data); return write(...args); };
   const created = await f.api.createJob(f.request);
   const job = await f.wait(created.job_id);
+  risuai.setChatToIndex = write;
   assert.equal(job.state, 'done', JSON.stringify(job.error || job.result?.message));
   assert.match(String(job.result?.message), /이미지 2\/3 완료 · 1장은 분홍 칸/);
+  const changed = writes.filter((text, i) => text !== (i ? writes[i - 1] : body));
+  assert.equal(changed.length, 2, 'slots written pink from the start, then the images: no third write to turn a spinner pink');
+  assert.doesNotMatch(changed[0], /inrayspinner/, 'the slots are pink from the start');
   assert.equal(f.generations(), 3, 'the shot after the refused one was still drawn');
   let text = await f.text();
   const pink = `${created.job_id}_1`;

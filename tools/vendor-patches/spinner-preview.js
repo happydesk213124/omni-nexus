@@ -20,7 +20,8 @@
     // Scoped to the message: a job/shot token, or a streaming-tag block not saved yet.
     const message='.risu-chat[data-chat-index="'+row.messageIndex+'"] ';
     // A pink slot drawn by a tap or a long press shows its image before it is written.
-    return ['[data-inray-spinner="'+key+'"]','[data-shot="'+key+'"]',...(Number.isInteger(row.inlineSlot)?['[data-inx-slot="'+row.inlineSlot+'"]']:[]),...(row.waitSlot?['[data-inray-wait="'+row.waitSlot+'"]']:[])].map(selector=>message+selector);
+    // A tag job's own slots are pink from the start, named by the same key.
+    return ['[data-inray-spinner="'+key+'"]','[data-shot="'+key+'"]','[data-inray-wait="'+key+'"]',...(Number.isInteger(row.inlineSlot)?['[data-inx-slot="'+row.inlineSlot+'"]']:[]),...(row.waitSlot?['[data-inray-wait="'+row.waitSlot+'"]']:[])].map(selector=>message+selector);
   }
   function nxPreviewCss(key,row) {
     const slots=nxPreviewSelectors(key,row);

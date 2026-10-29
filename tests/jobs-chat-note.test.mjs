@@ -24,8 +24,10 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
       jobRunMeta:new Map([['old',meta]]),
       jobEpochByKey:new Map([['message',{jobId:mode.includes('superseded')?'new':'old',epoch:mode.includes('superseded')?2:1}]]),
       enqueueBakeWrite: async work => work(), jobChatTarget: () => ({}),
-      finishJobSpinners: async opts => {calls.push(opts);return true;},
-      inlineWait:'', deferWait:false, writeWaitImage: async () => { throw new Error('a message job never writes a slot image'); },
+      // A message's own tag job wrote its slots pink: their images go in as one write of those slots.
+      finishJobSpinners: async () => { throw new Error('a message job has no spinner to finish'); },
+      writeWaitImages: async (_target, slots) => {calls.push({cards:slots});return slots.map(slot=>slot.waitId);},
+      inlineWait:'', deferWait:false, writeWaitImage: async () => { throw new Error('a message job never writes one slot image'); },
     };
     const finish = await compile(`${finishBody}\nreturn finishCompletedSpinners;`, scope);
     const expected = !mode.includes('superseded');
@@ -33,7 +35,7 @@ for (const mode of ['success','error','stop','superseded','stopped-then-supersed
     assert.equal(await finish(), false, 'already published slots must not be rewritten at completion');
     assert.equal(calls.length, expected ? 1 : 0);
     if (expected) {
-      assert.deepEqual(calls[0].cards,[{shot:0,cardId:'a'},{shot:1,cardId:'b'}]);
+      assert.deepEqual(calls[0].cards,[{waitId:'old_0',cardId:'a'},{waitId:'old_1',cardId:'b'}]);
       assert.deepEqual(meta.publishedIds,[]);
     } else assert.deepEqual(meta.publishedIds,['a','b']);
   });

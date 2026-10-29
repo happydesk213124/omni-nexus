@@ -10,7 +10,7 @@ import { flushShotAssets } from '../storage/shot-character';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, pendingSpinnerIds, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, waitToken, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, pendingSpinnerIds, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -346,7 +346,7 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
   await writeChat(loaded.host,target.charIndex,target.chatIndex,loaded.chat,{messageIndex:target.messageIndex,previousBody});
 }
 
-export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>;onMessage?:(ids:{messageId:string;chatId:string})=>void}):Promise<boolean> {
+export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>;onMessage?:(ids:{messageId:string;chatId:string})=>void;pink?:boolean}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
   await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
@@ -364,7 +364,10 @@ export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & 
   for(const shot of opts.shots) {
     const requested=Math.floor(Number(shot.line)||lines);
     const line=opts.analysisLines ? requested : Math.max(1,Math.min(lines,requested));
-    const list=groups.get(line)||[];list.push(spinnerToken(opts.jobId,shot.shot_index,shot.width,shot.height));groups.set(line,list);
+    // pink: the slot is the waiting slot from the start (`jobId_shot`, its shot kept); a
+    // job that ends without its image leaves it as it is, with nothing more to write.
+    const token=opts.pink ? waitToken(`${opts.jobId}_${shot.shot_index}`,Number(shot.width)||1024,Number(shot.height)||1024) : spinnerToken(opts.jobId,shot.shot_index,shot.width,shot.height);
+    const list=groups.get(line)||[];list.push(token);groups.set(line,list);
   }
   // Lines above are stripped-basis (same as the tagger's L-numbers); map back
   // to raw lines on insert so token-only rows cannot shift the slot.
