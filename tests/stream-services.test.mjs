@@ -966,10 +966,12 @@ for (const mode of ['manual','automatic','stream']) test(`${mode} replaces old i
     assert.equal(writes.length,1,'no separate clear-only message write');
     const inserted=writes[0].message[0].data;
     assert.doesNotMatch(inserted,/old_0|old-card|abandoned_1|\[\[@inray::/);
-    assert.equal((inserted.match(/\[\[@inrayspinner::/g)||[]).length,1);
-    assert.ok(inserted.includes(`[[@inrayspinner::${created.job_id}_0::`));
-    assert.ok(inserted.indexOf('[[@inrayspinner')>inserted.indexOf('First narrative'));
-    assert.ok(inserted.indexOf('[[@inrayspinner')<inserted.indexOf('Second dialogue'));
+    // A message's own tag job writes its slot pink from the start; a deferred one keeps the spinner.
+    const slot=mode==='stream'?'[[@inrayspinner::':'[[@inraywait::';
+    assert.equal(inserted.split(slot).length-1,1);
+    assert.ok(inserted.includes(`${slot}${created.job_id}_0::`));
+    assert.ok(inserted.indexOf(slot)>inserted.indexOf('First narrative'));
+    assert.ok(inserted.indexOf(slot)<inserted.indexOf('Second dialogue'));
     assert.ok(inserted.includes('<Thoughts>\nSECRET [[imgstart]]\n</Thoughts>'));
     assert.equal(writes[0].message[1].data,chat.message[1].data);
   } finally {

@@ -45,11 +45,12 @@ export async function parkInlineShots(body: Record<string, unknown>): Promise<Ap
 export async function generateInlineWait(body: Record<string, unknown>): Promise<ApiResult> {
   const id = cleanText(body.wait_id, 64);
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return fail('bad_request', '대기 칸 ID가 올바르지 않습니다.');
+  // A tag job's slot is pink while its job still draws it: one image, not two.
+  if (spinnerJobRunning(id)) return fail('busy', '이 칸은 아직 만드는 중입니다.');
   let stored = await readStoredMessageBody(body.char_index, body.chat_index, body.message_index);
   // A spinner its job left behind (the page reloaded, the app closed mid-run) is a
   // slot too when its shot was kept: it becomes the pink slot first, then is drawn.
   if (stored != null && !waitTokenDimensions(stored, id) && pendingSpinnerIds(stored).includes(id)) {
-    if (spinnerJobRunning(id)) return fail('busy', '이 칸은 아직 만드는 중입니다.');
     if (!await getInlineWait(id)) return fail('not_found', '이 칸의 태그가 남아 있지 않습니다. 태그를 다시 생성해 주세요.');
     await parkJobSpinners({ charIndex: toInt(body.char_index, -1), chatIndex: toInt(body.chat_index, -1), messageIndex: toInt(body.message_index, -1),
       ...(cleanText(body.host_message_id, 200) ? { hostMessageId: cleanText(body.host_message_id, 200) } : {}) }, [id]);
