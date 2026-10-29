@@ -36,20 +36,6 @@ test('completed shot replaces its exact slot, cancelled siblings disappear, rest
  const partial=chat.message[0].data;
  await assert.rejects(()=>api.finishJobSpinner({...target,shot:1,cardId:'missing'}),/asset missing/);
  assert.equal(chat.message[0].data,partial,'failed asset must not replace its spinner or the previous shot');
- // The page reloads with job-a gone. Its shot 1 was kept: that spinner turns pink, same size;
- // a shot too young to be sure of (another device) and one with no message are left be.
- const kept=(id,age,hostMessageId='m-final')=>({id,characterId:'bot',chatId:'chat-final',hostMessageId,createdAt:Date.now()-age});
- const old=10*60*1000;
- let result=await api.parkAbandonedSpinners([kept('job-a_1',1000)],()=>false,2*60*1000);
- assert.deepEqual(result,{parked:[],gone:[]},'a young shot may still be drawing elsewhere');
- result=await api.parkAbandonedSpinners([kept('job-a_1',old)],()=>true,2*60*1000);
- assert.deepEqual(result,{parked:[],gone:[]},'a job running here owns its spinner');
- result=await api.parkAbandonedSpinners([kept('job-a_1',old),kept('job-a_0',old),kept('job-z_0',old,'m-deleted')],()=>false,2*60*1000);
- assert.deepEqual(result,{parked:['job-a_1'],gone:['job-a_0','job-z_0']},'baked or gone: nothing waits for it');
- assert.ok(chat.message[0].data.includes('[[@inray::ready::inxshot_ready.webp::1024::1024]]'));
- assert.ok(chat.message[0].data.includes(api.spinnerToken('job-a',0)),'completed pair survives restart');
- assert.ok(!chat.message[0].data.includes(api.spinnerToken('job-a',1)),'the bare spinner is gone');
- assert.ok(chat.message[0].data.includes(api.waitToken('job-a_1',1024,1024)),'in its place, the pink slot of the same size');
 });
 
 test('completed shots replace all durable slots in one chat write',async()=>{

@@ -10,7 +10,7 @@ import { flushShotAssets } from '../storage/shot-character';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, waitToken, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, pendingSpinnerIds, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, waitToken, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -504,45 +504,4 @@ export async function parkJobSpinners(target: MessageTarget, ids: readonly strin
   if (!ids.length) return false;
   const named = new Set(ids);
   return rewriteMessage(target, body => parkSpinners(body, named));
-}
-
-/**
- * Spinners left by a job that never ended (the page reloaded, the app closed): each one
- * whose shot was kept becomes its pink slot. Only the messages those shots name are
- * read, and only shots older than `olderThanMs`: a younger one may still be drawing on
- * another device. Spinners whose message is gone let their shots go.
- */
-export async function parkAbandonedSpinners(
-  waits: ReadonlyArray<{ id: string; characterId: string; chatId: string; hostMessageId: string; createdAt: number }>,
-  live: (id: string) => boolean,
-  olderThanMs: number,
-): Promise<{ parked: string[]; gone: string[] }> {
-  const parked: string[] = [], gone: string[] = [];
-  const stale = waits.filter(row => !live(row.id) && Date.now() - row.createdAt > olderThanMs && row.characterId && row.chatId && row.hostMessageId);
-  if (!stale.length) return { parked, gone };
-  const directory = await characterDirectory({ fresh: false }) || [];
-  const byChat = new Map<string, typeof stale>();
-  for (const row of stale) {
-    const key = JSON.stringify([row.characterId, row.chatId]);
-    byChat.set(key, [...byChat.get(key) || [], row]);
-  }
-  for (const rows of byChat.values()) {
-    const { characterId, chatId } = rows[0]!;
-    const character = directory.find(row => (row.chaId || row.id) === characterId);
-    const chat = character?.chats.find(row => (row.id || row.chatId) === chatId);
-    if (!character || !chat) continue;
-    const loaded = await loadTargetChat(character.index, chat.index); if (!loaded) continue;
-    const messages = chatMessageList(loaded.chat);
-    for (const row of rows) {
-      const messageIndex = messages.findIndex(msg => String(msg.chatId || msg.id || '') === row.hostMessageId);
-      const body = messageIndex >= 0 ? messageBody(messages[messageIndex]) : '';
-      if (!pendingSpinnerIds(body).includes(row.id)) {
-        // Baked, re-tagged or deleted: unless it is a pink slot already, nothing waits for it.
-        if (!waitTokenDimensions(body, row.id)) gone.push(row.id);
-        continue;
-      }
-      if (await parkJobSpinners({ charIndex: character.index, chatIndex: chat.index, messageIndex, hostMessageId: row.hostMessageId }, [row.id])) parked.push(row.id);
-    }
-  }
-  return { parked, gone };
 }
