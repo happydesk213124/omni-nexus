@@ -102,6 +102,22 @@ async function writeCharacter(target: Target, rows: readonly PendingShot[]): Pro
   });
   invalidateShotListing(target.id);
 }
+/**
+ * Emotion sprites (TTS · 감정 에셋) by name: a sprite made again replaces the row of
+ * the same name instead of colliding with it. The caller waits for the reply to end
+ * (a character write carries the chats too). Verified like a shot registration.
+ */
+export async function putCharacterAssetRows(target: Target, rows: readonly PendingShot[]): Promise<void> {
+  await serializeSessionStorage(async()=>{
+    const {host,index,char,assets}=await read(target);
+    const names=new Set(rows.map(row=>row.name));
+    const kept=assets.filter(v=>!(Array.isArray(v)&&names.has(String(v[0]))));
+    await measureWrite('character','asset-register',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:[...kept,...rows.map(row=>[row.name,row.path,row.name.split('.').pop() || 'png'])]} as never));
+    const verified=await read(target);
+    for (const row of rows) if(!verified.assets.some(v=>Array.isArray(v)&&v[0]===row.name&&v[1]===row.path)) throw new Error('Image asset registration failed');
+  });
+  invalidateShotListing(target.id);
+}
 /** Registers every waiting shot and roster change: one character write per character. */
 export async function flushShotAssets(): Promise<void> {
   clearTimeout(shotTimer); shotTimer = undefined;
