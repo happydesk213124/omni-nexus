@@ -491,3 +491,10 @@ test("splitSettingsDocPrompts returns null prompts when absent or malformed", ()
   assert.equal(splitSettingsDocPrompts("str").prompts, null);
   assert.deepEqual(splitSettingsDocPrompts(null).settings, {});
 });
+
+test('the removed 에셋 card mode migrates to illustration and stays there through export/import', () => {
+  const migrated = migrateSettings({ card: { mode: 'asset' } });
+  assert.equal(migrated.card.mode, 'illustration');
+  assert.equal(importSettings(exportSettings(migrated)).card.mode, 'illustration');
+  assert.equal(migrateSettings({ card: { mode: 'illustration' } }).card.mode, 'illustration');
+});
