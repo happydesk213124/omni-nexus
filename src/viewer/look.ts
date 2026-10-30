@@ -31,6 +31,8 @@ export const STATIC_CSS = `
 [x-omni-vn] [x-vn-sp]{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
 [x-omni-vn] [x-vn-sp] img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
 [x-omni-vn] [data-vn-cg]{position:absolute;inset:0;pointer-events:none}
+[x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;top:calc(9% + min(52%, 84vw * 2 / 3) + 10px);translate:-50% 0;display:flex;gap:8px;z-index:9}
+[x-omni-vn] [data-vn-cgbar] button{display:none}
 [x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:9%;width:84%!important;height:auto!important;max-width:none!important;max-height:52%!important;object-fit:contain;translate:-50% 0;rotate:-1.2deg;margin:0!important;border:4px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .6s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-hud]{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:10px 10px 18px;background:linear-gradient(rgba(5,5,10,.7),transparent);z-index:4}
 [x-omni-vn] [data-vn-clock]{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.02em;color:#ece6d6}
@@ -73,7 +75,7 @@ export const STATIC_CSS = `
 
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div>
 <div data-vn-hud><div data-vn-clock></div><button data-vn-act="log" type="button">기록</button><button data-vn-act="chat" type="button">채팅</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
-<div data-vn-box></div><div data-vn-count></div><div data-vn-log></div><button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
+<div data-vn-box></div><div data-vn-count></div><div data-vn-log></div><button data-vn-act="strip" type="button">삽화</button><div data-vn-cgbar><button data-vn-act="cgfull" type="button">전체화면</button><button data-vn-act="cgclose" type="button">접기</button></div><div data-vn-strip></div>
 <div data-vn-menu><button data-vn-act="older" type="button">이전 답장</button><button data-vn-act="newest" type="button">최신</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
 
 /** A person's place on stage: a silhouette until their picture comes. */
@@ -92,6 +94,8 @@ export interface StageState {
   strip?: boolean;
   /** "3 / 12": drawn by the style text itself, so it costs no call of its own. */
   count?: string;
+  /** The reply's last CG: coming in, folded at the top, shown again, or full screen. */
+  cgView?: 'open' | 'fold' | 'show' | 'full';
   auto: boolean;
   voice: boolean;
 }
@@ -101,14 +105,17 @@ const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] 
 export function stageCss(s: StageState): string {
   const spots = SPOTS[Math.min(3, s.cast.length)] ?? [];
   const rules = s.cast.slice(0, 3).map((p, i) => {
-    const lit = s.cg ? 'filter:brightness(.28) blur(2px)' : p.speaking ? 'filter:none;transform:scale(1.035);z-index:3' : s.narration ? 'filter:brightness(.62) saturate(.85);z-index:1' : 'filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);z-index:1';
+    // A CG on show dims the stage; folded at the top it does not.
+    const lit = s.cg && s.cgView !== 'fold' ? 'filter:brightness(.28) blur(2px)' : p.speaking ? 'filter:none;transform:scale(1.035);z-index:3' : s.narration ? 'filter:brightness(.62) saturate(.85);z-index:1' : 'filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);z-index:1';
     return `[x-omni-vn] [x-vn-p="${p.key}"]{display:block;left:${spots[i]}%;${lit}}`
       + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : '');
   });
   return [
     ...rules,
     s.bg ? `[x-omni-vn] [x-vn-bg="${s.bg}"]{display:block}` : '',
-    s.cg ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block}[x-omni-vn] [data-vn-box]{opacity:0}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}` : '',
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;width:84px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
+    : s.cg && s.cgView === 'full' ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none}[x-omni-vn] [data-vn-act="cgclose"]{display:inline-flex;z-index:9}`
+    : s.cg ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block}[x-omni-vn] [data-vn-box]{opacity:0}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? '[x-omni-vn] [data-vn-act="cgfull"],[x-omni-vn] [data-vn-act="cgclose"]{display:inline-flex}' : ''}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] span{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next]{animation-delay:0s!important}' : '',
     s.log ? '[x-omni-vn] [data-vn-log]{display:block}' : '',
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',

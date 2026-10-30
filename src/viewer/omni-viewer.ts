@@ -181,7 +181,7 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   }
   cues = segments.filter(isSoundSegment);
   scenes = buildScenes(settled, segments, emotionData().settings.words);
-  if (!keepPlace) { at = 0; bg = ''; fired.clear(); }
+  if (!keepPlace) { at = 0; bg = ''; fired.clear(); lastCg = ''; cgView = 'none'; cgThumb = null; }
   at = Math.max(0, Math.min(at, scenes.length - 1));
 }
 /** Cues up to this scene that have not played: the music changes and effects sound where they are written. */
@@ -295,20 +295,37 @@ async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: '
   return id;
 }
 
+/** The last CG this reply showed, and how it stands: none, coming in, folded at the top, shown again, full screen. */
+let lastCg = '', cgView: 'none' | 'open' | 'fold' | 'show' | 'full' = 'none', cgThumb: DOMRect | null = null;
+/** Buttons can appear (the CG's), so their rectangles are read again after. */
+async function measureControls(): Promise<void> {
+  if (!root) return;
+  const found: typeof controls = [];
+  for (const node of await unwrap(await root.querySelectorAll('[data-vn-act]'))) {
+    const html = await node.getOuterHTML(), name = /data-vn-act="([a-z]+)"/.exec(html)?.[1] || '';
+    if (name) found.push({ act: name, r: await node.getBoundingClientRect() });
+    await release(node);
+  }
+  controls = found;
+}
+async function measureCgThumb(): Promise<void> {
+  cgThumb = null;
+  if (!cgLayer || !lastCg) return;
+  const node = await cgLayer.querySelector(`img[x-vn-cg="${lastCg}"]`);
+  if (node) { cgThumb = await node.getBoundingClientRect(); await release(node); }
+}
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState =>
-  ({ cast, narration: false, bg, cg: '', revealed, log: logOpen, strip: stripOpen, auto: prefs.auto, voice: prefs.voice, count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
+  ({ cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed, log: logOpen, strip: stripOpen, auto: prefs.auto, voice: prefs.voice, count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
 /** Fills the strip, newest first: the chat's own images cloned (no pixels sent), a label where the chat draws none. */
 async function buildStrip(): Promise<void> {
   if (!doc || !stripEl || !context) return;
   const items: StripItem[] = [];
-  for (const i of charIndexes().reverse()) {
-    for (const img of replyImages(String(context.messages[i]?.data ?? '')).reverse()) {
-      if (img.cg.kind === 'baked' && items.length < STRIP_MAX) items.push({ key: key(`${i}|${img.cg.asset}`), message: i, asset: img.cg.asset });
-    }
-    if (items.length >= STRIP_MAX) break;
+  // This reply's illustrations only.
+  for (const img of replyImages(source)) {
+    if (img.cg.kind === 'baked' && items.length < STRIP_MAX) items.push({ key: key(`${messageIndex}|${img.cg.asset}`), message: messageIndex, asset: img.cg.asset });
   }
-  await stripEl.setInnerHTML(items.length ? '' : '<p style="font-size:12px;opacity:.7;margin:4px">이 채팅에 삽화가 없습니다.</p>');
+  await stripEl.setInnerHTML(items.length ? '' : '<p style="font-size:12px;opacity:.7;margin:4px">이 답장에는 삽화가 없습니다.</p>');
   const order = charIndexes();
   for (const item of items) {
     const img = await doc.querySelector(`.risu-chat[data-chat-index="${item.message}"] [data-inray-asset="${item.asset}"] img`);
@@ -364,17 +381,27 @@ async function render(force = false): Promise<void> {
     // The illustration is a photo over the stage; the stage itself stays the place.
     const cg = await cloneImage(scene, cgLayer, 'x-vn-cg');
     if (mine !== epoch) return;
-    if (!cg) { await go(1); return; }
-    await dyn.setTextContent(stageCss(state(lastCast, { cg })));
+    if (!cg) { queueStep(1); return; }
+    // Shown once; past it, it waits folded at the top, a tap away.
+    lastCg = cg; cgView = 'open';
+    await dyn.setTextContent(stageCss(state(lastCast, { cg, cgView })));
     if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
     return;
   }
+  if (pendingSteps) return;
+  // A folded CG stays at the top while the reply goes on: the reply's last CG before
+  // this scene, also when a jump went straight past it. Back before it, it goes.
+  if (cgView === 'open') cgView = 'fold';
+  const passed = scenes.slice(0, at).reverse().find(s => s.kind === 'cg');
+  const passedId = passed ? await cloneImage(passed, cgLayer, 'x-vn-cg') : '';
+  if (passedId !== lastCg) { lastCg = passedId; cgThumb = null; }
+  if (!lastCg) cgView = 'none'; else if (cgView === 'none') cgView = 'fold';
   const members = castAt(at), cast: Array<{ key: string; face: string; speaking: boolean }> = [];
   for (const m of members) {
     const place = await placeFor(m);
     cast.push({ key: m.key, face: place ? await faceFor(m, place) : '', speaking: m.speaking });
   }
-  if (mine !== epoch) return;
+  if (mine !== epoch || pendingSteps) return;
   // The line itself, not which message holds it: a streaming reply becomes its saved self mid-scene.
   const sig = `${scene.id}|${scene.text}`, same = !force && sig === shownSig;
   lastCast = cast;
@@ -382,6 +409,7 @@ async function render(force = false): Promise<void> {
   await dyn.setTextContent(stageCss(state(cast, { narration: scene.kind === 'narration' })));
   if (same) return;
   shownSig = sig;
+  if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
   const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line' });
   revealUntil = Date.now() + revealMs;
   await box.setInnerHTML(html);
@@ -400,6 +428,25 @@ async function autoNext(mine: number): Promise<void> {
   if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { autoTimer = setTimeout(() => void autoNext(mine), 500); return; }
   await go(1);
 }
+/**
+ * Taps and swipes only count steps; one loop draws where they lead. Rapid taps
+ * no longer each draw a scene in turn (a backlog of bridge calls): the scene at
+ * the end of them is drawn once, a jump.
+ */
+let pendingSteps = 0, stepping = false, burstTimer: ReturnType<typeof setTimeout> | undefined;
+/** `burst`: a tap right after another. Those are gathered and drawn once they pause, so a burst is one jump. */
+function queueStep(delta: number, burst = false): void {
+  pendingSteps += delta;
+  if (stepping) return;
+  clearTimeout(burstTimer);
+  const run = () => void runSteps().catch(error => dbg('viewer.step', { message: String(error) }, 'warn'));
+  if (burst) burstTimer = setTimeout(run, 140); else run();
+}
+async function runSteps(): Promise<void> {
+  stepping = true;
+  try { while (pendingSteps) { const delta = pendingSteps; pendingSteps = 0; await go(delta); } }
+  finally { stepping = false; }
+}
 /** Past either end of a reply the next or previous reply goes on; the newest reply's end stays. */
 async function go(delta: number): Promise<void> {
   const next = at + delta;
@@ -412,8 +459,10 @@ async function go(delta: number): Promise<void> {
 
 async function act(name: string): Promise<void> {
   if (name === 'close' || name === 'chat') { await closeViewer(); return; }
-  if (name === 'next') await go(1);
-  else if (name === 'prev') await go(-1);
+  if (name === 'next') queueStep(1);
+  else if (name === 'prev') queueStep(-1);
+  else if (name === 'cgclose') { cgView = lastCg ? 'fold' : 'none'; await restyle(); }
+  else if (name === 'cgfull') { cgView = 'full'; await restyle(); }
   else if (name === 'auto') { prefs.auto = !prefs.auto; savePrefs(); await render(true); }
   else if (name === 'voice') { prefs.voice = !prefs.voice; savePrefs(); if (!prefs.voice) omniTts.stop(); await restyle(); }
   else if (name === 'older') { if (await stepReply(-1)) await render(); }
@@ -456,9 +505,17 @@ function onClick(p: HostPoint): void {
     void (logRect && inside(p, logRect) ? jumpFromLog(p.clientY) : act('log')).catch(error => dbg('viewer.log', { message: String(error) }, 'warn'));
     return;
   }
-  const next = hit ? act(hit.act) : Date.now() < revealUntil && !revealed ? reveal() : go(1);
-  void next.catch(error => dbg('viewer.tap', { message: String(error) }, 'warn'));
+  // A tap on the folded CG opens it; a tap on an open or full CG folds it again.
+  if (!hit && cgView === 'fold' && cgThumb && inside(p, cgThumb)) { cgView = 'show'; void restyle().then(() => measureControls()).catch(() => {}); return; }
+  if (!hit && (cgView === 'show' || cgView === 'full')) { cgView = 'fold'; void restyle().catch(() => {}); return; }
+  if (hit) { void act(hit.act).catch(error => dbg('viewer.tap', { message: String(error) }, 'warn')); return; }
+  // One tap during the letters completes them; rapid taps (광클) only ever move on, so they jump.
+  const rapid = Date.now() - lastTapAt < 350;
+  lastTapAt = Date.now();
+  if (!rapid && !stepping && !pendingSteps && Date.now() < revealUntil && !revealed) { void reveal().catch(() => {}); return; }
+  queueStep(1, rapid);
 }
+let lastTapAt = 0;
 
 /** Only the stage's style text: buttons' state, panels. */
 async function restyle(): Promise<void> {
@@ -496,7 +553,7 @@ function onUp(p: HostPoint): void {
   if (Math.abs(dy) < 36 || Math.abs(dy) < Math.abs(dx)) return;
   swipeUntil = Date.now() + 450;
   const steps = Math.min(12, Math.max(1, Math.round(Math.abs(dy) / 70)));
-  void go(dy < 0 ? steps : -steps).catch(error => dbg('viewer.swipe', { message: String(error) }, 'warn'));
+  queueStep(dy < 0 ? steps : -steps);
 }
 
 /** The streaming reply: a scene appears once its line has ended (the TTS rule). */
@@ -544,7 +601,8 @@ export async function openViewer(): Promise<void> {
     const css = await doc.createElement('style'); await css.setAttribute('x-omni-vn-style', 'static'); await css.setTextContent(STATIC_CSS);
     fold = await doc.createElement('style'); await fold.setAttribute('x-omni-vn-style', 'fold');
     // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
-    await fold.setTextContent(`${LIST} > .chat-message-container:nth-child(n+3){display:none!important}`);
+    // The floating TTS and image viewers stand above everything: hidden while this covers the chat.
+    await fold.setTextContent(`${LIST} > .chat-message-container:nth-child(n+3){display:none!important}[x-omnitts-viewer],.inlay-nx-overlay-root{display:none!important}`);
     dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
@@ -628,6 +686,8 @@ export async function installOmniViewer(): Promise<void> {
   await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'chat', id: 'omni-viewer-chat' }, toggle);
   await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu' }, toggle);
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
+  // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures).
+  Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => open && inside({ clientX: x, clientY: y }, rect));
   if (host.addRisuChatListener) await host.addRisuChatListener('output', () => scheduleAhead());
   // A sprite finished: the scene on screen may be waiting for it.
   subscribeSprites(() => { if (open) void render(); });

@@ -91,6 +91,16 @@ export function assetMatchesExpression(assetName: unknown, names: readonly strin
   return false;
 }
 
+/**
+ * A standing portrait is shown on every line: the looks it is drawn from keep no
+ * sexual anatomy or nudity tags (a roster's looks may carry them for scenes).
+ */
+const NSFW_TAG = /\b(?:penis|cock|dick|testicles?|scrotum|erection|nipples?|areolae?|pussy|vagina|vulva|clitoris|anus|nude|naked|nudity|nsfw|explicit|sex|cum|semen|pubic hair|genitals?|crotch|cameltoe|bulge|topless|bottomless|breasts? out|bare breasts|exposed breasts|no bra|no panties|lactation|futanari)\b/i;
+export function sfwTags(tags: string): string {
+  return String(tags || '').split(',').map(t => t.trim()).filter(t => t && !NSFW_TAG.test(t.replace(/^[\d.]+::|::$/g, ''))).join(', ');
+}
+export const SPRITE_NEGATIVE = 'nsfw, nude, naked, nipples, penis, pussy, genitals, explicit';
+
 /** The emotion asset name Omni writes: `이름_감정.png` (PNG keeps a transparent background). */
 export function emotionAssetName(person: string, face: string, ext = 'png'): string {
   const name = String(person ?? '').normalize('NFKC').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);

@@ -5,7 +5,7 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { sniffImageMime } from '../core/util/bytes';
 import { cleanText, joinTags, unifiedSessionIdForCharacter } from '../core/util/text';
-import { assetMatchesExpression, emotionAssetName, emotionPrompt, expressionOfTone } from '../domain/emotion/emotions';
+import { assetMatchesExpression, emotionAssetName, emotionPrompt, expressionOfTone, sfwTags, SPRITE_NEGATIVE } from '../domain/emotion/emotions';
 import { normalizeAssetPath } from '../domain/gallery/shot-assets';
 import { tokensForFamily } from '../domain/nai/keys';
 import { findPresetById, modelForFamily } from '../domain/nai/routing';
@@ -147,10 +147,10 @@ async function remember(bot: EmotionBot, person: string, face: string, name: str
 }
 async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite> {
   const settings = (await loadEmotionData()).settings;
-  const looks = await spriteLooks(c, bot);
+  const looks = sfwTags(await spriteLooks(c, bot));
   if (!looks) throw new Error(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
-    width: settings.width, height: settings.height,
+    width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE,
     prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
   });
