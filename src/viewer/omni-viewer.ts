@@ -3,7 +3,12 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { bytesToBase64, sniffImageMime } from '../core/util/bytes';
 import { DEFAULT_EXPRESSION } from '../domain/emotion/emotions';
-import { compactHash, cueLineKey, parseTtsMessage } from '../domain/tts/segment';
+import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
+import { ttsComparable } from '../domain/tts/anchors';
+import { ttsExcludeTerms } from '../domain/tts/filter';
+import type { TtsSegment } from '../core/tts-types';
+import { omniSound } from '../services/sound-runtime';
+import { soundData, soundReady } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, storyClock, type ViewerScene } from '../domain/viewer/scenes';
@@ -91,7 +96,11 @@ async function loadPrefs(): Promise<void> {
 }
 const savePrefs = () => void psSet(VIEWER_KEY, prefs).catch(() => {});
 
-/** The newest reply (or `index`), read from the chat data, never from the screen. */
+/**
+ * The newest reply (or the one at/before `index`), from the chat data. Which of its
+ * lines are scenes is what the chat shows of it: a status panel or summary the
+ * bot's regex hides is in the source but never on screen, so it is no scene either.
+ */
 async function load(index?: number, keepPlace = false): Promise<void> {
   context = await currentTtsContext();
   bot = await currentEmotionBot().catch(() => null);
@@ -99,15 +108,61 @@ async function load(index?: number, keepPlace = false): Promise<void> {
   let i = index ?? messages.length - 1;
   while (i >= 0 && messages[i]?.role !== 'char') i--;
   messageIndex = i;
-  setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace);
+  const shown = i >= 0 && !streaming ? await renderedText(i) : '';
+  setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace, shown);
 }
-function setSource(text: string, keepPlace: boolean): void {
+/** The reply as the chat draws it (innerText: what CSS hides is left out). '' when it is not on screen. */
+async function renderedText(index: number): Promise<string> {
+  if (!doc) return '';
+  const node = await doc.querySelector(`.risu-chat[data-chat-index="${index}"] .chattext`);
+  if (!node) return '';
+  try { return String(await node.innerText() ?? ''); } catch { return ''; } finally { await release(node); }
+}
+/** BGM tags and effect words in the reply, played where the reading reaches them. */
+let cues: TtsSegment[] = [];
+const fired = new Set<string>();
+function soundCues() {
+  if (!soundReady()) return undefined;
+  const s = soundData().settings;
+  return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [] } : undefined;
+}
+function setSource(text: string, keepPlace: boolean, shown = ''): void {
   source = text;
   const settled = streaming ? text.slice(0, Math.max(0, text.lastIndexOf('\n'))) : text;
-  const segments = parseTtsMessage(settled);
-  scenes = buildScenes(settled, streaming ? settledWhileStreaming(segments.map(segment => ({ segment })), settled + '\n').map(r => r.segment) : segments, emotionData().settings.words);
-  if (!keepPlace) { at = 0; bg = ''; }
+  // The voice's own filters (excluded text, short or symbol-only lines) apply to scenes too.
+  const t = ttsData().settings;
+  let segments = parseTtsMessage(settled, ttsExcludeTerms(t.excludeText), t.skipChars, t.skipSymbolOnly, soundCues());
+  if (streaming) segments = settledWhileStreaming(segments.map(segment => ({ segment })), settled + '\n').map(r => r.segment);
+  const visible = ttsComparable(shown);
+  if (visible) {
+    const kept = segments.filter(s => isSoundSegment(s) || !ttsComparable(s.text) || visible.includes(ttsComparable(s.text)));
+    // Drawn text that matches none of the reply is another row (or a bot that redraws everything): keep the reply whole.
+    if (kept.some(s => !isSoundSegment(s))) segments = kept;
+  }
+  cues = segments.filter(isSoundSegment);
+  scenes = buildScenes(settled, segments, emotionData().settings.words);
+  if (!keepPlace) { at = 0; bg = ''; fired.clear(); }
   at = Math.max(0, Math.min(at, scenes.length - 1));
+}
+/** Cues up to this scene that have not played: the music changes and effects sound where they are written. */
+function playCues(scene: ViewerScene): void {
+  for (const cue of cues) {
+    if (cue.start > scene.end || fired.has(cue.id)) continue;
+    fired.add(cue.id);
+    const tags = (cue as TtsSegment & { tags?: string[] }).tags;
+    if (cue.kind === 'bgm' && tags?.length) void omniSound.playBgmForTags(tags).catch(error => dbg('viewer.bgm', { message: String(error) }, 'warn'));
+    // Only an effect at this scene sounds: ones passed over by a jump are not replayed.
+    else if (cue.kind === 'sfx' && cue.start >= scene.start - 400) void omniSound.playSfxWord(cue.text, scene.text).catch(() => {});
+  }
+}
+const charIndexes = (): number[] => (context?.messages ?? []).flatMap((m, i) => m?.role === 'char' ? [i] : []);
+/** The reply before or after this one; false when there is none that way. */
+async function stepReply(dir: 1 | -1): Promise<boolean> {
+  const list = charIndexes(), next = list[list.indexOf(messageIndex) + dir];
+  if (next === undefined) return false;
+  await load(next);
+  if (dir < 0) at = Math.max(0, scenes.length - 1);
+  return true;
 }
 
 function messageId(): string {
@@ -213,6 +268,7 @@ async function render(): Promise<void> {
     await box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html);
     return;
   }
+  playCues(scene);
   if (scene.kind === 'cg') {
     // A CG comes in like a photo over the dimmed stage, then stays as the background.
     const [cg, behind] = [await cloneImage(scene, cgLayer, 'x-vn-cg'), await cloneImage(scene, bgLayer, 'x-vn-bg')];
@@ -249,10 +305,12 @@ async function autoNext(mine: number): Promise<void> {
   if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { autoTimer = setTimeout(() => void autoNext(mine), 500); return; }
   await go(1);
 }
+/** Past either end of a reply the next or previous reply goes on; the newest reply's end stays. */
 async function go(delta: number): Promise<void> {
   const next = at + delta;
-  if (next < 0 || next >= scenes.length) { if (delta > 0 && !streaming) await render(); return; }
-  at = next; await render();
+  if (next >= 0 && next < scenes.length) { at = next; await render(); return; }
+  if (streaming) return;
+  if (await stepReply(delta > 0 ? 1 : -1)) await render();
 }
 
 async function act(name: string): Promise<void> {
@@ -261,7 +319,8 @@ async function act(name: string): Promise<void> {
   else if (name === 'prev') await go(-1);
   else if (name === 'auto') { prefs.auto = !prefs.auto; savePrefs(); await render(); }
   else if (name === 'voice') { prefs.voice = !prefs.voice; savePrefs(); if (!prefs.voice) omniTts.stop(); await render(); }
-  else if (name === 'older') { await load(Math.max(0, messageIndex - 1)); await render(); }
+  else if (name === 'older') { if (await stepReply(-1)) await render(); }
+  else if (name === 'newest') { await load(); await render(); }
   else if (name === 'log') {
     logOpen = !logOpen;
     if (logOpen && logBox) await logBox.setInnerHTML(scenes.map((s, i) => s.kind === 'cg' ? '' : `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`).join('') || '<p>기록이 없습니다.</p>');
@@ -312,7 +371,7 @@ export async function openViewer(): Promise<void> {
   try {
     doc = await host.getRootDocument();
     if (!doc) throw new Error('Risu 화면에 접근할 수 없습니다. 플러그인 권한을 허용해 주세요.');
-    await Promise.all([loadPrefs(), loadEmotionData(), loadTtsData()]);
+    await Promise.all([loadPrefs(), loadEmotionData(), loadTtsData(), omniSound.init().catch(() => {})]);
     const body = await doc.querySelector('body');
     if (!body) throw new Error('Risu 화면을 찾지 못했습니다.');
     for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn],[x-omni-vn-style]'))) { await old.remove(); await release(old); }
