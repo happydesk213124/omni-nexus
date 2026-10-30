@@ -1235,9 +1235,6 @@
         <div class="group">
           <h3>기본</h3>
           <div class="stack">
-            <div class="row"><span class="row-text"><b>Mode</b></span>
-              <select class="ctrl" id="nx-mode"><option value="illustration" selected>삽화</option><option value="asset">에셋</option></select>
-            </div>
             <div class="row"><span class="row-text"><b>Image Min</b></span><input class="ctrl" id="nx-min" type="number" min="1" max="6" value="3"></div>
             <div class="row"><span class="row-text"><b>Image Max</b></span><input class="ctrl" id="nx-max" type="number" min="1" max="6" value="3"></div>
             <div class="row"><span class="row-text"><b>캐릭터 수 제한</b></span><input class="ctrl" id="nx-char-max" type="number" min="1" max="6" value="6"></div>
@@ -2961,7 +2958,7 @@
     "title": "SDXL식 강조",
     "body": "켜면 NAI로 보내기 직전에 N::태그::·{태그} 강조를 SDXL식 (태그:가중치)·((태그))로 바꿔서 보냅니다. 저장된 프롬프트와 카드는 그대로 둡니다. ComfyUI 전송은 항상 변환됩니다."
   }
-}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-mode":{"title":"Mode","body":"삽화는 장면 그림, 에셋은 캐릭터/소품용입니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"전처리(저능력 모델용)","body":"Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요."}});
+}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"전처리(저능력 모델용)","body":"Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요."}});
     const HELP_ALIAS = {
       "nx-stream-keywords-on": "nx-stream-keywords",
       "nx-stream-lines-on": "nx-stream-lines",

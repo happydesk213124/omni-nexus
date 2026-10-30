@@ -16646,6 +16646,13 @@ const VENDOR_RISU_SETTINGS_WATCH_ARM_NEEDLE = `    startHostUiWatchdog();`;
 const VENDOR_RISU_SETTINGS_WATCH_ARM_PATCH = `    startHostUiWatchdog();
     startRisuSettingsViewerWatch();`;
 
+// 삽화 전용: the old 「에셋」 card mode only appended white-background portrait tags to
+// scene shots. Character sprites now come from the emotion assets (TTS · 에셋), so the
+// select goes and every save says illustration. Plain quotes: the needle holds `${`.
+const VENDOR_CARD_MODE_SELECT_NEEDLE = '            <label><span>Mode</span><select id="nx-mode"><option value="illustration" ${i.mode !== "asset" ? "selected" : ""}>삽화</option><option value="asset" ${i.mode === "asset" ? "selected" : ""}>에셋</option></select></label>\n';
+const VENDOR_CARD_MODE_READ_NEEDLE = '      mode: N("nx-mode") || e.mode || "illustration",';
+const VENDOR_CARD_MODE_READ_PATCH = '      mode: "illustration",';
+
 const VENDOR_RISU_SETTINGS_POINTER_NEEDLE =
   `      if (t.uiOpen || t._hostChromeBlocked || t.charEditUi || t._viewerHiddenForModal) return;`;
 const VENDOR_RISU_SETTINGS_POINTER_PATCH =
@@ -17349,6 +17356,8 @@ const loadVendorUi = (): string => {
     [VENDOR_PICK_PRESET_OPT_NEEDLE, 'pickViewerPreset optimistic'],
     [VENDOR_RISU_SETTINGS_HIDE_VIEWER_NEEDLE, 'risu settings hide viewer'],
     [VENDOR_RISU_SETTINGS_WATCH_ARM_NEEDLE, 'risu settings watch arm'],
+    [VENDOR_CARD_MODE_SELECT_NEEDLE, 'card mode select (삽화 only)'],
+    [VENDOR_CARD_MODE_READ_NEEDLE, 'card mode read (삽화 only)'],
     [VENDOR_RISU_SETTINGS_POINTER_NEEDLE, 'risu settings pointer guard'],
     [VENDOR_RISU_SETTINGS_PAINT_NEEDLE, 'risu settings paint guard'],
     [VENDOR_RISU_SETTINGS_UNLOAD_NEEDLE, 'risu settings unload clear'],
@@ -17724,6 +17733,8 @@ const loadVendorUi = (): string => {
     .replace(VENDOR_PICK_PRESET_OPT_NEEDLE, VENDOR_PICK_PRESET_OPT_PATCH)
     .replace(VENDOR_RISU_SETTINGS_HIDE_VIEWER_NEEDLE, VENDOR_RISU_SETTINGS_HIDE_VIEWER_PATCH)
     .replace(VENDOR_RISU_SETTINGS_WATCH_ARM_NEEDLE, VENDOR_RISU_SETTINGS_WATCH_ARM_PATCH)
+    .replace(VENDOR_CARD_MODE_SELECT_NEEDLE, '')
+    .replace(VENDOR_CARD_MODE_READ_NEEDLE, VENDOR_CARD_MODE_READ_PATCH)
     .replace(VENDOR_RISU_SETTINGS_POINTER_NEEDLE, VENDOR_RISU_SETTINGS_POINTER_PATCH)
     .replace(VENDOR_RISU_SETTINGS_PAINT_NEEDLE, VENDOR_RISU_SETTINGS_PAINT_PATCH)
     .replace(VENDOR_RISU_SETTINGS_UNLOAD_NEEDLE, VENDOR_RISU_SETTINGS_UNLOAD_PATCH)

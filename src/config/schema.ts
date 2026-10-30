@@ -217,6 +217,9 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   else card.lore_extra = 'tags';
   // asset_nai_tags: off | inline | prepass (legacy bool / prepass_vision → prepass)
   card.asset_nai_tags = normalizeAssetNaiTagsMode(card.asset_nai_tags);
+  // The 「에셋」 card mode is gone (sprites are emotion assets now); a save that chose it
+  // keeps illustrating. Same key, so older builds still read it.
+  if (card.mode === 'asset') card.mode = 'illustration';
   card.image_analysis_separate = card.image_analysis_separate === true;
   card.character_height = ![false, 'false', 0, '0', 'off'].includes(card.character_height as string | number | boolean);
   card.character_age = ![false, 'false', 0, '0', 'off'].includes(card.character_age as string | number | boolean);

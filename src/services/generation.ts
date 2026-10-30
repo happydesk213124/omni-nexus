@@ -300,9 +300,6 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
     setup = lockedSetup;
   } else {
     setup = joinTags(shot.camera, situation, shot.place, shot.action);
-    if (card.mode === 'asset') {
-      setup = joinTags(setup, 'white background', 'simple background', 'cowboy shot', 'looking at viewer', 'portrait');
-    }
   }
   const naturalMode = normalizeNaturalBaseMode(card.natural_base);
   const naturalCap = route.useV5Natural
