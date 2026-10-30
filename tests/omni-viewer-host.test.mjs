@@ -20,6 +20,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       const count = name => { window.calls[name] = (window.calls[name] || 0) + 1; };
       class Safe {
         constructor(node) { this.node = node; this.listeners = new Map(); }
+        // Risu answers release() synchronously, with nothing: chaining on it once broke the viewer.
+        release() { window.released = (window.released || 0) + 1; }
         async querySelector(s) { count('querySelector'); const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
         async querySelectorAll(s) { count('querySelectorAll'); return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
         async setAttribute(k, v) { count('setAttribute'); if (!k.startsWith('x-')) throw Error('Forbidden attribute write ' + k); this.node.setAttribute(k, v); }
@@ -114,6 +116,8 @@ test('옴니 뷰어 over a restricted SafeDOM, when the chat cannot be read: the
       const saved = new Map(), local = new Map(); window.buttons = {};
       class Safe {
         constructor(node) { this.node = node; this.listeners = new Map(); }
+        // Risu answers release() synchronously, with nothing: chaining on it once broke the viewer.
+        release() { window.released = (window.released || 0) + 1; }
         async querySelector(s) { const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
         async querySelectorAll(s) { return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
         async setAttribute(k, v) { if (!k.startsWith('x-')) throw Error('Forbidden attribute write ' + k); this.node.setAttribute(k, v); }

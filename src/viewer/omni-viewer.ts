@@ -44,7 +44,10 @@ let streaming = false, logOpen = false, autoTimer: ReturnType<typeof setTimeout>
 const people = new Map<string, SafeElement>(), faces = new Map<string, string>(), clones = new Set<string>();
 let bg = '', revealUntil = 0, revealed = false, epoch = 0, voiceKey = '', clickId = '';
 
-async function release(value: unknown): Promise<void> { const r = value && typeof value === 'object' ? Reflect.get(value, 'release') : null; if (typeof r === 'function') await r.call(value).catch(() => {}); }
+// Risu's SafeElement methods may answer synchronously (release() returns nothing there):
+// never chain on their result, wrap it.
+const quiet = (value: unknown): Promise<unknown> => Promise.resolve(value).catch(() => undefined);
+async function release(value: unknown): Promise<void> { const r = value && typeof value === 'object' ? Reflect.get(value, 'release') : null; if (typeof r === 'function') await quiet((() => { try { return r.call(value); } catch { return undefined; } })()); }
 
 async function measure(): Promise<void> {
   if (!doc || !root) return;
@@ -298,7 +301,7 @@ let opening = false;
 async function showError(error: unknown): Promise<void> {
   const message = String((error as Error)?.message || error).slice(0, 300);
   dbg('viewer.open', { message }, 'warn');
-  if (box) { await box.setInnerHTML(boxHtml({ speaker: '옴니 뷰어', text: `열지 못했습니다: ${message}`, narration: false }).html).catch(() => {}); return; }
+  if (box) { await quiet(box.setInnerHTML(boxHtml({ speaker: '옴니 뷰어', text: `열지 못했습니다: ${message}`, narration: false }).html)); return; }
   const alert = Reflect.get(risuHost() ?? {}, 'alertError');
   if (typeof alert === 'function') await Promise.resolve(alert.call(risuHost(), `[옴니 뷰어] ${message}`)).catch(() => {});
 }
@@ -343,8 +346,8 @@ export async function openViewer(): Promise<void> {
 export async function closeViewer(): Promise<void> {
   if (!open) return;
   open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer);
-  if (doc && clickId) { await doc.removeEventListener('click', clickId).catch(() => {}); clickId = ''; }
-  for (const node of [root, dyn, fold]) if (node) { await node.remove().catch(() => {}); await release(node); }
+  if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
+  for (const node of [root, dyn, fold]) if (node) { await quiet(node.remove()); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   for (const place of people.values()) await release(place);
   people.clear();
