@@ -35,7 +35,7 @@ test("the bot's own images are found under any of the person's names; Omni's own
 
 test('a sprite is drawn from the roster looks with fixed tags, saved, and registered only once no reply streams', async () => {
   const f = await fixture([['오미선_sad.png', 'assets/old.png', 'png']]);
-  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선', 'Misun'], gender: 'girl', appearance: 'girl, black hair, short hair, blue eyes' });
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선', 'Misun'], gender: 'girl', appearance: 'girl, black hair, short hair, blue eyes, nipples, 1.2::penis::, large breasts' });
   let streaming = true;
   globalThis.__OMNI_REPLY_STREAMING__ = () => streaming;
   try {
@@ -48,6 +48,9 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
     assert.match(prompt, /black hair, short hair, blue eyes/);
     assert.match(prompt, /2::sad::, frown, downcast eyes/);
     assert.match(prompt, /2::cowboy shot::/);
+    const sent = f.host.naiRequests.at(-1).body, body = typeof sent === 'string' ? JSON.parse(sent) : sent;
+    assert.doesNotMatch(String(body.input || ''), /nipples|penis/, 'no sexual anatomy in a portrait shown on every line');
+    assert.match(JSON.stringify(f.host.naiRequests.at(-1).body), /nude, naked, nipples, penis/, 'and it is kept out by the negative prompt too');
     const listed = async () => (await risuai.getCharacterFromIndex(0)).additionalAssets;
     await new Promise(r => setTimeout(r, 2000));
     assert.deepEqual((await listed()).map(a => a[1]), ['assets/old.png'], 'not while a reply streams');

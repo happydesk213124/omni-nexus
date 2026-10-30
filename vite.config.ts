@@ -15334,7 +15334,8 @@ const VENDOR_SELECT_ONCLICK_NEEDLE =
 
 const VENDOR_SELECT_ONCLICK_PATCH =
   `onClick = async (f) => {
-      if (t.uiOpen || t._hostChromeBlocked) return;
+      // 옴니 뷰어 covers the chat: a tap on it is no tap on the message beneath.
+      if (t.uiOpen || t._hostChromeBlocked || globalThis.__OMNI_VIEWER_COVERS__?.(f.clientX, f.clientY)) return;
       const x = f.clientX, I = f.clientY, R = t._lastPointerGesture || pointerGesture;
       t._lastPointerGesture = null, pointerGesture = null;
       if (!R || R.marker || !R.forClick || typeof x != "number" || typeof I != "number") return;

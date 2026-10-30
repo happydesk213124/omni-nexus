@@ -286,8 +286,10 @@ export async function installTtsHost(): Promise<void> {
   await watchChat();
   const events:{type:string;id:string;options?:AddEventListenerOptions}[]=[];
   const listen=async(type:string,fn:(e:HostPoint)=>void,options?:AddEventListenerOptions)=>{events.push({type,id:await doc.addEventListener(type,fn,options),options});};
+  // 옴니 뷰어 lies over the chat: a tap on it reads no line beneath.
+  const underViewer=(e:HostPoint)=>{const covers=Reflect.get(globalThis,'__OMNI_VIEWER_COVERS__');return typeof covers==='function'&&!!covers(e.clientX,e.clientY);};
   const findHit=async(e:HostPoint,hover:boolean)=>{
-    if(!allowed())return;
+    if(!allowed()||underViewer(e))return;
     const viewer=await doc.querySelector('[x-omnitts-viewer]');
     try{if(viewer&&await hitHost(viewer,e))return;}finally{await releaseHost(viewer);}
     const rows=[...bindings.entries()].filter(([,b])=>!hidden(b)&&!b.dead&&(!hover||!b.sound)&&(b.sound||ttsData().settings.enabled)).flatMap(([key,b])=>[

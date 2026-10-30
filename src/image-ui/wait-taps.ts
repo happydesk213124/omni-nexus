@@ -174,8 +174,10 @@ export function installWaitTaps(): void {
       doc ||= await host.getRootDocument();
       if (!doc) return;
       const report = (name: string) => (error: unknown) => dbg(name, { message: String(error) }, 'warn');
-      await listen('click', event => { void tap(event).catch(report('wait.tap')); });
-      await listen('pointerdown', down);
+      // 옴니 뷰어 lies over the chat: its taps are not taps on a pink slot beneath.
+      const underViewer = (event: HostPoint) => { const covers = Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__'); return typeof covers === 'function' && !!covers(event.clientX, event.clientY); };
+      await listen('click', event => { if (!underViewer(event)) void tap(event).catch(report('wait.tap')); });
+      await listen('pointerdown', event => { if (!underViewer(event)) down(event); });
       await listen('pointerup', lift);
       await listen('pointercancel', lift);
     } else if (!waiting && listeners.length && doc) {
