@@ -62,8 +62,8 @@ export const STATIC_CSS = `
 
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div>
 <div data-vn-hud><div data-vn-clock></div><button data-vn-act="log" type="button">기록</button><button data-vn-act="chat" type="button">채팅</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
-<div data-vn-box></div><div data-vn-log></div><div data-vn-count></div>
-<div data-vn-menu><button data-vn-act="older" type="button">이전 답장</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
+<div data-vn-box></div><div data-vn-log></div>
+<div data-vn-menu><button data-vn-act="older" type="button">이전 답장</button><button data-vn-act="newest" type="button">최신</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
 
 /** A person's place on stage: a silhouette until their picture comes. */
 export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"></div>`;
