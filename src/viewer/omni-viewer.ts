@@ -12,7 +12,7 @@ import { currentTtsContext, type TtsChatContext } from '../services/tts-context'
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { psGet, psSet } from '../storage/device-store';
-import { ttsData } from '../storage/tts-store';
+import { loadTtsData, ttsData } from '../storage/tts-store';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
@@ -31,7 +31,7 @@ const key = (s: string) => compactHash(s).slice(0, 10);
 const LIST = '.default-chat-screen > .flex-col-reverse';
 
 const STATIC_CSS = `
-[x-omni-vn]{position:fixed;z-index:45;overflow:hidden;background:#07090e;color:#f2f2f5;font:15px/1.6 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;border-radius:0}
+[x-omni-vn]{position:fixed;z-index:2147482000;isolation:isolate;overflow:hidden;background:#07090e;color:#f2f2f5;font:15px/1.6 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;border-radius:0}
 [x-omni-vn] [data-vn-bg],[x-omni-vn] [data-vn-stage]{position:absolute;inset:0}
 [x-omni-vn] [x-vn-bg]{display:none;position:absolute;inset:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover;filter:brightness(.62) blur(1px);margin:0!important;border-radius:0!important}
 [x-omni-vn] [x-vn-sp]{display:none;position:absolute;bottom:0;height:82%;max-width:70%;transition:opacity .25s,filter .25s,transform .25s}
@@ -70,23 +70,31 @@ async function release(value: unknown): Promise<void> { const r = value && typeo
 async function measure(): Promise<void> {
   if (!doc || !root) return;
   const screen = await doc.querySelector('.default-chat-screen');
-  if (!screen) return;
+  let next = rect;
   try {
-    const s = await screen.getBoundingClientRect();
-    let below = 0;
-    const others = await screen.querySelectorAll(':scope > :not(.absolute):not(.fixed):has(~ .flex-col-reverse)');
-    for (const node of await unwrap(others)) { const r = await node.getBoundingClientRect(); below += r.height; await release(node); }
-    const next = { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
-    if (JSON.stringify(next) === JSON.stringify(rect)) return;
-    rect = next;
-    await root.setStyleAttribute(`left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`);
-    controls = [];
-    for (const node of await unwrap(await root.querySelectorAll('[data-vn-act]'))) {
-      const html = await node.getOuterHTML(), act = /data-vn-act="([a-z]+)"/.exec(html)?.[1] || '';
-      if (act) controls.push({ act, r: await node.getBoundingClientRect() });
-      await release(node);
+    if (screen) {
+      const s = await screen.getBoundingClientRect();
+      let below = 0;
+      const others = await screen.querySelectorAll(':scope > :not(.absolute):not(.fixed):has(~ .flex-col-reverse)');
+      for (const node of await unwrap(others)) { const r = await node.getBoundingClientRect(); below += r.height; await release(node); }
+      next = { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
     }
   } finally { await release(screen); }
+  if (screen && next.width > 0) {
+    if (JSON.stringify(next) !== JSON.stringify(rect)) await root.setStyleAttribute(`left:${next.left}px;top:${next.top}px;width:${next.width}px;height:${next.height}px`);
+  } else {
+    // No chat screen to cover (another layout): the frame keeps its fallback size; read where that is.
+    const r = await root.getBoundingClientRect();
+    next = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+  }
+  if (JSON.stringify(next) === JSON.stringify(rect) && controls.length) return;
+  rect = next;
+  controls = [];
+  for (const node of await unwrap(await root.querySelectorAll('[data-vn-act]'))) {
+    const html = await node.getOuterHTML(), act = /data-vn-act="([a-z]+)"/.exec(html)?.[1] || '';
+    if (act) controls.push({ act, r: await node.getBoundingClientRect() });
+    await release(node);
+  }
 }
 async function unwrap<T>(list: SafeClassArray<T> | T[]): Promise<T[]> {
   if (Array.isArray(list)) return list;
@@ -260,35 +268,54 @@ function onStreamTick(text: string): void {
   }, 400);
 }
 
+// Until the chat screen is measured: the whole page above Risu's input bar.
+const FALLBACK_RECT = 'left:0;top:0;width:100vw;height:calc(100dvh - 96px)';
+let opening = false;
+/** A failure the user can see: in the frame when there is one, else Risu's own alert. */
+async function showError(error: unknown): Promise<void> {
+  const message = String((error as Error)?.message || error).slice(0, 300);
+  dbg('viewer.open', { message }, 'warn');
+  if (box) { await box.setInnerHTML(`<div data-vn-name>옴니 뷰어</div><div data-vn-text>열지 못했습니다: ${esc(message)}</div>`).catch(() => {}); return; }
+  const alert = Reflect.get(risuHost() ?? {}, 'alertError');
+  if (typeof alert === 'function') await Promise.resolve(alert.call(risuHost(), `[옴니 뷰어] ${message}`)).catch(() => {});
+}
 export async function openViewer(): Promise<void> {
   const host = risuHost();
-  if (open || !host?.getRootDocument) return;
-  doc = await host.getRootDocument();
-  if (!doc) return;
-  await Promise.all([loadPrefs(), loadEmotionData()]);
-  const body = await doc.querySelector('body');
-  if (!body) return;
-  for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn],[x-omni-vn-style]'))) { await old.remove(); await release(old); }
-  root = await doc.createElement('div'); await root.setAttribute('x-omni-vn', '1'); await root.setInnerHTML(FRAME);
-  const css = await doc.createElement('style'); await css.setAttribute('x-omni-vn-style', 'static'); await css.setTextContent(STATIC_CSS);
-  fold = await doc.createElement('style'); await fold.setAttribute('x-omni-vn-style', 'fold');
-  // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
-  await fold.setTextContent(`${LIST} > .chat-message-container:nth-child(n+3){display:none!important}`);
-  dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
-  for (const node of [css, fold, dyn, root]) await body.appendChild(node);
-  await release(css); await release(body);
-  [bgShelf, stage, box, logBox] = await Promise.all(['[data-vn-bg]', '[data-vn-stage]', '[data-vn-box]', '[data-vn-log]'].map(s => root!.querySelector(s)));
-  open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; sprites.clear(); backgrounds.clear(); shownSprites = []; shownBg = ''; lastBg = ''; logOpen = false;
-  await measure();
-  streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
-  await load();
-  const clock = storyClock(source) || (context ? context.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
-  const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setTextContent(clock); await release(clockNode); }
-  await render();
-  clearInterval(positionTimer);
-  positionTimer = setInterval(() => { if (open) void measure().catch(() => {}); }, 2000);
-  // Taps are listened to only while the viewer is open: closed, it costs Risu nothing.
-  clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
+  if (open || opening || !host?.getRootDocument) return;
+  opening = true;
+  try {
+    doc = await host.getRootDocument();
+    if (!doc) throw new Error('Risu 화면에 접근할 수 없습니다. 플러그인 권한을 허용해 주세요.');
+    await Promise.all([loadPrefs(), loadEmotionData(), loadTtsData()]);
+    const body = await doc.querySelector('body');
+    if (!body) throw new Error('Risu 화면을 찾지 못했습니다.');
+    for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn],[x-omni-vn-style]'))) { await old.remove(); await release(old); }
+    root = await doc.createElement('div'); await root.setAttribute('x-omni-vn', '1'); await root.setInnerHTML(FRAME);
+    await root.setStyleAttribute(FALLBACK_RECT);
+    const css = await doc.createElement('style'); await css.setAttribute('x-omni-vn-style', 'static'); await css.setTextContent(STATIC_CSS);
+    fold = await doc.createElement('style'); await fold.setAttribute('x-omni-vn-style', 'fold');
+    // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
+    await fold.setTextContent(`${LIST} > .chat-message-container:nth-child(n+3){display:none!important}`);
+    dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
+    for (const node of [css, fold, dyn, root]) await body.appendChild(node);
+    await release(css); await release(body);
+    [bgShelf, stage, box, logBox] = await Promise.all(['[data-vn-bg]', '[data-vn-stage]', '[data-vn-box]', '[data-vn-log]'].map(s => root!.querySelector(s)));
+    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; sprites.clear(); backgrounds.clear(); shownSprites = []; shownBg = ''; lastBg = ''; logOpen = false;
+    // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
+    clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
+    await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
+    clearInterval(positionTimer);
+    positionTimer = setInterval(() => { if (open) void measure().catch(() => {}); }, 2000);
+    streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
+    await load();
+    const clock = storyClock(source) || (context ? context.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
+    const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setTextContent(clock); await release(clockNode); }
+    await render();
+  } catch (error) {
+    await showError(error);
+  } finally {
+    opening = false;
+  }
 }
 export async function closeViewer(): Promise<void> {
   if (!open) return;

@@ -36,7 +36,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async createElement(tag) { count('createElement'); if (!['div', 'button', 'style'].includes(tag)) throw Error('Unsupported host element ' + tag); return new Safe(document.createElement(tag)); }
       }
       const older = Array.from({ length: 5 }, (_, i) => `<div class="chat-message-container"><div class="risu-chat" data-chat-index="${i}"><div class="chattext">old ${i}</div></div></div>`).join('');
-      document.body.innerHTML = `<div class="default-chat-screen" style="position:fixed;inset:0;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="6"><div class="chattext"><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${png}" style="width:50%"></div></div></div></div>${older}</div></div>`;
+      document.body.innerHTML = `<div style="position:fixed;inset:0;z-index:50"></div><div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="6"><div class="chattext"><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${png}" style="width:50%"></div></div></div></div>${older}</div></div>`;
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [['오미선_happy', 'assets/h.png', 'png'], ['하린_neutral', 'assets/n.png', 'png']], chats: [{ id: 'chat', message: [{ role: 'user', data: 'hi' }, { role: 'char', chatId: 'm1', data: reply }] }], chatPage: 0 };
       window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
@@ -56,6 +56,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.evaluate(() => window.buttons['omni-viewer-chat']());
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     const box = await page.locator('[x-omni-vn]').boundingBox();
+    assert.equal(await page.evaluate(({x,y})=>!!document.elementFromPoint(x,y)?.closest('[x-omni-vn]'),{x:box.x+box.width/2,y:box.y+box.height/2}),true,"nothing of Risu's is drawn over the viewer");
     assert.ok(box.height <= 900 - 90 + 1, 'Risu\'s input stays below the viewer');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-clock]').textContent(), '3월 2일 · 오후 4시 · 카페');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
@@ -85,6 +86,50 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style]').length), 0);
     assert.equal(await page.evaluate(() => window.liveListeners), 0);
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 6, 'the chat is whole again');
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM, when the chat cannot be read: the reason shows, ✕ still closes, no chat screen falls back to the page', async () => {
+  const built = await build({ stdin: { contents: "import {installOmniViewer} from './src/viewer/omni-viewer';Object.assign(window,{installOmniViewer});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
+    page.setDefaultTimeout(8000); page.on('pageerror', e => errors.push(e.message));
+    await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="margin:0"></body></html>' })); await page.goto('https://vn.test/');
+    await page.addScriptTag({ content: readFileSync('node_modules/dompurify/dist/purify.min.js', 'utf8') });
+    await page.evaluate(() => {
+      const saved = new Map(), local = new Map(); window.buttons = {};
+      class Safe {
+        constructor(node) { this.node = node; this.listeners = new Map(); }
+        async querySelector(s) { const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
+        async querySelectorAll(s) { return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
+        async setAttribute(k, v) { if (!k.startsWith('x-')) throw Error('Forbidden attribute write ' + k); this.node.setAttribute(k, v); }
+        async setTextContent(v) { this.node.textContent = v; }
+        async getOuterHTML() { return this.node.outerHTML; }
+        async setInnerHTML(v) { this.node.innerHTML = DOMPurify.sanitize(v); }
+        async setStyleAttribute(v) { this.node.style.cssText = v; }
+        async appendChild(child) { this.node.append(child.node); }
+        async remove() { this.node.remove(); }
+        async getBoundingClientRect() { return this.node.getBoundingClientRect().toJSON(); }
+        async addEventListener(type, fn) { const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); return id; }
+        async removeEventListener(type, id) { const x = this.listeners.get(id); if (x) { document.removeEventListener(type, x[1]); this.listeners.delete(id); } }
+        async createElement(tag) { if (!['div', 'button', 'style'].includes(tag)) throw Error('Unsupported host element ' + tag); return new Safe(document.createElement(tag)); }
+      }
+      document.body.innerHTML = '<div class="other-layout">채팅</div>';
+      window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
+        getDatabase: async () => ({ modules: [], enabledModules: [] }), getCharacter: async () => { throw new Error('채팅을 읽을 수 없음'); },
+        getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
+    });
+    await page.evaluate(() => { window.crypto.randomUUID = undefined; });
+    await page.addScriptTag({ content: built.outputFiles[0].text });
+    await page.evaluate(async () => { await window.installOmniViewer(); window.buttons['omni-viewer-menu'](); });
+    await page.waitForFunction(() => /열지 못했습니다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    const frame = await page.locator('[x-omni-vn]').boundingBox();
+    assert.ok(frame.width >= 390 && frame.height > 500, 'no chat screen: the page above the input');
+    const close = await page.locator('[x-omni-vn] [data-vn-act="close"]').boundingBox();
+    await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
+    await page.waitForFunction(() => !document.querySelector('[x-omni-vn]'));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
