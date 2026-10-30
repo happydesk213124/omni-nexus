@@ -19,6 +19,8 @@ test('the cast block is found outside reasoning only, and its people are the nam
   assert.equal(block.start, 0);
   assert.deepEqual(api.inlineCastCharacters(block.body).map(p => p.name), ['민수']);
   assert.deepEqual(api.inlineCastCharacters('[{"name":"하린"}]').map(p => p.name), ['하린'], 'a bare array works too');
+  assert.equal(api.inlineCastPlace('{"place":"cafe, indoors, day","new_characters":[]}'), 'cafe, indoors, day');
+  assert.equal(api.inlineCastPlace('{"new_characters":[]}'), '');
   assert.equal(api.inlineCastCharacters('{"new_characters":'), null, 'broken JSON is not an empty cast');
   assert.equal(api.inlineCastBlock('<think>' + cast + '</think>\n본문'), null, 'a draft in the thoughts registers no one');
   assert.equal(api.inlineCastBlock('<think>' + cast + '\n아직 생각 중', { live: true }), null, 'an open thought counts while streaming');
@@ -55,7 +57,8 @@ test('the prompt asks for the cast block only when the option is on', async () =
   const rules = await build({ stdin: { contents: "export {blockRules} from './src/services/inline-tagging';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node' });
   const { blockRules } = await import('data:text/javascript;base64,' + Buffer.from(rules.outputFiles[0].text).toString('base64'));
   const on = blockRules(1, 3, true), off = blockRules(1, 3, false);
-  assert.match(on, /\[\[inxc\]\]\{"new_characters":\[\.\.\.\]\}\[\[\/inxc\]\]/);
+  assert.match(on, /\[\[inxc\]\]\{"place":"\.\.\.","new_characters":\[\.\.\.\]\}\[\[\/inxc\]\]/);
+  assert.match(on, /Open every reply/, 'every reply: the viewer stages its place');
   assert.match(on, /unless the cast block already has them/);
   assert.doesNotMatch(off, /inxc|cast block/, 'off: the prompt is exactly as before');
 });

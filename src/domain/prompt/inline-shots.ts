@@ -147,6 +147,12 @@ export function inlineCastCharacters(body: unknown): NonNullable<TaggerResult['n
   if (!list) return null;
   return list.filter((row): row is Record<string, unknown> => shotObject(row) && typeof row.name === 'string' && !!row.name.trim()) as NonNullable<TaggerResult['new_characters']>;
 }
+/** Where a cast block opens the reply (a shot's place tags); '' when it says nowhere. */
+export function inlineCastPlace(body: unknown): string {
+  let parsed: unknown;
+  try { parsed = parseJsonLoose(String(body ?? '').trim()); } catch { return ''; }
+  return shotObject(parsed) && typeof parsed.place === 'string' ? parsed.place.trim().slice(0, 400) : '';
+}
 /** A cast block only registers people: it leaves the reply when the reply is baked (an unclosed one too). */
 export function stripInlineCastBlocks(raw: unknown): string {
   const text = String(raw ?? '');

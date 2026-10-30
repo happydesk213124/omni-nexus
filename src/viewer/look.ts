@@ -19,6 +19,8 @@ export const STATIC_CSS = `
 [x-omni-vn] *{box-sizing:border-box}
 [x-omni-vn] [data-vn-bg]{position:absolute;inset:0}
 [x-omni-vn] [data-vn-bg]::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 50% 40%,transparent 50%,rgba(0,0,0,.55) 100%),linear-gradient(transparent 55%,rgba(5,5,10,.55))}
+[x-omni-vn] div[x-vn-bg]{display:none;position:absolute;inset:0;animation:vn-fade .6s ease}
+[x-omni-vn] div[x-vn-bg] img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.72) saturate(1.05)}
 [x-omni-vn] img[x-vn-bg]{display:none;position:absolute;inset:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;object-fit:cover;filter:brightness(.7) saturate(1.05)}
 [x-omni-vn] [data-vn-cast]{position:absolute;inset:0;pointer-events:none}
 [x-omni-vn] [x-vn-p]{display:none;position:absolute;bottom:0;height:90%;aspect-ratio:13/19;max-width:82%;translate:-50% 0;transform-origin:50% 100%;
@@ -61,6 +63,7 @@ export const STATIC_CSS = `
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-30% 4%;rotate:3deg}to{opacity:1;translate:-50% 0;rotate:-1.2deg}}
 @keyframes vn-ch{to{opacity:1}}
+@keyframes vn-fade{from{opacity:0}to{opacity:1}}
 @keyframes vn-next{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 3px}}
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:auto;right:calc(50% - min(490px,46%) + 8px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
@@ -99,8 +102,8 @@ export function stageCss(s: StageState): string {
   });
   return [
     ...rules,
-    s.bg ? `[x-omni-vn] img[x-vn-bg="${s.bg}"]{display:block}` : '',
-    s.cg ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block}[x-omni-vn] [data-vn-box]{opacity:0}[x-omni-vn] img[x-vn-bg]{filter:brightness(.35) blur(3px)}` : '',
+    s.bg ? `[x-omni-vn] [x-vn-bg="${s.bg}"]{display:block}` : '',
+    s.cg ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block}[x-omni-vn] [data-vn-box]{opacity:0}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] span{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next]{animation-delay:0s!important}' : '',
     s.log ? '[x-omni-vn] [data-vn-log]{display:block}' : '',
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',

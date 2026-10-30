@@ -81,10 +81,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(again.imageSent || 0, 0, 'the same face again sends nothing');
     assert.ok((again.setInnerHTML || 0) + (again.setTextContent || 0) <= 2, 'a scene is one box and one style text: ' + JSON.stringify(again));
     const cg = await tap('');
-    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-bg]').length === 1);
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] img[x-vn-cg]').length === 1);
+    assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 0, 'an illustration is a photo, never the stage');
     assert.equal(cg.imageSent || 0, 0, 'the chat image is cloned, not re-sent');
-    assert.equal(cg.cloneNode, 2, 'one copy comes in as the photo, one stays as the background');
-    assert.equal(await page.locator('[x-omni-vn] img[x-vn-cg]').count(), 1);
+    assert.equal(cg.cloneNode, 1, 'one copy, as the photo');
     await tap('늦었지');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-name]').textContent(), '하린');
     // Everyone so far stays on stage; only the speaker is lit.

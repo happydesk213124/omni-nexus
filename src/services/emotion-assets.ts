@@ -15,7 +15,10 @@ import { resolveGenerationCfgParams } from '../domain/style-preset-overrides';
 import { matchIllustrationSpeaker, resolveTtsSpeaker } from '../domain/tts/identity';
 import { parseTtsMessage } from '../domain/tts/segment';
 import { imageBackendKind } from '../providers/comfy/client';
-import { generateT2i } from '../providers/nai/client';
+import { generateT2i, getNaiQuotaDetail } from '../providers/nai/client';
+import { getNaiInflight } from '../providers/nai/http';
+import { sleep } from '../core/util/async';
+import { compactHash } from '../domain/tts/segment';
 import { modelForRequest, type T2iRequest } from '../providers/nai/payload';
 import { emotionData, loadEmotionData, noteSeenFaces, saveEmotionData, type EmotionMade } from '../storage/emotion-store';
 import { putCharacterAssetRows } from '../storage/shot-character';
@@ -108,37 +111,117 @@ const listeners = new Set<() => void>();
 export function subscribeSprites(callback: () => void): () => void { listeners.add(callback); return () => listeners.delete(callback); }
 const notify = () => { for (const callback of listeners) callback(); };
 
-async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite> {
+/**
+ * One NovelAI image with the active style preset, saved as a Risu asset. Waits for
+ * NovelAI to be free first (one generation at a time per account: an illustration
+ * job running alongside would make one of them fail).
+ */
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number }): Promise<{ bytes: Uint8Array; path: string }> {
   const settings = (await loadEmotionData()).settings, config = getConfig(), nai = config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
   const family = settings.family, token = tokensForFamily(nai, family)[0] || '';
   if (!token) throw new Error('NovelAI API 키를 먼저 넣어 주세요.');
-  const looks = await spriteLooks(c, bot);
-  if (!looks) throw new Error(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const card = config.card, presets = Array.isArray(card.presets) ? card.presets : [];
   const preset = findPresetById(presets, cleanText(card.active_preset_id, 120)) ?? presets[0] ?? null;
   const familyNai = { ...nai, steps: naiStepsForFamily(nai, family), sampler: naiSamplerForFamily(nai, family) };
   const params = resolveGenerationCfgParams(familyNai, { cfg_scale: preset?.cfg_scale, cfg_rescale: preset?.cfg_rescale, steps: preset?.steps, sampler: preset?.sampler, scheduler: preset?.scheduler });
-  const prompt = emotionPrompt({ looks: joinTags(cleanText(preset?.positive || ''), looks), face, faceTags: settings.faceTags[face],
-    pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent });
   const req: T2iRequest = {
-    prompt, negative_prompt: cleanText(preset?.negative || ''), width: settings.width, height: settings.height,
+    prompt: input.prompt(cleanText(preset?.positive || ''), family), negative_prompt: joinTags(cleanText(preset?.negative || ''), input.negative), width: input.width, height: input.height,
     seed: Math.floor(Math.random() * 4294967295) || 1, steps: params.steps, cfg_scale: params.cfg_scale, cfg_rescale: params.cfg_rescale,
     sampler: params.sampler, scheduler: params.scheduler, model: modelForRequest(modelForFamily(nai, family)), var_plus: false, characters: [],
   };
+  while (getNaiInflight() > 0) await sleep(1500);
   const result = await generateT2i(token, req, cleanText(nai.request_url) || API_URL, { timeoutMs: 180000 });
   const bytes = new Uint8Array(result.raw_bytes);
   const host = risuHost();
   if (!host?.saveAsset) throw new Error('Risu 에셋 저장을 쓸 수 없습니다.');
   const path = normalizeAssetPath(cleanText(await host.saveAsset(bytes.slice()), 800));
   if (!path) throw new Error('감정 에셋 파일을 저장하지 못했습니다.');
-  const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png');
+  return { bytes, path };
+}
+async function remember(bot: EmotionBot, person: string, face: string, name: string, path: string): Promise<void> {
   const data = emotionData();
-  data.made = [...data.made.filter(m => !(m.bot === bot.id && m.person === c.id && m.face === face)), { bot: bot.id, person: c.id, face, name, path, registered: false, at: Date.now() }];
+  data.made = [...data.made.filter(m => !(m.bot === bot.id && m.person === person && m.face === face)), { bot: bot.id, person, face, name, path, registered: false, at: Date.now() }];
   await saveEmotionData();
-  dbg('emotion.sprite', { message: `${c.name} · ${face}`, path });
   registerWhenIdle();
+}
+async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite> {
+  const settings = (await loadEmotionData()).settings;
+  const looks = await spriteLooks(c, bot);
+  if (!looks) throw new Error(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
+  const { bytes, path } = await drawAndSave({
+    width: settings.width, height: settings.height,
+    prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
+      pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
+  });
+  const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png');
+  await remember(bot, c.id, face, name, path);
+  dbg('emotion.sprite', { message: `${c.name} · ${face}`, path });
   return { face, name, path, source: 'omni' };
+}
+
+// ── place backgrounds ──────────────────────────────────────────────────────
+/** Backgrounds live beside sprites in the store, under this person key and the place as their face. */
+export const PLACE_PERSON = '__place__';
+/** One background per place: its tags, lowercased, deduplicated, in order. */
+export const placeKey = (place: string): string => [...new Set(String(place || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean))].slice(0, 16).join(', ');
+export async function findBackground(place: string, bot: EmotionBot): Promise<EmotionSprite | null> {
+  const k = placeKey(place);
+  if (!k) return null;
+  const made = [...(await loadEmotionData()).made].reverse().find(m => m.bot === bot.id && m.person === PLACE_PERSON && m.face === k);
+  return made ? { face: k, name: made.name, path: made.path, source: 'omni' } : null;
+}
+/** A place with nobody in it, drawn once and kept as the bot's asset `bg_….png`. */
+export function makeBackground(place: string, bot: EmotionBot): Promise<EmotionSprite> {
+  const k = placeKey(place), jobKey = spriteJobKey(bot.id, PLACE_PERSON, k);
+  const running = jobs.get(jobKey);
+  if (running) return running;
+  const job = chain.catch(() => {}).then(async () => {
+    const { bytes, path } = await drawAndSave({ width: 1216, height: 832, negative: '1girl, 1boy, people, person, character, text',
+      prompt: style => joinTags(emotionData().settings.prefix, style, 'no humans, scenery, background, wide shot, detailed background', k, emotionData().settings.suffix) });
+    const name = `bg_${compactHash(k).slice(0, 12)}.${sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png'}`;
+    await remember(bot, PLACE_PERSON, k, name, path);
+    dbg('emotion.background', { message: k, path });
+    return { face: k, name, path, source: 'omni' as const };
+  }).finally(() => { jobs.delete(jobKey); notify(); });
+  jobs.set(jobKey, job); chain = job; notify();
+  return job;
+}
+
+// ── made ahead, while NovelAI idles ────────────────────────────────────────
+/**
+ * After a reply: the faces its speakers showed and its place, made before the
+ * viewer needs them. Only while no reply streams and NovelAI is free, only what
+ * the account generates without Anlas, and a few per reply.
+ */
+const AHEAD_PER_REPLY = 6;
+let freeCheck: { at: number; free: boolean } | undefined;
+async function generatesFree(): Promise<boolean> {
+  if (freeCheck && Date.now() - freeCheck.at < 10 * 60_000) return freeCheck.free;
+  const settings = (await loadEmotionData()).settings, token = tokensForFamily(getConfig().nai, settings.family)[0] || '';
+  let free = false;
+  try {
+    const q = await getNaiQuotaDetail(token) as { opus?: boolean; unlimitedImageGeneration?: boolean; v5_usage?: { remaining: number } };
+    free = !!(q.opus || q.unlimitedImageGeneration) && (settings.family !== 'v5' || !q.v5_usage || q.v5_usage.remaining > 0);
+  } catch { free = false; }
+  freeCheck = { at: Date.now(), free };
+  return free;
+}
+export async function makeAhead(wants: ReadonlyArray<{ person: TtsCharacter; face: string } | { place: string }>, bot: EmotionBot): Promise<number> {
+  const settings = (await loadEmotionData()).settings;
+  if (!settings.enabled || !settings.autoGenerate || !wants.length || !await generatesFree()) return 0;
+  let queued = 0;
+  for (const want of wants) {
+    if (queued >= AHEAD_PER_REPLY) break;
+    if ('place' in want) {
+      if (!settings.placeBackgrounds || !placeKey(want.place) || await findBackground(want.place, bot)) continue;
+      void makeBackground(want.place, bot).catch(() => {}); queued++;
+    } else {
+      if (await findSprite(want.person, want.face, bot) || !await spriteLooks(want.person, bot).catch(() => '')) continue;
+      void makeSprite(want.person, want.face, bot).catch(() => {}); queued++;
+    }
+  }
+  return queued;
 }
 
 // A character write carries the chats too: never while a reply streams.

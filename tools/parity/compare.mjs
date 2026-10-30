@@ -190,6 +190,9 @@ const normalize = (root) => {
             // Each spinner's shot, kept until it is drawn so a refused one becomes a pink slot — no 1.x key;
             // tests/spinner-park.test.mjs asserts what it holds (only the undrawn, let go once drawn).
             .filter((k) => k !== 'omniinline.waits')
+            // Where each streamed reply opens (its cast block's "place", for 옴니 뷰어's stage) — no 1.x key;
+            // the inline.cast_registers step asserts the place the route keeps.
+            .filter((k) => k !== 'omniviewer.places')
             // 2.5.33 boot stamp: a diagnostic written once per boot so the debug
             // dump can tell "iframe reloaded" from "shell failed to paint". No
             // 1.x key, and nothing reads it for behaviour.
@@ -742,7 +745,7 @@ const NEW_ONLY_STEPS = new Map([
   ['job.commit_output_unknown', v => v?.ok === false && v.error?.code === 'not_pending' ? null : 'unknown stream attached'],
   ['settings.stream_lines_contract', v => v?.defaultOff===true && v.defaultCount===30 && v.saved===true && v.disabledRetainsCount===true && v.bounds?.[0]===2 && v.bounds?.[1]===100 ? null : 'line batching settings contract failed'],
   ['job.commit_output_group_unknown', v => v?.ok===false && v.error?.code==='not_pending' ? null : 'unknown line group attached'],
-  ['inline.cast_registers', v => v?.unsupported===true || (JSON.stringify(v.registered)==='["캐스트민수"]' && v.chatsUnchanged===true && v.listed===true && v.broken==='bad_json' && v.missing==='bad_request') ? null : 'a cast block must register its named people at once, write no chat mid-reply, and refuse broken JSON or missing ids: '+JSON.stringify(v)],
+  ['inline.cast_registers', v => v?.unsupported===true || (JSON.stringify(v.registered)==='["캐스트민수"]' && v.place==='cafe, indoors, day' && v.chatsUnchanged===true && v.listed===true && v.broken==='bad_json' && v.missing==='bad_request') ? null : 'a cast block must register its named people at once, write no chat mid-reply, and refuse broken JSON or missing ids: '+JSON.stringify(v)],
   ['inline.park_writes_nothing', v => v?.unsupported===true || (v?.ok===true && v.chatsUnchanged===true && JSON.stringify(v.wait_ids)==='["b1"]') ? null : 'the end of a reply must not rewrite any chat; its blocks are the slots: '+JSON.stringify(v)],
   ['inline.generate_unknown', v => v?.unsupported===true || (v?.ok===false && v.error?.code==='not_found') ? null : 'a missing waiting slot started a job'],
   ['settings.stream_inline_contract', v => v?.unsupported===true || (v?.defaultOff===true && v.defaultAutogen===true && v.saved===true && v.coerced===true && v.restored===true) ? null : 'streaming tag settings contract failed'],

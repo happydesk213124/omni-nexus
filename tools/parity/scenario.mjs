@@ -273,12 +273,12 @@ export async function runScenario(N, handles) {
     const chats=async()=>JSON.stringify((await globalThis.risuai.getDatabase()).characters?.map(c=>c.chats));
     const before=await chats();
     const ids={character_id:'note-fixture',chat_id:'note-chat',char_index:0,chat_index:0,stream_id:'cast-stream',host_message_id:'cast-msg'};
-    const res=await post('/v1/inline-tags/cast',{...ids,body:'{"new_characters":[{"name":"캐스트민수","gender":"boy","hair_color":"black hair"},{"gender":"girl"}]}'});
+    const res=await post('/v1/inline-tags/cast',{...ids,body:'{"place":"cafe, indoors, day","new_characters":[{"name":"캐스트민수","gender":"boy","hair_color":"black hair"},{"gender":"girl"}]}'});
     const chatsUnchanged=before===await chats();
     const roster=(await get('/v1/characters?session_id='+encodeURIComponent(res.session_id||'')+'&character_id=note-fixture')).characters || [];
     const broken=await post('/v1/inline-tags/cast',{...ids,body:'{"new_characters":'});
     const missing=await post('/v1/inline-tags/cast',{body:'{"new_characters":[]}'});
-    return {registered:res.registered,chatsUnchanged,listed:roster.some(c=>c.name==='캐스트민수'),broken:broken.error?.code,missing:missing.error?.code};
+    return {registered:res.registered,place:res.place,chatsUnchanged,listed:roster.some(c=>c.name==='캐스트민수'),broken:broken.error?.code,missing:missing.error?.code};
   });
   await rec('inline.generate_unknown', async () => {
     if(!('stream_inline_tags' in (await get('/v1/settings')).settings.card))return {unsupported:true};
