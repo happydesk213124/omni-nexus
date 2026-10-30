@@ -13,14 +13,16 @@ import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { psGet, psSet } from '../storage/device-store';
 import { loadTtsData, ttsData } from '../storage/tts-store';
+import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
- * usable below). Built for a slow bridge: every SafeElement call is a round trip,
- * so the frame is made once and a scene change is one style text and one box:
- * images are never re-sent (chat images are cloned in place; a sprite's pixels go
- * over once and are only shown or hidden after), and taps are hit-tested against
- * rectangles measured once, so a tap costs no call at all.
+ * usable below). Everyone the reply has brought on stands there; whoever speaks
+ * steps forward, lit, the rest wait dimmed. Built for a slow bridge: every
+ * SafeElement call is a round trip, so the frame is made once and a scene is one
+ * style text and one box. Pixels never go over twice: a chat image is cloned in
+ * place, a sprite is sent once and then only shown or hidden, and taps are
+ * hit-tested against rectangles measured once, so a tap itself costs nothing.
  */
 const VIEWER_KEY = 'omniviewer.data';
 interface ViewerPrefs { auto: boolean; voice: boolean }
@@ -29,41 +31,18 @@ let prefs: ViewerPrefs = { auto: false, voice: true };
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const key = (s: string) => compactHash(s).slice(0, 10);
 const LIST = '.default-chat-screen > .flex-col-reverse';
-
-const STATIC_CSS = `
-[x-omni-vn]{position:fixed;z-index:2147482000;isolation:isolate;overflow:hidden;background:#07090e;color:#f2f2f5;font:15px/1.6 system-ui,sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;border-radius:0}
-[x-omni-vn] [data-vn-bg],[x-omni-vn] [data-vn-stage]{position:absolute;inset:0}
-[x-omni-vn] [x-vn-bg]{display:none;position:absolute;inset:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover;filter:brightness(.62) blur(1px);margin:0!important;border-radius:0!important}
-[x-omni-vn] [x-vn-sp]{display:none;position:absolute;bottom:0;height:82%;max-width:70%;transition:opacity .25s,filter .25s,transform .25s}
-[x-omni-vn] [x-vn-sp] img{height:100%;width:auto;display:block;object-fit:contain}
-[x-omni-vn] [data-vn-top]{position:absolute;top:0;left:0;right:0;display:flex;gap:6px;align-items:center;padding:8px;background:linear-gradient(#000a,#0000);z-index:3}
-[x-omni-vn] [data-vn-clock]{flex:1;min-width:0;font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-[x-omni-vn] button{all:unset;cursor:pointer;min-width:40px;height:36px;padding:0 10px;border-radius:10px;background:#ffffff1c;border:1px solid #ffffff2a;text-align:center;font-size:13px;box-sizing:border-box}
-[x-omni-vn] [data-vn-box]{position:absolute;left:10px;right:10px;bottom:54px;min-height:96px;max-height:42%;overflow:auto;padding:12px 14px 16px;border-radius:14px;background:#0d1018e6;border:1px solid #ffffff22;z-index:3;box-sizing:border-box}
-[x-omni-vn] [data-vn-name]{display:inline-block;margin:-26px 0 6px;padding:2px 12px;border-radius:8px;background:#7132f5;font-weight:700;font-size:14px}
-[x-omni-vn] [data-vn-name]:empty{display:none}
-[x-omni-vn] [data-vn-text]{white-space:pre-wrap;word-break:break-word;animation:omnivn-in .35s ease}
-[x-omni-vn] [data-vn-narr]{font-style:italic;opacity:.92}
-[x-omni-vn] [data-vn-ctrl]{position:absolute;left:0;right:0;bottom:0;display:flex;gap:6px;justify-content:center;padding:8px;z-index:3}
-[x-omni-vn] [data-vn-log]{display:none;position:absolute;inset:52px 10px 54px;overflow:auto;padding:12px;border-radius:14px;background:#0d1018f2;z-index:4;font-size:13px}
-[x-omni-vn] [data-vn-log] p{margin:0 0 8px}
-[x-omni-vn] [data-vn-hint]{position:absolute;right:12px;bottom:6px;font-size:11px;opacity:.6}
-@keyframes omnivn-in{from{opacity:.2;transform:translateY(4px)}to{opacity:1;transform:none}}
-`;
-const FRAME = `<div data-vn-bg></div><div data-vn-stage></div>
-<div data-vn-top><span data-vn-clock></span><button data-vn-act="log" type="button">로그</button><button data-vn-act="chat" type="button">채팅</button><button data-vn-act="close" type="button">✕</button></div>
-<div data-vn-box></div><div data-vn-log></div>
-<div data-vn-ctrl><button data-vn-act="prev" type="button">◀</button><button data-vn-act="auto" type="button">자동</button><button data-vn-act="voice" type="button">🔊</button><button data-vn-act="older" type="button">이전 답장</button><button data-vn-act="next" type="button">▶</button></div>`;
+// More than three on a phone's stage hide each other; the three last to speak stay.
+const MAX_CAST = 3;
 
 interface HostPoint { clientX: number; clientY: number }
 let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeElement | null = null, fold: SafeElement | null = null;
-let bgShelf: SafeElement | null = null, stage: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null;
+let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cgLayer: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null;
 let open = false, rect = { left: 0, top: 0, width: 0, height: 0 }, controls: Array<{ act: string; r: DOMRect }> = [];
 let context: TtsChatContext | null = null, bot: EmotionBot | null = null, messageIndex = -1, source = '', scenes: ViewerScene[] = [], at = 0;
 let streaming = false, logOpen = false, autoTimer: ReturnType<typeof setTimeout> | undefined, positionTimer: ReturnType<typeof setInterval> | undefined;
-const sprites = new Map<string, string>(), backgrounds = new Map<string, string>();
-let shownSprites: string[] = [], shownBg = '', cgMode = false, lastBg = '';
-let epoch = 0, voiceKey = '', clickId = '';
+/** Person key → their place on stage; `${person}|${path}` → the face sent into it; image id → cloned. */
+const people = new Map<string, SafeElement>(), faces = new Map<string, string>(), clones = new Set<string>();
+let bg = '', revealUntil = 0, revealed = false, epoch = 0, voiceKey = '', clickId = '';
 
 async function release(value: unknown): Promise<void> { const r = value && typeof value === 'object' ? Reflect.get(value, 'release') : null; if (typeof r === 'function') await r.call(value).catch(() => {}); }
 
@@ -124,7 +103,7 @@ function setSource(text: string, keepPlace: boolean): void {
   const settled = streaming ? text.slice(0, Math.max(0, text.lastIndexOf('\n'))) : text;
   const segments = parseTtsMessage(settled);
   scenes = buildScenes(settled, streaming ? settledWhileStreaming(segments.map(segment => ({ segment })), settled + '\n').map(r => r.segment) : segments, emotionData().settings.words);
-  if (!keepPlace) at = 0;
+  if (!keepPlace) { at = 0; bg = ''; }
   at = Math.max(0, Math.min(at, scenes.length - 1));
 }
 
@@ -141,87 +120,130 @@ function voice(scene: ViewerScene): void {
   void omniTts.play([request], 0).catch(error => dbg('viewer.voice', { message: String(error) }, 'warn'));
 }
 
-function personOf(scene: ViewerScene): TtsCharacter | null {
-  return scene.speaker && context ? resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope) : null;
+interface Member { key: string; name: string; person: TtsCharacter | null; face: string; speaking: boolean }
+/**
+ * Who stands on stage at scene `index`: everyone who has spoken so far (the
+ * last three), left to right in the order they came in, each with the face of
+ * their latest line. A speaker without a TTS card still stands, as a silhouette.
+ */
+function castAt(index: number): Member[] {
+  const seen = new Map<string, Member>(), order: string[] = [];
+  let speaker = '';
+  for (let i = 0; i <= index && i < scenes.length; i++) {
+    const scene = scenes[i]!;
+    if (scene.kind !== 'line' || !scene.speaker) continue;
+    const person = context ? resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope) : null;
+    const id = person ? `t${key(person.id)}` : `n${key(scene.speaker)}`;
+    const before = seen.get(id);
+    seen.set(id, { key: id, name: person?.name || scene.speaker, person, face: scene.face || before?.face || DEFAULT_EXPRESSION, speaking: false });
+    const pos = order.indexOf(id);
+    if (pos >= 0) order.splice(pos, 1);
+    order.push(id);
+    if (i === index) speaker = id;
+  }
+  const recent = new Set(order.slice(-MAX_CAST));
+  // Map keeps first-entrance order: people keep their spots as others come and go.
+  return [...seen.values()].filter(m => recent.has(m.key)).map(m => ({ ...m, speaking: m.key === speaker }));
 }
-/** The sprite element for a person's face, sent once. '' when they have none (yet). */
-async function spriteFor(person: TtsCharacter, face: string): Promise<string> {
-  if (!bot || !emotionData().settings.enabled) return '';
-  const sprite = await findSprite(person, face, bot) ?? (face !== DEFAULT_EXPRESSION ? await findSprite(person, DEFAULT_EXPRESSION, bot) : null);
-  if (emotionData().settings.autoGenerate && (!sprite || sprite.face !== face)) void makeSprite(person, face, bot).catch(() => {});
+function resolveName(speaker: string): string {
+  const person = context ? resolveTtsSpeaker(speaker, ttsData().characters, context.rosterScope) : null;
+  return person?.name || speaker;
+}
+
+/** A person's place on stage, made once. */
+async function placeFor(m: Member): Promise<SafeElement | null> {
+  const known = people.get(m.key);
+  if (known || !doc || !castLayer) return known ?? null;
+  const el = await doc.createElement('div');
+  await el.setAttribute('x-vn-p', m.key);
+  await el.setInnerHTML(personHtml(m.name));
+  await castLayer.appendChild(el);
+  people.set(m.key, el);
+  return el;
+}
+/** The picture for a member's face, sent into their place once. '' while they have none (it may be in the making). */
+async function faceFor(m: Member, place: SafeElement): Promise<string> {
+  if (!m.person || !bot || !emotionData().settings.enabled) return '';
+  const sprite = await findSprite(m.person, m.face, bot) ?? (m.face !== DEFAULT_EXPRESSION ? await findSprite(m.person, DEFAULT_EXPRESSION, bot) : null);
+  if (emotionData().settings.autoGenerate && sprite?.face !== m.face) void makeSprite(m.person, m.face, bot).catch(() => {});
   if (!sprite) return '';
-  const id = key(sprite.path);
-  if (sprites.has(sprite.path)) return id;
+  const id = key(sprite.path), slot = `${m.key}|${sprite.path}`;
+  if (faces.has(slot)) return id;
   const raw = await risuHost()?.readImage?.(sprite.path);
   const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-  if (!bytes?.byteLength || !doc || !stage) return '';
+  if (!bytes?.byteLength || !doc) return '';
   const holder = await doc.createElement('div');
   await holder.setAttribute('x-vn-sp', id);
   await holder.setInnerHTML(`<img alt="" src="data:${sniffImageMime(bytes) || 'image/png'};base64,${bytesToBase64(bytes)}">`);
-  await stage.appendChild(holder); await release(holder);
-  sprites.set(sprite.path, id);
+  await place.appendChild(holder); await release(holder);
+  faces.set(slot, id);
   return id;
 }
-/** A chat image as the background: the chat's own <img>, cloned (its pixels never cross the bridge). */
-async function backgroundFor(scene: ViewerScene): Promise<string> {
-  if (!scene.cg || !doc || !bgShelf) return '';
+/** A chat image, cloned into a layer (its pixels never cross the bridge). '' when the chat does not show it. */
+async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: 'x-vn-bg' | 'x-vn-cg'): Promise<string> {
+  if (!scene.cg || !doc || !layer) return '';
   const selector = scene.cg.kind === 'baked' ? `[data-inray-asset="${scene.cg.asset}"] img` : scene.cg.kind === 'slot' ? `[data-inx-slot="${scene.cg.n}"] img` : '';
   if (!selector) return '';
   const id = key(selector + (scene.cg.kind === 'slot' ? source.length : ''));
-  if (backgrounds.has(id)) return id;
+  if (clones.has(`${attr}:${id}`)) return id;
   const img = await doc.querySelector(`${LIST} ${selector}`);
   if (!img) return '';
   try {
     const copy = await img.cloneNode(true);
-    await copy.setAttribute('x-vn-bg', id);
-    await bgShelf.appendChild(copy); await release(copy);
+    await copy.setAttribute(attr, id);
+    await layer.appendChild(copy); await release(copy);
   } finally { await release(img); }
-  backgrounds.set(id, id);
+  clones.add(`${attr}:${id}`);
   return id;
 }
 
-/** One scene: one style text (what shows) and the box. */
+const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState =>
+  ({ cast, narration: false, bg, cg: '', revealed, log: logOpen, auto: prefs.auto, voice: prefs.voice, ...extra });
+let lastCast: Array<{ key: string; face: string; speaking: boolean }> = [];
+
+/** One scene: who stands where (one style text) and the box. */
 async function render(): Promise<void> {
   if (!open || !dyn || !box) return;
   const mine = ++epoch, scene = scenes[at];
   clearTimeout(autoTimer);
   if (!scene) {
-    await box.setInnerHTML(`<div data-vn-name></div><div data-vn-text data-vn-narr>${streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.'}</div>`);
+    await box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html);
     return;
   }
   if (scene.kind === 'cg') {
-    const bg = await backgroundFor(scene);
+    // A CG comes in like a photo over the dimmed stage, then stays as the background.
+    const [cg, behind] = [await cloneImage(scene, cgLayer, 'x-vn-cg'), await cloneImage(scene, bgLayer, 'x-vn-bg')];
     if (mine !== epoch) return;
-    if (bg) { lastBg = bg; shownBg = bg; cgMode = true; }
-    else { await go(1); return; }
-  } else {
-    cgMode = false;
-    const person = personOf(scene);
-    const sprite = person ? await spriteFor(person, scene.face || DEFAULT_EXPRESSION) : '';
-    if (mine !== epoch) return;
-    // The speaker stands in front; whoever spoke before stays, dimmed, beside them.
-    if (scene.kind === 'line') shownSprites = sprite ? [sprite, ...shownSprites.filter(s => s !== sprite)].slice(0, 2) : shownSprites.slice(0, 1).map(s => s);
-    shownBg = lastBg;
+    if (!cg) { await go(1); return; }
+    await dyn.setTextContent(stageCss(state(lastCast, { cg })));
+    bg = behind || bg;
+    if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
+    return;
   }
-  const [front, back] = shownSprites;
-  const css = [
-    shownBg ? `[x-omni-vn] [x-vn-bg="${shownBg}"]{display:block${cgMode ? ';object-fit:contain;filter:none;background:#000' : ''}}` : '',
-    !cgMode && front ? `[x-omni-vn] [x-vn-sp="${front}"]{display:block;left:${back ? '58%' : '50%'};transform:translateX(-50%)${scene.kind === 'narration' ? ';filter:brightness(.55)' : ''}}` : '',
-    !cgMode && back ? `[x-omni-vn] [x-vn-sp="${back}"]{display:block;left:26%;transform:translateX(-50%) scale(.94);filter:brightness(.5)}` : '',
-    cgMode ? '[x-omni-vn] [data-vn-box]{opacity:.0;pointer-events:none}' : '',
-    logOpen ? '[x-omni-vn] [data-vn-log]{display:block}' : '',
-    `[x-omni-vn] [data-vn-act="auto"]{background:${prefs.auto ? '#7132f5' : '#ffffff1c'}}[x-omni-vn] [data-vn-act="voice"]{opacity:${prefs.voice ? 1 : .45}}`,
-  ].join('\n');
-  await dyn.setTextContent(css);
-  const name = scene.kind === 'line' ? esc(scene.speaker) : '';
-  await box.setInnerHTML(`<div data-vn-name>${name}</div><div data-vn-text${scene.kind === 'narration' ? ' data-vn-narr' : ''}>${esc(scene.text)}</div><div data-vn-hint>${at + 1}/${scenes.length}${streaming ? ' · 받는 중' : ''}</div>`);
-  if (scene.kind !== 'cg') voice(scene);
-  if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), scene.kind === 'cg' ? 2500 : 1200 + scene.text.length * 55);
+  const members = castAt(at), cast: Array<{ key: string; face: string; speaking: boolean }> = [];
+  for (const m of members) {
+    const place = await placeFor(m);
+    cast.push({ key: m.key, face: place ? await faceFor(m, place) : '', speaking: m.speaking });
+  }
+  if (mine !== epoch) return;
+  lastCast = cast; revealed = false;
+  await dyn.setTextContent(stageCss(state(cast, { narration: scene.kind === 'narration' })));
+  const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line' });
+  revealUntil = Date.now() + revealMs;
+  await box.setInnerHTML(`${html}<div data-vn-count>${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}</div>`);
+  voice(scene);
+  if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
+}
+/** A tap while the letters still come in shows them all; the next tap moves on. */
+async function reveal(): Promise<void> {
+  if (!dyn) return;
+  revealed = true; revealUntil = 0;
+  await dyn.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
 }
 /** 자동: wait for the voice to end (when it speaks), then move on. */
 async function autoNext(mine: number): Promise<void> {
   if (mine !== epoch || !prefs.auto) return;
-  if (['playing', 'loading'].includes(String(omniTts.player.status)) && omniTts.player.key?.includes?.(voiceKey.split(':').pop() || '\u0000')) { autoTimer = setTimeout(() => void autoNext(mine), 500); return; }
+  if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { autoTimer = setTimeout(() => void autoNext(mine), 500); return; }
   await go(1);
 }
 async function go(delta: number): Promise<void> {
@@ -239,15 +261,16 @@ async function act(name: string): Promise<void> {
   else if (name === 'older') { await load(Math.max(0, messageIndex - 1)); await render(); }
   else if (name === 'log') {
     logOpen = !logOpen;
-    if (logOpen && logBox) await logBox.setInnerHTML(scenes.filter(s => s.kind !== 'cg').map((s, i) => `<p${i === at ? ' style="color:#c4b5fd"' : ''}>${s.kind === 'line' ? `<b>${esc(s.speaker)}</b> ` : ''}${esc(s.text)}</p>`).join('') || '<p>없음</p>');
-    await render();
+    if (logOpen && logBox) await logBox.setInnerHTML(scenes.map((s, i) => s.kind === 'cg' ? '' : `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`).join('') || '<p>기록이 없습니다.</p>');
+    await dyn?.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
   }
 }
 const inside = (p: HostPoint, r: { left: number; top: number; width: number; height: number }) => p.clientX >= r.left && p.clientX <= r.left + r.width && p.clientY >= r.top && p.clientY <= r.top + r.height;
 function onClick(p: HostPoint): void {
   if (!open || !Number.isFinite(p?.clientX) || !inside(p, rect)) return;
   const hit = controls.find(c => inside(p, c.r));
-  void (hit ? act(hit.act) : logOpen ? act('log') : go(1)).catch(error => dbg('viewer.tap', { message: String(error) }, 'warn'));
+  const next = hit ? act(hit.act) : logOpen ? act('log') : Date.now() < revealUntil && !revealed ? reveal() : go(1);
+  void next.catch(error => dbg('viewer.tap', { message: String(error) }, 'warn'));
 }
 
 /** The streaming reply: a scene appears once its line has ended (the TTS rule). */
@@ -275,7 +298,7 @@ let opening = false;
 async function showError(error: unknown): Promise<void> {
   const message = String((error as Error)?.message || error).slice(0, 300);
   dbg('viewer.open', { message }, 'warn');
-  if (box) { await box.setInnerHTML(`<div data-vn-name>옴니 뷰어</div><div data-vn-text>열지 못했습니다: ${esc(message)}</div>`).catch(() => {}); return; }
+  if (box) { await box.setInnerHTML(boxHtml({ speaker: '옴니 뷰어', text: `열지 못했습니다: ${message}`, narration: false }).html).catch(() => {}); return; }
   const alert = Reflect.get(risuHost() ?? {}, 'alertError');
   if (typeof alert === 'function') await Promise.resolve(alert.call(risuHost(), `[옴니 뷰어] ${message}`)).catch(() => {});
 }
@@ -299,8 +322,8 @@ export async function openViewer(): Promise<void> {
     dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
-    [bgShelf, stage, box, logBox] = await Promise.all(['[data-vn-bg]', '[data-vn-stage]', '[data-vn-box]', '[data-vn-log]'].map(s => root!.querySelector(s)));
-    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; sprites.clear(); backgrounds.clear(); shownSprites = []; shownBg = ''; lastBg = ''; logOpen = false;
+    [bgLayer, castLayer, cgLayer, box, logBox] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]'].map(s => root!.querySelector(s)));
+    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bg = ''; lastCast = []; logOpen = false; revealed = false;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
@@ -309,7 +332,7 @@ export async function openViewer(): Promise<void> {
     streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
     await load();
     const clock = storyClock(source) || (context ? context.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
-    const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setTextContent(clock); await release(clockNode); }
+    const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setInnerHTML(clock ? `<span>${esc(clock)}</span>` : ''); await release(clockNode); }
     await render();
   } catch (error) {
     await showError(error);
@@ -323,7 +346,9 @@ export async function closeViewer(): Promise<void> {
   if (doc && clickId) { await doc.removeEventListener('click', clickId).catch(() => {}); clickId = ''; }
   for (const node of [root, dyn, fold]) if (node) { await node.remove().catch(() => {}); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
-  root = dyn = fold = bgShelf = stage = box = logBox = null;
+  for (const place of people.values()) await release(place);
+  people.clear();
+  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = null;
 }
 export const viewerOpen = (): boolean => open;
 
