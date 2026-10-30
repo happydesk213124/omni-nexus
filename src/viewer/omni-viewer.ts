@@ -296,7 +296,7 @@ async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: '
 }
 
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState =>
-  ({ cast, narration: false, bg, cg: '', revealed, log: logOpen, strip: stripOpen, auto: prefs.auto, voice: prefs.voice, ...extra });
+  ({ cast, narration: false, bg, cg: '', revealed, log: logOpen, strip: stripOpen, auto: prefs.auto, voice: prefs.voice, count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
 /** Fills the strip, newest first: the chat's own images cloned (no pixels sent), a label where the chat draws none. */
 async function buildStrip(): Promise<void> {
@@ -341,7 +341,14 @@ async function jumpTo(item: StripItem): Promise<void> {
 let lastCast: Array<{ key: string; face: string; speaking: boolean }> = [];
 
 /** One scene: who stands where (one style text) and the box. */
-async function render(): Promise<void> {
+/**
+ * One scene. The stage (one style text) is always brought up to date — a face may
+ * have arrived — but the box and the voice only change when the scene does: a
+ * streaming reply re-reads every 0.4 s, and rewriting the box each time restarted
+ * its letters over and over.
+ */
+let shownSig = '';
+async function render(force = false): Promise<void> {
   if (!open || !dyn || !box) return;
   const mine = ++epoch, scene = scenes[at];
   clearTimeout(autoTimer);
@@ -368,11 +375,16 @@ async function render(): Promise<void> {
     cast.push({ key: m.key, face: place ? await faceFor(m, place) : '', speaking: m.speaking });
   }
   if (mine !== epoch) return;
-  lastCast = cast; revealed = false;
+  // The line itself, not which message holds it: a streaming reply becomes its saved self mid-scene.
+  const sig = `${scene.id}|${scene.text}`, same = !force && sig === shownSig;
+  lastCast = cast;
+  if (!same) revealed = false;
   await dyn.setTextContent(stageCss(state(cast, { narration: scene.kind === 'narration' })));
+  if (same) return;
+  shownSig = sig;
   const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line' });
   revealUntil = Date.now() + revealMs;
-  await box.setInnerHTML(`${html}<div data-vn-count>${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}</div>`);
+  await box.setInnerHTML(html);
   voice(scene);
   if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
 }
@@ -392,6 +404,8 @@ async function autoNext(mine: number): Promise<void> {
 async function go(delta: number): Promise<void> {
   const next = at + delta;
   if (next >= 0 && next < scenes.length) { at = next; await render(); return; }
+  // A long swipe stops at the reply's edge first; the next one crosses into the other reply.
+  if (Math.abs(delta) > 1 && at !== (delta > 0 ? scenes.length - 1 : 0)) { at = delta > 0 ? scenes.length - 1 : 0; await render(); return; }
   if (streaming) return;
   if (await stepReply(delta > 0 ? 1 : -1)) await render();
 }
@@ -400,8 +414,8 @@ async function act(name: string): Promise<void> {
   if (name === 'close' || name === 'chat') { await closeViewer(); return; }
   if (name === 'next') await go(1);
   else if (name === 'prev') await go(-1);
-  else if (name === 'auto') { prefs.auto = !prefs.auto; savePrefs(); await render(); }
-  else if (name === 'voice') { prefs.voice = !prefs.voice; savePrefs(); if (!prefs.voice) omniTts.stop(); await render(); }
+  else if (name === 'auto') { prefs.auto = !prefs.auto; savePrefs(); await render(true); }
+  else if (name === 'voice') { prefs.voice = !prefs.voice; savePrefs(); if (!prefs.voice) omniTts.stop(); await restyle(); }
   else if (name === 'older') { if (await stepReply(-1)) await render(); }
   else if (name === 'newest') { await load(); await render(); }
   else if (name === 'strip') {
@@ -411,9 +425,19 @@ async function act(name: string): Promise<void> {
     if (stripOpen) setTimeout(() => { if (stripOpen) void measureThumbs().catch(() => {}); }, 380);
   }
   else if (name === 'log') {
-    logOpen = !logOpen;
-    if (logOpen && logBox) await logBox.setInnerHTML(scenes.map((s, i) => s.kind === 'cg' ? '' : `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`).join('') || '<p>기록이 없습니다.</p>');
-    await dyn?.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
+    logOpen = !logOpen; logRows = []; logRect = null;
+    if (logOpen && logBox) {
+      const rows = scenes.flatMap((s, i) => s.kind === 'cg' ? [] : [i]);
+      await logBox.setInnerHTML(rows.map(i => { const s = scenes[i]!; return `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`; }).join('') || '<p>기록이 없습니다.</p>');
+      logRows = rows;
+    }
+    await restyle();
+    if (logOpen && logBox) {
+      // A real scroll area: the wheel and a finger scroll it. Opened at the line on screen.
+      const now = await logBox.querySelector('[data-now]');
+      if (now) { await quiet(now.scrollIntoView({ block: 'center' })); await release(now); }
+      logRect = await logBox.getBoundingClientRect();
+    }
   }
 }
 const inside = (p: HostPoint, r: { left: number; top: number; width: number; height: number }) => p.clientX >= r.left && p.clientX <= r.left + r.width && p.clientY >= r.top && p.clientY <= r.top + r.height;
@@ -426,8 +450,53 @@ function onClick(p: HostPoint): void {
     void (tile ? jumpTo(tile) : act('strip')).catch(error => dbg('viewer.strip', { message: String(error) }, 'warn'));
     return;
   }
-  const next = hit ? act(hit.act) : logOpen ? act('log') : Date.now() < revealUntil && !revealed ? reveal() : go(1);
+  // The click a drag ends with is not a tap on the stage (buttons still work).
+  if (!hit && Date.now() < swipeUntil) return;
+  if (logOpen && !hit) {
+    void (logRect && inside(p, logRect) ? jumpFromLog(p.clientY) : act('log')).catch(error => dbg('viewer.log', { message: String(error) }, 'warn'));
+    return;
+  }
+  const next = hit ? act(hit.act) : Date.now() < revealUntil && !revealed ? reveal() : go(1);
   void next.catch(error => dbg('viewer.tap', { message: String(error) }, 'warn'));
+}
+
+/** Only the stage's style text: buttons' state, panels. */
+async function restyle(): Promise<void> {
+  await dyn?.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
+}
+/**
+ * The tapped line of the open 기록: its rows are in reading order, so a binary
+ * search over their rectangles finds it in a few calls, however long the list.
+ */
+let logRows: number[] = [], logRect: DOMRect | null = null;
+async function jumpFromLog(y: number): Promise<void> {
+  if (!logBox || !logRows.length) return;
+  const rows = await unwrap(await logBox.querySelectorAll('p'));
+  let lo = 0, hi = rows.length - 1, found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, r = await rows[mid]!.getBoundingClientRect();
+    if (y < r.top) hi = mid - 1; else if (y > r.bottom) lo = mid + 1; else { found = mid; break; }
+  }
+  for (const row of rows) await release(row);
+  if (found < 0 || logRows[found] === undefined) return;
+  at = logRows[found]!; logOpen = false; logRows = []; logRect = null;
+  await render(true);
+}
+/**
+ * Swipes: Risu gives a plugin no wheel events, so dragging the stage is how to
+ * run through it — up goes on, down goes back, a longer drag several scenes at
+ * once. The click a drag ends with is not a tap.
+ */
+let swipeFrom: { x: number; y: number } | null = null, swipeUntil = 0, downId = '', upId = '';
+function onDown(p: HostPoint): void { swipeFrom = open && !logOpen && !stripOpen && Number.isFinite(p?.clientY) && inside(p, rect) ? { x: p.clientX, y: p.clientY } : null; }
+function onUp(p: HostPoint): void {
+  const from = swipeFrom; swipeFrom = null;
+  if (!from || !open || !Number.isFinite(p?.clientY)) return;
+  const dy = p.clientY - from.y, dx = p.clientX - from.x;
+  if (Math.abs(dy) < 36 || Math.abs(dy) < Math.abs(dx)) return;
+  swipeUntil = Date.now() + 450;
+  const steps = Math.min(12, Math.max(1, Math.round(Math.abs(dy) / 70)));
+  void go(dy < 0 ? steps : -steps).catch(error => dbg('viewer.swipe', { message: String(error) }, 'warn'));
 }
 
 /** The streaming reply: a scene appears once its line has ended (the TTS rule). */
@@ -444,7 +513,7 @@ function onStreamTick(text: string): void {
     if (waiting && at < scenes.length - 1) at++;
     void render();
     // No chunk for a while: the reply ended. Read the saved one (its images baked by then or soon).
-    setTimeout(() => { if (open && streaming && Date.now() - lastTick >= 4000) { streaming = false; void load(undefined, true).then(render); } }, 4200);
+    setTimeout(() => { if (open && streaming && Date.now() - lastTick >= 4000) { streaming = false; void load(undefined, true).then(() => render()); } }, 4200);
   }, 400);
 }
 
@@ -481,9 +550,12 @@ export async function openViewer(): Promise<void> {
     await release(css); await release(body);
     [bgLayer, castLayer, cgLayer, box, logBox, stripEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]'].map(s => root!.querySelector(s)));
     stripOpen = false; stripItems = []; thumbs = [];
+    shownSig = '';
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; lastCast = []; logOpen = false; revealed = false;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
+    downId = await doc.addEventListener('pointerdown', (e: HostPoint) => onDown(e));
+    upId = await doc.addEventListener('pointerup', (e: HostPoint) => onUp(e));
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
     clearInterval(positionTimer);
     positionTimer = setInterval(() => { if (open) void measure().catch(() => {}); }, 2000);
@@ -502,6 +574,8 @@ export async function closeViewer(): Promise<void> {
   if (!open) return;
   open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer);
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
+  if (doc && downId) { await quiet(doc.removeEventListener('pointerdown', downId)); downId = ''; }
+  if (doc && upId) { await quiet(doc.removeEventListener('pointerup', upId)); upId = ''; }
   for (const node of [root, dyn, fold]) if (node) { await quiet(node.remove()); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   for (const place of people.values()) await release(place);

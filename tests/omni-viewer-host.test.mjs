@@ -63,7 +63,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await page.evaluate(({x,y})=>!!document.elementFromPoint(x,y)?.closest('[x-omni-vn]'),{x:box.x+box.width/2,y:box.y+box.height/2}),true,"nothing of Risu's is drawn over the viewer");
     assert.ok(box.height <= 900 - 90 + 1, 'Risu\'s input stays below the viewer');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-clock]').textContent(), '3월 2일 · 오후 4시 · 카페');
-    assert.match(await page.locator('[x-omni-vn] [data-vn-count]').textContent(), /^1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
+    // The counter is drawn by the scene's style text (::after), costing no call of its own.
+    assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-count]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
     // The letters of these short lines are all in within half a second; a tap before that only completes them.
     const tap = async expected => {
@@ -114,6 +115,23 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.mouse.click(tile.x + tile.width / 2, tile.y + tile.height / 2);
     await page.waitForFunction(() => (document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '').includes('img[x-vn-cg='));
     assert.equal((await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent)).includes('[data-vn-strip]{translate:0 0}'), false, 'a jump closes the strip');
+    // A streaming reply re-reads every tick: the line on screen keeps its letters (it once restarted them each time).
+    await press('newest');
+    await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
+    await page.waitForTimeout(700);
+    await page.evaluate(() => { window.calls = {}; });
+    await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
+    await page.waitForTimeout(700);
+    assert.equal((await page.evaluate(() => window.calls.setInnerHTML)) || 0, 0, 'the same line is not written again');
+    // A drag up runs on through several scenes; the click that ends it is no tap.
+    await page.waitForTimeout(4300);
+    await press('newest');
+    await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    const cx = box.x + box.width / 2;
+    await page.mouse.move(cx, box.y + box.height * 0.6); await page.mouse.down();
+    await page.mouse.move(cx, box.y + box.height * 0.4, { steps: 4 }); await page.mouse.move(cx, box.y + box.height * 0.3, { steps: 4 }); await page.mouse.up();
+    await page.waitForFunction(() => /^"[3-5] \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-count]'), '::after').content));
     // ✕ closes: no frame, no styles, no listener.
     const close = await page.locator('[x-omni-vn] [data-vn-act="close"]').boundingBox();
     await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
