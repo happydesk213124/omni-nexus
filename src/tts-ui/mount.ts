@@ -15,6 +15,7 @@ import { bindAudioActivation, cancelAudioActivation, confirmAudioActivation, pro
 import { ttsData } from '../storage/tts-store';
 import { injectSoundPanels, mountSound } from '../sound-ui/mount';
 import { soundAwareHtml } from '../sound-ui/markup';
+import { mountEmotion } from '../emotion-ui/mount';
 
 /** Built for the open menu page (TTS / BGM·효과음 / models) so the first paint is already right. */
 export const ttsSettingsHtml = () => soundAwareHtml(layout.html);
@@ -60,5 +61,6 @@ export async function mountTts(): Promise<void> {
   placeLlmCommandButton('voice-llm-command', el('add-voice'), () => voiceLlmCommand(refresh));
   document.addEventListener('omnitts-library',refresh);
   await mountSound(root, tab, live); if(!live())return;
+  await mountEmotion(root, live); if(!live())return;
   if(ttsData().settings.enabled)promptInitialAudioActivation();
 }

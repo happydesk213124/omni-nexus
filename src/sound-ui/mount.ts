@@ -1,3 +1,4 @@
+import { addEmotionStructure } from '../emotion-ui/mount';
 import { SOUND_DIALOG } from './panels';
 import { SoundLibrary } from './library';
 import { bindSoundSettings } from './settings';
@@ -18,6 +19,7 @@ import { SOUND_PICK_DIALOG, bindSfxPicker } from './picker';
 export function injectSoundPanels(root: HTMLElement): void {
   // Usually already in the markup (soundAwareHtml); a root built elsewhere gets it here.
   addSoundStructure(root);
+  addEmotionStructure(root);
   if (!el('snd-item-dialog')) el('tts-dialogs')?.insertAdjacentHTML('beforeend', SOUND_DIALOG + SOUND_PICK_DIALOG);
   let style = document.getElementById('omnisound-page-style');
   if (!style) { style = document.createElement('style'); style.id = 'omnisound-page-style'; document.head.append(style); }

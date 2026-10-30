@@ -1,19 +1,20 @@
 import { SOUND_TABS } from './panels';
 
 /**
- * The menu group "TTS · BGM · 효과음" has three entries that all open the one
+ * The menu group "TTS · BGM · 감정 에셋" has four entries that all open the one
  * frozen-UI tab slot (`curation`); which panels show is decided here.
  */
-export type SoundPage = 'tts' | 'sound' | 'models';
+export type SoundPage = 'tts' | 'sound' | 'models' | 'asset';
 export const SOUND_PAGE_TABS: Record<SoundPage, readonly string[]> = {
   tts: ['tts-settings', 'tts-characters', 'tts-voices'],
   sound: SOUND_TABS.map(([id]) => id),
   models: ['tts-models'],
+  asset: ['emo-assets'],
 };
-export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', models: '소리 모델 설정' };
+export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', models: '소리 모델 설정', asset: '감정 에셋' };
 let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
-export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models') page = next; }
+export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models' || next === 'asset') page = next; }
 
 /**
  * Marks the open page in the menu and the header. The vendor marks every entry
