@@ -60,7 +60,9 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.ok(box.height <= 900 - 90 + 1, 'Risu\'s input stays below the viewer');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-clock]').textContent(), '3월 2일 · 오후 4시 · 카페');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
+    // The letters of these short lines are all in within half a second; a tap before that only completes them.
     const tap = async expected => {
+      await page.waitForTimeout(450);
       await page.evaluate(() => { window.calls = {}; });
       await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.45);
       await page.waitForFunction(text => (document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '').includes(text), expected);
@@ -76,9 +78,19 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const cg = await tap('');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-bg]').length === 1);
     assert.equal(cg.imageSent || 0, 0, 'the chat image is cloned, not re-sent');
-    assert.equal(cg.cloneNode, 1);
+    assert.equal(cg.cloneNode, 2, 'one copy comes in as the photo, one stays as the background');
+    assert.equal(await page.locator('[x-omni-vn] img[x-vn-cg]').count(), 1);
     await tap('늦었지');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-name]').textContent(), '하린');
+    // Everyone so far stays on stage; only the speaker is lit.
+    const stage = await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-p]')].filter(n => getComputedStyle(n).display !== 'none').map(n => getComputedStyle(n).filter));
+    assert.equal(stage.length, 2, 'both people who have spoken stand');
+    assert.equal(stage.filter(f => f === 'none').length, 1, 'exactly one is lit: ' + JSON.stringify(stage));
+    // Back to a long-enough line: a tap during its letters completes them and stays.
+    await page.locator('[x-omni-vn] [data-vn-act="prev"]').click(); await page.locator('[x-omni-vn] [data-vn-act="prev"]').click();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.45);
+    await page.waitForFunction(() => /animation:none/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    assert.match(await page.locator('[x-omni-vn] [data-vn-text]').textContent(), /자리 맡아놨어/, 'the same line, now complete');
     // ✕ closes: no frame, no styles, no listener.
     const close = await page.locator('[x-omni-vn] [data-vn-act="close"]').boundingBox();
     await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
