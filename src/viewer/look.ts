@@ -49,6 +49,11 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-menu] button{height:28px;min-width:30px;padding:0 9px;font-size:11px;background:transparent;border-color:transparent;color:#d8cfb4}
 [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{color:var(--gold);font-size:13px}
 [x-omni-vn] [data-vn-count]{position:absolute;left:22px;bottom:24px;font-size:10px;letter-spacing:.08em;color:#9c93ad;z-index:4}
+[x-omni-vn] [data-vn-act="strip"]{position:absolute;right:0;top:38%;z-index:4;height:auto;min-width:0;padding:12px 7px;border-radius:12px 0 0 12px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:11px;color:var(--gold);background:rgba(10,9,17,.72);border:1px solid var(--line);border-right:0}
+[x-omni-vn] [data-vn-strip]{position:absolute;top:56px;right:0;width:min(42%,210px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:hidden;padding:10px;z-index:5;display:flex;flex-direction:column;gap:8px;
+  background:rgba(10,9,17,.94);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
+[x-omni-vn] [data-vn-strip] [x-vn-thumb]{flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
+[x-omni-vn] [data-vn-strip] div[x-vn-thumb]{display:flex;align-items:center;justify-content:center;font-size:11px;color:#bdb4cf;background:rgba(255,255,255,.05)}
 [x-omni-vn] [data-vn-log]{display:none;position:absolute;inset:56px 12px 12px;overflow:auto;padding:16px 16px 24px;border-radius:16px;z-index:5;background:rgba(10,9,17,.96);border:1px solid var(--line);font:14px/1.7 ${SERIF}}
 [x-omni-vn] [data-vn-log] p{margin:0 0 10px}
 [x-omni-vn] [data-vn-log] b{color:var(--gold);margin-right:6px}
@@ -62,7 +67,7 @@ export const STATIC_CSS = `
 
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div>
 <div data-vn-hud><div data-vn-clock></div><button data-vn-act="log" type="button">기록</button><button data-vn-act="chat" type="button">채팅</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
-<div data-vn-box></div><div data-vn-log></div>
+<div data-vn-box></div><div data-vn-log></div><button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
 <div data-vn-menu><button data-vn-act="older" type="button">이전 답장</button><button data-vn-act="newest" type="button">최신</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
 
 /** A person's place on stage: a silhouette until their picture comes. */
@@ -77,6 +82,8 @@ export interface StageState {
   /** The box shows its whole text at once (a tap during the reveal). */
   revealed: boolean;
   log: boolean;
+  /** The right-hand strip of illustrations is open. */
+  strip?: boolean;
   auto: boolean;
   voice: boolean;
 }
@@ -96,6 +103,7 @@ export function stageCss(s: StageState): string {
     s.cg ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block}[x-omni-vn] [data-vn-box]{opacity:0}[x-omni-vn] img[x-vn-bg]{filter:brightness(.35) blur(3px)}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] span{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next]{animation-delay:0s!important}' : '',
     s.log ? '[x-omni-vn] [data-vn-log]{display:block}' : '',
+    s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#d8cfb4'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}`,
   ].filter(Boolean).join('\n');
 }

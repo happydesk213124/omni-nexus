@@ -11,7 +11,7 @@ import { omniSound } from '../services/sound-runtime';
 import { soundData, soundReady } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
-import { buildScenes, storyClock, type ViewerScene } from '../domain/viewer/scenes';
+import { buildScenes, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
 import { currentEmotionBot, findSprite, makeSprite, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
@@ -41,7 +41,11 @@ const MAX_CAST = 3;
 
 interface HostPoint { clientX: number; clientY: number }
 let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeElement | null = null, fold: SafeElement | null = null;
-let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cgLayer: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null;
+let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cgLayer: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null, stripEl: SafeElement | null = null;
+// The right-hand strip: the chat's latest illustrations, each a way back to its scene.
+interface StripItem { key: string; message: number; asset: string }
+let stripOpen = false, stripItems: StripItem[] = [], thumbs: Array<StripItem & { r: DOMRect }> = [];
+const STRIP_MAX = 6;
 let open = false, rect = { left: 0, top: 0, width: 0, height: 0 }, controls: Array<{ act: string; r: DOMRect }> = [];
 let context: TtsChatContext | null = null, bot: EmotionBot | null = null, messageIndex = -1, source = '', scenes: ViewerScene[] = [], at = 0;
 let streaming = false, logOpen = false, autoTimer: ReturnType<typeof setTimeout> | undefined, positionTimer: ReturnType<typeof setInterval> | undefined;
@@ -256,7 +260,48 @@ async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: '
 }
 
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState =>
-  ({ cast, narration: false, bg, cg: '', revealed, log: logOpen, auto: prefs.auto, voice: prefs.voice, ...extra });
+  ({ cast, narration: false, bg, cg: '', revealed, log: logOpen, strip: stripOpen, auto: prefs.auto, voice: prefs.voice, ...extra });
+
+/** Fills the strip, newest first: the chat's own images cloned (no pixels sent), a label where the chat draws none. */
+async function buildStrip(): Promise<void> {
+  if (!doc || !stripEl || !context) return;
+  const items: StripItem[] = [];
+  for (const i of charIndexes().reverse()) {
+    for (const img of replyImages(String(context.messages[i]?.data ?? '')).reverse()) {
+      if (img.cg.kind === 'baked' && items.length < STRIP_MAX) items.push({ key: key(`${i}|${img.cg.asset}`), message: i, asset: img.cg.asset });
+    }
+    if (items.length >= STRIP_MAX) break;
+  }
+  await stripEl.setInnerHTML(items.length ? '' : '<p style="font-size:12px;opacity:.7;margin:4px">이 채팅에 삽화가 없습니다.</p>');
+  const order = charIndexes();
+  for (const item of items) {
+    const img = await doc.querySelector(`.risu-chat[data-chat-index="${item.message}"] [data-inray-asset="${item.asset}"] img`);
+    let node: SafeElement;
+    if (img) { node = await img.cloneNode(true); await release(img); }
+    else { node = await doc.createElement('div'); await node.setInnerHTML(`답장 ${order.indexOf(item.message) + 1} · 삽화`); }
+    await node.setAttribute('x-vn-thumb', item.key);
+    await stripEl.appendChild(node); await release(node);
+  }
+  stripItems = items;
+}
+/** Tile rectangles, once the strip has slid in: taps on it then cost nothing. */
+async function measureThumbs(): Promise<void> {
+  if (!stripEl) return;
+  const found: typeof thumbs = [];
+  for (const node of await unwrap(await stripEl.querySelectorAll('[x-vn-thumb]'))) {
+    const id = await node.getAttribute('x-vn-thumb'), item = stripItems.find(it => it.key === id);
+    if (item) found.push({ ...item, r: await node.getBoundingClientRect() });
+    await release(node);
+  }
+  thumbs = found;
+}
+async function jumpTo(item: StripItem): Promise<void> {
+  stripOpen = false;
+  await load(item.message);
+  const index = scenes.findIndex(s => s.cg?.kind === 'baked' && s.cg.asset === item.asset);
+  at = index >= 0 ? index : 0;
+  await render();
+}
 let lastCast: Array<{ key: string; face: string; speaking: boolean }> = [];
 
 /** One scene: who stands where (one style text) and the box. */
@@ -321,6 +366,12 @@ async function act(name: string): Promise<void> {
   else if (name === 'voice') { prefs.voice = !prefs.voice; savePrefs(); if (!prefs.voice) omniTts.stop(); await render(); }
   else if (name === 'older') { if (await stepReply(-1)) await render(); }
   else if (name === 'newest') { await load(); await render(); }
+  else if (name === 'strip') {
+    stripOpen = !stripOpen; thumbs = [];
+    if (stripOpen) await buildStrip();
+    await dyn?.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
+    if (stripOpen) setTimeout(() => { if (stripOpen) void measureThumbs().catch(() => {}); }, 380);
+  }
   else if (name === 'log') {
     logOpen = !logOpen;
     if (logOpen && logBox) await logBox.setInnerHTML(scenes.map((s, i) => s.kind === 'cg' ? '' : `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`).join('') || '<p>기록이 없습니다.</p>');
@@ -331,6 +382,12 @@ const inside = (p: HostPoint, r: { left: number; top: number; width: number; hei
 function onClick(p: HostPoint): void {
   if (!open || !Number.isFinite(p?.clientX) || !inside(p, rect)) return;
   const hit = controls.find(c => inside(p, c.r));
+  if (stripOpen && !hit) {
+    // An open strip takes the tap: a tile jumps to its scene, anywhere else closes it.
+    const tile = thumbs.find(t => inside(p, t.r));
+    void (tile ? jumpTo(tile) : act('strip')).catch(error => dbg('viewer.strip', { message: String(error) }, 'warn'));
+    return;
+  }
   const next = hit ? act(hit.act) : logOpen ? act('log') : Date.now() < revealUntil && !revealed ? reveal() : go(1);
   void next.catch(error => dbg('viewer.tap', { message: String(error) }, 'warn'));
 }
@@ -384,7 +441,8 @@ export async function openViewer(): Promise<void> {
     dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
-    [bgLayer, castLayer, cgLayer, box, logBox] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]'].map(s => root!.querySelector(s)));
+    [bgLayer, castLayer, cgLayer, box, logBox, stripEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]'].map(s => root!.querySelector(s)));
+    stripOpen = false; stripItems = []; thumbs = [];
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bg = ''; lastCast = []; logOpen = false; revealed = false;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
@@ -410,7 +468,7 @@ export async function closeViewer(): Promise<void> {
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   for (const place of people.values()) await release(place);
   people.clear();
-  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = null;
+  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = null;
 }
 export const viewerOpen = (): boolean => open;
 
