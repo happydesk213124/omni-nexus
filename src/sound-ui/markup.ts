@@ -4,6 +4,7 @@ import { SOUND_LIST_CSS, SOUND_PAGE_CSS, voiceListCssFor } from './style';
 import layout from '../tts-ui/layout.json';
 import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
 import { attachSoundHelp } from './help';
+import { addEmotionStructure, emotionStyleText } from '../emotion-ui/mount';
 
 /**
  * The embedding behind 「자동」 matching (after JEV) and the 「임베딩」 setting. An
@@ -53,7 +54,7 @@ export function markSoundPage(root: HTMLElement, openPanel?: string): void {
   if (!tts) toggle('#tts-off-notice', false);
 }
 
-const SOUND_STYLE = () => SOUND_PAGE_CSS + voiceListCssFor(layout.css) + SOUND_LIST_CSS;
+const SOUND_STYLE = () => SOUND_PAGE_CSS + voiceListCssFor(layout.css) + SOUND_LIST_CSS + emotionStyleText();
 /** The TTS area's markup for the open page, with its styles, ready before any script runs. */
 export function soundAwareHtml(html: string): string {
   if (typeof document === 'undefined') return html;
@@ -61,6 +62,7 @@ export function soundAwareHtml(html: string): string {
   const root = box.content.querySelector<HTMLElement>('#tts-settings-root');
   if (!root) return html;
   addSoundStructure(root);
+  addEmotionStructure(root);
   markSoundPage(root);
   // Both style sheets travel with the markup; the mount refreshes them in place.
   root.insertAdjacentHTML('afterbegin', `<style id="omnitts-settings-style">${layout.css}</style><style id="omnisound-page-style">${SOUND_STYLE()}</style>`);

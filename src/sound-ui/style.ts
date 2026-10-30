@@ -52,7 +52,7 @@ export function voiceListCssFor(css: string): string {
 }
 
 /** Page rules the voice list has no counterpart for. */
-export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[data-sound-page="models"]) :is(#tts-power-controls,#tts-off-notice,#tts-controls){display:none!important}'
+export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[data-sound-page="models"],[data-sound-page="asset"]) :is(#tts-power-controls,#tts-off-notice,#tts-controls){display:none!important}'
   // The full-height rules give .workspace display:flex; a hidden container must still take no space.
   + '#tts-settings-root :is(#sound-controls,#tts-controls)[hidden]{display:none!important}'
   // The glossary fills the height and scrolls inside, like the lists.
