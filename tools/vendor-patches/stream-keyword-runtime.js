@@ -82,6 +82,8 @@ async function omniEndWithoutOutput(run) {
   }
 }
 function onScriptOutput(content) {
+  // 옴니 뷰어 follows the reply as it streams (a no-op unless it is open).
+  globalThis.__OMNI_STREAM_TICK__?.(String(content || ''));
   if (t.unloading || t.backendSettings?.card?.power === false) return content;
   // A reply is streaming while its chunks keep coming: what 꾹 누르기 (wait-taps) asks
   // before it does anything. No end event is needed, so a stopped reply clears itself.
