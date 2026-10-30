@@ -1,7 +1,7 @@
 import type { TaggerResult } from '../../core/types';
 import { parseJsonLoose } from '../../core/util/object';
 import { analysisBody } from './message-body';
-import { INLINE_SHOT_CLOSED_SOURCE as CLOSED_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOURCE } from './inline-shot-pattern';
+import { INLINE_CAST_CLOSED_SOURCE, INLINE_CAST_MASK_SOURCE, INLINE_SHOT_CLOSED_SOURCE as CLOSED_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOURCE } from './inline-shot-pattern';
 
 export { INLINE_SHOT_MASK_SOURCE };
 
@@ -129,6 +129,29 @@ export function stripOpenInlineShotBlock(raw: unknown): string {
   const tail = closed.length ? closed[closed.length - 1]!.end : 0;
   const open = /\[\[inx\d{1,3}\]\]/.exec(text.slice(tail));
   return open ? text.slice(0, tail + open.index).replace(/[ \t]*\n?$/, '').replace(/\n{3,}/g, '\n\n') : text;
+}
+/** The reply's cast block: the first closed one outside reasoning, or null. */
+export function inlineCastBlock(raw: unknown, opts: { live?: boolean } = {}): { start: number; end: number; body: string } | null {
+  const text = String(raw ?? ''), thinking = thoughtRanges(text, opts.live === true);
+  for (const hit of text.matchAll(new RegExp(INLINE_CAST_CLOSED_SOURCE, 'g'))) {
+    if (thinking.some(([from, to]) => hit.index! >= from && hit.index! < to)) continue;
+    return { start: hit.index!, end: hit.index! + hit[0].length, body: hit[1]! };
+  }
+  return null;
+}
+/** A cast block's people (`{"new_characters":[…]}`, or the bare array); only named rows. Null when it is not JSON. */
+export function inlineCastCharacters(body: unknown): NonNullable<TaggerResult['new_characters']> | null {
+  let parsed: unknown;
+  try { parsed = parseJsonLoose(String(body ?? '').trim()); } catch { return null; }
+  const list = Array.isArray(parsed) ? parsed : shotObject(parsed) && Array.isArray(parsed.new_characters) ? parsed.new_characters : null;
+  if (!list) return null;
+  return list.filter((row): row is Record<string, unknown> => shotObject(row) && typeof row.name === 'string' && !!row.name.trim()) as NonNullable<TaggerResult['new_characters']>;
+}
+/** A cast block only registers people: it leaves the reply when the reply is baked (an unclosed one too). */
+export function stripInlineCastBlocks(raw: unknown): string {
+  const text = String(raw ?? '');
+  if (!text.includes('[[inxc]]')) return text;
+  return text.replace(new RegExp(`(?:${INLINE_CAST_MASK_SOURCE})[ \\t]*\\n?`, 'g'), '').replace(/\n{3,}/g, '\n\n');
 }
 /** Removes every block (and a still-open one at the end), keeping the prose as written. */
 export function stripInlineShotBlocks(raw: unknown): string {

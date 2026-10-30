@@ -107,7 +107,7 @@ const MASK_OPEN = '\uf8f2', MASK_CLOSE = '\uf8f3';
 export function tokenGuardScripts() {
   return [
     { comment: TOKEN_GUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: `gi<order ${TOKEN_GUARD_ORDER.guard}>`,
-      in: '\\[\\[(@inray(?:spinner|wait)?::[^\\[\\]\\n]{1,4096}|\\/?inxw?\\d{1,3}|imgstart|bgm:[^\\]\\n]{1,200})\\]\\]', out: `${MASK_OPEN}$1${MASK_CLOSE}` },
+      in: '\\[\\[(@inray(?:spinner|wait)?::[^\\[\\]\\n]{1,4096}|\\/?inx(?:w?\\d{1,3}|c)|imgstart|bgm:[^\\]\\n]{1,200})\\]\\]', out: `${MASK_OPEN}$1${MASK_CLOSE}` },
     { comment: TOKEN_UNGUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: `g<order ${TOKEN_GUARD_ORDER.unguard}>`,
       in: `${MASK_OPEN}([^${MASK_OPEN}${MASK_CLOSE}\\n]{1,4300})${MASK_CLOSE}`, out: '[[$1]]' },
   ];
@@ -173,7 +173,14 @@ export function inlineShotDisplayScripts(scalePct: unknown = 100, _pending = fal
     // No rule hides an unclosed block any more: it hid everything from the block to
     // the end of the message, so a block the model forgot to close took the story
     // after it off the screen, and Risu ran that scan again on every streamed chunk.
+    // A cast block is never drawn. Unclosed, only its own line goes (see INLINE_CAST_MASK_SOURCE).
+    { comment: `${INLINE_SHOT_DISPLAY_COMMENT}-cast`, type: 'editdisplay' as const, ableFlag: true, flag: 'g<order -10039>', in: INLINE_CAST_HIDE, out: '' },
   ];
+}
+const INLINE_CAST_HIDE = String.raw`\[\[inxc\]\](?:[\s\S]{0,12000}?\[\[\/inxc\]\]|[^\n]*)[ \t]*\n?`;
+/** Nor is a cast block ever sent back to the model. */
+export function inlineCastRequestScript() {
+  return { comment: 'omni-inline-shot-cast-request', type: 'editprocess' as const, ableFlag: true, flag: 'g', in: INLINE_CAST_HIDE, out: '' };
 }
 /**
  * `[[inxwN]]{json}[[/inxwN]]`: a block with no image yet, its JSON kept in the

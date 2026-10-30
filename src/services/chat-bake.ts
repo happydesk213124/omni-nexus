@@ -1,5 +1,5 @@
 import { insertAtAnalysisLine, analysisBody } from '../domain/prompt/message-body';
-import { replaceInlineShotBlock, stripOpenInlineShotBlock } from '../domain/prompt/inline-shots';
+import { replaceInlineShotBlock, stripInlineCastBlocks, stripOpenInlineShotBlock } from '../domain/prompt/inline-shots';
 import { streamLineRange } from '../domain/prompt/stream-lines';
 import { measureWrite } from '../core/write-metrics';
 /**
@@ -340,7 +340,8 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
   }
   if(!final)for(const [line,tokens] of [...groups].sort((a,b)=>b[0]-a[0]))next=insertAtAnalysisLine(next,line,normalizeInlineChatTextSide(getConfig().card.inline_chat_text_side),tokens.join(''));
   // A block no job placed (broken, cancelled) stays as a pink slot; only one cut off mid-JSON goes.
-  if(final)next=stripOpenInlineShotBlock(next);
+  // The cast block only registered people; it goes with the reply's last write.
+  if(final)next=stripInlineCastBlocks(stripOpenInlineShotBlock(next));
   if(next===previousBody)return;
   setMessageBody(msg,next);
   await writeChat(loaded.host,target.charIndex,target.chatIndex,loaded.chat,{messageIndex:target.messageIndex,previousBody});

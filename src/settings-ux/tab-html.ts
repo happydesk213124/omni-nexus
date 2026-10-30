@@ -166,6 +166,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-stream-lines-on', 'stream_lines_enabled', false],
     ['nx-stream-inline-on', 'stream_inline_tags', false],
     ['nx-stream-inline-autogen', 'stream_inline_autogen', true],
+    ['nx-stream-inline-cast', 'stream_inline_cast_first', true],
+    ['nx-stream-inline-asset-meta', 'stream_inline_asset_meta', true],
     ['nx-omni-helper', 'omni_helper_prompt', false],
     ['nx-speech-huge-text', 'speech_huge_text', false],
     ['nx-image-webp-metadata', 'image_webp_metadata', true],
