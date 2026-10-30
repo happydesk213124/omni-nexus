@@ -25,7 +25,8 @@ test("an asset matches its person's face under any of their names, in either ord
   assert.equal(api.assetMatchesExpression('Sasaki Yua enraged', ['Sasaki Yua'], 'angry'), true);
   assert.equal(api.assetMatchesExpression('Yua_grossed_out', ['Yua'], 'disgust'), true, 'a two-word face');
   for (const asset of ['오미선_sad.png', 'happy', '하린_happy', 'misun', 'happy_happy']) assert.equal(api.assetMatchesExpression(asset, names, 'happy'), false, asset);
-  assert.equal(api.emotionAssetName('오 미선', 'happy'), '오_미선_happy.webp');
+  assert.equal(api.emotionAssetName('오 미선', 'happy'), '오_미선_happy.png');
+  assert.equal(api.emotionAssetName('오미선', 'sad', 'webp'), '오미선_sad.webp');
   assert.equal(api.assetMatchesExpression(api.emotionAssetName('오미선', 'pouting'), names, 'pouting'), true, 'what Omni writes, it finds again');
 });
 

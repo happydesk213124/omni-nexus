@@ -91,10 +91,10 @@ export function assetMatchesExpression(assetName: unknown, names: readonly strin
   return false;
 }
 
-/** The emotion asset name Omni writes: `이름_감정.webp`. */
-export function emotionAssetName(person: string, face: string): string {
+/** The emotion asset name Omni writes: `이름_감정.png` (PNG keeps a transparent background). */
+export function emotionAssetName(person: string, face: string, ext = 'png'): string {
   const name = String(person ?? '').normalize('NFKC').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
-  return `${name}_${face}.webp`;
+  return `${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
 }
 
 // ── prompt ─────────────────────────────────────────────────────────────────
