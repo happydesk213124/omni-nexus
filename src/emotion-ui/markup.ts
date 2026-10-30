@@ -13,7 +13,8 @@ export const EMOTION_PANEL = `<section class="panel" id="emo-assets" role="tabpa
 <div class="tts-settings-column"><div class="group"><h3>감정 에셋</h3>
 ${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'), '옴니 뷰어가 말하는 캐릭터의 표정 그림을 띄웁니다')}
 ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'), '이름_감정 · 감정_이름 · 별칭 · 감정 이미지 · 켜진 모듈')}
-${row('없는 감정 자동 생성', sw('emo-auto', '없는 감정 자동 생성'), '뷰어에 필요한 표정만 · 기본 표정을 먼저 보여주고 다 되면 교체')}
+${row('없는 감정 자동 생성', sw('emo-auto', '없는 감정 자동 생성'), '뷰어에 필요한 표정만 · 기본 표정을 먼저 보여주고 다 되면 교체 · NAI가 쉴 때 다음 답장 것을 미리(무료 생성일 때만)')}
+${row('장소 배경 만들기', sw('emo-places', '장소 배경 만들기'), '답장 맨 앞 캐스트 블록의 장소로 사람 없는 배경을 만들어 뷰어 배경으로 씁니다')}
 </div>
 <div class="group"><h3>그리기 · LLM 없이 태그로만</h3><div class="fields">
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>

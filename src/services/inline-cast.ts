@@ -1,7 +1,9 @@
 import type { ApiResult, JobRequest } from '../core/types';
 import { dbg } from '../core/debug';
 import { cleanText, sessionIdHash, writeSessionId } from '../core/util/text';
-import { inlineCastCharacters } from '../domain/prompt/inline-shots';
+import { inlineCastCharacters, inlineCastPlace } from '../domain/prompt/inline-shots';
+import type { TaggerResult } from '../core/types';
+import { rememberReplyPlace } from '../storage/viewer-places';
 import { flushShotAssets } from '../storage/shot-character';
 import { mergeRosterFromTagged } from './characters';
 import { recordStreamBlock, rosterWritten } from './stream-continuity';
@@ -20,9 +22,13 @@ export async function registerInlineCast(body: Record<string, unknown>): Promise
   if (!characterId || !chatId || !sessionId) return { ok: false, error: { code: 'bad_request', message: '캐릭터와 채팅 ID가 필요합니다.' } };
   const people = Array.isArray(body.new_characters) ? inlineCastCharacters({ new_characters: body.new_characters }) : inlineCastCharacters(body.body);
   if (!people) return { ok: false, error: { code: 'bad_json', message: '캐스트 블록 JSON을 읽지 못했습니다.' } };
+  // Where the reply opens: the shot blocks after it keep it until one moves (stream-continuity), and the viewer stages it.
+  const place = Array.isArray(body.new_characters) ? cleanText(body.place, 400) : inlineCastPlace(body.body);
+  const hostMessageId = cleanText(body.host_message_id, 200);
   const request: Partial<JobRequest> = {
     stream_id: cleanText(body.stream_id, 200), character_id: characterId, chat_id: chatId,
-    host_message_id: cleanText(body.host_message_id, 200), inline_block: 0, inline_tagged: { new_characters: people, scenes: [] },
+    host_message_id: hostMessageId, inline_block: 0,
+    inline_tagged: { new_characters: people, scenes: place ? [{ place, shots: [{ location: place }] }] : [] } as unknown as TaggerResult,
   };
   recordStreamBlock(request);
   try {
@@ -38,8 +44,9 @@ export async function registerInlineCast(body: Record<string, unknown>): Promise
   } finally {
     rosterWritten(request);
   }
-  dbg('inline-cast.registered', { message: people.map(p => cleanText(p.name, 80)).join(', '), count: people.length });
-  return { ok: true, session_id: sessionId, registered: people.map(p => cleanText(p.name, 120)) };
+  if (place) await rememberReplyPlace(characterId, chatId, hostMessageId, place).catch(error => dbg('inline-cast.place', { message: String(error) }, 'warn'));
+  dbg('inline-cast.registered', { message: people.map(p => cleanText(p.name, 80)).join(', '), count: people.length, place });
+  return { ok: true, session_id: sessionId, registered: people.map(p => cleanText(p.name, 120)), place };
 }
 
 /**

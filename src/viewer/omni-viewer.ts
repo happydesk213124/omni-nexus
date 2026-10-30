@@ -12,7 +12,9 @@ import { soundData, soundReady } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
-import { currentEmotionBot, findSprite, makeSprite, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { currentEmotionBot, findBackground, findSprite, makeAhead, makeBackground, makeSprite, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
+import { replyPlace } from '../storage/viewer-places';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
@@ -114,6 +116,9 @@ async function load(index?: number, keepPlace = false): Promise<void> {
   messageIndex = i;
   const shown = i >= 0 && !streaming ? await renderedText(i) : '';
   setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace, shown);
+  place = await readPlace();
+  bg = '';
+  await stagePlace().catch(error => dbg('viewer.place', { message: String(error) }, 'warn'));
 }
 /** The reply as the chat draws it (innerText: what CSS hides is left out). '' when it is not on screen. */
 async function renderedText(index: number): Promise<string> {
@@ -121,6 +126,37 @@ async function renderedText(index: number): Promise<string> {
   const node = await doc.querySelector(`.risu-chat[data-chat-index="${index}"] .chattext`);
   if (!node) return '';
   try { return String(await node.innerText() ?? ''); } catch { return ''; } finally { await release(node); }
+}
+/**
+ * The place this reply opens in: its cast block's (remembered when it closed), else
+ * the chat's last known place. Its background is the stage; a missing one is made.
+ */
+let place = '';
+const bgs = new Map<string, string>();
+async function readPlace(): Promise<string> {
+  if (!context) return '';
+  const own = await replyPlace(context.characterId, context.chatId, messageId()).catch(() => '');
+  if (own) return own;
+  const note = await getSessionAuthorNote(chatNoteSessionId(context.sessionId, { character_id: context.characterId, chat_id: context.chatId })).catch(() => null) as { location?: unknown } | null;
+  return typeof note?.location === 'string' ? note.location : '';
+}
+async function stagePlace(): Promise<void> {
+  if (!place || !bot || !doc || !bgLayer || !emotionData().settings.placeBackgrounds) return;
+  const made = await findBackground(place, bot);
+  if (!made) { if (emotionData().settings.autoGenerate) void makeBackground(place, bot).catch(() => {}); return; }
+  let id = bgs.get(made.path);
+  if (!id) {
+    const raw = await risuHost()?.readImage?.(made.path);
+    const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
+    if (!bytes?.byteLength) return;
+    id = key(made.path);
+    const holder = await doc.createElement('div');
+    await holder.setAttribute('x-vn-bg', id);
+    await holder.setInnerHTML(`<img alt="" src="data:${sniffImageMime(bytes) || 'image/png'};base64,${bytesToBase64(bytes)}">`);
+    await bgLayer.appendChild(holder); await release(holder);
+    bgs.set(made.path, id);
+  }
+  bg = id;
 }
 /** BGM tags and effect words in the reply, played where the reading reaches them. */
 let cues: TtsSegment[] = [];
@@ -314,13 +350,15 @@ async function render(): Promise<void> {
     return;
   }
   playCues(scene);
+  // A background finished since: put it up.
+  if (!bg && place) await stagePlace().catch(() => {});
   if (scene.kind === 'cg') {
     // A CG comes in like a photo over the dimmed stage, then stays as the background.
-    const [cg, behind] = [await cloneImage(scene, cgLayer, 'x-vn-cg'), await cloneImage(scene, bgLayer, 'x-vn-bg')];
+    // The illustration is a photo over the stage; the stage itself stays the place.
+    const cg = await cloneImage(scene, cgLayer, 'x-vn-cg');
     if (mine !== epoch) return;
     if (!cg) { await go(1); return; }
     await dyn.setTextContent(stageCss(state(lastCast, { cg })));
-    bg = behind || bg;
     if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
     return;
   }
@@ -443,7 +481,7 @@ export async function openViewer(): Promise<void> {
     await release(css); await release(body);
     [bgLayer, castLayer, cgLayer, box, logBox, stripEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]'].map(s => root!.querySelector(s)));
     stripOpen = false; stripItems = []; thumbs = [];
-    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bg = ''; lastCast = []; logOpen = false; revealed = false;
+    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; lastCast = []; logOpen = false; revealed = false;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
@@ -472,6 +510,40 @@ export async function closeViewer(): Promise<void> {
 }
 export const viewerOpen = (): boolean => open;
 
+/**
+ * After a reply settles: its speakers' faces and its place, made ahead while
+ * NovelAI idles (makeAhead keeps it to free generations and a few per reply).
+ * Off (감정 에셋 or 자동 생성 off), nothing is read.
+ */
+let aheadTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleAhead(): void {
+  clearTimeout(aheadTimer);
+  aheadTimer = setTimeout(() => void ahead().catch(error => dbg('viewer.ahead', { message: String(error) }, 'warn')), 5000);
+}
+async function ahead(): Promise<void> {
+  if (Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true) { scheduleAhead(); return; }
+  const settings = (await loadEmotionData()).settings;
+  if (!settings.enabled || !settings.autoGenerate) return;
+  await loadTtsData();
+  const ctx = await currentTtsContext(), who = await currentEmotionBot();
+  if (!who) return;
+  const index = ctx.messages.map(m => m?.role).lastIndexOf('char');
+  if (index < 0) return;
+  const text = String(ctx.messages[index]!.data ?? '');
+  const wants: Array<{ person: TtsCharacter; face: string } | { place: string }> = [];
+  const reply = String(ctx.messages[index]!.chatId || ctx.messages[index]!.id || '');
+  const at = await replyPlace(ctx.characterId, ctx.chatId, reply).catch(() => '');
+  if (at) wants.push({ place: at });
+  const seen = new Set<string>();
+  for (const scene of buildScenes(text, parseTtsMessage(text), settings.words)) {
+    if (scene.kind !== 'line' || !scene.speaker) continue;
+    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, ctx.rosterScope), face = scene.face || DEFAULT_EXPRESSION;
+    if (!person || seen.has(person.id + face)) continue;
+    seen.add(person.id + face); wants.push({ person, face });
+  }
+  await makeAhead(wants, who);
+}
+
 let installed = false;
 export async function installOmniViewer(): Promise<void> {
   const host = risuHost();
@@ -482,6 +554,7 @@ export async function installOmniViewer(): Promise<void> {
   await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'chat', id: 'omni-viewer-chat' }, toggle);
   await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu' }, toggle);
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
+  if (host.addRisuChatListener) await host.addRisuChatListener('output', () => scheduleAhead());
   // A sprite finished: the scene on screen may be waiting for it.
   subscribeSprites(() => { if (open) void render(); });
 }
