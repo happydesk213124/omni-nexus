@@ -360,6 +360,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.stream_inline_tags = ['true', '1', 'on'].includes(String(card.stream_inline_tags));
   // Unset means on: a new switch must not stop images for people who turn tagging on.
   card.stream_inline_autogen = !['false', '0', 'off'].includes(String(card.stream_inline_autogen));
+  card.stream_inline_cast_first = !['false', '0', 'off'].includes(String(card.stream_inline_cast_first));
+  card.stream_inline_asset_meta = !['false', '0', 'off'].includes(String(card.stream_inline_asset_meta));
   card.stream_lines_count = Math.max(2, Math.min(100, Math.floor(Number(card.stream_lines_count)) || 30));
   const lineImages=streamLineImageLimits(card);
   card.stream_lines_image_min=lineImages.min;card.stream_lines_image_max=lineImages.max;

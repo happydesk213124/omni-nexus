@@ -32,6 +32,7 @@ import * as gallery from '../services/gallery';
 import * as generation from '../services/generation';
 import * as jobs from '../services/jobs';
 import * as inlineWaits from '../services/inline-waits';
+import * as inlineCast from '../services/inline-cast';
 import * as naiAssets from '../services/nai-assets';
 import * as presetLook from '../services/preset-look';
 import * as chatChrome from '../services/chat-chrome';
@@ -355,6 +356,10 @@ const WRITE_ROUTES: readonly Route[] = [
   {
     match: exact('/v1/inline-tags/generate'),
     handler: async ({ body }) => ({ status: 202, data: await inlineWaits.generateInlineWait(body) }),
+  },
+  {
+    match: exact('/v1/inline-tags/cast'),
+    handler: async ({ body }) => ok(await inlineCast.registerInlineCast(body)),
   },
   {
     match: exact('/v1/jobs/retarget-hash'),

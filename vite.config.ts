@@ -656,6 +656,8 @@ const VENDOR_ASSET_NAI_SAVE_PATCH =
       stream_lines_image_max: document.getElementById("nx-stream-lines-image-max") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-max")) || 0)) : t.backendSettings?.card?.stream_lines_image_max ?? 2,
       stream_inline_tags: document.getElementById("nx-stream-inline-on") ? ee("nx-stream-inline-on") : t.backendSettings?.card?.stream_inline_tags === !0,
       stream_inline_autogen: document.getElementById("nx-stream-inline-autogen") ? ee("nx-stream-inline-autogen") : t.backendSettings?.card?.stream_inline_autogen !== !1,
+      stream_inline_cast_first: document.getElementById("nx-stream-inline-cast") ? ee("nx-stream-inline-cast") : t.backendSettings?.card?.stream_inline_cast_first !== !1,
+      stream_inline_asset_meta: document.getElementById("nx-stream-inline-asset-meta") ? ee("nx-stream-inline-asset-meta") : t.backendSettings?.card?.stream_inline_asset_meta !== !1,
 `;
 
 /** Card options: asset NAI select after solo+costume checks-grid. */
@@ -697,6 +699,8 @@ const VENDOR_ASSET_NAI_CT_PATCH =
       stream_lines_image_max: document.getElementById("nx-stream-lines-image-max") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-max")) || 0)) : e.stream_lines_image_max ?? 2,
       stream_inline_tags: document.getElementById("nx-stream-inline-on") ? ee("nx-stream-inline-on") : e.stream_inline_tags === !0,
       stream_inline_autogen: document.getElementById("nx-stream-inline-autogen") ? ee("nx-stream-inline-autogen") : e.stream_inline_autogen !== !1,
+      stream_inline_cast_first: document.getElementById("nx-stream-inline-cast") ? ee("nx-stream-inline-cast") : e.stream_inline_cast_first !== !1,
+      stream_inline_asset_meta: document.getElementById("nx-stream-inline-asset-meta") ? ee("nx-stream-inline-asset-meta") : e.stream_inline_asset_meta !== !1,
       asset_nai_tags: document.getElementById("nx-asset-nai-tags") ? N("nx-asset-nai-tags") || "off" : e.asset_nai_tags || "off",
       costume: document.getElementById("nx-costume") ? !!document.getElementById("nx-costume").checked : !!e.costume,
       fixed_prompt_prefix: document.getElementById("nx-fixed-prompt-prefix") ? String(N("nx-fixed-prompt-prefix") || "").slice(0, 8000) : String(e.fixed_prompt_prefix || "").slice(0, 8000),
@@ -10129,7 +10133,9 @@ const VENDOR_DT_FN_PATCH =
         stream_lines_image_min: document.getElementById("nx-stream-lines-image-min") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-min")) || 0)) : t.backendSettings?.card?.stream_lines_image_min ?? 0,
         stream_lines_image_max: document.getElementById("nx-stream-lines-image-max") ? Math.max(0, Math.min(20, Number(N("nx-stream-lines-image-max")) || 0)) : t.backendSettings?.card?.stream_lines_image_max ?? 2,
         stream_inline_tags: document.getElementById("nx-stream-inline-on") ? ee("nx-stream-inline-on") : t.backendSettings?.card?.stream_inline_tags === !0,
-        stream_inline_autogen: document.getElementById("nx-stream-inline-autogen") ? ee("nx-stream-inline-autogen") : t.backendSettings?.card?.stream_inline_autogen !== !1
+        stream_inline_autogen: document.getElementById("nx-stream-inline-autogen") ? ee("nx-stream-inline-autogen") : t.backendSettings?.card?.stream_inline_autogen !== !1,
+        stream_inline_cast_first: document.getElementById("nx-stream-inline-cast") ? ee("nx-stream-inline-cast") : t.backendSettings?.card?.stream_inline_cast_first !== !1,
+        stream_inline_asset_meta: document.getElementById("nx-stream-inline-asset-meta") ? ee("nx-stream-inline-asset-meta") : t.backendSettings?.card?.stream_inline_asset_meta !== !1
       };
       t.backendSettings = t.backendSettings || {};
       t.backendSettings.card = { ...(t.backendSettings.card || {}), ...next };
@@ -10137,7 +10143,7 @@ const VENDOR_DT_FN_PATCH =
     };
     shell.addEventListener("change", event => {
       const id = String(event.target?.id || "");
-      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|stream-lines-on|stream-lines-count|stream-lines-image-min|stream-lines-image-max|stream-inline-on|stream-inline-autogen|image-done-sound)$/.test(id)) saveHabitCard();
+      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|stream-lines-on|stream-lines-count|stream-lines-image-min|stream-lines-image-max|stream-inline-on|stream-inline-autogen|stream-inline-cast|stream-inline-asset-meta|image-done-sound)$/.test(id)) saveHabitCard();
     });
   }
   async function nxScrollHoldScroller() {

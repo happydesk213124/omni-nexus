@@ -14,9 +14,10 @@ import { isOwnLlmRequest } from '../providers/llm/own-requests';
 import { auditCues, lastCueAudit } from './cue-audit';
 import { loadTaggerRoster } from './characters';
 import { getConfig } from './context';
+import { fetchHostLorebookEntries } from './lorefilter';
 import { getPrompt } from './settings';
 import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionRecentCast } from './session-author-note';
-import { taggerRules } from './tagger';
+import { collectAssetTagsForTagger, taggerRules, type TaggerArgs } from './tagger';
 
 /**
  * Streaming tag generation (생성 옵션 → "Risu 메인 모델 메시지 스트리밍 중에 태그 생성").
@@ -48,7 +49,7 @@ function imageRange(): { min: number; max: number } {
   return { min, max: Math.max(min, Number(card.image_max ?? 3) || 3) };
 }
 
-function blockRules(min: number, max: number): string {
+export function blockRules(min: number, max: number, castFirst = false): string {
   const count = min === max ? `exactly ${max}` : `between ${min} and ${max}`;
   return [
     INLINE_RULES_MARK,
@@ -57,7 +58,10 @@ function blockRules(min: number, max: number): string {
     // Models drop the closing tag now and then; an unclosed block is no block and never drawn.
     '- Always close every block with its own closing tag, the same number, right after the final } of its JSON: [[inx2]]{...}[[/inx2]]. A block without its [[/inxN]] is discarded and never drawn.',
     '- Each block holds ONE shot as one raw JSON object: the fields of one scenes[].shots[] item from the format below, plus "place" (that shot\'s place tags). No "line" or "paragraph": the block\'s position is the image position.',
-    '- A person who is new, or listed below as missing looks, gets "new_characters" (and "new_costumes" when costumes are on) inside the first block that shows them, in the format below. Registered people keep their exact names.',
+    // The cast block registers people before their first line is even streamed, so
+    // their portraits and voices can be ready when they speak; it draws nothing.
+    ...castFirst ? ['- Before any story text, when this reply brings in anyone new (not registered below, or listed as missing looks), open the reply with ONE cast block on its own line: [[inxc]]{"new_characters":[...]}[[/inxc]], every such person in the new_characters format below. Leave it out when nobody is new. People it registers need no new_characters again.'] : [],
+    `- A person who is new, or listed below as missing looks, gets "new_characters" (and "new_costumes" when costumes are on) inside the first block that shows them${castFirst ? ', unless the cast block already has them' : ''}, in the format below. Registered people keep their exact names.`,
     '- Double-quoted JSON only inside the block: no markdown, no comments. Never put a block inside dialogue quotes, code, a status panel or thinking. Never mention or explain the blocks; the story stays exactly as it would be without them.',
     'The rules below were written for a separate tagging step that returns one JSON object for a numbered message. Here they only describe what goes inside each block; anything about returning a single object, L numbers, line or paragraph does not apply.',
   ].join('\n');
@@ -70,7 +74,7 @@ export async function inlineTagRules(): Promise<string> {
   const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
   const comicNote = withMain ? cleanText(card.comic_author_note, 8000) : '';
   return [
-    blockRules(min, max),
+    blockRules(min, max, card.stream_inline_cast_first !== false),
     await taggerRules(card, { imageMin: min, imageMax: max, inline: true }),
     authorNoteSystemContent("Global Author's Note", await getPrompt('global_author_note')),
     authorNoteSystemContent("Author's Note", await getPrompt('author_note')),
@@ -161,6 +165,43 @@ export function refreshInlineTagState(scope: InlineScope | null = lastScope): Pr
   return task;
 }
 
+/**
+ * 「에셋 메타데이터 참고」: the reply tagger reads the bot's asset NAI metadata for
+ * people the roster has no looks for (`collectAssetTagsForTagger` keeps only those);
+ * the streaming chat model gets the same block in its chat state. It is collected
+ * beside the roster within the same budget; a read that runs over sends this bot's
+ * last block instead and finishes for the next turn (asset tags are cached per asset).
+ */
+export const INLINE_ASSET_META_MARK = "# Omni Nexus · looks from this bot's NovelAI assets";
+export const inlineAssetMetaOn = (): boolean => getConfig().card?.stream_inline_asset_meta !== false;
+const assetMeta = new Map<string, string>();
+/** The reply tagger's own collector; tests swap it for a canned or slow block. */
+export const inlineAssetMetaSource = { collect: async (request: TaggerArgs): Promise<string> => (await collectAssetTagsForTagger(request, { withPreviews: false }))?.block || '' };
+let assetMetaTask: { key: string; done: Promise<string> } | null = null;
+export function assetMetaText(block: string): string {
+  return block ? `${INLINE_ASSET_META_MARK}\nNot registered with looks yet. When one of them appears, write their looks in new_characters from these tags (read from this bot's own images):\n${block}` : '';
+}
+function refreshAssetMeta(scope: InlineScope, text: string): Promise<string> {
+  const characterId = cleanText(scope.characterId, 200), sessionId = writeSessionId({ sessionId: scope.sessionId, characterId });
+  if (!characterId || !sessionId) return Promise.resolve('');
+  const key = JSON.stringify([characterId, sessionId, text]);
+  if (assetMetaTask?.key === key) return assetMetaTask.done;
+  const done = (async () => {
+    const lorebook = await fetchHostLorebookEntries();
+    const request = { session_id: sessionId, unified_session_id: sessionId, character_id: characterId, lorebook, assistant_text: text } as TaggerArgs;
+    const block = assetMetaText(cleanText(await inlineAssetMetaSource.collect(request), 12000));
+    assetMeta.set(characterId, block);
+    while (assetMeta.size > 8) assetMeta.delete(assetMeta.keys().next().value!);
+    return block;
+  })().catch(error => { dbg('inline-tags.asset-meta', { message: String((error as Error)?.message || error) }, 'warn'); return assetMeta.get(characterId) || ''; });
+  assetMetaTask = { key, done };
+  return done;
+}
+const lastUserText = (messages: OpenAIChat[]): string => {
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i]?.role === 'user' && typeof messages[i]!.content === 'string') return messages[i]!.content as string;
+  return '';
+};
+
 /** Pure placement: rules after the first message, state before the last user turn. */
 export function placeInlineTagPrompts(messages: OpenAIChat[], rules: string, stateText: string): OpenAIChat[] {
   if (!rules || messages.some(row => typeof row?.content === 'string' && row.content.startsWith(INLINE_RULES_MARK))) return messages;
@@ -212,10 +253,18 @@ async function beforeRequest(messages: OpenAIChat[], mode: string): Promise<Open
     if (skip) { if (mode === 'model') noteRequest(`skipped · ${skip}`); return messages; }
     // Read this chat now: who is registered changes with every reply's blocks, and
     // the user may have switched chats. A slow host sends the rules without the state.
-    const live = await Promise.race([refreshInlineTagState(null).then(() => true), new Promise<false>(r => setTimeout(() => r(false), STATE_BUDGET_MS))]);
+    const budget = new Promise<false>(r => setTimeout(() => r(false), STATE_BUDGET_MS));
+    const live = await Promise.race([refreshInlineTagState(null).then(() => true), budget]);
     const rules = await inlineTagRules(), stateText = live && lastScope && state.key === scopeKey(lastScope) ? state.text : '';
-    const placed = placeInlineTagPrompts(messages, rules, stateText);
-    noteRequest(placed === messages ? 'already present' : `inserted · rules ${rules.length} chars, chat state ${stateText.length} chars${live ? '' : ' (chat not read in time)'}`);
+    // Who the user just named, and who the last replies named, decide which assets are read.
+    let assetText = '';
+    if (live && lastScope && inlineAssetMetaOn()) {
+      const scope = lastScope, characterId = cleanText(scope.characterId, 200);
+      const text = [lastUserText(messages), ...(Array.isArray(scope.recent) ? scope.recent.map(String) : [])].join('\n').slice(0, 16000);
+      assetText = await Promise.race([refreshAssetMeta(scope, text), budget.then(() => assetMeta.get(characterId) || '')]);
+    }
+    const placed = placeInlineTagPrompts(messages, rules, [stateText, assetText].filter(Boolean).join('\n\n'));
+    noteRequest(placed === messages ? 'already present' : `inserted · rules ${rules.length} chars, chat state ${stateText.length} chars${assetText ? `, asset looks ${assetText.length} chars` : ''}${live ? '' : ' (chat not read in time)'}`);
     return placed;
   } catch (error) {
     dbg('inline-tags.request', { message: String((error as Error)?.message || error) }, 'warn');

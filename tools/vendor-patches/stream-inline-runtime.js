@@ -9,10 +9,26 @@ function omniTrackJob(sessionId,jobId) {if(!jobId || t.unloading)return;t.active
 // Registered at load: a double tap before any chat scope was read still gets its toast.
 globalThis.__OMNI_TRACK_JOB__=omniTrackJob;
 function omniInlineAutogen(card) { return card?.stream_inline_autogen!==false; }
+// 「새 캐릭터를 맨 앞에 쓰기」: the reply's [[inxc]] block registers its new people the
+// moment it closes, before their first line. Nothing is drawn, so it runs even when
+// 「이미지 바로 생성」 is off.
+async function omniSendInlineCast(run, body) {
+  if(!run.target)run.target=omniCaptureKeywordTarget().catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
+  const target=await run.target;
+  if(!target || run.cancelled || t.unloading)return;
+  const scope=target.scope;
+  const result=await K('/v1/inline-tags/cast',{method:'POST',body:{stream_id:run.streamId,session_id:scope.sessionId,character_id:scope.characterId,chat_id:scope.chatId,
+    char_index:scope.charIndex,chat_index:scope.chatIndex,host_message_id:target.id,body:String(body||'').slice(0,12000)}});
+  if(!result?.ok)throw Error(result?.error?.message || '새 캐릭터를 등록하지 못했습니다.');
+}
 function omniScanInlineRun(run, final=false) {
-  const SK=globalThis.__INLAY_STREAM_KW__;
+  const SK=globalThis.__INLAY_STREAM_KW__, card=t.backendSettings?.card;
+  if(!run.castSent && card?.stream_inline_cast_first!==false) {
+    const cast=SK.inlineCastBlock?.(run.text,{live:!final});
+    if(cast){run.castSent=true;void omniSendInlineCast(run,cast.body).catch(error=>{y('warn','stream.inline.cast',String(error));});}
+  }
   // 「이미지 바로 생성」 off: nothing starts while streaming; completion parks every block.
-  const parked=!omniInlineAutogen(t.backendSettings?.card);
+  const parked=!omniInlineAutogen(card);
   if(parked && !final)return run;
   run.inlineSeen ||= new Set();
   // Only text that arrived since the last tick can close a new block.

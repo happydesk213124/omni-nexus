@@ -309,6 +309,10 @@ export interface CardSettings {
   stream_inline_tags?: boolean;
   /** Generate each block's image at once; off leaves a pink slot to tap. */
   stream_inline_autogen?: boolean;
+  /** The reply opens with one `[[inxc]]` cast block, so new people are registered before they speak. */
+  stream_inline_cast_first?: boolean;
+  /** The chat state carries asset NAI metadata for people still missing looks. */
+  stream_inline_asset_meta?: boolean;
   /** Speak the character line after bake. Stored under existing onx_* card blob. */
   tts_on?: boolean;
   /** speechSynthesis rate, typically 0.5–2. */

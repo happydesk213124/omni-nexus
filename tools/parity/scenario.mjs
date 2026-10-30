@@ -246,13 +246,15 @@ export async function runScenario(N, handles) {
     const card=(await get('/v1/settings')).settings.card;
     if(!('stream_inline_tags' in card))return {unsupported:true};
     if(card.stream_inline_tags!==false || card.stream_inline_autogen!==true)throw Error('streaming tags must default OFF with images generated at once');
-    await put('/v1/settings',{card:{stream_inline_tags:true,stream_inline_autogen:false}});
+    // The cast block and asset metadata ride along by default: both only help once tagging is on.
+    if(card.stream_inline_cast_first!==true || card.stream_inline_asset_meta!==true)throw Error('cast block and asset metadata must default ON');
+    await put('/v1/settings',{card:{stream_inline_tags:true,stream_inline_autogen:false,stream_inline_cast_first:false,stream_inline_asset_meta:false}});
     const saved=(await get('/v1/settings')).settings.card;
-    const coerced=(await put('/v1/settings',{card:{stream_inline_tags:'on',stream_inline_autogen:'0'}})).settings.card;
-    await put('/v1/settings',{card:{stream_inline_tags:false,stream_inline_autogen:true}});
+    const coerced=(await put('/v1/settings',{card:{stream_inline_tags:'on',stream_inline_autogen:'0',stream_inline_cast_first:'off',stream_inline_asset_meta:'0'}})).settings.card;
+    await put('/v1/settings',{card:{stream_inline_tags:false,stream_inline_autogen:true,stream_inline_cast_first:true,stream_inline_asset_meta:true}});
     const restored=(await get('/v1/settings')).settings.card;
-    if(saved.stream_inline_tags!==true || saved.stream_inline_autogen!==false)throw Error('streaming tag settings did not save');
-    return {defaultOff:true,defaultAutogen:true,saved:true,coerced:coerced.stream_inline_tags===true && coerced.stream_inline_autogen===false,restored:restored.stream_inline_tags===false && restored.stream_inline_autogen===true};
+    if(saved.stream_inline_tags!==true || saved.stream_inline_autogen!==false || saved.stream_inline_cast_first!==false || saved.stream_inline_asset_meta!==false)throw Error('streaming tag settings did not save');
+    return {defaultOff:true,defaultAutogen:true,saved:true,coerced:coerced.stream_inline_tags===true && coerced.stream_inline_autogen===false && coerced.stream_inline_cast_first===false && coerced.stream_inline_asset_meta===false,restored:restored.stream_inline_tags===false && restored.stream_inline_autogen===true && restored.stream_inline_cast_first===true && restored.stream_inline_asset_meta===true};
   });
   // Streaming tags with 「이미지 바로 생성」 off: the reply's end writes nothing any more —
   // each block, as written, is the pink slot (a rename could land late or not at all in Risu).
@@ -263,6 +265,20 @@ export async function runScenario(N, handles) {
     const before=await chats();
     const res=await post('/v1/inline-tags/park',{character_id:'missing',chat_id:'missing',char_index:0,chat_index:0,host_message_id:'missing',message_index:0,assistant_text:'x',blocks:[{n:1,line:1,tagged:null}]});
     return {...res, chatsUnchanged: before===await chats()};
+  });
+  // 「새 캐릭터를 맨 앞에 쓰기」: the reply's [[inxc]] block registers people the moment it
+  // closes. Mid-reply nothing is written to the chat; the roster sees them at once.
+  await rec('inline.cast_registers', async () => {
+    if(!('stream_inline_cast_first' in (await get('/v1/settings')).settings.card))return {unsupported:true};
+    const chats=async()=>JSON.stringify((await globalThis.risuai.getDatabase()).characters?.map(c=>c.chats));
+    const before=await chats();
+    const ids={character_id:'note-fixture',chat_id:'note-chat',char_index:0,chat_index:0,stream_id:'cast-stream',host_message_id:'cast-msg'};
+    const res=await post('/v1/inline-tags/cast',{...ids,body:'{"new_characters":[{"name":"캐스트민수","gender":"boy","hair_color":"black hair"},{"gender":"girl"}]}'});
+    const chatsUnchanged=before===await chats();
+    const roster=(await get('/v1/characters?session_id='+encodeURIComponent(res.session_id||'')+'&character_id=note-fixture')).characters || [];
+    const broken=await post('/v1/inline-tags/cast',{...ids,body:'{"new_characters":'});
+    const missing=await post('/v1/inline-tags/cast',{body:'{"new_characters":[]}'});
+    return {registered:res.registered,chatsUnchanged,listed:roster.some(c=>c.name==='캐스트민수'),broken:broken.error?.code,missing:missing.error?.code};
   });
   await rec('inline.generate_unknown', async () => {
     if(!('stream_inline_tags' in (await get('/v1/settings')).settings.card))return {unsupported:true};

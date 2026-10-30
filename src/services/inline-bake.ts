@@ -1,6 +1,6 @@
 import { dbg } from '../core/debug';
 import { attachBakeToSpinner, messageHasBakeTokenForCard, removeJobSpinners, replaceSpinner, spinnerDimensions, stripBakeTokensExceptJobs } from '../domain/chat-bake';
-import { replaceInlineShotBlock, stripOpenInlineShotBlock, waitingInlineBlock } from '../domain/prompt/inline-shots';
+import { replaceInlineShotBlock, stripInlineCastBlocks, stripOpenInlineShotBlock, waitingInlineBlock } from '../domain/prompt/inline-shots';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
 import { getConfig } from './context';
 import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBatch } from './chat-bake';
@@ -68,7 +68,7 @@ export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTar
       if (final) next = removeJobSpinners(next, batch.jobId);
     }
     // A block no job placed (broken, cancelled) stays as a pink slot; only one cut off mid-JSON goes.
-    return final ? stripOpenInlineShotBlock(next) : next;
+    return final ? stripInlineCastBlocks(stripOpenInlineShotBlock(next)) : next;
   });
   for (const row of written ? missing : []) dbg('inline.bake.unplaced', { job_id: row.job, block: row.n ?? '', reason: row.reason }, 'warn');
   return { written, unplaced: written ? missing.length : 0 };

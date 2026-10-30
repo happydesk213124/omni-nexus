@@ -327,6 +327,32 @@ test('streaming tag rules reach only the chat model: after the first message, on
   assert.deepEqual(f.api.placeInlineTagPrompts(chat,rules,'# state').map(m=>m.content===rules?'RULES':m.content),['main prompt','RULES','hi','hello','# state','go'],'the chat state goes last, before the newest user turn');
 });
 
+test('asset looks for unregistered people ride in the chat state, within the budget, and never when switched off',async()=>{
+  const f=await fixture();const card=f.api.getConfig().card;card.stream_inline_tags=true;
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();
+  const source=f.api.inlineAssetMetaSource,collect=source.collect,seen=[];
+  const chat=[{role:'system',content:'main prompt'},{role:'user',content:'민수를 불렀다'}];
+  const looks=m=>String(m.content).includes(f.api.INLINE_ASSET_META_MARK);
+  try {
+    source.collect=async request=>{seen.push(request.assistant_text);return '## NovelAI character asset tags\n민수: boy, black hair, short hair, blue eyes';};
+    const sent=await replacer(chat,'model');
+    const meta=sent.find(looks);
+    assert.ok(meta,'the block is in the request');
+    assert.match(meta.content,/민수: boy, black hair/);
+    assert.ok(sent.indexOf(meta)<sent.length-1 && sent.at(-1).content==='민수를 불렀다','it sits before the newest user turn');
+    assert.match(seen[0],/민수를 불렀다/,"the user's own message picks the assets");
+    // A read that runs over the budget sends this bot's last block and does not hold the request.
+    source.collect=()=>new Promise(r=>setTimeout(()=>r('## NovelAI character asset tags\n새사람: girl'),6000));
+    const started=Date.now(),late=await replacer([{role:'system',content:'main prompt'},{role:'user',content:'다른 말'}],'model');
+    assert.ok(Date.now()-started<4500,'the request waits at most the state budget');
+    assert.match(late.find(looks)?.content||'',/민수: boy/,'the last block stands in');
+    card.stream_inline_asset_meta=false;seen.length=0;source.collect=async request=>{seen.push(request);return 'X';};
+    assert.equal((await replacer(chat,'model')).some(looks),false,'off: no asset looks');
+    assert.equal(seen.length,0,'off: no asset is read either');
+  } finally {source.collect=collect;}
+});
+
 test('the request hook notes which of our lorebook instructions reached the chat model, switch on or off',async()=>{
   const f=await fixture();f.api.getConfig().card.stream_inline_tags=false;
   let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};

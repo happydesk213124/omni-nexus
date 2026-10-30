@@ -363,7 +363,8 @@ const normalize = (root) => {
         if (k === 'stream_lines_image_min' || k === 'stream_lines_image_max') continue;
         // Streaming tag generation (the chat model writes [[inxN]] shots) has no 1.x
         // equivalent; settings.stream_inline_contract asserts defaults, saving and coercion.
-        if (k === 'stream_inline_tags' || k === 'stream_inline_autogen') continue;
+        // The cast block and the asset metadata in the chat state are its 2.0 options too.
+        if (k === 'stream_inline_tags' || k === 'stream_inline_autogen' || k === 'stream_inline_cast_first' || k === 'stream_inline_asset_meta') continue;
         // 2.4 NAI5/4 routing, 1st/2nd preset, multi-key lists. No 1.x fields;
         // schema + nai-routing unit tests assert defaults and family pick.
         // Legacy `api_key` / `api_key_configured` still compared.
@@ -741,6 +742,7 @@ const NEW_ONLY_STEPS = new Map([
   ['job.commit_output_unknown', v => v?.ok === false && v.error?.code === 'not_pending' ? null : 'unknown stream attached'],
   ['settings.stream_lines_contract', v => v?.defaultOff===true && v.defaultCount===30 && v.saved===true && v.disabledRetainsCount===true && v.bounds?.[0]===2 && v.bounds?.[1]===100 ? null : 'line batching settings contract failed'],
   ['job.commit_output_group_unknown', v => v?.ok===false && v.error?.code==='not_pending' ? null : 'unknown line group attached'],
+  ['inline.cast_registers', v => v?.unsupported===true || (JSON.stringify(v.registered)==='["캐스트민수"]' && v.chatsUnchanged===true && v.listed===true && v.broken==='bad_json' && v.missing==='bad_request') ? null : 'a cast block must register its named people at once, write no chat mid-reply, and refuse broken JSON or missing ids: '+JSON.stringify(v)],
   ['inline.park_writes_nothing', v => v?.unsupported===true || (v?.ok===true && v.chatsUnchanged===true && JSON.stringify(v.wait_ids)==='["b1"]') ? null : 'the end of a reply must not rewrite any chat; its blocks are the slots: '+JSON.stringify(v)],
   ['inline.generate_unknown', v => v?.unsupported===true || (v?.ok===false && v.error?.code==='not_found') ? null : 'a missing waiting slot started a job'],
   ['settings.stream_inline_contract', v => v?.unsupported===true || (v?.defaultOff===true && v.defaultAutogen===true && v.saved===true && v.coerced===true && v.restored===true) ? null : 'streaming tag settings contract failed'],

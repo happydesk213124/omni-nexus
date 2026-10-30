@@ -29,7 +29,7 @@ import * as messageBody from '../domain/prompt/message-body';
 import * as streamKeywords from '../domain/prompt/stream-keywords';
 import { createStreamSignalScanner } from '../domain/prompt/stream-signal';
 import { createStreamLineBatcher } from '../domain/prompt/stream-lines';
-import { inlineShotBlocks, inlineShotLine, inlineShotTagged } from '../domain/prompt/inline-shots';
+import { inlineCastBlock, inlineShotBlocks, inlineShotLine, inlineShotTagged } from '../domain/prompt/inline-shots';
 
 export function installUiContractGlobals(): void {
   Reflect.set(globalThis, '__OMNI_EXPORT__', { jsonParts });
@@ -41,6 +41,7 @@ export function installUiContractGlobals(): void {
     inlineShotBlocks,
     inlineShotLine,
     inlineShotTagged,
+    inlineCastBlock,
     parseStreamKeywords: streamKeywords.parseStreamKeywords,
     haystackHasStreamKeyword: streamKeywords.haystackHasStreamKeyword,
   });
