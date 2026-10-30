@@ -25,6 +25,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async querySelector(s) { count('querySelector'); const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
         async querySelectorAll(s) { count('querySelectorAll'); return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
         async setAttribute(k, v) { count('setAttribute'); if (!k.startsWith('x-')) throw Error('Forbidden attribute write ' + k); this.node.setAttribute(k, v); }
+        async getAttribute(k) { count('getAttribute'); if (!k.startsWith('x-')) throw Error('Forbidden attribute read ' + k); return this.node.getAttribute(k); }
         async setTextContent(v) { count('setTextContent'); this.node.textContent = v; }
         async getOuterHTML() { count('getOuterHTML'); return this.node.outerHTML; }
         async innerText() { count('innerText'); return this.node.innerText; }
@@ -104,6 +105,15 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await press('older'); await page.waitForFunction(() => /전날 밤/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    // 삽화 strip: the chat's own image cloned as a tile; tapping it jumps to that scene.
+    await press('strip');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-strip] img[x-vn-thumb]').length === 1);
+    await page.waitForTimeout(500);
+    const tile = await page.locator('[x-omni-vn] [data-vn-strip] img[x-vn-thumb]').boundingBox();
+    assert.ok(tile.x + tile.width <= box.x + box.width + 1 && tile.width > 20, 'the strip slid in');
+    await page.mouse.click(tile.x + tile.width / 2, tile.y + tile.height / 2);
+    await page.waitForFunction(() => (document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '').includes('img[x-vn-cg='));
+    assert.equal((await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent)).includes('[data-vn-strip]{translate:0 0}'), false, 'a jump closes the strip');
     // ✕ closes: no frame, no styles, no listener.
     const close = await page.locator('[x-omni-vn] [data-vn-act="close"]').boundingBox();
     await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
