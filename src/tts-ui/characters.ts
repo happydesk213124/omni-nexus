@@ -46,8 +46,18 @@ export class TtsCharacters {
   visible(): TtsCharacter[] { const rank = (c: TtsCharacter) => c.role ? (c.scope === 'global' ? 2 : 0) + (c.role === 'monologue' ? 1 : 0) : 4; return this.matching().map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(r => r.c); }
   // "하린, 세라": anyone either word names (옴니 뷰어's 👨‍👩‍👧‍👦 searches a reply's people so).
   private matching(): TtsCharacter[] { const terms = val('char-search').split(',').map(t => t.trim().toLocaleLowerCase()).filter(Boolean); return ttsData().characters.filter(c => !(c.role && c.scope === 'global' && this.context && val('char-scope-filter') === 'all') && (c.scope === 'global' || c.scope === this.context?.rosterScope) && (val('char-scope-filter') === 'all' || c.scope === (val('char-scope-filter') === 'global' ? 'global' : this.context?.rosterScope)) && (!terms.length || [c.name, ...c.triggers, ...c.tags].some(s => { const low = s.toLocaleLowerCase(); return terms.some(t => low.includes(t)); }))); }
-  /** Opened for some people: they are searched, in every scope (the filter is left as saved). */
-  showOnly(search: string): void { set('char-search', search); if (search) set('char-scope-filter', 'all'); this.render(); }
+  /**
+   * Opened for some people: they are searched, in every scope (the filter is left as saved).
+   * Typed in as by a hand (an input event): the list follows, and so does the × beside the
+   * box, which stayed disabled for a value set quietly and cleared nothing.
+   */
+  showOnly(search: string): void {
+    if (search) set('char-scope-filter', 'all');
+    const box = input('char-search');
+    if (!box) { this.render(); return; }
+    box.value = search;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   render(): void {
     const root = el('character-list'); if (!root) return;
     if (this.imageRoot !== root) {

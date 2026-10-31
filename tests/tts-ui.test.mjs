@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 test('production settings persist independently, edit voice tiles and survive reopening',async()=>{
-  const built=await build({stdin:{contents:`import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {withTtsAudio} from './src/tts-ui/activation';import {ttsData} from './src/storage/tts-store';import {omniTts} from './src/services/tts-runtime';import {replaceMain} from './src/settings-ux/character-render';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome,tabHtml} from './src/settings-ux/tab-html';import {bindSoundNav} from './src/sound-ui/page';Object.assign(window,{withTtsAudio,mountTts,ttsSettingsHtml,ttsData,omniTts,replaceMain,settingsUxCss,previewChrome,tabHtml,bindSoundNav});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
+  const built=await build({stdin:{contents:`import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {withTtsAudio} from './src/tts-ui/activation';import {ttsData} from './src/storage/tts-store';import {omniTts} from './src/services/tts-runtime';import {replaceMain} from './src/settings-ux/character-render';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome,tabHtml} from './src/settings-ux/tab-html';import {bindSoundNav,focusSoundPanel} from './src/sound-ui/page';import {installSearchClear} from './src/settings-ux/search-clear';Object.assign(window,{focusSoundPanel,installSearchClear,withTtsAudio,mountTts,ttsSettingsHtml,ttsData,omniTts,replaceMain,settingsUxCss,previewChrome,tabHtml,bindSoundNav});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage({viewport:{width:1360,height:900}}),errors=[];
@@ -269,6 +269,17 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.evaluate(async()=>{document.getElementById('tts-settings-root').remove();document.body.insertAdjacentHTML('beforeend',window.ttsSettingsHtml());await window.mountTts();window.newDialogs=document.getElementById('tts-dialogs');window.resumeCharacter();await window.oldMount;});
     await page.waitForTimeout(30);
     assert.equal(await page.evaluate(()=>window.newDialogs===document.getElementById('tts-dialogs')&&window.newDialogs.isConnected),true,'late initialization cannot delete a newer screen popup');
+    // Opened from 옴니 뷰어's 👨‍👩‍👧‍👦: the 캐릭터 tab, the reply's people searched (commas: either name); the × beside the box clears it.
+    // (TTS on again: switched off, the whole tab is disabled, its search too.)
+    await page.evaluate(async()=>{window.ttsData().settings.enabled=true;window.installSearchClear();window.focusSoundPanel('tts-characters','하린, 없는 이름');document.getElementById('tts-settings-root').remove();document.body.insertAdjacentHTML('beforeend',window.ttsSettingsHtml());await window.mountTts();});
+    await page.waitForFunction(()=>!document.getElementById('tts-characters').hidden&&document.getElementById('char-search').value==='하린, 없는 이름');
+    const searched=await page.locator('#character-list .char-card b').allTextContents();
+    assert.ok(searched.includes('하린')&&!searched.includes('나레이션'),'only the people searched: '+JSON.stringify(searched));
+    const clearSearch=page.locator('#char-search + .nx-search-clear');
+    assert.equal(await clearSearch.isDisabled(),false,'the × works on a search filled in for them');
+    await clearSearch.click();
+    assert.equal(await page.locator('#char-search').inputValue(),'');
+    await page.waitForFunction(()=>[...document.querySelectorAll('#character-list .char-card b')].some(b=>b.textContent==='나레이션'));
     await page.screenshot({path:'.tts-ui-check.png',fullPage:true});
     await page.evaluate(()=>{document.getElementById('nx-main').innerHTML=window.tabHtml('dashboard','');});
     assert.equal(await page.locator('#dashboard #nx-tts-exclude-text, #dashboard #nx-tts-omit-characters, #nx-tts-exclusions').count(),0,'TTS options live only in the TTS settings, not the illustration dashboard');

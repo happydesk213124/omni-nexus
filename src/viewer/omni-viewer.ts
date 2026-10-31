@@ -1103,6 +1103,14 @@ async function go(delta: number): Promise<void> {
   if (next >= 0 && next < scenes.length) { at = next; await render(); return; }
   // A long swipe stops at the reply's edge first; the next one crosses into the other reply.
   if (Math.abs(delta) > 1 && at !== (delta > 0 ? scenes.length - 1 : 0)) { at = delta > 0 ? scenes.length - 1 : 0; await render(); return; }
+  // The story so far ends on its picture (or it is the last scene in yet): going on folds it, and the stage
+  // and the end cue come back. It stood there for good, every tap a step to nowhere.
+  if (delta > 0 && cgView === 'open' && scenes[at]?.kind === 'cg' && (streaming || !charIndexes().some(i => i > messageIndex))) {
+    cgView = 'fold'; cgThumb = null;
+    await restyle();
+    setTimeout(() => void measureCgThumb().catch(() => {}), 450);
+    return;
+  }
   if (streaming) return;
   if (await stepReply(delta > 0 ? 1 : -1)) await render();
 }
@@ -1371,7 +1379,8 @@ function onDown(p: HostPoint): void {
   if (!keysOn) return;
   pressFrom = { x: p.clientX, y: p.clientY };
   if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
-  if (!boxRect || !inside(p, boxRect)) swipeFrom = { x: p.clientX, y: p.clientY };
+  // (A picture up front hides the box, or leaves only the end cue there: no line to select, the swipe is the stage's.)
+  if (!boxRect || !inside(p, boxRect) || cgView === 'open') swipeFrom = { x: p.clientX, y: p.clientY };
   if (liveHit(p) || onSticker(p) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
   const now = Date.now();
   pressAt = now;
