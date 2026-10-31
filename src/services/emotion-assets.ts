@@ -54,8 +54,9 @@ export async function currentEmotionBot(): Promise<EmotionBot | null> {
 }
 
 // The bot's images: its assets, its emotion images and enabled modules. Read once
-// a minute at most; a sprite Omni saves joins at once, registered or not.
-const POOL_MS = 60_000;
+// every five minutes at most (a full read of its assets is not cheap on a phone); a
+// sprite Omni saves joins at once, registered or not.
+const POOL_MS = 300_000;
 let pool: { bot: string; at: number; assets: RisuNamedAsset[] } | undefined;
 async function botImages(bot: EmotionBot): Promise<RisuNamedAsset[]> {
   if (!pool || pool.bot !== bot.id || Date.now() - pool.at > POOL_MS) {

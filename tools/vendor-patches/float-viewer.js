@@ -63,10 +63,14 @@ globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
   // Not in the gallery as loaded (not loaded yet, or stale): this session's, read again once.
   if (!card) { try { const scope = await Z({ useOverride: false }); if (scope?.sessionId) await ce(scope.sessionId, true); } catch {} card = find(); }
   if (!card) { y("warn", "viewer.inspect", "card not in gallery " + String(cardId).slice(0, 12)); return false; }
-  await open(card, String(asset || ""), null);
+  // A failed open closes again: left "open" with nothing on screen it holds every chat button and the floating viewer.
+  try { await open(card, String(asset || ""), null); }
+  catch (error) { y("warn", "viewer.inspect", String(error?.message || error)); await globalThis.__OMNI_INSPECT_CLOSE__?.(); return false; }
   return true;
 };
 globalThis.__OMNI_INSPECT_OPEN__ = () => !!t._nxHostInspectOpen;
+// Closed from 옴니 뷰어: left open under the viewer, it holds every chat button and the floating viewer.
+globalThis.__OMNI_INSPECT_CLOSE__ = async () => { if (t._nxHostInspectOpen && typeof t._nxInspectCloser == "function") await t._nxInspectCloser(); };
 function nxNotifyTtsVisibility() {
   const refresh = globalThis.__OMNI_TTS_REFRESH_VISIBILITY__;
   if (typeof refresh === 'function') refresh();

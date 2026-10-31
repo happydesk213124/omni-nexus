@@ -18,12 +18,12 @@ import { bgmSceneText } from '../domain/sound/scene';
 import { audioOf, downloadAudio, effectClip, planClip, prefetchAudio, rememberAudio } from './sound-clips';
 import { bgmDeviceCache } from '../storage/bgm-cache';
 import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
-import { plantYoutubeSeed } from '../providers/sound/youtube';
 import { ttsFetch, ttsJson } from '../providers/tts/http';
-import { risuHost } from '../core/host';
 
 /** Folder for effects ElevenLabs made on its own, so they are easy to review. */
 export const AUTO_SFX_FOLDER = '자동 생성';
+/** How long after start YouTube's player is made ahead: after Risu has loaded and drawn the chat. */
+const TUBE_AHEAD_MS = 15_000;
 
 export class OmniSoundRuntime {
   readonly player = new SoundPlayer();
@@ -91,18 +91,18 @@ export class OmniSoundRuntime {
         if (speaking) this.player.stopSfx();
       });
       omniTts.setSoundCues(this.cues);
-      // YouTube's player is born from a seed in a message the chat draws: the handler
-      // plants one only while the player is wanted, and passes every other draw as is.
-      const host = risuHost();
-      if (typeof host?.addRisuScriptHandler === 'function') await Promise.resolve(host.addRisuScriptHandler('display', content => plantYoutubeSeed(content))).catch(error => dbg('bgm.youtube.seed', { message: String(error) }, 'warn'));
-      this.prepareTube();
+      // Made ahead, the first track starts at once; but never while Risu is still loading:
+      // YouTube's player is a whole page of its own.
+      this.tubeAt = Date.now() + TUBE_AHEAD_MS;
+      setTimeout(() => this.prepareTube(), TUBE_AHEAD_MS);
     })().catch(error => { this.started = undefined; throw error; });
   }
-  /** With YouTube tracks listed and BGM on, the player is made ahead: the first track starts at once. */
+  /** With YouTube tracks listed and BGM on, the player is made ahead (a while after start): the first track starts at once. */
   private tubeTried = false;
+  private tubeAt = Infinity;
   private prepareTube(): void {
     const s = soundData().settings;
-    if (this.tubeTried || !s.bgmEnabled || !s.youtubeBgm || !soundData().bgm.some(item => item.source === 'youtube')) return;
+    if (this.tubeTried || Date.now() < this.tubeAt || !s.bgmEnabled || !s.youtubeBgm || !soundData().bgm.some(item => item.source === 'youtube')) return;
     this.tubeTried = true;
     void this.player.prepareTube().catch(error => { this.tubeTried = false; dbg('bgm.youtube.prepare', { message: String((error as Error)?.message || error) }, 'warn'); });
   }
