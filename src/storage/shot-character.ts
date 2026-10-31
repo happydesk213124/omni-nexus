@@ -118,6 +118,20 @@ export async function putCharacterAssetRows(target: Target, rows: readonly Pendi
   });
   invalidateShotListing(target.id);
 }
+/** Asset rows taken off a character by name (a background deleted in 배경). Verified like a registration. */
+export async function removeCharacterAssetRows(target: Target, names: readonly string[]): Promise<void> {
+  if (!names.length) return;
+  await serializeSessionStorage(async()=>{
+    const {host,index,char,assets}=await read(target);
+    const drop=new Set(names);
+    const kept=assets.filter(v=>!(Array.isArray(v)&&drop.has(String(v[0]))));
+    if(kept.length===assets.length) return;
+    await measureWrite('character','asset-remove',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:kept} as never));
+    const verified=await read(target);
+    if(verified.assets.some(v=>Array.isArray(v)&&drop.has(String(v[0])))) throw new Error('Image asset removal failed');
+  });
+  invalidateShotListing(target.id);
+}
 /** Registers every waiting shot and roster change: one character write per character. */
 export async function flushShotAssets(): Promise<void> {
   clearTimeout(shotTimer); shotTimer = undefined;

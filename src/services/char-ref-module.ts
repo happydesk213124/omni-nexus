@@ -1,4 +1,5 @@
 import { serializeModuleWrite } from '../storage/module-write';
+import { moduleAssetsMissing, refillModuleAssets } from '../storage/module-assets';
 /**
  * Risu module that holds compressed character reference images.
  * The roster stores only a hash; the module asset tuple owns the exact path
@@ -453,3 +454,64 @@ export async function resetCharRefLibrary(): Promise<ApiResult> {
   const removed = await clearAllCharRefModuleAssets();
   return { ok: true, removed };
 }
+
+// ── backgrounds every bot uses ─────────────────────────────────────────────
+/**
+ * A background drawn for a sample place is every bot's: kept in this module beside the
+ * reference images, named `omni_bg_<tags>` (the reference code above keeps any asset not
+ * its own). Listed at most once in a while: the module list is a heavy read on PocketRisu.
+ */
+const SHARED_BG = /^(?:omni_)?bg_/i;
+const SHARED_READ_MS = 300_000;
+let sharedRows: { at: number; rows: Array<[string, string]> } | undefined;
+export async function sharedBackgroundRows(): Promise<Array<[string, string]>> {
+  if (sharedRows && Date.now() - sharedRows.at < SHARED_READ_MS) return sharedRows.rows;
+  let rows = sharedRows?.rows ?? [];
+  try {
+    const db = await risuHost()?.getDatabase?.(['modules']);
+    const modules = readModules(db), mod = modules[findModuleIndex(modules)];
+    // Sent without its list (PocketRisu), the last list stands.
+    if (!mod) rows = [];
+    else if (Array.isArray(mod.assets) && !moduleAssetsMissing(mod as never)) rows = parseCharRefModuleAssets(mod.assets).filter(row => SHARED_BG.test(row[0])).map(row => [row[0], row[1]]);
+  } catch { /* the last list stands */ }
+  sharedRows = { at: Date.now(), rows };
+  return rows;
+}
+/** The module's asset rows as they are, or null when they could not be read (written then, the rest would be lost). */
+async function loadedAssets(mod: ModuleRow): Promise<Array<[string, string, string]> | null> {
+  const listed = Array.isArray(mod.assets) && !moduleAssetsMissing(mod as never) ? mod.assets : await refillModuleAssets(mod as never);
+  if (!listed || charRefListLooksUnloaded(listed)) return null;
+  return parseCharRefModuleAssets(listed);
+}
+/** Writes the shared backgrounds' rows: `put` added or replaced by name, `drop` taken out by name. */
+async function writeSharedBackgrounds(put: ReadonlyArray<{ name: string; path: string }>, drop: ReadonlyArray<string>): Promise<void> {
+  if (!put.length && !drop.length) return;
+  await ensureDbAccess();
+  const host = hostOrThrow();
+  if (!hostHas('getDatabase') || !hostHas('setDatabase')) throw new Error('모듈을 쓰려면 getDatabase / setDatabase가 필요합니다');
+  await serializeModuleWrite(async () => {
+    const db = await host.getDatabase!(['modules', 'enabledModules']);
+    if (!db) throw new Error('Risu 데이터베이스를 열 수 없습니다');
+    const modules = readModules(db);
+    let idx = findModuleIndex(modules);
+    if (idx < 0 && !put.length) return;
+    if (idx < 0) {
+      modules.push({ id: CHAR_REF_MODULE_ID, name: CHAR_REF_MODULE_NAME, description: '캐릭터 참고이미지. Inlay가 관리합니다.', namespace: CHAR_REF_MODULE_NS, hideIcon: false, lorebook: [], assets: [] });
+      idx = modules.length - 1;
+    }
+    const assets = await loadedAssets(modules[idx]!);
+    if (!assets) throw new Error('참고이미지 모듈의 목록을 아직 읽지 못했습니다. 잠시 뒤 다시 합니다.');
+    const names = new Set([...put.map(row => row.name), ...drop]);
+    const next = [...assets.filter(row => !names.has(row[0])), ...put.map(row => [row.name, row.path, row.name] as [string, string, string])];
+    modules[idx] = { ...modules[idx], assets: next };
+    const enabled = asUnknownArray(db.enabledModules).map(id => cleanText(id, 200)).filter(Boolean);
+    if (put.length && !enabled.includes(CHAR_REF_MODULE_ID) && !enabled.includes(CHAR_REF_MODULE_NS)) enabled.push(CHAR_REF_MODULE_ID);
+    await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+    sharedRows = { at: Date.now(), rows: next.filter(row => SHARED_BG.test(row[0])).map(row => [row[0], row[1]]) };
+    dbg('shared_bg.module.write', { message: `+${put.length} −${drop.length}` });
+  });
+}
+export const putSharedBackgrounds = (rows: ReadonlyArray<{ name: string; path: string }>): Promise<void> => writeSharedBackgrounds(rows, []);
+export const removeSharedBackgrounds = (names: ReadonlyArray<string>): Promise<void> => writeSharedBackgrounds([], names);
+/** Test seam: forget the listed shared backgrounds. */
+export function resetSharedBackgrounds(): void { sharedRows = undefined; }

@@ -96,7 +96,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => /왔어\?/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), null, { timeout: 900 });
     assert.equal(await page.locator('[x-omni-vn] [x-vn-sp] img').count(), 0, 'the line is up before its face');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-sp] img').length === 1);
-    await page.waitForFunction(() => /\[x-vn-sp="[^"]+"\]\{opacity:1\}/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
+    await page.waitForFunction(() => /\[x-vn-sp="[^"]+"\]\{opacity:1[;}]/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
     await page.evaluate(() => { window.imageDelay = 0; });
     await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
@@ -134,12 +134,24 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const stage = await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-p]')].filter(n => getComputedStyle(n).display !== 'none').map(n => getComputedStyle(n).filter));
     assert.equal(stage.length, 2, 'both people who have spoken stand');
     assert.equal(stage.filter(f => f === 'none').length, 1, 'exactly one is lit: ' + JSON.stringify(stage));
+    // Springs: one plays when a person comes in, changes face or steps forward to speak (its name turns a/b).
+    const sceneText = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent);
+    const springOf = (css, key) => (new RegExp('\\[x-vn-p="' + key + '"\\] \\[x-vn-sp="[^"]+"\\]\\{opacity:1;animation:vn-jelly-([ab])').exec(css) || [])[1] || '';
+    const speakerIn = css => (/\[x-vn-p="([^"]+)"\]\{display:block;left:[^;]+;filter:none/.exec(css) || [])[1] || '';
+    let css = await sceneText();
+    const harin = speakerIn(css), misun = [...css.matchAll(/\[x-vn-p="([^"]+)"\]\{display:block/g)].map(m => m[1]).find(key => key !== harin);
+    assert.ok(harin && misun && springOf(css, harin) && springOf(css, misun), 'both on a spring: ' + css.slice(0, 400));
+    const misunWas = springOf(css, misun);
+    assert.match(css, /\[x-vn-sp\] img\{animation:vn-breathe/, 'and breathing');
     // Back to the long line: one deliberate tap during its letters completes them and stays.
     const shown = re => page.waitForFunction(source => new RegExp(source).test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), re.source);
     const center = () => page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.45);
     for (const name of ['prev', 'prev']) { await page.waitForTimeout(600); const b = await page.locator(`[x-omni-vn] [data-vn-act="${name}"]`).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
     await page.waitForFunction(() => /^"3 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
     await shown(/자리 맡아놨어/);
+    css = await sceneText();
+    assert.equal(speakerIn(css), misun);
+    assert.notEqual(springOf(css, misun), misunWas, 'stepping forward to speak again: the spring plays again');
     await page.waitForTimeout(450); await center();
     await page.waitForFunction(() => /animation:none/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
     assert.match(await page.locator('[x-omni-vn] [data-vn-text]').textContent(), /자리 맡아놨어/, 'the same line, now complete');

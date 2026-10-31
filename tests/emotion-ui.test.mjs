@@ -40,6 +40,11 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.waitForFunction(() => window.viewerPrefs().skipWords === '상태창, OOC' && window.viewerPrefs().speed === 'slow');
     await page.locator('#emo-size').selectOption('large');
     await page.waitForFunction(() => window.viewerPrefs().textSize === 'large');
+    // 캐릭터 움직임: breathing and springs, both on; switched off, kept.
+    assert.equal(await page.locator('#emo-breathe').isChecked(), true);
+    assert.equal(await page.locator('#emo-bounce').isChecked(), true);
+    await page.locator('#emo-bounce').uncheck();
+    await page.waitForFunction(() => window.viewerPrefs().bounce === false && window.viewerPrefs().breathe === true);
     // 배경: its switch greys out the rest; ⚛️ omni place goes into Risu's modules, on; a reply with no place is picked by JEV.
     await page.locator('#tab-emo-bg').click();
     assert.equal(await page.locator('#emo-bg').isVisible(), true);
@@ -48,6 +53,19 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.evaluate(async () => { document.getElementById('nx-main').innerHTML = window.ttsSettingsHtml(); await window.mountTts(); });
     await page.locator('#tab-emo-bg').click();
     await page.waitForFunction(() => document.querySelectorAll('#emo-bg-samples button').length === 106);
+    // A background every chat uses (drawn for a sample place): its tile, 다시 그리기 and 삭제; its sample no longer to draw.
+    await page.evaluate(() => window.emotionData().made.push({ bot: '*', person: '__place__', face: 'cafe, indoors, window, daytime', name: 'omni_bg_cafe, indoors, window, daytime.webp', path: 'assets/sad.png', registered: true, at: 1 }));
+    await page.locator('#tab-emo-assets').click(); await page.locator('#tab-emo-bg').click();
+    await page.waitForFunction(() => document.querySelectorAll('#emo-bg-shared .emo-bg-tile').length === 1);
+    assert.equal(await page.locator('#emo-bg-shared-count').textContent(), '1장');
+    assert.deepEqual(await page.locator('#emo-bg-shared .emo-bg-tools button').allTextContents(), ['다시 그리기', '삭제']);
+    assert.equal(await page.locator('[data-emo-bg-make="cafe, indoors, window, daytime"]').isDisabled(), true);
+    await page.waitForFunction(() => /url\("blob:/.test(document.querySelector('#emo-bg-shared .emo-bg-pic')?.style.backgroundImage || ''));
+    await page.evaluate(() => { window.confirm = () => true; });
+    await page.locator('#emo-bg-shared [data-emo-bg-delete]').click();
+    await page.waitForFunction(() => !document.querySelector('#emo-bg-shared .emo-bg-tile'));
+    assert.equal(await page.evaluate(() => window.emotionData().made.some(m => m.bot === '*')), false, 'gone for every chat');
+    assert.equal(await page.locator('[data-emo-bg-make="cafe, indoors, window, daytime"]').isDisabled(), false, 'its sample can be drawn again');
     await page.locator('#emo-places').uncheck();
     await page.waitForFunction(() => window.emotionData().settings.placeBackgrounds === false && document.getElementById('emo-bg-gate').disabled);
     await page.locator('#emo-places').check();
