@@ -134,3 +134,15 @@ test('overlapping people: the last to speak in front, then whoever spoke before 
   const told = stage({ narration: true, cast: [{ key: 'tA', face: '', speaking: false, front: 0 }, { key: 'tB', face: '', speaking: false, front: 1 }] });
   assert.deepEqual(['tA', 'tB'].map(key => zOf(told, key)), [3, 2]);
 });
+
+test('the picture is over the people: shown big they take no z-index (it has none), folded its thumb is above them', () => {
+  const cast = [{ key: 'tA', face: '', speaking: true, front: 0 }, { key: 'tB', face: '', speaking: false, front: 1 }];
+  const ruleOf = (css, key) => css.split(`[x-vn-p="${key}"]{`)[1]?.split('}')[0] ?? '';
+  for (const cgView of [undefined, 'open', 'show']) {
+    const css = stage({ cast, cg: 'p1', cgView });
+    assert.deepEqual(['tA', 'tB'].map(key => ruleOf(css, key).includes('z-index')), [false, false], `${cgView}: dimmed under the picture`);
+  }
+  const folded = stage({ cast, cg: 'p1', cgView: 'fold' });
+  assert.equal(folded.split('[x-vn-cg="p1"]{')[1].split('}')[0].split(';').includes('z-index:4'), true, 'the thumb above every person (3 at most)');
+  assert.equal(ruleOf(folded, 'tA').includes('z-index:3'), true, 'folded, the stage is lit as ever');
+});

@@ -124,6 +124,9 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   if (speed) speed.value = viewerPrefs().speed;
   if (size) size.value = viewerPrefs().textSize;
   // 캐릭터 움직임: read on the viewer's next open (its scene style carries them).
+  const reach = root.querySelector<HTMLSelectElement>('#emo-reach');
+  if (reach) reach.value = String(viewerPrefs().stageReach);
+  reach?.addEventListener('change', event => { event.stopPropagation(); void saveViewerPrefs({ stageReach: Number(reach.value) }); });
   for (const [id, key] of [['emo-breathe', 'breathe'], ['emo-bounce', 'bounce']] as const) {
     const node = root.querySelector<HTMLInputElement>(`#${id}`);
     if (!node) continue;

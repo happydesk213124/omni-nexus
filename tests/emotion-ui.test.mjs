@@ -45,6 +45,13 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     assert.equal(await page.locator('#emo-bounce').isChecked(), true);
     await page.locator('#emo-bounce').uncheck();
     await page.waitForFunction(() => window.viewerPrefs().bounce === false && window.viewerPrefs().breathe === true);
+    // 무대에 남는 줄: three lines unless set; 답장 끝까지 is kept as 0. Its 「?」 says what it does.
+    assert.equal(await page.locator('#emo-reach').inputValue(), '3');
+    await page.locator('#emo-reach').selectOption('0');
+    await page.waitForFunction(() => window.viewerPrefs().stageReach === 0);
+    await page.locator('#emo-reach').selectOption('2');
+    await page.waitForFunction(() => window.viewerPrefs().stageReach === 2);
+    assert.equal(await page.locator('#emo-reach').evaluate(n => n.closest('.row')?.dataset.nxHelpId), 'emo-reach');
     // 배경: its switch greys out the rest; ⚛️ omni place goes into Risu's modules, on; a reply with no place is picked by JEV.
     await page.locator('#tab-emo-bg').click();
     assert.equal(await page.locator('#emo-bg').isVisible(), true);

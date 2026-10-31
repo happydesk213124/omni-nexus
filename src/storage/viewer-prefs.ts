@@ -15,8 +15,11 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * placeModule: ⚛️ omni place installed and on (the writer marks places). breathe: the
  * people on stage breathe; bounce: one comes in, changes face or steps forward with a spring.
  * sfx: its 효과음 button, the effects of the lines read played (off, passed over).
+ * stageReach: a person stands while they have a line within this many lines of the one
+ * read, before or after it (0: to the reply's end, as the stage once was).
  */
-export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean }
+export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number }
+export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
 const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
 /** The box's letters, against 'normal' (the size the viewer had before it was a choice). */
 export const TEXT_SCALE: Record<ViewerTextSize, number> = { small: 0.88, normal: 1, large: 1.16, xlarge: 1.34 };
@@ -33,6 +36,7 @@ function normalize(raw: unknown): ViewerPrefs {
     textSize: TEXT_SIZES.includes(r.textSize as ViewerTextSize) ? r.textSize as ViewerTextSize : 'normal',
     placeModule: r.placeModule === true, bgPick: BG_PICKS.includes(r.bgPick as ViewerBgPick) ? r.bgPick as ViewerBgPick : 'auto',
     breathe: r.breathe !== false, bounce: r.bounce !== false,
+    stageReach: typeof r.stageReach === 'number' && STAGE_REACHES.includes(r.stageReach) ? r.stageReach : 3,
   };
 }
 let prefs = normalize(null);

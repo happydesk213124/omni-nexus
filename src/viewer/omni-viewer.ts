@@ -498,13 +498,14 @@ function stageLines(): NonNullable<typeof staged> {
 }
 /**
  * Who stands on stage at scene `index` (`stageAt`): from their first line on, who has a
- * line within two lines of the one read, before or after it, three at most (the speaker,
- * then the nearest), left to right as they came into the reply, each with the face of
- * their latest line. A speaker without a TTS card still stands, as a silhouette.
+ * line within 뷰어 설정's 무대에 남는 줄 of the one read (three by default), before or after
+ * it, three at most (the speaker, then the nearest), left to right as they came into the
+ * reply, each with the face of their latest line. A speaker without a TTS card still
+ * stands, as a silhouette.
  */
 function castAt(index: number): Member[] {
   const { lines, who } = stageLines();
-  return stageAt(lines, index, MAX_CAST).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, speaking: m.speaking, front: m.front }));
+  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, speaking: m.speaking, front: m.front }));
 }
 /** The TTS characters this reply brings on, in the order they first speak. */
 function replyPeople(): string[] {

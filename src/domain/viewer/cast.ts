@@ -5,7 +5,7 @@
  * (null, no line). A person comes on with their first line and stands while they have
  * a line within `reach` text lines of the one read, before or after it: one who went
  * quiet steps off, one about to speak again stays (or is back) for it. At most `max`
- * stand; the speaker always, then the nearest.
+ * stand; the speaker always, then the nearest. `reach` Infinity: none steps off.
  */
 export interface StageLine { who: string; face: string | null }
 export interface StageMember {
@@ -17,7 +17,7 @@ export interface StageMember {
   front: number;
 }
 
-export function stageAt(lines: readonly (StageLine | null)[], at: number, max = 3, reach = 2): StageMember[] {
+export function stageAt(lines: readonly (StageLine | null)[], at: number, max = 3, reach = 3): StageMember[] {
   const text: number[] = [];
   lines.forEach((line, i) => { if (line) text.push(i); });
   // A picture has no line of its own: the window stands around where it is in the text.
