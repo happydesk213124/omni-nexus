@@ -33,3 +33,11 @@ test('the story clock is read from its own line; prose and dialogue are not cloc
   assert.equal(api.storyClock('그는 오후 4시에 왔다.\n"3월 2일 | 오후"'), '', 'a sentence with a time is no clock, nor is a quote');
   assert.equal(api.storyClock('본문뿐'), '');
 });
+
+test("a reply's gist for its tile: the first line the reader sees, no clock, tags, cast block or status field", () => {
+  assert.equal(api.replyGist('[[inxc]]{"place":"카페","new_characters":[]}[[/inxc]]\n[3월 2일 ◆ 오후 4시 ◆ 카페]\n- Main Storylines: 숨은 요약 줄\n<br>\n문이 열렸다.\n오미선: "왔어?"'), '문이 열렸다.');
+  assert.equal(api.replyGist('[3월 2일 ◆ 오후 4시 ◆ 카페]\n- 위치: 카페\n**문이 열렸다.**\n[[@inray::card1::inxshot_abc::832::1216]]'), '문이 열렸다.');
+  assert.equal(api.replyGist('- 그녀가 웃었다'), '- 그녀가 웃었다', 'a bulleted line without a field label is the story');
+  assert.equal(api.replyGist('가'.repeat(60)).length, 44, 'long lines are cut, with an ellipsis');
+  assert.equal(api.replyGist('[[inx1]]\n<style>.a{}</style>'), '');
+});
