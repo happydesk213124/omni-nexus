@@ -260,7 +260,7 @@ try {
       assert.equal(await page.locator('#nx-tts-exclusions,#nx-tts-exclude-text').count(),0,'TTS options are not on the illustration dashboard');
       assert.equal(await page.locator('#nx-tabs .nx-nav-label').allTextContents().then(t=>t.join('|')),'삽화 쓰기|삽화 연결|TTS · BGM · 감정 에셋|보기');
       // Three entries share the curation slot; data-sound-page picks the page.
-      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','소리 모델 설정','감정 에셋']);
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','소리 모델 설정','뷰어 및 감정 에셋']);
       assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').evaluateAll(n=>n.map(b=>b.dataset.soundPage)),['tts','sound','models','asset']);
     }
     if (tab === 'models') {
@@ -307,7 +307,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#nx-main')?.getAttribute('data-nx-ux-tab') === 'curation', null, { timeout: 3000 });
   assert.deepEqual(await marked(), [['소리 모델 설정'], '소리 모델 설정'], 'pointerdown alone already opens the chosen sound page');
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
-  for (const [name, label] of [['sound','BGM·효과음'],['models','소리 모델 설정'],['asset','감정 에셋'],['tts','TTS 설정(beta)'],['sound','BGM·효과음']]) {
+  for (const [name, label] of [['sound','BGM·효과음'],['models','소리 모델 설정'],['asset','뷰어 및 감정 에셋'],['tts','TTS 설정(beta)'],['sound','BGM·효과음']]) {
     await page.locator(`#nx-tabs [data-sound-page="${name}"]`).click();
     await page.waitForFunction(label => document.querySelector('#nx-tabs [data-nx-tab].active')?.textContent.trim() === label, label, { timeout: 3000 }).catch(() => {});
     assert.deepEqual(await marked(), [[label], label], `${name}: only the open sound page is marked`);

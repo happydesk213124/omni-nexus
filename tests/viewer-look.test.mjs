@@ -66,3 +66,9 @@ test('기록: the line the keys picked is outlined, none when no key has picked 
   assert.doesNotMatch(stage({ log: true, logSel: -1 }), /nth-of-type/);
   assert.doesNotMatch(stage({ log: false, logSel: 2 }), /nth-of-type/, 'closed, nothing');
 });
+
+test("글자 크기: the box's letters and name, scaled by one rule; as designed, none", () => {
+  assert.match(stage({ textScale: 1.34 }), /\[data-vn-text\]\{font-size:22\.1px\}\[x-omni-vn\] \[data-vn-name\]\{font-size:20\.1px\}/);
+  assert.doesNotMatch(stage({ textScale: 1 }), /font-size/);
+  assert.doesNotMatch(stage({}), /font-size/);
+});

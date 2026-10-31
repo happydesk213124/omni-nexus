@@ -4,7 +4,7 @@ import { BASE_EXPRESSIONS, DEFAULT_POSE } from '../domain/emotion/emotions';
  * TTS · 감정 에셋 page and the character sheet's 「감정 에셋」 view. Same classes
  * as the TTS and BGM pages, so they look like the rest of the area.
  */
-export const EMOTION_TABS = [['emo-assets', '감정 에셋']] as const;
+export const EMOTION_TABS = [['emo-assets', '뷰어 및 감정 에셋']] as const;
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const sw = (id: string, label: string) => `<label class="switch"><input type="checkbox" id="${id}" aria-label="${label}"></label>`;
 const row = (title: string, control: string, status = '') => `<div class="row"><div class="copy"><b>${title}</b>${status ? `<small>${status}</small>` : ''}</div>${control}</div>`;
@@ -12,6 +12,7 @@ const row = (title: string, control: string, status = '') => `<div class="row"><
 export const EMOTION_PANEL = `<section class="panel" id="emo-assets" role="tabpanel" hidden><div class="tts-settings-columns">
 <div class="tts-settings-column"><div class="group" id="emo-viewer"><h3>옴니 뷰어</h3><div class="fields">
 <label class="field full"><span>장면으로 띄우지 않을 단어 · 쉼표로 구분 (채팅에는 그대로)</span><textarea id="emo-skip" rows="2" maxlength="2000" placeholder="예: 상태창, OOC, 시스템"></textarea></label>
+<label class="field"><span>글자 크기</span><select id="emo-size"><option value="small">작게</option><option value="normal">보통</option><option value="large">크게</option><option value="xlarge">아주 크게</option></select></label>
 <label class="field"><span>글자 속도</span><select id="emo-speed"><option value="instant">즉시</option><option value="fast">빠르게</option><option value="normal">보통</option><option value="slow">느리게</option></select></label>
 </div></div>
 <div class="group"><h3>감정 에셋</h3>

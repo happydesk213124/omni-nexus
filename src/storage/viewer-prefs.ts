@@ -2,12 +2,16 @@ import { psGet, psSet } from './device-store';
 
 /**
  * 옴니 뷰어's own settings, on this device: AUTO and VOICE (its buttons), the words
- * whose lines it leaves out, and how fast the letters come. The viewer and its page in
+ * whose lines it leaves out, how fast the letters come and how large they are. The viewer and its page in
  * 감정 에셋 share them.
  */
 export const VIEWER_PREFS_KEY = 'omniviewer.data';
 export type ViewerSpeed = 'instant' | 'fast' | 'normal' | 'slow';
-export interface ViewerPrefs { auto: boolean; voice: boolean; skipWords: string; speed: ViewerSpeed }
+export type ViewerTextSize = 'small' | 'normal' | 'large' | 'xlarge';
+export interface ViewerPrefs { auto: boolean; voice: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize }
+const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
+/** The box's letters, against 'normal' (the size the viewer had before it was a choice). */
+export const TEXT_SCALE: Record<ViewerTextSize, number> = { small: 0.88, normal: 1, large: 1.16, xlarge: 1.34 };
 const SPEEDS: readonly ViewerSpeed[] = ['instant', 'fast', 'normal', 'slow'];
 /** How long letters take, against 'fast' (the speed the viewer had before it was a choice). */
 export const SPEED_PACE: Record<ViewerSpeed, number> = { instant: 0, fast: 1, normal: 1.7, slow: 2.6 };
@@ -18,6 +22,7 @@ function normalize(raw: unknown): ViewerPrefs {
     auto: r.auto === true, voice: r.voice !== false,
     skipWords: typeof r.skipWords === 'string' ? r.skipWords.slice(0, 2000) : '',
     speed: SPEEDS.includes(r.speed as ViewerSpeed) ? r.speed as ViewerSpeed : 'fast',
+    textSize: TEXT_SIZES.includes(r.textSize as ViewerTextSize) ? r.textSize as ViewerTextSize : 'normal',
   };
 }
 let prefs = normalize(null);

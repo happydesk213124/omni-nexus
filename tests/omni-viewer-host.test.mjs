@@ -411,11 +411,12 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => /새 아침이 밝았다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     assert.match(await count(), /^"1 \/ 2"/);
     await shut();
-    await page.evaluate(() => window.saveViewerPrefs({ skipWords: '아침, OOC', speed: 'instant' }));
+    await page.evaluate(() => window.saveViewerPrefs({ skipWords: '아침, OOC', speed: 'instant', textSize: 'xlarge' }));
     await reopen();
     await page.waitForFunction(() => /또 보네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     assert.match(await count(), /^"1 \/ 1"/, 'the line with 아침 is no scene');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-text] i').count(), 0, '즉시: no letter waits its turn');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-text]')).fontSize), '22.1px', '글자 크기: 아주 크게');
     await shut();
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

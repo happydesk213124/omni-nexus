@@ -3,7 +3,8 @@ import type { CharacterRecord } from '../core/types';
 import type { TtsCharacter } from '../core/tts-types';
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
-import { sniffImageMime } from '../core/util/bytes';
+import { isWebpBytes, sniffImageMime } from '../core/util/bytes';
+import { encodeWebpQuality } from '../core/util/image';
 import { cleanText, joinTags, unifiedSessionIdForCharacter } from '../core/util/text';
 import { assetMatchesExpression, emotionAssetName, emotionPrompt, expressionOfTone, sfwTags, SPRITE_NEGATIVE } from '../domain/emotion/emotions';
 import { normalizeAssetPath } from '../domain/gallery/shot-assets';
@@ -147,7 +148,7 @@ const notify = () => { for (const callback of listeners) callback(); };
  * NovelAI to be free first (one generation at a time per account: an illustration
  * job running alongside would make one of them fail).
  */
-async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'medium' }): Promise<{ bytes: Uint8Array; path: string }> {
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'medium'; webp?: number }): Promise<{ bytes: Uint8Array; path: string }> {
   const settings = (await loadEmotionData()).settings, config = getConfig();
   const nai = input.effort ? { ...config.nai, effort_v5: input.effort } : config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
@@ -164,7 +165,12 @@ async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5
   };
   while (getNaiInflight() > 0) await sleep(1500);
   const result = await generateT2i(token, req, cleanText(nai.request_url) || API_URL, { timeoutMs: 180000 });
-  const bytes = new Uint8Array(result.raw_bytes);
+  let bytes = new Uint8Array(result.raw_bytes);
+  // Kept as WebP at this quality when asked (a background: blurred anyway); where WebP cannot be written, as drawn.
+  if (input.webp) {
+    const out = await encodeWebpQuality(bytes, input.webp).catch(() => null);
+    if (out && isWebpBytes(new Uint8Array(out))) bytes = new Uint8Array(out);
+  }
   const host = risuHost();
   if (!host?.saveAsset) throw new Error('Risu 에셋 저장을 쓸 수 없습니다.');
   const path = normalizeAssetPath(cleanText(await host.saveAsset(bytes.slice()), 800));
@@ -233,7 +239,8 @@ export function makeBackground(place: string, bot: EmotionBot, force = false): P
   const k = placeKey(place);
   return queueJob(spriteJobKey(bot.id, PLACE_PERSON, k), async () => {
     const v5 = !!tokensForFamily(getConfig().nai, 'v5')[0];
-    const { bytes, path } = await drawAndSave({ width: 1216, height: 832, family: v5 ? 'v5' : undefined, effort: 'medium', negative: '1girl, 1boy, people, person, character, crowd, text',
+    // Wide (the stage is), WebP at 50: blurred behind the cast, the detail is never seen.
+    const { bytes, path } = await drawAndSave({ width: 1216, height: 832, family: v5 ? 'v5' : undefined, effort: 'medium', webp: 0.5, negative: '1girl, 1boy, people, person, character, crowd, text',
       prompt: style => joinTags(style, '2::no humans::, scenery, wide shot, detailed background', k) });
     const name = backgroundName(k, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png');
     await remember(bot, PLACE_PERSON, k, name, path);

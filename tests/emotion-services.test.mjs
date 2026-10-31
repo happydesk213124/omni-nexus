@@ -95,6 +95,20 @@ test('a place background: V5 at medium effort, nobody in it, the place tags', as
   assert.ok(await f.api.findBackground('cafe, window, afternoon', f.bot));
 });
 
+test('a background is saved as WebP at 50 (it is blurred behind the cast)', async () => {
+  const f = await fixture();
+  // A stand-in canvas: it "encodes" a small WebP and keeps the quality it was asked for.
+  const asked = [], webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 4, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20]);
+  const was = { createImageBitmap: globalThis.createImageBitmap, OffscreenCanvas: globalThis.OffscreenCanvas };
+  globalThis.createImageBitmap = async () => ({ width: 1216, height: 832, close() {} });
+  globalThis.OffscreenCanvas = class { constructor(w, h) { this.width = w; this.height = h; } getContext() { return { drawImage() {} }; } async convertToBlob(o) { asked.push(o); return new Blob([webp], { type: 'image/webp' }); } };
+  try {
+    const made = await f.api.makeBackground('library, night', f.bot);
+    assert.match(made.name, /\.webp$/);
+    assert.deepEqual(asked, [{ type: 'image/webp', quality: 0.5 }]);
+  } finally { Object.assign(globalThis, was); }
+});
+
 test('a background is found again: after a reload (a long place), its tags in any order, by its asset name on the bot', async () => {
   const f = await fixture([['bg_park, bench, night', 'assets/bg-park.png', 'png']]);
   const long = 'cafe, indoor, window, afternoon, wooden table, sunlight, potted plant';
