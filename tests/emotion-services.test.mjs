@@ -201,3 +201,25 @@ test('the 참고이미지 module sent without its list (PocketRisu): a shared ba
   assert.deepEqual(mod.assetManifest, { id: 'm1', count: 12 });
   assert.equal(f.api.emotionData().made.find(m => m.bot === '*').registered, false, 'left to register once the list reads');
 });
+
+test("the bot's images are read once, then again behind: a lookup never waits on the re-read", async () => {
+  const f = await fixture([['미선_sad', 'assets/sad.png', 'png']]);
+  assert.equal(f.api.spriteNow(f.person, 'sad', f.bot), undefined, 'never read yet: not known');
+  assert.equal((await f.api.findSprite(f.person, 'sad', f.bot))?.path, 'assets/sad.png');
+  assert.equal(f.api.spriteNow(f.person, 'sad', f.bot)?.path, 'assets/sad.png', 'read once: known with no wait');
+  // Five minutes on, the bot's assets changed and their read stalled: the old list answers at once, the new one comes behind.
+  const realNow = Date.now, read = risuai.getDatabase;
+  let stalled = 0, release = () => {};
+  risuai.getDatabase = async (...args) => { stalled++; await new Promise(r => { release = r; }); return read.apply(risuai, args); };
+  Date.now = () => realNow() + 6 * 60_000;
+  try {
+    f.bot.character.additionalAssets = [['미선_sad', 'assets/sad2.png', 'png']];
+    const found = await Promise.race([f.api.findSprite(f.person, 'sad', f.bot), new Promise(r => setTimeout(() => r('waited'), 1000))]);
+    assert.equal(found?.path, 'assets/sad.png', 'the list known answers: no wait on the re-read');
+    assert.equal(f.api.spriteNow(f.person, 'sad', f.bot)?.path, 'assets/sad.png');
+    assert.equal(stalled, 1, 'read again behind, once for both lookups');
+    release();
+    await new Promise(r => setTimeout(r, 50));
+    assert.equal(f.api.spriteNow(f.person, 'sad', f.bot)?.path, 'assets/sad2.png', 'and the new list serves from then on');
+  } finally { Date.now = realNow; risuai.getDatabase = read; }
+});

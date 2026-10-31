@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
  * And the OpenRouter route prefetches too (only Fish's own key was checked).
  */
 test('a streaming reply is voiced ahead only up to its last finished line; OpenRouter prefetches too', { timeout: 90000 }, async () => {
-  const built = await build({ stdin: { contents: `import {installTtsHost} from './src/tts-ui/host-chat';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';Object.assign(window,{installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: `import {installTtsHost} from './src/tts-ui/host-chat';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';import {setViewerCovering} from './src/services/viewer-presence';Object.assign(window,{installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings,setViewerCovering});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage(), errors = [];
@@ -24,8 +24,8 @@ test('a streaming reply is voiced ahead only up to its last finished line; OpenR
       const saved = new Map([['omnisound.data', '{}']]), local = new Map(), hostUUID = crypto.randomUUID.bind(crypto); window.apiEvents = [];
       class Safe {
         constructor(node){this.node=node;this.listeners=new Map();}
-        async querySelector(s){const n=this.node.querySelector(s);return n?new Safe(n):null;}
-        async querySelectorAll(s){return [...this.node.querySelectorAll(s)].map(n=>new Safe(n));}
+        async querySelector(s){window.hostCalls=(window.hostCalls||0)+1;const n=this.node.querySelector(s);return n?new Safe(n):null;}
+        async querySelectorAll(s){window.hostCalls=(window.hostCalls||0)+1;return [...this.node.querySelectorAll(s)].map(n=>new Safe(n));}
         async getParent(){return this.node.parentElement?new Safe(this.node.parentElement):null;}
         async matches(s){return this.node.nodeType===1&&this.node.matches(s);}
         async getAttribute(k){if(!k.startsWith('x-'))throw Error('Forbidden attribute read '+k);return this.node.getAttribute(k);}
@@ -40,7 +40,7 @@ test('a streaming reply is voiced ahead only up to its last finished line; OpenR
         async scrollIntoView(o){window.scrolled=(window.scrolled||[]).concat(this.node.getAttribute('data-omnitts-kind')||this.node.tagName);this.node.scrollIntoView(o);}
         async clientHeight(){return this.node.clientHeight;}
         async clientWidth(){return this.node.clientWidth;}
-        async getBoundingClientRect(){return this.node.getBoundingClientRect().toJSON();}
+        async getBoundingClientRect(){window.hostCalls=(window.hostCalls||0)+1;return this.node.getBoundingClientRect().toJSON();}
         async addEventListener(type,fn,options){if(!['click','pointerenter','pointerdown','pointermove','pointerup','pointercancel','mouseover','keydown','scroll'].includes(type))throw Error('Unsupported host event '+type);const id=hostUUID();const cb=e=>fn({clientX:e.clientX,clientY:e.clientY,button:e.button,buttons:e.buttons,key:e.key});this.listeners.set(id,[type,cb,options]);document.addEventListener(type,cb,options);window.apiEvents.push(type);return id;}
         async removeEventListener(type,id){const x=this.listeners.get(id);if(x){document.removeEventListener(type,x[1],x[2]);this.listeners.delete(id);}}
         async createElement(tag){if(!['div','button','style'].includes(tag))throw Error('Unsupported host element '+tag);return new Safe(document.createElement(tag));}
@@ -56,7 +56,7 @@ test('a streaming reply is voiced ahead only up to its last finished line; OpenR
       document.body.innerHTML = '<div class="default-chat-screen"></div>';
       window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }), getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async () => {}, requestPluginPermission: async () => true, getRootDocument: async () => new Safe(document.documentElement), unwarpSafeArray: async a => { const result = []; for (let i = 0, n = await a.length(); i < n; i++) result.push(await a.at(i)); return result; },
         createMutationObserver: async fn => { const observer = new MutationObserver(rows => fn(rows.map(row => ({ getTarget: async () => new Safe(row.target) })))); return { observe: async (target, options) => observer.observe(target.node, options), disconnect: async () => observer.disconnect() }; }, addRisuChatListener: async () => {}, removeRisuChatListener: async () => {}, onUnload: async () => {},
-        getCharacter: async () => ({ chaId: 'c', chatPage: 0, chats: [window.chat] }),
+        getCharacter: async () => { window.reads = (window.reads || 0) + 1; return { chaId: 'c', chatPage: 0, chats: [window.chat] }; },
         nativeFetch: async (url, options) => { const body = JSON.parse(options.body); window.calls.push({ url: String(url), text: body.text ?? body.input }); return { ok: true, arrayBuffer: async () => new Uint8Array(32).buffer }; } };
       window.Audio = class { src = ''; currentTime = 0; duration = 1; async play() {} pause() {} load() {} removeAttribute() {} };
       window.AudioContext = class { state = 'running'; destination = {}; async resume() {} createGain() { return { gain: { value: 1 }, connect() { return this; } }; } createMediaElementSource() { return { connect(node) { return node; } }; } };
@@ -91,12 +91,16 @@ test('a streaming reply is voiced ahead only up to its last finished line; OpenR
     assert.deepEqual((await texts()).filter(t => t.includes('하나는')), ['하나는 그래도 따라갔다.'], 'the finished reply makes that line once, never its fragments');
     assert.ok((await page.evaluate(() => window.calls)).every(c => c.url.includes('fish.audio')), 'Fish route');
     // 옴니 뷰어 open over the chat: the viewer voices what is read there; the chat's own voicing ahead waits, and comes back after.
-    await page.evaluate(() => { window.calls = []; window.__OMNI_VIEWER_OPEN__ = () => true; window.write(window.chat.message[0].data + '\n리나: "뷰어가 열린 동안"\n'); });
+    await page.evaluate(() => { window.calls = []; window.setViewerCovering(true); window.hostCalls = 0; window.reads = 0; window.write(window.chat.message[0].data + '\n리나: "뷰어가 열린 동안"\n'); });
     await settle(); await settle();
     assert.deepEqual((await texts()).filter(t => t.includes('뷰어가 열린 동안')), [], 'nothing asked from the chat while the viewer is open');
-    await page.evaluate(() => { window.__OMNI_VIEWER_OPEN__ = () => false; window.write(window.chat.message[0].data + ' '); });
+    // Nor do the chunk that came meanwhile and taps on the viewer cost the chat behind it anything: no scan, no hit test, no drag check, no read of the character.
+    for (let i = 0; i < 3; i++) { await page.mouse.click(200, 200); await page.waitForTimeout(120); }
+    await page.waitForTimeout(800);
+    assert.deepEqual(await page.evaluate(() => [window.hostCalls, window.reads]), [0, 0], "behind the viewer the chat's TTS buttons and window are quiet");
+    // Closed: the chat catches up by itself, with no new chunk to wake it.
+    await page.evaluate(() => window.setViewerCovering(false));
     await page.waitForFunction(() => window.calls.some(c => c.text.includes('뷰어가 열린 동안')));
-    await page.evaluate(() => { delete window.__OMNI_VIEWER_OPEN__; });
     // OpenRouter: no Fish key, an OpenRouter key; lines on screen are voiced ahead through it.
     await page.evaluate(async () => {
       window.calls = [];

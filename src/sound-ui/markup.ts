@@ -1,5 +1,5 @@
 import { SOUND_PANELS, SOUND_TABS } from './panels';
-import { SOUND_PAGE_TABS, markSoundNav, soundPage } from './page';
+import { SOUND_PAGE_TABS, markSoundNav, soundFocus, soundPage } from './page';
 import { SOUND_LIST_CSS, SOUND_PAGE_CSS, voiceListCssFor } from './style';
 import layout from '../tts-ui/layout.json';
 import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
@@ -41,7 +41,8 @@ export function addSoundStructure(root: ParentNode): void {
 export function markSoundPage(root: HTMLElement, openPanel?: string): void {
   const page = soundPage(), allowed = SOUND_PAGE_TABS[page];
   root.dataset.soundPage = page;
-  const open = openPanel && allowed.includes(openPanel) ? openPanel : allowed[0]!;
+  const focus = soundFocus()?.panel;
+  const open = openPanel && allowed.includes(openPanel) ? openPanel : focus && allowed.includes(focus) ? focus : allowed[0]!;
   for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) {
     const tab = b.dataset.ttsTab || '';
     b.hidden = !allowed.includes(tab);

@@ -58,29 +58,56 @@ export async function currentEmotionBot(): Promise<EmotionBot | null> {
   return id && character ? { id, index, character } : null;
 }
 
-// The bot's images: its assets, its emotion images and enabled modules. Read once
-// every five minutes at most (a full read of its assets is not cheap on a phone); a
+// The bot's images: its assets, its emotion images and enabled modules. Read once, then
+// again behind when five minutes old, never waited on: a full read of its assets (every
+// module) is not cheap on a phone, and a line in the viewer must not wait for it. A
 // sprite Omni saves joins at once, registered or not.
 const POOL_MS = 300_000;
 let pool: { bot: string; at: number; assets: RisuNamedAsset[] } | undefined;
-async function botImages(bot: EmotionBot): Promise<RisuNamedAsset[]> {
-  if (!pool || pool.bot !== bot.id || Date.now() - pool.at > POOL_MS) {
+let reading: { bot: string; job: Promise<RisuNamedAsset[]> } | undefined;
+function readPool(bot: EmotionBot): Promise<RisuNamedAsset[]> {
+  if (reading?.bot === bot.id) return reading.job;
+  const job: Promise<RisuNamedAsset[]> = (async () => {
     const listed = await listSearchableAssets(bot.character).catch(() => ({ assets: [] as RisuNamedAsset[] }));
-    pool = { bot: bot.id, at: Date.now(), assets: [...parseRisuAssetRows(bot.character.emotionImages), ...listed.assets] };
-  }
+    const assets = [...parseRisuAssetRows(bot.character.emotionImages), ...listed.assets];
+    pool = { bot: bot.id, at: Date.now(), assets };
+    return assets;
+  })().finally(() => { if (reading?.job === job) reading = undefined; });
+  reading = { bot: bot.id, job };
+  return job;
+}
+/** The bot's images as known now (an old list is read again behind); undefined before the first read. */
+function poolNow(bot: EmotionBot): RisuNamedAsset[] | undefined {
+  if (pool?.bot !== bot.id) return undefined;
+  if (Date.now() - pool.at > POOL_MS) void readPool(bot).catch(() => {});
   return pool.assets;
 }
+const botImages = (bot: EmotionBot): Promise<RisuNamedAsset[]> => { const now = poolNow(bot); return now ? Promise.resolve(now) : readPool(bot); };
 export function forgetEmotionPool(): void { pool = undefined; }
 
-/** This person's image for this face: Omni's own (newest) first, then the bot's when allowed. */
-export async function findSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite | null> {
-  const data = await loadEmotionData();
-  const mine = [...data.made].reverse().find(m => m.bot === bot.id && m.person === c.id && m.face === face);
-  if (mine) return { face, name: mine.name, path: mine.path, source: 'omni' };
+/**
+ * This person's image for this face, as known now, with no wait: Omni's own (newest)
+ * first, then the bot's when allowed. undefined while the bot's images have never been
+ * read (findSprite reads them).
+ */
+export function spriteNow(c: TtsCharacter, face: string, bot: EmotionBot): EmotionSprite | null | undefined {
+  const data = emotionData();
+  for (let i = data.made.length - 1; i >= 0; i--) {
+    const m = data.made[i]!;
+    if (m.bot === bot.id && m.person === c.id && m.face === face) return { face, name: m.name, path: m.path, source: 'omni' };
+  }
   if (!data.settings.useExisting) return null;
-  const names = emotionNames(c);
-  const hit = (await botImages(bot)).find(asset => assetMatchesExpression(asset.name, names, face));
+  const assets = poolNow(bot);
+  if (!assets) return undefined;
+  const names = emotionNames(c), hit = assets.find(asset => assetMatchesExpression(asset.name, names, face));
   return hit ? { face, name: hit.name, path: hit.key, source: 'bot' } : null;
+}
+export async function findSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite | null> {
+  await loadEmotionData();
+  const now = spriteNow(c, face, bot);
+  if (now !== undefined) return now;
+  await botImages(bot);
+  return spriteNow(c, face, bot) ?? null;
 }
 
 /** The illustration roster's person for a TTS character, if any. */

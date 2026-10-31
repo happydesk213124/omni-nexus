@@ -38,7 +38,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async setStyleAttribute(v) { count('setStyleAttribute'); this.node.style.cssText = v; }
         async appendChild(child) { count('appendChild'); this.node.append(child.node); }
         async remove() { count('remove'); this.node.remove(); }
-        async cloneNode(deep) { count('cloneNode'); return new Safe(this.node.cloneNode(deep)); }
+        async cloneNode(deep) { count('cloneNode'); if (window.cloneDelay) await new Promise(r => setTimeout(r, window.cloneDelay)); return new Safe(this.node.cloneNode(deep)); }
         async getBoundingClientRect() { count('rect'); return this.node.getBoundingClientRect().toJSON(); }
         async addEventListener(type, fn) { count('addEventListener'); const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY, key: e.key, repeat: e.repeat }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); window.liveListeners = (window.liveListeners || 0) + 1; return id; }
         async removeEventListener(type, id) { const x = this.listeners.get(id); if (x) { document.removeEventListener(type, x[1]); this.listeners.delete(id); window.liveListeners--; } }
@@ -183,8 +183,11 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
-    // 삽화 strip: the chat's own image cloned as a tile; tapping it jumps to that scene.
+    // 삽화 strip: the chat's own image cloned as a tile; tapping it jumps to that scene. It slides in at once, the tile behind it.
+    await page.evaluate(() => { window.cloneDelay = 600; });
     await press('strip');
+    await page.waitForFunction(() => (document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '').includes('[data-vn-strip]{translate:0 0}') && !document.querySelector('[x-omni-vn] [data-vn-strip] [x-vn-thumb]'));
+    await page.evaluate(() => { window.cloneDelay = 0; });
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-strip] img[x-vn-thumb]').length === 1);
     await page.waitForTimeout(500);
     const tile = await page.locator('[x-omni-vn] [data-vn-strip] img[x-vn-thumb]').boundingBox();

@@ -8,6 +8,7 @@ import type { TtsSegment } from '../core/tts-types';
 import { omniSound } from '../services/sound-runtime';
 import { soundData, updateSoundSettings, subscribeSound } from '../storage/sound-store';
 import { currentTtsContext } from '../services/tts-context';
+import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
 
 /** The BGM bar opens above the header; a top-anchored viewer moves up by this much so the header stays put. */
 const BGM_H = 100;
@@ -24,11 +25,12 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   await viewer.setAttribute('x-omnitts-viewer','1'); await toast.setAttribute('x-omnitts-toast','1');
   await body.appendChild(viewer); await body.appendChild(toast);await releaseHost(body);
   let inChat = false, lastAllowed = false, disposed=false, clickEpoch=0;
-  const allowed = () => { const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__'); return !disposed && inChat && typeof blocked === 'function' && !blocked(); };
+  // Behind 옴니 뷰어 it is out of sight too: no hit test or drag on a press there, nothing painted.
+  const allowed = () => { const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__'); return !disposed && inChat && !viewerCovering() && typeof blocked === 'function' && !blocked(); };
   const actions=new Map<string,{node:SafeElement;run:()=>unknown}>(),events:{type:string;id:string}[]=[];
   let listViewport: SafeElement | undefined;
   let drag:Awaited<ReturnType<typeof bindTtsDrag>>|undefined;
-  let painting=false, again=false, signature='', toastSignature='', stateSignature='', notice='', noticeUntil=0, noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let painting=false, again=false, signature='', toastSignature='', frameSignature='', stateSignature='', notice='', noticeUntil=0, noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let currentLine = -1, locating = false;
   // The BGM track list, opened from the track name. Not a <select>: SafeDOM gives
   // neither its change event nor its value, so it is a list of rows like ☷.
@@ -44,13 +46,18 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       const failing=!!notice&&Date.now()<noticeUntil;
       const status=failing?notice:`음성 생성 ${q.active}/${s.concurrency}${q.waiting?' · 대기 '+q.waiting:''}`;
       const shown=s.enabled&&allowed()&&(failing||(s.toast&&q.active>0));
-      const toastNext=JSON.stringify([status,failing,shown]);
+      // Hidden, it does not follow the queue: every voice made changed its text, two calls each.
+      const toastNext=shown?JSON.stringify([status,failing,shown]):'hidden';
       if(toastNext!==toastSignature){toastSignature=toastNext;await toast.setTextContent(status);
       await toast.setStyleAttribute(`position:fixed;right:16px;top:18px;z-index:2147483200;width:min(290px,calc(100vw - 32px));${failing?'min-height:44px;max-height:120px':'height:44px'};box-sizing:border-box;padding:12px;border:1px solid ${failing?'#f8717188':'#ffffff24'};border-radius:12px;color:#eee;background:${failing?'rgba(69,20,28,.95)':'rgba(23,32,49,.93)'};font:12px/18px sans-serif;overflow:hidden;overflow-wrap:anywhere;pointer-events:none;display:${shown?'block':'none'}`);}
       if(drag?.busy)return;
       const bgmLift=!s.minimized&&bgmOpen()?BGM_H:0;
       const placement=s.viewerAnchor?`right:min(${Math.max(8,s.viewerAnchor.right)}px,calc(100vw - ${s.minimized?46:310}px));top:min(${Math.max(8,s.viewerAnchor.top-bgmLift)}px,calc(100dvh - 64px));max-height:calc(100dvh - min(${Math.max(8,s.viewerAnchor.top-bgmLift)}px,calc(100dvh - 64px)) - 8px)`:'right:16px;bottom:16px;max-height:80vh';
-      await viewer.setStyleAttribute(`position:fixed;${placement};z-index:2147483100;will-change:transform;contain:layout style;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.82);color:#eee;text-shadow:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none;user-select:none;-webkit-user-select:none;font:12px/1.5 sans-serif;display:${s.enabled&&s.viewer&&allowed()?'block':'none'}`);
+      const visible=s.enabled&&s.viewer&&allowed();
+      const frame=`position:fixed;${placement};z-index:2147483100;will-change:transform;contain:layout style;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.82);color:#eee;text-shadow:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none;user-select:none;-webkit-user-select:none;font:12px/1.5 sans-serif;display:${visible?'block':'none'}`;
+      if(frame!==frameSignature){frameSignature=frame;await viewer.setStyleAttribute(frame);}
+      // Out of sight nothing inside is drawn: it is drawn afresh, once, when it shows again.
+      if(!visible){signature='';stateSignature='';return;}
       // Playback state is painted in place below: re-rendering would reset the list scroll.
       const picking=bgmPicking&&bgmOpen()&&!s.minimized;
       const next=JSON.stringify([bgmOpen()&&!s.minimized?bgmState():null,picking?soundData().bgm.map(item=>[item.key,item.name,item.folder]):null,s.minimized,s.panel,s.narration,s.continuous,s.rate,s.volume,s.rates,omniTts.list.map(r=>[r.messageId,r.segment.id,r.segment.text]),s.panel==='cache'?[q,omniTts.cache.count,omniTts.cache.bytes]:null]); if(next===signature){await paintState();return;} signature=next;stateSignature='';currentLine=-1;
@@ -222,17 +229,19 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   };
   const refreshSignal=()=>{if(!allowed()&&drag?.busy)void drag.cancel();render();};
   Reflect.set(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__',refreshSignal);
+  // 옴니 뷰어 closed: back at once, as the chat is now.
+  const unsubscribeUncovered=onViewerUncovered(()=>{void refreshVisibility().catch(()=>{});});
   await refreshVisibility();
   let ticking=false;
   // The chat watcher cannot see its own screen leave the page, so check once a
   // second (never during a drag) whether the chat is still on screen.
   let checking=false,tick=0;
-  const interval=setInterval(()=>{if(++tick%2===0&&!checking&&!drag?.busy&&!painting){checking=true;void refreshVisibility().catch(()=>{}).finally(()=>{checking=false;});}const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
+  const interval=setInterval(()=>{if(++tick%2===0&&!checking&&!drag?.busy&&!painting&&!viewerCovering()){checking=true;void refreshVisibility().catch(()=>{}).finally(()=>{checking=false;});}const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
   // BGM time, once a second while the bar is open and music plays (never during a drag).
   const bgmTick=setInterval(()=>{if(!allowed()||painting||drag?.busy||ttsData().settings.minimized||!bgmOpen()||!omniSound.player.bgmPlaying)return;void paintBgmTime().catch(()=>{});},1000);
   const flash=(message:string)=>{
     notice=message.slice(0,240);noticeUntil=Date.now()+5000;clearTimeout(noticeTimer);
     noticeTimer=setTimeout(()=>{noticeUntil=0;render();},5100);render();
   };
-  return {refresh:refreshVisibility,flash,dispose:async()=>{disposed=true;clearTimeout(noticeTimer);clickEpoch++;clearInterval(interval);clearInterval(bgmTick);unsubscribeRuntime();unsubscribeSettings();unsubscribeSound();omniSound.player.onChange=soundChange;await drag?.dispose();for(const e of events)await doc.removeEventListener(e.type,e.id);for(const a of actions.values())await releaseHost(a.node);actions.clear();await releaseHost(listViewport);if(Reflect.get(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__')===refreshSignal)Reflect.deleteProperty(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__');await viewer.remove();await toast.remove();await releaseHost(viewer);await releaseHost(toast);}};
+  return {refresh:refreshVisibility,flash,dispose:async()=>{disposed=true;unsubscribeUncovered();clearTimeout(noticeTimer);clickEpoch++;clearInterval(interval);clearInterval(bgmTick);unsubscribeRuntime();unsubscribeSettings();unsubscribeSound();omniSound.player.onChange=soundChange;await drag?.dispose();for(const e of events)await doc.removeEventListener(e.type,e.id);for(const a of actions.values())await releaseHost(a.node);actions.clear();await releaseHost(listViewport);if(Reflect.get(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__')===refreshSignal)Reflect.deleteProperty(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__');await viewer.remove();await toast.remove();await releaseHost(viewer);await releaseHost(toast);}};
 }
