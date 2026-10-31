@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {saveViewerPrefs} from './src/storage/viewer-prefs';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,saveViewerPrefs});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 
 /**
  * The viewer open on a chat of two replies, the newest one `lines` (a picture among them as
@@ -73,7 +73,21 @@ async function viewerOn(browser, lines) {
   const frame = await rect('[x-omni-vn]');
   /** Taps on (towards the top of the stage: never the folded picture) until `done`. */
   const tapUntil = async done => { for (let i = 0; i < 8 && !await done(); i++) { await page.waitForTimeout(650); await page.mouse.click(frame.x + frame.width / 2, frame.y + frame.height * 0.3); } };
-  return { page, errors, text, shows, picture, pictureIs, rect, press, lineBox, frame, tapUntil };
+  /**
+   * What is drawn on top at the middle of the picture: 'picture', or the name of the person over it. The stage's
+   * layers take no pointer, so for the look they are made to.
+   */
+  const onTopOfPicture = () => page.evaluate(() => {
+    const probe = document.createElement('style');
+    probe.textContent = '[x-omni-vn] :is([data-vn-cast],[data-vn-cg]),[x-omni-vn] :is([data-vn-cast],[data-vn-cg]) *{pointer-events:auto!important}';
+    document.head.append(probe);
+    try {
+      const r = document.querySelector('[x-omni-vn] img[x-vn-cg]').getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return hit?.closest('[x-vn-cg]') ? 'picture' : hit?.closest('[x-vn-p]')?.querySelector('b')?.textContent || hit?.tagName || '';
+    } finally { probe.remove(); }
+  });
+  return { page, errors, text, shows, picture, pictureIs, rect, press, lineBox, frame, tapUntil, onTopOfPicture };
 }
 
 test('옴니 뷰어 over a restricted SafeDOM: a reply that ends on its picture can still be left — the picture folds on a tap, ◀ and a swipe go back, ✕ closes', async () => {
@@ -84,9 +98,15 @@ test('옴니 뷰어 over a restricted SafeDOM: a reply that ends on its picture 
     const toPicture = async () => { await v.tapUntil(async () => await v.picture() === 'big'); await v.pictureIs('big'); await v.page.waitForTimeout(600); };
     await toPicture();
     assert.equal(await v.page.locator('[x-omni-vn] [data-vn-end]').count(), 1, 'the end of the story so far: its cue under the picture');
+    // The two who spoke stand dimmed behind it: the picture is drawn over them (a person once stood over it).
+    assert.equal(await v.page.locator('[x-omni-vn] [x-vn-p]').evaluateAll(n => n.filter(p => getComputedStyle(p).display !== 'none').length), 2);
+    assert.equal(await v.onTopOfPicture(), 'picture');
     // A tap on the picture that ends the story so far folds it (there is no next scene to go on to).
     await v.page.mouse.click(v.frame.x + v.frame.width / 2, v.frame.y + v.frame.height * 0.4);
     await v.pictureIs('folded');
+    // Folded, its thumb at the top is over the people too (a head stood over it).
+    await v.page.waitForTimeout(400);
+    assert.equal(await v.onTopOfPicture(), 'picture', 'the folded thumb over the people');
     // ◀ goes back to the line before it.
     await v.page.waitForTimeout(400);
     await v.press('prev');
@@ -174,10 +194,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a picture the chat does not show 
   } finally { await browser.close(); }
 });
 
-test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet for two lines steps off, and where people overlap the last to speak stands in front', async () => {
+test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet longer than 무대에 남는 줄 (three lines unless set) steps off, and where people overlap the last to speak stands in front', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
-    const v = await viewerOn(browser, ['오미선: "왔어?"', '하린: "응, 방금 왔어."', '문이 열렸다.', '바람이 불었다.', '창밖이 어두워졌다.', '하린: "벌써 이렇게 늦었네."']);
+    const v = await viewerOn(browser, ['오미선: "왔어?"', '하린: "응, 방금 왔어."', '문이 열렸다.', '바람이 불었다.', '창밖이 어두워졌다.', '비가 내리기 시작했다.', '하린: "벌써 이렇게 늦었네."']);
     /** Who stands, by name, with how far forward (z-index). */
     const standing = () => v.page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[x-omni-vn] [x-vn-p]')].filter(n => getComputedStyle(n).display !== 'none').map(n => [n.querySelector('b')?.textContent, Number(getComputedStyle(n).zIndex)])));
     const step = async re => { await v.tapUntil(async () => re.test(await v.text())); await v.shows(re); await v.page.waitForTimeout(150); };
@@ -188,9 +208,16 @@ test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet for two l
     await step(/문이 열렸다/);
     assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, 'narration: who spoke last stays in front');
     await step(/바람이 불었다/);
-    assert.deepEqual(Object.keys(await standing()), ['하린'], '오미선, quiet two lines and not speaking again: off the stage');
+    assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, 'three lines by default: 오미선, quiet three lines, still stands');
     await step(/창밖이/);
-    assert.deepEqual(Object.keys(await standing()), ['하린'], '하린 speaks again in two lines: stays');
+    assert.deepEqual(Object.keys(await standing()), ['하린'], '오미선, quiet four lines and not speaking again: off; 하린 speaks in three');
+    // 뷰어 설정's 무대에 남는 줄: one line, and both have been quiet longer; 답장 끝까지, and nobody steps off.
+    await v.page.evaluate(() => window.saveViewerPrefs({ stageReach: 1 }));
+    await v.page.keyboard.press('ArrowLeft'); await v.shows(/바람이 불었다/); await v.page.waitForTimeout(150);
+    assert.deepEqual(await standing(), {}, 'one line: nobody within it');
+    await v.page.evaluate(() => window.saveViewerPrefs({ stageReach: 0 }));
+    await step(/창밖이/);
+    assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, '답장 끝까지: everyone who spoke stays');
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });

@@ -254,8 +254,9 @@ export function stageCss(s: StageState): string {
   const rules = s.cast.slice(0, 3).map((p, i) => {
     // Overlapping, the last to speak stands in front (the speaker always), then whoever spoke before them.
     const z = `z-index:${3 - Math.min(2, p.front ?? (p.speaking ? 0 : 2))}`;
-    // A CG on show dims the stage; folded at the top it does not.
-    const lit = s.cg && s.cgView !== 'fold' ? `filter:brightness(.28) blur(2px);${z}` : p.speaking ? `filter:none;transform:scale(1.035);${z}` : s.narration ? `filter:brightness(.62) saturate(.85);${z}` : `filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);${z}`;
+    // A CG on show dims the stage; folded at the top it does not. Dimmed, nobody takes a z-index: the picture
+    // has none and is over the people only by coming after them, and a person given one stood over the picture.
+    const lit = s.cg && s.cgView !== 'fold' ? 'filter:brightness(.28) blur(2px)' : p.speaking ? `filter:none;transform:scale(1.035);${z}` : s.narration ? `filter:brightness(.62) saturate(.85);${z}` : `filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);${z}`;
     return `[x-omni-vn] [x-vn-p="${p.key}"]{display:block;left:${spots[i]}%;${lit}}`
       + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1${spring(p)}}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : spring(p) ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{${spring(p).slice(1)}}` : '')
       + (!p.face && p.label ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]::after{content:"${p.label.replace(/["\\]/g, '').replace(/\n/g, '\\A ')}"}` : '');
@@ -266,7 +267,8 @@ export function stageCss(s: StageState): string {
     // As specific as the rule that hides every background (`div[x-vn-bg]`), and after it: without the element
     // it lost, and a background drawn and sent stayed hidden.
     s.bg ? `[x-omni-vn] :is(img,div)[x-vn-bg="${s.bg}"]{display:block}` : '',
-    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
+    // Folded, the picture is a thumb above the people (their z-index is at most 3): a head in front of it hid it.
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}`
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
     : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}${s.cgRolling ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',

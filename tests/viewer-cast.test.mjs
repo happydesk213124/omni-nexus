@@ -10,9 +10,10 @@ const narr = say('');
 // 0 narration · 1 A · 2 A · 3 picture · 4 B · 5–7 narration · 8 C · 9 A
 const lines = [narr, say('A', 'happy'), say('A', 'happy'), null, say('B', 'neutral'), narr, narr, narr, say('C', 'angry'), say('A', 'sad')];
 const show = members => members.map(m => `${m.who}${m.speaking ? '*' : ''}:${m.front}`);
-const stage = at => show(stageAt(lines, at));
+const within = reach => at => show(stageAt(lines, at, 3, reach));
 
-test('a person comes on with their first line and stands while they have a line within two lines, before or after', () => {
+test('a person comes on with their first line and stands while they have a line within reach, before or after', () => {
+  const stage = within(2);
   assert.deepEqual(stage(0), [], 'nobody comes on before their first line');
   assert.deepEqual(stage(1), ['A*:0'], 'B speaks soon, but has not yet: not there');
   assert.deepEqual(stage(3), ['A:0'], 'a picture stands among the lines around it');
@@ -21,6 +22,15 @@ test('a person comes on with their first line and stands while they have a line 
   assert.deepEqual(stage(6), ['B:0'], 'A has been quiet two lines and speaks again only after two more: off the stage');
   assert.deepEqual(stage(7), ['A:0'], 'about to speak again, A is back for it; B, quiet since, gone');
   assert.deepEqual(stage(9), ['A*:0', 'C:1'], 'spots by who came into the reply first');
+});
+
+test('the reach is 뷰어 설정\'s 무대에 남는 줄: three lines unless set, Infinity for the reply\'s end', () => {
+  assert.deepEqual(within(3)(6), ['A:1', 'B:0'], 'three lines: A, three lines from speaking again, stays');
+  assert.deepEqual(show(stageAt(lines, 6)), ['A:1', 'B:0'], 'three by default');
+  assert.deepEqual(within(1)(5), ['B:0'], 'one line: A is gone as soon as B has spoken');
+  const quiet = [say('A'), narr, narr, narr, narr, narr];
+  assert.deepEqual(show(stageAt(quiet, 5, 3, 3)), [], 'quiet five lines: off');
+  assert.deepEqual(show(stageAt(quiet, 5, 3, Infinity)), ['A:0'], '답장 끝까지: nobody steps off');
 });
 
 test("a face is the latest line's, up to here", () => {
@@ -32,8 +42,8 @@ test("a face is the latest line's, up to here", () => {
 test('at most three: the speaker, then the nearest, who spoke last winning a tie', () => {
   const crowd = ['A', 'B', 'C', 'D', 'A', 'B'].map(who => say(who));
   // B (line 1) speaks again next and D spoke just before: both a line away. D spoke last; C goes.
-  assert.deepEqual(show(stageAt(crowd, 4)), ['A*:0', 'B:2', 'D:1']);
-  assert.deepEqual(show(stageAt(crowd, 2)), ['A:2', 'B:1', 'C*:0'], 'D, two lines on, has not spoken yet');
+  assert.deepEqual(show(stageAt(crowd, 4, 3, 2)), ['A*:0', 'B:2', 'D:1']);
+  assert.deepEqual(show(stageAt(crowd, 2, 3, 2)), ['A:2', 'B:1', 'C*:0'], 'D, two lines on, has not spoken yet');
   assert.deepEqual(stageAt([narr, narr], 1), [], 'narration alone: nobody');
   assert.deepEqual(stageAt([], 0), []);
 });
