@@ -57,6 +57,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     }, { png: PNG, tall: TALL, reply });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
+    await page.evaluate(() => { window.shownBg = () => [...document.querySelectorAll('[x-omni-vn] [x-vn-bg]')].filter(n => getComputedStyle(n).display !== 'none' && n.getBoundingClientRect().width > 0).map(n => n.getAttribute('x-vn-bg')).join(','); });
     await page.evaluate(async () => {
       await window.loadTtsData(); const d = window.ttsData(); d.settings.enabled = false;
       d.characters.push({ id: 't-misun', scope: 'global', name: '오미선', surname: '오', givenName: '미선', surnameAliases: [], givenAliases: [], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 });
@@ -193,7 +194,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 0);
     await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), '[[inxc]]{"new_characters":[],"place":"Cafe, window"}[[/inxc]]\n' + reply + '\n');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-bg] img').length === 1);
-    await page.waitForFunction(() => /\[x-vn-bg="[^"]+"\]\{display:block\}/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
+    await page.waitForFunction(() => window.shownBg() !== '');
     assert.doesNotMatch(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /\[data-vn-clock\]::after/, 'a background up: nothing to say');
     await page.evaluate(() => { const box = document.createElement('div'); box.setAttribute('data-inx-slot', '1'); box.innerHTML = '<img src="data:image/png;base64,iVBORw0KGgo=">'; document.querySelector('.flex-col-reverse .chattext').append(box); window.calls = {}; });
     const slotted = '[[inx1]]{"shot":1}[[/inx1]]\n' + reply + '\n';
@@ -427,19 +428,19 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     });
     await reopen();
     await page.waitForFunction(() => /커피 다 마셨어/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
-    const stageBg = () => page.evaluate(() => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] || '');
-    await page.waitForFunction(() => /\[x-vn-bg="[^"]+"\]\{display:block\}/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
+    const stageBg = () => page.evaluate(() => window.shownBg());
+    await page.waitForFunction(() => window.shownBg() !== '');
     const cafe = await stageBg();
     assert.match(await count(), /^"1 \/ 2"/, 'two lines: the marks are none');
     await page.keyboard.press('ArrowRight');
     await page.waitForFunction(() => /밤거리는 조용했다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
-    await page.waitForFunction(old => { const now = /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1]; return !!now && now !== old; }, cafe);
+    await page.waitForFunction(old => { const now = window.shownBg(); return !!now && now !== old; }, cafe);
     assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 2, 'one background per place, each sent once');
     await page.keyboard.press('ArrowLeft');
-    await page.waitForFunction(old => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] === old, cafe);
+    await page.waitForFunction(old => window.shownBg() === old, cafe);
     // A reply that says no place: JEV picks one from its text (the bot's backgrounds first), once; the stage goes there.
     await page.keyboard.press('ArrowRight');
-    await page.waitForFunction(old => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] !== old, cafe);
+    await page.waitForFunction(old => window.shownBg() !== old, cafe);
     await shut();
     await page.evaluate(() => {
       window.jevAsked = 0;
@@ -449,7 +450,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       window.bot.chats[0].message.push({ role: 'user', data: '들어가자' }, { role: 'char', chatId: 'm4', data: '따뜻한 커피 향이 났다.\n하린: "여기 좋다."' });
     });
     await reopen();
-    await page.waitForFunction(old => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] === old, cafe);
+    await page.waitForFunction(old => window.shownBg() === old, cafe);
     assert.equal(await page.evaluate(() => window.jevAsked), 1);
     await shut(); await reopen();
     await page.waitForTimeout(500);
