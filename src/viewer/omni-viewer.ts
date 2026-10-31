@@ -128,6 +128,8 @@ async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Pr
   messageIndex = i;
   const shown = i >= 0 && !streaming ? await renderedText(i) : '';
   setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace, shown);
+  // A reply loaded (again) asks its voices afresh: what is made already is cached and skipped.
+  askedAhead = new Set(); askedFor = '';
   // Just streamed: the place its blocks said holds until the reply's own is stored.
   const said = keepPlace ? livePlace : '';
   if (!streaming) livePlace = '';
@@ -364,12 +366,43 @@ function requestOf(scene: ViewerScene): TtsRequest | null {
   const segment = parsed.find(s => s.id === scene.segmentId);
   return segment ? { context, messageId: messageId(), sourceKey: cueLineKey(source.slice(segment.start, segment.end)), segment } : null;
 }
-/** The next voiced lines (as many as TTS 미리 생성 allows, a few), made while this one is read. */
-const VOICES_AHEAD = 4;
+/**
+ * Voices ahead, as the chat makes them: every voiced line left in this reply, nearest
+ * first, then the next reply's first lines, as many as TTS 미리 생성 allows. The chat's
+ * own voicing ahead waits while the viewer is open (it would cancel these for lines
+ * hidden behind it). A step forward asks nothing new: what is left was asked already,
+ * and asking again would put lines still waiting back in the queue.
+ */
+const NEXT_REPLY_LINES = 6;
+let askedAhead = new Set<string>(), askedFor = '';
 function voicesAhead(): void {
+  if (!context) return;
+  const limit = Math.max(0, ttsData().settings.prefetch || 0);
+  if (!limit) return;
   const ahead: TtsRequest[] = [];
-  for (let i = at + 1; i < scenes.length && ahead.length < VOICES_AHEAD; i++) { const request = requestOf(scenes[i]!); if (request) ahead.push(request); }
-  if (ahead.length) void omniTts.prefetch(ahead).catch(error => dbg('viewer.voice.ahead', { message: String(error) }, 'warn'));
+  for (let i = at + 1; i < scenes.length && ahead.length < limit; i++) { const request = requestOf(scenes[i]!); if (request) ahead.push(request); }
+  // The next reply's opening, so turning to it starts at once.
+  const next = charIndexes().find(i => i > messageIndex);
+  if (next !== undefined && !streaming && ahead.length < limit) ahead.push(...nextReplyRequests(next, Math.min(NEXT_REPLY_LINES, limit - ahead.length)));
+  if (!ahead.length) return;
+  const keys = ahead.map(r => `${r.messageId}:${r.segment.id}`), owner = `${context.scope}|${messageId()}`;
+  if (owner === askedFor && keys.every(k => askedAhead.has(k))) return;
+  askedFor = owner; askedAhead = new Set(keys);
+  void omniTts.prefetch(ahead).catch(error => dbg('viewer.voice.ahead', { message: String(error) }, 'warn'));
+}
+/** A later reply's first voiced lines, as its own requests (its text, its message id). */
+function nextReplyRequests(index: number, count: number): TtsRequest[] {
+  const message = context?.messages[index];
+  if (!context || !message || count <= 0) return [];
+  const text = String(message.data ?? ''), id = String(message.chatId || message.id || `${index}:${compactHash(text)}`), s = ttsData().settings;
+  const out: TtsRequest[] = [];
+  for (const segment of parseTtsMessage(text)) {
+    if (out.length >= count) break;
+    if (segment.kind !== 'dialogue' && segment.kind !== 'narration') continue;
+    if (segment.kind === 'narration' && s.narration === false) continue;
+    out.push({ context, messageId: id, sourceKey: cueLineKey(text.slice(segment.start, segment.end)), segment });
+  }
+  return out;
 }
 /** The line's voice, and the next lines' made meanwhile. 나레이션 off: narration is shown, never voiced (its voice is not even made). */
 function voice(scene: ViewerScene): void {
@@ -1164,7 +1197,7 @@ export async function openViewer(): Promise<void> {
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
-    opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2;
+    opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = '';
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
     keysOn = true; logSel = -1;
@@ -1249,6 +1282,8 @@ export async function installOmniViewer(): Promise<void> {
   await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'chat', id: 'omni-viewer-chat' }, toggle);
   await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu' }, toggle);
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
+  // The chat's TTS asks this before voicing its own lines ahead: while the viewer is open, it is the viewer's to do.
+  Reflect.set(globalThis, '__OMNI_VIEWER_OPEN__', () => open);
   Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));
   // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses).
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => open && inside({ clientX: x, clientY: y }, rect));

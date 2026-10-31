@@ -258,7 +258,10 @@ export async function installTtsHost(): Promise<void> {
       // The line still being written changes with every chunk: it is made once, after the reply ends.
       const selected = nearby.filter(row=>!unsettled.has(row.request)).slice(0,ttsData().settings.prefetch).map(row=>row.request);
       const fingerprint=JSON.stringify([context.scope,selected.map(r=>[r.messageId,r.segment.id,r.segment.text])]);
-      if (fingerprint !== lastPrefetch) { lastPrefetch=fingerprint; void omniTts.prefetch(selected); }
+      // 옴니 뷰어 open over the chat voices what is read there; asking here would cancel that for lines hidden behind it.
+      const viewing=Reflect.get(globalThis,'__OMNI_VIEWER_OPEN__');
+      if (typeof viewing==='function'&&viewing()===true) lastPrefetch='';
+      else if (fingerprint !== lastPrefetch) { lastPrefetch=fingerprint; void omniTts.prefetch(selected); }
     } catch (error) { if (ttsData().settings.enabled) console.warn('OmniTTS chat scan',error); }
   };
   const requestScan = (): Promise<void> => {
