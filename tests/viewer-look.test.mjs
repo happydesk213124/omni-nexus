@@ -72,3 +72,16 @@ test("글자 크기: the box's letters and name, scaled by one rule; as designed
   assert.doesNotMatch(stage({ textScale: 1 }), /font-size/);
   assert.doesNotMatch(stage({}), /font-size/);
 });
+
+test('캐릭터 움직임: a spring on the face shown (or the oval), breathing on every picture; off, neither', () => {
+  const cast = [{ key: 'tA', face: 'sp1', speaking: true, bounce: 'b' }, { key: 'tB', face: '', speaking: false, label: '(sad)', bounce: 'a' }];
+  const on = stage({ cast, motion: { breathe: true, bounce: true } });
+  assert.match(on, /\[x-vn-p="tA"\] \[x-vn-sp="sp1"\]\{opacity:1;animation:vn-jelly-b \.62s/);
+  assert.match(on, /\[x-vn-p="tB"\] \[data-vn-sil\]\{animation:vn-jelly-a/, 'an oval springs too');
+  assert.match(on, /\[x-vn-sp\] img\{animation:vn-breathe/);
+  const off = stage({ cast, motion: { breathe: false, bounce: false } });
+  assert.doesNotMatch(off, /vn-jelly|vn-breathe/);
+  assert.match(off, /\[x-vn-p="tA"\] \[x-vn-sp="sp1"\]\{opacity:1\}/);
+  assert.match(api.STATIC_CSS, /@keyframes vn-jelly-a\{/); assert.match(api.STATIC_CSS, /@keyframes vn-jelly-b\{/);
+  assert.match(api.STATIC_CSS, /prefers-reduced-motion:reduce\)\{\[x-omni-vn\] \[x-vn-sp\],\[x-omni-vn\] \[x-vn-sp\] img,\[x-omni-vn\] \[data-vn-sil\]\{animation:none!important\}/);
+});

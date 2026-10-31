@@ -16,6 +16,10 @@ const VIEWER_PANEL = `<section class="panel" id="emo-viewer" role="tabpanel" hid
 <div class="tts-settings-column"><div class="group"><h3>화면</h3>
 ${row('글자 크기', select('emo-size', '글자 크기', [['small', '작게'], ['normal', '보통'], ['large', '크게'], ['xlarge', '아주 크게']]))}
 ${row('글자 속도', select('emo-speed', '글자 속도', [['instant', '즉시'], ['fast', '빠르게'], ['normal', '보통'], ['slow', '느리게']]))}
+</div>
+<div class="group"><h3>캐릭터 움직임</h3>
+${row('숨쉬기', sw('emo-breathe', '숨쉬기'))}
+${row('통통 튀기 · 나올 때, 표정 바뀔 때, 말할 차례일 때', sw('emo-bounce', '통통 튀기'))}
 </div></div>
 <div class="tts-settings-column"><div class="group"><h3>장면</h3><div class="fields">
 <label class="field full"><span>장면으로 띄우지 않을 단어 · 쉼표로 구분</span><textarea id="emo-skip" rows="3" maxlength="2000" placeholder="예: 상태창, OOC, 시스템"></textarea></label>
@@ -30,8 +34,10 @@ ${row('장소 태그 쓰게 하기 · ⚛️ omni place', sw('emo-place-module',
 ${row('장소 없는 메시지', select('emo-bg-pick', '장소 없는 메시지', [['auto', '자동 · JEV → 임베딩'], ['jev', 'JEV'], ['embedding', '임베딩'], ['off', '고르지 않음 · 작가노트 장소']]))}
 </fieldset></div></div>
 <div class="tts-settings-column"><div class="group"><h3>이 봇의 배경 <small id="emo-bg-count"></small></h3>
-<div id="emo-bg-list" class="emo-bg-grid" role="list"></div>
-<details class="emo-bg-samples"><summary>샘플 장소 · 눌러서 미리 그리기</summary><div id="emo-bg-samples" class="emo-chips"></div></details>
+<div id="emo-bg-list" class="emo-bg-grid" role="list"></div></div>
+<div class="group"><h3>공용 배경 · 모든 채팅 <small id="emo-bg-shared-count"></small></h3>
+<div id="emo-bg-shared" class="emo-bg-grid" role="list"></div>
+<details class="emo-bg-samples"><summary>샘플 장소 · 누르면 공용 배경으로 그리기</summary><div id="emo-bg-samples" class="emo-chips"></div></details>
 </div></div>
 </div></section>`;
 
@@ -74,6 +80,8 @@ export const EMOTION_CSS = `
 #emo-bg .emo-chips button{min-height:30px;padding:4px 10px;font-size:12px;border-radius:999px}
 #emo-bg .emo-chips button[data-made="1"]{border-color:#22c55e88;opacity:.6}
 #emo-bg h3 small{font-weight:400;opacity:.6;margin-left:6px}
+#emo-bg .emo-bg-tools{display:flex;gap:4px}
+#emo-bg .emo-bg-tools button{flex:1;min-height:28px;padding:2px 6px;font-size:11px}
 #emo-assets .emo-faces{display:grid;gap:6px}
 #emo-assets .emo-face-row{display:grid;grid-template-columns:minmax(110px,30%) 1fr;gap:8px;align-items:center}
 #emo-assets .emo-face-row span{display:flex;flex-direction:column;min-width:0}

@@ -31,8 +31,15 @@ export const STATIC_CSS = `
   background:radial-gradient(circle at 50% 36%,color-mix(in srgb,var(--c) 30%,#1b1828) 0%,rgba(16,14,26,.93) 74%);border:2px solid color-mix(in srgb,var(--c) 75%,transparent);box-shadow:0 0 30px -8px var(--c),inset 0 0 26px -12px var(--c)}
 [x-omni-vn] [x-vn-p] [data-vn-sil] b{font:700 clamp(13px,3.8vw,19px)/1.25 ${SERIF};color:#fff;letter-spacing:.02em;word-break:keep-all;overflow-wrap:anywhere}
 [x-omni-vn] [x-vn-p] [data-vn-sil]::after{content:"";white-space:pre;font-size:clamp(11px,3vw,14px);line-height:1.4;color:#eadfca}
-[x-omni-vn] [x-vn-sp]{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
-[x-omni-vn] [x-vn-sp] img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
+[x-omni-vn] [x-vn-sp]{position:absolute;inset:0;opacity:0;transition:opacity .28s ease;transform-origin:50% 100%}
+[x-omni-vn] [x-vn-sp] img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45));transform-origin:50% 100%}
+/* A person comes in, changes face or steps forward: a spring, squash and stretch from the feet. Two names alike,
+   so turning from one to the other plays it again (a rule written again with the same one does not). */
+@keyframes vn-jelly-a{0%{scale:.9 1.08;translate:0 2%}32%{scale:1.08 .93;translate:0 0}52%{scale:.96 1.05}72%{scale:1.02 .985}88%{scale:.995 1.005}100%{scale:1 1;translate:0 0}}
+@keyframes vn-jelly-b{0%{scale:.9 1.08;translate:0 2%}32%{scale:1.08 .93;translate:0 0}52%{scale:.96 1.05}72%{scale:1.02 .985}88%{scale:.995 1.005}100%{scale:1 1;translate:0 0}}
+/* Breathing: the chest rises a hair, from the feet. */
+@keyframes vn-breathe{0%,100%{scale:1 1}50%{scale:1.005 1.014}}
+@media (prefers-reduced-motion:reduce){[x-omni-vn] [x-vn-sp],[x-omni-vn] [x-vn-sp] img,[x-omni-vn] [data-vn-sil]{animation:none!important}}
 [x-omni-vn] [data-vn-cg]{position:absolute;inset:0;pointer-events:none}
 [x-omni-vn] div[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);height:min(calc(100% - 190px),520px);max-width:94%;aspect-ratio:832/1216;translate:-50% -50%;rotate:-.8deg;border:4px solid #f3efe6;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.6);background:linear-gradient(135deg,#2a2440,#141224)}
 [x-omni-vn] div[x-vn-cg] span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.06em;color:#e6dcc6;animation:vn-pulse 1.6s ease-in-out infinite}
@@ -150,9 +157,10 @@ export interface StageState {
   /**
    * Present, left to right: person key, its face key ('' while none), whether they speak
    * now, and what their oval says under their name while there is no picture: the face,
-   * and whether its picture is being drawn or why it could not be.
+   * and whether its picture is being drawn or why it could not be; bounce, the spring's
+   * name for this person (it turns when they come in, change face or step forward).
    */
-  cast: Array<{ key: string; face: string; speaking: boolean; label?: string }>;
+  cast: Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' }>;
   narration: boolean;
   bg: string;
   cg: string;
@@ -175,6 +183,8 @@ export interface StageState {
   cgNav?: { prev: boolean; next: boolean };
   /** The CG shown is a frame for an image still being drawn: there is nothing to see full screen. */
   cgPending?: boolean;
+  /** 뷰어 설정: the people breathe; a spring when one comes in, changes face or steps forward. */
+  motion?: { breathe: boolean; bounce: boolean };
   /** 글자 크기: the box's letters and name against their usual size (1 = as designed). */
   textScale?: number;
   /** Why the stage has no background (being drawn, failed, no place said): shown after the clock. */
@@ -193,11 +203,13 @@ const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] 
 /** The one style text a scene sets: who stands where, who is lit, which picture, which background. */
 export function stageCss(s: StageState): string {
   const spots = SPOTS[Math.min(3, s.cast.length)] ?? [];
+  // The spring's name turns (a/b) when the person's face or place changes: the same name again plays nothing.
+  const spring = (p: { bounce?: 'a' | 'b' }) => s.motion?.bounce && p.bounce ? `;animation:vn-jelly-${p.bounce} .62s cubic-bezier(.28,1.5,.55,1) both` : '';
   const rules = s.cast.slice(0, 3).map((p, i) => {
     // A CG on show dims the stage; folded at the top it does not.
     const lit = s.cg && s.cgView !== 'fold' ? 'filter:brightness(.28) blur(2px)' : p.speaking ? 'filter:none;transform:scale(1.035);z-index:3' : s.narration ? 'filter:brightness(.62) saturate(.85);z-index:1' : 'filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);z-index:1';
     return `[x-omni-vn] [x-vn-p="${p.key}"]{display:block;left:${spots[i]}%;${lit}}`
-      + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : '')
+      + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1${spring(p)}}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : spring(p) ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{${spring(p).slice(1)}}` : '')
       + (!p.face && p.label ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]::after{content:"${p.label.replace(/["\\]/g, '').replace(/\n/g, '\\A ')}"}` : '');
   });
   const dim = (act: string, on: boolean | undefined) => on ? '' : `[x-omni-vn] [data-vn-act="${act}"]{opacity:.3}`;
@@ -216,6 +228,8 @@ export function stageCss(s: StageState): string {
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
     s.msgs ? '[x-omni-vn] [data-vn-msgs]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}' : '',
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
+    // Each breathes at its own pace, so the stage never moves as one.
+    s.motion?.breathe ? '[x-omni-vn] [x-vn-sp] img{animation:vn-breathe 4.6s ease-in-out infinite}[x-omni-vn] [x-vn-p]:nth-child(2n) [x-vn-sp] img{animation-duration:5.2s;animation-delay:-1.7s}[x-omni-vn] [x-vn-p]:nth-child(3n) [x-vn-sp] img{animation-duration:4.2s;animation-delay:-3.1s}' : '',
     s.textScale && s.textScale !== 1 ? `[x-omni-vn] [data-vn-text]{font-size:${(16.5 * s.textScale).toFixed(1)}px}[x-omni-vn] [data-vn-name]{font-size:${(15 * s.textScale).toFixed(1)}px}` : '',
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}`,

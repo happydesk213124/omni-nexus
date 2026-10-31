@@ -139,3 +139,65 @@ test('without looks no image is drawn, and faces seen in replies are remembered 
   assert.deepEqual([...found.get('t-misun')].sort(), ['cry', 'happy']);
   assert.deepEqual(f.api.emotionData().seen['t-misun'].sort(), ['cry', 'happy']);
 });
+
+test('a sample place is drawn once for every chat: kept in the 참고이미지 module, found from another bot, drawn again, deleted', async () => {
+  const f = await fixture();
+  const sample = 'cafe, indoors, window, daytime';
+  const made = await f.api.makeBackground(sample, null);
+  assert.equal(made.shared, true, 'no bot needed');
+  assert.equal(f.api.emotionData().made.at(-1).bot, '*');
+  await f.api.registerMadeSprites();
+  const shared = async () => ((await risuai.getDatabase(['modules'])).modules.find(m => m.id === 'inlay-char-ref')?.assets || []).filter(a => /^omni_bg_/.test(a[0]));
+  assert.deepEqual((await shared()).map(a => a.slice(0, 2)), [[made.name, made.path]]);
+  assert.ok((await risuai.getDatabase(['enabledModules'])).enabledModules.includes('inlay-char-ref'));
+  assert.deepEqual((await risuai.getCharacterFromIndex(0)).additionalAssets.filter(a => /omni_bg_/.test(a[0])), [], 'not in any bot');
+  assert.deepEqual(await f.api.backgroundPlaces(await f.api.currentEmotionBot()), [], "nor listed as the bot's own (its enabled module lists it among the bot's images)");
+  assert.deepEqual(await f.api.sharedBackgroundPlaces(), [sample]);
+  // Another bot (another chat): the same background, its tags in any order.
+  const other = { ...f.bot, id: 'other-bot' };
+  assert.equal((await f.api.findBackground('window, cafe, indoors, daytime', other))?.path, made.path);
+  // Omni's record gone (another device) and the module switched off: its row still finds it.
+  f.api.emotionData().made = f.api.emotionData().made.filter(m => m.bot !== '*'); f.api.resetSharedBackgrounds(); f.api.forgetEmotionPool();
+  const enabled = (await risuai.getDatabase(['enabledModules'])).enabledModules;
+  await risuai.setDatabase({ enabledModules: enabled.filter(id => id !== 'inlay-char-ref') });
+  assert.equal((await f.api.findBackground(sample, other))?.path, made.path);
+  assert.equal(await f.api.findBackground('cafe, indoors', other), null, 'another place is not it');
+  // Drawn again: the new picture under the same name, one row. Deleted: gone for every chat.
+  const again = await f.api.redrawBackground(sample, null, true);
+  await f.api.registerMadeSprites();
+  assert.deepEqual((await shared()).map(a => a[1]), [again.path]);
+  await f.api.deleteBackground(sample, null, true);
+  assert.deepEqual(await shared(), []);
+  f.api.resetSharedBackgrounds();
+  assert.equal(await f.api.findBackground(sample, other), null);
+});
+
+test("a bot's own background: drawn again it replaces the old one; deleted it leaves the bot's assets", async () => {
+  const f = await fixture();
+  const place = 'library, indoors, night';
+  const first = await f.api.makeBackground(place, f.bot);
+  assert.equal(first.shared, false);
+  await f.api.registerMadeSprites();
+  const listed = async () => (await risuai.getCharacterFromIndex(0)).additionalAssets.filter(a => /^omni_bg_/.test(a[0])).map(a => a[1]);
+  assert.deepEqual(await listed(), [first.path]);
+  const again = await f.api.redrawBackground(place, f.bot, false);
+  await f.api.registerMadeSprites();
+  assert.deepEqual(await listed(), [again.path]);
+  await f.api.deleteBackground(place, f.bot, false);
+  assert.deepEqual(await listed(), []);
+  assert.equal(await f.api.findBackground(place, f.bot), null);
+  assert.equal(f.api.emotionData().made.some(m => m.person === '__place__'), false);
+});
+
+test('the 참고이미지 module sent without its list (PocketRisu): a shared background is not written over it', { timeout: 30000 }, async () => {
+  const f = await fixture();
+  // The module as PocketRisu sends it when its list failed to load: a descriptor, no assets.
+  const db = await risuai.getDatabase(['modules', 'enabledModules']);
+  await risuai.setDatabase({ modules: [...db.modules, { id: 'inlay-char-ref', namespace: 'inlay.char_ref', name: '⚛️Omni Nexus 참고이미지', assetManifest: { id: 'm1', count: 12 } }], enabledModules: db.enabledModules });
+  await f.api.makeBackground('beach, outdoors, ocean, sunset', null);
+  await f.api.registerMadeSprites();
+  const mod = (await risuai.getDatabase(['modules'])).modules.find(m => m.id === 'inlay-char-ref');
+  assert.equal('assets' in mod, false, 'its twelve reference images were not traded for one background');
+  assert.deepEqual(mod.assetManifest, { id: 'm1', count: 12 });
+  assert.equal(f.api.emotionData().made.find(m => m.bot === '*').registered, false, 'left to register once the list reads');
+});

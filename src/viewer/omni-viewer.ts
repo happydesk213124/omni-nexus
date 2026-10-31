@@ -13,7 +13,7 @@ import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
-import { currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
+import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
 import { setSoundPage } from '../sound-ui/page';
 import { withTtsAudio } from '../tts-ui/activation';
@@ -194,7 +194,7 @@ async function stagePlace(): Promise<void> {
   if (!id) {
     const raw = await risuHost()?.readImage?.(made.path).catch(() => null);
     const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-    if (!bytes?.byteLength) { dbg('viewer.background', { message: `${made.path}: unreadable, drawn again` }, 'warn'); void forgetMade(bot.id, PLACE_PERSON, made.face).catch(() => {}); return; }
+    if (!bytes?.byteLength) { dbg('viewer.background', { message: `${made.path}: unreadable, drawn again` }, 'warn'); void forgetMade(made.shared ? SHARED_BOT : bot.id, PLACE_PERSON, made.face).catch(() => {}); return; }
     id = key(made.path);
     const holder = await doc.createElement('div');
     await holder.setAttribute('x-vn-bg', id);
@@ -226,7 +226,7 @@ function bgNote(): string {
   if (picking) return '배경 고르는 중…';
   if (!placeKey(place)) return '배경: 장소 없음';
   if (!bot) return '';
-  const status = spriteStatus(bot.id, PLACE_PERSON, placeKey(place));
+  const status = backgroundStatus(place, bot);
   if (status.state === 'running') return '배경 그리는 중…';
   if (status.state === 'failed') return `배경 못 그림 · ${status.message.slice(0, 40)}`;
   return s.autoGenerate ? '배경 기다리는 중' : '배경 없음 · 자동 생성 꺼짐';
@@ -496,8 +496,8 @@ function sendFace(m: Member, place: SafeElement, sprite: EmotionSprite): Promise
  * yet sent goes over behind the line (`later`), and until then its person keeps the face
  * they last showed (someone new: the oval). The line never waits on a picture.
  */
-async function castNow(index: number, later: Array<Promise<void>>): Promise<Array<{ key: string; face: string; speaking: boolean; label?: string }>> {
-  const cast: Array<{ key: string; face: string; speaking: boolean; label?: string }> = [];
+async function castNow(index: number, later: Array<Promise<void>>): Promise<Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' }>> {
+  const cast: Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' }> = [];
   for (const m of castAt(index)) {
     const place = await placeFor(m), sprite = place ? await spriteFor(m) : null;
     let face = '';
@@ -506,9 +506,20 @@ async function castNow(index: number, later: Array<Promise<void>>): Promise<Arra
       else { later.push(sendFace(m, place, sprite)); face = shownFace.get(m.key) ?? ''; }
     }
     if (face) shownFace.set(m.key, face);
-    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m) });
+    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m), bounce: springOf(m.key, face, m.speaking) });
   }
   return cast;
+}
+/**
+ * The spring each person is on: it turns when they come in, show another face (a picture
+ * arriving late too) or step forward to speak, and then plays once (see stageCss).
+ */
+const springs = new Map<string, { face: string; speaking: boolean; turn: 'a' | 'b' }>();
+function springOf(key: string, face: string, speaking: boolean): 'a' | 'b' {
+  const was = springs.get(key);
+  const turn = !was ? 'a' : was.face !== face || (speaking && !was.speaking) ? (was.turn === 'a' ? 'b' : 'a') : was.turn;
+  springs.set(key, { face, speaking, turn });
+  return turn;
 }
 /** Faces that went over after their line was drawn: the stage shows them (the box stays as it is). */
 async function restage(mine: number): Promise<void> {
@@ -710,7 +721,7 @@ async function comeBack(): Promise<void> {
 
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
-  log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
+  log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
@@ -1197,7 +1208,7 @@ export async function openViewer(): Promise<void> {
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
-    opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = '';
+    opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = ''; springs.clear();
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
     keysOn = true; logSel = -1;
@@ -1289,5 +1300,6 @@ export async function installOmniViewer(): Promise<void> {
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => open && inside({ clientX: x, clientY: y }, rect));
   if (host.addRisuChatListener) await host.addRisuChatListener('output', () => scheduleAhead());
   // A sprite finished: the scene on screen may be waiting for it.
-  subscribeSprites(() => { if (open) void render(); });
+  // A picture finished (or a background drawn again): the scene may be waiting for it, and the stage looks again.
+  subscribeSprites(() => { if (open) { bgFor = ''; void render(); } });
 }
