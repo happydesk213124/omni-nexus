@@ -78,7 +78,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.evaluate(() => { window.ttsData().settings.enabled = false; });
     assert.equal(await page.locator('#omnitts-chat-activation').count(), 0, 'refused, the prompt went again');
     // No background, and why, after the clock: no place has been said.
-    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /\[data-vn-clock\]::after\{content:"배경: 장소 태그 없음"\}/);
+    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /\[data-vn-clock\]::after\{content:"배경: 장소 없음"\}/);
     // The counter is drawn by the scene's style text (::after), costing no call of its own.
     assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
@@ -417,6 +417,43 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.match(await count(), /^"1 \/ 1"/, 'the line with 아침 is no scene');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-text] i').count(), 0, '즉시: no letter waits its turn');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-text]')).fontSize), '22.1px', '글자 크기: 아주 크게');
+    await shut();
+    // [[place:…]] moves the stage where it stands, like a BGM cue; a mark is never a line.
+    await page.evaluate(() => {
+      const d = window.emotionData(); d.settings.placeBackgrounds = true;
+      d.made.push({ bot: 'bot', person: '__place__', face: 'cafe, indoors', name: 'omni_bg_cafe, indoors.webp', path: 'assets/bg-cafe.png', registered: true, at: 2 },
+        { bot: 'bot', person: '__place__', face: 'street, night', name: 'omni_bg_street, night.webp', path: 'assets/bg-street.png', registered: true, at: 3 });
+      window.bot.chats[0].message.push({ role: 'user', data: '나가자' }, { role: 'char', chatId: 'm3', data: '[[place:Cafe, indoors]]\n하린: "커피 다 마셨어?"\n[[place:street, night]]\n밤거리는 조용했다.' });
+    });
+    await reopen();
+    await page.waitForFunction(() => /커피 다 마셨어/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    const stageBg = () => page.evaluate(() => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] || '');
+    await page.waitForFunction(() => /\[x-vn-bg="[^"]+"\]\{display:block\}/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
+    const cafe = await stageBg();
+    assert.match(await count(), /^"1 \/ 2"/, 'two lines: the marks are none');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => /밤거리는 조용했다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.waitForFunction(old => { const now = /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1]; return !!now && now !== old; }, cafe);
+    assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 2, 'one background per place, each sent once');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(old => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] === old, cafe);
+    // A reply that says no place: JEV picks one from its text (the bot's backgrounds first), once; the stage goes there.
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(old => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] !== old, cafe);
+    await shut();
+    await page.evaluate(() => {
+      window.jevAsked = 0;
+      window.ttsData().settings.jev.key = 'jev-key';
+      // The bot's backgrounds come first, newest first: 2 is the café.
+      window.risuai.nativeFetch = async () => { window.jevAsked++; return new Response(JSON.stringify({ answers: { 0: { choice: '2' } } }), { status: 200, headers: { 'content-type': 'application/json' } }); };
+      window.bot.chats[0].message.push({ role: 'user', data: '들어가자' }, { role: 'char', chatId: 'm4', data: '따뜻한 커피 향이 났다.\n하린: "여기 좋다."' });
+    });
+    await reopen();
+    await page.waitForFunction(old => /\[x-vn-bg="([^"]+)"\]\{display:block\}/.exec(document.querySelector('[x-omni-vn-style="scene"]').textContent)?.[1] === old, cafe);
+    assert.equal(await page.evaluate(() => window.jevAsked), 1);
+    await shut(); await reopen();
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(() => window.jevAsked), 1, 'opened again: the kept place, nothing asked');
     await shut();
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

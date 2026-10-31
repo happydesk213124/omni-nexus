@@ -17,7 +17,7 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
       const save = new Map(), local = new Map();
       window.bots = [{ chaId: 'test-char', name: '봇', additionalAssets: [['미선_sad', 'assets/sad.png', 'png']], globalLore: [], chats: [{ id: 'test-chat', message: [{ role: 'char', data: '오미선 (sobbing): "흑흑, 미안해"' }] }] }];
       window.risuai = { pluginStorage: { getItem: async k => save.get(k), setItem: async (k, v) => save.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
-        requestPluginPermission: async () => true, getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async () => {}, getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
+        requestPluginPermission: async () => true, getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async db => { (window.dbWrites ||= []).push(structuredClone(db)); }, getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
         getCharacterFromIndex: async i => structuredClone(window.bots[i] ?? null), setCharacterToIndex: async (i, c) => { window.bots[i] = structuredClone(c); },
         getCharacter: async () => structuredClone({ ...window.bots[0], chatPage: 0 }), readImage: async path => path === 'assets/sad.png' ? new Uint8Array(png) : null,
         runLLMModel: async () => ({ success: true, content: 'OK' }), nativeFetch: async () => ({ ok: true, arrayBuffer: async () => new Uint8Array(32).buffer }) };
@@ -30,22 +30,47 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
       document.body.innerHTML = '<div id="nx-shell" class="nx-ux">' + window.previewChrome() + '</div>';
       window.setSoundPage('asset'); document.getElementById('nx-main').innerHTML = window.ttsSettingsHtml(); await window.mountTts();
     });
-    // The page shows only its own panel, outside the TTS power switch.
-    assert.equal(await page.locator('#emo-assets').isVisible(), true);
+    // Three tabs, like BGM·효과음's: 뷰어 opens first, outside the TTS power switch.
+    assert.deepEqual(await page.locator('[data-tts-tab]:not([hidden])').allTextContents(), ['뷰어', '배경', '감정 에셋']);
+    assert.equal(await page.locator('#emo-viewer').isVisible(), true);
     assert.equal(await page.locator('#tts-controls').isVisible(), false);
+    // 옴니 뷰어's own settings: the words whose lines are no scene, the letter speed and size.
+    await page.locator('#emo-skip').fill('상태창, OOC');
+    await page.locator('#emo-speed').selectOption('slow');
+    await page.waitForFunction(() => window.viewerPrefs().skipWords === '상태창, OOC' && window.viewerPrefs().speed === 'slow');
+    await page.locator('#emo-size').selectOption('large');
+    await page.waitForFunction(() => window.viewerPrefs().textSize === 'large');
+    // 배경: its switch greys out the rest; ⚛️ omni place goes into Risu's modules, on; a reply with no place is picked by JEV.
+    await page.locator('#tab-emo-bg').click();
+    assert.equal(await page.locator('#emo-bg').isVisible(), true);
+    assert.equal(await page.locator('#emo-bg-samples button').count(), 106, 'the sample places, tags only');
+    await page.locator('#emo-places').uncheck();
+    await page.waitForFunction(() => window.emotionData().settings.placeBackgrounds === false && document.getElementById('emo-bg-gate').disabled);
+    await page.locator('#emo-places').check();
+    await page.waitForFunction(() => !document.getElementById('emo-bg-gate').disabled);
+    await page.locator('#emo-place-module').check();
+    await page.waitForFunction(() => window.viewerPrefs().placeModule === true);
+    const written = await page.evaluate(() => window.dbWrites.at(-1));
+    assert.deepEqual(written.enabledModules, ['omni-place']);
+    assert.equal(written.modules[0].name, '⚛️ omni place');
+    assert.match(await page.locator('#emo-place-module-status').textContent(), /켜짐/);
+    await page.locator('#emo-bg-pick').selectOption('jev');
+    await page.waitForFunction(() => window.viewerPrefs().bgPick === 'jev');
+    // 감정 에셋: the faces; its switch greys out the rest.
+    await page.locator('#tab-emo-assets').click();
+    assert.equal(await page.locator('#emo-assets').isVisible(), true);
     await page.locator('#emo-family').selectOption('v4');
     await page.locator('#emo-face-happy').fill('2::grin::');
     await page.locator('#emo-words').fill('pouting=sad\nbogus=nothing');
     await page.locator('#emo-pose').click();
     await page.waitForFunction(() => window.emotionData().settings.family === 'v4' && window.emotionData().settings.faceTags.happy === '2::grin::');
     assert.deepEqual(await page.evaluate(() => window.emotionData().settings.words), { pouting: 'sad' }, 'only words onto a real face are kept');
-    // 옴니 뷰어's own settings: the words whose lines are no scene, and the letter speed.
-    await page.locator('#emo-skip').fill('상태창, OOC');
-    await page.locator('#emo-speed').selectOption('slow');
-    await page.waitForFunction(() => window.viewerPrefs().skipWords === '상태창, OOC' && window.viewerPrefs().speed === 'slow');
-    await page.locator('#emo-size').selectOption('large');
-    await page.waitForFunction(() => window.viewerPrefs().textSize === 'large');
-    assert.equal(await page.locator('#tab-emo-assets').textContent(), '뷰어 및 감정 에셋');
+    await page.locator('#emo-enabled').uncheck();
+    await page.waitForFunction(() => document.getElementById('emo-faces-gate').disabled && window.emotionData().settings.enabled === false);
+    await page.locator('#emo-enabled').check();
+    await page.waitForFunction(() => !document.getElementById('emo-faces-gate').disabled);
+    // What each row does is the 「?」's (no gray lines under the rows).
+    assert.equal(await page.locator('#emo-place-module').evaluate(n => n.closest('.row')?.dataset.nxHelpId), 'emo-place-module');
     assert.equal(await page.evaluate(() => window.emotionData().settings.prefix), '', "not 감정 에셋's own settings");
     // A TTS card of this bot, listed with the face its reply showed.
     await page.evaluate(async () => { window.ttsData().characters.push({ id: 't-misun', scope: 'global', name: '오미선', surname: '오', givenName: '미선', surnameAliases: [], givenAliases: ['Misun'], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }); await window.saveTtsData(); });

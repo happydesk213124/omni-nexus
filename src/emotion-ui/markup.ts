@@ -1,27 +1,48 @@
 import { BASE_EXPRESSIONS, DEFAULT_POSE } from '../domain/emotion/emotions';
 
 /**
- * TTS · 감정 에셋 page and the character sheet's 「감정 에셋」 view. Same classes
- * as the TTS and BGM pages, so they look like the rest of the area.
+ * 뷰어 및 감정 에셋: three tabs like BGM·효과음's, the same classes. 뷰어 is the
+ * viewer's own screen, 배경 its stage (places and the backgrounds drawn for them),
+ * 감정 에셋 the faces. A row's small line is live status only; what a row does opens
+ * with the settings head's 「?」 (help.ts).
  */
-export const EMOTION_TABS = [['emo-assets', '뷰어 및 감정 에셋']] as const;
+export const EMOTION_TABS = [['emo-viewer', '뷰어'], ['emo-bg', '배경'], ['emo-assets', '감정 에셋']] as const;
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const sw = (id: string, label: string) => `<label class="switch"><input type="checkbox" id="${id}" aria-label="${label}"></label>`;
 const row = (title: string, control: string, status = '') => `<div class="row"><div class="copy"><b>${title}</b>${status ? `<small>${status}</small>` : ''}</div>${control}</div>`;
+const select = (id: string, label: string, options: ReadonlyArray<readonly [string, string]>) => `<select id="${id}" aria-label="${label}">${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>`;
 
-export const EMOTION_PANEL = `<section class="panel" id="emo-assets" role="tabpanel" hidden><div class="tts-settings-columns">
-<div class="tts-settings-column"><div class="group" id="emo-viewer"><h3>옴니 뷰어</h3><div class="fields">
-<label class="field full"><span>장면으로 띄우지 않을 단어 · 쉼표로 구분 (채팅에는 그대로)</span><textarea id="emo-skip" rows="2" maxlength="2000" placeholder="예: 상태창, OOC, 시스템"></textarea></label>
-<label class="field"><span>글자 크기</span><select id="emo-size"><option value="small">작게</option><option value="normal">보통</option><option value="large">크게</option><option value="xlarge">아주 크게</option></select></label>
-<label class="field"><span>글자 속도</span><select id="emo-speed"><option value="instant">즉시</option><option value="fast">빠르게</option><option value="normal">보통</option><option value="slow">느리게</option></select></label>
+const VIEWER_PANEL = `<section class="panel" id="emo-viewer" role="tabpanel" hidden><div class="tts-settings-columns">
+<div class="tts-settings-column"><div class="group"><h3>화면</h3>
+${row('글자 크기', select('emo-size', '글자 크기', [['small', '작게'], ['normal', '보통'], ['large', '크게'], ['xlarge', '아주 크게']]))}
+${row('글자 속도', select('emo-speed', '글자 속도', [['instant', '즉시'], ['fast', '빠르게'], ['normal', '보통'], ['slow', '느리게']]))}
 </div></div>
-<div class="group"><h3>감정 에셋</h3>
-${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'), '옴니 뷰어가 말하는 캐릭터의 표정 그림을 띄웁니다')}
-${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'), '이름_감정 · 감정_이름 · 별칭 · 감정 이미지 · 켜진 모듈')}
-${row('없는 감정 자동 생성', sw('emo-auto', '없는 감정 자동 생성'), '뷰어에 필요한 표정만 · 기본 표정을 먼저 보여주고 다 되면 교체 · NAI가 쉴 때 다음 답장 것을 미리(무료 생성일 때만)')}
-${row('장소 배경 만들기', sw('emo-places', '장소 배경 만들기'), '답장의 장소 태그(캐스트 블록, 없으면 세션 작가노트)로 사람 없는 배경을 V5 medium으로 그려 흐리게 깝니다')}
-</div>
-<div class="group"><h3>그리기 · LLM 없이 태그로만</h3><div class="fields">
+<div class="tts-settings-column"><div class="group"><h3>장면</h3><div class="fields">
+<label class="field full"><span>장면으로 띄우지 않을 단어 · 쉼표로 구분</span><textarea id="emo-skip" rows="3" maxlength="2000" placeholder="예: 상태창, OOC, 시스템"></textarea></label>
+</div></div></div>
+</div></section>`;
+
+const BACKGROUND_PANEL = `<section class="panel" id="emo-bg" role="tabpanel" hidden><div class="tts-settings-columns">
+<div class="tts-settings-column"><div class="group"><h3>배경</h3>
+${row('장소 배경', sw('emo-places', '장소 배경'))}
+<fieldset class="snd-gate" id="emo-bg-gate">
+${row('장소 태그 쓰게 하기 · ⚛️ omni place', sw('emo-place-module', '장소 태그 쓰게 하기'), '<span id="emo-place-module-status" role="status"></span>')}
+${row('장소 없는 메시지', select('emo-bg-pick', '장소 없는 메시지', [['auto', '자동 · JEV → 임베딩'], ['jev', 'JEV'], ['embedding', '임베딩'], ['off', '고르지 않음 · 작가노트 장소']]))}
+</fieldset></div></div>
+<div class="tts-settings-column"><div class="group"><h3>이 봇의 배경 <small id="emo-bg-count"></small></h3>
+<div id="emo-bg-list" class="emo-bg-grid" role="list"></div>
+<details class="emo-bg-samples"><summary>샘플 장소 · 눌러서 미리 그리기</summary><div id="emo-bg-samples" class="emo-chips"></div></details>
+</div></div>
+</div></section>`;
+
+const FACES_PANEL = `<section class="panel" id="emo-assets" role="tabpanel" hidden><div class="tts-settings-columns">
+<div class="tts-settings-column"><div class="group"><h3>감정 에셋</h3>
+${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'))}
+<fieldset class="snd-gate" id="emo-faces-gate">
+${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'))}
+${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
+</fieldset></div>
+<div class="group"><h3>그리기 · 태그로만</h3><div class="fields">
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
 <label class="field"><span>투명 배경 (V5)</span><select id="emo-transparent"><option value="1">투명</option><option value="0">흰 배경</option></select></label>
 <label class="field"><span>가로</span><input id="emo-width" type="number" min="512" max="1600" step="64"></label>
@@ -29,17 +50,30 @@ ${row('장소 배경 만들기', sw('emo-places', '장소 배경 만들기'), '�
 <label class="field full"><span>선행 프롬프트</span><textarea id="emo-prefix" rows="2" maxlength="2000"></textarea></label>
 <label class="field full"><span>자세 태그 · 비우면 기본</span><input id="emo-pose" maxlength="600" placeholder="${esc(DEFAULT_POSE)}"></label>
 <label class="field full"><span>후행 프롬프트</span><textarea id="emo-suffix" rows="2" maxlength="2000"></textarea></label>
-</div><small>외형은 삽화 캐릭터 탭의 태그를 그대로 씁니다(없으면 봇 에셋 메타데이터). 스타일 프리셋은 지금 켜진 것을 씁니다.</small></div></div>
+</div></div></div>
 <div class="tts-settings-column"><div class="group"><h3>이 봇의 캐릭터</h3><div id="emo-people" class="emo-people" role="list"></div></div>
 <div class="group"><h3>감정 표 · 표정 태그</h3><div id="emo-faces" class="emo-faces">${BASE_EXPRESSIONS.map(e => `<label class="emo-face-row"><span><b>${esc(e.label)}</b><small>${esc(e.key)} · ${esc(e.words.slice(0, 5).join(', '))}</small></span><input id="emo-face-${e.key}" data-face="${e.key}" maxlength="400" placeholder="${esc(e.tags)}"></label>`).join('')}</div>
-<label class="field full"><span>단어 더하기 · 한 줄에 하나 (예: pouting=sad)</span><textarea id="emo-words" rows="3" maxlength="4000"></textarea></label></div></div>
+<div class="fields"><label class="field full"><span>단어 더하기 · 한 줄에 하나 (예: pouting=sad)</span><textarea id="emo-words" rows="3" maxlength="4000"></textarea></label></div></div></div>
 </div></section>`;
+
+export const EMOTION_PANEL = VIEWER_PANEL + BACKGROUND_PANEL + FACES_PANEL;
 
 /** The character sheet's view switch and its 감정 에셋 section. */
 export const EMOTION_SHEET_SWITCH = '<div class="emo-sheet-switch" role="tablist"><button type="button" role="tab" data-emo-tab="voice" aria-selected="true">음성</button><button type="button" role="tab" data-emo-tab="faces" aria-selected="false">감정 에셋</button></div>';
 export const EMOTION_SHEET = '<div id="emo-char-section"><p id="emo-char-looks" class="emo-looks"></p><div class="actions"><button type="button" id="emo-char-make-seen">본 감정 모두 만들기</button><button type="button" id="emo-char-make-all">기본 표정 전부 만들기</button><small id="emo-char-status" role="status"></small></div><div id="emo-char-grid" class="emo-grid"></div></div>';
 
 export const EMOTION_CSS = `
+#emo-bg .emo-bg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
+#emo-bg .emo-bg-tile{display:flex;flex-direction:column;gap:4px;min-width:0}
+#emo-bg .emo-bg-pic{aspect-ratio:1216/832;border-radius:8px;border:1px solid #ffffff18;background:#0b0e14 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.9}
+#emo-bg .emo-bg-pic[data-busy="1"]{outline:2px solid #22c55e;outline-offset:-2px}
+#emo-bg .emo-bg-tile small{font-size:11px;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#emo-bg .emo-bg-samples{margin-top:10px}
+#emo-bg .emo-bg-samples summary{cursor:pointer;opacity:.85;min-height:32px;display:flex;align-items:center}
+#emo-bg .emo-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+#emo-bg .emo-chips button{min-height:30px;padding:4px 10px;font-size:12px;border-radius:999px}
+#emo-bg .emo-chips button[data-made="1"]{border-color:#22c55e88;opacity:.6}
+#emo-bg h3 small{font-weight:400;opacity:.6;margin-left:6px}
 #emo-assets .emo-faces{display:grid;gap:6px}
 #emo-assets .emo-face-row{display:grid;grid-template-columns:minmax(110px,30%) 1fr;gap:8px;align-items:center}
 #emo-assets .emo-face-row span{display:flex;flex-direction:column;min-width:0}

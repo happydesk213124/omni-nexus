@@ -1,3 +1,5 @@
+import { EMOTION_HELP } from '../emotion-ui/help';
+
 type Tip = { title: string; body: string };
 
 /**
@@ -38,6 +40,8 @@ export const SOUND_HELP: Record<string, Tip> = {
   'snd-embed-key': { title: '임베딩 API Key', body: '제공자의 API 키입니다. OpenRouter는 비우면 JEV 키를 씁니다.' },
   'snd-embed-endpoint': { title: '임베딩 주소', body: '비우면 제공자의 기본 주소를 씁니다. 프록시나 직접 띄운 서버만 적습니다.' },
   'snd-max-mb': { title: '파일 최대 크기', body: '파일은 모듈에 저장되어 저장 파일·동기화 크기가 늘어납니다. 큰 곡은 주소로 등록하세요.' },
+  // 뷰어 및 감정 에셋: the same 「?」, its own entries.
+  ...EMOTION_HELP,
 };
 
 export function soundHelpTip(id: string): Tip | undefined { return Object.prototype.hasOwnProperty.call(SOUND_HELP, id) ? SOUND_HELP[id] : undefined; }

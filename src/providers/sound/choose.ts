@@ -68,6 +68,18 @@ export async function chooseBgm(scene: string, items: readonly SoundItem[], engi
   return [...new Set(picks)].slice(0, 3);
 }
 
+/** One of `labels` by JEV (its place in the list), -1 when it names none. The text and labels are data, never instructions. */
+export async function jevChoose(state: string, question: string, context: Record<string, string>, labels: readonly string[], settings: Pick<TtsSettings, 'jev'>): Promise<number> {
+  if (!settings.jev.key.trim()) throw new Error('JEV API 키를 넣어 주세요.');
+  const criteria: Record<string, string> = Object.fromEntries(labels.map((label, i) => [String(i + 1), label.slice(0, 120)]));
+  const answer = objectValue(await ttsJson(await ttsFetch(settings.jev.url, {
+    method: 'POST', headers: { Authorization: `Bearer ${settings.jev.key.trim()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: settings.jev.model, state, questions: { 0: { type: 'choice', instructions: { ...context, question }, criteria } } }),
+  }))).answers;
+  const n = Number(objectValue(objectValue(answer)[0]).choice) - 1;
+  return Number.isInteger(n) && n >= 0 && n < labels.length ? n : -1;
+}
+
 /**
  * The parts of a compound effect word (`콰아앙 치이익 또르르`) in one request: one
  * JEV choice question per part, or one LLM answer with a pick per part, in order.

@@ -17,3 +17,5 @@ export const INLINE_CAST_CLOSED_SOURCE = String.raw`\[\[inxc\]\]([\s\S]{0,12000}
 // Open (still streaming, or never closed): only its own line, so a model that forgets
 // the closing tag cannot take the story below it off the screen.
 export const INLINE_CAST_MASK_SOURCE = String.raw`${INLINE_CAST_CLOSED_SOURCE}|\[\[inxc\]\][^\n]*`;
+/** `[[place:cafe, indoors, window]]`: a scene's place on a line of its own (see domain/viewer/place). Never read, never a scene. */
+export const PLACE_MARKER_SOURCE = String.raw`\[\[place:([^\]\n]{1,300})\]\]`;

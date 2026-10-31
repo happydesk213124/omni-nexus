@@ -60,5 +60,13 @@ export async function embedRank(query: string, items: readonly SoundItem[], desc
     .filter(row => row.score >= EMBED_MIN_SCORE).sort((a, b) => b.score - a.score).slice(0, limit).map(row => row.item);
 }
 
+/** The texts nearest one query (their places in `texts`), best first, as many as `limit` that pass the minimum score. */
+export async function embedNearestTexts(query: string, texts: readonly string[], settings: EmbeddingSettings, limit = 1): Promise<number[]> {
+  if (!texts.length || !query.trim()) return [];
+  const all = await vectorsFor(settings, [query, ...texts]);
+  return all.slice(1).map((row, i) => ({ i, score: cosine(all[0]!, row) })).filter(row => row.score >= EMBED_MIN_SCORE)
+    .sort((a, b) => b.score - a.score).slice(0, limit).map(row => row.i);
+}
+
 /** Test seam. */
 export function clearSoundEmbeddings(): void { vectors.clear(); }
