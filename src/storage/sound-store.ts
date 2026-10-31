@@ -1,6 +1,7 @@
 import type { SfxRule, SfxTerm, SoundData, SoundItem, SoundKind, SoundSettings } from '../core/sound-types';
 import { soundDefaults } from '../config/sound-defaults';
-import { sampleSoundData } from '../config/sound-samples';
+import { sampleSoundData, sampleYoutubeFor } from '../config/sound-samples';
+import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
 import { psGet, psSet } from './device-store';
 import { soundTags } from '../domain/sound/tags';
 import { sfxMarksFromPattern, sfxMarksProblem } from '../domain/sound/audio';
@@ -26,13 +27,24 @@ const MATCHERS = ['auto', 'tag', 'embedding', 'jev', 'llm'] as const;
 function item(raw: unknown, kind: SoundKind): SoundItem | null {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const key = text(r.key, 80), name = text(r.name, 120).trim();
-  const source = r.source === 'asset' ? 'asset' : 'url';
+  let source: SoundItem['source'] = r.source === 'asset' ? 'asset' : r.source === 'youtube' && kind === 'bgm' ? 'youtube' : 'url';
+  let url = text(r.url, 2000), fallbackUrl = /^https:\/\//i.test(text(r.fallbackUrl, 2000)) ? text(r.fallbackUrl, 2000) : '';
   if (!key || !name) return null;
-  if (source === 'url' && !/^https:\/\//i.test(text(r.url, 2000))) return null;
+  // An example track saved with its file link, before the examples moved to YouTube:
+  // the same track, played by YouTube now, its file kept as the fallback.
+  const sample = kind === 'bgm' && source === 'url' ? sampleYoutubeFor(url) : '';
+  if (sample) { source = 'youtube'; fallbackUrl = url; url = youtubeWatchUrl(sample); }
+  if (source === 'youtube') {
+    const id = youtubeVideoId(url);
+    if (id) url = youtubeWatchUrl(id);
+    else if (fallbackUrl) { source = 'url'; url = fallbackUrl; fallbackUrl = ''; }
+    else return null;
+  }
+  if (source === 'url' && !/^https:\/\//i.test(url)) return null;
   if (source === 'asset' && (!text(r.assetName) || !text(r.assetPath))) return null;
   return {
     key, kind, name, tags: soundTags(Array.isArray(r.tags) ? r.tags.map(String) : []), folder: text(r.folder, 80), source,
-    ...(source === 'url' ? { url: text(r.url, 2000) } : { assetName: text(r.assetName), assetPath: text(r.assetPath) }),
+    ...(source === 'url' ? { url } : source === 'youtube' ? { url, ...(fallbackUrl ? { fallbackUrl } : {}) } : { assetName: text(r.assetName), assetPath: text(r.assetPath) }),
     ...(text(r.mime, 40) ? { mime: text(r.mime, 40) } : {}), ...(Number.isFinite(Number(r.bytes)) ? { bytes: Number(r.bytes) } : {}),
   };
 }
@@ -52,7 +64,7 @@ function term(raw: unknown): SfxTerm | null {
 }
 export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettings {
   const d = soundDefaults(), s = { ...d, ...raw };
-  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate', 'sfxCue', 'sfxFirst', 'sfxTrim', 'sfxNormalize'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
+  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate', 'sfxCue', 'sfxFirst', 'sfxTrim', 'sfxNormalize', 'youtubeBgm', 'youtubeHidden'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
   s.sfxMaxSec = Math.round(clamp(s.sfxMaxSec, 0, 60, d.sfxMaxSec) * 10) / 10;
   s.bgmVolume = clamp(s.bgmVolume, 0, 1, d.bgmVolume); s.sfxVolume = clamp(s.sfxVolume, 0, 1, d.sfxVolume);
   s.duck = clamp(s.duck, 0, 1, d.duck); s.crossfadeMs = Math.round(clamp(s.crossfadeMs, 0, 10_000, d.crossfadeMs));

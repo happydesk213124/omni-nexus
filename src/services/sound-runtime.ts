@@ -17,6 +17,10 @@ import { sfxPartSeconds, sfxParts } from '../domain/sound/combo';
 import { bgmSceneText } from '../domain/sound/scene';
 import { audioOf, downloadAudio, effectClip, planClip, prefetchAudio, rememberAudio } from './sound-clips';
 import { bgmDeviceCache } from '../storage/bgm-cache';
+import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
+import { plantYoutubeSeed } from '../providers/sound/youtube';
+import { ttsFetch, ttsJson } from '../providers/tts/http';
+import { risuHost } from '../core/host';
 
 /** Folder for effects ElevenLabs made on its own, so they are easy to review. */
 export const AUTO_SFX_FOLDER = '자동 생성';
@@ -87,13 +91,28 @@ export class OmniSoundRuntime {
         if (speaking) this.player.stopSfx();
       });
       omniTts.setSoundCues(this.cues);
+      // YouTube's player is born from a seed in a message the chat draws: the handler
+      // plants one only while the player is wanted, and passes every other draw as is.
+      const host = risuHost();
+      if (typeof host?.addRisuScriptHandler === 'function') await Promise.resolve(host.addRisuScriptHandler('display', content => plantYoutubeSeed(content))).catch(error => dbg('bgm.youtube.seed', { message: String(error) }, 'warn'));
+      this.prepareTube();
     })().catch(error => { this.started = undefined; throw error; });
+  }
+  /** With YouTube tracks listed and BGM on, the player is made ahead: the first track starts at once. */
+  private tubeTried = false;
+  private prepareTube(): void {
+    const s = soundData().settings;
+    if (this.tubeTried || !s.bgmEnabled || !s.youtubeBgm || !soundData().bgm.some(item => item.source === 'youtube')) return;
+    this.tubeTried = true;
+    void this.player.prepareTube().catch(error => { this.tubeTried = false; dbg('bgm.youtube.prepare', { message: String((error as Error)?.message || error) }, 'warn'); });
   }
   private sync(): void {
     const s = soundData().settings;
     this.player.configure({ bgmVolume: s.bgmVolume, sfxVolume: s.sfxVolume, duck: s.duck });
     void bgmDeviceCache.configure(s.bgmCacheMb).catch(error => dbg('bgm.cache.limit', { message: String(error) }, 'warn'));
     if (!s.bgmEnabled) this.player.stopBgm();
+    this.player.setTubeHidden(s.youtubeHidden);
+    if (this.started) this.prepareTube();
     // Module writes rewrite the whole Risu module list: only when what they hold changed.
     const data = soundData(), wanted = JSON.stringify([s.bgmEnabled, s.sfxEnabled, s.bgmPrompt, s.sfxCue, s.sfxFirst, s.bgmTags, s.sfxRules,
       data.bgm.filter(i => i.source === 'asset').map(i => i.assetPath), data.sfx.filter(i => i.source === 'asset').map(i => i.assetPath)]);
@@ -107,6 +126,14 @@ export class OmniSoundRuntime {
   list(kind: SoundKind): SoundItem[] { return kind === 'bgm' ? soundData().bgm : soundData().sfx; }
 
   async addFromUrl(kind: SoundKind, input: { name: string; tags: string; folder: string; url: string }): Promise<SoundItem> {
+    const video = youtubeVideoId(input.url);
+    if (video) {
+      if (kind !== 'bgm') throw new Error('효과음은 유튜브 링크로 등록할 수 없습니다 (짧은 소리는 늦게 납니다). 오디오 파일 주소를 넣어 주세요.');
+      const url = youtubeWatchUrl(video);
+      const item: SoundItem = { key: uuid(), kind, name: input.name.trim() || await youtubeTitle(url) || '유튜브 곡', tags: soundTags(input.tags), folder: input.folder, source: 'youtube', url };
+      this.list(kind).push(item); await saveSoundData();
+      return item;
+    }
     const audio = await downloadAudio(input.url.trim());
     const item: SoundItem = { key: uuid(), kind, name: input.name.trim() || '이름 없음', tags: soundTags(input.tags), folder: input.folder, source: 'url', url: input.url.trim(), mime: audio.mime, bytes: audio.bytes.byteLength };
     rememberAudio(item.key, audio.bytes, audio.mime);
@@ -145,6 +172,8 @@ export class OmniSoundRuntime {
     if (keys.has(this.player.bgmKey)) this.player.stopBgm();
     await saveSoundData();
   }
+  /** Until when YouTube counts as failing here (tracks with a file skip it meanwhile). */
+  private tubeDownUntil = 0;
   /** The BGM track still being fetched: its buttons spin until it plays. */
   bgmLoading = '';
   async play(item: SoundItem): Promise<void> { await this.start(item); }
@@ -153,7 +182,20 @@ export class OmniSoundRuntime {
     if (item.kind === 'bgm') {
       this.bgmLoading = item.key; this.player.onChange();
       try {
-        const audio = await audioOf(item);
+        const s = soundData().settings, video = item.source === 'youtube' ? youtubeVideoId(item.url || '') : '';
+        // YouTube failed a moment ago (no player yet, a blocked video): a track with a file plays that at
+        // once instead of waiting for YouTube again; one with no file still tries.
+        if (video && s.youtubeBgm && (Date.now() >= this.tubeDownUntil || !item.fallbackUrl)) {
+          try { await this.player.playTube(item.key, video, s.crossfadeMs, s.youtubeHidden); this.tubeDownUntil = 0; this.lastBgm = item.key; return { ended: Promise.resolve() }; }
+          // YouTube could not play it here: the track's own file, when it has one.
+          catch (error) {
+            if (!(error as { tap?: boolean }).tap) { this.tubeDownUntil = Date.now() + 90_000; this.tubeTried = false; }
+            if (!item.fallbackUrl) throw error;
+            dbg('bgm.youtube.fallback', { message: String((error as Error)?.message || error).slice(0, 160) }, 'warn');
+          }
+        }
+        if (item.source === 'youtube' && !item.fallbackUrl) throw new Error(`${item.name}: 유튜브 곡입니다. BGM 설정에서 「유튜브로 재생」을 켜 주세요.`);
+        const audio = await audioOf(item.source === 'youtube' ? { ...item, source: 'url', url: item.fallbackUrl } : item);
         this.lastBgm = item.key; await this.player.playBgm(item.key, audio.bytes, audio.mime, soundData().settings.crossfadeMs);
       } finally { if (this.bgmLoading === item.key) { this.bgmLoading = ''; this.player.onChange(); } }
       return { ended: Promise.resolve() };
@@ -406,3 +448,12 @@ export class OmniSoundRuntime {
   }
 }
 export const omniSound = new OmniSoundRuntime();
+
+/** A YouTube video's title, for a link added without a name ('' when YouTube does not say). */
+async function youtubeTitle(url: string): Promise<string> {
+  try {
+    const response = await ttsFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`, { method: 'GET' });
+    const data = await ttsJson(response) as { title?: unknown } | null;
+    return typeof data?.title === 'string' ? data.title.slice(0, 120) : '';
+  } catch { return ''; }
+}
