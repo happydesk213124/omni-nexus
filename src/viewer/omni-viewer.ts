@@ -51,6 +51,8 @@ const CG_ACTS = ACTS.filter(name => name.startsWith('cg'));
 const CG_CONTROLS = '[data-vn-cgbar] [data-vn-act],[data-vn-dock] [data-vn-act]';
 // A full-screen CG covers the frame: only its own sheet's buttons are under a finger then.
 const DOCK = new Set(['cgprev', 'cgfit', 'cgnext', 'cgback']);
+// A shown CG's own bar: its buttons are there only while it is shown big.
+const CG_BAR = new Set(['cgfull', 'cgroll', 'cgtags', 'cgclose']);
 // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
@@ -1099,20 +1101,20 @@ async function runSteps(): Promise<void> {
 }
 /** Past either end of a reply the next or previous reply goes on; the newest reply's end stays. */
 async function go(delta: number): Promise<void> {
+  // A step moves the reading: a photo shown big over the line folds away, or the line it moved to stays under it.
+  const folded = cgView === 'show' || cgView === 'full';
+  if (folded) { cgView = 'fold'; cgThumb = null; }
   const next = at + delta;
   if (next >= 0 && next < scenes.length) { at = next; await render(); return; }
   // A long swipe stops at the reply's edge first; the next one crosses into the other reply.
   if (Math.abs(delta) > 1 && at !== (delta > 0 ? scenes.length - 1 : 0)) { at = delta > 0 ? scenes.length - 1 : 0; await render(); return; }
   // The story so far ends on its picture (or it is the last scene in yet): going on folds it, and the stage
   // and the end cue come back. It stood there for good, every tap a step to nowhere.
-  if (delta > 0 && cgView === 'open' && scenes[at]?.kind === 'cg' && (streaming || !charIndexes().some(i => i > messageIndex))) {
-    cgView = 'fold'; cgThumb = null;
-    await restyle();
-    setTimeout(() => void measureCgThumb().catch(() => {}), 450);
-    return;
-  }
-  if (streaming) return;
-  if (await stepReply(delta > 0 ? 1 : -1)) await render();
+  const endsOnIt = delta > 0 && cgView === 'open' && scenes[at]?.kind === 'cg' && (streaming || !charIndexes().some(i => i > messageIndex));
+  if (endsOnIt) { cgView = 'fold'; cgThumb = null; }
+  else if (!streaming && await stepReply(delta > 0 ? 1 : -1)) { await render(); return; }
+  // Nowhere to step: only the fold shows.
+  if (endsOnIt || folded) { await restyle(); setTimeout(() => void measureCgThumb().catch(() => {}), 450); }
 }
 
 async function act(name: string): Promise<void> {
@@ -1229,7 +1231,9 @@ function completeLine(now: number): boolean {
  */
 function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
   const editing = elementsEditing();
-  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(c.act === 'msgs' && msgsOpen)
+  // A CG's bar and full-screen sheet keep the rectangles they had when last shown: hidden, they take no tap
+  // (the sheet's ▶ and 닫기 lay over the menu's ◀ and took its taps).
+  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show') && !(c.act === 'msgs' && msgsOpen)
     && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()));
 }
 function onClick(p: HostPoint): void {
@@ -1354,8 +1358,8 @@ function onKey(event: { key?: unknown; repeat?: unknown }): void {
     return;
   }
   if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
-  // A photo up front folds first, as a tap on it does.
-  if (cgView === 'show' || cgView === 'full') { if (!held && ['Enter', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = 'fold'; void restyle().catch(report); } return; }
+  // A photo shown big: ← → step through the story as ever (the photo folds away with the step); the other keys fold it.
+  if ((cgView === 'show' || cgView === 'full') && key !== 'ArrowLeft' && key !== 'ArrowRight') { if (!held && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = 'fold'; void restyle().catch(report); } return; }
   // Enter is a tap: a line still coming in completes first. The arrows go on at once.
   if (key === 'Enter') { if (held || !completeLine(Date.now())) keyStep(1, held); }
   else if (key === 'ArrowRight' || key === 'ArrowDown') keyStep(1, held);

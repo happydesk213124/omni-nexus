@@ -1,4 +1,4 @@
-import { omniTts } from '../services/tts-runtime';
+import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { ttsData, updateTtsSettings, subscribeTts } from '../storage/tts-store';
 import { openTtsSettings, hitHost, releaseHost, safeArray, type HostPoint } from './host-utils';
 import { bindTtsDrag } from './host-drag';
@@ -9,6 +9,9 @@ import { omniSound } from '../services/sound-runtime';
 import { soundData, updateSoundSettings, subscribeSound } from '../storage/sound-store';
 import { currentTtsContext } from '../services/tts-context';
 import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
+import { focusSoundPanel, setSoundPage } from '../sound-ui/page';
+import { parseTtsMessage } from '../domain/tts/segment';
+import { resolveTtsSpeaker } from '../domain/tts/identity';
 
 /** The BGM bar opens above the header; a top-anchored viewer moves up by this much so the header stays put. */
 const BGM_H = 100;
@@ -60,14 +63,15 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       if(!visible){signature='';stateSignature='';return;}
       // Playback state is painted in place below: re-rendering would reset the list scroll.
       const picking=bgmPicking&&bgmOpen()&&!s.minimized;
-      const next=JSON.stringify([bgmOpen()&&!s.minimized?bgmState():null,picking?soundData().bgm.map(item=>[item.key,item.name,item.folder]):null,s.minimized,s.panel,s.narration,s.continuous,s.rate,s.volume,s.rates,omniTts.list.map(r=>[r.messageId,r.segment.id,r.segment.text]),s.panel==='cache'?[q,omniTts.cache.count,omniTts.cache.bytes]:null]); if(next===signature){await paintState();return;} signature=next;stateSignature='';currentLine=-1;
+      // 캐시 작업 lives under 배속·볼륨 now: a panel left open on it opens there.
+      const shownPanel=s.panel==='cache'?'audio':s.panel;
+      const next=JSON.stringify([bgmOpen()&&!s.minimized?bgmState():null,picking?soundData().bgm.map(item=>[item.key,item.name,item.folder]):null,s.minimized,s.panel,s.narration,s.continuous,s.rate,s.volume,s.rates,omniTts.list.map(r=>[r.messageId,r.segment.id,r.segment.text]),shownPanel==='audio'?[q,omniTts.cache.count,omniTts.cache.bytes]:null]); if(next===signature){await paintState();return;} signature=next;stateSignature='';currentLine=-1;
       for(const action of actions.values())await releaseHost(action.node);actions.clear();
       await releaseHost(listViewport); listViewport = undefined;
-      const header=`<div data-tts-header="1" style="display:flex;gap:3px;align-items:center;cursor:grab;touch-action:none;user-select:none;padding:${s.minimized?'0':'4px'}">${s.minimized?'':`<span data-tts-state="1" style="width:16px;text-align:center">${stateIcon(state)}</span>${control('narration','▤','나레이션 읽기',s.narration)}${control('audio',`${s.rate}×`,'배속·볼륨',s.panel==='audio'&&!picking)}${control('cache','◴','캐시 작업',s.panel==='cache'&&!picking)}${control('list','☷','현재 메시지 음성 목록',s.panel==='list'&&!picking)}<span style="flex:1;display:flex;justify-content:center">${control('bgm','♪','BGM',bgmOpen())}</span>${control('settings','⚙','TTS 설정')}`}${control('minimize',s.minimized?'+':'−',s.minimized?'펼치기':'최소화')}</div>`;
+      const header=`<div data-tts-header="1" style="display:flex;gap:3px;align-items:center;cursor:grab;touch-action:none;user-select:none;padding:${s.minimized?'0':'4px'}">${s.minimized?'':`<span data-tts-state="1" style="width:16px;text-align:center">${stateIcon(state)}</span>${control('narration','▤','나레이션 읽기',s.narration)}${control('audio',`${s.rate}×`,'배속·볼륨',shownPanel==='audio'&&!picking)}${control('people','👨‍👩‍👧‍👦','이 메시지의 TTS 캐릭터')}${control('list','☷','현재 메시지 음성 목록',s.panel==='list'&&!picking)}<span style="flex:1;display:flex;justify-content:center">${control('bgm','♪','BGM',bgmOpen())}</span>${control('settings','⚙','TTS 설정')}`}${control('minimize',s.minimized?'+':'−',s.minimized?'펼치기':'최소화')}</div>`;
       const current=omniTts.current;
       let panel='';
-      if(s.panel==='audio')panel=`<div style="display:flex;gap:4px;flex-wrap:wrap">${s.rates.map((r,i)=>control(`rate-${i}`,`${r}×`,'배속',r===s.rate)).join('')}</div><div style="display:flex;gap:6px;align-items:center;margin-top:7px"><span>볼륨 ${Math.round(s.volume*100)}%</span><button data-tts-control="volume" aria-label="볼륨 조절" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(s.volume*100)}" style="flex:1;height:32px;border:1px solid #ffffff30;background:linear-gradient(to right,#7132f5 ${s.volume*100}%,#283043 0);border-radius:6px"></button></div>`;
-      if(s.panel==='cache')panel=`생성 ${q.active}/${s.concurrency} · 대기 ${q.waiting}<br>캐시 ${omniTts.cache.count}개 · ${(omniTts.cache.bytes/1024/1024).toFixed(1)} MB`;
+      if(shownPanel==='audio')panel=`<div style="display:flex;gap:4px;flex-wrap:wrap">${s.rates.map((r,i)=>control(`rate-${i}`,`${r}×`,'배속',r===s.rate)).join('')}</div><div style="display:flex;gap:6px;align-items:center;margin-top:7px"><span>볼륨 ${Math.round(s.volume*100)}%</span><button data-tts-control="volume" aria-label="볼륨 조절" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(s.volume*100)}" style="flex:1;height:32px;border:1px solid #ffffff30;background:linear-gradient(to right,#7132f5 ${s.volume*100}%,#283043 0);border-radius:6px"></button></div><div style="margin-top:7px;color:#9aa3b5;font-size:11px">생성 ${q.active}/${s.concurrency} · 대기 ${q.waiting} · 캐시 ${omniTts.cache.count}개 · ${(omniTts.cache.bytes/1024/1024).toFixed(1)} MB</div>`;
       if(s.panel==='list')panel=`<div data-tts-list-scroll="1" style="max-height:max(0px,min(240px,35dvh,calc(80vh - 170px)));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y">${omniTts.list.map((r,i)=>s.narration||r.segment.kind!=='narration'?`<button data-tts-control="line-${i}" title="재생" aria-label="${esc(lineLabel(r.segment))} 재생" style="${LINE_STYLE}background:#11182780">${lineHtml(r.segment)}</button>`:'').join('')}</div>`;
       // The track list stands in for whichever panel is open; closing it brings that one back.
       if(picking)panel=bgmPicker();
@@ -99,7 +103,9 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
         await omniSound.play(item);await paint();
       });
       await bind('bgm-volume',()=>{});await bind('bgm-duck',()=>{});await bind('bgm-follow',()=>updateSoundSettings({listBgm:!soundData().settings.listBgm}));await bind('narration',()=>updateTtsSettings({narration:!ttsData().settings.narration}));await bind('continuous',()=>updateTtsSettings({continuous:!ttsData().settings.continuous}));
-      for(const name of ['audio','cache','list'] as const)await bind(name,()=>{const shown=ttsData().settings.panel===name&&!picking;bgmPicking=false;return shown?updateTtsSettings({panel:''}):ttsData().settings.panel===name?paint():updateTtsSettings({panel:name});});
+      for(const name of ['audio','list'] as const)await bind(name,()=>{const open=ttsData().settings.panel==='cache'?'audio':ttsData().settings.panel,shown=open===name&&!picking;bgmPicking=false;return shown?updateTtsSettings({panel:''}):open===name?paint():updateTtsSettings({panel:name});});
+      // 👨‍👩‍👧‍👦: TTS 캐릭터 with this message's people searched, as 옴니 뷰어's.
+      await bind('people',async()=>{const names=await readingPeople();setSoundPage('tts');focusSoundPanel('tts-characters',names.join(', '));await openTtsSettings();});
       await bind('locate',async()=>{locating=true;void revealInChat().catch(error=>omniTts.report(error));if(ttsData().settings.panel!=='list')await updateTtsSettings({panel:'list'});else{stateSignature='';await paintState();}});
       await bind('regenerate',()=>withTtsAudio(()=>omniTts.regenerate()));
       await bind('stop',()=>omniTts.stop());await bind('previous',()=>withTtsAudio(()=>omniTts.next(-1)));await bind('next',()=>withTtsAudio(()=>omniTts.next(1)));
@@ -168,6 +174,20 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       const rows=items.map((item,i)=>({item,i})).filter(({item})=>folder?item.folder===folder:!item.folder||!soundData().folders.bgm.includes(item.folder)).map(({i})=>row(i)).join('');
       return `<div style="margin:4px 0 3px;color:#9aa3b5;font-size:11px">${esc(folder||'미분류')}</div>${rows}`;
     }).join('')}</div>`;
+  }
+  /** The TTS characters of the message being read (else the newest reply), in the order they first speak. */
+  async function readingPeople():Promise<string[]>{
+    let rows:readonly TtsRequest[]=omniTts.list;
+    if(!rows.length){
+      const context=await currentTtsContext(),index=context.messages.map(message=>message.role).lastIndexOf('char');
+      rows=index<0?[]:parseTtsMessage(String(context.messages[index]?.data??'')).map(segment=>({context,messageId:'',sourceKey:'',segment}));
+    }
+    const names:string[]=[];
+    for(const row of rows){
+      const speaker=row.segment.speaker,person=speaker?resolveTtsSpeaker(speaker,ttsData().characters,row.context.rosterScope):null;
+      if(person&&!names.includes(person.name))names.push(person.name);
+    }
+    return names;
   }
   /** ⚡ reads the reply being read, else the newest reply on screen; the BGM picker does the rest. */
   async function bgmScene():Promise<string>{

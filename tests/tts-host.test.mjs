@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 test('restricted SafeDOM host binds module buttons, honors five slots, stop interlock and cross-message cache',async()=>{
-  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';import {omniSound} from './src/services/sound-runtime';import {soundData,updateSoundSettings} from './src/storage/sound-store';Object.assign(window,{cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings,omniSound,soundData,updateSoundSettings});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
+  const built=await build({stdin:{contents:`import {installTtsHost} from './src/tts-ui/host-chat';import {cueLineKey} from './src/domain/tts/segment';import {TTS_MODULE_CSS} from './src/domain/tts/module';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData,updateTtsSettings} from './src/storage/tts-store';import {omniSound} from './src/services/sound-runtime';import {soundData,updateSoundSettings} from './src/storage/sound-store';import {soundPage,soundFocus} from './src/sound-ui/page';Object.assign(window,{soundPage,soundFocus,cueLineKey,TTS_MODULE_CSS,installTtsHost,omniTts,loadTtsData,ttsData,updateTtsSettings,omniSound,soundData,updateSoundSettings});`,resolveDir:process.cwd()},bundle:true,write:false,format:'iife'});
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   try {
     const page=await browser.newPage(),errors=[];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
@@ -139,13 +139,23 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.deepEqual(await page.evaluate(()=>window.ttsData().settings.viewerAnchor),anchor,'header controls do not drag the viewer');
     // A drag may start on a header button or a little outside the header; a still press stays a click.
     await page.waitForTimeout(450);const panelBefore=await page.evaluate(()=>window.ttsData().settings.panel);
-    const cache=await page.locator('[data-tts-control="cache"]').boundingBox();
-    await page.mouse.move(cache.x+cache.width/2,cache.y+cache.height/2);await page.mouse.down();await page.waitForTimeout(80);await page.mouse.move(cache.x-30,cache.y+40,{steps:6});await page.mouse.up();
+    const listButton=await page.locator('[data-tts-control="list"]').boundingBox();
+    await page.mouse.move(listButton.x+listButton.width/2,listButton.y+listButton.height/2);await page.mouse.down();await page.waitForTimeout(80);await page.mouse.move(listButton.x-30,listButton.y+40,{steps:6});await page.mouse.up();
     await page.waitForFunction(a=>JSON.stringify(window.ttsData().settings.viewerAnchor)!==JSON.stringify(a),anchor);
     await page.waitForTimeout(450);assert.equal(await page.evaluate(()=>window.ttsData().settings.panel),panelBefore,'dragging from a button does not also press it');
     const head=await page.locator('[data-tts-header]').boundingBox(),moved2=await page.evaluate(()=>window.ttsData().settings.viewerAnchor);
     await page.mouse.move(head.x+head.width/2,head.y-8);await page.mouse.down();await page.waitForTimeout(80);await page.mouse.move(head.x+head.width/2-40,head.y+30,{steps:6});await page.mouse.up();
     await page.waitForFunction(a=>JSON.stringify(window.ttsData().settings.viewerAnchor)!==JSON.stringify(a),moved2);
+    // ◴ 캐시 작업 gave its place to 👨‍👩‍👧‍👦 (TTS 캐릭터, this message's people searched); what it showed sits under 배속·볼륨.
+    assert.equal(await page.locator('[x-omnitts-viewer] [data-tts-control="cache"]').count(),0);
+    await page.waitForTimeout(450);await page.locator('[data-tts-control="audio"]').click();
+    await page.waitForFunction(()=>/생성 \d+\/\d+ · 대기 \d+ · 캐시 \d+개 · [\d.]+ MB/.test(document.querySelector('[x-omnitts-viewer]').textContent));
+    await page.evaluate(()=>{window.__OMNI_OPEN_TTS__=()=>{window.ttsOpened={page:window.soundPage(),focus:window.soundFocus()};};});
+    await page.waitForTimeout(450);await page.locator('[data-tts-control="people"]').click();
+    await page.waitForFunction(()=>!!window.ttsOpened);
+    assert.deepEqual(await page.evaluate(()=>window.ttsOpened),{page:'tts',focus:{panel:'tts-characters',search:'하린'}});
+    await page.waitForTimeout(450);await page.locator('[data-tts-control="audio"]').click();
+    await page.waitForFunction(()=>window.ttsData().settings.panel==='');
     await page.waitForTimeout(450);await page.locator('[data-tts-control="minimize"]').click();
     await page.waitForFunction(()=>window.ttsData().settings.minimized);
     assert.equal(await page.locator('[x-omnitts-viewer] button').count(),1);
