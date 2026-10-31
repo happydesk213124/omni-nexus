@@ -15,8 +15,8 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * placeModule: ⚛️ omni place installed and on (the writer marks places). breathe: the
  * people on stage breathe; bounce: one comes in, changes face or steps forward with a spring.
  * sfx: its 효과음 button, the effects of the lines read played (off, passed over).
- * stageReach: a person stands while they have a line within this many lines of the one
- * read, before or after it (0: to the reply's end, as the stage once was).
+ * stageReach: a person stays on stage this many lines after their latest line (0: to the
+ * reply's end, as the stage once was).
  */
 export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number }
 export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
