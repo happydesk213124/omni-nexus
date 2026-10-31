@@ -2085,6 +2085,12 @@ test('blockHostChrome(true) hides overlay roots in parallel', () => {
   assert.doesNotMatch(patch, /for \(const ui of/);
 });
 
+/** The frozen UI as shipped: dist from where the vendor file begins (it follows our IIFE). */
+function vendorPart(dist) {
+  const head = read('vendor/inlay-nexus-ui.js').slice(0, 60), at = dist.indexOf(head);
+  assert.ok(at > 0 && dist.indexOf(head, at + 1) < 0, 'the vendor UI begins once in dist');
+  return dist.slice(at);
+}
 test('UI never copies a data URL onto a live gallery row', () => {
   // t.gallery rows live for the session; a data URL parked on one outlives its
   // eviction from the backend cache and the memory budget bounds nothing.
@@ -2099,7 +2105,8 @@ test('UI never copies a data URL onto a live gallery row', () => {
   assert.deepEqual(dist.match(/\bQ\.image_url = url/g) || [], ['Q.image_url = url']);
   assert.deepEqual(dist.match(/\brow\.image_url = url/g) || [], ['row.image_url = url']);
   assert.doesNotMatch(dist, /\bcard\.image_url = /);
-  assert.ok(!dist.includes('await lt()'), 'dead viewer path reachable again');
+  // `lt` is the vendor's minified name: only the frozen UI (after our IIFE) can call it; our own bundle may mint the same name.
+  assert.ok(!vendorPart(dist).includes('await lt()'), 'dead viewer path reachable again');
 });
 
 test('missing nai key toasts before the tagger and marks the models tab', () => {
@@ -2139,7 +2146,7 @@ test('old viewer chrome patches are gone, float viewer is in', () => {
   for (const invented of ['actionsFolded', 'presetHits', 'dragGhost', '_thumbsScrollLeft', 'startThumbsDrag', 'endViewerResize']) {
     assert.ok(!dist.includes(invented), 'old viewer patch residue in dist: ' + invented);
   }
-  assert.ok(!dist.includes('await lt()'), 'old viewer mount still reachable');
+  assert.ok(!vendorPart(dist).includes('await lt()'), 'old viewer mount still reachable');
   for (const live of ['nxFloatEnsure', 'nxFloatShowCard', 'nxFloatShowLatest', 'value="bubble"']) {
     assert.ok(dist.includes(live), 'float viewer missing from dist: ' + live);
   }

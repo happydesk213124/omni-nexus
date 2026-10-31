@@ -72,7 +72,8 @@ export function normalizeEmotionData(raw: unknown): EmotionData {
   const seen = Object.fromEntries(Object.entries(record(r.seen)).map(([id, faces]) => [id.slice(0, 120),
     [...new Set((Array.isArray(faces) ? faces : []).map(f => text(f, 40)).filter(Boolean))].slice(0, 60)] as const).filter(([id, faces]) => id && faces.length).slice(0, 500));
   const made = (Array.isArray(r.made) ? r.made : []).map(record).map(m => ({
-    bot: text(m.bot, 200), person: text(m.person, 120), face: text(m.face, 40), name: text(m.name, 200), path: text(m.path, 800),
+    // A background's face is its place tags, far past a face's 40: cut there, it never matched again after a reload.
+    bot: text(m.bot, 200), person: text(m.person, 120), face: text(m.face, 400), name: text(m.name, 200), path: text(m.path, 800),
     registered: m.registered === true, at: Number(m.at) || 0,
   })).filter(m => m.bot && m.name && m.path).slice(-2000);
   return { settings: normalizeEmotionSettings(r.settings), seen, made };
