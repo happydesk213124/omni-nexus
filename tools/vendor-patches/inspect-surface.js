@@ -21,7 +21,13 @@ nxEnsureInspectSurface = async () => {
       const live = () => inspectOpen && !t.uiOpen && gen === t._inspectGen && card === actionCard;
       try {
         const x = event.clientX, y = event.clientY;
-        if (!await hitEl(root, x, y) || !live()) return;
+        if (!await hitEl(root, x, y)) {
+          // Shown, it covers the whole screen: a click outside it means it is "open" with nothing on
+          // screen (its paint failed, or it was hidden), holding every chat button and the floating viewer.
+          if (live() && Date.now() > inspectGuardUntil + 2600) await runInspectAction("close", card, -1);
+          return;
+        }
+        if (!live()) return;
         for (const zone of inspectZones) {
           if (await hitEl(zone.el, x, y)) {
             if (live() && (!openingClick || zone.act === "close")) {
@@ -50,6 +56,8 @@ nxEnsureInspectSurface = async () => {
         catch (error) { y("error", "shots.asset.inspect.close.fail", String(error?.message || error)); }
       }
     });
+    // 옴니 뷰어 closes it from outside (its own close, or a 크게보기 it never saw open).
+    t._nxInspectCloser = () => runInspectAction("close", actionCard, -1);
     nxInspectSurface = {root, fullscreen, actionMenu, doc: e};
     return nxInspectSurface;
   })();

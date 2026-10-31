@@ -12,6 +12,8 @@ export function accentOf(name: string): string {
   return `hsl(${h} 62% 60%)`;
 }
 
+// Letters given their own delay; any after these come with the last of them.
+const LETTERS = 320;
 const SERIF = '"Gowun Batang","Nanum Myeongjo","Noto Serif KR","Noto Serif CJK KR",serif';
 export const STATIC_CSS = `
 [x-omni-vn]{position:fixed;z-index:45;isolation:isolate;overflow:hidden;color:#f4f1ea;font:14px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;
@@ -32,11 +34,11 @@ export const STATIC_CSS = `
 [x-omni-vn] [x-vn-sp]{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
 [x-omni-vn] [x-vn-sp] img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
 [x-omni-vn] [data-vn-cg]{position:absolute;inset:0;pointer-events:none}
-[x-omni-vn] div[x-vn-cg]{display:none;position:absolute;left:50%;top:9%;width:84%;max-height:52%;aspect-ratio:3/2;translate:-50% 0;rotate:-1.2deg;border:4px solid #f3efe6;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.6);background:linear-gradient(135deg,#2a2440,#141224)}
+[x-omni-vn] div[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);height:min(calc(100% - 190px),520px);max-width:94%;aspect-ratio:832/1216;translate:-50% -50%;rotate:-.8deg;border:4px solid #f3efe6;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.6);background:linear-gradient(135deg,#2a2440,#141224)}
 [x-omni-vn] div[x-vn-cg] span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.06em;color:#e6dcc6;animation:vn-pulse 1.6s ease-in-out infinite}
-[x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;top:calc(9% + min(52%, 84vw * 2 / 3) + 10px);translate:-50% 0;display:flex;gap:8px;z-index:9}
+[x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;bottom:72px;translate:-50% 0;display:flex;gap:8px;z-index:9}
 [x-omni-vn] [data-vn-cgbar] button{display:none}
-[x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:9%;width:84%!important;height:auto!important;max-width:none!important;max-height:52%!important;object-fit:contain;translate:-50% 0;rotate:-1.2deg;margin:0!important;border:4px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .6s cubic-bezier(.2,.8,.25,1)}
+[x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);width:auto!important;height:auto!important;max-width:94%!important;max-height:calc(100% - 190px)!important;object-fit:contain;translate:-50% -50%;rotate:-.8deg;margin:0!important;border:3px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .5s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-hud]{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:10px 10px 18px;background:linear-gradient(rgba(5,5,10,.7),transparent);z-index:4}
 [x-omni-vn] [data-vn-clock]{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.02em;color:#ece6d6}
 [x-omni-vn] [data-vn-clock]:not(:empty)::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold)}
@@ -56,7 +58,8 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-name]:empty{display:none}
 [x-omni-vn] [data-vn-text]{height:100%;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:none}
 [x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc;font-style:italic}
-[x-omni-vn] [data-vn-text] span{opacity:0;animation:vn-ch .1s ease forwards}
+[x-omni-vn] [data-vn-text] i{font-style:normal;opacity:0;animation:vn-ch .1s ease forwards}
+${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-child(${i + 1}){animation-delay:calc(${i} * var(--vs))}`).join('')}[x-omni-vn] [data-vn-text] i:nth-child(n+${LETTERS + 1}){animation-delay:calc(${LETTERS} * var(--vs))}
 [x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next 1s ease-in-out infinite}
 /* The story so far has ended: Risu's input below is where it goes on. */
 [x-omni-vn] [data-vn-end]{position:absolute;left:50%;top:-46px;translate:-50% 0;padding:5px 14px;border-radius:999px;font-size:12.5px;letter-spacing:.04em;white-space:nowrap;color:var(--gold);background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 0 16px -4px var(--gold);opacity:0;animation:vn-blink 1.2s ease-in-out infinite;pointer-events:none}
@@ -106,7 +109,9 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-log] p{margin:0 0 6px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:background .15s}
 [x-omni-vn] [data-vn-log]{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 [x-omni-vn] [data-vn-log] b{color:var(--gold);margin-right:6px}
-[x-omni-vn] [data-vn-log] [data-now]{color:#fff;border-left:2px solid var(--gold);padding-left:8px}
+[x-omni-vn] [data-vn-log] h5{margin:0 0 10px;font:600 12px/1.4 system-ui,sans-serif;letter-spacing:.05em;color:var(--gold)}
+[x-omni-vn] [data-vn-log] p{color:#cbc3d6}
+[x-omni-vn] [data-vn-log] [data-now]{color:#fff;background:rgba(227,194,122,.16);border-left:3px solid var(--gold);padding-left:8px}
 /* Every row and tile is a way somewhere: it lights under the pointer (or the finger), so it reads as one. */
 [x-omni-vn] [data-vn-log] p:active,[x-omni-vn] [data-vn-msg]:active,[x-omni-vn] [data-vn-hud] button:active,[x-omni-vn] [data-vn-menu] button:active,[x-omni-vn] [data-vn-dock] button:active,[x-omni-vn] [data-vn-cgbar] button:active{background:rgba(227,194,122,.16)}
 @media (hover:hover){[x-omni-vn] button:hover{background:rgba(48,41,70,.85)}[x-omni-vn] [data-vn-menu] button:hover{background:rgba(255,255,255,.09)}[x-omni-vn] [data-vn-dock] button:hover{background:rgba(255,255,255,.16)}
@@ -117,7 +122,7 @@ export const STATIC_CSS = `
   [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:46px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}
   [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
-@keyframes vn-photo{from{opacity:0;translate:-30% 4%;rotate:3deg}to{opacity:1;translate:-50% 0;rotate:-1.2deg}}
+@keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
 @keyframes vn-ch{to{opacity:1}}
 @keyframes vn-fade{from{opacity:0}to{opacity:1}}
 @keyframes vn-next{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 3px}}
@@ -153,6 +158,8 @@ export interface StageState {
   /** The box shows its whole text at once (a tap during the reveal). */
   revealed: boolean;
   log: boolean;
+  /** The 기록 line the keys picked (its place among the lines), -1 for none. */
+  logSel?: number;
   /** The right-hand strip of illustrations is open. */
   strip?: boolean;
   /** The left-hand list of the chat's replies is open. */
@@ -192,13 +199,13 @@ export function stageCss(s: StageState): string {
   return [
     ...rules,
     s.bg ? `[x-omni-vn] [x-vn-bg="${s.bg}"]{display:block}` : '',
-    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;width:84px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
-    : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
+    : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
     : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}` : ''}` : '',
-    s.revealed ? '[x-omni-vn] [data-vn-text] span{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
+    s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
-    s.log ? '[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}' : '',
+    s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
     s.msgs ? '[x-omni-vn] [data-vn-msgs]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}' : '',
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
@@ -216,12 +223,13 @@ export function boxHtml(input: { speaker: string; text: string; narration: boole
   const chars = [...input.text], pace = input.pace ?? 1;
   const step = Math.max(6, Math.min(20, Math.floor(1800 / Math.max(1, chars.length)))) * pace;
   const shown = input.narration || !input.speaker ? chars : ['“', ...chars, '”'];
-  const letters = pace <= 0 ? esc(shown.join('')) : shown.map((ch, i) => ch === '\n' ? '\n' : `<span style="animation-delay:${Math.round(i * step)}ms">${esc(ch)}</span>`).join('');
-  const revealMs = Math.round(shown.length * step);
+  const letters = pace <= 0 ? esc(shown.join('')) : shown.map(ch => ch === '\n' ? '\n' : `<i>${esc(ch)}</i>`).join('');
+  // Letters past LETTERS come with the last of them: the line is whole by then.
+  const vs = Math.round(step), revealMs = Math.min(shown.length, LETTERS + 1) * vs;
   const name = input.narration ? '' : esc(input.speaker);
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {
-    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''}>${letters}</div>${tail}`,
+    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="--vs:${vs}ms">${letters}</div>${tail}`,
     revealMs,
   };
 }

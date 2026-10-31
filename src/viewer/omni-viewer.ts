@@ -1,7 +1,6 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
-import { bytesToBase64, sniffImageMime } from '../core/util/bytes';
 import { DEFAULT_EXPRESSION } from '../domain/emotion/emotions';
 import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
 import { ttsComparable } from '../domain/tts/anchors';
@@ -24,6 +23,7 @@ import { psGet, psSet } from '../storage/device-store';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, quiet, release, rowAt, unwrap } from './safe-dom';
+import { BACKGROUND_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { onSticker, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
@@ -162,7 +162,7 @@ async function stagePlace(): Promise<void> {
     id = key(made.path);
     const holder = await doc.createElement('div');
     await holder.setAttribute('x-vn-bg', id);
-    await holder.setInnerHTML(`<img alt="" src="data:${sniffImageMime(bytes) || 'image/png'};base64,${bytesToBase64(bytes)}">`);
+    await holder.setInnerHTML(`<img alt="" src="${await screenImage(made.path, bytes, BACKGROUND_BOX)}">`);
     await bgLayer.appendChild(holder); await release(holder);
     bgs.set(made.path, id);
   }
@@ -292,11 +292,13 @@ async function resume(): Promise<void> {
   await load(target, false, ctx);
   if (resumeAt) at = Math.min(resumeAt, Math.max(0, scenes.length - 1));
 }
+let parsedFor = '', parsed: TtsSegment[] = [];
 function voice(scene: ViewerScene): void {
   if (!viewerPrefs().voice || !context || !scene.segmentId || !ttsData().settings.enabled) return;
   // 나레이션 off: narration is shown, never voiced (its voice is not even made).
   if (scene.kind === 'narration' && ttsData().settings.narration === false) return;
-  const segment = parseTtsMessage(source).find(s => s.id === scene.segmentId);
+  if (parsedFor !== source) { parsedFor = source; parsed = parseTtsMessage(source); }
+  const segment = parsed.find(s => s.id === scene.segmentId);
   if (!segment) return;
   const request: TtsRequest = { context, messageId: messageId(), sourceKey: cueLineKey(source.slice(segment.start, segment.end)), segment };
   voiceKey = `${messageId()}:${segment.id}`;
@@ -363,7 +365,7 @@ async function faceFor(m: Member, place: SafeElement): Promise<string> {
   if (!doc) return '';
   const holder = await doc.createElement('div');
   await holder.setAttribute('x-vn-sp', id);
-  await holder.setInnerHTML(`<img alt="" src="data:${sniffImageMime(bytes) || 'image/png'};base64,${bytesToBase64(bytes)}">`);
+  await holder.setInnerHTML(`<img alt="" src="${await screenImage(sprite.path, bytes, SPRITE_BOX)}">`);
   await place.appendChild(holder); await release(holder);
   faces.set(slot, id);
   return id;
@@ -476,9 +478,16 @@ async function inspectCg(): Promise<boolean> {
   awayTimer = setInterval(() => {
     const showing = Reflect.get(globalThis, '__OMNI_INSPECT_OPEN__');
     if (typeof showing === 'function' && showing() === true) { seen = true; return; }
-    if (seen || Date.now() - since > 5000) void comeBack().catch(error => dbg('viewer.inspect', { message: String(error) }, 'warn'));
+    // Never seen open (a slow phone, or it did not open): after a good while the viewer comes back, and closes
+    // it first should it be there, unseen — left open under the viewer it held every chat button and the floating viewer.
+    if (seen || Date.now() - since > 20_000) { if (!seen) closeInspect(); void comeBack().catch(error => dbg('viewer.inspect', { message: String(error) }, 'warn')); }
   }, 300);
   return true;
+}
+/** Omni's 크게보기 closed from here (when the viewer closes, or never saw it open). */
+function closeInspect(): void {
+  const close = Reflect.get(globalThis, '__OMNI_INSPECT_CLOSE__');
+  if (typeof close === 'function') void Promise.resolve(close()).catch(() => {});
 }
 async function comeBack(): Promise<void> {
   clearInterval(awayTimer); awayTimer = undefined;
@@ -493,7 +502,7 @@ async function comeBack(): Promise<void> {
 
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
-  log: logOpen, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
+  log: logOpen, logSel: logOpen ? logSel : -1, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
@@ -731,13 +740,8 @@ async function act(name: string): Promise<void> {
     })().catch(() => {}), 380);
   }
   else if (name === 'log') {
-    logOpen = !logOpen; logRows = []; logRect = null;
-    if (logOpen && logBox) {
-      stripOpen = false; msgsOpen = false;
-      const rows = scenes.flatMap((s, i) => s.kind === 'cg' ? [] : [i]);
-      await logBox.setInnerHTML(rows.map(i => { const s = scenes[i]!; return `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`; }).join('') || '<p>기록이 없습니다.</p>');
-      logRows = rows;
-    }
+    logOpen = !logOpen; logRows = []; logRect = null; logSel = -1;
+    if (logOpen) { stripOpen = false; msgsOpen = false; await buildLog(); }
     await restyle();
     if (logOpen && logBox) {
       // A real scroll area: the wheel and a finger scroll it. Opened at the line on screen.
@@ -776,6 +780,9 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
 }
 function onClick(p: HostPoint): void {
   if (!open || away || !Number.isFinite(p?.clientX) || !inside(p, rect)) return;
+  // Enter or Space on the button pressed last (it keeps the focus) clicks it again, at 0,0:
+  // the key has acted already, and 0,0 would be whatever sits in the corner (⚙).
+  if (p.clientX === 0 && p.clientY === 0) return;
   const hit = liveHit(p);
   const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
   // 요소 first: 편집 takes every tap but the buttons', and the end's choices take theirs.
@@ -807,13 +814,63 @@ async function restyle(): Promise<void> {
   await writeStage(state(lastCast, { narration: scenes[at]?.kind === 'narration' }));
 }
 /** The tapped line of the open 기록: its rows are in reading order, so a binary search finds it in a few calls. */
-let logRows: number[] = [], logRect: DOMRect | null = null;
+let logRows: number[] = [], logRect: DOMRect | null = null, logSel = -1;
+/** 기록: this reply's lines under its number and clock (as its tile shows them), the line on screen lit. */
+async function buildLog(): Promise<void> {
+  if (!logBox) return;
+  const rows = scenes.flatMap((s, i) => s.kind === 'cg' ? [] : [i]), clock = storyClock(source);
+  const head = messageIndex >= 0 ? `<h5>#${messageIndex + 1}${clock ? ` · ${esc(clock)}` : ''}</h5>` : '';
+  await logBox.setInnerHTML(head + (rows.map(i => { const s = scenes[i]!; return `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`; }).join('') || '<p>기록이 없습니다.</p>'));
+  logRows = rows;
+  logSel = rows.indexOf(at);
+}
+/** ↑ ↓ in 기록: the line picked moves (lit by the style text), and scrolls into sight. */
+async function moveLogSel(delta: number): Promise<void> {
+  if (!logBox || !logRows.length) return;
+  logSel = Math.max(0, Math.min(logRows.length - 1, (logSel < 0 ? logRows.indexOf(at) : logSel) + delta));
+  await restyle();
+  const row = await logBox.querySelector(`p:nth-of-type(${logSel + 1})`);
+  if (row) { await centerIn(row); await release(row); }
+}
+/** ← → in 기록: the reply before or after, its lines in the same place. */
+async function logReply(dir: 1 | -1): Promise<void> {
+  if (streaming || !await stepReply(dir)) return;
+  at = dir > 0 ? 0 : Math.max(0, scenes.length - 1);
+  await buildLog();
+  await render(true);
+  logRect = logBox ? await logBox.getBoundingClientRect() : null;
+}
 async function jumpFromLog(y: number): Promise<void> {
   if (!logBox || !logRows.length) return;
   const found = await rowAt(logBox, 'p', y);
   if (found < 0 || logRows[found] === undefined) return;
-  at = logRows[found]!; logOpen = false; logRows = []; logRect = null;
+  at = logRows[found]!; logOpen = false; logRows = []; logRect = null; logSel = -1;
   await render(true);
+}
+/**
+ * Keys, for a keyboard: Enter or → (or ↓) goes on (completing a line still coming in
+ * first, as a tap does), ← goes back, ↑ opens 기록. In 기록 ↑ ↓ pick a line, Enter goes
+ * there, ← → turn to the reply before or after, Esc closes it. Only while the viewer is
+ * what the reader last pressed on: a press anywhere else (Risu's input, to type) hands
+ * the keys back, so Enter there sends the message and moves nothing here.
+ */
+let keysOn = false, keyId = '';
+function onKey(event: { key?: unknown }): void {
+  if (!open || away || !keysOn) return;
+  const key = String(event?.key || ''), report = (error: unknown) => dbg('viewer.key', { message: String(error) }, 'warn');
+  if (logOpen) {
+    if (key === 'ArrowUp' || key === 'ArrowDown') void moveLogSel(key === 'ArrowUp' ? -1 : 1).catch(report);
+    else if (key === 'Enter' && logSel >= 0 && logRows[logSel] !== undefined) { at = logRows[logSel]!; logOpen = false; logRows = []; logRect = null; logSel = -1; void render(true).catch(report); }
+    else if (key === 'ArrowLeft' || key === 'ArrowRight') void logReply(key === 'ArrowLeft' ? -1 : 1).catch(report);
+    else if (key === 'Escape') void act('log').catch(report);
+    return;
+  }
+  if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
+  // A photo up front folds first, as a tap on it does.
+  if (cgView === 'show' || cgView === 'full') { if (['Enter', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = 'fold'; void restyle().catch(report); } return; }
+  if (key === 'Enter' || key === 'ArrowRight' || key === 'ArrowDown') { if (!completeLine(Date.now())) queueStep(1, tapRun >= 3); }
+  else if (key === 'ArrowLeft') queueStep(-1);
+  else if (key === 'ArrowUp') void act('log').catch(report);
 }
 /**
  * Swipes: Risu gives a plugin no wheel events, so dragging the stage is how to
@@ -823,7 +880,10 @@ async function jumpFromLog(y: number): Promise<void> {
 let swipeFrom: { x: number; y: number } | null = null, swipeUntil = 0, downId = '', upId = '';
 function onDown(p: HostPoint): void {
   swipeFrom = null;
-  if (!open || away || !Number.isFinite(p?.clientY) || !inside(p, rect)) return;
+  if (!open || away || !Number.isFinite(p?.clientY)) return;
+  // The keys follow the last press: on the viewer they are its, anywhere else they are not.
+  keysOn = inside(p, rect);
+  if (!keysOn) return;
   if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
   swipeFrom = { x: p.clientX, y: p.clientY };
   if (liveHit(p) || onSticker(p) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
@@ -899,6 +959,8 @@ export async function openViewer(): Promise<void> {
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; lastCast = []; logOpen = false;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
+    keysOn = true; logSel = -1;
+    keyId = await doc.addEventListener('keydown', (e: { key?: unknown }) => onKey(e));
     downId = await doc.addEventListener('pointerdown', (e: HostPoint) => onDown(e));
     upId = await doc.addEventListener('pointerup', (e: HostPoint) => onUp(e));
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
@@ -918,11 +980,12 @@ export async function openViewer(): Promise<void> {
 }
 export async function closeViewer(): Promise<void> {
   if (!open) return;
-  open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); away = false; stopPending();
+  open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); if (away) closeInspect(); away = false; stopPending();
   if (markTimer) flushMarks();
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
   if (doc && downId) { await quiet(doc.removeEventListener('pointerdown', downId)); downId = ''; }
   if (doc && upId) { await quiet(doc.removeEventListener('pointerup', upId)); upId = ''; }
+  if (doc && keyId) { await quiet(doc.removeEventListener('keydown', keyId)); keyId = ''; }
   for (const node of [root, dyn, fold]) if (node) { await quiet(node.remove()); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   await elementsClose().catch(() => {});

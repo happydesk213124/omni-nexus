@@ -43,9 +43,26 @@ test('a person with no picture is an oval with their name; the face and how its 
 test('letter speed: 즉시 writes the line as it is; slower ones wait longer per letter', () => {
   const instant = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 0 });
   assert.equal(instant.revealMs, 0);
-  assert.doesNotMatch(instant.html, /<span/);
+  assert.doesNotMatch(instant.html, /<i>/);
   assert.match(instant.html, /“응, 늦었지.”/);
   const fast = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 1 }), slow = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 2.6 });
   assert.ok(slow.revealMs > fast.revealMs * 2);
   assert.match(stage({ cg: 'pending', cgView: 'show', cgPending: true }), /\[data-vn-act="cgfull"\]\{display:none\}/, 'a frame still being drawn has no full screen');
+});
+
+test('letters are plain <i>: their delay is by place in the style sheet, never a style of their own', () => {
+  const line = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 1.7 });
+  assert.match(line.html, /<div data-vn-text style="--vs:\d+ms"><i>“<\/i><i>응<\/i>/);
+  assert.doesNotMatch(line.html, /<(span|i) style/, 'no inline style per letter');
+  assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(2\)\{animation-delay:calc\(1 \* var\(--vs\)\)\}/);
+  assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(n\+321\)\{animation-delay:calc\(320 \* var\(--vs\)\)\}/, 'a long line: the rest come with the last');
+  assert.match(stage({ revealed: true }), /\[data-vn-text\] i\{animation:none!important;opacity:1!important\}/);
+  const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 }), vs = Number(long.html.match(/--vs:(\d+)ms/)[1]);
+  assert.equal(long.revealMs, 321 * vs, 'a long line is whole when its last delayed letter is: the cue does not wait for 1000 of them');
+});
+
+test('기록: the line the keys picked is outlined, none when no key has picked one', () => {
+  assert.match(stage({ log: true, logSel: 2 }), /\[data-vn-log\] p:nth-of-type\(3\)\{outline:2px solid/);
+  assert.doesNotMatch(stage({ log: true, logSel: -1 }), /nth-of-type/);
+  assert.doesNotMatch(stage({ log: false, logSel: 2 }), /nth-of-type/, 'closed, nothing');
 });

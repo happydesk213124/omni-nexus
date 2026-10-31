@@ -58,6 +58,8 @@ function harness(clickSource=click) {
     const ${down};const ${up};const onClick=${clickSource};
     return {down:p,up:onPointerUp,click:onClick,close:()=>runInspectAction('close'),
       mode:value=>{mode=value;},cancel:()=>{nxPhysical?.held.clear();cancelMobilePress();},
+      // Display:none (its paint failed, or something hid it): its box is nothing.
+      hideRoot:()=>{root.box=[0,0,0,0];},
       state:()=>({open:inspectOpen,opens,closes})};
   `)(...Object.values(deps));
   return {...api,tick:async ms=>{now+=ms;for(const [id,t]of [...timers])if(t.at<=now){timers.delete(id);t.fn();}await drain();}};
@@ -112,4 +114,15 @@ test('opening-click regression check rejects removing gesture ownership',async()
   const h=harness(broken);await openingPress(h,'button');await h.tick(1500);
   await h.up(point);await h.click(point);
   assert.equal(h.state().open,false,'control mutation must reproduce immediate close');
+});
+
+test('"open" with nothing on screen: past the opening moment, a click it cannot see closes it',async()=>{
+  // Left so, it held every chat button (TTS ▶ among them) and the floating viewer.
+  const h=harness();await openingPress(h,'button');await h.up(point);await h.click(point);
+  h.hideRoot();
+  await h.tick(500);await nextClick(h);
+  assert.equal(h.state().open,true,'while it may still be painting, a click outside it is no close');
+  await h.tick(3000);await nextClick(h);
+  assert.equal(h.state().open,false);
+  assert.equal(h.state().closes,1);
 });

@@ -83,3 +83,51 @@ test('YouTube BGM: the seed is cloned into the player, its window found among ot
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+test('YouTube BGM: with no seed in the chat, the display handler is there only until a draw has planted one', async () => {
+  const built = await build({ stdin: { contents: "import {YoutubeTube} from './src/providers/sound/youtube';window.YoutubeTube=YoutubeTube;", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'iife' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 400, height: 800 } }), errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="margin:0"></body></html>' }));
+    await page.route('https://www.youtube.com/embed/**', r => r.fulfill({ contentType: 'text/html', body: FAKE_EMBED }));
+    await page.goto('https://vn.test/');
+    await page.addScriptTag({ content: built.outputFiles[0].text });
+    await page.evaluate(() => {
+      class Safe {
+        constructor(node) { this.node = node; }
+        release() {}
+        async querySelector(s) { const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
+        async querySelectorAll(s) { return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
+        async setAttribute(k, v) { if (!k.startsWith('x-')) throw Error('Forbidden attribute write ' + k); this.node.setAttribute(k, v); }
+        async setStyleAttribute(v) { this.node.style.cssText = v; }
+        async appendChild(child) { this.node.append(child.node); }
+        async remove() { this.node.remove(); }
+        async cloneNode(deep) { return new Safe(this.node.cloneNode(deep)); }
+      }
+      document.body.innerHTML = '<div class="chat"><p>본문</p></div>';
+      // Risu calls every display handler on every draw, each a call across to the plugin.
+      window.handlers = new Set(); window.added = 0;
+      window.risuai = {
+        getRootDocument: async () => new Safe(document),
+        addRisuScriptHandler: async (mode, fn) => { if (mode === 'display') { window.handlers.add(fn); window.added++; } },
+        removeRisuScriptHandler: async (mode, fn) => { if (mode === 'display') window.handlers.delete(fn); },
+      };
+      window.draw = async text => { let out = text; for (const fn of window.handlers) out = (await fn(out)) ?? out; const node = document.createElement('div'); node.innerHTML = out; document.querySelector('.chat').append(node); };
+      window.tube = new window.YoutubeTube();
+    });
+    assert.equal(await page.evaluate(() => window.handlers.size), 0, 'no player wanted yet: Risu has no handler of ours to call');
+    const playing = page.evaluate(() => window.tube.play('bgm1', 'sMcWOaJFuw0', { level: 0.5, fadeMs: 0, hidden: true }));
+    await page.waitForFunction(() => window.handlers.size === 1);
+    await page.evaluate(() => window.draw('새 메시지'));
+    await playing;
+    assert.equal(await page.evaluate(() => document.querySelectorAll('body > iframe[x-omni-yt-tv]').length), 1, 'the planted seed became the player');
+    assert.equal(await page.evaluate(() => window.handlers.size), 0, 'and the handler is gone again');
+    assert.equal(await page.evaluate(() => window.added), 1);
+    await page.evaluate(() => window.draw('또 다른 메시지'));
+    assert.equal(await page.locator('[data-omni-yt-seed]').count(), 1, 'later draws pass as they are');
+    await page.evaluate(() => window.tube.stop(0));
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});

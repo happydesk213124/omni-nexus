@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+// 40 × 60: a portrait illustration.
+const TALL = 'iVBORw0KGgoAAAANSUhEUgAAACgAAAA8CAIAAACb22+3AAAAOElEQVR4nO3NQQkAAAgEsMtpEiMayxgiDPZfputExGKxWCwWi8VisVgsFovFYrFYLBaLxWLxp3gBypUEov8J6RgAAAAASUVORK5CYII=';
 const reply = ['[3월 2일 ◆ 오후 4시 ◆ 카페]', '- Main Storylines: 숨은 요약 줄', '문이 열렸다.', '오미선 (cheerful): "왔어?"', '오미선: "자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아."', '[[@inray::card1::inxshot_abc::832::1216]]', '하린: "응, 늦었지."'].join('\n');
 
 test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites go over once, chat images are cloned, closing leaves nothing', async () => {
@@ -15,7 +17,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     page.setDefaultTimeout(8000); page.on('pageerror', e => errors.push(e.message));
     await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="margin:0"></body></html>' })); await page.goto('https://vn.test/');
     await page.addScriptTag({ content: readFileSync('node_modules/dompurify/dist/purify.min.js', 'utf8') });
-    await page.evaluate(({ png, reply }) => {
+    await page.evaluate(({ png, tall, reply }) => {
       const saved = new Map(), local = new Map(); window.calls = {}; window.buttons = {};
       const count = name => { window.calls[name] = (window.calls[name] || 0) + 1; };
       class Safe {
@@ -38,12 +40,12 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async remove() { count('remove'); this.node.remove(); }
         async cloneNode(deep) { count('cloneNode'); return new Safe(this.node.cloneNode(deep)); }
         async getBoundingClientRect() { count('rect'); return this.node.getBoundingClientRect().toJSON(); }
-        async addEventListener(type, fn) { count('addEventListener'); const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); window.liveListeners = (window.liveListeners || 0) + 1; return id; }
+        async addEventListener(type, fn) { count('addEventListener'); const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY, key: e.key }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); window.liveListeners = (window.liveListeners || 0) + 1; return id; }
         async removeEventListener(type, id) { const x = this.listeners.get(id); if (x) { document.removeEventListener(type, x[1]); this.listeners.delete(id); window.liveListeners--; } }
         async createElement(tag) { count('createElement'); if (!['div', 'button', 'style'].includes(tag)) throw Error('Unsupported host element ' + tag); return new Safe(document.createElement(tag)); }
       }
       const older = Array.from({ length: 5 }, (_, i) => `<div class="chat-message-container"><div class="risu-chat" data-chat-index="${i}"><div class="chattext">old ${i}</div></div></div>`).join('');
-      document.body.innerHTML = `<div style="position:fixed;inset:0;z-index:30"></div><div id="risu-popup" style="position:fixed;left:20px;top:300px;width:120px;height:80px;z-index:50"></div><div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="2"><div class="chattext"><p>문이 열렸다.</p><p>오미선: “왔어?”</p><p>오미선: “자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아.”</p><p>하린: “응, 늦었지.”</p><div class="x-risu-status" style="width:180px;background:#335">HP 3 <span>MP 2</span><details><summary>더보기</summary>호감 42</details></div><div class="x-risu-choices"><p>1. 창가에 앉는다</p><p>2. 카운터로 간다</p></div><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${png}" style="width:50%"></div></div></div></div>${older}</div></div>`;
+      document.body.innerHTML = `<div style="position:fixed;inset:0;z-index:30"></div><div id="risu-popup" style="position:fixed;left:20px;top:300px;width:120px;height:80px;z-index:50"></div><div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="2"><div class="chattext"><p>문이 열렸다.</p><p>오미선: “왔어?”</p><p>오미선: “자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아.”</p><p>하린: “응, 늦었지.”</p><div class="x-risu-status" style="width:180px;background:#335">HP 3 <span>MP 2</span><details><summary>더보기</summary>호감 42</details></div><div class="x-risu-choices"><p>1. 창가에 앉는다</p><p>2. 카운터로 간다</p></div><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${tall}" style="width:50%"></div></div></div></div>${older}</div></div>`;
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [['오미선_happy', 'assets/h.png', 'png'], ['하린_neutral', 'assets/n.png', 'png']], chats: [{ id: 'chat', message: [{ role: 'char', chatId: 'm0', data: '전날 밤은 조용했다.' }, { role: 'user', data: 'hi' }, { role: 'char', chatId: 'm1', data: reply }] }], chatPage: 0 };
       window.bot = bot;
@@ -51,7 +53,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
         sendChat: async text => { window.sent = text; },
         readImage: async () => bytes, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
-    }, { png: PNG, reply });
+    }, { png: PNG, tall: TALL, reply });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
     await page.evaluate(async () => {
@@ -92,6 +94,11 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 0, 'an illustration is a photo, never the stage');
     assert.equal(cg.imageSent || 0, 0, 'the chat image is cloned, not re-sent');
     assert.equal(cg.cloneNode, 1, 'one copy, as the photo');
+    // The photo's frame hugs the picture (no band of white inside the border), in the middle of the stage.
+    await page.waitForTimeout(700);
+    const photo = await page.evaluate(() => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg]'), r = img.getBoundingClientRect(); return { ratio: img.clientWidth / img.clientHeight, natural: img.naturalWidth / img.naturalHeight, mid: r.left + r.width / 2 }; });
+    assert.ok(Math.abs(photo.ratio - photo.natural) < 0.02, 'the frame is the picture\'s own shape: ' + JSON.stringify(photo));
+    assert.ok(Math.abs(photo.mid - (box.x + box.width / 2)) < 3, 'centred: ' + JSON.stringify(photo));
     await tap('늦었지');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-name]').textContent(), '하린');
     // Everyone so far stays on stage; only the speaker is lit.
@@ -183,7 +190,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.match(await page.locator('[x-omni-vn] [data-vn-end]').textContent(), /메시지를 입력해 주세요/);
     assert.equal(await page.locator('[x-omni-vn] [data-vn-next]').count(), 0, 'no arrow promising more');
     // A CG passed folds up at the top of the stage.
-    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /:is\(img,div\)\[x-vn-cg="[^"]+"\]\{display:block;left:auto!important;right:12px;top:60px;width:84px/, 'the CG waits folded');
+    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /:is\(img,div\)\[x-vn-cg="[^"]+"\]\{display:block;left:auto!important;right:12px;top:60px;height:84px/, 'the CG waits folded');
     // The viewer covers the chat for every other tap handler.
     assert.equal(await page.evaluate(({ x, y }) => window.__OMNI_VIEWER_COVERS__(x, y), mid), true);
     // 나레이션 is TTS 나레이션 itself (narration still shown, not voiced). BGM only pauses: it never
@@ -208,6 +215,34 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.notEqual(await row.evaluate(n => getComputedStyle(n).backgroundColor), unlit, 'hovered, a row lights up');
     await press('log');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'none');
+    // Keys: ← back, Enter on; ↑ opens 기록 under this reply's number and clock, the line on screen lit;
+    // there ↑ ↓ pick a line and Enter goes to it.
+    const sceneCss = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent);
+    const at = n => page.waitForFunction(n => new RegExp('^"' + n + ' /').test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), n);
+    await page.waitForTimeout(400);
+    await page.keyboard.press('ArrowLeft'); await at(4);
+    await page.waitForTimeout(400);
+    await page.keyboard.press('Enter'); await at(5);
+    await page.waitForTimeout(1300);
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'block');
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-log] h5').textContent(), '#3 · 3월 2일 · 오후 4시 · 카페');
+    assert.match(await page.locator('[x-omni-vn] [data-vn-log] [data-now]').textContent(), /늦었지/);
+    assert.notEqual(await page.locator('[x-omni-vn] [data-vn-log] [data-now]').evaluate(n => getComputedStyle(n).backgroundColor), await page.locator('[x-omni-vn] [data-vn-log] p').first().evaluate(n => getComputedStyle(n).backgroundColor), 'the line on screen is lit');
+    assert.match(await sceneCss(), /\[data-vn-log\] p:nth-of-type\(4\)\{outline/, 'picked: the line on screen (the photo is no line)');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(() => /\[data-vn-log\] p:nth-of-type\(3\)\{outline/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'none');
+    await at(3);
+    assert.doesNotMatch(await sceneCss(), /p:nth-of-type\(\d+\)\{outline/);
+    for (let i = 0; i < 6 && !/^"5 \//.test(await count()); i++) { await page.waitForTimeout(500); await page.keyboard.press('ArrowRight'); }
+    await at(5);
+    // A press outside the viewer (Risu's input, to type) hands the keys back: Enter there moves nothing here.
+    await page.mouse.click(box.x + box.width / 2, 900 - 30);
+    await page.waitForTimeout(200);
+    await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500);
+    assert.match(await count(), /^"5 \//, 'the keys were Risu\'s');
     // 전체화면 opens Omni's own 크게보기 (stubbed): the viewer steps down under it, takes no tap, and comes back when it closes.
     await page.evaluate(() => {
       window.__OMNI_INSPECT_SHOT__ = async (card, asset) => { window.inspected = [card, asset]; window.inspecting = true; return true; };
@@ -262,7 +297,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(was => { const left = document.querySelector('[x-omni-vn] [x-vn-st]').style.left; return /%$/.test(left) && left !== was; }, before);
     const moved = await page.locator('[x-omni-vn] [x-vn-st]').boundingBox();
     assert.ok(Math.abs(moved.x - sticker.x - 80) < 6 && Math.abs(moved.y - sticker.y - 102) < 6, `the sticker followed the drag: ${JSON.stringify([sticker, moved])}`);
-    assert.equal(await page.evaluate(() => window.liveListeners), 3, 'the move listener lasted only as long as the drag');
+    assert.equal(await page.evaluate(() => window.liveListeners), 4, 'the move listener lasted only as long as the drag');
     // The choice list as 선택지: at the newest reply's end, its options come up instead of the end cue.
     await tapChip('choices', '선택지');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-choices]')).display === 'flex');
@@ -315,7 +350,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await reopen();
     await page.waitForFunction(() => /또 보네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     assert.match(await count(), /^"1 \/ 1"/, 'the line with 아침 is no scene');
-    assert.equal(await page.locator('[x-omni-vn] [data-vn-text] span').count(), 0, '즉시: no letter waits its turn');
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-text] i').count(), 0, '즉시: no letter waits its turn');
     await shut();
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

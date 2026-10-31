@@ -21,8 +21,10 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 
 let wanted = false, plantedAt = 0;
 /**
- * The display handler's part: while a seed is wanted, one message the chat draws gets
- * it (one every few seconds at most, so a redraw never fills the chat with them).
+ * The display handler: while a seed is wanted, one message the chat draws gets it (one
+ * every few seconds at most, so a redraw never fills the chat with them). Risu calls a
+ * display handler on every draw, each a call across to the plugin: so it is registered
+ * only while a seed is wanted (see {@link YoutubeTube}), never for the whole session.
  */
 export function plantYoutubeSeed(content: string): string {
   if (!wanted || Date.now() - plantedAt < 4000) return content;
@@ -115,13 +117,8 @@ export class YoutubeTube {
     const stale = await doc.querySelectorAll('[x-omni-yt-tv]') as SafeClassArray<SafeElement> | SafeElement[];
     const n = Array.isArray(stale) ? stale.length : await stale.length();
     for (let i = 0; i < n; i++) { const node = Array.isArray(stale) ? stale[i] : await stale.at(i); if (node) await quiet(node.remove()); }
-    let seed = await doc.querySelector(SEED);
-    if (!seed) {
-      wanted = true; plantedAt = 0;
-      for (let i = 0; i < 24 && !seed; i++) { await sleep(500); seed = await doc.querySelector(SEED); }
-    }
-    if (!seed) { wanted = false; throw new Error('유튜브 플레이어를 놓을 자리를 아직 못 찾았습니다. 채팅이 한 번 그려지면 다시 시도해요.'); }
-    wanted = false;
+    const seed = await doc.querySelector(SEED) ?? await this.plant(doc);
+    if (!seed) throw new Error('유튜브 플레이어를 놓을 자리를 아직 못 찾았습니다. 채팅이 한 번 그려지면 다시 시도해요.');
     this.win = null; this.known.clear(); this.seeking = false;
     this.broadcast(); await sleep(450); this.broadcast(); await sleep(250);
     const body = await doc.querySelector('body');
@@ -136,6 +133,22 @@ export class YoutubeTube {
     this.seeking = false;
     if (!this.win) { await quiet(el.remove()); this.el = null; throw new Error('유튜브 플레이어가 응답하지 않습니다.'); }
     dbg('bgm.youtube.ready', {});
+  }
+
+  /** A seed in the next message the chat draws: the display handler is there for that wait only. */
+  private async plant(doc: SafeDocument): Promise<SafeElement | null> {
+    const host = risuHost(), plant = (content: string) => plantYoutubeSeed(content);
+    if (typeof host?.addRisuScriptHandler !== 'function') return null;
+    await host.addRisuScriptHandler('display', plant);
+    wanted = true; plantedAt = 0;
+    try {
+      let seed: SafeElement | null = null;
+      for (let i = 0; i < 24 && !seed; i++) { await sleep(500); seed = await doc.querySelector(SEED); }
+      return seed;
+    } finally {
+      wanted = false;
+      await quiet(host.removeRisuScriptHandler?.('display', plant));
+    }
   }
 
   private volume(level: number): void { this.level = level; this.send('setVolume', [Math.round(Math.max(0, Math.min(1, level)) * 100)]); }
