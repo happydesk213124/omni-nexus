@@ -117,6 +117,8 @@ export const SOUND_PAGE_CSS = '#tts-settings-root:is([data-sound-page="sound"],[
   // The settings sheet already dims a row with a disabled input (.row:has(input:disabled)); inside a gated section that
   // stacked on the section, and rows holding only a select stood out brighter. The section alone dims, evenly.
   + '#tts-settings-root .snd-gate:disabled .row{opacity:1}'
+  // A standing caution (YouTube's terms), said where it applies instead of asked in a popup.
+  + '#tts-settings-root .snd-warn{color:#facc15;font-size:11px;opacity:1}'
   + '#tts-settings-root .snd-spin{display:inline-block;box-sizing:border-box;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:snd-spin .8s linear infinite}@keyframes snd-spin{to{transform:rotate(360deg)}}'
   + '#tts-settings-root .snd-credit{grid-column:1/-1;margin:6px 2px 2px;font-size:11px;color:var(--muted,#a4a8bc);opacity:.8;overflow-wrap:anywhere}';
 

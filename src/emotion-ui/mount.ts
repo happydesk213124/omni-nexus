@@ -78,28 +78,33 @@ async function renderPeople(): Promise<void> {
     : '<small>이 봇의 TTS 캐릭터가 없습니다. TTS 설정의 캐릭터 탭에서 먼저 등록하세요.</small>';
 }
 
-let backgroundsShown = '';
+/**
+ * 배경: this bot's backgrounds (a tile each, its picture after) and the sample places (a
+ * chip each). What was drawn is marked on the list itself: a page opened again is new
+ * markup and is drawn again (marked here in memory, it stayed empty once reopened).
+ */
 async function renderBackgrounds(): Promise<void> {
   const list = $('emo-bg-list'), chips = $('emo-bg-samples'), count = $('emo-bg-count');
   if (!list || !chips) return;
   const bot = await currentEmotionBot().catch(() => null);
-  if (!bot) { list.innerHTML = '<small>채팅을 연 봇이 없습니다.</small>'; chips.innerHTML = ''; return; }
-  const prefix = spriteJobKey(bot.id, PLACE_PERSON, '');
-  const places = await backgroundPlaces(bot), busy = new Set([...spriteJobs()].filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length)));
-  if (count) count.textContent = `${places.length}장`;
-  const signature = JSON.stringify([bot.id, places, [...busy]]);
-  if (signature !== backgroundsShown) {
-    backgroundsShown = signature;
-    list.innerHTML = [...[...busy].filter(place => !places.some(known => samePlace(known, place))).map(place => `<div class="emo-bg-tile" role="listitem"><div class="emo-bg-pic" data-busy="1">그리는 중…</div><small title="${esc(place)}">${esc(place)}</small></div>`),
+  const prefix = bot ? spriteJobKey(bot.id, PLACE_PERSON, '') : '';
+  const places = bot ? await backgroundPlaces(bot) : [], busy = new Set(bot ? [...spriteJobs()].filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length)) : []);
+  if (count) count.textContent = bot ? `${places.length}장` : '';
+  const signature = JSON.stringify([bot?.id ?? '', places, [...busy]]);
+  if (list.dataset.shown === signature && chips.childElementCount) return;
+  list.dataset.shown = signature;
+  list.innerHTML = !bot ? '<small>채팅을 연 봇이 없습니다. 봇과의 채팅을 열면 그 봇의 배경이 보입니다.</small>'
+    : [...[...busy].filter(place => !places.some(known => samePlace(known, place))).map(place => `<div class="emo-bg-tile" role="listitem"><div class="emo-bg-pic" data-busy="1">그리는 중…</div><small title="${esc(place)}">${esc(place)}</small></div>`),
       ...places.map((place, i) => `<div class="emo-bg-tile" role="listitem"><div class="emo-bg-pic" data-bg-pic="${i}"></div><small title="${esc(place)}">${esc(place)}</small></div>`)].join('')
       || '<small>아직 없습니다. 뷰어에 장소가 나오면 그려서 여기에 쌓입니다.</small>';
-    chips.innerHTML = PLACE_SAMPLES.map(sample => { const k = placeKey(sample), made = places.some(place => samePlace(place, k)); return `<button type="button" data-emo-bg-make="${esc(k)}"${made ? ' data-made="1" disabled' : ''}>${esc(k)}</button>`; }).join('');
-    // Pictures last, one by one: the list is up at once.
-    for (const [i, place] of places.entries()) {
-      const found = await findBackground(place, bot).catch(() => null), url = found ? await thumb(found.path).catch(() => '') : '';
-      const pic = list.querySelector<HTMLElement>(`[data-bg-pic="${i}"]`);
-      if (pic && url) pic.style.backgroundImage = `url("${url}")`;
-    }
+  // The samples are tags: listed with or without a bot (drawing one needs the bot's chat open).
+  chips.innerHTML = PLACE_SAMPLES.map(sample => { const k = placeKey(sample), made = places.some(place => samePlace(place, k)); return `<button type="button" data-emo-bg-make="${esc(k)}"${made ? ' data-made="1"' : ''}${made || !bot ? ' disabled' : ''}>${esc(k)}</button>`; }).join('');
+  if (!bot) return;
+  // Pictures last, one by one: the list is up at once.
+  for (const [i, place] of places.entries()) {
+    const found = await findBackground(place, bot).catch(() => null), url = found ? await thumb(found.path).catch(() => '') : '';
+    const pic = list.querySelector<HTMLElement>(`[data-bg-pic="${i}"]`);
+    if (pic && url) pic.style.backgroundImage = `url("${url}")`;
   }
 }
 
@@ -153,7 +158,13 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
       .catch(error => { button.disabled = false; button.title = String((error as Error)?.message || error); }).finally(() => void renderBackgrounds());
   });
   $('tab-emo-assets')?.addEventListener('click', () => void renderPeople());
-  $('tab-emo-bg')?.addEventListener('click', () => void renderBackgrounds());
+  // Drawn whenever 배경 comes into view: its tab pressed, or the page opened (again) on it.
+  const bgPanel = $('emo-bg');
+  if (bgPanel) {
+    const shown = () => { if (live() && !bgPanel.hidden) void renderBackgrounds(); };
+    new MutationObserver(shown).observe(bgPanel, { attributes: true, attributeFilter: ['hidden'] });
+    shown();
+  }
   const unsubscribe = subscribeSprites(() => { if (!live()) { unsubscribe(); return; } if (!$('emo-bg')?.hidden) void renderBackgrounds(); });
   void renderPeople();
   bindCharacterSheet(live);

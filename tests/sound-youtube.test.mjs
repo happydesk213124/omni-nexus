@@ -13,6 +13,13 @@ test('a YouTube link in any form is its video id; anything else is no YouTube tr
 });
 
 test('the example BGM plays from YouTube, each keeping its file as the fallback; effects stay files', () => {
+  // 유튜브 창 숨기기 is on by default; a save from before that (version 1) held the old default and is moved to on, once.
+  assert.equal(api.normalizeSoundData({ settings: {} }).settings.youtubeHidden, true);
+  assert.equal(api.normalizeSoundData({ version: 2, settings: {} }).settings.youtubeHidden, true, "the default itself, not the move");
+  assert.equal(api.normalizeSoundData({ version: 1, settings: { youtubeHidden: false } }).settings.youtubeHidden, true);
+  const kept = api.normalizeSoundData({ version: 1, settings: { youtubeHidden: false } });
+  assert.equal(kept.version, 2);
+  assert.equal(api.normalizeSoundData({ version: 2, settings: { youtubeHidden: false } }).settings.youtubeHidden, false, 'switched off since: the reader\'s, kept');
   const data = api.normalizeSoundData(api.sampleSoundData());
   assert.equal(data.bgm.length, api.SOUND_SAMPLES.bgm.items.length, 'no example is lost');
   const tube = data.bgm.filter(item => item.source === 'youtube'), uploads = api.SOUND_SAMPLES.bgm.items.filter(item => item.youtube);

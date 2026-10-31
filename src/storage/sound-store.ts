@@ -86,8 +86,12 @@ export function normalizeSoundData(raw: unknown): SoundData {
   const list = (v: unknown, kind: SoundKind) => (Array.isArray(v) ? v : []).map(x => item(x, kind)).filter((x): x is SoundItem => !!x);
   const folders = (r.folders && typeof r.folders === 'object' ? r.folders : {}) as Record<string, unknown>;
   const names = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).map(x => text(x, 80).trim()).filter(Boolean))];
+  const settings = normalizeSoundSettings((r.settings || {}) as Partial<SoundSettings>);
+  // Version 2: 유튜브 창 숨기기 became the default. A save from before held the old default (off),
+  // not a choice: it is moved to on once; one saved since is the reader's and stays.
+  if (!(Number(r.version) >= 2)) settings.youtubeHidden = true;
   return {
-    version: 1, settings: normalizeSoundSettings((r.settings || {}) as Partial<SoundSettings>),
+    version: 2, settings,
     bgm: list(r.bgm, 'bgm'), sfx: list(r.sfx, 'sfx'),
     glossary: (Array.isArray(r.glossary) ? r.glossary : []).map(term).filter((x): x is SfxTerm => !!x),
     unknownTerms: names(r.unknownTerms).slice(0, 200), folders: { bgm: names(folders.bgm), sfx: names(folders.sfx) },
