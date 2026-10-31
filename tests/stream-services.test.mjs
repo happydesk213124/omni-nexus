@@ -99,6 +99,9 @@ test('streaming blocks of one reply carry wear_state and location on: a block th
   const prompts=f.host.naiRequests.filter(r=>r.kind==='generate').map(r=>String(r.body.input));
   assert.match(prompts[1],/manager office/,'block 2 states no place: still the office, not the last reply\'s');
   assert.match(prompts[3],/bedroom/);assert.doesNotMatch(prompts[3],/manager office/,'block 4 keeps block 3\'s place');
+  // 옴니 뷰어 stages the reply where its first picture is: block 1's place, not the later bedroom.
+  for(let n=0;n<100&&!await f.api.replyPlace('c','chat','m');n++)await sleep();
+  assert.equal(await f.api.replyPlace('c','chat','m'),'manager office, indoor');
   const note=async()=>JSON.parse((await f.chat()).localLore?.find(e=>e.comment==='omni.nexus.note')?.content ?? '{"note":{}}').note;
   assert.equal((await note()).wear,undefined,'nothing written to the chat while the reply streams');assert.equal((await note()).location,undefined);
   await f.commit(ids[0],{job_ids:ids});

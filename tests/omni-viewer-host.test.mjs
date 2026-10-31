@@ -40,7 +40,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async remove() { count('remove'); this.node.remove(); }
         async cloneNode(deep) { count('cloneNode'); return new Safe(this.node.cloneNode(deep)); }
         async getBoundingClientRect() { count('rect'); return this.node.getBoundingClientRect().toJSON(); }
-        async addEventListener(type, fn) { count('addEventListener'); const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY, key: e.key }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); window.liveListeners = (window.liveListeners || 0) + 1; return id; }
+        async addEventListener(type, fn) { count('addEventListener'); const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY, key: e.key, repeat: e.repeat }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); window.liveListeners = (window.liveListeners || 0) + 1; return id; }
         async removeEventListener(type, id) { const x = this.listeners.get(id); if (x) { document.removeEventListener(type, x[1]); this.listeners.delete(id); window.liveListeners--; } }
         async createElement(tag) { count('createElement'); if (!['div', 'button', 'style'].includes(tag)) throw Error('Unsupported host element ' + tag); return new Safe(document.createElement(tag)); }
       }
@@ -52,7 +52,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
         sendChat: async text => { window.sent = text; },
-        readImage: async () => bytes, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
+        readImage: async () => { if (window.imageDelay) await new Promise(r => setTimeout(r, window.imageDelay)); return bytes; }, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
     }, { png: PNG, tall: TALL, reply });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
@@ -64,6 +64,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       await window.installOmniViewer();
     });
     assert.equal(await page.evaluate(() => window.liveListeners || 0), 0, 'closed, the viewer listens to nothing');
+    await page.evaluate(() => { window.imageDelay = 1500; });
     await page.evaluate(() => window.buttons['omni-viewer-chat']());
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     const box = await page.locator('[x-omni-vn]').boundingBox();
@@ -82,12 +83,23 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       await page.waitForFunction(text => (document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '').includes(text), expected);
       return page.evaluate(() => ({ ...window.calls }));
     };
+    // The line never waits on a picture: → goes on at once, the face follows when it has gone over.
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => /왔어\?/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), null, { timeout: 900 });
+    assert.equal(await page.locator('[x-omni-vn] [x-vn-sp] img').count(), 0, 'the line is up before its face');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-sp] img').length === 1);
+    await page.waitForFunction(() => /\[x-vn-sp="[^"]+"\]\{opacity:1\}/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
+    await page.evaluate(() => { window.imageDelay = 0; });
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     const first = await tap('왔어?');
     assert.equal(first.rect || 0, 0, 'a tap reads no rectangle');
-    assert.equal(first.imageSent, 1, 'the sprite\'s pixels go over the first time');
+    assert.equal(first.imageSent || 0, 0, 'the sprite\'s pixels went over once, before: a step back to it sends nothing');
     assert.equal(await page.locator('[x-omni-vn] [x-vn-sp] img').count(), 1);
     const again = await tap('자리 맡아놨어');
     assert.equal(again.imageSent || 0, 0, 'the same face again sends nothing');
+    // The lines ahead have their faces sent while this one is read: 하린, two lines on.
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-sp] img').length === 2);
     assert.ok((again.setInnerHTML || 0) + (again.setTextContent || 0) <= 2, 'a scene is one box and one style text: ' + JSON.stringify(again));
     const cg = await tap('');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] img[x-vn-cg]').length === 1);
@@ -100,6 +112,15 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.ok(Math.abs(photo.ratio - photo.natural) < 0.02, 'the frame is the picture\'s own shape: ' + JSON.stringify(photo));
     assert.ok(Math.abs(photo.mid - (box.x + box.width / 2)) < 3, 'centred: ' + JSON.stringify(photo));
     await tap('늦었지');
+    // Back to the picture before its folded rect was read (it came up big meanwhile), and on:
+    // the folded thumb still takes a tap later (it once kept the big picture's rect).
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => /^"4 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    await page.waitForTimeout(700);
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => /^"5 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    // The cast eases back out of the picture's dim.
+    await page.waitForTimeout(600);
     assert.equal(await page.locator('[x-omni-vn] [data-vn-name]').textContent(), '하린');
     // Everyone so far stays on stage; only the speaker is lit.
     const stage = await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-p]')].filter(n => getComputedStyle(n).display !== 'none').map(n => getComputedStyle(n).filter));
@@ -160,6 +181,12 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
     await page.waitForTimeout(700);
     assert.equal((await page.evaluate(() => window.calls.setInnerHTML)) || 0, 0, 'the same line is not written again');
+    // The reply's cast block closes mid-stream: its place is the stage from then (its background was drawn before).
+    await page.evaluate(() => { const d = window.emotionData(); d.settings.placeBackgrounds = true; d.made.push({ bot: 'bot', person: '__place__', face: 'cafe, window', name: 'bg_cafe.png', path: 'assets/bg.png', registered: false, at: 1 }); });
+    assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 0);
+    await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), '[[inxc]]{"new_characters":[],"place":"Cafe, window"}[[/inxc]]\n' + reply + '\n');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-bg] img').length === 1);
+    await page.waitForFunction(() => /\[x-vn-bg="[^"]+"\]\{display:block\}/.test(document.querySelector('[x-omni-vn-style="scene"]').textContent));
     await page.evaluate(() => { const box = document.createElement('div'); box.setAttribute('data-inx-slot', '1'); box.innerHTML = '<img src="data:image/png;base64,iVBORw0KGgo=">'; document.querySelector('.flex-col-reverse .chattext').append(box); window.calls = {}; });
     const slotted = '[[inx1]]{"shot":1}[[/inx1]]\n' + reply + '\n';
     for (let i = 0; i < 3; i++) { await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), slotted); await page.waitForTimeout(500); }
@@ -236,8 +263,16 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'none');
     await at(3);
     assert.doesNotMatch(await sceneCss(), /p:nth-of-type\(\d+\)\{outline/);
-    for (let i = 0; i < 6 && !/^"5 \//.test(await count()); i++) { await page.waitForTimeout(500); await page.keyboard.press('ArrowRight'); }
-    await at(5);
+    // → goes on at once, the line's letters still coming in (Enter completes them first, as a tap does).
+    await page.keyboard.press('ArrowRight'); await at(4);
+    await page.waitForTimeout(300);
+    await page.keyboard.press('ArrowRight'); await at(5);
+    // Held (Risu passes `repeat`): a line per beat, never the whole backlog at once.
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { for (let i = 0; i < 12; i++) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', repeat: true })); });
+    await page.waitForTimeout(700);
+    assert.match(await count(), /^"4 \//, 'twelve repeats at once: one line back');
+    await page.keyboard.press('ArrowRight'); await at(5);
     // A press outside the viewer (Risu's input, to type) hands the keys back: Enter there moves nothing here.
     await page.mouse.click(box.x + box.width / 2, 900 - 30);
     await page.waitForTimeout(200);

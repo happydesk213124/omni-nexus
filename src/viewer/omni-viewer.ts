@@ -11,7 +11,8 @@ import { soundData, soundReady } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
-import { currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, spriteStatus, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { streamingPlace } from '../domain/viewer/place';
+import { currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, viewerPrefs } from '../storage/viewer-prefs';
 import { setSoundPage } from '../sound-ui/page';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
@@ -125,7 +126,10 @@ async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Pr
   messageIndex = i;
   const shown = i >= 0 && !streaming ? await renderedText(i) : '';
   setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace, shown);
-  place = await readPlace();
+  // Just streamed: the place its blocks said holds until the reply's own is stored.
+  const said = keepPlace ? livePlace : '';
+  if (!streaming) livePlace = '';
+  place = await readPlace(said);
   bg = '';
   await stagePlace().catch(error => dbg('viewer.place', { message: String(error) }, 'warn'));
   await elementsForReply().catch(error => dbg('viewer.elements', { message: String(error) }, 'warn'));
@@ -138,15 +142,18 @@ async function renderedText(index: number): Promise<string> {
   try { return String(await node.innerText() ?? ''); } catch { return ''; } finally { await release(node); }
 }
 /**
- * The place this reply opens in: its cast block's (remembered when it closed), else
- * the chat's last known place. Its background is the stage; a missing one is made.
+ * The place this reply opens in: its own, stored when its cast block closed or its first
+ * picture was drawn (that picture's location); else what its blocks say in the text;
+ * else the chat's last known place. Its background is the stage; a missing one is made.
  */
-let place = '';
+let place = '', livePlace = '', bgFor = '';
 const bgs = new Map<string, string>();
-async function readPlace(): Promise<string> {
+async function readPlace(said = ''): Promise<string> {
   if (!context) return '';
   const own = await replyPlace(context.characterId, context.chatId, messageId()).catch(() => '');
   if (own) return own;
+  const written = said || streamingPlace(source);
+  if (written) return written;
   const note = await getSessionAuthorNote(chatNoteSessionId(context.sessionId, { character_id: context.characterId, chat_id: context.chatId })).catch(() => null) as { location?: unknown } | null;
   return typeof note?.location === 'string' ? note.location : '';
 }
@@ -166,7 +173,7 @@ async function stagePlace(): Promise<void> {
     await bgLayer.appendChild(holder); await release(holder);
     bgs.set(made.path, id);
   }
-  bg = id;
+  bg = id; bgFor = place;
 }
 /** BGM tags and effect words in the reply, played where the reading reaches them. */
 let cues: TtsSegment[] = [];
@@ -351,24 +358,77 @@ async function placeFor(m: Member): Promise<SafeElement | null> {
   people.set(m.key, el);
   return el;
 }
-/** The picture for a member's face, sent into their place once. '' while they have none (it may be in the making). */
-async function faceFor(m: Member, place: SafeElement): Promise<string> {
-  if (!m.person || !bot || !emotionData().settings.enabled) return '';
+/** The picture for a member's face, or null while they have none (it may be in the making: it is asked for). */
+async function spriteFor(m: Member): Promise<EmotionSprite | null> {
+  if (!m.person || !bot || !emotionData().settings.enabled) return null;
   const sprite = await findSprite(m.person, m.face, bot) ?? (m.face !== DEFAULT_EXPRESSION ? await findSprite(m.person, DEFAULT_EXPRESSION, bot) : null);
   if (emotionData().settings.autoGenerate && sprite?.face !== m.face) void makeSprite(m.person, m.face, bot).catch(() => {});
-  if (!sprite) return '';
-  const id = key(sprite.path), slot = `${m.key}|${sprite.path}`;
-  if (faces.has(slot)) return id;
-  const raw = await risuHost()?.readImage?.(sprite.path).catch(() => null);
-  const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-  if (!bytes?.byteLength) { if (sprite.source === 'omni') void forgetMade(bot.id, m.person.id, sprite.face).catch(() => {}); return ''; }
-  if (!doc) return '';
-  const holder = await doc.createElement('div');
-  await holder.setAttribute('x-vn-sp', id);
-  await holder.setInnerHTML(`<img alt="" src="${await screenImage(sprite.path, bytes, SPRITE_BOX)}">`);
-  await place.appendChild(holder); await release(holder);
-  faces.set(slot, id);
-  return id;
+  return sprite;
+}
+/**
+ * A face's picture sent into its person's place, once (the bytes read, fitted, sent:
+ * the dearest thing a scene does). Asked for twice at once, it is sent once.
+ */
+const sending = new Map<string, Promise<void>>(), shownFace = new Map<string, string>();
+let opened = 0;
+function sendFace(m: Member, place: SafeElement, sprite: EmotionSprite): Promise<void> {
+  const slot = `${m.key}|${sprite.path}`, run = opened;
+  const known = sending.get(slot);
+  if (known) return known;
+  const job = (async () => {
+    const raw = await risuHost()?.readImage?.(sprite.path).catch(() => null);
+    const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
+    if (!bytes?.byteLength) { if (sprite.source === 'omni' && bot && m.person) void forgetMade(bot.id, m.person.id, sprite.face).catch(() => {}); return; }
+    if (!doc || run !== opened) return;
+    const id = key(sprite.path), holder = await doc.createElement('div');
+    await holder.setAttribute('x-vn-sp', id);
+    await holder.setInnerHTML(`<img alt="" src="${await screenImage(sprite.path, bytes, SPRITE_BOX)}">`);
+    await place.appendChild(holder); await release(holder);
+    // Closed and opened again meanwhile: that place is gone, and so is this face.
+    if (run === opened) faces.set(slot, id);
+  })().catch(error => { dbg('viewer.face', { message: String(error) }, 'warn'); }).finally(() => sending.delete(slot));
+  sending.set(slot, job);
+  return job;
+}
+/**
+ * Everyone on stage at a scene, as they can show now: a face already sent shows; one not
+ * yet sent goes over behind the line (`later`), and until then its person keeps the face
+ * they last showed (someone new: the oval). The line never waits on a picture.
+ */
+async function castNow(index: number, later: Array<Promise<void>>): Promise<Array<{ key: string; face: string; speaking: boolean; label?: string }>> {
+  const cast: Array<{ key: string; face: string; speaking: boolean; label?: string }> = [];
+  for (const m of castAt(index)) {
+    const place = await placeFor(m), sprite = place ? await spriteFor(m) : null;
+    let face = '';
+    if (place && sprite) {
+      if (faces.has(`${m.key}|${sprite.path}`)) face = key(sprite.path);
+      else { later.push(sendFace(m, place, sprite)); face = shownFace.get(m.key) ?? ''; }
+    }
+    if (face) shownFace.set(m.key, face);
+    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m) });
+  }
+  return cast;
+}
+/** Faces that went over after their line was drawn: the stage shows them (the box stays as it is). */
+async function restage(mine: number): Promise<void> {
+  if (mine !== epoch || !open) return;
+  const cast = await castNow(at, []);
+  if (mine !== epoch) return;
+  lastCast = cast;
+  await restyle();
+}
+/** The next two lines' faces, sent while this one is read: the step to them waits on nothing. */
+function sendAhead(mine: number): void {
+  setTimeout(() => void (async () => {
+    for (let i = at + 1; i <= at + 2 && i < scenes.length; i++) {
+      for (const m of castAt(i)) {
+        // A step since: its own scene comes first.
+        if (mine !== epoch || stepping || pendingSteps) return;
+        const place = await placeFor(m), sprite = place ? await spriteFor(m) : null;
+        if (place && sprite && !faces.has(`${m.key}|${sprite.path}`)) await sendFace(m, place, sprite);
+      }
+    }
+  })().catch(error => dbg('viewer.ahead', { message: String(error) }, 'warn')), 300);
 }
 /**
  * A streaming reply's CG (its `[[inxN]]` slot) is a frame saying it is being drawn: the
@@ -435,9 +495,14 @@ async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: '
 let lastCg = '', lastCgAt = -1, cgView: 'none' | 'open' | 'fold' | 'show' | 'full' = 'none', cgThumb: DOMRect | null = null, cgFill = false;
 async function measureCgThumb(): Promise<void> {
   cgThumb = null;
-  if (!cgLayer || !lastCg) return;
-  const node = await cgLayer.querySelector(`img[x-vn-cg="${lastCg}"]`);
-  if (node) { cgThumb = await node.getBoundingClientRect(); await release(node); }
+  if (!cgLayer || !lastCg || cgView !== 'fold') return;
+  const id = lastCg, node = await cgLayer.querySelector(`img[x-vn-cg="${id}"]`);
+  if (!node) return;
+  const box = await node.getBoundingClientRect();
+  await release(node);
+  // Only the folded picture is the thumb: a key back to its scene meanwhile (it came up big)
+  // made this the big one, and the thumb would never take a tap again.
+  if (cgView === 'fold' && lastCg === id) cgThumb = box;
 }
 /** The reply's illustration before or after the one on show; -1 when there is none that way. */
 function cgNeighbour(dir: 1 | -1): number {
@@ -590,8 +655,9 @@ async function render(force = false): Promise<void> {
   }
   noteMark();
   playCues(scene);
-  // A background finished since: put it up.
-  if (!bg && place) await stagePlace().catch(() => {});
+  // A background finished since, or the place moved (a streaming block said where): put it up.
+  // Until the new one is drawn the old one stays: a bare stage would flash between them.
+  if (place && (!bg || bgFor !== place)) await stagePlace().catch(() => {});
   if (scene.kind === 'cg') {
     // The illustration is a photo over the dimmed stage; the stage itself stays the place.
     const cg = await cgFor(scene);
@@ -619,11 +685,7 @@ async function render(force = false): Promise<void> {
     if (passedId !== lastCg) { lastCg = passedId; cgThumb = null; }
     lastCgAt = passedId ? passedAt : -1;
     if (!lastCg) cgView = 'none'; else if (cgView === 'none') cgView = 'fold';
-    const members = castAt(at), cast: Array<{ key: string; face: string; speaking: boolean; label?: string }> = [];
-    for (const m of members) {
-      const place = await placeFor(m);
-      cast.push({ key: m.key, face: place ? await faceFor(m, place) : '', speaking: m.speaking, label: ovalLabel(m) });
-    }
+    const later: Array<Promise<void>> = [], cast = await castNow(at, later);
     if (mine !== epoch || pendingSteps) return;
     // The line itself, not which message holds it: a streaming reply becomes its saved self mid-scene.
     const sig = lineSig(at), end = atEnd(), same = !force && sig === shownSig && end === shownEnd;
@@ -632,9 +694,10 @@ async function render(force = false): Promise<void> {
     if (!same) revealedAt = askReveal === draw || (sig === shownSig && !force) ? at : -1;
     await elementsAtEnd(end);
     await writeStage(state(cast, { narration: scene.kind === 'narration' }));
+    // The folded picture's rect, also when the same line comes back (from its picture, a key back and on).
+    if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
     if (same) return;
     shownSig = sig; shownEnd = end;
-    if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
     const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
     revealUntil = revealedAt === at ? 0 : Date.now() + revealMs;
     await box.setInnerHTML(html);
@@ -642,6 +705,8 @@ async function render(force = false): Promise<void> {
     if (askReveal === draw && revealedAt !== at) await reveal();
     voice(scene);
     if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
+    if (later.length) void Promise.all(later).then(() => restage(mine)).catch(error => dbg('viewer.face', { message: String(error) }, 'warn'));
+    sendAhead(mine);
   } finally { if (drawId === draw) drawing = -1; }
 }
 /** A tap while the letters still come in shows them all; the next tap moves on. */
@@ -848,18 +913,40 @@ async function jumpFromLog(y: number): Promise<void> {
   await render(true);
 }
 /**
- * Keys, for a keyboard: Enter or → (or ↓) goes on (completing a line still coming in
- * first, as a tap does), ← goes back, ↑ opens 기록. In 기록 ↑ ↓ pick a line, Enter goes
+ * Keys, for a keyboard: → (or ↓) goes on, Enter too but completing a line still coming
+ * in first (as a tap does), ← goes back, ↑ opens 기록. In 기록 ↑ ↓ pick a line, Enter goes
  * there, ← → turn to the reply before or after, Esc closes it. Only while the viewer is
  * what the reader last pressed on: a press anywhere else (Risu's input, to type) hands
  * the keys back, so Enter there sends the message and moves nothing here.
  */
-let keysOn = false, keyId = '';
-function onKey(event: { key?: unknown }): void {
+let keysOn = false, keyId = '', keyStepAt = 0;
+// Held, a key repeats some 30 times a second (Risu passes `repeat`): a line per beat.
+const KEY_HOLD_MS = 140;
+/**
+ * A step by key. Held, one line per beat and none while one is still going out: never a
+ * backlog that runs on after the key is let go, nor (as 광클 does for taps) a wait for it
+ * to be let go. A single press always counts.
+ */
+function keyStep(delta: number, held: boolean): void {
+  const now = Date.now();
+  if (held && (stepping || now - keyStepAt < KEY_HOLD_MS)) return;
+  keyStepAt = now;
+  queueStep(delta);
+}
+/** ↑ ↓ in 기록, gathered while one is drawing (held, they jump: a list is for skimming). */
+let logMove = 0, logMoving = false;
+function queueLogMove(delta: number, report: (error: unknown) => void): void {
+  logMove += delta;
+  if (logMoving) return;
+  logMoving = true;
+  void (async () => { try { while (logMove) { const d = logMove; logMove = 0; await moveLogSel(d); } } finally { logMoving = false; } })().catch(report);
+}
+function onKey(event: { key?: unknown; repeat?: unknown }): void {
   if (!open || away || !keysOn) return;
-  const key = String(event?.key || ''), report = (error: unknown) => dbg('viewer.key', { message: String(error) }, 'warn');
+  const key = String(event?.key || ''), held = event?.repeat === true, report = (error: unknown) => dbg('viewer.key', { message: String(error) }, 'warn');
   if (logOpen) {
-    if (key === 'ArrowUp' || key === 'ArrowDown') void moveLogSel(key === 'ArrowUp' ? -1 : 1).catch(report);
+    if (key === 'ArrowUp' || key === 'ArrowDown') queueLogMove(key === 'ArrowUp' ? -1 : 1, report);
+    else if (held) return;
     else if (key === 'Enter' && logSel >= 0 && logRows[logSel] !== undefined) { at = logRows[logSel]!; logOpen = false; logRows = []; logRect = null; logSel = -1; void render(true).catch(report); }
     else if (key === 'ArrowLeft' || key === 'ArrowRight') void logReply(key === 'ArrowLeft' ? -1 : 1).catch(report);
     else if (key === 'Escape') void act('log').catch(report);
@@ -867,10 +954,12 @@ function onKey(event: { key?: unknown }): void {
   }
   if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
   // A photo up front folds first, as a tap on it does.
-  if (cgView === 'show' || cgView === 'full') { if (['Enter', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = 'fold'; void restyle().catch(report); } return; }
-  if (key === 'Enter' || key === 'ArrowRight' || key === 'ArrowDown') { if (!completeLine(Date.now())) queueStep(1, tapRun >= 3); }
-  else if (key === 'ArrowLeft') queueStep(-1);
-  else if (key === 'ArrowUp') void act('log').catch(report);
+  if (cgView === 'show' || cgView === 'full') { if (!held && ['Enter', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = 'fold'; void restyle().catch(report); } return; }
+  // Enter is a tap: a line still coming in completes first. The arrows go on at once.
+  if (key === 'Enter') { if (held || !completeLine(Date.now())) keyStep(1, held); }
+  else if (key === 'ArrowRight' || key === 'ArrowDown') keyStep(1, held);
+  else if (key === 'ArrowLeft') keyStep(-1, held);
+  else if (key === 'ArrowUp' && !held) void act('log').catch(report);
 }
 /**
  * Swipes: Risu gives a plugin no wheel events, so dragging the stage is how to
@@ -913,6 +1002,9 @@ function onStreamTick(text: string): void {
     const waiting = at >= scenes.length - 1;
     if (!streaming) { streaming = true; messageIndex = -1; }
     setSource(pendingText, true);
+    // The reply's cast block (or its first picture's block) has closed: its place is the stage now.
+    const said = streamingPlace(pendingText);
+    if (said && said !== livePlace) { livePlace = said; place = said; }
     if (waiting && at < scenes.length - 1) at++;
     void render();
     // No chunk for a while: the reply ended. Read the saved one (its images baked by then or soon).
@@ -956,11 +1048,12 @@ export async function openViewer(): Promise<void> {
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
-    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; lastCast = []; logOpen = false;
+    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; livePlace = ''; bgFor = ''; lastCast = []; logOpen = false;
+    opened++; sending.clear(); shownFace.clear();
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
     keysOn = true; logSel = -1;
-    keyId = await doc.addEventListener('keydown', (e: { key?: unknown }) => onKey(e));
+    keyId = await doc.addEventListener('keydown', (e: { key?: unknown; repeat?: unknown }) => onKey(e));
     downId = await doc.addEventListener('pointerdown', (e: HostPoint) => onDown(e));
     upId = await doc.addEventListener('pointerup', (e: HostPoint) => onUp(e));
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
