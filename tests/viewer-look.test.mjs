@@ -31,3 +31,21 @@ test('full screen without Omni: the sheet shows, an end with nothing beyond it i
   assert.match(full, /object-fit:contain/);
   assert.match(stage({ cg: 'p1', cgView: 'full', cgFill: true }), /object-fit:cover/);
 });
+
+test('a person with no picture is an oval with their name; the face and how its picture goes ride under it', () => {
+  assert.match(api.personHtml('오미선'), /<div data-vn-sil style="--c:[^"]+"><b>오미선<\/b><\/div>/);
+  const css = stage({ cast: [{ key: 'tA', face: '', speaking: true, label: '(happy)\n그리는 중…' }, { key: 'tB', face: 'sp1', speaking: false, label: '(sad)' }] });
+  assert.match(css, /\[x-vn-p="tA"\] \[data-vn-sil\]::after\{content:"\(happy\)\\A 그리는 중…"\}/, 'two lines, by CSS: no call of its own');
+  assert.doesNotMatch(css, /\[x-vn-p="tB"\] \[data-vn-sil\]::after/, 'with a picture there is no oval to label');
+  assert.match(api.STATIC_CSS, /\[x-omni-vn\]\{position:fixed;z-index:45;/, 'above the chat, under Risu\'s popups and every toast');
+});
+
+test('letter speed: 즉시 writes the line as it is; slower ones wait longer per letter', () => {
+  const instant = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 0 });
+  assert.equal(instant.revealMs, 0);
+  assert.doesNotMatch(instant.html, /<span/);
+  assert.match(instant.html, /“응, 늦었지.”/);
+  const fast = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 1 }), slow = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 2.6 });
+  assert.ok(slow.revealMs > fast.revealMs * 2);
+  assert.match(stage({ cg: 'pending', cgView: 'show', cgPending: true }), /\[data-vn-act="cgfull"\]\{display:none\}/, 'a frame still being drawn has no full screen');
+});

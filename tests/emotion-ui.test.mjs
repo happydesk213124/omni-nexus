@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 const PNG = [137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,6,0,0,0,31,21,196,137,0,0,0,13,73,68,65,84,120,156,99,248,15,4,0,9,251,3,253,227,85,242,156,0,0,0,0,73,69,78,68,174,66,96,130];
 
 test('감정 에셋: its page saves settings, and a TTS card opens on its faces with the bot image and a make button', async () => {
-  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {ttsData,saveTtsData} from './src/storage/tts-store';import {emotionData} from './src/storage/emotion-store';import {setSoundPage} from './src/sound-ui/page';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';Object.assign(window,{mountTts,ttsSettingsHtml,ttsData,saveTtsData,emotionData,setSoundPage,settingsUxCss,previewChrome});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {ttsData,saveTtsData} from './src/storage/tts-store';import {viewerPrefs} from './src/storage/viewer-prefs';import {emotionData} from './src/storage/emotion-store';import {setSoundPage} from './src/sound-ui/page';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';Object.assign(window,{mountTts,ttsSettingsHtml,ttsData,saveTtsData,emotionData,viewerPrefs,setSoundPage,settingsUxCss,previewChrome});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 420, height: 860 } }), errors = [];
@@ -39,6 +39,11 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.locator('#emo-pose').click();
     await page.waitForFunction(() => window.emotionData().settings.family === 'v4' && window.emotionData().settings.faceTags.happy === '2::grin::');
     assert.deepEqual(await page.evaluate(() => window.emotionData().settings.words), { pouting: 'sad' }, 'only words onto a real face are kept');
+    // 옴니 뷰어's own settings: the words whose lines are no scene, and the letter speed.
+    await page.locator('#emo-skip').fill('상태창, OOC');
+    await page.locator('#emo-speed').selectOption('slow');
+    await page.waitForFunction(() => window.viewerPrefs().skipWords === '상태창, OOC' && window.viewerPrefs().speed === 'slow');
+    assert.equal(await page.evaluate(() => window.emotionData().settings.prefix), '', "not 감정 에셋's own settings");
     // A TTS card of this bot, listed with the face its reply showed.
     await page.evaluate(async () => { window.ttsData().characters.push({ id: 't-misun', scope: 'global', name: '오미선', surname: '오', givenName: '미선', surnameAliases: [], givenAliases: ['Misun'], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }); await window.saveTtsData(); });
     await page.locator('#tab-emo-assets').click();

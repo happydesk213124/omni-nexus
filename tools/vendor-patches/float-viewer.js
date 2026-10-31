@@ -57,8 +57,12 @@ globalThis.__OMNI_TTS_HOST_BLOCKED__ = () => !!(t.unloading || t.uiOpen || t._nx
 // 옴니 뷰어's 전체화면 is this same 크게보기 for a baked shot: its card id and file name,
 // as the chat's ⛶ chip has them. false when it cannot open (the card is not in the gallery).
 globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
-  const open = t._nxInspectOpener, card = (t.gallery || []).find((c) => String(c?.id || "") === String(cardId || ""));
-  if (!card || typeof open != "function" || t.uiOpen) return false;
+  const open = t._nxInspectOpener, find = () => (t.gallery || []).find((c) => String(c?.id || "") === String(cardId || ""));
+  if (typeof open != "function" || t.uiOpen) { y("warn", "viewer.inspect", typeof open != "function" ? "no opener" : "settings open"); return false; }
+  let card = find();
+  // Not in the gallery as loaded (not loaded yet, or stale): this session's, read again once.
+  if (!card) { try { const scope = await Z({ useOverride: false }); if (scope?.sessionId) await ce(scope.sessionId, true); } catch {} card = find(); }
+  if (!card) { y("warn", "viewer.inspect", "card not in gallery " + String(cardId).slice(0, 12)); return false; }
   await open(card, String(asset || ""), null);
   return true;
 };

@@ -97,15 +97,45 @@ const jobs = new Map<string, Promise<EmotionSprite>>();
 let chain: Promise<unknown> = Promise.resolve();
 export const spriteJobKey = (bot: string, person: string, face: string): string => `${bot}\u0000${person}\u0000${face}`;
 export const spriteJobs = (): ReadonlySet<string> => new Set(jobs.keys());
-
-/** Draws and saves one sprite. The bot's asset list gets it once no reply is streaming. */
-export function makeSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite> {
-  const key = spriteJobKey(bot.id, c.id, face);
+/**
+ * A draw that failed is tried again, never at once and never never: after 30 s, then a
+ * minute, then two, up to ten (a viewer redraws often, and each try may cost Anlas).
+ * 만들기 in the asset tab asks at once.
+ */
+const failures = new Map<string, { at: number; count: number; message: string }>();
+const backoff = (count: number): number => Math.min(600_000, 30_000 * 2 ** Math.max(0, count - 1));
+/** What the viewer says under a face it has no picture for: being drawn, or why it failed. */
+export function spriteStatus(bot: string, person: string, face: string): { state: 'running' | 'failed' | ''; message: string } {
+  const key = spriteJobKey(bot, person, face);
+  if (jobs.has(key)) return { state: 'running', message: '' };
+  const failed = failures.get(key);
+  return failed ? { state: 'failed', message: failed.message } : { state: '', message: '' };
+}
+function queueJob(key: string, draw: () => Promise<EmotionSprite>, force: boolean): Promise<EmotionSprite> {
   const running = jobs.get(key);
   if (running) return running;
-  const job = chain.catch(() => {}).then(() => drawSprite(c, face, bot)).finally(() => { jobs.delete(key); notify(); });
+  const failed = failures.get(key);
+  if (!force && failed && Date.now() < failed.at + backoff(failed.count)) return Promise.reject(new Error(failed.message));
+  const job = chain.catch(() => {}).then(draw).then(sprite => { failures.delete(key); return sprite; }, error => {
+    failures.set(key, { at: Date.now(), count: (failures.get(key)?.count || 0) + 1, message: String((error as Error)?.message || error).slice(0, 160) });
+    throw error;
+  }).finally(() => { jobs.delete(key); notify(); });
   jobs.set(key, job); chain = job; notify();
   return job;
+}
+
+/** Draws and saves one sprite. The bot's asset list gets it once no reply is streaming. `force`: no waiting out a failure. */
+export function makeSprite(c: TtsCharacter, face: string, bot: EmotionBot, force = false): Promise<EmotionSprite> {
+  return queueJob(spriteJobKey(bot.id, c.id, face), () => drawSprite(c, face, bot), force);
+}
+/**
+ * A picture Omni made that can no longer be read (its file gone, or saved where Risu
+ * cannot read it back) is forgotten, so it is drawn again: it no longer counts as made.
+ */
+export async function forgetMade(bot: string, person: string, face: string): Promise<void> {
+  const data = await loadEmotionData(), before = data.made.length;
+  data.made = data.made.filter(m => !(m.bot === bot && m.person === person && m.face === face));
+  if (data.made.length !== before) await saveEmotionData();
 }
 const listeners = new Set<() => void>();
 export function subscribeSprites(callback: () => void): () => void { listeners.add(callback); return () => listeners.delete(callback); }
@@ -116,10 +146,11 @@ const notify = () => { for (const callback of listeners) callback(); };
  * NovelAI to be free first (one generation at a time per account: an illustration
  * job running alongside would make one of them fail).
  */
-async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number }): Promise<{ bytes: Uint8Array; path: string }> {
-  const settings = (await loadEmotionData()).settings, config = getConfig(), nai = config.nai;
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'medium' }): Promise<{ bytes: Uint8Array; path: string }> {
+  const settings = (await loadEmotionData()).settings, config = getConfig();
+  const nai = input.effort ? { ...config.nai, effort_v5: input.effort } : config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
-  const family = settings.family, token = tokensForFamily(nai, family)[0] || '';
+  const family = input.family ?? settings.family, token = tokensForFamily(nai, family)[0] || '';
   if (!token) throw new Error('NovelAI API 키를 먼저 넣어 주세요.');
   const card = config.card, presets = Array.isArray(card.presets) ? card.presets : [];
   const preset = findPresetById(presets, cleanText(card.active_preset_id, 120)) ?? presets[0] ?? null;
@@ -171,21 +202,22 @@ export async function findBackground(place: string, bot: EmotionBot): Promise<Em
   const made = [...(await loadEmotionData()).made].reverse().find(m => m.bot === bot.id && m.person === PLACE_PERSON && m.face === k);
   return made ? { face: k, name: made.name, path: made.path, source: 'omni' } : null;
 }
-/** A place with nobody in it, drawn once and kept as the bot's asset `bg_….png`. */
-export function makeBackground(place: string, bot: EmotionBot): Promise<EmotionSprite> {
-  const k = placeKey(place), jobKey = spriteJobKey(bot.id, PLACE_PERSON, k);
-  const running = jobs.get(jobKey);
-  if (running) return running;
-  const job = chain.catch(() => {}).then(async () => {
-    const { bytes, path } = await drawAndSave({ width: 1216, height: 832, negative: '1girl, 1boy, people, person, character, text',
-      prompt: style => joinTags(emotionData().settings.prefix, style, 'no humans, scenery, background, wide shot, detailed background', k, emotionData().settings.suffix) });
+/**
+ * A place with nobody in it, drawn once and kept as the bot's asset `bg_….png`: V5 at
+ * medium effort (a background is blurred behind the cast anyway, so the cheaper pass
+ * does), nobody in it by a strong `2::no humans::`, and the place's own tags.
+ */
+export function makeBackground(place: string, bot: EmotionBot, force = false): Promise<EmotionSprite> {
+  const k = placeKey(place);
+  return queueJob(spriteJobKey(bot.id, PLACE_PERSON, k), async () => {
+    const v5 = !!tokensForFamily(getConfig().nai, 'v5')[0];
+    const { bytes, path } = await drawAndSave({ width: 1216, height: 832, family: v5 ? 'v5' : undefined, effort: 'medium', negative: '1girl, 1boy, people, person, character, crowd, text',
+      prompt: style => joinTags(style, '2::no humans::, scenery, wide shot, detailed background', k) });
     const name = `bg_${compactHash(k).slice(0, 12)}.${sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png'}`;
     await remember(bot, PLACE_PERSON, k, name, path);
     dbg('emotion.background', { message: k, path });
     return { face: k, name, path, source: 'omni' as const };
-  }).finally(() => { jobs.delete(jobKey); notify(); });
-  jobs.set(jobKey, job); chain = job; notify();
-  return job;
+  }, force);
 }
 
 // ── made ahead, while NovelAI idles ────────────────────────────────────────

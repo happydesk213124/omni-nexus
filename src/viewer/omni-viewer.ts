@@ -12,7 +12,9 @@ import { soundData, soundReady } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
-import { currentEmotionBot, findBackground, findSprite, makeAhead, makeBackground, makeSprite, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, spriteStatus, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, viewerPrefs } from '../storage/viewer-prefs';
+import { setSoundPage } from '../sound-ui/page';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
 import { replyPlace } from '../storage/viewer-places';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
@@ -22,7 +24,7 @@ import { psGet, psSet } from '../storage/device-store';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, quiet, release, rowAt, unwrap } from './safe-dom';
-import { elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
+import { onSticker, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
@@ -33,9 +35,6 @@ import { elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown,
  * place, a sprite is sent once and then only shown or hidden, and taps are
  * hit-tested against rectangles measured once, so a tap itself costs nothing.
  */
-const VIEWER_KEY = 'omniviewer.data';
-interface ViewerPrefs { auto: boolean; voice: boolean }
-let prefs: ViewerPrefs = { auto: false, voice: true };
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const key = (s: string) => compactHash(s).slice(0, 10);
@@ -51,7 +50,7 @@ const DOCK = new Set(['cgprev', 'cgfit', 'cgnext', 'cgback']);
 // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
-const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-child(n+3){display:none!important}[x-omnitts-viewer]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
+const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-child(n+3){display:none!important}[x-omnitts-viewer],[x-nx-float]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
 
 interface HostPoint { clientX: number; clientY: number }
 let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeElement | null = null, fold: SafeElement | null = null;
@@ -111,11 +110,6 @@ async function measureCgControls(): Promise<void> {
   controls = [...cg, ...controls.filter(c => !c.act.startsWith('cg'))];
 }
 
-async function loadPrefs(): Promise<void> {
-  const raw = await psGet(VIEWER_KEY).catch(() => null) as Partial<ViewerPrefs> | null;
-  prefs = { auto: raw?.auto === true, voice: raw?.voice !== false };
-}
-const savePrefs = () => void psSet(VIEWER_KEY, prefs).catch(() => {});
 
 /**
  * The newest reply (or the one at/before `index`), from the chat data. Which of its
@@ -162,9 +156,9 @@ async function stagePlace(): Promise<void> {
   if (!made) { if (emotionData().settings.autoGenerate) void makeBackground(place, bot).catch(() => {}); return; }
   let id = bgs.get(made.path);
   if (!id) {
-    const raw = await risuHost()?.readImage?.(made.path);
+    const raw = await risuHost()?.readImage?.(made.path).catch(() => null);
     const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-    if (!bytes?.byteLength) return;
+    if (!bytes?.byteLength) { void forgetMade(bot.id, PLACE_PERSON, made.face).catch(() => {}); return; }
     id = key(made.path);
     const holder = await doc.createElement('div');
     await holder.setAttribute('x-vn-bg', id);
@@ -189,6 +183,9 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   const t = ttsData().settings;
   let segments = parseTtsMessage(settled, ttsExcludeTerms(t.excludeText), t.skipChars, t.skipSymbolOnly, soundCues());
   if (streaming) segments = settledWhileStreaming(segments.map(segment => ({ segment })), settled + '\n').map(r => r.segment);
+  // 뷰어 설정: lines holding any of these words are no scene (a status line, an OOC note).
+  const skip = skipWordList(viewerPrefs().skipWords).map(word => word.toLowerCase());
+  if (skip.length) segments = segments.filter(seg => isSoundSegment(seg) || !skip.some(word => seg.text.toLowerCase().includes(word)));
   const visible = ttsComparable(shown);
   if (visible) {
     const kept = segments.filter(s => isSoundSegment(s) || !ttsComparable(s.text) || visible.includes(ttsComparable(s.text)));
@@ -296,7 +293,7 @@ async function resume(): Promise<void> {
   if (resumeAt) at = Math.min(resumeAt, Math.max(0, scenes.length - 1));
 }
 function voice(scene: ViewerScene): void {
-  if (!prefs.voice || !context || !scene.segmentId || !ttsData().settings.enabled) return;
+  if (!viewerPrefs().voice || !context || !scene.segmentId || !ttsData().settings.enabled) return;
   // 나레이션 off: narration is shown, never voiced (its voice is not even made).
   if (scene.kind === 'narration' && ttsData().settings.narration === false) return;
   const segment = parseTtsMessage(source).find(s => s.id === scene.segmentId);
@@ -336,6 +333,11 @@ function resolveName(speaker: string): string {
   return person?.name || speaker;
 }
 
+/** Under the name in a person's oval: the face, then whether its picture is being drawn, or why it could not be. */
+function ovalLabel(m: Member): string {
+  const status = m.person && bot && emotionData().settings.enabled ? spriteStatus(bot.id, m.person.id, m.face) : { state: '', message: '' };
+  return `(${m.face})${status.state === 'running' ? '\n그리는 중…' : status.state === 'failed' ? `\n못 그림 · ${status.message.slice(0, 22)}` : ''}`;
+}
 /** A person's place on stage, made once. */
 async function placeFor(m: Member): Promise<SafeElement | null> {
   const known = people.get(m.key);
@@ -355,9 +357,10 @@ async function faceFor(m: Member, place: SafeElement): Promise<string> {
   if (!sprite) return '';
   const id = key(sprite.path), slot = `${m.key}|${sprite.path}`;
   if (faces.has(slot)) return id;
-  const raw = await risuHost()?.readImage?.(sprite.path);
+  const raw = await risuHost()?.readImage?.(sprite.path).catch(() => null);
   const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-  if (!bytes?.byteLength || !doc) return '';
+  if (!bytes?.byteLength) { if (sprite.source === 'omni') void forgetMade(bot.id, m.person.id, sprite.face).catch(() => {}); return ''; }
+  if (!doc) return '';
   const holder = await doc.createElement('div');
   await holder.setAttribute('x-vn-sp', id);
   await holder.setInnerHTML(`<img alt="" src="data:${sniffImageMime(bytes) || 'image/png'};base64,${bytesToBase64(bytes)}">`);
@@ -365,12 +368,52 @@ async function faceFor(m: Member, place: SafeElement): Promise<string> {
   faces.set(slot, id);
   return id;
 }
+/**
+ * A streaming reply's CG (its `[[inxN]]` slot) is a frame saying it is being drawn: the
+ * chat paints a base64 preview there that changes until the image is done, and cloning
+ * it again on every streamed chunk piled copies up. Once the reply holds the finished
+ * image (baked), that is cloned, once. One frame serves every pending CG.
+ */
+const PENDING = 'pending';
+let pendingMade = false, pendingTimer: ReturnType<typeof setInterval> | undefined, slotsShown = -1;
+async function pendingFrame(): Promise<string> {
+  if (!pendingMade && doc && cgLayer) {
+    const frame = await doc.createElement('div');
+    await frame.setAttribute('x-vn-cg', PENDING);
+    await frame.setInnerHTML('<span>삽화 그리는 중…</span>');
+    await cgLayer.appendChild(frame); await release(frame);
+    pendingMade = true;
+  }
+  watchPending();
+  return PENDING;
+}
+const cgFor = (scene: ViewerScene): Promise<string> => scene.cg?.kind === 'slot' ? pendingFrame() : cloneImage(scene, cgLayer, 'x-vn-cg');
+/**
+ * While the reply on stage still has slots: a look every few seconds at how many the chat
+ * shows (a JS timer, one call). When one is gone it was baked: the reply is read again.
+ * During a stream nothing is looked at: its end reads the saved reply anyway.
+ */
+function watchPending(): void {
+  if (pendingTimer) return;
+  pendingTimer = setInterval(() => void (async () => {
+    if (!open || !doc) { stopPending(); return; }
+    if (streaming) return;
+    if (!scenes.some(sc => sc.cg?.kind === 'slot')) { stopPending(); return; }
+    const found = await doc.querySelectorAll(`.risu-chat[data-chat-index="${messageIndex}"] [data-inx-slot]`) as SafeClassArray<SafeElement> | SafeElement[];
+    const count = Array.isArray(found) ? found.length : await found.length();
+    const was = slotsShown; slotsShown = count;
+    if (was < 0 || count >= was) return;
+    await load(messageIndex, true);
+    await render();
+  })().catch(error => dbg('viewer.pending', { message: String(error) }, 'warn')), 2500);
+}
+function stopPending(): void { clearInterval(pendingTimer); pendingTimer = undefined; slotsShown = -1; }
 /** A chat image, cloned into a layer (its pixels never cross the bridge). '' when the chat does not show it. */
 async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: 'x-vn-bg' | 'x-vn-cg'): Promise<string> {
   if (!scene.cg || !doc || !layer) return '';
-  const selector = scene.cg.kind === 'baked' ? `[data-inray-asset="${scene.cg.asset}"] img` : scene.cg.kind === 'slot' ? `[data-inx-slot="${scene.cg.n}"] img` : '';
+  const selector = scene.cg.kind === 'baked' ? `[data-inray-asset="${scene.cg.asset}"] img` : '';
   if (!selector) return '';
-  const id = key(selector + (scene.cg.kind === 'slot' ? source.length : ''));
+  const id = key(selector);
   if (clones.has(`${attr}:${id}`)) return id;
   const img = await doc.querySelector(`${LIST} ${selector}`);
   if (!img) return '';
@@ -450,8 +493,8 @@ async function comeBack(): Promise<void> {
 
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
-  log: logOpen, strip: stripOpen, msgs: msgsOpen, auto: prefs.auto, voice: prefs.voice, narrVoice: ttsData().settings.narration !== false,
-  bgm: omniSound.player.bgmPlaying, cgFill, away, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
+  log: logOpen, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
+  bgm: omniSound.player.bgmPlaying, cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
 /** Fills the strip, newest first: the chat's own images cloned (no pixels sent), a label where the chat draws none. */
@@ -542,7 +585,7 @@ async function render(force = false): Promise<void> {
   if (!bg && place) await stagePlace().catch(() => {});
   if (scene.kind === 'cg') {
     // The illustration is a photo over the dimmed stage; the stage itself stays the place.
-    const cg = await cloneImage(scene, cgLayer, 'x-vn-cg');
+    const cg = await cgFor(scene);
     if (mine !== epoch) return;
     if (!cg) { queueStep(1); return; }
     // Shown once; past it, it waits folded at the top, a tap away.
@@ -551,7 +594,7 @@ async function render(force = false): Promise<void> {
     await writeStage(state(lastCast, { cg, cgView }));
     // The reply ends on this picture: the cue to write the next message comes with it.
     if (atEnd() && !(shownSig === '' && shownEnd)) { shownSig = ''; shownEnd = true; await box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html); }
-    if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
+    if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
     return;
   }
   if (pendingSteps) return;
@@ -563,14 +606,14 @@ async function render(force = false): Promise<void> {
     if (cgView === 'open') cgView = 'fold';
     let passedAt = -1;
     for (let i = at - 1; i >= 0; i--) if (scenes[i]!.kind === 'cg') { passedAt = i; break; }
-    const passedId = passedAt >= 0 ? await cloneImage(scenes[passedAt]!, cgLayer, 'x-vn-cg') : '';
+    const passedId = passedAt >= 0 ? await cgFor(scenes[passedAt]!) : '';
     if (passedId !== lastCg) { lastCg = passedId; cgThumb = null; }
     lastCgAt = passedId ? passedAt : -1;
     if (!lastCg) cgView = 'none'; else if (cgView === 'none') cgView = 'fold';
-    const members = castAt(at), cast: Array<{ key: string; face: string; speaking: boolean }> = [];
+    const members = castAt(at), cast: Array<{ key: string; face: string; speaking: boolean; label?: string }> = [];
     for (const m of members) {
       const place = await placeFor(m);
-      cast.push({ key: m.key, face: place ? await faceFor(m, place) : '', speaking: m.speaking });
+      cast.push({ key: m.key, face: place ? await faceFor(m, place) : '', speaking: m.speaking, label: ovalLabel(m) });
     }
     if (mine !== epoch || pendingSteps) return;
     // The line itself, not which message holds it: a streaming reply becomes its saved self mid-scene.
@@ -583,13 +626,13 @@ async function render(force = false): Promise<void> {
     if (same) return;
     shownSig = sig; shownEnd = end;
     if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
-    const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line', end });
+    const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
     revealUntil = revealedAt === at ? 0 : Date.now() + revealMs;
     await box.setInnerHTML(html);
     // A tap that came while the box went out: the line is complete now too.
     if (askReveal === draw && revealedAt !== at) await reveal();
     voice(scene);
-    if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
+    if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
   } finally { if (drawId === draw) drawing = -1; }
 }
 /** A tap while the letters still come in shows them all; the next tap moves on. */
@@ -600,7 +643,7 @@ async function reveal(): Promise<void> {
 }
 /** 자동: wait for the voice to end (when it speaks), then move on. */
 async function autoNext(mine: number): Promise<void> {
-  if (mine !== epoch || !prefs.auto) return;
+  if (mine !== epoch || !viewerPrefs().auto) return;
   if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { autoTimer = setTimeout(() => void autoNext(mine), 500); return; }
   await go(1);
 }
@@ -642,8 +685,16 @@ async function act(name: string): Promise<void> {
   else if (name === 'cgback') { cgView = 'show'; await restyle(); await measureCgControls(); }
   else if (name === 'cgfit') { cgFill = !cgFill; await restyle(); }
   else if (name === 'cgprev' || name === 'cgnext') await cgStep(name === 'cgnext' ? 1 : -1);
-  else if (name === 'auto') { prefs.auto = !prefs.auto; savePrefs(); await render(true); }
-  else if (name === 'voice') { prefs.voice = !prefs.voice; savePrefs(); if (!prefs.voice) omniTts.stop(); await restyle(); }
+  else if (name === 'auto') { await saveViewerPrefs({ auto: !viewerPrefs().auto }); await render(true); }
+  else if (name === 'voice') { await saveViewerPrefs({ voice: !viewerPrefs().voice }); if (!viewerPrefs().voice) omniTts.stop(); await restyle(); }
+  else if (name === 'set') {
+    // Its settings need typing, which Risu's screen layer never hands a plugin back: they live
+    // on a page of the settings window (감정 에셋 › 옴니 뷰어). Reopened, the viewer is where it was.
+    await closeViewer();
+    setSoundPage('asset');
+    const openPage = Reflect.get(globalThis, '__OMNI_OPEN_TTS__');
+    if (typeof openPage === 'function') await Promise.resolve(openPage()).catch(error => dbg('viewer.settings', { message: String(error) }, 'warn'));
+  }
   else if (name === 'narr') {
     // TTS 나레이션 itself: one style outside the chat, no module write (the TTS viewer's own switch).
     const on = ttsData().settings.narration === false;
@@ -775,7 +826,7 @@ function onDown(p: HostPoint): void {
   if (!open || away || !Number.isFinite(p?.clientY) || !inside(p, rect)) return;
   if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
   swipeFrom = { x: p.clientX, y: p.clientY };
-  if (liveHit(p) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
+  if (liveHit(p) || onSticker(p) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
   const now = Date.now();
   pressAt = now;
   if (completeLine(now)) pressRevealAt = now;
@@ -827,7 +878,7 @@ export async function openViewer(): Promise<void> {
   try {
     doc = await host.getRootDocument();
     if (!doc) throw new Error('Risu 화면에 접근할 수 없습니다. 플러그인 권한을 허용해 주세요.');
-    await Promise.all([loadPrefs(), loadEmotionData(), loadTtsData(), omniSound.init().catch(() => {})]);
+    await Promise.all([loadViewerPrefs(), loadEmotionData(), loadTtsData(), omniSound.init().catch(() => {})]);
     const body = await doc.querySelector('body');
     if (!body) throw new Error('Risu 화면을 찾지 못했습니다.');
     for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn],[x-omni-vn-style]'))) { await old.remove(); await release(old); }
@@ -844,7 +895,7 @@ export async function openViewer(): Promise<void> {
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
-    away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused;
+    away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; lastCast = []; logOpen = false;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
@@ -867,7 +918,7 @@ export async function openViewer(): Promise<void> {
 }
 export async function closeViewer(): Promise<void> {
   if (!open) return;
-  open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); away = false;
+  open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); away = false; stopPending();
   if (markTimer) flushMarks();
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
   if (doc && downId) { await quiet(doc.removeEventListener('pointerdown', downId)); downId = ''; }

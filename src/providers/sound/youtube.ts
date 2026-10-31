@@ -97,7 +97,7 @@ export class YoutubeTube {
   /** Where the player sits: small, low on the left; or out of sight (but laid out, so it loads). A blocked play shows it for a tap. */
   private style(): string {
     const box = 'position:fixed;left:10px;bottom:96px;width:200px;height:113px;border:0;border-radius:10px;background:#000;margin:0';
-    return this.hidden && !this.tapNeeded ? `${box};opacity:0;pointer-events:none;z-index:-1` : `${box};z-index:45;box-shadow:0 6px 22px rgba(0,0,0,.45)${this.tapNeeded ? ';outline:3px solid #e3c27a' : ''}`;
+    return this.hidden && !this.tapNeeded ? `${box};opacity:0;pointer-events:none;z-index:-1` : `${box};z-index:30;box-shadow:0 6px 22px rgba(0,0,0,.45)${this.tapNeeded ? ';outline:3px solid #e3c27a' : ''}`;
   }
   private async place(): Promise<void> { await this.el?.setStyleAttribute(this.style()); }
 
