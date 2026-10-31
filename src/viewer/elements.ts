@@ -52,15 +52,27 @@ export async function elementsClose(): Promise<void> {
   for (const el of [layer, choicesEl, panel]) await release(el);
   layer = choicesEl = panel = null; host = null; showing = editing = false;
 }
+/** A point on a sticker on show (its taps are its own). */
+export const onSticker = (p: HostPoint): boolean => [...stickers.values()].some(s => !!s.r && inside(p, s.r));
 /** 요소 is on, or 편집 open: the 편집 button is there to press. */
 export const elementsShown = (): boolean => showing || editing;
 export const elementsEditing = (): boolean => editing;
 
+const shown = (sig: string): boolean => { const r = rules[sig]; return !!r && (editing || (!r.hidden && (showing || r.always))); };
+/**
+ * Where each sticker on show is: a tap there is the sticker's (its <details> folds, by
+ * the browser itself), never a step of the story. Read again after such a tap, since a
+ * fold changes its size.
+ */
+async function measureStickers(): Promise<void> {
+  for (const [sig, s] of stickers) s.r = shown(sig) ? await s.el.getBoundingClientRect() : null;
+}
 /** The part of the scene's one style text that is 요소's: which stickers show, the panel, the choices. */
 export function elementsCss(): string {
   const out: string[] = [];
   if (showing || editing) out.push('[x-omni-vn] [data-vn-act="elems"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [data-vn-act="eledit"]{visibility:visible}');
-  if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{color:#1a1408;background:var(--gold)}');
+  // In 편집 a press drags: a <details> under it must not fold as well.
+  if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [x-vn-st] summary{pointer-events:none}');
   for (const [sig, s] of stickers) {
     const r = rules[sig];
     if (!r) continue;
@@ -112,6 +124,7 @@ export async function elementsForReply(): Promise<void> {
     }
   }
   if (editing) { await paintPanel(); setTimeout(() => void measureEditing().catch(() => {}), 120); }
+  else if (stickers.size) setTimeout(() => void measureStickers().catch(() => {}), 120);
 }
 
 /**
@@ -186,6 +199,7 @@ export async function toggleElements(): Promise<void> {
   showing = !showing;
   if (!showing) editing = false;
   await host?.restyle();
+  await measureStickers();
 }
 export async function toggleEdit(): Promise<void> {
   editing = !editing;
@@ -195,7 +209,7 @@ export async function toggleEdit(): Promise<void> {
   await elementsForReply();
   await elementsAtEnd(host?.atEnd() ?? false);
   await host?.restyle();
-  if (editing) setTimeout(() => void measureEditing().catch(() => {}), 380);
+  setTimeout(() => void (editing ? measureEditing() : measureStickers()).catch(() => {}), editing ? 380 : 120);
 }
 
 /**
@@ -265,6 +279,10 @@ export function elementsClick(p: HostPoint, onControl: boolean): boolean {
     if (onControl) return false;
     if (Date.now() < dragUntil) { dragUntil = 0; return true; }
     if (panelRect && inside(p, panelRect)) void panelTap(p).catch(report('viewer.elements'));
+    return true;
+  }
+  if (!onControl) for (const s of stickers.values()) if (s.r && inside(p, s.r)) {
+    setTimeout(() => void measureStickers().catch(() => {}), 200);
     return true;
   }
   if (choicesOn && !onControl && choicesRect && inside(p, choicesRect)) {

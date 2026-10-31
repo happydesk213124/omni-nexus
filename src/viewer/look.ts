@@ -14,23 +14,26 @@ export function accentOf(name: string): string {
 
 const SERIF = '"Gowun Batang","Nanum Myeongjo","Noto Serif KR","Noto Serif CJK KR",serif';
 export const STATIC_CSS = `
-[x-omni-vn]{position:fixed;z-index:2147482000;isolation:isolate;overflow:hidden;color:#f4f1ea;font:14px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;
+[x-omni-vn]{position:fixed;z-index:45;isolation:isolate;overflow:hidden;color:#f4f1ea;font:14px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;
   background:radial-gradient(120% 90% at 50% 0%,#2a2340 0%,#141224 45%,#07070c 100%);--gold:#e3c27a;--line:rgba(227,194,122,.38)}
 [x-omni-vn] *{box-sizing:border-box}
 [x-omni-vn] [data-vn-bg]{position:absolute;inset:0}
 [x-omni-vn] [data-vn-bg]::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 50% 40%,transparent 50%,rgba(0,0,0,.55) 100%),linear-gradient(transparent 55%,rgba(5,5,10,.55))}
 [x-omni-vn] div[x-vn-bg]{display:none;position:absolute;inset:0;animation:vn-fade .6s ease}
-[x-omni-vn] div[x-vn-bg] img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.72) saturate(1.05)}
+[x-omni-vn] div[x-vn-bg] img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(3px) brightness(.7) saturate(1.05);transform:scale(1.06)}
 [x-omni-vn] img[x-vn-bg]{display:none;position:absolute;inset:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;object-fit:cover;filter:brightness(.7) saturate(1.05)}
 [x-omni-vn] [data-vn-cast]{position:absolute;inset:0;pointer-events:none}
 [x-omni-vn] [x-vn-p]{display:none;position:absolute;bottom:0;height:90%;aspect-ratio:13/19;max-width:82%;translate:-50% 0;transform-origin:50% 100%;
   transition:left .45s cubic-bezier(.2,.8,.25,1),filter .3s ease,transform .3s ease,opacity .3s ease;animation:vn-enter .55s cubic-bezier(.2,.8,.25,1)}
-[x-omni-vn] [x-vn-p] [data-vn-sil]{position:absolute;inset:0;transition:opacity .3s}
-[x-omni-vn] [x-vn-p] [data-vn-sil]::before{content:"";position:absolute;left:31%;right:31%;top:6%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 45% 40%,var(--c) 0%,rgba(20,18,32,.95) 70%);opacity:.55;box-shadow:0 0 22px -6px var(--c)}
-[x-omni-vn] [x-vn-p] [data-vn-sil]::after{content:"";position:absolute;left:12%;right:12%;top:31%;bottom:0;border-radius:46% 46% 8% 8%/30% 30% 8% 8%;background:linear-gradient(180deg,var(--c) -60%,rgba(18,16,30,.96) 55%);opacity:.5;box-shadow:0 -6px 26px -12px var(--c)}
+[x-omni-vn] [x-vn-p] [data-vn-sil]{position:absolute;left:16%;right:16%;top:30%;aspect-ratio:1/1.15;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:10%;text-align:center;transition:opacity .3s;
+  background:radial-gradient(circle at 50% 36%,color-mix(in srgb,var(--c) 30%,#1b1828) 0%,rgba(16,14,26,.93) 74%);border:2px solid color-mix(in srgb,var(--c) 75%,transparent);box-shadow:0 0 30px -8px var(--c),inset 0 0 26px -12px var(--c)}
+[x-omni-vn] [x-vn-p] [data-vn-sil] b{font:700 clamp(13px,3.8vw,19px)/1.25 ${SERIF};color:#fff;letter-spacing:.02em;word-break:keep-all;overflow-wrap:anywhere}
+[x-omni-vn] [x-vn-p] [data-vn-sil]::after{content:"";white-space:pre;font-size:clamp(11px,3vw,14px);line-height:1.4;color:#eadfca}
 [x-omni-vn] [x-vn-sp]{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
 [x-omni-vn] [x-vn-sp] img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;filter:drop-shadow(0 6px 18px rgba(0,0,0,.45))}
 [x-omni-vn] [data-vn-cg]{position:absolute;inset:0;pointer-events:none}
+[x-omni-vn] div[x-vn-cg]{display:none;position:absolute;left:50%;top:9%;width:84%;max-height:52%;aspect-ratio:3/2;translate:-50% 0;rotate:-1.2deg;border:4px solid #f3efe6;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.6);background:linear-gradient(135deg,#2a2440,#141224)}
+[x-omni-vn] div[x-vn-cg] span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.06em;color:#e6dcc6;animation:vn-pulse 1.6s ease-in-out infinite}
 [x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;top:calc(9% + min(52%, 84vw * 2 / 3) + 10px);translate:-50% 0;display:flex;gap:8px;z-index:9}
 [x-omni-vn] [data-vn-cgbar] button{display:none}
 [x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:9%;width:84%!important;height:auto!important;max-width:none!important;max-height:52%!important;object-fit:contain;translate:-50% 0;rotate:-1.2deg;margin:0!important;border:4px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .6s cubic-bezier(.2,.8,.25,1)}
@@ -70,6 +73,7 @@ export const STATIC_CSS = `
 /* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices. */
 [x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:2;pointer-events:none}
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
+[x-omni-vn] [x-vn-st] summary{pointer-events:auto;cursor:pointer}
 [x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
 [x-omni-vn] [data-vn-act="eledit"]{position:absolute;right:12px;top:58px;z-index:7;visibility:hidden}
 [x-omni-vn] [data-vn-edit]{position:absolute;top:104px;right:0;width:min(84%,330px);max-height:calc(100% - 104px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;z-index:7;display:flex;flex-direction:column;gap:8px;
@@ -117,13 +121,14 @@ export const STATIC_CSS = `
 @keyframes vn-ch{to{opacity:1}}
 @keyframes vn-fade{from{opacity:0}to{opacity:1}}
 @keyframes vn-next{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 3px}}
+@keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 @keyframes vn-blink{0%,100%{opacity:.3}50%{opacity:1}}
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><div data-vn-stickers></div>
-<div data-vn-hud><div data-vn-clock></div><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
+<div data-vn-hud><div data-vn-clock></div><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
@@ -132,12 +137,16 @@ export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
 <div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
 
-/** A person's place on stage: a silhouette until their picture comes. */
-export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"></div>`;
+/** A person's place on stage: an oval with their name until their picture comes. */
+export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"><b>${esc(name)}</b></div>`;
 
 export interface StageState {
-  /** Present, left to right: person key, its face key ('' while none), and whether they speak now. */
-  cast: Array<{ key: string; face: string; speaking: boolean }>;
+  /**
+   * Present, left to right: person key, its face key ('' while none), whether they speak
+   * now, and what their oval says under their name while there is no picture: the face,
+   * and whether its picture is being drawn or why it could not be.
+   */
+  cast: Array<{ key: string; face: string; speaking: boolean; label?: string }>;
   narration: boolean;
   bg: string;
   cg: string;
@@ -156,8 +165,8 @@ export interface StageState {
   cgFill?: boolean;
   /** Whether the reply has an illustration before / after the full-screen one. */
   cgNav?: { prev: boolean; next: boolean };
-  /** Omni's own 크게보기 is open: the viewer steps down under it. */
-  away?: boolean;
+  /** The CG shown is a frame for an image still being drawn: there is nothing to see full screen. */
+  cgPending?: boolean;
   /** The story so far ends on this CG: its end cue shows with it. */
   endCg?: boolean;
   auto: boolean;
@@ -176,16 +185,17 @@ export function stageCss(s: StageState): string {
     // A CG on show dims the stage; folded at the top it does not.
     const lit = s.cg && s.cgView !== 'fold' ? 'filter:brightness(.28) blur(2px)' : p.speaking ? 'filter:none;transform:scale(1.035);z-index:3' : s.narration ? 'filter:brightness(.62) saturate(.85);z-index:1' : 'filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);z-index:1';
     return `[x-omni-vn] [x-vn-p="${p.key}"]{display:block;left:${spots[i]}%;${lit}}`
-      + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : '');
+      + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : '')
+      + (!p.face && p.label ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]::after{content:"${p.label.replace(/["\\]/g, '').replace(/\n/g, '\\A ')}"}` : '');
   });
   const dim = (act: string, on: boolean | undefined) => on ? '' : `[x-omni-vn] [data-vn-act="${act}"]{opacity:.3}`;
   return [
     ...rules,
     s.bg ? `[x-omni-vn] [x-vn-bg="${s.bg}"]{display:block}` : '',
-    s.cg && s.cgView === 'fold' ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;width:84px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
-    : s.cg && s.cgView === 'full' ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;width:84px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
+    : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
-    : s.cg ? `[x-omni-vn] img[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}' : ''}` : '',
+    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}` : ''}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] span{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? '[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}' : '',
@@ -194,8 +204,6 @@ export function stageCss(s: StageState): string {
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',
-    // Under Omni's overlay root (z-index 99970), whose 크게보기 is then the top of the page.
-    s.away ? '[x-omni-vn]{z-index:99960!important}' : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -204,12 +212,12 @@ export function stageCss(s: StageState): string {
  * end of the story so far (`end`) the arrow is a blinking cue to write the next
  * message instead. Returns the reveal time.
  */
-export function boxHtml(input: { speaker: string; text: string; narration: boolean; end?: boolean }): { html: string; revealMs: number } {
-  const chars = [...input.text];
-  const step = Math.max(6, Math.min(20, Math.floor(1800 / Math.max(1, chars.length))));
+export function boxHtml(input: { speaker: string; text: string; narration: boolean; end?: boolean; pace?: number }): { html: string; revealMs: number } {
+  const chars = [...input.text], pace = input.pace ?? 1;
+  const step = Math.max(6, Math.min(20, Math.floor(1800 / Math.max(1, chars.length)))) * pace;
   const shown = input.narration || !input.speaker ? chars : ['“', ...chars, '”'];
-  const letters = shown.map((ch, i) => ch === '\n' ? '\n' : `<span style="animation-delay:${i * step}ms">${esc(ch)}</span>`).join('');
-  const revealMs = shown.length * step;
+  const letters = pace <= 0 ? esc(shown.join('')) : shown.map((ch, i) => ch === '\n' ? '\n' : `<span style="animation-delay:${Math.round(i * step)}ms">${esc(ch)}</span>`).join('');
+  const revealMs = Math.round(shown.length * step);
   const name = input.narration ? '' : esc(input.speaker);
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {

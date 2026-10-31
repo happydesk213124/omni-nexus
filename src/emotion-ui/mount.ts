@@ -5,6 +5,7 @@ import { collectFaces, currentEmotionBot, findSprite, makeSprite, spriteJobKey, 
 import { currentTtsContext } from '../services/tts-context';
 import { emotionData, loadEmotionData, updateEmotionSettings, type EmotionSettings } from '../storage/emotion-store';
 import { ttsData } from '../storage/tts-store';
+import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerSpeed } from '../storage/viewer-prefs';
 import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTION_TABS } from './markup';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
@@ -67,8 +68,19 @@ async function renderPeople(): Promise<void> {
 }
 
 export async function mountEmotion(root: HTMLElement, live: () => boolean): Promise<void> {
-  await loadEmotionData(); if (!live()) return;
+  await Promise.all([loadEmotionData(), loadViewerPrefs()]); if (!live()) return;
   fillSettings(emotionData().settings);
+  // 옴니 뷰어's own settings (its store, not 감정 에셋's): read on its next open.
+  const skip = root.querySelector<HTMLTextAreaElement>('#emo-skip'), speed = root.querySelector<HTMLSelectElement>('#emo-speed');
+  if (skip) skip.value = viewerPrefs().skipWords;
+  if (speed) speed.value = viewerPrefs().speed;
+  const keepViewer = () => void saveViewerPrefs({ skipWords: skip?.value ?? '', speed: (speed?.value || 'fast') as ViewerSpeed });
+  let viewerTimer: ReturnType<typeof setTimeout> | undefined;
+  for (const node of [skip, speed]) {
+    // Kept as typed (a window closed mid-word keeps it); not 감정 에셋's own save.
+    node?.addEventListener('input', event => { event.stopPropagation(); clearTimeout(viewerTimer); viewerTimer = setTimeout(keepViewer, 400); });
+    node?.addEventListener('change', event => { event.stopPropagation(); clearTimeout(viewerTimer); keepViewer(); });
+  }
   const panel = root.querySelector('#emo-assets');
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   panel?.addEventListener('input', () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => void updateEmotionSettings(readSettings()), 400); });
@@ -116,7 +128,7 @@ function bindCharacterSheet(live: () => boolean): void {
   const make = (faces: string[]) => {
     if (!person || !bot) return;
     const who = person, where = bot;
-    for (const face of faces) void makeSprite(who, face, where).then(() => status(`${baseExpression(face)?.label || face} 완료`)).catch(error => status(String((error as Error)?.message || error)));
+    for (const face of faces) void makeSprite(who, face, where, true).then(() => status(`${baseExpression(face)?.label || face} 완료`)).catch(error => status(String((error as Error)?.message || error)));
     void render();
   };
   form.addEventListener('click', event => {

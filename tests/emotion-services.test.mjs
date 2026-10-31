@@ -63,6 +63,38 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
 });
 
+test('a failed draw is tried again after a wait (not on every redraw, not never); 만들기 tries at once', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair, blue eyes' });
+  const config = f.api.getConfig(), key = config.nai.api_key;
+  f.api.setConfig({ ...config, nai: { ...config.nai, api_key: '' } });
+  await assert.rejects(f.api.makeSprite(f.person, 'happy', f.bot), /API 키/);
+  assert.deepEqual(f.api.spriteStatus('bot', f.person.id, 'happy'), { state: 'failed', message: 'NovelAI API 키를 먼저 넣어 주세요.' }, 'the viewer can say why');
+  f.api.setConfig({ ...f.api.getConfig(), nai: { ...f.api.getConfig().nai, api_key: key } });
+  const before = f.host.naiRequests.length;
+  await assert.rejects(f.api.makeSprite(f.person, 'happy', f.bot), /API 키/, 'within the wait: the last failure, nothing asked');
+  assert.equal(f.host.naiRequests.length, before);
+  const sprite = await f.api.makeSprite(f.person, 'happy', f.bot, true);
+  assert.equal(f.host.naiRequests.length, before + 1, '만들기: drawn at once');
+  assert.equal(f.api.spriteStatus('bot', f.person.id, 'happy').state, '', 'done: no failure left');
+  // A picture that cannot be read back is forgotten, so it is drawn again.
+  assert.ok(await f.api.findSprite(f.person, 'happy', f.bot));
+  await f.api.forgetMade('bot', f.person.id, 'happy');
+  assert.equal((await f.api.findSprite(f.person, 'happy', f.bot))?.path === sprite.path, false);
+});
+
+test('a place background: V5 at medium effort, nobody in it, the place tags', async () => {
+  const f = await fixture();
+  const before = f.host.naiRequests.length;
+  await f.api.makeBackground('cafe, window, afternoon', f.bot);
+  assert.equal(f.host.naiRequests.length, before + 1);
+  const sent = f.host.naiRequests.at(-1).body, body = typeof sent === 'string' ? JSON.parse(sent) : sent;
+  assert.match(String(body.input), /2::no humans::/);
+  assert.match(String(body.input), /cafe, window, afternoon/);
+  assert.match(String(body.model), /^nai-diffusion-5.*medium/, `the cheaper pass: ${body.model}`);
+  assert.ok(await f.api.findBackground('cafe, window, afternoon', f.bot));
+});
+
 test('without looks no image is drawn, and faces seen in replies are remembered per TTS character', async () => {
   const f = await fixture();
   const before = f.host.naiRequests.length;

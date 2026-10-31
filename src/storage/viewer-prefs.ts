@@ -1,0 +1,39 @@
+import { psGet, psSet } from './device-store';
+
+/**
+ * 옴니 뷰어's own settings, on this device: AUTO and VOICE (its buttons), the words
+ * whose lines it leaves out, and how fast the letters come. The viewer and its page in
+ * 감정 에셋 share them.
+ */
+export const VIEWER_PREFS_KEY = 'omniviewer.data';
+export type ViewerSpeed = 'instant' | 'fast' | 'normal' | 'slow';
+export interface ViewerPrefs { auto: boolean; voice: boolean; skipWords: string; speed: ViewerSpeed }
+const SPEEDS: readonly ViewerSpeed[] = ['instant', 'fast', 'normal', 'slow'];
+/** How long letters take, against 'fast' (the speed the viewer had before it was a choice). */
+export const SPEED_PACE: Record<ViewerSpeed, number> = { instant: 0, fast: 1, normal: 1.7, slow: 2.6 };
+
+function normalize(raw: unknown): ViewerPrefs {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof ViewerPrefs, unknown>>;
+  return {
+    auto: r.auto === true, voice: r.voice !== false,
+    skipWords: typeof r.skipWords === 'string' ? r.skipWords.slice(0, 2000) : '',
+    speed: SPEEDS.includes(r.speed as ViewerSpeed) ? r.speed as ViewerSpeed : 'fast',
+  };
+}
+let prefs = normalize(null);
+const listeners = new Set<() => void>();
+export const viewerPrefs = (): ViewerPrefs => prefs;
+export async function loadViewerPrefs(): Promise<ViewerPrefs> {
+  prefs = normalize(await psGet(VIEWER_PREFS_KEY).catch(() => null));
+  return prefs;
+}
+export async function saveViewerPrefs(patch: Partial<ViewerPrefs>): Promise<void> {
+  prefs = normalize({ ...prefs, ...patch });
+  for (const listener of listeners) listener();
+  await psSet(VIEWER_PREFS_KEY, prefs).catch(() => {});
+}
+export function subscribeViewerPrefs(listener: () => void): () => void { listeners.add(listener); return () => listeners.delete(listener); }
+/** The leave-out words: split at commas (or new lines), trimmed, no empties, no repeats. */
+export function skipWordList(text: string): string[] {
+  return [...new Set(String(text || '').split(/[,\n，、]/).map(word => word.trim()).filter(Boolean))].slice(0, 100);
+}
