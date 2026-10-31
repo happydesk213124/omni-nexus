@@ -194,7 +194,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a picture the chat does not show 
   } finally { await browser.close(); }
 });
 
-test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet longer than 무대에 남는 줄 (three lines unless set) steps off, and where people overlap the last to speak stands in front', async () => {
+test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet longer than 말한 뒤 남는 줄 (three lines unless set) steps off, nobody stands ahead of their line, and where people overlap the last to speak stands in front', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const v = await viewerOn(browser, ['오미선: "왔어?"', '하린: "응, 방금 왔어."', '문이 열렸다.', '바람이 불었다.', '창밖이 어두워졌다.', '비가 내리기 시작했다.', '하린: "벌써 이렇게 늦었네."']);
@@ -210,14 +210,67 @@ test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet longer th
     await step(/바람이 불었다/);
     assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, 'three lines by default: 오미선, quiet three lines, still stands');
     await step(/창밖이/);
-    assert.deepEqual(Object.keys(await standing()), ['하린'], '오미선, quiet four lines and not speaking again: off; 하린 speaks in three');
-    // 뷰어 설정's 무대에 남는 줄: one line, and both have been quiet longer; 답장 끝까지, and nobody steps off.
+    assert.deepEqual(Object.keys(await standing()), ['하린'], '오미선, quiet four lines: off; 하린 spoke three lines ago');
+    await step(/비가 내리기/);
+    assert.deepEqual(await standing(), {}, '하린 speaks next, and is not there before it (that told who would speak)');
+    await step(/벌써 이렇게/);
+    assert.deepEqual(await standing(), { 하린: 3 }, 'back with her line');
+    // 뷰어 설정's 말한 뒤 남는 줄: one line, and 하린 is off three lines after hers; 답장 끝까지, and nobody steps off.
     await v.page.evaluate(() => window.saveViewerPrefs({ stageReach: 1 }));
-    await v.page.keyboard.press('ArrowLeft'); await v.shows(/바람이 불었다/); await v.page.waitForTimeout(150);
+    for (const back of [/비가 내리기/, /창밖이/]) { await v.page.waitForTimeout(300); await v.page.keyboard.press('ArrowLeft'); await v.shows(back); }
+    await v.page.waitForTimeout(150);
     assert.deepEqual(await standing(), {}, 'one line: nobody within it');
     await v.page.evaluate(() => window.saveViewerPrefs({ stageReach: 0 }));
-    await step(/창밖이/);
+    await step(/비가 내리기/);
     assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, '답장 끝까지: everyone who spoke stays');
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: a picture as it first comes up has its bar too — ▲ 접기 goes on, full screen goes back to it', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const v = await viewerOn(browser, ['하린: "첫 줄이야."', '[[@inray::card9::inxshot_pic::832::1216]]', '오미선: "그림 다음 줄."', '하린: "마지막 줄."']);
+    const count = () => v.page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content);
+    const barUp = () => v.page.evaluate(() => ['cgfull', 'cgroll', 'cgtags', 'cgclose'].map(act => getComputedStyle(document.querySelector(`[x-omni-vn] [data-vn-act="${act}"]`)).display !== 'none'));
+    await v.shows(/첫 줄/);
+    await v.tapUntil(async () => await v.picture() === 'big');
+    assert.match(await count(), /^"2 \//, "the picture's own scene");
+    assert.deepEqual(await barUp(), [true, true, true, true], '⛶ 🎲 🔮 ▲ as it first comes up, not only shown again from its thumb');
+    // ⛶ (the viewer's own full screen, without Omni's 크게보기) and back: its own scene again, big, the bar up.
+    await v.page.waitForTimeout(500);
+    await v.press('cgfull');
+    await v.page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'grid');
+    await v.page.waitForTimeout(300);
+    await v.press('cgback');
+    await v.page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'none');
+    await v.pictureIs('big');
+    assert.match(await count(), /^"2 \//);
+    assert.deepEqual(await barUp(), [true, true, true, true]);
+    // Left by a tap on it, full screen goes back there too (folded, the box would show the line before it).
+    await v.page.waitForTimeout(300);
+    await v.press('cgfull');
+    await v.page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'grid');
+    await v.page.waitForTimeout(300);
+    await v.page.mouse.click(v.frame.x + v.frame.width / 2, v.frame.y + v.frame.height * 0.3);
+    await v.page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'none');
+    await v.pictureIs('big');
+    assert.match(await count(), /^"2 \//);
+    // Omni's own 크게보기 (stubbed), opened there and closed: back to the same scene, big.
+    await v.page.evaluate(() => { window.__OMNI_INSPECT_SHOT__ = async () => { window.inspecting = true; return true; }; window.__OMNI_INSPECT_OPEN__ = () => window.inspecting === true; });
+    await v.page.waitForTimeout(300);
+    await v.press('cgfull');
+    await v.page.waitForFunction(() => window.inspecting === true);
+    await v.page.waitForTimeout(400);
+    await v.page.evaluate(() => { window.inspecting = false; });
+    await v.page.waitForTimeout(900);
+    await v.pictureIs('big');
+    assert.match(await count(), /^"2 \//);
+    // ▲ 접기 there folds it as a tap does: the reading goes on, the picture at the top.
+    await v.page.waitForTimeout(500);
+    await v.press('cgclose');
+    await v.shows(/그림 다음 줄/);
+    await v.pictureIs('folded');
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });

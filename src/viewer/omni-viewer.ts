@@ -497,11 +497,10 @@ function stageLines(): NonNullable<typeof staged> {
   return staged = { scenes, roster, size: roster.length, scope, lines, who };
 }
 /**
- * Who stands on stage at scene `index` (`stageAt`): from their first line on, who has a
- * line within 뷰어 설정's 무대에 남는 줄 of the one read (three by default), before or after
- * it, three at most (the speaker, then the nearest), left to right as they came into the
- * reply, each with the face of their latest line. A speaker without a TTS card still
- * stands, as a silhouette.
+ * Who stands on stage at scene `index` (`stageAt`): who spoke within 뷰어 설정's 말한 뒤
+ * 남는 줄 (three lines by default), never ahead of their line, the latest three to speak,
+ * left to right as they came into the reply, each with the face of their latest line. A
+ * speaker without a TTS card still stands, as a silhouette.
  */
 function castAt(index: number): Member[] {
   const { lines, who } = stageLines();
@@ -882,6 +881,11 @@ async function cgStep(dir: 1 | -1): Promise<void> {
  * viewer's own full screen then.
  */
 let away = false, awayTimer: ReturnType<typeof setInterval> | undefined;
+/**
+ * Where full screen goes back to: the picture's own scene, big (it was opened there, the line before it under the
+ * hidden box), else the picture shown again over the line read, which folds.
+ */
+let fullFrom: 'open' | 'show' = 'show';
 async function inspectCg(): Promise<boolean> {
   const scene = scenes[lastCgAt], shot = Reflect.get(globalThis, '__OMNI_INSPECT_SHOT__');
   if (scene?.cg?.kind !== 'baked' || typeof shot !== 'function') return false;
@@ -915,7 +919,7 @@ async function comeBack(): Promise<void> {
   away = false;
   if (!open) return;
   await fold?.setTextContent(foldCss(true));
-  cgView = lastCg ? 'show' : 'none';
+  cgView = lastCg ? fullFrom : 'none';
   await restyle();
   await measureCgControls();
 }
@@ -1056,6 +1060,7 @@ async function render(force = false): Promise<void> {
     if (end) { elementsAfter(); await elementsReady; }
     // The reply ends on this picture: the cue to write the next message comes with it. Its calls go out together.
     await Promise.all([elementsAtEnd(end), writeStage(state(lastCast, { cg, cgView })), endCue ? box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html) : null]);
+    void measureCgControls().catch(error => dbg('viewer.cg', { message: String(error) }, 'warn'));
     playCues(scene);
     elementsAfter();
     behind(mine, later);
@@ -1165,9 +1170,9 @@ async function act(name: string): Promise<void> {
   if (name === 'close') { await closeViewer(); return; }
   if (name === 'next') queueStep(1);
   else if (name === 'prev') queueStep(-1);
-  else if (name === 'cgclose') { cgView = lastCg ? 'fold' : 'none'; await restyle(); }
-  else if (name === 'cgfull') { if (!await inspectCg()) { cgView = 'full'; await restyle(); await measureCgControls(); } }
-  else if (name === 'cgback') { cgView = 'show'; await restyle(); await measureCgControls(); }
+  else if (name === 'cgclose') { if (cgView === 'open') queueStep(1); else { cgView = lastCg ? 'fold' : 'none'; await restyle(); } }
+  else if (name === 'cgfull') { fullFrom = cgView === 'open' ? 'open' : 'show'; if (!await inspectCg()) { cgView = 'full'; await restyle(); await measureCgControls(); } }
+  else if (name === 'cgback') { cgView = fullFrom; await restyle(); await measureCgControls(); }
   else if (name === 'cgfit') { cgFill = !cgFill; await restyle(); }
   else if (name === 'cgroll' || name === 'cgtags') await shotAction(name === 'cgroll' ? 'reroll' : 'base');
   else if (name === 'cgprev' || name === 'cgnext') await cgStep(name === 'cgnext' ? 1 : -1);
@@ -1276,10 +1281,12 @@ function completeLine(now: number): boolean {
 function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
   const editing = elementsEditing();
   // A CG's bar and full-screen sheet keep the rectangles they had when last shown: hidden, they take no tap
-  // (the sheet's ▶ and 닫기 lay over the menu's ◀ and took its taps).
-  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show') && !(c.act === 'msgs' && msgsOpen)
+  // (the sheet's ▶ and 닫기 lay over the menu's ◀ and took its taps). The bar is up while the picture is big.
+  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show' && cgView !== 'open') && !(c.act === 'msgs' && msgsOpen)
     && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()));
 }
+/** A picture shown big, left without a step: full screen opened on its own scene goes back there, else it folds. */
+const leaveBig = (): 'open' | 'fold' => cgView === 'full' && fullFrom === 'open' ? 'open' : 'fold';
 function onClick(p: HostPoint): void {
   if (!open || away || !Number.isFinite(p?.clientX) || !inside(p, rect)) return;
   // Enter or Space on the button pressed last (it keeps the focus) clicks it again, at 0,0:
@@ -1297,7 +1304,7 @@ function onClick(p: HostPoint): void {
   if (logOpen && !hit) { void (logRect && inside(p, logRect) ? jumpFromLog(p.clientY) : act('log')).catch(report('viewer.log')); return; }
   // A tap on the folded CG opens it; a tap on an open or full CG folds it again.
   if (!hit && cgView === 'fold' && cgThumb && inside(p, cgThumb)) { cgView = 'show'; void restyle().then(() => measureCgControls()).catch(() => {}); return; }
-  if (!hit && (cgView === 'show' || cgView === 'full')) { cgView = 'fold'; void restyle().catch(() => {}); return; }
+  if (!hit && (cgView === 'show' || cgView === 'full')) { cgView = leaveBig(); void restyle().then(() => cgView === 'open' ? measureCgControls() : undefined).catch(() => {}); return; }
   if (hit) { void act(hit.act).catch(report('viewer.tap')); return; }
   const now = Date.now();
   // This tap's press already completed the line.
@@ -1403,7 +1410,7 @@ function onKey(event: { key?: unknown; repeat?: unknown }): void {
   }
   if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
   // A photo shown big: ← → step through the story as ever (the photo folds away with the step); the other keys fold it.
-  if ((cgView === 'show' || cgView === 'full') && key !== 'ArrowLeft' && key !== 'ArrowRight') { if (!held && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = 'fold'; void restyle().catch(report); } return; }
+  if ((cgView === 'show' || cgView === 'full') && key !== 'ArrowLeft' && key !== 'ArrowRight') { if (!held && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = leaveBig(); void restyle().then(() => cgView === 'open' ? measureCgControls() : undefined).catch(report); } return; }
   // Enter is a tap: a line still coming in completes first. The arrows go on at once.
   if (key === 'Enter') { if (held || !completeLine(Date.now())) keyStep(1, held); }
   else if (key === 'ArrowRight' || key === 'ArrowDown') keyStep(1, held);

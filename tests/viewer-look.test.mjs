@@ -144,5 +144,9 @@ test('the picture is over the people: shown big they take no z-index (it has non
   }
   const folded = stage({ cast, cg: 'p1', cgView: 'fold' });
   assert.equal(folded.split('[x-vn-cg="p1"]{')[1].split('}')[0].split(';').includes('z-index:4'), true, 'the thumb above every person (3 at most)');
+  // Its bar (⛶ 🎲 🔮 ▲) is up whenever the picture is big: as it first comes up in the reading too, not only shown again.
+  for (const cgView of ['open', 'show']) assert.ok(stage({ cg: 'p1', cgView }).includes('[data-vn-cgbar] [data-vn-act]{display:inline-flex}'), cgView);
+  for (const cgView of ['fold', 'full']) assert.equal(stage({ cg: 'p1', cgView }).includes('[data-vn-cgbar] [data-vn-act]{display:inline-flex}'), false, cgView);
+  assert.ok(stage({ cg: 'p1', cgView: 'open', cgNote: '리롤 중' }).includes('[data-vn-note]{display:block;top:auto;bottom:124px}'), "the note over the bar, as it is up");
   assert.equal(ruleOf(folded, 'tA').includes('z-index:3'), true, 'folded, the stage is lit as ever');
 });
