@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 
 // Six replies with the reader's turns between them; 세라 first speaks in the fifth.
 const REPLIES = [
-  ['오미선: "R0 첫 번째 답장이야."', '하린: "R0 응, 들었어."'],
+  ['오미선: "R0 첫 번째 §쾅§ 답장이야."', '하린: "R0 응, 들었어."'],
   ['하린: "R1 오늘은 비가 오네."', '오미선: "R1 우산 챙겼어?"'],
   ['오미선: "R2 카페로 가자."', '하린: "R2 좋아, 창가 자리로."'],
   ['하린: "R3 나도 끼워 줘."', '오미선: "R3 물론이지."'],
@@ -15,7 +15,7 @@ const REPLIES = [
 ];
 
 test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at the chat\'s middle, the chat read once, each line first, 메시지 a few at a time, 👨‍👩‍👧‍👦 to the people', async () => {
-  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {viewerCovering} from './src/services/viewer-presence';import {soundPage,soundFocus} from './src/sound-ui/page';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,viewerCovering,soundPage,soundFocus});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {viewerCovering} from './src/services/viewer-presence';import {soundPage,soundFocus} from './src/sound-ui/page';import {loadSoundData,soundData} from './src/storage/sound-store';import {viewerPrefs} from './src/storage/viewer-prefs';import {omniSound} from './src/services/sound-runtime';Object.assign(window,{omniSound,installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,viewerCovering,soundPage,soundFocus,loadSoundData,soundData,viewerPrefs});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
@@ -67,6 +67,9 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
       await window.loadTtsData(); const d = window.ttsData(); d.settings.enabled = false;
       for (const [id, name] of [['t-misun', '오미선'], ['t-harin', '하린'], ['t-sera', '세라']]) d.characters.push({ id, scope: 'global', name, surname: '', givenName: name, surnameAliases: [], givenAliases: [], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 });
       await window.loadEmotionData(); window.emotionData().settings.autoGenerate = false;
+      await window.loadSoundData(); window.soundData().settings.sfxEnabled = true;
+      // Effects heard, as words: no clip is made in the test.
+      window.sfxPlayed = []; window.omniSound.playSfxWord = async word => { window.sfxPlayed.push(word); return true; };
       await window.installOmniViewer();
     });
     const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
@@ -110,9 +113,30 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     await page.waitForFunction(() => !!window.local.get('omniviewer.marks'), null, { timeout: 4000 });
     assert.equal(await page.evaluate(() => window.storageSets.includes('omniviewer.marks')), false);
 
+    // The line can be copied: a drag across it selects its letters and moves nothing on; a tap still goes on.
+    await page.waitForTimeout(900);
+    const line = await page.locator('[x-omni-vn] [data-vn-text]').boundingBox(), was = await text();
+    await page.mouse.move(line.x + 3, line.y + 14); await page.mouse.down();
+    await page.mouse.move(line.x + line.width - 8, line.y + 16, { steps: 8 }); await page.mouse.up();
+    await page.waitForTimeout(500);
+    assert.equal(await text(), was, 'a drag on the line is no tap');
+    assert.ok((await page.evaluate(() => String(getSelection()))).length >= 4, 'its letters are selected: ' + await page.evaluate(() => String(getSelection())));
+    // Down across the line (more lines, or a long one scrolled): still a selection, never a swipe back.
+    // (From a fresh press: one on the selection would drag the selected text instead.)
+    await page.evaluate(() => getSelection().removeAllRanges());
+    await page.mouse.move(line.x + 3, line.y + 6); await page.mouse.down();
+    await page.mouse.move(line.x + 40, line.y + 90, { steps: 8 }); await page.mouse.up();
+    await page.waitForTimeout(500);
+    assert.equal(await text(), was, 'a drag down the line is no swipe');
     // 메시지: the reply on stage and one either side, ▲ ▼ for more; nothing scrolled.
     const press = async act => { const b = await page.locator(`[x-omni-vn] [data-vn-act="${act}"]`).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
-    await page.waitForTimeout(500);
+    // 효과음 off: the viewer's own switch, dimmed, as VOICE is.
+    const sfxShown = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="sfx"]')).opacity);
+    assert.equal(await sfxShown(), '1');
+    await page.waitForTimeout(300);
+    await press('sfx');
+    await page.waitForFunction(() => window.viewerPrefs().sfx === false && getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="sfx"]')).opacity === '0.4');
+    await page.waitForTimeout(300);
     await press('msgs');
     const rows = () => page.locator('[x-omni-vn] [data-vn-msgs] [data-vn-msg]').allTextContents();
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-msgs] [data-vn-msg]').length === 5);
@@ -138,6 +162,8 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     await page.mouse.click(oldest.x + oldest.width / 2, oldest.y + oldest.height / 2);
     await shows(/R0 첫 번째/);
     assert.doesNotMatch(await scene(), /\[data-vn-msgs\]\{translate:0 0\}/);
+    await page.waitForTimeout(400);
+    assert.deepEqual(await page.evaluate(() => window.sfxPlayed), [], "off, the line's effect is passed over");
 
     // 기록 scrolls its own list only: never the page around it.
     await page.waitForTimeout(400);
@@ -146,6 +172,12 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     for (const o of await page.evaluate(() => window.scrolls)) assert.ok(o.container === 'nearest' || o.block === 'nearest', 'a list scroll that keeps to its list: ' + JSON.stringify(o));
     await press('log');
 
+    // On again: back at that reply (away and back), its effect sounds.
+    await press('sfx');
+    await page.waitForFunction(() => window.viewerPrefs().sfx === true && getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="sfx"]')).opacity === '1');
+    await step('ArrowRight', /R1 /);
+    await step('ArrowLeft', /R0 /);
+    await page.waitForFunction(() => window.sfxPlayed.includes('쾅'));
     // 👨‍👩‍👧‍👦: TTS 캐릭터, this reply's people searched; the viewer closes as for ⚙.
     await page.evaluate(() => { window.__OMNI_OPEN_TTS__ = () => { window.ttsOpened = { page: window.soundPage(), focus: window.soundFocus() }; }; });
     await page.waitForTimeout(300);
@@ -154,6 +186,95 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     assert.deepEqual(await page.evaluate(() => window.ttsOpened), { page: 'tts', focus: { panel: 'tts-characters', search: '오미선, 하린' } });
     assert.equal(await page.evaluate(() => window.viewerOpen()), false);
     assert.equal(await page.evaluate(() => window.viewerCovering()), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+test('the bottom row keeps every button on a phone, 효과음 among them, from 320 px wide on', async () => {
+  const built = await build({ stdin: { contents: "import {FRAME,STATIC_CSS} from './src/viewer/look';Object.assign(window,{FRAME,STATIC_CSS});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    for (const width of [320, 360, 412]) {
+      // A phone: a finger's pointer, so the bigger buttons.
+      const page = await browser.newPage({ viewport: { width, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+      // As Risu's page: laid out at the phone's own width (without this a phone lays a page out 980 px wide).
+      await page.setContent('<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0"></body></html>');
+      await page.addScriptTag({ content: built.outputFiles[0].text });
+      const row = await page.evaluate(() => {
+        const style = document.createElement('style'); style.textContent = window.STATIC_CSS; document.head.append(style);
+        const root = document.createElement('div'); root.setAttribute('x-omni-vn', '1'); root.style.cssText = 'left:0;top:0;width:100vw;height:calc(100dvh - 96px)'; root.innerHTML = window.FRAME; document.body.append(root);
+        const menu = root.querySelector('[data-vn-menu]'), box = root.querySelector('[data-vn-box]').getBoundingClientRect();
+        const buttons = [...menu.children], rects = buttons.map(b => b.getBoundingClientRect());
+        // Every button whole (its label inside it, none squeezed over the next), the row inside the box.
+        return { coarse: matchMedia('(pointer:coarse)').matches, fits: menu.scrollWidth <= menu.clientWidth + 1 && buttons.every(b => b.scrollWidth <= b.clientWidth + 1), left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)), boxLeft: box.left, box: box.right, names: buttons.map(b => b.textContent) };
+      });
+      assert.equal(row.coarse, true);
+      assert.ok(row.box <= width, 'laid out at the phone width: ' + row.box);
+      assert.deepEqual(row.names, ['최신', '기록', '나레이션', 'BGM', '효과음', '◀', '▶']);
+      assert.ok(row.fits && row.right <= row.box && row.left >= row.boxLeft, width + 'px: ' + JSON.stringify(row));
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: while the line\'s voice is being made, a spinner turns at the box\'s corner; it stops once it speaks', async () => {
+  const built = await build({ stdin: { contents: "import {installOmniViewer} from './src/viewer/omni-viewer';import {omniTts} from './src/services/tts-runtime';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';Object.assign(window,{installOmniViewer,omniTts,loadTtsData,ttsData,loadEmotionData,emotionData});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
+    page.setDefaultTimeout(8000); page.on('pageerror', e => errors.push(e.message));
+    await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="margin:0"></body></html>' })); await page.goto('https://vn.test/');
+    await page.addScriptTag({ content: readFileSync('node_modules/dompurify/dist/purify.min.js', 'utf8') });
+    await page.evaluate(() => {
+      class Safe {
+        constructor(node) { this.node = node; }
+        release() {}
+        async querySelector(s) { const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
+        async querySelectorAll(s) { return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
+        async setAttribute(k, v) { this.node.setAttribute(k, v); }
+        async getAttribute(k) { return this.node.getAttribute(k); }
+        async setTextContent(v) { this.node.textContent = v; }
+        async innerText() { return this.node.innerText; }
+        async setInnerHTML(v) { this.node.innerHTML = DOMPurify.sanitize(v); }
+        async setStyleAttribute(v) { this.node.style.cssText = v; }
+        async appendChild(child) { this.node.append(child.node); }
+        async remove() { this.node.remove(); }
+        async getBoundingClientRect() { return this.node.getBoundingClientRect().toJSON(); }
+        async addEventListener(type, fn) { const cb = e => fn({ clientX: e.clientX, clientY: e.clientY, key: e.key }); document.addEventListener(type, cb); return String(Math.random()); }
+        async removeEventListener() {}
+        async createElement(tag) { return new Safe(document.createElement(tag)); }
+      }
+      const reply = '하린: "목소리가 오는 중이야."\n하린: "이제 들리지?"';
+      document.body.innerHTML = '<div class="default-chat-screen" style="position:fixed;inset:0;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="0"><div class="chattext"><p>하린: "목소리가 오는 중이야."</p><p>하린: "이제 들리지?"</p></div></div></div></div></div>';
+      const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [], chats: [{ id: 'chat', message: [{ role: 'char', chatId: 'm0', data: reply }] }], chatPage: 0 };
+      const saved = new Map(), local = new Map(); window.buttons = {}; window.voiceDelay = 900;
+      window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
+        getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async () => {}, getCurrentCharacterIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
+        // The voice comes back after a while: meanwhile it is being made.
+        nativeFetch: async () => new Promise(resolve => setTimeout(() => resolve({ ok: true, arrayBuffer: async () => new Uint8Array(64).buffer }), window.voiceDelay)),
+        readImage: async () => null, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
+      window.Audio = class { src = ''; currentTime = 0; duration = 2; async play() {} pause() {} load() {} removeAttribute() { this.src = ''; } addEventListener() {} removeEventListener() {} };
+      window.AudioContext = class { state = 'running'; destination = {}; async resume() {} createGain() { return { gain: { value: 1 }, connect() { return this; } }; } createMediaElementSource() { return { connect(node) { return node; } }; } };
+    });
+    await page.evaluate(() => { window.crypto.randomUUID = undefined; });
+    await page.addScriptTag({ content: built.outputFiles[0].text });
+    await page.evaluate(async () => {
+      await window.loadTtsData(); const d = window.ttsData();
+      d.settings.enabled = true; d.settings.translation.provider = 'off'; d.settings.autoAssign = false; d.settings.fish.key = 'test-key'; d.settings.continuous = false; d.settings.prefetch = 0;
+      d.characters.push({ id: 't-harin', scope: 'global', name: '하린', surname: '', givenName: '하린', surnameAliases: [], givenAliases: [], triggers: ['하린'], tags: [], gender: 'female', voiceKey: d.voices[0].key, fishId: d.voices[0].fishId, fixed: false, gain: 0 });
+      await window.loadEmotionData(); window.emotionData().settings.enabled = false;
+      await window.omniTts.player.unlock();
+      await window.installOmniViewer();
+      window.buttons['omni-viewer-chat']();
+    });
+    const spinner = () => page.evaluate(() => { const n = document.querySelector('[x-omni-vn] [data-vn-voicewait]'); return n ? getComputedStyle(n).display : 'gone'; });
+    await page.waitForFunction(() => /목소리가 오는 중/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-voicewait]')).display === 'block');
+    const corner = await page.evaluate(() => { const box = document.querySelector('[x-omni-vn] [data-vn-box]').getBoundingClientRect(), s = document.querySelector('[x-omni-vn] [data-vn-voicewait]').getBoundingClientRect(); return { right: box.right - s.right, bottom: box.bottom - s.bottom }; });
+    assert.ok(corner.right < 60 && corner.bottom < 80, 'at the box\'s bottom right: ' + JSON.stringify(corner));
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-voicewait]')).display === 'none');
+    assert.equal(await page.evaluate(() => window.omniTts.player.status), 'playing', 'it stopped once the voice played');
+    assert.equal(await spinner(), 'none');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

@@ -72,7 +72,8 @@ export function elementsCss(): string {
   const out: string[] = [];
   if (showing || editing) out.push('[x-omni-vn] [data-vn-act="elems"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [data-vn-act="eledit"]{visibility:visible}');
   // In 편집 a press drags: a <details> under it must not fold as well.
-  if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [x-vn-st] summary{pointer-events:none}');
+  // Open, the panel covers the tab: ✎ steps out to the panel's left edge, still a tap away.
+  if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{right:calc(min(84%,330px) + 8px);color:#1a1408;background:var(--gold)}[x-omni-vn] [x-vn-st] summary{pointer-events:none}');
   for (const [sig, s] of stickers) {
     const r = rules[sig];
     if (!r) continue;

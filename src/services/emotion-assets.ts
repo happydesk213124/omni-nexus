@@ -118,7 +118,8 @@ async function rosterPerson(c: TtsCharacter, bot: EmotionBot): Promise<Character
 /** The looks a sprite is drawn from: the roster's, else the bot's asset metadata. '' when neither has any. */
 export async function spriteLooks(c: TtsCharacter, bot: EmotionBot): Promise<string> {
   const person = await rosterPerson(c, bot);
-  const roster = person ? characterPreviewTags(person) : '';
+  // The default costume, whichever the roster has on now: a face is the same person on every line.
+  const roster = person ? characterPreviewTags(person, 'default') : '';
   if (cleanText(roster)) return roster;
   const collected = await collectAssetNaiTags(emotionNames(c), { characterId: bot.id, roster: person ? [person] : [] }).catch(() => null);
   const group = collected?.packed.groups[0];

@@ -54,7 +54,8 @@ test('YouTube BGM: the seed is cloned into the player, its window found among ot
       // The chat as Risu drew it: someone else's YouTube embed, and our planted seed.
       document.body.innerHTML = `<div class="chat"><iframe src="https://www.youtube.com/embed/OTHERVIDEO1?enablejsapi=1" width="320" height="180"></iframe><p>본문</p>${window.SEED}</div>`;
       window.risuai = { getRootDocument: async () => new Safe(document) };
-      window.tube = new window.YoutubeTube();
+      // Its fake player never starts a held-back track: no need to wait six seconds to know.
+      window.tube = new window.YoutubeTube(); window.tube.startWaitMs = 800;
     });
     // Someone else's player has loaded before ours exists.
     await page.waitForTimeout(800);
@@ -130,7 +131,8 @@ test('YouTube BGM: with no seed in the chat, the display handler is there only u
         removeRisuScriptHandler: async (mode, fn) => { if (mode === 'display') window.handlers.delete(fn); },
       };
       window.draw = async text => { let out = text; for (const fn of window.handlers) out = (await fn(out)) ?? out; const node = document.createElement('div'); node.innerHTML = out; document.querySelector('.chat').append(node); };
-      window.tube = new window.YoutubeTube();
+      // Its fake player never starts a held-back track: no need to wait six seconds to know.
+      window.tube = new window.YoutubeTube(); window.tube.startWaitMs = 800;
     });
     assert.equal(await page.evaluate(() => window.handlers.size), 0, 'no player wanted yet: Risu has no handler of ours to call');
     const playing = page.evaluate(() => window.tube.play('bgm1', 'sMcWOaJFuw0', { level: 0.5, fadeMs: 0, hidden: true }));

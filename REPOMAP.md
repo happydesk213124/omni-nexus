@@ -220,7 +220,13 @@ npm run bench       # a 40-image gallery must list without decoding any image
 npm run parity      # old vs new behavioural diff  ← the important one
 ```
 
-`npm test` runs all seven in that order.
+`npm test` runs all seven and the settings checks (`tools/test-all.mjs`): what waits on
+nothing runs beside what does, and the tests named `SafeDOM`, which time real taps,
+run alone at the end. About 4 minutes; one after another (`npm run test:serial`)
+they took 5½. While working, `npm run test:related` runs only what the change can
+reach (the type check, the tests that import a changed module or anything importing
+it, their unit bundles): seconds to a minute or two. Run `npm test` once before a
+commit.
 
 The three bundle-level checks cover different failure modes, which is why all
 three exist: `audit` reads the built file as **text**, `smoke` **executes** it,

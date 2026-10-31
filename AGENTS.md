@@ -71,7 +71,7 @@ build them.
 
 1. Find the owning module via REPOMAP §4 ("Where do I go to change…?").
 2. Change it. Keep the layering in REPOMAP §4 — imports point downward only.
-3. `npm test`.
+3. `npm run test:related` while working (only what the change can reach); `npm test` once before committing.
 4. If parity reports a diff, resolve it before moving on.
 5. After a version bump (`PLUGIN_VERSION` / changelog / `HEAD_HELP`), `npm run build` and **commit locally** (include `dist/`). Do not push unless asked.
 6. When they ask to put it on **main**, also fast-forward and push **nightly** to the same commit. Do not leave `origin/nightly` behind.

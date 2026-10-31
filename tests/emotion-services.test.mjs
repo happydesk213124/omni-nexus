@@ -223,3 +223,15 @@ test("the bot's images are read once, then again behind: a lookup never waits on
     assert.equal(f.api.spriteNow(f.person, 'sad', f.bot)?.path, 'assets/sad2.png', 'and the new list serves from then on');
   } finally { Date.now = realNow; risuai.getDatabase = read; }
 });
+
+test('a sprite wears the default costume, whichever one the roster has on', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform, pleated skirt' }, { name: 'swim', attire: 'red bikini' }], active_costume: 1 });
+  globalThis.__OMNI_REPLY_STREAMING__ = () => false;
+  try {
+    await f.api.makeSprite(f.person, 'happy', f.bot);
+    const prompt = JSON.stringify(f.host.naiRequests.at(-1).body);
+    assert.match(prompt, /school uniform, pleated skirt/);
+    assert.doesNotMatch(prompt, /bikini/, "the costume on now is not the face's");
+  } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
+});

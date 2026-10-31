@@ -14,8 +14,9 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
 /**
  * placeModule: ⚛️ omni place installed and on (the writer marks places). breathe: the
  * people on stage breathe; bounce: one comes in, changes face or steps forward with a spring.
+ * sfx: its 효과음 button, the effects of the lines read played (off, passed over).
  */
-export interface ViewerPrefs { auto: boolean; voice: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean }
+export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean }
 const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
 /** The box's letters, against 'normal' (the size the viewer had before it was a choice). */
 export const TEXT_SCALE: Record<ViewerTextSize, number> = { small: 0.88, normal: 1, large: 1.16, xlarge: 1.34 };
@@ -26,7 +27,7 @@ export const SPEED_PACE: Record<ViewerSpeed, number> = { instant: 0, fast: 1, no
 function normalize(raw: unknown): ViewerPrefs {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof ViewerPrefs, unknown>>;
   return {
-    auto: r.auto === true, voice: r.voice !== false,
+    auto: r.auto === true, voice: r.voice !== false, sfx: r.sfx !== false,
     skipWords: typeof r.skipWords === 'string' ? r.skipWords.slice(0, 2000) : '',
     speed: SPEEDS.includes(r.speed as ViewerSpeed) ? r.speed as ViewerSpeed : 'fast',
     textSize: TEXT_SIZES.includes(r.textSize as ViewerTextSize) ? r.textSize as ViewerTextSize : 'normal',
