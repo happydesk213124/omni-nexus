@@ -10,6 +10,8 @@ import { INLINE_CAST_MASK_SOURCE } from '../prompt/inline-shot-pattern';
 export type ViewerCg =
   | { kind: 'baked'; card: string; asset: string }
   | { kind: 'slot'; n: number }
+  /** A spinner a batch of lines is drawn in (`jobId_shot`), until its image is baked. */
+  | { kind: 'spin'; id: string }
   | { kind: 'wait'; id: string };
 export interface ViewerScene {
   id: string;
@@ -28,6 +30,7 @@ export interface ViewerScene {
 const BAKED = /\[\[@inray::([^:\[\]]{1,256})::(inxshot_[^:\[\]]{1,2048})(?:::[0-9]{1,6}::[0-9]{1,6})?(?:_[rs][0-9]{1,9})?(?:_pin)?\]\]/g;
 const SLOT = /\[\[inx(\d{1,3})\]\]/g;
 const WAIT = /\[\[@inraywait::([a-zA-Z0-9_-]{1,64})::/g;
+const SPIN = /\[\[@inrayspinner::([^:\[\]]{1,200})::/g;
 
 /** Images in a reply, by position. A streaming block is its slot until its image is baked. */
 export function replyImages(raw: string): Array<{ at: number; cg: ViewerCg }> {
@@ -35,6 +38,7 @@ export function replyImages(raw: string): Array<{ at: number; cg: ViewerCg }> {
   for (const m of raw.matchAll(BAKED)) out.push({ at: m.index!, cg: { kind: 'baked', card: m[1]!, asset: m[2]! } });
   for (const m of raw.matchAll(SLOT)) out.push({ at: m.index!, cg: { kind: 'slot', n: Number(m[1]) } });
   for (const m of raw.matchAll(WAIT)) out.push({ at: m.index!, cg: { kind: 'wait', id: m[1]! } });
+  for (const m of raw.matchAll(SPIN)) out.push({ at: m.index!, cg: { kind: 'spin', id: m[1]! } });
   return out.sort((a, b) => a.at - b.at);
 }
 

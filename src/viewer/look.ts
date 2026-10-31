@@ -43,6 +43,7 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-clock]{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.02em;color:#ece6d6}
 [x-omni-vn] [data-vn-clock]:not(:empty)::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold)}
 [x-omni-vn] [data-vn-clock] span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[x-omni-vn] [data-vn-clock]::after{flex:none;max-width:55%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:#bdb4c8;opacity:.85}
 [x-omni-vn] button{all:unset;box-sizing:border-box;white-space:nowrap;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;height:32px;min-width:32px;padding:0 10px;border-radius:999px;font-size:12px;letter-spacing:.04em;color:#efe9da;background:rgba(14,12,22,.55);border:1px solid rgba(255,255,255,.14);transition:background .15s,opacity .15s,color .15s}
 /* Full screen when Omni's own 크게보기 cannot open: the same bottom sheet of big emoji buttons. */
 [x-omni-vn] [data-vn-dock]{display:none;position:absolute;left:50%;bottom:12px;translate:-50% 0;width:min(440px,calc(100% - 24px));grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px;z-index:9;border-radius:14px;background:rgba(18,22,32,.9);border:1px solid rgba(255,255,255,.14)}
@@ -174,6 +175,8 @@ export interface StageState {
   cgNav?: { prev: boolean; next: boolean };
   /** The CG shown is a frame for an image still being drawn: there is nothing to see full screen. */
   cgPending?: boolean;
+  /** Why the stage has no background (being drawn, failed, no place said): shown after the clock. */
+  bgNote?: string;
   /** The story so far ends on this CG: its end cue shows with it. */
   endCg?: boolean;
   auto: boolean;
@@ -209,6 +212,7 @@ export function stageCss(s: StageState): string {
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
     s.msgs ? '[x-omni-vn] [data-vn-msgs]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}' : '',
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
+    s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',
   ].filter(Boolean).join('\n');

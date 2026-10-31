@@ -710,6 +710,8 @@ test('line images update base64 previews without further message writes until al
   };
   risuai.setChatToIndex=async(...args)=>{if((await f.chat()).message[0].data!==args[2].message[0].data)writes.push(args[2].message[0].data);return setChat(...args);};
   globalThis.__OMNI_SPINNER_PREVIEW__=async row=>previews.push(row);
+  // 옴니 뷰어 is handed each picture as the chat is, with its message.
+  const viewer=[];globalThis.__OMNI_VIEWER_PREVIEW__=row=>viewer.push(row);
   try {
     f.host.setLlmReply(JSON.stringify({scenes:[{shots:[{line:1,composition:'one'},{line:2,composition:'two'}]}]}));
     const first=await f.api.createJob(request(1,2));await secondStarted;
@@ -724,10 +726,11 @@ test('line images update base64 previews without further message writes until al
     assert.equal(writes.length,1,'intermediate completions never save the message body');
     assert.ok(previews.filter(row=>!row.deferPaint).length>=2);
     assert.ok(previews.every(row=>/^data:image\/\w+;base64,/.test(row.url)));
+    assert.deepEqual(viewer.map(row=>row.url),previews.map(row=>row.url));assert.ok(viewer.every(row=>row.messageIndex===f.request.message_index));
     releaseFourth();for(const id of [first.job_id,second.job_id]){await f.wait(id,j=>j.state==='done');await assertRuntimeReleased(f,id);}
     assert.equal(writes.length,2);assert.equal((writes[1].match(/@inray::/g)||[]).length,4);assert.doesNotMatch(writes[1],/\[\[@inrayspinner::[^\]]+\]\](?!\[\[@inray::)/);
     assert.equal(analysisBody(writes[1]),text);
-  } finally {releaseSecond();releaseFourth();risuai.nativeFetch=fetch;risuai.setChatToIndex=setChat;globalThis.__OMNI_SPINNER_PREVIEW__=preview;}
+  } finally {releaseSecond();releaseFourth();risuai.nativeFetch=fetch;risuai.setChatToIndex=setChat;globalThis.__OMNI_SPINNER_PREVIEW__=preview;delete globalThis.__OMNI_VIEWER_PREVIEW__;}
 });
 
 test('96 lines at size 20 insert ready slots, remaining plans, then final assets in exactly three writes',{timeout:12000},async()=>{
