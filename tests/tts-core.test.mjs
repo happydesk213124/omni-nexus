@@ -176,3 +176,13 @@ test('a limit of 0 keeps every line that has at least one spoken character',()=>
   assert.equal(api.hasTtsSpeech('…!?',0),false,'punctuation alone is still not speech');
   assert.equal(api.hasTtsSpeech('',0),false);
 });
+
+test('코스튬에 따라 음성 변경: a line naming a costume speaks with its voice only when switched on and given one', () => {
+  const card = { costumeVoice: true, costumeFish: { 2: 'swim-voice', 3: '' } };
+  assert.equal(api.costumeVoiceOf(card, { costume: 2 }), 'swim-voice');
+  assert.equal(api.costumeVoiceOf(card, { costume: 3 }), '', 'a costume left empty: the card voice');
+  assert.equal(api.costumeVoiceOf(card, { costume: 1 }), '', 'a costume never given one: the card voice');
+  assert.equal(api.costumeVoiceOf(card, {}), '', 'the default costume: the card voice');
+  assert.equal(api.costumeVoiceOf({ ...card, costumeVoice: false }, { costume: 2 }), '', 'switched off: the card voice');
+  assert.equal(api.costumeVoiceOf(null, { costume: 2 }), '');
+});

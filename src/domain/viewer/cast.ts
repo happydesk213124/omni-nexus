@@ -8,11 +8,13 @@
  * there ahead of it told who was about to speak. At most `max` stand, the latest to
  * speak; `reach` Infinity: none steps off.
  */
-export interface StageLine { who: string; face: string | null }
+export interface StageLine { who: string; face: string | null; costume?: number }
 export interface StageMember {
   who: string;
   /** Their latest line's face, up to here. */
   face: string | null;
+  /** The costume their latest line names (0: the default one). */
+  costume: number;
   speaking: boolean;
   /** Who is in front when they overlap: 0 spoke last, then on back. */
   front: number;
@@ -25,17 +27,18 @@ export function stageAt(lines: readonly (StageLine | null)[], at: number, max = 
   for (const line of lines) { if (line) count++; textAt.push(count); }
   const here = textAt[Math.min(at, lines.length - 1)] ?? -1;
   const speaker = lines[at]?.who ?? '';
-  const seen = new Map<string, { first: number; last: number; face: string | null }>();
+  const seen = new Map<string, { first: number; last: number; face: string | null; costume: number }>();
   for (let i = 0; i <= at && i < lines.length; i++) {
     const line = lines[i];
     if (!line?.who) continue;
-    const row = seen.get(line.who) ?? { first: i, last: i, face: null };
-    row.last = i; row.face = line.face ?? row.face;
+    const row = seen.get(line.who) ?? { first: i, last: i, face: null, costume: 0 };
+    // A line without a costume number is in the default one: the number is never carried over.
+    row.last = i; row.face = line.face ?? row.face; row.costume = line.costume ?? 0;
     seen.set(line.who, row);
   }
   // The latest to speak first (the speaker, then who spoke before them): the first `max` stand, in that order in front.
   const chosen = [...seen.entries()].filter(([, r]) => here - textAt[r.last]! <= reach).sort(([, a], [, b]) => b.last - a.last).slice(0, max);
   const front = chosen.map(([who]) => who);
   // Left to right as they first came into the reply: people keep their spots as others come and go.
-  return chosen.sort(([, a], [, b]) => a.first - b.first).map(([who, r]) => ({ who, face: r.face, speaking: who === speaker, front: front.indexOf(who) }));
+  return chosen.sort(([, a], [, b]) => a.first - b.first).map(([who, r]) => ({ who, face: r.face, costume: r.costume, speaking: who === speaker, front: front.indexOf(who) }));
 }

@@ -38,3 +38,11 @@ test('a sprite prompt is looks plus fixed tags: no LLM', () => {
   assert.match(api.emotionPrompt({ looks: 'girl', face: 'sad', transparent: true, pose: 'full body' }), /^girl, 2::sad::, frown, downcast eyes, full body, transparent background$/);
   assert.match(api.emotionPrompt({ looks: 'girl', face: 'pouting' }), /2::pouting::/, 'an unmapped face is its own weighted tag');
 });
+
+test("a costume's sprite is named apart (omni_c2_이름_face) and is never taken for the default costume's", () => {
+  assert.equal(api.emotionAssetName('오미선', 'happy', 'webp', 2), 'omni_c2_오미선_happy.webp');
+  assert.equal(api.emotionAssetName('오미선', 'happy', 'webp'), 'omni_오미선_happy.webp', 'the default costume as ever');
+  assert.equal(api.assetMatchesExpression('omni_c2_오미선_happy.webp', ['오미선'], 'happy'), false);
+  assert.equal(api.assetMatchesExpression('omni_c2_오미선_happy.webp', ['오미선_c2'], 'happy'), true);
+  assert.equal(api.assetMatchesExpression('omni_c2_오미선_happy.webp', ['오미선_c1'], 'happy'), false);
+});

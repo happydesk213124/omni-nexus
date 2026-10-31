@@ -45,6 +45,10 @@ export interface TtsCharacter {
   tone?: string;
   /** Own Fish model (`s2-pro`, `drama-3`, any id); absent or empty follows the model settings. */
   model?: string;
+  /** 코스튬에 따라 음성 변경: a line naming a costume (`이름_2`) speaks with that costume's voice, when it has one. */
+  costumeVoice?: boolean;
+  /** A costume's own Fish voice, by its number in the illustration character's list. */
+  costumeFish?: Record<string, string>;
 }
 export interface TtsSegment {
   id: string;
@@ -55,6 +59,8 @@ export interface TtsSegment {
   kind: 'dialogue' | 'narration' | 'illustration' | 'audition' | 'bgm' | 'sfx';
   /** A whole line in single quotes with no speaker: spoken by the monologue card. */
   monologue?: boolean;
+  /** The costume a cue names (`이름_2 (tone):`): its number in the speaker's illustration character's list; absent, the default one. */
+  costume?: number;
   /** The text read aloud when it differs from `text` (marked effect words removed). `text` stays the line as shown, for matching. */
   spoken?: string;
   /** A BGM cue's tags. */

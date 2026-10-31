@@ -1221,3 +1221,18 @@ test('the bot\'s note reaches the tagger before the session\'s, as a disabled lo
   assert.equal((await risuai.getCharacterFromIndex(0)).globalLore.some(e=>e.comment==='omni.nexus.note.character'),false,'an empty note takes the entry out');
   assert.equal((await f.api.getCharacterAuthorNote({character_id:'nobody'})).error.code,'not_found');
 });
+
+test("감정 에셋's 코스튬별 에셋: the streaming rules ask for a cue's costume number only with costumes on and the switch on", async () => {
+  // Costumes off to start with: an earlier test's switch may still be on in the shared settings.
+  const f = await fixture(); const card = f.api.getConfig().card; card.stream_inline_tags = true; card.costume = false;
+  const asks = async () => (await f.api.inlineTagRules()).includes(f.api.COSTUME_CUE_RULE);
+  await f.api.loadEmotionData();
+  assert.equal(await asks(), false, 'off: cues as they always were');
+  f.api.emotionData().settings.costumes = true;
+  assert.equal(await asks(), false, 'costumes off: no list to name one from');
+  card.costume = true;
+  assert.equal(await asks(), true);
+  assert.match(f.api.COSTUME_CUE_RULE, /Name_2 \(delivery\): "Dialogue"/);
+  f.api.emotionData().settings.costumes = false;
+  assert.equal(await asks(), false);
+});

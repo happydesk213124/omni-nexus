@@ -2,7 +2,7 @@ import type { TtsCharacter, TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
 import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/segment';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
-import { ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
+import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
 import { loadTtsData, ttsData, subscribeTts, updateTtsSettings } from '../storage/tts-store';
@@ -245,8 +245,11 @@ export class OmniTtsRuntime {
       const role = ttsSegmentRole(request.segment);
       const voiceKey = role === 'narrator' ? character?.voiceKey || settings.narrationVoice : character?.voiceKey;
       const voice = ttsData().voices.find(v => v.key === voiceKey);
-      const fishId = request.fishId || character?.fishId || voice?.fishId || '';
-      const recoverable = !request.fishId && character && request.segment.kind !== 'audition' && !role;
+      // 코스튬에 따라 음성 변경: a line naming a costume given its own voice speaks with it; every other, with the card's.
+      const worn = costumeVoiceOf(character, request.segment);
+      const fishId = request.fishId || worn || character?.fishId || voice?.fishId || '';
+      // A costume's voice that fails is not replaced by another for the whole card.
+      const recoverable = !request.fishId && !worn && character && request.segment.kind !== 'audition' && !role;
       // The speaker's own base delivery and model, else the settings' ones.
       const own = (value: unknown) => typeof value === 'string' ? value.trim() : '';
       const base = own(request.tone) || own(character?.tone) || settings.tone, model = own(request.model) || own(character?.model);

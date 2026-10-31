@@ -29,6 +29,7 @@ import { putSharedBackgrounds, removeSharedBackgrounds, sharedBackgroundRows } f
 import { ttsData } from '../storage/tts-store';
 import { collectAssetNaiTags, listSearchableAssets } from './asset-tags';
 import { characterPreviewTags } from './character-preview';
+import { ensureCostumes } from '../domain/character/costume';
 import { listCharacters } from './characters';
 import { getConfig } from './context';
 
@@ -38,8 +39,8 @@ import { getConfig } from './context';
  * with fixed tags (no LLM) and saved as the bot's asset `이름_감정.png`.
  */
 export interface EmotionBot { id: string; index: number; character: Record<string, unknown> }
-/** shared: a background every bot uses (drawn for a sample place, kept in the 참고이미지 module). */
-export interface EmotionSprite { face: string; name: string; path: string; source: 'bot' | 'omni'; shared?: boolean }
+/** shared: a background every bot uses (drawn for a sample place, kept in the 참고이미지 module). costume: not the default one's. */
+export interface EmotionSprite { face: string; name: string; path: string; source: 'bot' | 'omni'; shared?: boolean; costume?: number }
 
 /** Every name a TTS character goes by: card name, triggers, given names, family+given both ways. */
 export function emotionNames(c: Pick<TtsCharacter, 'name' | 'triggers' | 'surname' | 'givenName' | 'surnameAliases' | 'givenAliases'>): string[] {
@@ -86,28 +87,30 @@ const botImages = (bot: EmotionBot): Promise<RisuNamedAsset[]> => { const now = 
 export function forgetEmotionPool(): void { pool = undefined; }
 
 /**
- * This person's image for this face, as known now, with no wait: Omni's own (newest)
- * first, then the bot's when allowed. undefined while the bot's images have never been
- * read (findSprite reads them).
+ * This person's image for this face (in this costume, 0 the default one), as known now, with
+ * no wait: Omni's own (newest) first, then the bot's when allowed. undefined while the bot's
+ * images have never been read (findSprite reads them).
  */
-export function spriteNow(c: TtsCharacter, face: string, bot: EmotionBot): EmotionSprite | null | undefined {
-  const data = emotionData();
+export function spriteNow(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): EmotionSprite | null | undefined {
+  const data = emotionData(), worn = costume ? { costume } : {};
   for (let i = data.made.length - 1; i >= 0; i--) {
     const m = data.made[i]!;
-    if (m.bot === bot.id && m.person === c.id && m.face === face) return { face, name: m.name, path: m.path, source: 'omni' };
+    if (m.bot === bot.id && m.person === c.id && m.face === face && (m.costume ?? 0) === costume) return { face, name: m.name, path: m.path, source: 'omni', ...worn };
   }
   if (!data.settings.useExisting) return null;
   const assets = poolNow(bot);
   if (!assets) return undefined;
-  const names = emotionNames(c), hit = assets.find(asset => assetMatchesExpression(asset.name, names, face));
-  return hit ? { face, name: hit.name, path: hit.key, source: 'bot' } : null;
+  // A costume's are Omni's own (`omni_이름_c2_happy`, in the bot once registered): its number reads as part of the name.
+  const names = costume ? emotionNames(c).map(name => `${name}_c${costume}`) : emotionNames(c);
+  const hit = assets.find(asset => assetMatchesExpression(asset.name, names, face));
+  return hit ? { face, name: hit.name, path: hit.key, source: 'bot', ...worn } : null;
 }
-export async function findSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite | null> {
+export async function findSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<EmotionSprite | null> {
   await loadEmotionData();
-  const now = spriteNow(c, face, bot);
+  const now = spriteNow(c, face, bot, costume);
   if (now !== undefined) return now;
   await botImages(bot);
-  return spriteNow(c, face, bot) ?? null;
+  return spriteNow(c, face, bot, costume) ?? null;
 }
 
 /** The illustration roster's person for a TTS character, if any. */
@@ -115,9 +118,21 @@ async function rosterPerson(c: TtsCharacter, bot: EmotionBot): Promise<Character
   const people = [...await listCharacters(GLOBAL_SCOPE).catch(() => []), ...await listCharacters(unifiedSessionIdForCharacter(bot.id)).catch(() => [])];
   return people.find(p => matchIllustrationSpeaker(p, [c], c.scope) === c) ?? null;
 }
-/** The looks a sprite is drawn from: the roster's, else the bot's asset metadata. '' when neither has any. */
-export async function spriteLooks(c: TtsCharacter, bot: EmotionBot): Promise<string> {
+/** The illustration character's costumes, by their numbers (0 the default one): what a cue's `이름_2` names. [] with none. */
+export async function spriteCostumes(c: TtsCharacter, bot: EmotionBot): Promise<Array<{ index: number; name: string; note: string }>> {
   const person = await rosterPerson(c, bot);
+  return person ? ensureCostumes(person).costumes.map((costume, index) => ({ index, name: costume.name, note: cleanText(costume.note, 120) })) : [];
+}
+/**
+ * The looks a sprite is drawn from: the roster's, else the bot's asset metadata. '' when neither has any.
+ * A costume other than the default is the illustration character's only: none there, nothing to draw it from.
+ */
+export async function spriteLooks(c: TtsCharacter, bot: EmotionBot, costume = 0): Promise<string> {
+  const person = await rosterPerson(c, bot);
+  if (costume) {
+    if (!person || !ensureCostumes(person).costumes[costume]) throw new Error(`${c.name}에게 ${costume}번 코스튬이 없습니다. 삽화 캐릭터 탭에서 코스튬을 확인해 주세요.`);
+    return characterPreviewTags(person, costume);
+  }
   // The default costume, whichever the roster has on now: a face is the same person on every line.
   const roster = person ? characterPreviewTags(person, 'default') : '';
   if (cleanText(roster)) return roster;
@@ -129,7 +144,7 @@ export async function spriteLooks(c: TtsCharacter, bot: EmotionBot): Promise<str
 // One sprite at a time, each asked for once; the asset tab and the viewer read `spriteJobs`.
 const jobs = new Map<string, Promise<EmotionSprite>>();
 let chain: Promise<unknown> = Promise.resolve();
-export const spriteJobKey = (bot: string, person: string, face: string): string => `${bot}\u0000${person}\u0000${face}`;
+export const spriteJobKey = (bot: string, person: string, face: string, costume = 0): string => `${bot}\u0000${person}\u0000${face}${costume ? `\u0000c${costume}` : ''}`;
 export const spriteJobs = (): ReadonlySet<string> => new Set(jobs.keys());
 /**
  * A draw that failed is tried again, never at once and never never: after 30 s, then a
@@ -139,8 +154,8 @@ export const spriteJobs = (): ReadonlySet<string> => new Set(jobs.keys());
 const failures = new Map<string, { at: number; count: number; message: string }>();
 const backoff = (count: number): number => Math.min(600_000, 30_000 * 2 ** Math.max(0, count - 1));
 /** What the viewer says under a face it has no picture for: being drawn, or why it failed. */
-export function spriteStatus(bot: string, person: string, face: string): { state: 'running' | 'failed' | ''; message: string } {
-  const key = spriteJobKey(bot, person, face);
+export function spriteStatus(bot: string, person: string, face: string, costume = 0): { state: 'running' | 'failed' | ''; message: string } {
+  const key = spriteJobKey(bot, person, face, costume);
   if (jobs.has(key)) return { state: 'running', message: '' };
   const failed = failures.get(key);
   return failed ? { state: 'failed', message: failed.message } : { state: '', message: '' };
@@ -159,16 +174,16 @@ function queueJob(key: string, draw: () => Promise<EmotionSprite>, force: boolea
 }
 
 /** Draws and saves one sprite. The bot's asset list gets it once no reply is streaming. `force`: no waiting out a failure. */
-export function makeSprite(c: TtsCharacter, face: string, bot: EmotionBot, force = false): Promise<EmotionSprite> {
-  return queueJob(spriteJobKey(bot.id, c.id, face), () => drawSprite(c, face, bot), force);
+export function makeSprite(c: TtsCharacter, face: string, bot: EmotionBot, force = false, costume = 0): Promise<EmotionSprite> {
+  return queueJob(spriteJobKey(bot.id, c.id, face, costume), () => drawSprite(c, face, bot, costume), force);
 }
 /**
  * A picture Omni made that can no longer be read (its file gone, or saved where Risu
  * cannot read it back) is forgotten, so it is drawn again: it no longer counts as made.
  */
-export async function forgetMade(bot: string, person: string, face: string): Promise<void> {
+export async function forgetMade(bot: string, person: string, face: string, costume = 0): Promise<void> {
   const data = await loadEmotionData(), before = data.made.length;
-  data.made = data.made.filter(m => !(m.bot === bot && m.person === person && m.face === face));
+  data.made = data.made.filter(m => !(m.bot === bot && m.person === person && m.face === face && (m.costume ?? 0) === costume));
   if (data.made.length !== before) await saveEmotionData();
 }
 const listeners = new Set<() => void>();
@@ -209,25 +224,25 @@ async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5
   if (!path) throw new Error('감정 에셋 파일을 저장하지 못했습니다.');
   return { bytes, path };
 }
-async function remember(owner: string, person: string, face: string, name: string, path: string): Promise<void> {
+async function remember(owner: string, person: string, face: string, name: string, path: string, costume = 0): Promise<void> {
   const data = emotionData();
-  data.made = [...data.made.filter(m => !(m.bot === owner && m.person === person && m.face === face)), { bot: owner, person, face, name, path, registered: false, at: Date.now() }];
+  data.made = [...data.made.filter(m => !(m.bot === owner && m.person === person && m.face === face && (m.costume ?? 0) === costume)), { bot: owner, person, face, name, path, registered: false, at: Date.now(), ...(costume ? { costume } : {}) }];
   await saveEmotionData();
   registerWhenIdle();
 }
-async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promise<EmotionSprite> {
+async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<EmotionSprite> {
   const settings = (await loadEmotionData()).settings;
-  const looks = sfwTags(await spriteLooks(c, bot));
+  const looks = sfwTags(await spriteLooks(c, bot, costume));
   if (!looks) throw new Error(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
     width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE,
     prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
   });
-  const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png');
-  await remember(bot.id, c.id, face, name, path);
-  dbg('emotion.sprite', { message: `${c.name} · ${face}`, path });
-  return { face, name, path, source: 'omni' };
+  const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png', costume);
+  await remember(bot.id, c.id, face, name, path, costume);
+  dbg('emotion.sprite', { message: `${c.name}${costume ? ` · ${costume}번 코스튬` : ''} · ${face}`, path });
+  return { face, name, path, source: 'omni', ...(costume ? { costume } : {}) };
 }
 
 // ── place backgrounds ──────────────────────────────────────────────────────
@@ -359,7 +374,7 @@ async function generatesFree(): Promise<boolean> {
   freeCheck = { at: Date.now(), free };
   return free;
 }
-export async function makeAhead(wants: ReadonlyArray<{ person: TtsCharacter; face: string } | { place: string }>, bot: EmotionBot): Promise<number> {
+export async function makeAhead(wants: ReadonlyArray<{ person: TtsCharacter; face: string; costume?: number } | { place: string }>, bot: EmotionBot): Promise<number> {
   const settings = (await loadEmotionData()).settings;
   if (!settings.enabled || !settings.autoGenerate || !wants.length || !await generatesFree()) return 0;
   let queued = 0;
@@ -369,8 +384,9 @@ export async function makeAhead(wants: ReadonlyArray<{ person: TtsCharacter; fac
       if (!settings.placeBackgrounds || !placeKey(want.place) || await findBackground(want.place, bot)) continue;
       void makeBackground(want.place, bot).catch(() => {}); queued++;
     } else {
-      if (await findSprite(want.person, want.face, bot) || !await spriteLooks(want.person, bot).catch(() => '')) continue;
-      void makeSprite(want.person, want.face, bot).catch(() => {}); queued++;
+      const costume = want.costume ?? 0;
+      if (await findSprite(want.person, want.face, bot, costume) || !await spriteLooks(want.person, bot, costume).catch(() => '')) continue;
+      void makeSprite(want.person, want.face, bot, false, costume).catch(() => {}); queued++;
     }
   }
   return queued;

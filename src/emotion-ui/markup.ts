@@ -48,6 +48,7 @@ ${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'))}
 <fieldset class="snd-gate" id="emo-faces-gate">
 ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'))}
 ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
+${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 에셋'), '<span id="emo-costumes-status" role="status"></span>')}
 </fieldset></div>
 <div class="group"><h3>그리기 · 태그로만</h3><div class="fields">
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
@@ -67,7 +68,7 @@ export const EMOTION_PANEL = VIEWER_PANEL + BACKGROUND_PANEL + FACES_PANEL;
 
 /** The character sheet's view switch and its 감정 에셋 section. */
 export const EMOTION_SHEET_SWITCH = '<div class="emo-sheet-switch" role="tablist"><button type="button" role="tab" data-emo-tab="voice" aria-selected="true">음성</button><button type="button" role="tab" data-emo-tab="faces" aria-selected="false">감정 에셋</button></div>';
-export const EMOTION_SHEET = '<div id="emo-char-section"><p id="emo-char-looks" class="emo-looks"></p><div class="actions"><button type="button" id="emo-char-make-seen">본 감정 모두 만들기</button><button type="button" id="emo-char-make-all">기본 표정 전부 만들기</button><small id="emo-char-status" role="status"></small></div><div id="emo-char-grid" class="emo-grid"></div></div>';
+export const EMOTION_SHEET = '<div id="emo-char-section"><div id="emo-char-costumes" class="emo-costume-bar" role="tablist" aria-label="코스튬" hidden></div><p id="emo-char-looks" class="emo-looks"></p><div class="actions"><button type="button" id="emo-char-make-seen">본 감정 모두 만들기</button><button type="button" id="emo-char-make-all">기본 표정 전부 만들기</button><small id="emo-char-status" role="status"></small></div><div id="emo-char-grid" class="emo-grid"></div></div>';
 
 export const EMOTION_CSS = `
 #emo-bg .emo-bg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
@@ -97,6 +98,9 @@ export const EMOTION_CSS = `
 .emo-sheet-switch{display:flex;gap:4px;margin:0 0 10px}
 .emo-sheet-switch button{flex:1;min-height:34px}
 .emo-sheet-switch button[aria-selected="true"]{border-color:#7132f5;background:#7132f533}
+.emo-costume-bar{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.emo-costume-bar button{min-height:32px;padding:0 12px}
+.emo-costume-bar button[aria-selected="true"]{border-color:#7132f5;background:#7132f533}
 #character-form[data-emo-view="faces"] .editor-scroll>:not(.emo-sheet-switch):not(#emo-char-section){display:none!important}
 #character-form:not([data-emo-view="faces"]) #emo-char-section{display:none}
 #emo-char-section .emo-looks{font-size:12px;opacity:.8;margin:0 0 8px;word-break:break-word}

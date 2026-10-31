@@ -40,13 +40,16 @@ export function speechTone(line: string, base: string): string {
 export function fishText(text: string, tone: string): string {
   return toneCues(tone).slice(0, 4).map(cue => `[${cue}]`).join('') + text;
 }
-export function cueHeader(value:string): {speaker:string;tone:string}|null {
+export function cueHeader(value:string): {speaker:string;tone:string;costume?:number}|null {
   let prefix=value.trim().replace(/[:：]\s*$/,'').trim();
   let tone='';
   const opening=prefix.indexOf('('),closing=prefix.indexOf(')',opening+1);
   if(opening>=0){if(closing!==prefix.length-1)return null;tone=prefix.slice(opening+1,closing).trim();if(!/^[a-z ,\-]{1,100}$/i.test(tone))return null;prefix=prefix.slice(0,opening).trim();}
   const speaker=prefix.replace(/^[\s*\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]+/u,'').replace(/\*+$/,'').trim();
   if(!speaker||speaker.length>80||!/[\p{L}\p{N}]/u.test(speaker)||/[<>:："“”(){}\[\]|#!`~]/.test(speaker))return null;
+  // `이름_2`: the costume the speaker wears, by its number in their illustration character's list (`_0`, the default, as none).
+  const worn=/^(.*\S)_(\d{1,2})$/u.exec(speaker);
+  if(worn)return Number(worn[2])?{speaker:worn[1]!.trim(),tone,costume:Number(worn[2])}:{speaker:worn[1]!.trim(),tone};
   return {speaker,tone};
 }
 export function quotedCue(value:string):string|null {

@@ -18,7 +18,7 @@ Never label code, hidden reasoning blocks, images or status panels as dialogue o
 // Other modules therefore see the reply exactly as written: no token, no moved
 // line break, no rewritten name. We only append a zero-width control to lines
 // that are still plain prose once every other module has finished.
-export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, hideTone: -10220, hideName: -10221, unguard: -10230 } as const;
+export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, costume: -10219, hideTone: -10220, hideName: -10221, unguard: -10230 } as const;
 const GUARD_OPEN = '\uf8f0', GUARD_CLOSE = '\uf8f1';
 // img: a bot's regex may draw a heart or an emoji as a picture inside the line.
 const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|img|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
@@ -132,6 +132,9 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
         out: `$1$2$3${anchor('narration')}$4$5` },
       { comment: 'omnitts-release-guard', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.release}>`,
         in: '\\uF8F1(?:<span data-omnitts-tail="1"><button [^<>]*></button></span>)+', out: GUARD_CLOSE },
+      // `이름_2`'s number is the costume, for the viewer and the voice: never shown, whatever the name and tone show.
+      { comment: 'omnitts-hide-cue-costume', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.costume}>`,
+        in: `(^|\\n)${HEADER_PREFIX}${SPEAKER}_\\d{1,2}(?=[ \\t]*(?:\\([A-Za-z][A-Za-z ,\\-]{0,99}\\))?${BEFORE_ANCHORED_QUOTE})`, out: '$1$2$3$4' },
       ...hideRules,
       { comment: 'omnitts-unguard', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.unguard}>`, in: '[\\uF8F0\\uF8F1]', out: '' },
     ],

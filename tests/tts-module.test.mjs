@@ -450,3 +450,17 @@ test('punctuation a bot rewrites (… as .., curly quotes as straight) keeps the
   assert.deepEqual(kinds(html), ['dialogue']);
   assert.equal(bound(html, source)[0]?.text, '으아아…!!♡ 카메라가 돌아가고 있어—!!♡');
 });
+
+test('a cue naming a costume (이름_2): the speaker is the person, the number their costume; the chat never shows it', () => {
+  const [one] = api.parseTtsMessage('하린_2 (laugh): "안녕."');
+  assert.deepEqual([one.speaker, one.tone, one.costume, one.text], ['하린', 'laugh', 2, '안녕.']);
+  assert.deepEqual(api.parseTtsMessage('하린_1 (sad):\n"응, 좋아."').map(s => [s.speaker, s.costume]), [['하린', 1]], 'the header on its own line too');
+  assert.deepEqual(api.parseTtsMessage('하린_0: "안녕."').map(s => [s.speaker, s.costume]), [['하린', undefined]], '_0 is the default costume: no number');
+  assert.deepEqual(api.parseTtsMessage('하린: "안녕."').map(s => s.costume), [undefined]);
+  assert.deepEqual(api.parseTtsMessage('R2_D2: "삐빅."').map(s => s.speaker), ['R2_D2'], 'only a number after the last _ is a costume');
+  for (const [settings, shown] of [[{ hideName: true, hideTone: true }, '"안녕."'], [{ hideName: false, hideTone: true }, '하린: "안녕."'], [{ hideName: true, hideTone: false }, '(laugh) "안녕."'], [{ hideName: false, hideTone: false }, '하린 (laugh): "안녕."']]) {
+    const html = apply('하린_2 (laugh): "안녕."', api.ttsModule({ ...api.ttsDefaults(), ...settings }).regex);
+    assert.equal(strip(html), shown, JSON.stringify(settings));
+    assert.deepEqual(bound(html, '하린_2 (laugh): "안녕."').map(s => s?.text), ['안녕.'], 'the line keeps its control');
+  }
+});
