@@ -25,6 +25,8 @@ export interface ViewerScene {
   end: number;
   /** The segment this scene voices (TTS), when it is one. */
   segmentId?: string;
+  /** The costume its cue names (`이름_2`); absent, the default one. */
+  costume?: number;
   cg?: ViewerCg;
 }
 
@@ -86,7 +88,7 @@ export function buildScenes(raw: string, segments: readonly TtsSegment[], words:
       face = expressionOfTone(s.tone, words) ?? faces.get(s.speaker) ?? null;
       if (face) faces.set(s.speaker, face);
     }
-    out.push({ id: `l:${s.id}`, kind: line ? 'line' : 'narration', speaker: line ? s.speaker : '', face, text: s.text, start: s.start, end: s.end, segmentId: s.id });
+    out.push({ id: `l:${s.id}`, kind: line ? 'line' : 'narration', speaker: line ? s.speaker : '', face, text: s.text, start: s.start, end: s.end, segmentId: s.id, ...(line && s.costume ? { costume: s.costume } : {}) });
   }
   flushImages(Infinity);
   return out;

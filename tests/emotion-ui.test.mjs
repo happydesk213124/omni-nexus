@@ -98,6 +98,10 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.waitForFunction(() => document.getElementById('emo-faces-gate').disabled && window.emotionData().settings.enabled === false);
     await page.locator('#emo-enabled').check();
     await page.waitForFunction(() => !document.getElementById('emo-faces-gate').disabled);
+    // 코스튬별 에셋 waits on streaming tags with costumes: the writer names a costume from the list they bring.
+    assert.equal(await page.locator('#emo-costumes').isDisabled(), true);
+    assert.match(await page.locator('#emo-costumes-status').textContent(), /스트리밍 중 태그 생성과 코스튬을 켜면/);
+    assert.equal(await page.locator('#emo-costumes').evaluate(n => n.closest('.row')?.dataset.nxHelpId), 'emo-costumes');
     // What each row does is the 「?」's (no gray lines under the rows).
     assert.equal(await page.locator('#emo-place-module').evaluate(n => n.closest('.row')?.dataset.nxHelpId), 'emo-place-module');
     assert.equal(await page.evaluate(() => window.emotionData().settings.prefix), '', "not 감정 에셋's own settings");

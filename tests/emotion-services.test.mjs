@@ -235,3 +235,26 @@ test('a sprite wears the default costume, whichever one the roster has on', asyn
     assert.doesNotMatch(prompt, /bikini/, "the costume on now is not the face's");
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
 });
+
+test('a costume named in a cue (이름_2) has its own sprites: drawn in that costume, saved and found apart from the default ones', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform, pleated skirt' }, { name: 'swim', attire: 'red bikini' }] });
+  globalThis.__OMNI_REPLY_STREAMING__ = () => false;
+  try {
+    assert.deepEqual((await f.api.spriteCostumes(f.person, f.bot)).map(c => [c.index, c.name]), [[0, 'default'], [1, 'swim']]);
+    const swim = await f.api.makeSprite(f.person, 'happy', f.bot, true, 1);
+    assert.equal(swim.name, 'omni_c1_오미선_happy.png');
+    assert.equal(swim.costume, 1);
+    const prompt = JSON.stringify(f.host.naiRequests.at(-1).body);
+    assert.match(prompt, /red bikini/);
+    assert.doesNotMatch(prompt, /school uniform/);
+    assert.equal((await f.api.findSprite(f.person, 'happy', f.bot))?.path, 'assets/emotion-happy.png', "the default costume's face is the bot's own, not the swimsuit's");
+    assert.equal((await f.api.findSprite(f.person, 'happy', f.bot, 1))?.path, swim.path);
+    assert.equal(f.api.emotionData().made.at(-1).costume, 1);
+    await f.api.makeSprite(f.person, 'happy', f.bot, true);
+    assert.match(JSON.stringify(f.host.naiRequests.at(-1).body), /school uniform/);
+    assert.notEqual((await f.api.findSprite(f.person, 'happy', f.bot))?.path, swim.path);
+    assert.equal(f.api.spriteJobKey('bot', 't-misun', 'happy'), 'bot\u0000t-misun\u0000happy', "the default costume's job as ever");
+    await assert.rejects(f.api.makeSprite(f.person, 'happy', f.bot, true, 5), /5번 코스튬이 없습니다/);
+  } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
+});

@@ -58,3 +58,14 @@ test("a redrawn picture is one scene, as the chat draws it: the newest of its ru
   const framed = '[[@inrayspinner::job7_0::832::1216]]\n[[@inray::card1::inxshot_abc::832::1216]][[@inray::card1_r1::inxshot_new::832::1216_r1_pin]]\n하린: "왔어?"\n[[@inrayspinner::job7_1::832::1216]]';
   assert.deepEqual(api.replyImages(framed).map(i => i.cg), [{ kind: 'baked', card: 'card1_r1', asset: 'inxshot_new' }, { kind: 'spin', id: 'job7_1' }], 'a spinner with no image after it is still being drawn');
 });
+
+test("a line's costume (이름_2) rides on its scene; the stage dresses each person in their latest line's, never carried over", async () => {
+  const raw = '하린_2 (happy): "수영하자."\n오미선: "좋아."\n하린: "옷 갈아입고 왔어."';
+  const scenes = api.buildScenes(raw, api.parseTtsMessage(raw));
+  assert.deepEqual(scenes.map(s => [s.speaker, s.costume]), [['하린', 2], ['오미선', undefined], ['하린', undefined]]);
+  const cast = await build({ stdin: { contents: "export * from './src/domain/viewer/cast';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node' });
+  const { stageAt } = await import('data:text/javascript;base64,' + Buffer.from(cast.outputFiles[0].text).toString('base64'));
+  const lines = scenes.map(s => ({ who: s.speaker, face: s.face, costume: s.costume }));
+  assert.deepEqual(stageAt(lines, 1).map(m => [m.who, m.costume]), [['하린', 2], ['오미선', 0]]);
+  assert.deepEqual(stageAt(lines, 2).map(m => [m.who, m.costume]), [['하린', 0], ['오미선', 0]], 'a line without a number is the default costume');
+});

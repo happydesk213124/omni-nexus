@@ -103,10 +103,11 @@ export function sfwTags(tags: string): string {
 export const SPRITE_NEGATIVE = 'nsfw, nude, naked, nipples, penis, pussy, genitals, explicit';
 
 /** The emotion asset name Omni writes: `이름_감정.png` (PNG keeps a transparent background). */
-export function emotionAssetName(person: string, face: string, ext = 'png'): string {
+export function emotionAssetName(person: string, face: string, ext = 'png', costume = 0): string {
   const name = String(person ?? '').normalize('NFKC').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
-  // `omni_` first: never mixed up with the bot's own assets.
-  return `omni_${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
+  // `omni_` first: never mixed up with the bot's own assets. A costume's (`c2_`) is not the default one's either:
+  // its mark stands before the name, for beside the face a phrase (`c2 happy`) reads as that face, the name left bare.
+  return `omni_${costume > 0 ? `c${costume}_` : ''}${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
 }
 
 // ── prompt ─────────────────────────────────────────────────────────────────

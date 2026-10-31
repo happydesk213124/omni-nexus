@@ -24,18 +24,23 @@ export interface EmotionSettings {
   pose: string;
   /** V5 only: a transparent background instead of a white one. */
   transparent: boolean;
+  /**
+   * 코스튬별 에셋: a cue naming a costume (`이름_2`) shows that costume's faces, and the writer is asked to name
+   * it. Only with streaming tags and costumes on (the writer sees the costume list then).
+   */
+  costumes: boolean;
   /** Base face → its tags, where the user changed them. */
   faceTags: Record<string, string>;
   /** More words → a base face (`pouting` → `sad`). */
   words: Record<string, string>;
 }
-/** A sprite Omni saved. `registered`: it is in the bot's asset list (writes wait for a reply to end). */
-export interface EmotionMade { bot: string; person: string; face: string; name: string; path: string; registered: boolean; at: number }
+/** A sprite Omni saved. `registered`: it is in the bot's asset list (writes wait for a reply to end). `costume`: not the default one's. */
+export interface EmotionMade { bot: string; person: string; face: string; name: string; path: string; registered: boolean; at: number; costume?: number }
 export interface EmotionData { settings: EmotionSettings; seen: Record<string, string[]>; made: EmotionMade[] }
 
 export const emotionDefaults = (): EmotionSettings => ({
   enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, family: 'v5', width: 832, height: 1216,
-  prefix: '', suffix: '', pose: '', transparent: true, faceTags: {}, words: {},
+  prefix: '', suffix: '', pose: '', transparent: true, costumes: false, faceTags: {}, words: {},
 });
 
 let state: EmotionData | undefined;
@@ -63,7 +68,7 @@ export function normalizeEmotionSettings(raw: unknown): EmotionSettings {
   return {
     enabled: r.enabled !== false, useExisting: r.useExisting !== false, autoGenerate: r.autoGenerate !== false, placeBackgrounds: r.placeBackgrounds !== false,
     family: r.family === 'v4' ? 'v4' : 'v5', width: size(r.width, d.width), height: size(r.height, d.height),
-    prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), pose: text(r.pose, 600), transparent: r.transparent !== false,
+    prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
     faceTags: strings(r.faceTags, () => true), words: strings(r.words, (_k, value) => !!baseExpression(value)),
   };
 }
@@ -75,6 +80,7 @@ export function normalizeEmotionData(raw: unknown): EmotionData {
     // A background's face is its place tags, far past a face's 40: cut there, it never matched again after a reload.
     bot: text(m.bot, 200), person: text(m.person, 120), face: text(m.face, 400), name: text(m.name, 200), path: text(m.path, 800),
     registered: m.registered === true, at: Number(m.at) || 0,
+    ...(Number.isInteger(m.costume) && Number(m.costume) > 0 && Number(m.costume) < 100 ? { costume: Number(m.costume) } : {}),
   })).filter(m => m.bot && m.name && m.path).slice(-2000);
   return { settings: normalizeEmotionSettings(r.settings), seen, made };
 }

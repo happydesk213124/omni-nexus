@@ -16,6 +16,13 @@ import { el, input, val, set, text, list, characterGender, genderLabel, esc, on,
 import type { TtsLibrary } from './library';
 import { uuid } from '../core/util/text';
 import { characterAvatar, roleAvatar } from './character-avatar';
+import { currentEmotionBot, spriteCostumes } from '../services/emotion-assets';
+
+/**
+ * 코스튬에 따라 음성 변경, at the top of the voice page: a costume of the card's illustration character (past the
+ * default one) may have a voice of its own, heard on the lines naming it (`이름_2`). Left empty, the card's voice.
+ */
+const COSTUME_VOICE = '<div id="c-costume-voice-wrap" class="costume-voice"><div class="row"><div class="copy"><b>코스튬에 따라 음성 변경</b><small>대사에 코스튬 번호(이름_2)가 붙은 줄만 그 코스튬의 음성으로 읽습니다. 비워 둔 코스튬은 기본 음성입니다.</small></div><label class="switch"><input type="checkbox" id="c-costume-voice" aria-label="코스튬에 따라 음성 변경"></label></div><div id="c-costume-voice-list" hidden></div></div>';
 
 /** The popup's model list: '' follows the model settings; anything else is typed under 직접 입력. */
 const MODEL_CHOICES = ['', 's2.1-pro', 's2.1-pro-free', 's2-pro', 's1', 'drama-3'];
@@ -40,6 +47,8 @@ export class TtsCharacters {
   private imageRoot?: HTMLElement;
   private saveTimer?: ReturnType<typeof setTimeout>;
   private saveRevision = 0;
+  /** The costume list being read for the card on show: an older read lands on nothing. */
+  private costumeEpoch = 0;
   constructor(private library: TtsLibrary, private tab: (name: string) => void) {}
   dispose(): void { this.visibility?.disconnect(); void this.flushSave(); }
   /** Role cards lead the list (this bot's pair, then the global pair); everyone else keeps roster order. */
@@ -146,6 +155,7 @@ export class TtsCharacters {
     set('c-language', ['', 'original', 'en', 'ja', 'ko'].includes(language) ? language : 'custom'); set('c-language-custom', ['', 'original', 'en', 'ja', 'ko'].includes(language) ? '' : language);
     el('c-language-custom-wrap').hidden = val('c-language') !== 'custom';
     this.fillToneModel(c);
+    void this.fillCostumeVoices(c);
     const autoGain = c.autoGain ?? c.gain === 0;
     input('c-gain-manual').checked = !autoGain; input('c-gain').disabled = autoGain;
     text('c-gain-value', autoGain ? '자동' : `${c.gain} dB`); el('character-voice-suggestions').replaceChildren(); el('character-voice-suggestions').hidden = true;
@@ -193,6 +203,33 @@ export class TtsCharacters {
     set('c-rate', String(rate)); input('c-rate-on').checked = src.rate !== undefined; rates.disabled = src.rate === undefined;
     set('c-follow-char', src.followId || ''); text('character-voice-choice', this.voiceLabel(src)); this.fillToneModel(src);
   }
+  /** 코스튬에 따라 음성 변경: its switch now, the costumes when the illustration character is read (a role card has none). */
+  private async fillCostumeVoices(c: TtsCharacter): Promise<void> {
+    const wrap = document.getElementById('c-costume-voice-wrap'), list = document.getElementById('c-costume-voice-list'), box = document.getElementById('c-costume-voice') as HTMLInputElement | null;
+    if (!wrap || !list || !box) return;
+    const mine = ++this.costumeEpoch;
+    wrap.hidden = !!c.role; box.checked = c.costumeVoice === true; list.hidden = !box.checked; list.innerHTML = '';
+    if (c.role) return;
+    const bot = await currentEmotionBot().catch(() => null);
+    const costumes = bot ? (await spriteCostumes(c, bot).catch(() => [])).filter(x => x.index > 0) : [];
+    if (mine !== this.costumeEpoch) return;
+    list.innerHTML = costumes.length
+      ? `<div class="fields">${costumes.map(x => `<label class="field"><span>${x.index}번 · ${esc(x.name)}</span><input data-costume-fish="${x.index}" maxlength="128" placeholder="비우면 기본 음성 · Fish ID 또는 링크" value="${esc(c.costumeFish?.[String(x.index)] || '')}"></label>`).join('')}</div>`
+      : '<small>삽화 캐릭터 탭에서 이 캐릭터에 코스튬을 더하면, 코스튬마다 음성을 넣을 수 있습니다.</small>';
+  }
+  /**
+   * The switch and each costume's voice, over what the card had: a costume not listed now (its list still being
+   * read, or gone from the illustration character) keeps its voice. null: a voice that is no Fish ID or link.
+   */
+  private readCostumeVoices(): Pick<TtsCharacter, 'costumeVoice' | 'costumeFish'> | null {
+    const fish: Record<string, string> = { ...(this.draft?.costumeFish || {}) };
+    for (const field of document.querySelectorAll<HTMLInputElement>('#c-costume-voice-list [data-costume-fish]')) {
+      const raw = field.value.trim(), id = fishVoiceId(raw), costume = field.dataset.costumeFish || '';
+      if (raw && !id) return null;
+      if (id) fish[costume] = id; else delete fish[costume];
+    }
+    return { costumeVoice: (document.getElementById('c-costume-voice') as HTMLInputElement | null)?.checked || undefined, costumeFish: Object.keys(fish).length ? fish : undefined };
+  }
   /** The card's own base delivery and model; a model not in the list shows as typed. */
   private fillToneModel(src: TtsCharacter): void {
     const model = (src.model || '').trim(), known = MODEL_CHOICES.includes(model);
@@ -212,13 +249,14 @@ export class TtsCharacters {
     const fishId=fishVoiceId(val('c-id')),voice=fishId ? characterVoice({voiceKey:this.draft.voiceKey,fishId}) : undefined;
     const language = val('c-language') === 'custom' ? val('c-language-custom').trim() : val('c-language'), rate = input('c-rate-on').checked ? Number(val('c-rate')) : undefined;
     if (this.draft.role) return { ...this.draft, tags: list(val('c-tags')), gender: characterGender(val('c-gender')), fishId, voiceKey: voice?.key || '', gain: Number(val('c-gain')), autoGain: !input('c-gain-manual').checked, language, rate, ...this.readToneModel(), followGlobal: this.draft.scope === 'global' ? undefined : input('c-follow-global').checked, followId: val('c-follow-char') || undefined };
-    return { ...this.draft, name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:characterGender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true', autoGain:!input('c-gain-manual').checked, language, rate, ...this.readToneModel() };
+    return { ...this.draft, ...this.readCostumeVoices(), name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:characterGender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true', autoGain:!input('c-gain-manual').checked, language, rate, ...this.readToneModel() };
   }
   private save(commitIdentity = false): boolean {
     if (!this.draft || !ttsData().settings.enabled) return false;
     const c = this.read(), raw = val('c-id').trim();
     if (!c.name) { text('character-save-status','이름을 입력해 주세요.'); return false; }
     if (raw && !c.fishId) { text('character-save-status','Fish ID 또는 링크를 확인해 주세요.'); return false; }
+    if (!c.role && !this.readCostumeVoices()) { text('character-save-status','코스튬 음성의 Fish ID 또는 링크를 확인해 주세요.'); return false; }
     text('character-voice-choice',this.voiceLabel(c));
     try {
       // Typing a temporary name must not merge away another person's record.
@@ -289,6 +327,13 @@ export class TtsCharacters {
     on('character-jev-folder', async () => { await updateTtsSettings({ characterFolder: val('character-jev-folder') }); }, 'change');
     el('c-language')?.addEventListener('change', () => { el('c-language-custom-wrap').hidden = val('c-language') !== 'custom'; });
     el('c-model')?.addEventListener('change', () => { el('c-model-custom-wrap').hidden = val('c-model') !== 'custom'; });
+    // 코스튬에 따라 음성 변경 heads the voice page, under 음성 | 감정 에셋 when that switch is already there.
+    const scroll = el('character-form').querySelector('.editor-scroll'), sheetSwitch = scroll?.querySelector('.emo-sheet-switch');
+    if (scroll && !el('c-costume-voice-wrap')) { if (sheetSwitch) sheetSwitch.insertAdjacentHTML('afterend', COSTUME_VOICE); else scroll.insertAdjacentHTML('afterbegin', COSTUME_VOICE); }
+    el('c-costume-voice')?.addEventListener('change', () => { el('c-costume-voice-list').hidden = !input('c-costume-voice').checked; });
+    // Its costume fields come and go with the card: listened to where they are put.
+    el('c-costume-voice-list')?.addEventListener('input', event => { if ((event.target as Element).matches('[data-costume-fish]') && ttsData().characters.some(c => c.id === this.draft?.id)) this.save(); });
+    el('c-costume-voice-list')?.addEventListener('change', event => { if ((event.target as Element).matches('[data-costume-fish]')) this.save(); });
     for (const field of el('character-form').querySelectorAll<HTMLInputElement | HTMLSelectElement>('input,select')) {
       field.addEventListener('input',()=>{if(ttsData().characters.some(c=>c.id===this.draft?.id))this.save();});
       field.addEventListener('change',()=>{this.save(['c-name','c-surname','c-given_name','c-surname_variants','c-given_name_variants'].includes(field.id));});

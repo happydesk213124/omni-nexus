@@ -126,7 +126,14 @@ test('production settings persist independently, edit voice tiles and survive re
     const mobileToolbar=await page.locator('.character-command-bar').boundingBox();
     for(const id of ['char-search','char-scope-filter','command-characters','add-character']){const box=await page.locator('#'+id).boundingBox();assert.ok(box&&box.x>=0&&box.x+box.width<=390&&box.y+box.height<=mobileToolbar.y+mobileToolbar.height+1,id+' remains accessible on mobile');}
     await page.setViewportSize({width:1360,height:900});
-    await page.locator('#add-character').click();await page.locator('#c-name').fill('하린');await page.locator('#c-id').fill('https://fish.audio/ko/app/m/4e118bfbb83e401c84699c09b5f08257/');await page.locator('#character-done').click();
+    await page.locator('#add-character').click();
+    // 코스튬에 따라 음성 변경 heads the voice page: off, nothing more; on, the costumes' voices (none without an illustration character).
+    assert.equal(await page.locator('#c-costume-voice').isChecked(),false);
+    assert.equal(await page.locator('#c-costume-voice-list').isVisible(),false);
+    await page.locator('#c-costume-voice').check();
+    await page.waitForFunction(()=>!document.getElementById('c-costume-voice-list').hidden&&/삽화 캐릭터 탭에서/.test(document.getElementById('c-costume-voice-list').textContent));
+    await page.locator('#c-costume-voice').uncheck();
+    await page.locator('#c-name').fill('하린');await page.locator('#c-id').fill('https://fish.audio/ko/app/m/4e118bfbb83e401c84699c09b5f08257/');await page.locator('#character-done').click();
     // Every bot always has narrator and monologue cards next to the global pair.
     assert.equal(await page.locator('#character-list .char-card').count(),3,'all scopes lists only this bot role cards');
     assert.deepEqual(await page.locator('#character-list .char-card b').allTextContents(),['나레이션','혼잣말','하린']);

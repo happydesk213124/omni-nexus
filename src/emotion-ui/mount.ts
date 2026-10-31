@@ -1,7 +1,7 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
 import { BASE_EXPRESSIONS, baseExpression } from '../domain/emotion/emotions';
-import { backgroundPlaces, collectFaces, currentEmotionBot, deleteBackground, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { backgroundPlaces, collectFaces, currentEmotionBot, deleteBackground, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { placeKey, samePlace } from '../domain/viewer/place';
 import { ensurePlaceModule } from '../storage/place-module';
@@ -11,6 +11,7 @@ import { ttsData } from '../storage/tts-store';
 import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerBgPick, type ViewerSpeed, type ViewerTextSize } from '../storage/viewer-prefs';
 import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTION_TABS } from './markup';
 import { attachSoundHelp } from '../sound-ui/help';
+import { getConfig } from '../services/context';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -41,13 +42,25 @@ async function thumb(path: string): Promise<string> {
 function fillSettings(s: EmotionSettings): void {
   const check = (id: string, on: boolean) => { const node = $<HTMLInputElement>(id); if (node) node.checked = on; };
   const value = (id: string, v: string) => { const node = $<HTMLInputElement>(id); if (node && document.activeElement !== node) node.value = v; };
-  check('emo-enabled', s.enabled); check('emo-existing', s.useExisting); check('emo-auto', s.autoGenerate); check('emo-places', s.placeBackgrounds);
+  check('emo-enabled', s.enabled); check('emo-existing', s.useExisting); check('emo-auto', s.autoGenerate); check('emo-places', s.placeBackgrounds); check('emo-costumes', s.costumes);
+  costumeGate();
   value('emo-family', s.family); value('emo-transparent', s.transparent ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-pose', s.pose);
   for (const e of BASE_EXPRESSIONS) value(`emo-face-${e.key}`, s.faceTags[e.key] || '');
   gates(s);
   value('emo-words', Object.entries(s.words).map(([w, face]) => `${w}=${face}`).join('\n'));
+}
+/**
+ * 코스튬별 에셋 waits on streaming tags with costumes: only then does the writer see the costume list it names
+ * a costume from. Already on, it can still be switched off.
+ */
+function costumeGate(): void {
+  const node = $<HTMLInputElement>('emo-costumes'), note = $('emo-costumes-status');
+  let ready = false;
+  try { const card = getConfig().card; ready = card?.stream_inline_tags === true && card.costume === true; } catch { /* no settings read yet */ }
+  if (node) node.disabled = !ready && !node.checked;
+  if (note) note.textContent = ready ? '' : '스트리밍 중 태그 생성과 코스튬을 켜면 쓸 수 있습니다.';
 }
 /** A section whose switch is off greys out (its values stay). */
 function gates(s: Pick<EmotionSettings, 'enabled' | 'placeBackgrounds'>): void {
@@ -60,6 +73,7 @@ function readSettings(): Partial<EmotionSettings> {
   for (const line of val('emo-words').split('\n')) { const [w, face] = line.split('=').map(s => s.trim()); if (w && face && baseExpression(face)) words[w] = face; }
   return {
     enabled: !!$<HTMLInputElement>('emo-enabled')?.checked, useExisting: !!$<HTMLInputElement>('emo-existing')?.checked, autoGenerate: !!$<HTMLInputElement>('emo-auto')?.checked, placeBackgrounds: !!$<HTMLInputElement>('emo-places')?.checked,
+    costumes: !!$<HTMLInputElement>('emo-costumes')?.checked,
     family: val('emo-family') === 'v4' ? 'v4' : 'v5', transparent: val('emo-transparent') !== '0',
     width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), pose: val('emo-pose'),
     faceTags: Object.fromEntries(BASE_EXPRESSIONS.map(e => [e.key, val(`emo-face-${e.key}`).trim()]).filter(([, tags]) => tags)), words,
@@ -200,7 +214,8 @@ function bindCharacterSheet(live: () => boolean): void {
   if (!form || !scroll || $('emo-char-section')) return;
   scroll.insertAdjacentHTML('afterbegin', EMOTION_SHEET_SWITCH);
   scroll.insertAdjacentHTML('beforeend', EMOTION_SHEET);
-  let person: TtsCharacter | null = null, bot: EmotionBot | null = null, epoch = 0;
+  // costume: the one the faces show and are made in (0 the default), picked on the bar over them.
+  let person: TtsCharacter | null = null, bot: EmotionBot | null = null, epoch = 0, costume = 0;
   const view = (name: 'voice' | 'faces') => {
     form.dataset.emoView = name;
     for (const b of form.querySelectorAll<HTMLElement>('[data-emo-tab]')) b.setAttribute('aria-selected', String(b.dataset.emoTab === name));
@@ -212,23 +227,32 @@ function bindCharacterSheet(live: () => boolean): void {
     if (!grid || !person || form.dataset.emoView !== 'faces') return;
     bot = await currentEmotionBot();
     if (mine !== epoch || !bot) { if (!bot) status('Risu에서 봇을 연 상태에서 쓸 수 있습니다.'); return; }
+    // 코스튬별 에셋: the illustration character's costumes, each its own faces. Off (or one costume), the default's.
+    const costumes = emotionData().settings.costumes ? await spriteCostumes(person, bot).catch(() => []) : [];
+    if (mine !== epoch) return;
+    if (!costumes.some(c => c.index === costume)) costume = 0;
+    const bar = $('emo-char-costumes'), worn = costume;
+    if (bar) {
+      bar.hidden = costumes.length < 2;
+      bar.innerHTML = costumes.map(c => `<button type="button" role="tab" data-emo-costume="${c.index}" aria-selected="${c.index === worn}" title="${esc(c.note)}">${c.index ? `${c.index}번` : '기본'} · ${esc(c.name)}</button>`).join('');
+    }
     const seen = new Set(emotionData().seen[person.id] || []);
     const faces = [...seen, ...BASE_EXPRESSIONS.map(e => e.key).filter(k => !seen.has(k))];
     const busy = spriteJobs();
-    const tiles = await Promise.all(faces.map(async face => ({ face, sprite: await findSprite(person!, face, bot!).catch(() => null), busy: busy.has(spriteJobKey(bot!.id, person!.id, face)) })));
+    const tiles = await Promise.all(faces.map(async face => ({ face, sprite: await findSprite(person!, face, bot!, worn).catch(() => null), busy: busy.has(spriteJobKey(bot!.id, person!.id, face, worn)) })));
     if (mine !== epoch) return;
     grid.innerHTML = tiles.map(({ face, sprite, busy: running }) => `<div class="emo-tile" data-seen="${seen.has(face) ? 1 : 0}"><div class="emo-pic" data-face="${esc(face)}" data-busy="${running ? 1 : 0}">${running ? '만드는 중…' : sprite ? '' : '없음'}</div>
 <b>${esc(baseExpression(face)?.label || face)}</b><small>${esc(face)}${sprite ? ` · ${sprite.source === 'bot' ? '봇 에셋' : '옴니'}` : ''}${seen.has(face) ? ' · 대사에 나옴' : ''}</small>
 <button type="button" data-emo-make="${esc(face)}" ${running ? 'disabled' : ''}>${sprite ? '다시 만들기' : '만들기'}</button></div>`).join('');
     for (const { face, sprite } of tiles) if (sprite) void thumb(sprite.path).then(url => { const pic = grid.querySelector<HTMLElement>(`.emo-pic[data-face="${CSS.escape(face)}"]`); if (url && pic && mine === epoch) pic.style.backgroundImage = `url("${url}")`; }).catch(() => {});
-    const looks = await spriteLooks(person, bot).catch(() => '');
+    const looks = await spriteLooks(person, bot, worn).catch(() => '');
     const line = $('emo-char-looks');
-    if (line && mine === epoch) line.textContent = looks ? `외형: ${looks}` : '외형 태그가 없습니다. 삽화 캐릭터 탭에서 이 사람의 외형을 채우면 만들 수 있습니다.';
+    if (line && mine === epoch) line.textContent = looks ? `외형${worn ? ` (${worn}번 코스튬)` : ''}: ${looks}` : '외형 태그가 없습니다. 삽화 캐릭터 탭에서 이 사람의 외형을 채우면 만들 수 있습니다.';
   };
   const make = (faces: string[]) => {
     if (!person || !bot) return;
-    const who = person, where = bot;
-    for (const face of faces) void makeSprite(who, face, where, true).then(() => status(`${baseExpression(face)?.label || face} 완료`)).catch(error => status(String((error as Error)?.message || error)));
+    const who = person, where = bot, worn = costume;
+    for (const face of faces) void makeSprite(who, face, where, true, worn).then(() => status(`${baseExpression(face)?.label || face} 완료`)).catch(error => status(String((error as Error)?.message || error)));
     void render();
   };
   form.addEventListener('click', event => {
@@ -236,12 +260,14 @@ function bindCharacterSheet(live: () => boolean): void {
     // The form itself carries data-emo-view: only the switch's own buttons count here.
     const switchTo = target?.closest?.('[data-emo-tab]')?.getAttribute('data-emo-tab');
     if (switchTo === 'voice' || switchTo === 'faces') { event.preventDefault(); view(switchTo); return; }
+    const pick = target?.closest?.('[data-emo-costume]')?.getAttribute('data-emo-costume');
+    if (pick != null) { event.preventDefault(); costume = Number(pick) || 0; void render(); return; }
     const face = target?.closest?.('[data-emo-make]')?.getAttribute('data-emo-make');
     if (face) { event.preventDefault(); make([face]); }
   });
   const missing = async (faces: string[]) => {
     if (!person || !bot) return [];
-    const found = await Promise.all(faces.map(face => findSprite(person!, face, bot!).catch(() => null)));
+    const found = await Promise.all(faces.map(face => findSprite(person!, face, bot!, costume).catch(() => null)));
     return faces.filter((_, i) => !found[i]);
   };
   $('emo-char-make-seen')?.addEventListener('click', () => void (async () => make(await missing(emotionData().seen[person?.id || ''] || [])))());
@@ -249,7 +275,7 @@ function bindCharacterSheet(live: () => boolean): void {
   const unsubscribe = subscribeSprites(() => { if (live()) void render(); else unsubscribe(); });
   document.addEventListener('omnitts-character-open', event => {
     const detail = (event as CustomEvent<{ id?: string; view?: string }>).detail || {};
-    person = ttsData().characters.find(c => c.id === detail.id && !c.role) ?? null;
+    person = ttsData().characters.find(c => c.id === detail.id && !c.role) ?? null; costume = 0;
     const sw = form.querySelector<HTMLElement>('.emo-sheet-switch');
     if (sw) sw.hidden = !person;
     status('');

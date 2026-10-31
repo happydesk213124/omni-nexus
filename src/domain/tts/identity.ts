@@ -26,6 +26,15 @@ export function ttsSegmentOwner(s: Pick<TtsSegment, 'kind' | 'speaker' | 'monolo
   const role = ttsSegmentRole(s);
   return role ? resolveTtsRole(role, roster, scope) : s.speaker ? resolveTtsSpeaker(s.speaker, roster, scope) : null;
 }
+/**
+ * 코스튬에 따라 음성 변경: the voice of the costume a line names (`이름_2`), when the card switched it on and gave
+ * that costume one. '' for the card's own voice: every other line, and every costume left empty.
+ */
+export function costumeVoiceOf(c: Pick<TtsCharacter, 'costumeVoice' | 'costumeFish'> | null | undefined, s: Pick<TtsSegment, 'costume'>): string {
+  if (!c?.costumeVoice || !s.costume) return '';
+  const id = c.costumeFish?.[String(s.costume)];
+  return typeof id === 'string' ? id.trim() : '';
+}
 
 /** Case-, width- and spacing-insensitive name key: Jet, JET and ｊｅｔ are one person. */
 /** Volume correction actually applied: none while the character uses automatic loudness. */

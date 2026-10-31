@@ -43,9 +43,10 @@ function activePresetId(want: string): string {
 }
 
 /** `wear`: the costume the roster has on ('active'), or its first, the default one ('default': 감정 에셋 draws only that). */
-export function characterPreviewTags(rec: Partial<CharacterRecord>, wear: 'active' | 'default' = 'active'): string {
+/** `wear`: the costume on now, the default one, or a costume by its number in the list. */
+export function characterPreviewTags(rec: Partial<CharacterRecord>, wear: 'active' | 'default' | number = 'active'): string {
   const { costumes, active_costume } = ensureCostumes(rec);
-  const worn = wear === 'default' ? costumes[0]! : costumes[active_costume] || costumes[0]!;
+  const worn = typeof wear === 'number' ? costumes[wear] || costumes[0]! : wear === 'default' ? costumes[0]! : costumes[active_costume] || costumes[0]!;
   const look = resolveCostumeFields(worn, costumes[0]!);
   const gender = cleanText(rec.gender, 20);
   return joinTags(

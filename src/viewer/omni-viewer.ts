@@ -177,13 +177,13 @@ function elementsAfter(): void {
 /** Every face this reply shows and its place, asked for once it is on stage (not only after it arrived). */
 function makeForReply(): void {
   if (!bot || !context) return;
-  const who = bot, wants: Array<{ person: TtsCharacter; face: string } | { place: string }> = [], seen = new Set<string>();
+  const who = bot, wants: Array<{ person: TtsCharacter; face: string; costume: number } | { place: string }> = [], seen = new Set<string>();
   for (const p of new Set([basePlace, ...placeMarks.map(mark => mark.place)].filter(Boolean))) wants.push({ place: p });
   for (const scene of scenes) {
     if (scene.kind !== 'line' || !scene.speaker) continue;
-    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION;
-    if (!person || seen.has(person.id + face)) continue;
-    seen.add(person.id + face); wants.push({ person, face });
+    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION, costume = costumeOf(scene.costume);
+    if (!person || seen.has(`${person.id}|${face}|${costume}`)) continue;
+    seen.add(`${person.id}|${face}|${costume}`); wants.push({ person, face, costume });
   }
   void makeAhead(wants, who).catch(error => dbg('viewer.ahead', { message: String(error) }, 'warn'));
 }
@@ -478,8 +478,10 @@ function voice(scene: ViewerScene): void {
   voicesAhead();
 }
 
-/** `front`: 0 spoke last (in front where people overlap), then on back. */
-interface Member { key: string; name: string; person: TtsCharacter | null; face: string; speaking: boolean; front: number }
+/** `front`: 0 spoke last (in front where people overlap), then on back. `costume`: the one their latest line names (0 the default). */
+interface Member { key: string; name: string; person: TtsCharacter | null; face: string; costume: number; speaking: boolean; front: number }
+/** A line's costume, as the stage dresses it: 감정 에셋's 코스튬별 에셋 off, everyone is in the default one. */
+const costumeOf = (costume: number | undefined): number => costume && emotionData().settings.costumes ? costume : 0;
 /** The reply's lines as the stage reads them (who speaks, with what face), worked out once per reply and roster. */
 let staged: { scenes: ViewerScene[]; roster: readonly TtsCharacter[]; size: number; scope: string; lines: Array<StageLine | null>; who: Map<string, { name: string; person: TtsCharacter | null }> } | null = null;
 function stageLines(): NonNullable<typeof staged> {
@@ -492,7 +494,7 @@ function stageLines(): NonNullable<typeof staged> {
     const person = context ? resolveTtsSpeaker(scene.speaker, roster, context.rosterScope) : null;
     const id = person ? `t${key(person.id)}` : `n${key(scene.speaker)}`;
     if (!who.has(id)) who.set(id, { name: person?.name || scene.speaker, person });
-    return { who: id, face: scene.face };
+    return { who: id, face: scene.face, costume: scene.costume };
   });
   return staged = { scenes, roster, size: roster.length, scope, lines, who };
 }
@@ -504,7 +506,7 @@ function stageLines(): NonNullable<typeof staged> {
  */
 function castAt(index: number): Member[] {
   const { lines, who } = stageLines();
-  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, speaking: m.speaking, front: m.front }));
+  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, costume: costumeOf(m.costume), speaking: m.speaking, front: m.front }));
 }
 /** The TTS characters this reply brings on, in the order they first speak. */
 function replyPeople(): string[] {
@@ -528,7 +530,7 @@ function resolveName(speaker: string): string {
 
 /** Under the name in a person's oval: the face, then whether its picture is being drawn, or why it could not be. */
 function ovalLabel(m: Member): string {
-  const status = m.person && bot && emotionData().settings.enabled ? spriteStatus(bot.id, m.person.id, m.face) : { state: '', message: '' };
+  const status = m.person && bot && emotionData().settings.enabled ? spriteStatus(bot.id, m.person.id, m.face, m.costume) : { state: '', message: '' };
   return `(${m.face})${status.state === 'running' ? '\n그리는 중…' : status.state === 'failed' ? `\n못 그림 · ${status.message.slice(0, 22)}` : ''}`;
 }
 /** A person's place on stage, made once (asked again while on its way, the same trip; its three calls sent together). */
@@ -551,20 +553,37 @@ function placeFor(m: Member): Promise<SafeElement | null> {
   placing.set(m.key, job);
   return job;
 }
+/**
+ * Where a member's picture is looked for, first to last: their face in their costume, the costume's plain face (the
+ * clothes are what a sudden change shows most), then the default costume's face and plain face.
+ */
+function spriteTries(m: Member): Array<[face: string, costume: number]> {
+  const tries: Array<[string, number]> = [[m.face, m.costume], [DEFAULT_EXPRESSION, m.costume]];
+  if (m.costume) tries.push([m.face, 0], [DEFAULT_EXPRESSION, 0]);
+  return tries.filter(([face, costume], i) => tries.findIndex(t => t[0] === face && t[1] === costume) === i);
+}
+/** Its own picture missing (another stands in), it is asked for. */
+function askFor(m: Member, sprite: EmotionSprite | null): void {
+  if (m.person && bot && emotionData().settings.autoGenerate && (sprite?.face !== m.face || (sprite.costume ?? 0) !== m.costume)) void makeSprite(m.person, m.face, bot, false, m.costume).catch(() => {});
+}
 /** The picture for a member's face, or null while they have none (it may be in the making: it is asked for). */
 async function spriteFor(m: Member): Promise<EmotionSprite | null> {
   if (!m.person || !bot || !emotionData().settings.enabled) return null;
-  const sprite = await findSprite(m.person, m.face, bot) ?? (m.face !== DEFAULT_EXPRESSION ? await findSprite(m.person, DEFAULT_EXPRESSION, bot) : null);
-  if (emotionData().settings.autoGenerate && sprite?.face !== m.face) void makeSprite(m.person, m.face, bot).catch(() => {});
+  let sprite: EmotionSprite | null = null;
+  for (const [face, costume] of spriteTries(m)) if ((sprite = await findSprite(m.person, face, bot, costume))) break;
+  askFor(m, sprite);
   return sprite;
 }
 /** spriteFor with no wait: undefined while the bot's pictures have never been read (spriteFor reads them). */
 function spriteKnown(m: Member): EmotionSprite | null | undefined {
   if (!m.person || !bot || !emotionData().settings.enabled) return null;
-  const exact = spriteNow(m.person, m.face, bot);
-  if (exact === undefined) return undefined;
-  const sprite = exact ?? (m.face !== DEFAULT_EXPRESSION ? spriteNow(m.person, DEFAULT_EXPRESSION, bot) ?? null : null);
-  if (emotionData().settings.autoGenerate && sprite?.face !== m.face) void makeSprite(m.person, m.face, bot).catch(() => {});
+  let sprite: EmotionSprite | null = null;
+  for (const [face, costume] of spriteTries(m)) {
+    const now = spriteNow(m.person, face, bot, costume);
+    if (now === undefined) return undefined;
+    if ((sprite = now)) break;
+  }
+  askFor(m, sprite);
   return sprite;
 }
 /**
@@ -580,7 +599,7 @@ function sendFace(m: Member, place: SafeElement, sprite: EmotionSprite): Promise
   const job = (async () => {
     const raw = await risuHost()?.readImage?.(sprite.path).catch(() => null);
     const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-    if (!bytes?.byteLength) { if (sprite.source === 'omni' && bot && m.person) void forgetMade(bot.id, m.person.id, sprite.face).catch(() => {}); return; }
+    if (!bytes?.byteLength) { if (sprite.source === 'omni' && bot && m.person) void forgetMade(bot.id, m.person.id, sprite.face, sprite.costume ?? 0).catch(() => {}); return; }
     const src = await screenImage(sprite.path, bytes, SPRITE_BOX);
     if (!doc || run !== opened) return;
     const id = key(sprite.path), holder = await doc.createElement('div');

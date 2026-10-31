@@ -14,6 +14,7 @@ import { isOwnLlmRequest } from '../providers/llm/own-requests';
 import { auditCues, lastCueAudit } from './cue-audit';
 import { loadTaggerRoster } from './characters';
 import { getConfig } from './context';
+import { loadEmotionData } from '../storage/emotion-store';
 import { fetchHostLorebookEntries } from './lorefilter';
 import { getPrompt } from './settings';
 import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionRecentCast } from './session-author-note';
@@ -67,14 +68,23 @@ export function blockRules(min: number, max: number, castFirst = false): string 
   ].join('\n');
 }
 
+/**
+ * 감정 에셋's 코스튬별 에셋: a spoken cue names the costume its speaker wears, by the number the costume list gives
+ * it (`이름_2`), for the viewer's faces and the voice; the default one is the plain name, as cues always were.
+ */
+export const COSTUME_CUE_RULE = '- In a spoken cue line (Name (delivery): "Dialogue"), a registered character who wears a costume other than [0] gets that costume\'s number right after the name: Name_2 (delivery): "Dialogue" for the costume listed as [2]. In [0], write the plain Name. Keep the same name as always; only the number is added.';
+
 /** The fixed part. Same settings and prompts give the same text, byte for byte. */
 export async function inlineTagRules(): Promise<string> {
   const card = getConfig().card;
   const { min, max } = imageRange();
   const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
   const comicNote = withMain ? cleanText(card.comic_author_note, 8000) : '';
+  // Only with costumes on is the list (and its numbers) in the prompt to name one by.
+  const costumeCues = card.costume === true && (await loadEmotionData().catch(() => null))?.settings.costumes === true;
   return [
     blockRules(min, max, card.stream_inline_cast_first !== false),
+    costumeCues ? COSTUME_CUE_RULE : '',
     await taggerRules(card, { imageMin: min, imageMax: max, inline: true }),
     authorNoteSystemContent("Global Author's Note", await getPrompt('global_author_note')),
     authorNoteSystemContent("Author's Note", await getPrompt('author_note')),
