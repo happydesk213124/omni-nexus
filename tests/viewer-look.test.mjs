@@ -98,6 +98,13 @@ test('캐릭터 움직임: a spring on the face shown (or the oval), breathing f
   assert.match(api.STATIC_CSS, /prefers-reduced-motion:reduce\)\{\[x-omni-vn\] \[x-vn-sp\],\[x-omni-vn\] \[x-vn-sp\] img,\[x-omni-vn\] \[data-vn-sil\]\{animation:none!important\}/);
 });
 
+test('the line and 기록 can be selected to copy; the rest of the stage cannot', () => {
+  assert.match(api.STATIC_CSS, /\[x-omni-vn\] \[data-vn-text\],\[x-omni-vn\] \[data-vn-log\] p\{user-select:text!important;-webkit-user-select:text!important/);
+  assert.match(api.STATIC_CSS, /\[x-omni-vn\]\{position:fixed;[^}]*user-select:none/);
+  assert.match(stage({ sfx: false }), /\[data-vn-act="sfx"\]\{opacity:0\.4\}/);
+  assert.match(stage({ sfx: true }), /\[data-vn-act="sfx"\]\{opacity:1\}/);
+});
+
 test('waiting: the spinner by the clock turns while the reader waits, and 메시지의 ▲ ▼ row while it fills', () => {
   assert.match(api.FRAME, /<div data-vn-clock><\/div><div data-vn-busy><\/div>/);
   assert.match(api.STATIC_CSS, /\[data-vn-busy\]\{display:none;[^}]*animation:vn-spin/);
@@ -106,4 +113,15 @@ test('waiting: the spinner by the clock turns while the reader waits, and 메시
   assert.match(stage({ msgs: true, msgsLoading: 'before' }), /\[data-vn-msg\]\[data-more="before"\]::after\{content:"";[^}]*animation:vn-spin/);
   assert.doesNotMatch(stage({ msgs: false, msgsLoading: 'before' }), /data-more/, 'closed, nothing turns');
   assert.match(api.FRAME, /<button data-vn-act="set"[^>]*>⚙<\/button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦<\/button>/, 'the people button sits by the settings');
+});
+
+test("the picture's bar: 🎲 리롤 and 🔮 샷 태그 beside 전체화면, dimmed while they cannot run; the voice's spinner rides in every box", () => {
+  assert.match(api.FRAME, /<div data-vn-cgbar><button data-vn-act="cgfull"[^>]*>⛶ 전체화면<\/button><button data-vn-act="cgroll"[^>]*>🎲 리롤<\/button><button data-vn-act="cgtags"[^>]*>🔮 샷 태그<\/button><button data-vn-act="cgclose"/);
+  assert.match(stage({ cg: 'p1', cgView: 'show', cgLocked: true }), /\[data-vn-act="cgroll"\],\[x-omni-vn\] \[data-vn-cgbar\] \[data-vn-act="cgtags"\]\{opacity:\.35\}/);
+  assert.doesNotMatch(stage({ cg: 'p1', cgView: 'show', cgLocked: false }), /cgroll/);
+  assert.match(api.boxHtml({ speaker: '하린', text: '응.', narration: false }).html, /<div data-vn-voicewait><\/div>$/);
+  assert.match(stage({ voiceWait: true }), /\[x-omni-vn\] \[data-vn-voicewait\]\{display:block\}/);
+  assert.doesNotMatch(stage({}), /data-vn-voicewait/);
+  assert.match(api.STATIC_CSS, /\[data-vn-voicewait\]\{display:none;position:absolute;right:36px;bottom:46px;[^}]*animation:vn-spin/);
+  assert.match(api.STATIC_CSS, /\[x-omni-vn\] \[data-vn-act="eledit"\]\{position:absolute;right:34px;top:calc\(38% \+ 84px\)/, '✎ 편집 by 요소');
 });

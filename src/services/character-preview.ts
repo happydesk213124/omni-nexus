@@ -42,10 +42,11 @@ function activePresetId(want: string): string {
   return cleanText(first?.id, 120);
 }
 
-export function characterPreviewTags(rec: Partial<CharacterRecord>): string {
+/** `wear`: the costume the roster has on ('active'), or its first, the default one ('default': 감정 에셋 draws only that). */
+export function characterPreviewTags(rec: Partial<CharacterRecord>, wear: 'active' | 'default' = 'active'): string {
   const { costumes, active_costume } = ensureCostumes(rec);
-  const wear = costumes[active_costume] || costumes[0];
-  const look = resolveCostumeFields(wear, costumes[0]);
+  const worn = wear === 'default' ? costumes[0]! : costumes[active_costume] || costumes[0]!;
+  const look = resolveCostumeFields(worn, costumes[0]!);
   const gender = cleanText(rec.gender, 20);
   return joinTags(
     rec.original,

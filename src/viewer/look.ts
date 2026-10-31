@@ -68,16 +68,22 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-name]:empty{display:none}
 [x-omni-vn] [data-vn-text]{height:100%;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:none}
 [x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc;font-style:italic}
+/* The line and 기록's lines can be selected, to copy: a drag on the line selects (a phone: a long press); a tap still goes on. */
+[x-omni-vn] [data-vn-text],[x-omni-vn] [data-vn-log] p{user-select:text!important;-webkit-user-select:text!important;-webkit-touch-callout:default}
+[x-omni-vn] [data-vn-text] ::selection,[x-omni-vn] [data-vn-log] ::selection{background:rgba(227,194,122,.42);color:#fff}
 /* Each letter shows at its turn, at once: a fade made every letter its own layer to blend, the reveal
    cost the phone a frame every frame. Hidden letters keep their room, so the line never moves. */
 [x-omni-vn] [data-vn-text] i{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps(1,end) forwards}
 ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-child(${i + 1}){animation-delay:calc(${i} * var(--vs))}`).join('')}[x-omni-vn] [data-vn-text] i:nth-child(n+${LETTERS + 1}){animation-delay:calc(${LETTERS} * var(--vs))}
+/* The line's voice is being made: a spinner at the box's corner, by the arrow. */
+[x-omni-vn] [data-vn-voicewait]{display:none;position:absolute;right:36px;bottom:46px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite;pointer-events:none}
 [x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next 1s ease-in-out infinite}
 /* The story so far has ended: Risu's input below is where it goes on. */
 [x-omni-vn] [data-vn-end]{position:absolute;left:50%;top:-46px;translate:-50% 0;padding:5px 14px;border-radius:999px;font-size:12.5px;letter-spacing:.04em;white-space:nowrap;color:var(--gold);background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 0 16px -4px var(--gold);opacity:0;animation:vn-blink 1.2s ease-in-out infinite;pointer-events:none}
 [x-omni-vn] [data-vn-menu]{position:absolute;left:18px;right:18px;bottom:16px;display:flex;align-items:center;gap:2px;z-index:4}
 [x-omni-vn] [data-vn-menu] button{height:30px;min-width:30px;padding:0 9px;font-size:11.5px;border-radius:8px;background:transparent;border-color:transparent;color:#d8cfb4}
-[x-omni-vn] [data-vn-act="bgm"]{width:64px;margin-right:auto}
+[x-omni-vn] [data-vn-act="bgm"]{width:64px}
+[x-omni-vn] [data-vn-act="sfx"]{margin-right:auto}
 [x-omni-vn] [data-vn-act="bgm"]::after{content:"▶";margin-left:5px;font-size:9px}
 [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{color:var(--gold);font-size:13px}
 /* Tabs on the stage's edges: 메시지 on the left, 삽화 and 요소 on the right. */
@@ -90,7 +96,8 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
 [x-omni-vn] [x-vn-st] summary{pointer-events:auto;cursor:pointer}
 [x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
-[x-omni-vn] [data-vn-act="eledit"]{position:absolute;right:12px;top:58px;z-index:7;visibility:hidden}
+/* ✎ 편집 stands right by 요소 (left of its tab), where the hand already is; above the panel it opens. */
+[x-omni-vn] [data-vn-act="eledit"]{position:absolute;right:34px;top:calc(38% + 84px);z-index:8;visibility:hidden}
 [x-omni-vn] [data-vn-edit]{position:absolute;top:104px;right:0;width:min(84%,330px);max-height:calc(100% - 104px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;z-index:7;display:flex;flex-direction:column;gap:8px;
   background:rgba(10,9,17,.96);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-edit] h4{margin:0;font-size:13px;color:var(--gold)}
@@ -135,8 +142,8 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 /* Fingers: bigger targets. */
 @media (hover:none),(pointer:coarse){[x-omni-vn] button{height:40px;min-width:40px;padding:0 12px;font-size:13px}[x-omni-vn] [data-vn-box]{padding-bottom:58px}
   [x-omni-vn] [data-vn-menu]{left:16px;right:16px;bottom:15px;gap:1px}[x-omni-vn] [data-vn-menu] button{height:40px;min-width:40px;padding:0 8px;font-size:12.5px}[x-omni-vn] [data-vn-act="bgm"]{width:68px}
-  [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:46px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}
-  [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
+  [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:46px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}[x-omni-vn] [data-vn-voicewait]{bottom:58px}
+  [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-act="eledit"]{right:42px;top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
 @keyframes vn-ch{to{visibility:visible}}
@@ -145,6 +152,8 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 @keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 @keyframes vn-blink{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes vn-spin{to{rotate:360deg}}
+@media (max-width:420px){[x-omni-vn] [data-vn-menu]{left:14px;right:14px}[x-omni-vn] [data-vn-menu] button{padding:0 5px;min-width:34px}[x-omni-vn] [data-vn-act="bgm"]{width:auto}[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:36px}}
+@media (max-width:340px){[x-omni-vn] [data-vn-menu] button{font-size:11.5px;padding:0 4px}}
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
@@ -155,9 +164,9 @@ export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
 <button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
-<div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
+<div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
-<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
+<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
 
 /** A person's place on stage: an oval with their name until their picture comes. */
 export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"><b>${esc(name)}</b></div>`;
@@ -192,6 +201,10 @@ export interface StageState {
   cgNav?: { prev: boolean; next: boolean };
   /** The CG shown is a frame for an image still being drawn: there is nothing to see full screen. */
   cgPending?: boolean;
+  /** The CG on show cannot be redrawn now (🎲 🔮 dimmed): the reply still streams, or the picture is not one saved. */
+  cgLocked?: boolean;
+  /** The line's voice is being made or fetched: its spinner turns. */
+  voiceWait?: boolean;
   /** 뷰어 설정: the people breathe; a spring when one comes in, changes face or steps forward. */
   motion?: { breathe: boolean; bounce: boolean };
   /** 글자 크기: the box's letters and name against their usual size (1 = as designed). */
@@ -206,6 +219,8 @@ export interface StageState {
   narrVoice?: boolean;
   /** BGM is playing (the button then pauses it). */
   bgm?: boolean;
+  /** Effects play (the viewer's 효과음 and the sound settings' both on). */
+  sfx?: boolean;
   /** The reader waits on something (another reply, the chat read again): the spinner turns. */
   busy?: boolean;
   /** 메시지's "more" row being filled: it turns too. */
@@ -246,7 +261,7 @@ export function stageCss(s: StageState): string {
     s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
-    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}` : ''}` : '',
+    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;visibility:visible!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',
@@ -255,10 +270,11 @@ export function stageCss(s: StageState): string {
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
     breathing(s),
     s.busy ? '[x-omni-vn] [data-vn-busy]{display:block}' : '',
+    s.voiceWait ? '[x-omni-vn] [data-vn-voicewait]{display:block}' : '',
     s.msgs && s.msgsLoading ? `[x-omni-vn] [data-vn-msg][data-more="${s.msgsLoading}"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:7px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}` : '',
     s.textScale && s.textScale !== 1 ? `[x-omni-vn] [data-vn-text]{font-size:${(16.5 * s.textScale).toFixed(1)}px}[x-omni-vn] [data-vn-name]{font-size:${(15 * s.textScale).toFixed(1)}px}` : '',
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
-    `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}`,
+    `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}[x-omni-vn] [data-vn-act="sfx"]{opacity:${s.sfx === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',
   ].filter(Boolean).join('\n');
 }
@@ -278,7 +294,7 @@ export function boxHtml(input: { speaker: string; text: string; narration: boole
   const name = input.narration ? '' : esc(input.speaker);
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {
-    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="--vs:${vs}ms">${letters}</div>${tail}`,
+    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="--vs:${vs}ms">${letters}</div>${tail}<div data-vn-voicewait></div>`,
     revealMs,
   };
 }

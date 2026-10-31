@@ -69,6 +69,24 @@ globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
   return true;
 };
 globalThis.__OMNI_INSPECT_OPEN__ = () => !!t._nxHostInspectOpen;
+// 옴니 뷰어's 🎲 리롤 and 🔮 샷 태그 수정 on its picture: what 크게보기's 🎲 and 🔮 do. true once done (the tag editor: opened).
+globalThis.__OMNI_SHOT_ACTION__ = async (act, cardId) => {
+  const find = () => (t.gallery || []).find((c) => String(c?.id || "") === String(cardId || ""));
+  let card = find();
+  if (!card) { try { const scope = await Z({ useOverride: false }); if (scope?.sessionId) await ce(scope.sessionId, true); } catch {} card = find(); }
+  if (!card) { y("warn", "viewer.shot", "card not in gallery " + String(cardId).slice(0, 12)); return false; }
+  if (act === "base") { await openCardTagEdit(card); return true; }
+  if (act !== "reroll") return false;
+  try {
+    const B = await withImageRerollToast("이미지 리롤 중…", async () => await K("/v1/cards/" + encodeURIComponent(card.id) + "/reroll",
+      { method: "POST", body: { mode: "nai", character_id: card.character_id, chat_id: card.chat_id, message_index: card.message_index } }, 18e4));
+    if (B?.busy || B?.error?.code === "busy") throw new Error("지금은 바쁩니다. 잠시 뒤 다시 시도해 주세요.");
+    try { const scope = await Z({ useOverride: false }); if (scope?.sessionId) await ce(scope.sessionId, true); } catch {}
+    return true;
+  } catch (e) { y("error", "viewer.shot.reroll", String(e?.message || e)); $e(String(e?.message || e)); return false; }
+};
+// The shot-tag editor 🔮 opened is still up: the viewer waits for it to close, then takes its picture again.
+globalThis.__OMNI_SHOT_TAGS_OPEN__ = () => !!t.cardTagUi;
 // Closed from 옴니 뷰어: left open under the viewer, it holds every chat button and the floating viewer.
 globalThis.__OMNI_INSPECT_CLOSE__ = async () => { if (t._nxHostInspectOpen && typeof t._nxInspectCloser == "function") await t._nxInspectCloser(); };
 function nxNotifyTtsVisibility() {

@@ -53,7 +53,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
         sendChat: async text => { window.sent = text; },
         showContainer: async () => { window.containerShown = (window.containerShown || 0) + 1; throw new Error('no container in the test'); }, hideContainer: async () => {},
-        readImage: async () => { if (window.imageDelay) await new Promise(r => setTimeout(r, window.imageDelay)); return bytes; }, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
+        readImage: async () => { if (window.imageDelay) await new Promise(r => setTimeout(r, window.imageDelay)); return bytes; }, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; },
+        addRisuChatListener: async (mode, fn) => { if (mode === 'output') window.output = fn; } };
     }, { png: PNG, tall: TALL, reply });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
@@ -83,9 +84,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     // The counter is drawn by the scene's style text (::after), costing no call of its own.
     assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
-    // A tap while the letters still come in only completes them: wait out the longest line (about a second).
+    // A tap while the letters still come in only completes them: each tap waits for its line to be whole (its arrow shows then).
+    const lineDone = () => page.waitForFunction(() => { const cue = document.querySelector('[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]'); return !cue || getComputedStyle(cue).opacity !== '0'; });
     const tap = async expected => {
-      await page.waitForTimeout(1300);
+      await lineDone();
       await page.evaluate(() => { window.calls = {}; });
       await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.45);
       await page.waitForFunction(text => (document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '').includes(text), expected);
@@ -226,8 +228,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForTimeout(200);
     assert.equal(await page.locator('[x-omni-vn] img[x-vn-cg^="pv"]').count(), 1, 'sent once');
     await page.evaluate(() => document.querySelector('[data-inx-slot]').remove());
+    // Risu says the reply is saved: the stream is over at once (no wait for silence), and the saved reply is read.
+    await page.evaluate(() => window.output({ messageIndex: 2 }));
+    await page.waitForFunction(() => !/받는 중/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), null, { timeout: 1500 });
     // A drag up runs on through several scenes; the click that ends it is no tap.
-    await page.waitForTimeout(4300);
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     const cx = box.x + box.width / 2;
@@ -340,11 +344,45 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])')).objectFit === 'cover');
     await press('cgback');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'none');
+    // 🎲 리롤 and 🔮 샷 태그 수정 beside 전체화면: Omni's own (stubbed). While a reply streams they wait, dimmed.
+    await page.evaluate(() => {
+      window.shot = [];
+      window.__OMNI_SHOT_ACTION__ = async (act, card) => {
+        window.shot.push([act, card]);
+        // A redraw baked into the reply: it names another picture, and the chat shows that one.
+        if (act === 'reroll') { const row = window.bot.chats[0].message[2]; row.data = row.data.replace('card1::inxshot_abc', 'card2::inxshot_new'); document.querySelector('[data-inray-asset="inxshot_abc"]').setAttribute('data-inray-asset', 'inxshot_new'); }
+        return true;
+      };
+    });
+    const pictureShown = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])')].filter(n => getComputedStyle(n).display !== 'none').map(n => n.getAttribute('x-vn-cg')));
+    const rollLook = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).opacity);
+    await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
+    await page.waitForFunction(() => /받는 중/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    assert.equal(await rollLook(), '0.35', 'streaming: 🎲 waits, dimmed');
+    await press('cgroll'); await page.waitForTimeout(300);
+    assert.deepEqual(await page.evaluate(() => window.shot), [], 'streaming: nothing redrawn');
+    await page.evaluate(() => window.output({ messageIndex: 2 }));
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).opacity === '1');
+    const wasShown = await pictureShown();
+    assert.equal(wasShown.length, 1);
+    await page.waitForTimeout(300);
+    await press('cgroll');
+    await page.waitForFunction(was => { const now = [...document.querySelectorAll('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])')].filter(n => getComputedStyle(n).display !== 'none').map(n => n.getAttribute('x-vn-cg')); return now.length === 1 && now[0] !== was; }, wasShown[0]);
+    assert.deepEqual(await page.evaluate(() => window.shot), [['reroll', 'card1']], 'the picture on show, rerolled; the new one taken from the chat');
+    assert.equal(await rollLook(), '1');
+    await page.waitForTimeout(300);
+    await press('cgtags');
+    await page.waitForFunction(() => window.shot.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.shot[1]), ['base', 'card2'], "the redrawn picture's own tags");
+    await page.evaluate(() => { delete window.__OMNI_SHOT_ACTION__; });
     // 요소: nothing registered, nothing read (the reply's HTML is not even fetched).
     assert.equal(await page.evaluate(() => window.htmlReads || 0), 0, 'every reply loaded so far: a bot with nothing registered costs nothing');
     await press('elems');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
     assert.equal(await page.locator('[x-omni-vn] [x-vn-st]').count(), 0, 'only registered kinds come up');
+    // ✎ 편집 stands right by 요소, left of its tab: no trip to the top for it.
+    const [elemsTab, editButton] = await Promise.all(['elems', 'eledit'].map(act => page.locator(`[x-omni-vn] [data-vn-act="${act}"]`).boundingBox()));
+    assert.ok(editButton.x + editButton.width <= elemsTab.x && elemsTab.x - (editButton.x + editButton.width) < 16 && Math.abs(editButton.y - elemsTab.y) < 12, '✎ 편집 beside 요소: ' + JSON.stringify([elemsTab, editButton]));
     // 편집 lists the bot's own elements (not ours): the status panel, its fold (a kind of its own), the choice list.
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length === 3);

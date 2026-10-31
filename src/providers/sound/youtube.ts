@@ -34,6 +34,8 @@ export function plantYoutubeSeed(content: string): string {
 
 /** YouTube's player states: -1 not started, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued. */
 export class YoutubeTube {
+  /** How long a track has to start before it counts as held back for a tap (a phone may take seconds; a test needs less). */
+  startWaitMs = 6000;
   private doc: SafeDocument | null = null;
   private el: SafeElement | null = null;
   private win: Window | null = null;
@@ -206,7 +208,7 @@ export class YoutubeTube {
     this.volume(0);
     this.send('loadVideoById', [{ videoId: video, startSeconds: 0 }]);
     this.onChange();
-    const started = await this.until(() => this.state === 1 || !!this.error, 6000);
+    const started = await this.until(() => this.state === 1 || !!this.error, this.startWaitMs);
     if (this.error) {
       const code = this.error;
       this.key = ''; this.send('pauseVideo'); this.onChange();
