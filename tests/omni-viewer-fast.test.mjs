@@ -59,7 +59,7 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
         getCharacterFromIndex: async () => { window.reads.getCharacterFromIndex++; return structuredClone(bot); },
         getCharacter: async () => { window.reads.getCharacter++; if (window.charDelay) await new Promise(r => setTimeout(r, window.charDelay)); return structuredClone(bot); },
-        readImage: async () => png, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; window.names[arg.id] = arg.name; return { id: arg.id }; } };
+        readImage: async () => png, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; window.names[arg.id] = arg.name; (window.places ||= {})[arg.id] = arg.location; return { id: arg.id }; } };
     }, { replies: REPLIES });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
@@ -76,8 +76,11 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     const scene = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
     const shows = re => page.waitForFunction(source => new RegExp(source).test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), re.source);
 
-    // The menu opens it two ways.
-    assert.deepEqual(await page.evaluate(() => [window.names['omni-viewer-menu'], window.names['omni-viewer-menu-center']]), ['옴니 뷰어 · 보던 곳', '옴니 뷰어 · 화면 중앙']);
+    // Both of Risu's menus (the chat's, the side bar's) open it two ways, named beside ⚛️Omni Nexus.
+    assert.deepEqual(await page.evaluate(() => Object.keys(window.names).sort().map(id => [id, window.names[id]])), [
+      ['omni-viewer-chat', '⚛️Omni 뷰어 · 보던 곳'], ['omni-viewer-chat-center', '⚛️Omni 뷰어 · 화면 중앙'],
+      ['omni-viewer-menu', '⚛️Omni 뷰어 · 보던 곳'], ['omni-viewer-menu-center', '⚛️Omni 뷰어 · 화면 중앙']]);
+    assert.deepEqual(await page.evaluate(() => Object.keys(window.places).sort().map(id => window.places[id])), ['chat', 'chat', 'hamburger', 'hamburger']);
 
     // 화면 중앙: the chat scrolled so the reader's turn after R2 is in the middle; that turn's next reply opens, from its top.
     await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="5"]').scrollIntoView({ block: 'center' }));
@@ -183,7 +186,7 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     await page.waitForTimeout(300);
     await press('cast');
     await page.waitForFunction(() => !!window.ttsOpened);
-    assert.deepEqual(await page.evaluate(() => window.ttsOpened), { page: 'tts', focus: { panel: 'tts-characters', search: '오미선, 하린' } });
+    assert.deepEqual(await page.evaluate(() => window.ttsOpened), { page: 'people', focus: { panel: 'tts-characters', search: '오미선, 하린' } });
     assert.equal(await page.evaluate(() => window.viewerOpen()), false);
     assert.equal(await page.evaluate(() => window.viewerCovering()), false);
     assert.deepEqual(errors, []);

@@ -125,3 +125,12 @@ test("the picture's bar: 🎲 리롤 and 🔮 샷 태그 beside 전체화면, di
   assert.match(api.STATIC_CSS, /\[data-vn-voicewait\]\{display:none;position:absolute;right:36px;bottom:46px;[^}]*animation:vn-spin/);
   assert.match(api.STATIC_CSS, /\[x-omni-vn\] \[data-vn-act="eledit"\]\{position:absolute;right:34px;top:calc\(38% \+ 84px\)/, '✎ 편집 by 요소');
 });
+
+test('overlapping people: the last to speak in front, then whoever spoke before them', () => {
+  const zOf = (css, key) => Number(css.split(`[x-vn-p="${key}"]{`)[1]?.split('}')[0].split('z-index:')[1]);
+  const css = stage({ cast: [{ key: 'tA', face: '', speaking: false, front: 1 }, { key: 'tB', face: '', speaking: true, front: 0 }, { key: 'tC', face: '', speaking: false, front: 2 }] });
+  assert.deepEqual(['tA', 'tB', 'tC'].map(key => zOf(css, key)), [2, 3, 1]);
+  // Narration: nobody speaks, and still the last who spoke stands before the others.
+  const told = stage({ narration: true, cast: [{ key: 'tA', face: '', speaking: false, front: 0 }, { key: 'tB', face: '', speaking: false, front: 1 }] });
+  assert.deepEqual(['tA', 'tB'].map(key => zOf(told, key)), [3, 2]);
+});

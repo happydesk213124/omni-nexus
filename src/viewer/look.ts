@@ -44,6 +44,7 @@ export const STATIC_CSS = `
 [x-omni-vn] div[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);height:min(calc(100% - 190px),520px);max-width:94%;aspect-ratio:832/1216;translate:-50% -50%;rotate:-.8deg;border:4px solid #f3efe6;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.6);background:linear-gradient(135deg,#2a2440,#141224)}
 [x-omni-vn] div[x-vn-cg] span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.06em;color:#e6dcc6;animation:vn-pulse 1.6s ease-in-out infinite}
 [x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;bottom:72px;translate:-50% 0;display:flex;gap:8px;z-index:9}
+[x-omni-vn] [data-vn-note]{display:none;position:absolute;left:50%;top:58px;translate:-50% 0;z-index:10;width:max-content;max-width:min(340px,88%);padding:7px 12px;border-radius:10px;background:rgba(14,12,20,.88);border:1px solid rgba(227,194,122,.35);color:#efe9da;font-size:12.5px;line-height:1.45;text-align:center;pointer-events:none}
 [x-omni-vn] [data-vn-cgbar] button{display:none}
 [x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);width:auto!important;height:auto!important;max-width:94%!important;max-height:calc(100% - 190px)!important;object-fit:contain;translate:-50% -50%;rotate:-.8deg;margin:0!important;border:3px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .5s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-hud]{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:10px 10px 18px;background:linear-gradient(rgba(5,5,10,.7),transparent);z-index:4}
@@ -164,7 +165,7 @@ export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
 <button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
-<div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
+<div data-vn-note></div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
 <div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
 
@@ -176,9 +177,10 @@ export interface StageState {
    * Present, left to right: person key, its face key ('' while none), whether they speak
    * now, and what their oval says under their name while there is no picture: the face,
    * and whether its picture is being drawn or why it could not be; bounce, the spring's
-   * name for this person (it turns when they come in, change face or step forward).
+   * name for this person (it turns when they come in, change face or step forward); front,
+   * who stands before whom where they overlap (0 spoke last).
    */
-  cast: Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' }>;
+  cast: Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b'; front?: number }>;
   narration: boolean;
   bg: string;
   cg: string;
@@ -203,6 +205,10 @@ export interface StageState {
   cgPending?: boolean;
   /** The CG on show cannot be redrawn now (🎲 🔮 dimmed): the reply still streams, or the picture is not one saved. */
   cgLocked?: boolean;
+  /** 🎲 is drawing the picture again: its spinner turns, 🔮 waits. */
+  cgRolling?: boolean;
+  /** What 🎲 or 🔮 says: the redraw under way, or why nothing happened. Over the bar while it shows, else under the top bar. */
+  cgNote?: string;
   /** The line's voice is being made or fetched: its spinner turns. */
   voiceWait?: boolean;
   /** 뷰어 설정: the people breathe; a spring when one comes in, changes face or steps forward. */
@@ -246,8 +252,10 @@ export function stageCss(s: StageState): string {
   // The spring's name turns (a/b) when the person's face or place changes: the same name again plays nothing.
   const spring = (p: { bounce?: 'a' | 'b' }) => s.motion?.bounce && p.bounce ? `;animation:vn-jelly-${p.bounce} .62s cubic-bezier(.28,1.5,.55,1) both` : '';
   const rules = s.cast.slice(0, 3).map((p, i) => {
+    // Overlapping, the last to speak stands in front (the speaker always), then whoever spoke before them.
+    const z = `z-index:${3 - Math.min(2, p.front ?? (p.speaking ? 0 : 2))}`;
     // A CG on show dims the stage; folded at the top it does not.
-    const lit = s.cg && s.cgView !== 'fold' ? 'filter:brightness(.28) blur(2px)' : p.speaking ? 'filter:none;transform:scale(1.035);z-index:3' : s.narration ? 'filter:brightness(.62) saturate(.85);z-index:1' : 'filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);z-index:1';
+    const lit = s.cg && s.cgView !== 'fold' ? `filter:brightness(.28) blur(2px);${z}` : p.speaking ? `filter:none;transform:scale(1.035);${z}` : s.narration ? `filter:brightness(.62) saturate(.85);${z}` : `filter:brightness(.4) saturate(.6) blur(1.2px);transform:scale(.96);${z}`;
     return `[x-omni-vn] [x-vn-p="${p.key}"]{display:block;left:${spots[i]}%;${lit}}`
       + (p.face ? `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp="${p.face}"]{opacity:1${spring(p)}}[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{opacity:0}` : spring(p) ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]{${spring(p).slice(1)}}` : '')
       + (!p.face && p.label ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]::after{content:"${p.label.replace(/["\\]/g, '').replace(/\n/g, '\\A ')}"}` : '');
@@ -261,7 +269,8 @@ export function stageCss(s: StageState): string {
     s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92}`
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
-    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
+    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}${s.cgRolling ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
+    s.cgNote ? `[x-omni-vn] [data-vn-note]{display:block${s.cg && s.cgView === 'show' ? ';top:auto;bottom:124px' : ''}}[x-omni-vn] [data-vn-note]::after{content:${JSON.stringify(s.cgNote)}}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;visibility:visible!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',

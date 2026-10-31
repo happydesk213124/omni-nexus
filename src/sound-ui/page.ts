@@ -1,20 +1,22 @@
 import { SOUND_TABS } from './panels';
 
 /**
- * The menu group "TTS · BGM · 감정 에셋" has four entries that all open the one
- * frozen-UI tab slot (`curation`); which panels show is decided here.
+ * The menu group "TTS · BGM · 감정 에셋" has five entries that all open the one
+ * frozen-UI tab slot (`curation`); which panels show is decided here. TTS 캐릭터 is
+ * TTS 설정's 캐릭터 tab on its own: the one most often wanted, a tap from the menu.
  */
-export type SoundPage = 'tts' | 'sound' | 'models' | 'asset';
+export type SoundPage = 'tts' | 'sound' | 'people' | 'models' | 'asset';
 export const SOUND_PAGE_TABS: Record<SoundPage, readonly string[]> = {
   tts: ['tts-settings', 'tts-characters', 'tts-voices'],
   sound: SOUND_TABS.map(([id]) => id),
+  people: ['tts-characters'],
   models: ['tts-models'],
   asset: ['emo-viewer', 'emo-bg', 'emo-assets'],
 };
-export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', models: '소리 모델 설정', asset: '뷰어 및 감정 에셋' };
+export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', people: 'TTS 캐릭터', models: 'TTS·BGM·JEV 모델 설정', asset: '뷰어 및 감정 에셋' };
 let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
-export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models' || next === 'asset') page = next; }
+export function setSoundPage(next: unknown): void { if (typeof next === 'string' && Object.hasOwn(SOUND_PAGE_TABS, next)) page = next as SoundPage; }
 /**
  * A panel to open the page on, and what its search starts with: 옴니 뷰어's 👨‍👩‍👧‍👦 opens the
  * 캐릭터 tab on the reply's people ("하린, 세라"). Shown from the first paint; the search is
@@ -27,7 +29,7 @@ export function takeSoundFocus(): { panel: string; search: string } | null { con
 
 /**
  * Marks the open page in the menu and the header. The vendor marks every entry
- * of the open slot, which here is all three.
+ * of the open slot, which here is all five.
  */
 export function markSoundNav(slot: string): void {
   document.querySelectorAll('#nx-tabs [data-nx-tab]').forEach(btn => {
