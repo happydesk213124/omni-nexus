@@ -8,7 +8,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwA
 const reply = ['[3월 2일 ◆ 오후 4시 ◆ 카페]', '- Main Storylines: 숨은 요약 줄', '문이 열렸다.', '오미선 (cheerful): "왔어?"', '오미선: "자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아."', '[[@inray::card1::inxshot_abc::832::1216]]', '하린: "응, 늦었지."'].join('\n');
 
 test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites go over once, chat images are cloned, closing leaves nothing', async () => {
-  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {soundData} from './src/storage/sound-store';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,soundData});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
@@ -29,6 +29,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async setTextContent(v) { count('setTextContent'); this.node.textContent = v; }
         async getOuterHTML() { count('getOuterHTML'); return this.node.outerHTML; }
         async innerText() { count('innerText'); return this.node.innerText; }
+        async scrollIntoView(o) { count('scrollIntoView'); this.node.scrollIntoView(o); }
         async setInnerHTML(v) { count('setInnerHTML'); if (/data:image/.test(v)) count('imageSent'); this.node.innerHTML = DOMPurify.sanitize(v); }
         async setStyleAttribute(v) { count('setStyleAttribute'); this.node.style.cssText = v; }
         async appendChild(child) { count('appendChild'); this.node.append(child.node); }
@@ -64,7 +65,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.ok(box.height <= 900 - 90 + 1, 'Risu\'s input stays below the viewer');
     assert.equal(await page.locator('[x-omni-vn] [data-vn-clock]').textContent(), '3월 2일 · 오후 4시 · 카페');
     // The counter is drawn by the scene's style text (::after), costing no call of its own.
-    assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-count]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
+    assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
     // A tap while the letters still come in only completes them: wait out the longest line (about a second).
     const tap = async expected => {
@@ -96,18 +97,37 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const shown = re => page.waitForFunction(source => new RegExp(source).test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), re.source);
     const center = () => page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.45);
     for (const name of ['prev', 'prev']) { await page.waitForTimeout(600); const b = await page.locator(`[x-omni-vn] [data-vn-act="${name}"]`).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
-    await page.waitForFunction(() => /^"3 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-count]'), '::after').content));
+    await page.waitForFunction(() => /^"3 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
     await shown(/자리 맡아놨어/);
     await page.waitForTimeout(450); await center();
     await page.waitForFunction(() => /animation:none/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
     assert.match(await page.locator('[x-omni-vn] [data-vn-text]').textContent(), /자리 맡아놨어/, 'the same line, now complete');
-    // 이전 답장 goes back a reply; 최신 returns, and ▶ at an older reply's end goes on to the next one.
+    // A tap right after moving on completes the new line at once (it used to count as 광클 and skip it).
     const press = async act => { const b = await page.locator(`[x-omni-vn] [data-vn-act="${act}"]`).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
-    await press('older');
+    const count = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content);
+    await page.waitForTimeout(450); await press('prev');
+    await page.waitForFunction(() => /^"2 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    await page.waitForTimeout(900); await center(); await page.waitForTimeout(120); await center();
+    await page.waitForFunction(() => /animation:none/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    await page.waitForTimeout(300);
+    assert.match(await count(), /^"3 \//, 'the second tap completed the long line, it did not skip past it');
+    assert.match(await page.locator('[x-omni-vn] [data-vn-text]').textContent(), /자리 맡아놨어/);
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-end]').count(), 0, 'mid-reply, the arrow; no end cue');
+    // 메시지: every reply in order as tiles (number, story clock, first line); a tile jumps to its reply.
+    await press('msgs');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-msgs] [data-vn-msg]').length === 2);
+    assert.match(await page.locator('[x-omni-vn] [data-vn-msg][data-now]').textContent(), /^#3.*3월 2일 · 오후 4시 · 카페.*문이 열렸다/, 'the reply on screen: no hidden summary line as its gist');
+    assert.match(await page.locator('[x-omni-vn] [data-vn-msg]').first().textContent(), /^#1전날 밤은 조용했다/);
+    await page.waitForTimeout(500);
+    const oldest = await page.locator('[x-omni-vn] [data-vn-msg]').first().boundingBox();
+    assert.ok(oldest.x >= box.x - 1 && oldest.width > 60, 'the list slid in from the left');
+    await page.mouse.click(oldest.x + oldest.width / 2, oldest.y + oldest.height / 2);
     await page.waitForFunction(() => /전날 밤은 조용했다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    assert.equal((await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent)).includes('[data-vn-msgs]{translate:0 0}'), false, 'a jump closes the list');
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-end]').count(), 0, 'an older reply is not the end');
+    // ▶ at an older reply's end goes on to the next one; 최신 returns to the newest.
     await page.waitForTimeout(450); await press('next');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
-    await press('older'); await page.waitForFunction(() => /전날 밤/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     // 삽화 strip: the chat's own image cloned as a tile; tapping it jumps to that scene.
@@ -135,21 +155,77 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const cx = box.x + box.width / 2;
     await page.mouse.move(cx, box.y + box.height * 0.6); await page.mouse.down();
     await page.mouse.move(cx, box.y + box.height * 0.4, { steps: 4 }); await page.mouse.move(cx, box.y + box.height * 0.3, { steps: 4 }); await page.mouse.up();
-    await page.waitForFunction(() => /^"[3-5] \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-count]'), '::after').content));
+    await page.waitForFunction(() => /^"[3-5] \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
     // Rapid taps: the scene at the end of them is drawn once, a jump (each tap used to draw its own).
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await page.waitForTimeout(450);
     await page.evaluate(() => { window.calls = {}; });
     const mid = { x: box.x + box.width / 2, y: box.y + box.height * 0.45 };
-    for (let i = 0; i < 4; i++) await page.mouse.click(mid.x, mid.y);
-    await page.waitForFunction(() => /^"[4-5] \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-count]'), '::after').content));
+    for (let i = 0; i < 5; i++) await page.mouse.click(mid.x, mid.y);
+    await page.waitForFunction(() => /^"5 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
     await page.waitForTimeout(400);
-    assert.ok((await page.evaluate(() => window.calls.setInnerHTML || 0)) <= 2, 'four taps, at most two boxes drawn');
+    assert.ok((await page.evaluate(() => window.calls.setInnerHTML || 0)) <= 2, 'five taps, at most two boxes drawn');
+    // The newest reply's last line asks for the next message, blinking: the story so far has plainly ended.
+    assert.match(await page.locator('[x-omni-vn] [data-vn-end]').textContent(), /메시지를 입력해 주세요/);
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-next]').count(), 0, 'no arrow promising more');
     // A CG passed folds up at the top of the stage.
     assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /img\[x-vn-cg="[^"]+"\]\{display:block;left:auto!important;right:12px;top:60px;width:84px/, 'the CG waits folded');
     // The viewer covers the chat for every other tap handler.
     assert.equal(await page.evaluate(({ x, y }) => window.__OMNI_VIEWER_COVERS__(x, y), mid), true);
+    // 나레이션 is TTS 나레이션 itself (narration still shown, not voiced). BGM only pauses: it never
+    // switches BGM off, which would rewrite Risu's sound module and redraw the chat.
+    const narration = await page.evaluate(() => window.ttsData().settings.narration);
+    await press('narr');
+    await page.waitForFunction(was => window.ttsData().settings.narration === !was, narration);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="narr"]')).opacity === '0.4');
+    await press('narr');
+    await page.waitForFunction(was => window.ttsData().settings.narration === was, narration);
+    const bgmOn = await page.evaluate(() => window.soundData().settings.bgmEnabled);
+    await press('bgm'); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.soundData().settings.bgmEnabled), bgmOn, 'BGM 사용 is never switched by the BGM button');
+    // 기록 now sits by 최신 and stays reachable while open; its rows read as buttons (the pointer, a light under it).
+    await press('log');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'block');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="log"]')).color === 'rgb(227, 194, 122)');
+    const row = page.locator('[x-omni-vn] [data-vn-log] p').first();
+    assert.equal(await row.evaluate(n => getComputedStyle(n).cursor), 'pointer');
+    const unlit = await row.evaluate(n => getComputedStyle(n).backgroundColor);
+    await row.hover(); await page.waitForTimeout(250);
+    assert.notEqual(await row.evaluate(n => getComputedStyle(n).backgroundColor), unlit, 'hovered, a row lights up');
+    await press('log');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'none');
+    // 전체화면 opens Omni's own 크게보기 (stubbed): the viewer steps down under it, takes no tap, and comes back when it closes.
+    await page.evaluate(() => {
+      window.__OMNI_INSPECT_SHOT__ = async (card, asset) => { window.inspected = [card, asset]; window.inspecting = true; return true; };
+      window.__OMNI_INSPECT_OPEN__ = () => window.inspecting === true;
+    });
+    const thumb = await page.locator('[x-omni-vn] img[x-vn-cg]').boundingBox();
+    await page.mouse.click(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgfull"]')).display !== 'none');
+    await page.waitForTimeout(300);
+    await press('cgfull');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn]')).zIndex === '99960');
+    assert.deepEqual(await page.evaluate(() => window.inspected), ['card1', 'inxshot_abc'], 'the card and file name the chat\'s ⛶ opens');
+    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn-style="fold"]').textContent.includes('.inlay-nx-overlay-root')), false, "Omni's layer shows while its 크게보기 is open");
+    const under = await count();
+    await center(); await page.waitForTimeout(300);
+    assert.equal(await count(), under, 'the viewer takes no tap meant for 크게보기');
+    await page.evaluate(() => { window.inspecting = false; });
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn]')).zIndex === '2147482000');
+    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn-style="fold"]').textContent.includes('.inlay-nx-overlay-root')), true);
+    // Without Omni's 크게보기, the viewer's own full screen has the same bottom sheet: ◀ 🔍 ▶ 닫기.
+    await page.evaluate(() => { delete window.__OMNI_INSPECT_SHOT__; delete window.__OMNI_INSPECT_OPEN__; });
+    await page.waitForTimeout(300);
+    await press('cgfull');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'grid');
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] img[x-vn-cg]')).objectFit), 'contain');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgnext"]')).opacity), '0.3', 'one illustration: nothing after it');
+    await press('cgfit');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] img[x-vn-cg]')).objectFit === 'cover');
+    await press('cgback');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'none');
     // ✕ closes: no frame, no styles, no listener.
     const close = await page.locator('[x-omni-vn] [data-vn-act="close"]').boundingBox();
     await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);

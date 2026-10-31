@@ -54,6 +54,15 @@ function nxFloatBlocked() {
 }
 // TTS shares screen visibility, but never the illustration power/viewer setting.
 globalThis.__OMNI_TTS_HOST_BLOCKED__ = () => !!(t.unloading || t.uiOpen || t._nxHostInspectOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings);
+// 옴니 뷰어's 전체화면 is this same 크게보기 for a baked shot: its card id and file name,
+// as the chat's ⛶ chip has them. false when it cannot open (the card is not in the gallery).
+globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
+  const open = t._nxInspectOpener, card = (t.gallery || []).find((c) => String(c?.id || "") === String(cardId || ""));
+  if (!card || typeof open != "function" || t.uiOpen) return false;
+  await open(card, String(asset || ""), null);
+  return true;
+};
+globalThis.__OMNI_INSPECT_OPEN__ = () => !!t._nxHostInspectOpen;
 function nxNotifyTtsVisibility() {
   const refresh = globalThis.__OMNI_TTS_REFRESH_VISIBILITY__;
   if (typeof refresh === 'function') refresh();

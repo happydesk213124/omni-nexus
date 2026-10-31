@@ -1,5 +1,6 @@
 import type { TtsSegment } from '../../core/tts-types';
 import { expressionOfTone } from '../emotion/emotions';
+import { INLINE_CAST_MASK_SOURCE } from '../prompt/inline-shot-pattern';
 
 /**
  * 옴니 뷰어: a reply read as visual-novel scenes, from its source text (never the
@@ -84,5 +85,21 @@ export function clockOf(rawLine: string): string {
 }
 export function storyClock(raw: string): string {
   for (const line of raw.split('\n').slice(0, 40)) { const clock = clockOf(line); if (clock) return clock; }
+  return '';
+}
+
+const CAST_BLOCK = new RegExp(INLINE_CAST_MASK_SOURCE, 'g');
+/**
+ * A reply's first readable line, for its tile in the message list: markup, tags,
+ * the cast block and the story clock left out. A bulleted "Label: value" line is
+ * a status panel's field, never the story (the chat usually hides those).
+ */
+export function replyGist(raw: string, max = 44): string {
+  const text = raw.replace(CAST_BLOCK, ' ').replace(/\[\[[^\]]*\]\]/g, ' ').replace(/<(style|script)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\{\{[\s\S]*?\}\}/g, ' ');
+  for (const rawLine of text.split('\n').slice(0, 80)) {
+    const line = rawLine.replace(/[*_`#>~]+/g, '').replace(/\s+/g, ' ').trim();
+    if (!line || clockOf(line) || /^[-=─—]{3,}$/.test(line) || /^[-•·]\s*[^:：\n]{1,40}[:：]/.test(line)) continue;
+    return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+  }
   return '';
 }
