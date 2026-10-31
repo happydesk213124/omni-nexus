@@ -3,9 +3,9 @@ import { uuid } from '../core/util/text';
 import { dbg } from '../core/debug';
 import { SoundPlayer } from '../providers/sound/player';
 import { AUDIO_EXTENSIONS, sfxMarksProblem, sniffAudioMime } from '../domain/sound/audio';
-import { exactSfx, glossarySfx, guessSfx, pickBgm } from '../domain/sound/match';
+import { BGM_DRAW, drawBgm, exactSfx, glossarySfx, guessSfx, pickBgm } from '../domain/sound/match';
 import { suggestSfx } from '../domain/sound/find';
-import { embedPickMany, soundEmbedSettings } from '../providers/sound/embed';
+import { embedPickMany, embedRank, soundEmbedSettings } from '../providers/sound/embed';
 import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound, updateSoundSettings } from '../storage/sound-store';
 import { ensureSoundModules, storeSoundBytes } from '../storage/sound-module';
@@ -252,19 +252,20 @@ export class OmniSoundRuntime {
     if (!scene) throw new Error('곡을 고를 메시지가 없습니다.');
     // 「자동」: JEV, then embedding, then the LLM (a scene has no free word match).
     const m = s.bgmMatcher, jev = !!tts.jev.key.trim(), embed = m === 'auto' || m === 'embedding' ? soundEmbedSettings(s, tts) : null;
-    const steps: Array<() => Promise<string>> = [];
+    // Each step ranks the best tracks; the song is drawn from its top three (see drawBgm).
+    const steps: Array<() => Promise<string[]>> = [];
     if (m === 'jev' || m === 'llm') steps.push(() => chooseBgm(scene, items, m, tts, tags));
     else {
       if (m !== 'embedding' && jev) steps.push(() => chooseBgm(scene, items, 'jev', tts, tags));
-      if (embed) steps.push(async () => (await embedPickMany([`${tags.length ? `BGM 태그: ${tags.join(', ')}\n` : ''}${scene}`], items, item => `${item.name}: ${item.tags.join(', ')}`, embed))[0]?.item.key || '');
+      if (embed) steps.push(async () => (await embedRank(`${tags.length ? `BGM 태그: ${tags.join(', ')}\n` : ''}${scene}`, items, item => `${item.name}: ${item.tags.join(', ')}`, embed, BGM_DRAW)).map(item => item.key));
       if (m === 'auto' || (m === 'tag' && !jev)) steps.push(() => chooseBgm(scene, items, 'llm', tts, tags));
       if (m === 'embedding' && !embed) throw new Error('임베딩이 설정되지 않았습니다. 소리 모델 설정의 임베딩 키를 넣어 주세요.');
     }
     const cacheKey = JSON.stringify([m, scene, tags, items.map(item => item.key).join(',')]);
     let pick = fresh ? undefined : this.sceneCache.get(cacheKey), failure: unknown;
     for (const step of pick ? [] : steps) {
-      const key = await step().catch(error => { failure = error; return ''; });
-      if (items.some(row => row.key === key)) { pick = key; break; }
+      const ranked = (await step().catch(error => { failure = error; return [] as string[]; })).filter(key => items.some(row => row.key === key));
+      if (ranked.length) { pick = drawBgm(ranked, this.player.bgmKey); break; }
     }
     const item = items.find(row => row.key === pick) ?? null;
     if (!item) throw failure instanceof Error ? failure : new Error('메시지에 맞는 곡을 고르지 못했습니다.');

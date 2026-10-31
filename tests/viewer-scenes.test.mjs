@@ -41,3 +41,8 @@ test("a reply's gist for its tile: the first line the reader sees, no clock, tag
   assert.equal(api.replyGist('가'.repeat(60)).length, 44, 'long lines are cut, with an ellipsis');
   assert.equal(api.replyGist('[[inx1]]\n<style>.a{}</style>'), '');
 });
+
+test("a line batch's spinner is a picture still being drawn, in its place among the reply's pictures", () => {
+  const raw = '문이 열렸다.\n[[@inrayspinner::job7_0::832::1216]]\n하린: "왔어?"\n[[@inray::card1::inxshot_abc::832::1216]]\n[[inx2]]{"shot":1}[[/inx2]]';
+  assert.deepEqual(api.replyImages(raw).map(i => i.cg), [{ kind: 'spin', id: 'job7_0' }, { kind: 'baked', card: 'card1', asset: 'inxshot_abc' }, { kind: 'slot', n: 2 }]);
+});

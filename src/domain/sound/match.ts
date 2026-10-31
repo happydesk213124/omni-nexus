@@ -8,17 +8,28 @@ export function tagScore(wanted: readonly string[], item: Pick<SoundItem, 'tags'
 }
 
 export interface BgmPick { key: string; score: number; reason: 'keep' | 'switch' | 'none' }
+/** How many of the best-ranked tracks a new song is drawn from: the same scene need not always get the same one. */
+export const BGM_DRAW = 3;
+/** One of the best-ranked keys (best first): the current track when it ranks first, else a draw among the top `BGM_DRAW`. */
+export function drawBgm(ranked: readonly string[], currentKey = '', random: () => number = Math.random): string {
+  if (!ranked.length) return '';
+  if (ranked[0] === currentKey) return currentKey;
+  const top = ranked.slice(0, BGM_DRAW);
+  return top[Math.min(top.length - 1, Math.floor(random() * top.length))]!;
+}
 /**
  * Picks the BGM for a reply's tags. The current track stays unless another one
- * shares strictly more tags — a scene does not need a new song every reply.
+ * shares strictly more tags — a scene does not need a new song every reply. A new
+ * one is drawn from the three that share the most.
  */
-export function pickBgm(wanted: readonly string[], items: readonly SoundItem[], currentKey = ''): BgmPick {
+export function pickBgm(wanted: readonly string[], items: readonly SoundItem[], currentKey = '', random: () => number = Math.random): BgmPick {
   const scored = items.map(item => ({ item, score: tagScore(wanted, item) })).filter(row => row.score > 0);
   const current = scored.find(row => row.item.key === currentKey);
-  const best = scored.sort((a, b) => b.score - a.score)[0];
+  const ranked = scored.sort((a, b) => b.score - a.score), best = ranked[0];
   if (!best) return { key: currentKey, score: 0, reason: currentKey ? 'keep' : 'none' };
   if (current && current.score >= best.score) return { key: current.item.key, score: current.score, reason: 'keep' };
-  return { key: best.item.key, score: best.score, reason: best.item.key === currentKey ? 'keep' : 'switch' };
+  const key = drawBgm(ranked.map(row => row.item.key), '', random), chosen = ranked.find(row => row.item.key === key)!;
+  return { key, score: chosen.score, reason: key === currentKey ? 'keep' : 'switch' };
 }
 /** Several equally good tracks: the matcher hands only these to embedding/JEV. */
 export function bgmCandidates(wanted: readonly string[], items: readonly SoundItem[], limit = 5): SoundItem[] {

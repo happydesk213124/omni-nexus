@@ -52,5 +52,13 @@ export async function embedPickMany(queries: readonly string[], items: readonly 
   });
 }
 
+/** The tracks nearest one query, best first, as many as `limit` that pass the minimum score. */
+export async function embedRank(query: string, items: readonly SoundItem[], describe: (item: SoundItem) => string, settings: EmbeddingSettings, limit: number): Promise<SoundItem[]> {
+  if (!items.length || !query.trim()) return [];
+  const all = await vectorsFor(settings, [query, ...items.map(describe)]);
+  return all.slice(1).map((row, i) => ({ item: items[i]!, score: cosine(all[0]!, row) }))
+    .filter(row => row.score >= EMBED_MIN_SCORE).sort((a, b) => b.score - a.score).slice(0, limit).map(row => row.item);
+}
+
 /** Test seam. */
 export function clearSoundEmbeddings(): void { vectors.clear(); }
