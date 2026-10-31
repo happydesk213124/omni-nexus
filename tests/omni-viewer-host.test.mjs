@@ -383,6 +383,14 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const ahead = await page.evaluate(() => window.prefetched[0]);
     assert.equal(ahead.length, 3, 'the three lines after the first: ' + JSON.stringify(ahead));
     assert.match(ahead[0], /왔어/); assert.match(ahead[2], /늦었지/);
+    // A step forward asks nothing new: what is left was asked already (asking again re-queues what still waits).
+    await page.waitForTimeout(300);
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => /왔어/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.prefetched.length), 1, 'one request for the reply, not one per step');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     // 나레이션 switched back on: the narration on screen is voiced at once (it took reopening the viewer).
     await press('narr'); await page.waitForFunction(() => window.ttsData().settings.narration === false);
     await page.evaluate(() => { window.played = []; });
@@ -447,11 +455,22 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       window.ttsData().settings.jev.key = 'jev-key';
       // The bot's backgrounds come first, newest first: 2 is the café.
       window.risuai.nativeFetch = async () => { window.jevAsked++; return new Response(JSON.stringify({ answers: { 0: { choice: '2' } } }), { status: 200, headers: { 'content-type': 'application/json' } }); };
-      window.bot.chats[0].message.push({ role: 'user', data: '들어가자' }, { role: 'char', chatId: 'm4', data: '따뜻한 커피 향이 났다.\n하린: "여기 좋다."' });
+      window.bot.chats[0].message.push({ role: 'user', data: '들어가자' }, { role: 'char', chatId: 'm4', data: '따뜻한 커피 향이 났다.\n하린: "여기 좋다."\n오미선: "자리 잡자."\n창밖으로 비가 내렸다.\n하린: "우산 있어?"\n오미선: "없어."' });
+      window.prefetched = []; window.ttsData().settings.enabled = true;
     });
     await reopen();
     await page.waitForFunction(old => window.shownBg() === old, cafe);
     assert.equal(await page.evaluate(() => window.jevAsked), 1);
+    // Voices ahead: every line left in the reply (five here, past the four it once stopped at).
+    await page.waitForFunction(() => window.prefetched.length > 0);
+    assert.deepEqual(await page.evaluate(() => window.prefetched[0]), ['여기 좋다.', '자리 잡자.', '창밖으로 비가 내렸다.', '우산 있어?', '없어.']);
+    // Back in the reply before: its lines left, then this reply's opening, so turning to it starts at once.
+    await page.evaluate(() => { window.prefetched = []; });
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => window.prefetched.length > 0);
+    const back = await page.evaluate(() => window.prefetched.at(-1));
+    assert.ok(back.includes('따뜻한 커피 향이 났다.') && back.includes('여기 좋다.'), 'the next reply\'s opening: ' + JSON.stringify(back));
+    await page.evaluate(() => { window.ttsData().settings.enabled = false; });
     await shut(); await reopen();
     await page.waitForTimeout(500);
     assert.equal(await page.evaluate(() => window.jevAsked), 1, 'opened again: the kept place, nothing asked');

@@ -90,6 +90,13 @@ test('a streaming reply is voiced ahead only up to its last finished line; OpenR
     await settle();
     assert.deepEqual((await texts()).filter(t => t.includes('하나는')), ['하나는 그래도 따라갔다.'], 'the finished reply makes that line once, never its fragments');
     assert.ok((await page.evaluate(() => window.calls)).every(c => c.url.includes('fish.audio')), 'Fish route');
+    // 옴니 뷰어 open over the chat: the viewer voices what is read there; the chat's own voicing ahead waits, and comes back after.
+    await page.evaluate(() => { window.calls = []; window.__OMNI_VIEWER_OPEN__ = () => true; window.write(window.chat.message[0].data + '\n리나: "뷰어가 열린 동안"\n'); });
+    await settle(); await settle();
+    assert.deepEqual((await texts()).filter(t => t.includes('뷰어가 열린 동안')), [], 'nothing asked from the chat while the viewer is open');
+    await page.evaluate(() => { window.__OMNI_VIEWER_OPEN__ = () => false; window.write(window.chat.message[0].data + ' '); });
+    await page.waitForFunction(() => window.calls.some(c => c.text.includes('뷰어가 열린 동안')));
+    await page.evaluate(() => { delete window.__OMNI_VIEWER_OPEN__; });
     // OpenRouter: no Fish key, an OpenRouter key; lines on screen are voiced ahead through it.
     await page.evaluate(async () => {
       window.calls = [];
