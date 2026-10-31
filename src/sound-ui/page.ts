@@ -9,7 +9,7 @@ export const SOUND_PAGE_TABS: Record<SoundPage, readonly string[]> = {
   tts: ['tts-settings', 'tts-characters', 'tts-voices'],
   sound: SOUND_TABS.map(([id]) => id),
   models: ['tts-models'],
-  asset: ['emo-assets'],
+  asset: ['emo-viewer', 'emo-bg', 'emo-assets'],
 };
 export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', models: '소리 모델 설정', asset: '뷰어 및 감정 에셋' };
 let page: SoundPage = 'tts';

@@ -78,7 +78,8 @@ const EXTENSION = /\.(?:png|webp|jpe?g|gif|avif)$/i;
  * `Ohmisun Happy.webp` and `Sasaki Yua enraged` all match their person.
  */
 export function assetMatchesExpression(assetName: unknown, names: readonly string[], face: string): boolean {
-  const parts = String(assetName ?? '').replace(EXTENSION, '').split(SEPARATORS).map(word).filter(Boolean);
+  // A picture Omni drew (`omni_<person>_<face>`) is that person's too.
+  const parts = String(assetName ?? '').replace(EXTENSION, '').replace(/^omni_/i, '').split(SEPARATORS).map(word).filter(Boolean);
   if (parts.length < 2) return false;
   const wanted = new Set(names.map(compactName).filter(name => name.length >= 2));
   if (!wanted.size) return false;
@@ -104,7 +105,8 @@ export const SPRITE_NEGATIVE = 'nsfw, nude, naked, nipples, penis, pussy, genita
 /** The emotion asset name Omni writes: `이름_감정.png` (PNG keeps a transparent background). */
 export function emotionAssetName(person: string, face: string, ext = 'png'): string {
   const name = String(person ?? '').normalize('NFKC').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
-  return `${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
+  // `omni_` first: never mixed up with the bot's own assets.
+  return `omni_${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
 }
 
 // ── prompt ─────────────────────────────────────────────────────────────────

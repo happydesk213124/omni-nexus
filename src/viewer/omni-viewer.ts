@@ -11,7 +11,8 @@ import { soundData, soundReady } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
-import { streamingPlace } from '../domain/viewer/place';
+import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
+import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
 import { setSoundPage } from '../sound-ui/page';
@@ -130,8 +131,10 @@ async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Pr
   // Just streamed: the place its blocks said holds until the reply's own is stored.
   const said = keepPlace ? livePlace : '';
   if (!streaming) livePlace = '';
-  place = await readPlace(said);
-  bg = '';
+  basePlace = await readPlace(said);
+  // A reply that says no place: its text picks one (JEV or embedding), once; meanwhile the stage stays as it was.
+  if (!basePlace && !placeMarks.length && !streaming) askPlace();
+  place = sceneWants(scenes[at]) || place;
   await stagePlace().catch(error => dbg('viewer.place', { message: String(error) }, 'warn'));
   await elementsForReply().catch(error => dbg('viewer.elements', { message: String(error) }, 'warn'));
   if (!streaming) makeForReply();
@@ -140,7 +143,7 @@ async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Pr
 function makeForReply(): void {
   if (!bot || !context) return;
   const who = bot, wants: Array<{ person: TtsCharacter; face: string } | { place: string }> = [], seen = new Set<string>();
-  if (place) wants.push({ place });
+  for (const p of new Set([basePlace, ...placeMarks.map(mark => mark.place)].filter(Boolean))) wants.push({ place: p });
   for (const scene of scenes) {
     if (scene.kind !== 'line' || !scene.speaker) continue;
     const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION;
@@ -157,18 +160,24 @@ async function renderedText(index: number): Promise<string> {
   try { return String(await node.innerText() ?? ''); } catch { return ''; } finally { await release(node); }
 }
 /**
- * The place this reply opens in: its own, stored when its cast block closed or its first
- * picture was drawn (that picture's location); else what its blocks say in the text;
- * else the chat's last known place. Its background is the stage; a missing one is made.
+ * Where the stage is. A line under a `[[place:…]]` mark is there (the mark before it in
+ * the reply); else the reply's own place (`basePlace`): stored when its cast block closed
+ * or its first picture was drawn, or picked for it from its text; else what its blocks
+ * say; else (no way to pick) the chat's last known place. None at all: the stage stays.
+ * A background for a place is drawn the first time it is wanted.
  */
-let place = '', livePlace = '', bgFor = '';
+let place = '', basePlace = '', livePlace = '', bgFor = '', picking = false;
+let placeMarks: Array<{ at: number; place: string }> = [];
 const bgs = new Map<string, string>();
+const sceneWants = (scene: ViewerScene | undefined): string => (scene ? placeAt(placeMarks, scene.start) : '') || basePlace || (placeMarks[0]?.place ?? '');
 async function readPlace(said = ''): Promise<string> {
   if (!context) return '';
   const own = await replyPlace(context.characterId, context.chatId, messageId()).catch(() => '');
   if (own) return own;
   const written = said || streamingPlace(source);
   if (written) return written;
+  // Picked from its text, when a way to pick is set: the chat's place is not this reply's.
+  if (placeEngine(viewerPrefs().bgPick)) return '';
   const note = await getSessionAuthorNote(chatNoteSessionId(context.sessionId, { character_id: context.characterId, chat_id: context.chatId })).catch(() => null) as { location?: unknown } | null;
   return typeof note?.location === 'string' ? note.location : '';
 }
@@ -193,11 +202,27 @@ async function stagePlace(): Promise<void> {
   }
   bg = id; bgFor = place;
 }
+/** A reply that says no place: one is picked from its text (once per message), and the stage goes there. */
+function askPlace(): void {
+  if (!context || !bot || messageIndex < 0 || !emotionData().settings.placeBackgrounds) return;
+  const ids = { characterId: context.characterId, chatId: context.chatId, messageId: messageId() }, from = source, who = bot;
+  picking = true;
+  void pickPlace(from, ids, who, viewerPrefs().bgPick).then(async picked => {
+    picking = false;
+    // Still that reply on stage, and nothing nearer said where: the stage goes there.
+    if (!open || source !== from || !picked) { if (open) await restyle(); return; }
+    basePlace = picked;
+    place = sceneWants(scenes[at]) || place;
+    await stagePlace();
+    await restyle();
+  }).catch(error => { picking = false; dbg('viewer.place.pick', { message: String((error as Error)?.message || error) }, 'warn'); void restyle().catch(() => {}); });
+}
 /** Why there is no background, after the clock: '' when there is one (or backgrounds are off). */
 function bgNote(): string {
   const s = emotionData().settings;
   if (bg || !s.placeBackgrounds) return '';
-  if (!placeKey(place)) return '배경: 장소 태그 없음';
+  if (picking) return '배경 고르는 중…';
+  if (!placeKey(place)) return '배경: 장소 없음';
   if (!bot) return '';
   const status = spriteStatus(bot.id, PLACE_PERSON, placeKey(place));
   if (status.state === 'running') return '배경 그리는 중…';
@@ -230,7 +255,9 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   }
   cues = segments.filter(isSoundSegment);
   scenes = buildScenes(settled, segments, emotionData().settings.words);
-  if (!keepPlace) { at = 0; bg = ''; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
+  // The stage keeps its background until the new reply's place is up (or the reply says none).
+  if (!keepPlace) { at = 0; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
+  placeMarks = placeMarkers(source);
   at = Math.max(0, Math.min(at, scenes.length - 1));
 }
 /**
@@ -738,8 +765,9 @@ async function render(force = false): Promise<void> {
   }
   noteMark();
   playCues(scene);
-  // A background finished since, or the place moved (a streaming block said where): put it up.
-  // Until the new one is drawn the old one stays: a bare stage would flash between them.
+  // The line's place (a mark before it moves the stage). A background finished since, or the
+  // place moved: put it up. Until the new one is drawn the old one stays: a bare stage would flash.
+  place = sceneWants(scene) || place;
   if (place && (!bg || bgFor !== place)) await stagePlace().catch(() => {});
   if (scene.kind === 'cg') {
     // The illustration is a photo over the dimmed stage; the stage itself stays the place.
@@ -1091,7 +1119,7 @@ function onStreamTick(text: string): void {
     setSource(pendingText, true);
     // The reply's cast block (or its first picture's block) has closed: its place is the stage now.
     const said = streamingPlace(pendingText);
-    if (said && said !== livePlace) { livePlace = said; place = said; }
+    if (said && said !== livePlace) { livePlace = said; basePlace = said; }
     if (waiting && at < scenes.length - 1) at++;
     void render();
     // No chunk for a while: the reply ended. Read the saved one (its images baked by then or soon).
@@ -1135,7 +1163,7 @@ export async function openViewer(): Promise<void> {
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
-    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; livePlace = ''; bgFor = ''; lastCast = []; logOpen = false;
+    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
     opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2;
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
@@ -1200,7 +1228,7 @@ async function ahead(): Promise<void> {
   const wants: Array<{ person: TtsCharacter; face: string } | { place: string }> = [];
   const reply = String(ctx.messages[index]!.chatId || ctx.messages[index]!.id || '');
   const at = await replyPlace(ctx.characterId, ctx.chatId, reply).catch(() => '');
-  if (at) wants.push({ place: at });
+  for (const p of new Set([at, ...placeMarkers(text).map(mark => mark.place)].filter(Boolean))) wants.push({ place: p });
   const seen = new Set<string>();
   for (const scene of buildScenes(text, parseTtsMessage(text), settings.words)) {
     if (scene.kind !== 'line' || !scene.speaker) continue;

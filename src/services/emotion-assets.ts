@@ -20,6 +20,7 @@ import { generateT2i, getNaiQuotaDetail } from '../providers/nai/client';
 import { getNaiInflight } from '../providers/nai/http';
 import { sleep } from '../core/util/async';
 import { compactHash } from '../domain/tts/segment';
+import { backgroundName, backgroundPlace, hashedPlace, placeKey, samePlace } from '../domain/viewer/place';
 import { modelForRequest, type T2iRequest } from '../providers/nai/payload';
 import { emotionData, loadEmotionData, noteSeenFaces, saveEmotionData, type EmotionMade } from '../storage/emotion-store';
 import { putCharacterAssetRows } from '../storage/shot-character';
@@ -201,20 +202,14 @@ async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot): Promi
 // ── place backgrounds ──────────────────────────────────────────────────────
 /** Backgrounds live beside sprites in the store, under this person key and the place as their face. */
 export const PLACE_PERSON = '__place__';
-/** One background per place: its tags, lowercased, deduplicated, in order. */
-export const placeKey = (place: string): string => [...new Set(String(place || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean))].slice(0, 16).join(', ');
-/** The same place: the same tags, in any order. */
-function samePlace(a: string, b: string): boolean {
-  const x = new Set(placeKey(a).split(', ').filter(Boolean)), y = new Set(placeKey(b).split(', ').filter(Boolean));
-  return x.size > 0 && x.size === y.size && [...x].every(tag => y.has(tag));
-}
-/**
- * A background's asset name: `bg_` and its tags, so the bot's assets find it again by name
- * (on another device, or once Omni's own record of it is gone). A very long place: its hash.
- */
-export function backgroundName(place: string, ext: string): string {
-  const k = placeKey(place);
-  return `${k.length <= 180 ? `bg_${k}` : `bg_${compactHash(k).slice(0, 12)}`}.${ext}`;
+export { backgroundName, placeKey };
+/** Every place this bot has a background for: Omni's records and its assets named by their tags. */
+export async function backgroundPlaces(bot: EmotionBot): Promise<string[]> {
+  const out: string[] = [];
+  const add = (place: string) => { const k = placeKey(place); if (k && !out.some(known => samePlace(known, k))) out.push(k); };
+  for (const m of [...(await loadEmotionData()).made].reverse()) if (m.bot === bot.id && m.person === PLACE_PERSON) add(m.face);
+  for (const asset of await botImages(bot)) { const place = backgroundPlace(String(asset.name || '')); if (place && !hashedPlace(place)) add(place); }
+  return out;
 }
 export async function findBackground(place: string, bot: EmotionBot): Promise<EmotionSprite | null> {
   const k = placeKey(place);
@@ -222,16 +217,13 @@ export async function findBackground(place: string, bot: EmotionBot): Promise<Em
   // Records saved before faces kept their whole length hold only the first 40 characters of the tags.
   const made = [...(await loadEmotionData()).made].reverse().find(m => m.bot === bot.id && m.person === PLACE_PERSON && (m.face === k || samePlace(m.face, k) || (m.face.length === 40 && k.startsWith(m.face))));
   if (made) return { face: k, name: made.name, path: made.path, source: 'omni' };
-  // The bot's own assets: one drawn before (named by its tags, or by their hash before that).
+  // The bot's own assets: one drawn before (`omni_bg_<tags>`, earlier `bg_<tags>` or `bg_<hash>`).
   const hash = compactHash(k).slice(0, 12);
-  const hit = (await botImages(bot)).find(asset => {
-    const name = String(asset.name || '').replace(/\.[a-z0-9]{2,5}$/i, '');
-    return /^bg_/i.test(name) && (name.slice(3) === hash || samePlace(name.slice(3), k));
-  });
+  const hit = (await botImages(bot)).find(asset => { const named = backgroundPlace(String(asset.name || '')); return !!named && (named === hash || samePlace(named, k)); });
   return hit ? { face: k, name: hit.name, path: hit.key, source: 'bot' } : null;
 }
 /**
- * A place with nobody in it, drawn once and kept as the bot's asset `bg_….png`: V5 at
+ * A place with nobody in it, drawn once and kept as the bot's asset `omni_bg_<tags>`: V5 at
  * medium effort (a background is blurred behind the cast anyway, so the cheaper pass
  * does), nobody in it by a strong `2::no humans::`, and the place's own tags.
  */

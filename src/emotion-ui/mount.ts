@@ -1,21 +1,26 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
 import { BASE_EXPRESSIONS, baseExpression } from '../domain/emotion/emotions';
-import { collectFaces, currentEmotionBot, findSprite, makeSprite, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { backgroundPlaces, collectFaces, currentEmotionBot, findBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { PLACE_SAMPLES } from '../config/place-samples';
+import { placeKey, samePlace } from '../domain/viewer/place';
+import { ensurePlaceModule } from '../storage/place-module';
 import { currentTtsContext } from '../services/tts-context';
 import { emotionData, loadEmotionData, updateEmotionSettings, type EmotionSettings } from '../storage/emotion-store';
 import { ttsData } from '../storage/tts-store';
-import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerSpeed, type ViewerTextSize } from '../storage/viewer-prefs';
+import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerBgPick, type ViewerSpeed, type ViewerTextSize } from '../storage/viewer-prefs';
 import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTION_TABS } from './markup';
+import { attachSoundHelp } from '../sound-ui/help';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
-/** Adds the 감정 에셋 tab and panel beside BGM·효과음 (outside the TTS power fieldset). Idempotent. */
+/** Adds the 뷰어 · 배경 · 감정 에셋 tabs and panels beside BGM·효과음 (outside the TTS power fieldset). Idempotent. */
 export function addEmotionStructure(root: ParentNode): void {
   if (root.querySelector('#emo-assets')) return;
   root.querySelector('.tts-tabs-bar nav')?.insertAdjacentHTML('beforeend', EMOTION_TABS.map(([id, label]) => `<button role="tab" id="tab-${id}" aria-controls="${id}" aria-selected="false" tabindex="-1" data-tts-tab="${id}">${label}</button>`).join(''));
   root.querySelector('#sound-controls')?.insertAdjacentHTML('beforeend', EMOTION_PANEL);
+  attachSoundHelp(root);
 }
 export const emotionStyleText = (): string => EMOTION_CSS;
 
@@ -41,7 +46,13 @@ function fillSettings(s: EmotionSettings): void {
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-pose', s.pose);
   for (const e of BASE_EXPRESSIONS) value(`emo-face-${e.key}`, s.faceTags[e.key] || '');
+  gates(s);
   value('emo-words', Object.entries(s.words).map(([w, face]) => `${w}=${face}`).join('\n'));
+}
+/** A section whose switch is off greys out (its values stay). */
+function gates(s: Pick<EmotionSettings, 'enabled' | 'placeBackgrounds'>): void {
+  const gate = (id: string, on: boolean) => { const node = $<HTMLFieldSetElement>(id); if (node) node.disabled = !on; };
+  gate('emo-faces-gate', s.enabled); gate('emo-bg-gate', s.placeBackgrounds);
 }
 function readSettings(): Partial<EmotionSettings> {
   const val = (id: string) => $<HTMLInputElement>(id)?.value ?? '';
@@ -67,6 +78,31 @@ async function renderPeople(): Promise<void> {
     : '<small>이 봇의 TTS 캐릭터가 없습니다. TTS 설정의 캐릭터 탭에서 먼저 등록하세요.</small>';
 }
 
+let backgroundsShown = '';
+async function renderBackgrounds(): Promise<void> {
+  const list = $('emo-bg-list'), chips = $('emo-bg-samples'), count = $('emo-bg-count');
+  if (!list || !chips) return;
+  const bot = await currentEmotionBot().catch(() => null);
+  if (!bot) { list.innerHTML = '<small>채팅을 연 봇이 없습니다.</small>'; chips.innerHTML = ''; return; }
+  const prefix = spriteJobKey(bot.id, PLACE_PERSON, '');
+  const places = await backgroundPlaces(bot), busy = new Set([...spriteJobs()].filter(key => key.startsWith(prefix)).map(key => key.slice(prefix.length)));
+  if (count) count.textContent = `${places.length}장`;
+  const signature = JSON.stringify([bot.id, places, [...busy]]);
+  if (signature !== backgroundsShown) {
+    backgroundsShown = signature;
+    list.innerHTML = [...[...busy].filter(place => !places.some(known => samePlace(known, place))).map(place => `<div class="emo-bg-tile" role="listitem"><div class="emo-bg-pic" data-busy="1">그리는 중…</div><small title="${esc(place)}">${esc(place)}</small></div>`),
+      ...places.map((place, i) => `<div class="emo-bg-tile" role="listitem"><div class="emo-bg-pic" data-bg-pic="${i}"></div><small title="${esc(place)}">${esc(place)}</small></div>`)].join('')
+      || '<small>아직 없습니다. 뷰어에 장소가 나오면 그려서 여기에 쌓입니다.</small>';
+    chips.innerHTML = PLACE_SAMPLES.map(sample => { const k = placeKey(sample), made = places.some(place => samePlace(place, k)); return `<button type="button" data-emo-bg-make="${esc(k)}"${made ? ' data-made="1" disabled' : ''}>${esc(k)}</button>`; }).join('');
+    // Pictures last, one by one: the list is up at once.
+    for (const [i, place] of places.entries()) {
+      const found = await findBackground(place, bot).catch(() => null), url = found ? await thumb(found.path).catch(() => '') : '';
+      const pic = list.querySelector<HTMLElement>(`[data-bg-pic="${i}"]`);
+      if (pic && url) pic.style.backgroundImage = `url("${url}")`;
+    }
+  }
+}
+
 export async function mountEmotion(root: HTMLElement, live: () => boolean): Promise<void> {
   await Promise.all([loadEmotionData(), loadViewerPrefs()]); if (!live()) return;
   fillSettings(emotionData().settings);
@@ -75,6 +111,21 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   if (skip) skip.value = viewerPrefs().skipWords;
   if (speed) speed.value = viewerPrefs().speed;
   if (size) size.value = viewerPrefs().textSize;
+  const pick = root.querySelector<HTMLSelectElement>('#emo-bg-pick'), module = root.querySelector<HTMLInputElement>('#emo-place-module'), moduleStatus = $('emo-place-module-status');
+  if (pick) pick.value = viewerPrefs().bgPick;
+  if (module) module.checked = viewerPrefs().placeModule;
+  pick?.addEventListener('change', event => { event.stopPropagation(); void saveViewerPrefs({ bgPick: (pick.value || 'auto') as ViewerBgPick }); });
+  // ⚛️ omni place: written to Risu's module list at once; a failure puts the switch back and says why.
+  module?.addEventListener('change', event => {
+    event.stopPropagation();
+    const on = module.checked;
+    if (moduleStatus) moduleStatus.textContent = on ? '설치하는 중…' : '끄는 중…';
+    void ensurePlaceModule(on).then(async () => {
+      await saveViewerPrefs({ placeModule: on });
+      if (moduleStatus) moduleStatus.textContent = on ? '켜짐 · 응답이 [[place:…]]를 씁니다' : '꺼짐';
+    }).catch(error => { module.checked = !on; if (moduleStatus) moduleStatus.textContent = String((error as Error)?.message || error); });
+  });
+  if (moduleStatus) moduleStatus.textContent = viewerPrefs().placeModule ? '켜짐 · 응답이 [[place:…]]를 씁니다' : '';
   const keepViewer = () => void saveViewerPrefs({ skipWords: skip?.value ?? '', speed: (speed?.value || 'fast') as ViewerSpeed, textSize: (size?.value || 'normal') as ViewerTextSize });
   let viewerTimer: ReturnType<typeof setTimeout> | undefined;
   for (const node of [skip, speed, size]) {
@@ -82,15 +133,28 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
     node?.addEventListener('input', event => { event.stopPropagation(); clearTimeout(viewerTimer); viewerTimer = setTimeout(keepViewer, 400); });
     node?.addEventListener('change', event => { event.stopPropagation(); clearTimeout(viewerTimer); keepViewer(); });
   }
-  const panel = root.querySelector('#emo-assets');
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
-  panel?.addEventListener('input', () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => void updateEmotionSettings(readSettings()), 400); });
-  panel?.addEventListener('change', () => { clearTimeout(saveTimer); void updateEmotionSettings(readSettings()); });
-  panel?.addEventListener('click', event => {
+  const save = () => { const next = readSettings(); gates({ enabled: !!next.enabled, placeBackgrounds: !!next.placeBackgrounds }); return updateEmotionSettings(next); };
+  for (const panel of root.querySelectorAll('#emo-bg, #emo-assets')) {
+    panel.addEventListener('input', () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => void save(), 400); });
+    panel.addEventListener('change', () => { clearTimeout(saveTimer); void save(); });
+  }
+  root.querySelector('#emo-assets')?.addEventListener('click', event => {
     const id = (event.target as Element | null)?.closest?.('[data-emo-open]')?.getAttribute('data-emo-open');
     if (id) document.dispatchEvent(new CustomEvent('omnitts-open-character', { detail: { id, view: 'faces' } }));
   });
+  // A sample pressed: drawn now for this bot (it shows in the list while it is being drawn, then as itself).
+  root.querySelector('#emo-bg')?.addEventListener('click', event => {
+    const button = (event.target as Element | null)?.closest?.<HTMLButtonElement>('[data-emo-bg-make]');
+    const place = button?.getAttribute('data-emo-bg-make');
+    if (!button || !place) return;
+    button.disabled = true;
+    void currentEmotionBot().then(bot => { if (!bot) throw new Error('채팅을 연 봇이 없습니다.'); const job = makeBackground(place, bot, true); void renderBackgrounds(); return job; })
+      .catch(error => { button.disabled = false; button.title = String((error as Error)?.message || error); }).finally(() => void renderBackgrounds());
+  });
   $('tab-emo-assets')?.addEventListener('click', () => void renderPeople());
+  $('tab-emo-bg')?.addEventListener('click', () => void renderBackgrounds());
+  const unsubscribe = subscribeSprites(() => { if (!live()) { unsubscribe(); return; } if (!$('emo-bg')?.hidden) void renderBackgrounds(); });
   void renderPeople();
   bindCharacterSheet(live);
 }

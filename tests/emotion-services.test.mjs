@@ -29,7 +29,7 @@ test("the bot's own images are found under any of the person's names; Omni's own
   assert.equal(await f.api.findSprite(f.person, 'angry', f.bot), null);
   f.api.emotionData().settings.useExisting = false;
   assert.equal(await f.api.findSprite(f.person, 'sad', f.bot), null, 'off: the bot\'s images are not used');
-  f.api.emotionData().made.push({ bot: 'bot', person: 't-misun', face: 'sad', name: '오미선_sad.png', path: 'assets/mine.png', registered: true, at: 1 });
+  f.api.emotionData().made.push({ bot: 'bot', person: 't-misun', face: 'sad', name: 'omni_오미선_sad.png', path: 'assets/mine.png', registered: true, at: 1 });
   assert.equal((await f.api.findSprite(f.person, 'sad', f.bot))?.source, 'omni');
 });
 
@@ -41,7 +41,7 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
   try {
     const before = f.host.naiRequests.length, llmBefore = f.host.llmRequests.length;
     const sprite = await f.api.makeSprite(f.person, 'sad', f.bot);
-    assert.equal(sprite.name, '오미선_sad.png');
+    assert.equal(sprite.name, 'omni_오미선_sad.png');
     assert.equal(f.host.naiRequests.length - before, 1, 'one NovelAI call');
     assert.equal(f.host.llmRequests.length - llmBefore, 0, 'no LLM');
     const prompt = JSON.stringify(f.host.naiRequests.at(-1).body);
@@ -55,10 +55,10 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
     await new Promise(r => setTimeout(r, 2000));
     assert.deepEqual((await listed()).map(a => a[1]), ['assets/old.png'], 'not while a reply streams');
     streaming = false;
-    for (let i = 0; i < 40 && (await listed()).some(a => a[1] === 'assets/old.png'); i++) await new Promise(r => setTimeout(r, 100));
+    for (let i = 0; i < 40 && !(await listed()).some(a => a[1] === sprite.path); i++) await new Promise(r => setTimeout(r, 100));
     const rows = await listed();
-    assert.equal(rows.length, 1, 'made again, it replaces the same name');
-    assert.deepEqual(rows[0].slice(0, 2), ['오미선_sad.png', sprite.path]);
+    // Omni's picture is `omni_…`: the bot's own asset of that face stays as it was, beside it.
+    assert.deepEqual(rows.map(a => a.slice(0, 2)), [['오미선_sad.png', 'assets/old.png'], ['omni_오미선_sad.png', sprite.path]]);
     assert.equal(f.api.emotionData().made.at(-1).registered, true);
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
 });
@@ -113,7 +113,7 @@ test('a background is found again: after a reload (a long place), its tags in an
   const f = await fixture([['bg_park, bench, night', 'assets/bg-park.png', 'png']]);
   const long = 'cafe, indoor, window, afternoon, wooden table, sunlight, potted plant';
   const made = await f.api.makeBackground(long, f.bot);
-  assert.equal(made.name, `bg_${long}.${made.name.split('.').pop()}`, 'named by its tags');
+  assert.equal(made.name, `omni_bg_${long}.${made.name.split('.').pop()}`, 'named by its tags, omni_ first');
   // A reload: the record comes back from storage, its whole place kept (it was cut to 40 characters, and never matched).
   await new Promise(r => setTimeout(r, 50));
   f.api.resetEmotionStore(); await f.api.loadEmotionData();
