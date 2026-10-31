@@ -15,6 +15,15 @@ export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(b
 let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
 export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models' || next === 'asset') page = next; }
+/**
+ * A panel to open the page on, and what its search starts with: 옴니 뷰어's 👨‍👩‍👧‍👦 opens the
+ * 캐릭터 tab on the reply's people ("하린, 세라"). Shown from the first paint; the search is
+ * taken once, by the mount.
+ */
+let focus: { panel: string; search: string } | null = null;
+export function focusSoundPanel(panel: string, search = ''): void { focus = { panel, search }; }
+export const soundFocus = (): { panel: string; search: string } | null => focus;
+export function takeSoundFocus(): { panel: string; search: string } | null { const f = focus; focus = null; return f; }
 
 /**
  * Marks the open page in the menu and the header. The vendor marks every entry

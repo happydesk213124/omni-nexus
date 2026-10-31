@@ -56,7 +56,11 @@ test('letters are plain <i>: their delay is by place in the style sheet, never a
   assert.doesNotMatch(line.html, /<(span|i) style/, 'no inline style per letter');
   assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(2\)\{animation-delay:calc\(1 \* var\(--vs\)\)\}/);
   assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(n\+321\)\{animation-delay:calc\(320 \* var\(--vs\)\)\}/, 'a long line: the rest come with the last');
-  assert.match(stage({ revealed: true }), /\[data-vn-text\] i\{animation:none!important;opacity:1!important\}/);
+  assert.match(stage({ revealed: true }), /\[data-vn-text\] i\{animation:none!important;visibility:visible!important\}/);
+  // Shown at its turn, at once: no letter is ever a fading layer of its own (that cost a phone every frame of a reveal).
+  assert.match(api.STATIC_CSS, /\[data-vn-text\] i\{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps\(1,end\) forwards\}/);
+  assert.match(api.STATIC_CSS, /@keyframes vn-ch\{to\{visibility:visible\}\}/);
+  assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-text\] i\{[^}]*opacity/);
   const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 }), vs = Number(long.html.match(/--vs:(\d+)ms/)[1]);
   assert.equal(long.revealMs, 321 * vs, 'a long line is whole when its last delayed letter is: the cue does not wait for 1000 of them');
 });
@@ -73,15 +77,33 @@ test("글자 크기: the box's letters and name, scaled by one rule; as designed
   assert.doesNotMatch(stage({}), /font-size/);
 });
 
-test('캐릭터 움직임: a spring on the face shown (or the oval), breathing on every picture; off, neither', () => {
+test('캐릭터 움직임: a spring on the face shown (or the oval), breathing for the lit only; off, neither', () => {
   const cast = [{ key: 'tA', face: 'sp1', speaking: true, bounce: 'b' }, { key: 'tB', face: '', speaking: false, label: '(sad)', bounce: 'a' }];
   const on = stage({ cast, motion: { breathe: true, bounce: true } });
   assert.match(on, /\[x-vn-p="tA"\] \[x-vn-sp="sp1"\]\{opacity:1;animation:vn-jelly-b \.62s/);
   assert.match(on, /\[x-vn-p="tB"\] \[data-vn-sil\]\{animation:vn-jelly-a/, 'an oval springs too');
-  assert.match(on, /\[x-vn-sp\] img\{animation:vn-breathe/);
+  // The speaker breathes; the dimmed (blurred) one stands still: moving inside a blur redraws it every frame.
+  assert.match(on, /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe 4\.6s ease-in-out 0s infinite\}/);
+  assert.doesNotMatch(on, /\[x-vn-p="tB"\] \[x-vn-sp\] img\{animation:vn-breathe/);
+  assert.doesNotMatch(on, /\[x-omni-vn\] \[x-vn-sp\] img\{animation:vn-breathe/, 'never every picture at once');
+  const told = stage({ cast, narration: true, motion: { breathe: true, bounce: true } });
+  assert.match(told, /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe 4\.6s/);
+  assert.match(told, /\[x-vn-p="tB"\] \[x-vn-sp\] img\{animation:vn-breathe 5\.2s ease-in-out -1\.7s/, 'in narration nobody is blurred: all breathe, each at their own pace');
+  assert.doesNotMatch(stage({ cast, cg: 'p1', cgView: 'open', motion: { breathe: true, bounce: true } }), /vn-breathe/, 'a picture on show dims everyone');
+  assert.match(stage({ cast, cg: 'p1', cgView: 'fold', motion: { breathe: true, bounce: true } }), /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe/, 'folded at the top it does not');
   const off = stage({ cast, motion: { breathe: false, bounce: false } });
   assert.doesNotMatch(off, /vn-jelly|vn-breathe/);
   assert.match(off, /\[x-vn-p="tA"\] \[x-vn-sp="sp1"\]\{opacity:1\}/);
   assert.match(api.STATIC_CSS, /@keyframes vn-jelly-a\{/); assert.match(api.STATIC_CSS, /@keyframes vn-jelly-b\{/);
   assert.match(api.STATIC_CSS, /prefers-reduced-motion:reduce\)\{\[x-omni-vn\] \[x-vn-sp\],\[x-omni-vn\] \[x-vn-sp\] img,\[x-omni-vn\] \[data-vn-sil\]\{animation:none!important\}/);
+});
+
+test('waiting: the spinner by the clock turns while the reader waits, and 메시지의 ▲ ▼ row while it fills', () => {
+  assert.match(api.FRAME, /<div data-vn-clock><\/div><div data-vn-busy><\/div>/);
+  assert.match(api.STATIC_CSS, /\[data-vn-busy\]\{display:none;[^}]*animation:vn-spin/);
+  assert.match(stage({ busy: true }), /\[x-omni-vn\] \[data-vn-busy\]\{display:block\}/);
+  assert.doesNotMatch(stage({}), /data-vn-busy/);
+  assert.match(stage({ msgs: true, msgsLoading: 'before' }), /\[data-vn-msg\]\[data-more="before"\]::after\{content:"";[^}]*animation:vn-spin/);
+  assert.doesNotMatch(stage({ msgs: false, msgsLoading: 'before' }), /data-more/, 'closed, nothing turns');
+  assert.match(api.FRAME, /<button data-vn-act="set"[^>]*>⚙<\/button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦<\/button>/, 'the people button sits by the settings');
 });

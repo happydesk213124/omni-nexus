@@ -15,6 +15,7 @@ import { bindAudioActivation, cancelAudioActivation, confirmAudioActivation, pro
 import { ttsData } from '../storage/tts-store';
 import { injectSoundPanels, mountSound } from '../sound-ui/mount';
 import { soundAwareHtml } from '../sound-ui/markup';
+import { takeSoundFocus } from '../sound-ui/page';
 import { mountEmotion } from '../emotion-ui/mount';
 
 /** Built for the open menu page (TTS / BGM·효과음 / models) so the first paint is already right. */
@@ -55,6 +56,9 @@ export async function mountTts(): Promise<void> {
   const refresh = () => { if(live()){library.render(); characters.render();} };
   observer.observe(document.body,{childList:true,subtree:true});
   await characters.bind(live); if(!live())return;
+  // Opened for some people (옴니 뷰어's 👨‍👩‍👧‍👦): the 캐릭터 tab, them searched.
+  const focus = takeSoundFocus();
+  if (focus?.panel === 'tts-characters') { tab('tts-characters'); characters.showOnly(focus.search); }
   bindTtsLlmActions(refresh);
   // 「LLM으로 추가」 and 「LLM 정리 요청」 are one request now: add, rename, refile and retag.
   for (const id of ['bulk-voice', 'organize-voices']) el(id)?.setAttribute('hidden', '');

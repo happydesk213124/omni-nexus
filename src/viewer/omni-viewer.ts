@@ -13,19 +13,20 @@ import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
-import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
+import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
-import { setSoundPage } from '../sound-ui/page';
+import { focusSoundPanel, setSoundPage } from '../sound-ui/page';
 import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
 import { replyPlace } from '../storage/viewer-places';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
-import { psGet, psSet } from '../storage/device-store';
+import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
+import { setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
-import { centerIn, quiet, release, rowAt, unwrap } from './safe-dom';
+import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { BACKGROUND_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { onSticker, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
 
@@ -62,9 +63,9 @@ let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cg
 interface StripItem { key: string; message: number; asset: string }
 let stripOpen = false, stripItems: StripItem[] = [], thumbs: Array<StripItem & { r: DOMRect }> = [];
 const STRIP_MAX = 6;
-// The left-hand list: the chat's replies in order, each a way to it.
-let msgsOpen = false, msgsRect: DOMRect | null = null, msgRows: number[] = [];
-const MSGS_MAX = 400;
+// The left-hand list: the replies around the one on stage, each a way to it; ▲ ▼ rows bring more.
+let msgsOpen = false, msgsRect: DOMRect | null = null, msgRows: number[] = [], msgsSpan: [number, number] | null = null, msgsLoading: 'before' | 'after' | '' = '';
+const MSGS_AROUND = 1, MSGS_MORE = 5, MORE_BEFORE = -1, MORE_AFTER = -2;
 let open = false, rect = { left: 0, top: 0, width: 0, height: 0 }, controls: Array<{ act: string; r: DOMRect }> = [];
 let context: TtsChatContext | null = null, bot: EmotionBot | null = null, messageIndex = -1, source = '', scenes: ViewerScene[] = [], at = 0;
 let streaming = false, logOpen = false, autoTimer: ReturnType<typeof setTimeout> | undefined, positionTimer: ReturnType<typeof setInterval> | undefined;
@@ -72,18 +73,20 @@ let streaming = false, logOpen = false, autoTimer: ReturnType<typeof setTimeout>
 const people = new Map<string, SafeElement>(), faces = new Map<string, string>(), clones = new Set<string>();
 let bg = '', revealUntil = 0, epoch = 0, voiceKey = '', clickId = '';
 
+/** The chat screen less Risu's input bar under its messages: what the viewer covers. */
+async function chatArea(screen: SafeElement): Promise<{ left: number; top: number; width: number; height: number }> {
+  const s = await screen.getBoundingClientRect();
+  let below = 0;
+  const others = await screen.querySelectorAll(':scope > :not(.absolute):not(.fixed):has(~ .flex-col-reverse)');
+  for (const node of await unwrap(others)) { const r = await node.getBoundingClientRect(); below += r.height; await release(node); }
+  return { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
+}
 async function measure(): Promise<void> {
   if (!doc || !root) return;
   const screen = await doc.querySelector('.default-chat-screen');
   let next = rect;
   try {
-    if (screen) {
-      const s = await screen.getBoundingClientRect();
-      let below = 0;
-      const others = await screen.querySelectorAll(':scope > :not(.absolute):not(.fixed):has(~ .flex-col-reverse)');
-      for (const node of await unwrap(others)) { const r = await node.getBoundingClientRect(); below += r.height; await release(node); }
-      next = { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
-    }
+    if (screen) next = await chatArea(screen);
   } finally { await release(screen); }
   if (screen && next.width > 0) {
     if (JSON.stringify(next) !== JSON.stringify(rect)) await root.setStyleAttribute(`left:${next.left}px;top:${next.top}px;width:${next.width}px;height:${next.height}px`);
@@ -115,18 +118,32 @@ async function measureCgControls(): Promise<void> {
 
 
 /**
+ * The chat, read: its context, and the bot (the character just read is the bot's, so only
+ * its place in Risu's list is asked: a second read of it, every chat it has, was the
+ * dearest call the viewer made).
+ */
+async function readChat(ctx?: TtsChatContext): Promise<void> {
+  context = ctx ?? await currentTtsContext();
+  shownText.clear();
+  const index = Number(await Promise.resolve(risuHost()?.getCurrentCharacterIndex?.()).catch(() => NaN));
+  bot = Number.isInteger(index) && index >= 0 && context.characterId ? { id: context.characterId, index, character: context.character } : await currentEmotionBot().catch(() => null);
+}
+/**
  * The newest reply (or the one at/before `index`), from the chat data. Which of its
  * lines are scenes is what the chat shows of it: a status panel or summary the
  * bot's regex hides is in the source but never on screen, so it is no scene either.
+ * The chat is read only when asked (`read`: the chat as just read, or 'fresh' for 최신, a
+ * stream's end, a picture baked) or never yet: turning to another reply reads nothing.
+ * Its background and stickers come after its first line.
  */
-async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Promise<void> {
-  context = ctx ?? await currentTtsContext();
-  bot = await currentEmotionBot().catch(() => null);
-  const messages = context.messages;
+let elementsDue = false, elementsReady: Promise<void> = Promise.resolve();
+async function load(index?: number, keepPlace = false, read: TtsChatContext | 'fresh' | null = null): Promise<void> {
+  if (read || !context) await readChat(read && read !== 'fresh' ? read : undefined);
+  const messages = context?.messages ?? [];
   let i = index ?? messages.length - 1;
   while (i >= 0 && messages[i]?.role !== 'char') i--;
   messageIndex = i;
-  const shown = i >= 0 && !streaming ? await renderedText(i) : '';
+  const shown = i >= 0 && !streaming ? await shownOf(i) : '';
   setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace, shown);
   // A reply loaded (again) asks its voices afresh: what is made already is cached and skipped.
   askedAhead = new Set(); askedFor = '';
@@ -137,9 +154,14 @@ async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Pr
   // A reply that says no place: its text picks one (JEV or embedding), once; meanwhile the stage stays as it was.
   if (!basePlace && !placeMarks.length && !streaming) askPlace();
   place = sceneWants(scenes[at]) || place;
-  await stagePlace().catch(error => dbg('viewer.place', { message: String(error) }, 'warn'));
-  await elementsForReply().catch(error => dbg('viewer.elements', { message: String(error) }, 'warn'));
+  elementsDue = true;
   if (!streaming) makeForReply();
+}
+/** The reply's stickers and choices, once its first line is out; at the end of the newest reply the line waits for them. */
+function elementsAfter(): void {
+  if (!elementsDue) return;
+  elementsDue = false;
+  elementsReady = elementsForReply().catch(error => { dbg('viewer.elements', { message: String(error) }, 'warn'); });
 }
 /** Every face this reply shows and its place, asked for once it is on stage (not only after it arrived). */
 function makeForReply(): void {
@@ -153,6 +175,13 @@ function makeForReply(): void {
     seen.add(person.id + face); wants.push({ person, face });
   }
   void makeAhead(wants, who).catch(error => dbg('viewer.ahead', { message: String(error) }, 'warn'));
+}
+/** The reply as the chat draws it, read once per reply (and ahead, near a reply's edge: turning to the next waits on nothing). */
+const shownText = new Map<number, Promise<string>>();
+function shownOf(index: number): Promise<string> {
+  let job = shownText.get(index);
+  if (!job) { job = renderedText(index); shownText.set(index, job); }
+  return job;
 }
 /** The reply as the chat draws it (innerText: what CSS hides is left out). '' when it is not on screen. */
 async function renderedText(index: number): Promise<string> {
@@ -190,19 +219,32 @@ async function stagePlace(): Promise<void> {
     if (emotionData().settings.autoGenerate) void makeBackground(place, bot).catch(error => dbg('viewer.background', { message: `${placeKey(place)}: ${String((error as Error)?.message || error)}` }, 'warn'));
     return;
   }
-  let id = bgs.get(made.path);
-  if (!id) {
+  const wanted = place, id = bgs.get(made.path) ?? await sendBackground(made, bot);
+  // The reading moved to another place meanwhile: that one is its turn.
+  if (!id || place !== wanted) return;
+  bg = id; bgFor = wanted;
+}
+/** A background's picture into its layer, once (asked again while on its way, the same trip). '' when unreadable. */
+const bgSending = new Map<string, Promise<string>>();
+function sendBackground(made: EmotionSprite, who: EmotionBot): Promise<string> {
+  let job = bgSending.get(made.path);
+  if (job) return job;
+  const d = doc, layer = bgLayer, run = opened;
+  job = (async () => {
+    if (!d || !layer) return '';
     const raw = await risuHost()?.readImage?.(made.path).catch(() => null);
     const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
-    if (!bytes?.byteLength) { dbg('viewer.background', { message: `${made.path}: unreadable, drawn again` }, 'warn'); void forgetMade(made.shared ? SHARED_BOT : bot.id, PLACE_PERSON, made.face).catch(() => {}); return; }
-    id = key(made.path);
-    const holder = await doc.createElement('div');
-    await holder.setAttribute('x-vn-bg', id);
-    await holder.setInnerHTML(`<img alt="" src="${await screenImage(made.path, bytes, BACKGROUND_BOX)}">`);
-    await bgLayer.appendChild(holder); await release(holder);
+    if (!bytes?.byteLength) { dbg('viewer.background', { message: `${made.path}: unreadable, drawn again` }, 'warn'); void forgetMade(made.shared ? SHARED_BOT : who.id, PLACE_PERSON, made.face).catch(() => {}); return ''; }
+    const id = key(made.path), src = await screenImage(made.path, bytes, BACKGROUND_BOX), holder = await d.createElement('div');
+    // Sent together: the bridge keeps their order.
+    await Promise.all([holder.setAttribute('x-vn-bg', id), holder.setInnerHTML(`<img alt="" src="${src}">`), layer.appendChild(holder)]);
+    await release(holder);
+    if (run !== opened) return '';
     bgs.set(made.path, id);
-  }
-  bg = id; bgFor = place;
+    return id;
+  })().finally(() => bgSending.delete(made.path));
+  bgSending.set(made.path, job);
+  return job;
 }
 /** A reply that says no place: one is picked from its text (once per message), and the stage goes there. */
 function askPlace(): void {
@@ -311,35 +353,35 @@ function messageId(): string {
  * A reply that came since (or the last one rerolled) opens instead, from its top:
  * that is what is unread. Kept on the device, the newest {@link MARKS_MAX} chats.
  */
-const MARKS_KEY = 'omniviewer.marks', MARKS_MAX = 60;
+const MARKS_MAX = 60;
 interface ReadMark { message: string; hash: string; at: number; newest: string; t: number }
 let marks: Record<string, ReadMark> | null = null, markTimer: ReturnType<typeof setTimeout> | undefined;
 const idOf = (i: number): string => { const m = context?.messages[i]; return String(m?.chatId || m?.id || `${i}:${compactHash(String(m?.data ?? ''))}`); };
 const chatKey = (ctx: TtsChatContext): string => `${ctx.characterId}|${ctx.chatId}`;
 async function readMarks(): Promise<Record<string, ReadMark>> {
   if (!marks) {
-    const raw = await psGet(MARKS_KEY).catch(() => null);
+    const raw = await loadViewerMarks().catch(() => null);
     marks = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, ReadMark> : {};
   }
   return marks;
 }
-/** Every scene shown notes where the reader is: a JS write now, the device a second later. */
+/** Every scene shown notes where the reader is: a JS write now, the device a moment later. */
 function noteMark(): void {
   if (!context || !marks || streaming || messageIndex < 0) return;
   const list = charIndexes(), newest = list[list.length - 1];
   marks[chatKey(context)] = { message: idOf(messageIndex), hash: compactHash(source), at, newest: newest === undefined ? '' : idOf(newest), t: Date.now() };
   clearTimeout(markTimer);
-  markTimer = setTimeout(flushMarks, 1000);
+  markTimer = setTimeout(flushMarks, 1500);
 }
 function flushMarks(): void {
   clearTimeout(markTimer); markTimer = undefined;
   if (!marks) return;
   marks = Object.fromEntries(Object.entries(marks).sort((a, b) => (Number(b[1]?.t) || 0) - (Number(a[1]?.t) || 0)).slice(0, MARKS_MAX));
-  void psSet(MARKS_KEY, marks).catch(() => {});
+  void saveViewerMarks(marks).catch(() => {});
 }
 /** The reply and scene to open at: where the reader left this chat, or the first reply since. */
 async function resume(): Promise<void> {
-  const ctx = await currentTtsContext(), mark = streaming ? undefined : (await readMarks())[chatKey(ctx)];
+  const [ctx, all] = await Promise.all([currentTtsContext(), streaming ? null : readMarks()]), mark = all?.[chatKey(ctx)];
   context = ctx;
   const list = charIndexes(), newest = list[list.length - 1];
   let target: number | undefined, resumeAt = 0;
@@ -438,6 +480,21 @@ function castAt(index: number): Member[] {
   // Map keeps first-entrance order: people keep their spots as others come and go.
   return [...seen.values()].filter(m => recent.has(m.key)).map(m => ({ ...m, speaking: m.key === speaker }));
 }
+/** The TTS characters this reply brings on, in the order they first speak. */
+function replyPeople(): string[] {
+  const names: string[] = [];
+  for (const scene of scenes) {
+    if (scene.kind !== 'line' || !scene.speaker || !context) continue;
+    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope);
+    if (person && !names.includes(person.name)) names.push(person.name);
+  }
+  return names;
+}
+/** The settings window on the TTS · 감정 에셋 slot (its page chosen before). */
+async function openSoundWindow(): Promise<void> {
+  const openPage = Reflect.get(globalThis, '__OMNI_OPEN_TTS__');
+  if (typeof openPage === 'function') await Promise.resolve(openPage()).catch(error => dbg('viewer.settings', { message: String(error) }, 'warn'));
+}
 function resolveName(speaker: string): string {
   const person = context ? resolveTtsSpeaker(speaker, ttsData().characters, context.rosterScope) : null;
   return person?.name || speaker;
@@ -448,21 +505,39 @@ function ovalLabel(m: Member): string {
   const status = m.person && bot && emotionData().settings.enabled ? spriteStatus(bot.id, m.person.id, m.face) : { state: '', message: '' };
   return `(${m.face})${status.state === 'running' ? '\n그리는 중…' : status.state === 'failed' ? `\n못 그림 · ${status.message.slice(0, 22)}` : ''}`;
 }
-/** A person's place on stage, made once. */
-async function placeFor(m: Member): Promise<SafeElement | null> {
+/** A person's place on stage, made once (asked again while on its way, the same trip; its three calls sent together). */
+const placing = new Map<string, Promise<SafeElement | null>>();
+function placeFor(m: Member): Promise<SafeElement | null> {
   const known = people.get(m.key);
-  if (known || !doc || !castLayer) return known ?? null;
-  const el = await doc.createElement('div');
-  await el.setAttribute('x-vn-p', m.key);
-  await el.setInnerHTML(personHtml(m.name));
-  await castLayer.appendChild(el);
-  people.set(m.key, el);
-  return el;
+  if (known) return Promise.resolve(known);
+  if (!doc || !castLayer) return Promise.resolve(null);
+  let job = placing.get(m.key);
+  if (job) return job;
+  const d = doc, layer = castLayer, run = opened;
+  job = (async () => {
+    const el = await d.createElement('div');
+    await Promise.all([el.setAttribute('x-vn-p', m.key), el.setInnerHTML(personHtml(m.name)), layer.appendChild(el)]);
+    // Closed and opened again meanwhile: that stage is gone.
+    if (run !== opened) { await release(el); return null; }
+    people.set(m.key, el);
+    return el;
+  })().finally(() => placing.delete(m.key));
+  placing.set(m.key, job);
+  return job;
 }
 /** The picture for a member's face, or null while they have none (it may be in the making: it is asked for). */
 async function spriteFor(m: Member): Promise<EmotionSprite | null> {
   if (!m.person || !bot || !emotionData().settings.enabled) return null;
   const sprite = await findSprite(m.person, m.face, bot) ?? (m.face !== DEFAULT_EXPRESSION ? await findSprite(m.person, DEFAULT_EXPRESSION, bot) : null);
+  if (emotionData().settings.autoGenerate && sprite?.face !== m.face) void makeSprite(m.person, m.face, bot).catch(() => {});
+  return sprite;
+}
+/** spriteFor with no wait: undefined while the bot's pictures have never been read (spriteFor reads them). */
+function spriteKnown(m: Member): EmotionSprite | null | undefined {
+  if (!m.person || !bot || !emotionData().settings.enabled) return null;
+  const exact = spriteNow(m.person, m.face, bot);
+  if (exact === undefined) return undefined;
+  const sprite = exact ?? (m.face !== DEFAULT_EXPRESSION ? spriteNow(m.person, DEFAULT_EXPRESSION, bot) ?? null : null);
   if (emotionData().settings.autoGenerate && sprite?.face !== m.face) void makeSprite(m.person, m.face, bot).catch(() => {});
   return sprite;
 }
@@ -480,35 +555,46 @@ function sendFace(m: Member, place: SafeElement, sprite: EmotionSprite): Promise
     const raw = await risuHost()?.readImage?.(sprite.path).catch(() => null);
     const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
     if (!bytes?.byteLength) { if (sprite.source === 'omni' && bot && m.person) void forgetMade(bot.id, m.person.id, sprite.face).catch(() => {}); return; }
+    const src = await screenImage(sprite.path, bytes, SPRITE_BOX);
     if (!doc || run !== opened) return;
     const id = key(sprite.path), holder = await doc.createElement('div');
-    await holder.setAttribute('x-vn-sp', id);
-    await holder.setInnerHTML(`<img alt="" src="${await screenImage(sprite.path, bytes, SPRITE_BOX)}">`);
-    await place.appendChild(holder); await release(holder);
+    // Sent together: the bridge keeps their order.
+    await Promise.all([holder.setAttribute('x-vn-sp', id), holder.setInnerHTML(`<img alt="" src="${src}">`), place.appendChild(holder)]);
+    await release(holder);
     // Closed and opened again meanwhile: that place is gone, and so is this face.
     if (run === opened) faces.set(slot, id);
   })().catch(error => { dbg('viewer.face', { message: String(error) }, 'warn'); }).finally(() => sending.delete(slot));
   sending.set(slot, job);
   return job;
 }
+type CastEntry = { key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' };
+/** Work a scene leaves for after its line: started only once the line has gone out, so no call of theirs is ahead of it. */
+type Later = Array<() => Promise<unknown>>;
 /**
- * Everyone on stage at a scene, as they can show now: a face already sent shows; one not
- * yet sent goes over behind the line (`later`), and until then its person keeps the face
- * they last showed (someone new: the oval). The line never waits on a picture.
+ * Everyone on stage at a scene, as they can show now, with no call: a face already sent
+ * shows. Whatever is missing (someone's place, a face not sent, the bot's pictures never
+ * read) is work for after the line (`later`), and until it is done a person keeps the
+ * face they last showed (someone new: the oval). The line never waits on a picture.
  */
-async function castNow(index: number, later: Array<Promise<void>>): Promise<Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' }>> {
-  const cast: Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' }> = [];
+function castNow(index: number, later: Later): CastEntry[] {
+  const cast: CastEntry[] = [];
+  const send = (m: Member, sprite: EmotionSprite) => placeFor(m).then(place => place ? sendFace(m, place, sprite) : undefined);
   for (const m of castAt(index)) {
-    const place = await placeFor(m), sprite = place ? await spriteFor(m) : null;
+    if (!people.has(m.key)) later.push(() => placeFor(m));
+    const sprite = spriteKnown(m);
     let face = '';
-    if (place && sprite) {
-      if (faces.has(`${m.key}|${sprite.path}`)) face = key(sprite.path);
-      else { later.push(sendFace(m, place, sprite)); face = shownFace.get(m.key) ?? ''; }
-    }
+    if (sprite === undefined) later.push(() => spriteFor(m).then(found => found ? send(m, found) : undefined));
+    else if (sprite && faces.has(`${m.key}|${sprite.path}`)) face = key(sprite.path);
+    else if (sprite) { later.push(() => send(m, sprite)); face = shownFace.get(m.key) ?? ''; }
     if (face) shownFace.set(m.key, face);
     cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m), bounce: springOf(m.key, face, m.speaking) });
   }
   return cast;
+}
+/** A scene's left work, run (after its line), and the stage brought up to date once it is all done. */
+function behind(mine: number, later: Later): void {
+  if (!later.length) return;
+  void Promise.allSettled(later.map(run => run())).then(() => restage(mine)).catch(error => dbg('viewer.behind', { message: String(error) }, 'warn'));
 }
 /**
  * The spring each person is on: it turns when they come in, show another face (a picture
@@ -521,25 +607,39 @@ function springOf(key: string, face: string, speaking: boolean): 'a' | 'b' {
   springs.set(key, { face, speaking, turn });
   return turn;
 }
-/** Faces that went over after their line was drawn: the stage shows them (the box stays as it is). */
-async function restage(mine: number): Promise<void> {
+/**
+ * What went over after a line (a place, faces, a background): the stage shows it, the box
+ * stays as it is. What that brought to light (a face, once the bot's pictures were read)
+ * comes the same way, a round or two at most.
+ */
+async function restage(mine: number, round = 0): Promise<void> {
   if (mine !== epoch || !open) return;
-  const cast = await castNow(at, []);
-  if (mine !== epoch) return;
+  const more: Later = [], cast = castNow(at, more);
   lastCast = cast;
   await restyle();
+  if (more.length && round < 2) void Promise.allSettled(more.map(run => run())).then(() => restage(mine, round + 1));
 }
-/** The next two lines' faces, sent while this one is read: the step to them waits on nothing. */
+/**
+ * The next two lines' faces, sent while this one is read: the step to them waits on
+ * nothing. Near a reply's edge the reply beyond it is read too (its text as the chat
+ * draws it), so turning to it waits on nothing either.
+ */
 function sendAhead(mine: number): void {
   setTimeout(() => void (async () => {
     for (let i = at + 1; i <= at + 2 && i < scenes.length; i++) {
       for (const m of castAt(i)) {
         // A step since: its own scene comes first.
         if (mine !== epoch || stepping || pendingSteps) return;
-        const place = await placeFor(m), sprite = place ? await spriteFor(m) : null;
-        if (place && sprite && !faces.has(`${m.key}|${sprite.path}`)) await sendFace(m, place, sprite);
+        const sprite = await spriteFor(m);
+        if (!sprite || faces.has(`${m.key}|${sprite.path}`)) continue;
+        const place = await placeFor(m);
+        if (place) await sendFace(m, place, sprite);
       }
     }
+    if (mine !== epoch || stepping || pendingSteps || streaming) return;
+    const list = charIndexes(), here = list.indexOf(messageIndex);
+    if (at >= scenes.length - 2 && list[here + 1] !== undefined) await shownOf(list[here + 1]!);
+    if (at <= 1 && here > 0) await shownOf(list[here - 1]!);
   })().catch(error => dbg('viewer.ahead', { message: String(error) }, 'warn')), 300);
 }
 /**
@@ -619,7 +719,7 @@ function watchPending(): void {
     const count = Array.isArray(found) ? found.length : await found.length();
     const was = slotsShown; slotsShown = count;
     if (was < 0 || count >= was) return;
-    await load(messageIndex, true);
+    await load(messageIndex, true, 'fresh');
     await render();
   })().catch(error => dbg('viewer.pending', { message: String(error) }, 'warn')), 2500);
 }
@@ -723,26 +823,34 @@ const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, ex
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
+  busy: busy > 0, msgsLoading,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
-/** Fills the strip, newest first: the chat's own images cloned (no pixels sent), a label where the chat draws none. */
+/**
+ * Fills the strip, newest first: the chat's own images cloned (no pixels sent), a label
+ * where the chat draws none. Every tile is looked up and copied at once, then put in
+ * order, sent together: one item after another was six trips each.
+ */
 async function buildStrip(): Promise<void> {
-  if (!doc || !stripEl || !context) return;
+  const d = doc, strip = stripEl;
+  if (!d || !strip || !context) return;
   const items: StripItem[] = [];
   // This reply's illustrations only.
   for (const img of replyImages(source)) {
     if (img.cg.kind === 'baked' && items.length < STRIP_MAX) items.push({ key: key(`${messageIndex}|${img.cg.asset}`), message: messageIndex, asset: img.cg.asset });
   }
-  await stripEl.setInnerHTML(items.length ? '' : '<p style="font-size:12px;opacity:.7;margin:4px">이 답장에는 삽화가 없습니다.</p>');
   const order = charIndexes();
-  for (const item of items) {
-    const img = await doc.querySelector(`.risu-chat[data-chat-index="${item.message}"] [data-inray-asset="${item.asset}"] img`);
-    let node: SafeElement;
-    if (img) { node = await img.cloneNode(true); await release(img); }
-    else { node = await doc.createElement('div'); await node.setInnerHTML(`답장 ${order.indexOf(item.message) + 1} · 삽화`); }
-    await node.setAttribute('x-vn-thumb', item.key);
-    await stripEl.appendChild(node); await release(node);
-  }
+  const [, ...found] = await Promise.all([strip.setInnerHTML(items.length ? '' : '<p style="font-size:12px;opacity:.7;margin:4px">이 답장에는 삽화가 없습니다.</p>'),
+    ...items.map(item => d.querySelector(`.risu-chat[data-chat-index="${item.message}"] [data-inray-asset="${item.asset}"] img`))]);
+  const nodes = await Promise.all(items.map(async (item, i) => {
+    const img = found[i] as SafeElement | null;
+    if (img) { try { return await img.cloneNode(true); } finally { await release(img); } }
+    const label = await d.createElement('div');
+    await label.setInnerHTML(`답장 ${order.indexOf(item.message) + 1} · 삽화`);
+    return label;
+  }));
+  await Promise.all(nodes.flatMap((node, i) => [node.setAttribute('x-vn-thumb', items[i]!.key), strip.appendChild(node)]));
+  for (const node of nodes) await release(node);
   stripItems = items;
 }
 /** Tile rectangles, once the strip has slid in: taps on it then cost nothing. */
@@ -758,33 +866,51 @@ async function measureThumbs(): Promise<void> {
 }
 async function jumpTo(item: StripItem): Promise<void> {
   stripOpen = false;
-  await load(item.message);
-  const index = scenes.findIndex(s => s.cg?.kind === 'baked' && s.cg.asset === item.asset);
-  at = index >= 0 ? index : 0;
-  await render();
+  await waitOn(async () => {
+    await load(item.message);
+    const index = scenes.findIndex(s => s.cg?.kind === 'baked' && s.cg.asset === item.asset);
+    at = index >= 0 ? index : 0;
+    await render();
+  });
 }
 /**
- * Fills the message list: every reply in order (the newest {@link MSGS_MAX}), each a
- * tile with its number, its story clock when it has one, and its first line. One
- * write for the whole list; a tap finds its tile by a binary search, never by
- * reading every tile.
+ * Fills the message list: the reply on stage and one either side (every reply at once was
+ * one write of hundreds of tiles, and a phone choked on it), each a tile with its number,
+ * its story clock when it has one, and its first line; ▲ ▼ rows bring a few more at a
+ * time. The reply on stage is in sight as it is: nothing is scrolled. A tap finds its tile
+ * by a binary search, never by reading every tile.
  */
 async function buildMsgs(): Promise<void> {
   if (!msgsEl || !context) return;
-  const messages = context.messages, list = charIndexes().slice(-MSGS_MAX);
-  msgRows = list;
-  await msgsEl.setInnerHTML(list.map(i => {
+  const messages = context.messages, list = charIndexes(), here = Math.max(0, list.indexOf(messageIndex));
+  const [from, to] = msgsSpan ??= [Math.max(0, here - MSGS_AROUND), Math.min(list.length, here + MSGS_AROUND + 1)];
+  msgRows = [...(from > 0 ? [MORE_BEFORE] : []), ...list.slice(from, to), ...(to < list.length ? [MORE_AFTER] : [])];
+  const more = (side: 'before' | 'after', n: number) => `<div data-vn-msg data-more="${side}">${side === 'before' ? '▲ 이전' : '▼ 다음'} 답장 ${n}개 더 보기</div>`;
+  await msgsEl.setInnerHTML(msgRows.map(i => {
+    if (i === MORE_BEFORE) return more('before', Math.min(MSGS_MORE, from));
+    if (i === MORE_AFTER) return more('after', Math.min(MSGS_MORE, list.length - to));
     const raw = String(messages[i]?.data ?? ''), clock = storyClock(raw);
     return `<div data-vn-msg${i === messageIndex ? ' data-now' : ''}><b>#${i + 1}</b>${clock ? `<small>${esc(clock)}</small>` : ''}<span>${esc(replyGist(raw) || '…')}</span></div>`;
   }).join('') || '<p style="font-size:12px;opacity:.7;margin:4px">답장이 없습니다.</p>');
 }
 async function jumpFromMsgs(y: number): Promise<void> {
   if (!msgsEl || !msgRows.length) return;
-  const found = await rowAt(msgsEl, '[data-vn-msg]', y);
-  if (found < 0 || msgRows[found] === undefined) return;
+  const found = await rowAt(msgsEl, '[data-vn-msg]', y), row = msgRows[found];
+  if (found < 0 || row === undefined) return;
+  if (row === MORE_BEFORE || row === MORE_AFTER) { await moreMsgs(row === MORE_BEFORE ? 'before' : 'after'); return; }
   msgsOpen = false; msgsRect = null;
-  await load(msgRows[found]);
-  await render(true);
+  await waitOn(async () => { await load(row); await render(true); });
+}
+/** ▲ ▼ in 메시지: a few more replies that way; the row turns until they are in. */
+async function moreMsgs(side: 'before' | 'after'): Promise<void> {
+  if (!msgsSpan || msgsLoading) return;
+  const total = charIndexes().length, [from, to] = msgsSpan;
+  msgsLoading = side;
+  await restyle();
+  msgsSpan = side === 'before' ? [Math.max(0, from - MSGS_MORE), to] : [from, Math.min(total, to + MSGS_MORE)];
+  try { await buildMsgs(); } finally { msgsLoading = ''; }
+  await restyle();
+  if (msgsOpen && msgsEl) msgsRect = await msgsEl.getBoundingClientRect();
 }
 let lastCast: Array<{ key: string; face: string; speaking: boolean }> = [];
 
@@ -804,15 +930,17 @@ async function render(force = false): Promise<void> {
   const mine = ++epoch, scene = scenes[at];
   clearTimeout(autoTimer);
   if (!scene) {
-    await box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html);
+    // The stage as it was, its spinner gone.
+    await Promise.all([box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html), writeStage(state(lastCast))]);
     return;
   }
   noteMark();
-  playCues(scene);
   // The line's place (a mark before it moves the stage). A background finished since, or the
-  // place moved: put it up. Until the new one is drawn the old one stays: a bare stage would flash.
+  // place moved: it goes up after the line, never in its way, and until it is up the old one
+  // stays: a bare stage would flash.
   place = sceneWants(scene) || place;
-  if (place && (!bg || bgFor !== place)) await stagePlace().catch(() => {});
+  const later: Later = [];
+  if (place && (!bg || bgFor !== place)) later.push(() => stagePlace());
   if (scene.kind === 'cg') {
     // The illustration is a photo over the dimmed stage; the stage itself stays the place.
     const cg = await cgFor(scene);
@@ -820,10 +948,14 @@ async function render(force = false): Promise<void> {
     if (!cg) { queueStep(1); return; }
     // Shown once; past it, it waits folded at the top, a tap away.
     lastCg = cg; lastCgAt = at; cgView = 'open'; revealedAt = -1;
-    await elementsAtEnd(atEnd());
-    await writeStage(state(lastCast, { cg, cgView }));
-    // The reply ends on this picture: the cue to write the next message comes with it.
-    if (atEnd() && !(shownSig === '' && shownEnd)) { shownSig = ''; shownEnd = true; await box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html); }
+    const end = atEnd(), endCue = end && !(shownSig === '' && shownEnd);
+    if (endCue) { shownSig = ''; shownEnd = true; }
+    if (end) { elementsAfter(); await elementsReady; }
+    // The reply ends on this picture: the cue to write the next message comes with it. Its calls go out together.
+    await Promise.all([elementsAtEnd(end), writeStage(state(lastCast, { cg, cgView })), endCue ? box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html) : null]);
+    playCues(scene);
+    elementsAfter();
+    behind(mine, later);
     if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
     return;
   }
@@ -840,27 +972,37 @@ async function render(force = false): Promise<void> {
     if (passedId !== lastCg) { lastCg = passedId; cgThumb = null; }
     lastCgAt = passedId ? passedAt : -1;
     if (!lastCg) cgView = 'none'; else if (cgView === 'none') cgView = 'fold';
-    const later: Array<Promise<void>> = [], cast = await castNow(at, later);
+    const cast = castNow(at, later);
     if (mine !== epoch || pendingSteps) return;
     // The line itself, not which message holds it: a streaming reply becomes its saved self mid-scene.
     const sig = lineSig(at), end = atEnd(), same = !force && sig === shownSig && end === shownEnd;
     lastCast = cast;
     // Only the end cue is new (the reply finished streaming): the letters already shown stay shown.
     if (!same) revealedAt = askReveal === draw || (sig === shownSig && !force) ? at : -1;
-    await elementsAtEnd(end);
-    await writeStage(state(cast, { narration: scene.kind === 'narration' }));
+    if (end) { elementsAfter(); await elementsReady; }
+    const stage = state(cast, { narration: scene.kind === 'narration' });
     // The folded picture's rect, also when the same line comes back (from its picture, a key back and on).
     if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
-    if (same) return;
+    if (same) {
+      await Promise.all([elementsAtEnd(end), writeStage(stage)]);
+      elementsAfter();
+      behind(mine, later);
+      return;
+    }
     shownSig = sig; shownEnd = end;
     const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
     revealUntil = revealedAt === at ? 0 : Date.now() + revealMs;
-    await box.setInnerHTML(html);
+    // The line and its stage go out first, together (the bridge keeps their order): all else follows them.
+    const out = Promise.all([elementsAtEnd(end), box.setInnerHTML(html), writeStage(stage)]);
+    // The voice and the music start as it goes: whatever they ask of Risu queues behind it.
+    voice(scene);
+    playCues(scene);
+    await out;
     // A tap that came while the box went out: the line is complete now too.
     if (askReveal === draw && revealedAt !== at) await reveal();
-    voice(scene);
     if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
-    if (later.length) void Promise.all(later).then(() => restage(mine)).catch(error => dbg('viewer.face', { message: String(error) }, 'warn'));
+    elementsAfter();
+    behind(mine, later);
     sendAhead(mine);
   } finally { if (drawId === draw) drawing = -1; }
 }
@@ -921,8 +1063,16 @@ async function act(name: string): Promise<void> {
     // on a page of the settings window (감정 에셋 › 옴니 뷰어). Reopened, the viewer is where it was.
     await closeViewer();
     setSoundPage('asset');
-    const openPage = Reflect.get(globalThis, '__OMNI_OPEN_TTS__');
-    if (typeof openPage === 'function') await Promise.resolve(openPage()).catch(error => dbg('viewer.settings', { message: String(error) }, 'warn'));
+    await openSoundWindow();
+  }
+  else if (name === 'cast') {
+    // This reply's people in TTS 캐릭터, searched ("하린, 세라"), as the chat's 👨‍👩‍👧‍👦 opens the
+    // illustration roster on a message's: in the settings window, so the viewer closes as for ⚙.
+    const people = replyPeople();
+    await closeViewer();
+    setSoundPage('tts');
+    focusSoundPanel('tts-characters', people.join(', '));
+    await openSoundWindow();
   }
   else if (name === 'narr') {
     // TTS 나레이션 itself: one style outside the chat, no module write (the TTS viewer's own switch).
@@ -936,11 +1086,12 @@ async function act(name: string): Promise<void> {
     if (on && scene?.kind === 'narration') voice(scene);
   }
   else if (name === 'bgm') { await toggleMusic().catch(error => dbg('viewer.bgm', { message: String(error) }, 'warn')); await restyle(); }
-  else if (name === 'newest') { await load(); await render(); }
+  else if (name === 'newest') await waitOn(async () => { await load(undefined, false, 'fresh'); await render(); });
   else if (name === 'strip') {
     stripOpen = !stripOpen; thumbs = [];
-    if (stripOpen) { msgsOpen = false; logOpen = false; await buildStrip(); }
-    await restyle();
+    if (stripOpen) { msgsOpen = false; logOpen = false; }
+    // It slides in at once (its spinner turning), its tiles right behind it; they are measured once in.
+    await Promise.all([restyle(), stripOpen ? buildStrip() : null]);
     if (stripOpen) setTimeout(() => { if (stripOpen) void measureThumbs().catch(() => {}); }, 380);
   }
   else if (name === 'elems') await toggleElements();
@@ -951,22 +1102,18 @@ async function act(name: string): Promise<void> {
     await toggleEdit();
   }
   else if (name === 'msgs') {
-    msgsOpen = !msgsOpen; msgsRect = null;
-    if (msgsOpen) { stripOpen = false; logOpen = false; await buildMsgs(); }
-    await restyle();
-    // Once it has slid in: the reply on screen in the middle (scrolling it earlier could
-    // move the frame itself), then its rectangle for the taps.
-    if (msgsOpen) setTimeout(() => void (async () => {
-      if (!msgsOpen || !msgsEl) return;
-      const now = await msgsEl.querySelector('[data-now]');
-      if (now) { await centerIn(now); await release(now); }
-      if (msgsOpen && msgsEl) msgsRect = await msgsEl.getBoundingClientRect();
-    })().catch(() => {}), 380);
+    msgsOpen = !msgsOpen; msgsRect = null; msgsSpan = null; msgsLoading = '';
+    if (msgsOpen) { stripOpen = false; logOpen = false; }
+    // It slides in at once, its few tiles right behind it (sent together).
+    await Promise.all([restyle(), msgsOpen ? buildMsgs() : null]);
+    // Once it has slid in: its rectangle for the taps.
+    if (msgsOpen) setTimeout(() => void (async () => { if (msgsOpen && msgsEl) msgsRect = await msgsEl.getBoundingClientRect(); })().catch(() => {}), 380);
   }
   else if (name === 'log') {
     logOpen = !logOpen; logRows = []; logRect = null; logSel = -1;
-    if (logOpen) { stripOpen = false; msgsOpen = false; await buildLog(); }
-    await restyle();
+    if (logOpen) { stripOpen = false; msgsOpen = false; }
+    // Its lines and its showing go out together (the lines first: they pick the line lit).
+    await Promise.all([logOpen ? buildLog() : null, restyle()]);
     if (logOpen && logBox) {
       // A real scroll area: the wheel and a finger scroll it. Opened at the line on screen.
       const now = await logBox.querySelector('[data-now]');
@@ -1031,7 +1178,19 @@ function onClick(p: HostPoint): void {
 
 /** The scene's one style text: the stage's, then 요소's (its stickers, its panel, its choices). */
 async function writeStage(s: StageState): Promise<void> {
+  busyShown = !!s.busy;
   await dyn?.setTextContent(`${stageCss(s)}\n${elementsCss()}`);
+}
+/**
+ * Work the reader waits on (another reply read in, the chat read again): the spinner turns
+ * from the tap on, at once, and stops when it is done.
+ */
+let busy = 0, busyShown = false;
+async function waitOn(work: () => Promise<void>): Promise<void> {
+  busy++;
+  if (!busyShown) void restyle().catch(() => {});
+  try { await work(); }
+  finally { busy--; if (!busy && busyShown && open) void restyle().catch(() => {}); }
 }
 /** Only the stage's style text: buttons' state, panels. */
 async function restyle(): Promise<void> {
@@ -1044,9 +1203,9 @@ async function buildLog(): Promise<void> {
   if (!logBox) return;
   const rows = scenes.flatMap((s, i) => s.kind === 'cg' ? [] : [i]), clock = storyClock(source);
   const head = messageIndex >= 0 ? `<h5>#${messageIndex + 1}${clock ? ` · ${esc(clock)}` : ''}</h5>` : '';
-  await logBox.setInnerHTML(head + (rows.map(i => { const s = scenes[i]!; return `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`; }).join('') || '<p>기록이 없습니다.</p>'));
   logRows = rows;
   logSel = rows.indexOf(at);
+  await logBox.setInnerHTML(head + (rows.map(i => { const s = scenes[i]!; return `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`; }).join('') || '<p>기록이 없습니다.</p>'));
 }
 /** ↑ ↓ in 기록: the line picked moves (lit by the style text), and scrolls into sight. */
 async function moveLogSel(delta: number): Promise<void> {
@@ -1167,7 +1326,7 @@ function onStreamTick(text: string): void {
     if (waiting && at < scenes.length - 1) at++;
     void render();
     // No chunk for a while: the reply ended. Read the saved one (its images baked by then or soon).
-    setTimeout(() => { if (open && streaming && Date.now() - lastTick >= 4000) { streaming = false; void load(undefined, true).then(() => render()); } }, 4200);
+    setTimeout(() => { if (open && streaming && Date.now() - lastTick >= 4000) { streaming = false; void load(undefined, true, 'fresh').then(() => render()); } }, 4200);
   }, 400);
 }
 
@@ -1178,11 +1337,37 @@ let opening = false;
 async function showError(error: unknown): Promise<void> {
   const message = String((error as Error)?.message || error).slice(0, 300);
   dbg('viewer.open', { message }, 'warn');
-  if (box) { await quiet(box.setInnerHTML(boxHtml({ speaker: '옴니 뷰어', text: `열지 못했습니다: ${message}`, narration: false }).html)); return; }
+  if (box) { await quiet(dyn?.setTextContent('')); await quiet(box.setInnerHTML(boxHtml({ speaker: '옴니 뷰어', text: `열지 못했습니다: ${message}`, narration: false }).html)); return; }
   const alert = Reflect.get(risuHost() ?? {}, 'alertError');
   if (typeof alert === 'function') await Promise.resolve(alert.call(risuHost(), `[옴니 뷰어] ${message}`)).catch(() => {});
 }
-export async function openViewer(): Promise<void> {
+/**
+ * The chat message in the middle of the chat screen as Risu shows it: a binary search over
+ * the messages drawn (newest first in the page), a few calls whatever the chat's length.
+ * Read before the viewer folds the chat, which moves it. -1 for none.
+ */
+async function messageAtCenter(d: SafeDocument): Promise<number> {
+  const screen = await d.querySelector('.default-chat-screen');
+  if (!screen) return -1;
+  let area: Awaited<ReturnType<typeof chatArea>>;
+  try { area = await chatArea(screen); } finally { await release(screen); }
+  const row = await nearestRow(d, `${LIST} .risu-chat[data-chat-index]`, area.top + area.height / 2, true);
+  if (!row) return -1;
+  try {
+    // Risu lets a plugin read only its own x- attributes: the number is read off the row's own tag.
+    const html = String(await row.getOuterHTML() ?? '');
+    return Number(/\bdata-chat-index="(\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? -1);
+  } finally { await release(row); }
+}
+/** Opened at a chat message: its reply from the top (a message of the reader's: the reply after it, else the one before). */
+async function openAt(index: number): Promise<void> {
+  // The marks too: where the reader goes from here is noted as from anywhere.
+  await Promise.all([readChat(), readMarks()]);
+  const list = charIndexes(), target = context?.messages[index]?.role === 'char' ? index : list.find(i => i > index) ?? [...list].reverse().find(i => i < index);
+  await load(target);
+}
+/** `from`: 'resume' where the reader left this chat, 'center' at the message in the middle of the chat screen. */
+export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<void> {
   const host = risuHost();
   if (open || opening || !host?.getRootDocument) return;
   opening = true;
@@ -1190,6 +1375,7 @@ export async function openViewer(): Promise<void> {
     doc = await host.getRootDocument();
     if (!doc) throw new Error('Risu 화면에 접근할 수 없습니다. 플러그인 권한을 허용해 주세요.');
     await Promise.all([loadViewerPrefs(), loadEmotionData(), loadTtsData(), omniSound.init().catch(() => {})]);
+    const centered = from === 'center' ? await messageAtCenter(doc).catch(() => -1) : -1;
     const body = await doc.querySelector('body');
     if (!body) throw new Error('Risu 화면을 찾지 못했습니다.');
     for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn],[x-omni-vn-style]'))) { await old.remove(); await release(old); }
@@ -1199,6 +1385,8 @@ export async function openViewer(): Promise<void> {
     fold = await doc.createElement('style'); await fold.setAttribute('x-omni-vn-style', 'fold');
     await fold.setTextContent(foldCss(true));
     dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
+    // Until the first line: the spinner, so the frame never stands there blank.
+    await dyn.setTextContent('[x-omni-vn] [data-vn-busy]{display:block}');
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
     [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]'].map(s => root!.querySelector(s)));
@@ -1209,6 +1397,9 @@ export async function openViewer(): Promise<void> {
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
     opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = ''; springs.clear();
+    placing.clear(); bgSending.clear(); shownText.clear(); context = null; elementsDue = false; elementsReady = Promise.resolve(); busy = 0; busyShown = true;
+    // Behind it the chat's TTS buttons and window go quiet until it closes.
+    setViewerCovering(true);
     // Taps first: ✕ has to work even when the reply cannot be read. Only while open: closed, it costs Risu nothing.
     clickId = await doc.addEventListener('click', (e: HostPoint) => onClick(e));
     keysOn = true; logSel = -1;
@@ -1220,8 +1411,10 @@ export async function openViewer(): Promise<void> {
     // Never while the reader is tapping or a scene is going out: a tap's one call would queue behind these.
     positionTimer = setInterval(() => { if (open && !away && !stepping && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
     streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
-    await resume();
-    const clock = storyClock(source) || (context ? context.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
+    if (centered >= 0) await openAt(centered); else await resume();
+    // Read by openAt or resume (the reset above leaves the compiler thinking it is still null).
+    const read = context as TtsChatContext | null;
+    const clock = storyClock(source) || (read ? read.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
     const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setInnerHTML(clock ? `<span>${esc(clock)}</span>` : ''); await release(clockNode); }
     await render();
     // The voice needs a press inside the plugin before it can sound: asked for now, so the first line speaks.
@@ -1234,6 +1427,11 @@ export async function openViewer(): Promise<void> {
 }
 export async function closeViewer(): Promise<void> {
   if (!open) return;
+  try { await takeDown(); }
+  // Only once the frame is gone: the chat's TTS buttons and window catch up behind it.
+  finally { setViewerCovering(false); }
+}
+async function takeDown(): Promise<void> {
   open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); if (away) closeInspect(); away = false; stopPending();
   if (markTimer) flushMarks();
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
@@ -1244,7 +1442,7 @@ export async function closeViewer(): Promise<void> {
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   await elementsClose().catch(() => {});
   for (const place of people.values()) await release(place);
-  people.clear();
+  people.clear(); placing.clear();
   root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = null;
 }
 export const viewerOpen = (): boolean => open;
@@ -1288,13 +1486,13 @@ export async function installOmniViewer(): Promise<void> {
   const host = risuHost();
   if (installed || !host?.registerButton || !host.getRootDocument) return;
   installed = true;
-  const toggle = () => void (open ? closeViewer() : openViewer()).catch(error => dbg('viewer.toggle', { message: String(error) }, 'warn'));
+  const toggle = (from: 'resume' | 'center') => () => void (open ? closeViewer() : openViewer(from)).catch(error => dbg('viewer.toggle', { message: String(error) }, 'warn'));
   const icon = '<span style="font-size:16px">🎬</span>';
-  await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'chat', id: 'omni-viewer-chat' }, toggle);
-  await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu' }, toggle);
+  await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'chat', id: 'omni-viewer-chat' }, toggle('resume'));
+  // The menu opens it two ways: where the reader left this chat, or at the message in the middle of the chat screen.
+  await host.registerButton({ name: '옴니 뷰어 · 보던 곳', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu' }, toggle('resume'));
+  await host.registerButton({ name: '옴니 뷰어 · 화면 중앙', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu-center' }, toggle('center'));
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
-  // The chat's TTS asks this before voicing its own lines ahead: while the viewer is open, it is the viewer's to do.
-  Reflect.set(globalThis, '__OMNI_VIEWER_OPEN__', () => open);
   Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));
   // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses).
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => open && inside({ clientX: x, clientY: y }, rect));

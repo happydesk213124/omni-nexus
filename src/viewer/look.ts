@@ -51,6 +51,8 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-clock]:not(:empty)::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold)}
 [x-omni-vn] [data-vn-clock] span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 [x-omni-vn] [data-vn-clock]::after{flex:none;max-width:55%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:#bdb4c8;opacity:.85}
+/* Something the reader waits on (another reply read in, more rows): it turns while they wait. */
+[x-omni-vn] [data-vn-busy]{display:none;flex:none;width:16px;height:16px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
 [x-omni-vn] button{all:unset;box-sizing:border-box;white-space:nowrap;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;height:32px;min-width:32px;padding:0 10px;border-radius:999px;font-size:12px;letter-spacing:.04em;color:#efe9da;background:rgba(14,12,22,.55);border:1px solid rgba(255,255,255,.14);transition:background .15s,opacity .15s,color .15s}
 /* Full screen when Omni's own 크게보기 cannot open: the same bottom sheet of big emoji buttons. */
 [x-omni-vn] [data-vn-dock]{display:none;position:absolute;left:50%;bottom:12px;translate:-50% 0;width:min(440px,calc(100% - 24px));grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px;z-index:9;border-radius:14px;background:rgba(18,22,32,.9);border:1px solid rgba(255,255,255,.14)}
@@ -66,7 +68,9 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-name]:empty{display:none}
 [x-omni-vn] [data-vn-text]{height:100%;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:none}
 [x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc;font-style:italic}
-[x-omni-vn] [data-vn-text] i{font-style:normal;opacity:0;animation:vn-ch .1s ease forwards}
+/* Each letter shows at its turn, at once: a fade made every letter its own layer to blend, the reveal
+   cost the phone a frame every frame. Hidden letters keep their room, so the line never moves. */
+[x-omni-vn] [data-vn-text] i{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps(1,end) forwards}
 ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-child(${i + 1}){animation-delay:calc(${i} * var(--vs))}`).join('')}[x-omni-vn] [data-vn-text] i:nth-child(n+${LETTERS + 1}){animation-delay:calc(${LETTERS} * var(--vs))}
 [x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next 1s ease-in-out infinite}
 /* The story so far has ended: Risu's input below is where it goes on. */
@@ -106,6 +110,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
   background:rgba(10,9,17,.94);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-strip] [x-vn-thumb]{flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
 [x-omni-vn] [data-vn-strip] div[x-vn-thumb]{display:flex;align-items:center;justify-content:center;font-size:11px;color:#bdb4cf;background:rgba(255,255,255,.05)}
+[x-omni-vn] [data-vn-strip]:empty::before{content:"";align-self:center;width:18px;height:18px;margin:10px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
 [x-omni-vn] [data-vn-msgs]{position:absolute;top:56px;left:0;width:min(56%,250px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding:10px;z-index:5;display:flex;flex-direction:column;gap:6px;
   background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;translate:-105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-msg]{flex:none;padding:7px 10px;border-radius:9px;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);transition:background .15s,border-color .15s}
@@ -113,6 +118,9 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-msg] b{margin-right:6px;font-size:11px;color:var(--gold)}
 [x-omni-vn] [data-vn-msg] small{font-size:10.5px;color:#cfc6b2}
 [x-omni-vn] [data-vn-msg] span{display:block;margin-top:3px;font-size:12px;line-height:1.45;color:#e9e3d3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Only the replies around the one on stage are listed: the rest come by these, a few at a time. */
+[x-omni-vn] [data-vn-msg][data-more]{text-align:center;font-size:12px;color:var(--gold);border-style:dashed;background:transparent}
+[x-omni-vn] [data-vn-msgs]:empty::before{content:"";align-self:center;width:18px;height:18px;margin:10px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
 [x-omni-vn] [data-vn-log]{display:none;position:absolute;inset:56px 12px 54px;overflow:auto;padding:16px 16px 24px;border-radius:16px;z-index:5;background:rgba(10,9,17,.96);border:1px solid var(--line);font:14px/1.7 ${SERIF}}
 [x-omni-vn] [data-vn-log] p{margin:0 0 6px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:background .15s}
 [x-omni-vn] [data-vn-log]{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
@@ -131,17 +139,18 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
   [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
-@keyframes vn-ch{to{opacity:1}}
+@keyframes vn-ch{to{visibility:visible}}
 @keyframes vn-fade{from{opacity:0}to{opacity:1}}
 @keyframes vn-next{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 3px}}
 @keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 @keyframes vn-blink{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes vn-spin{to{rotate:360deg}}
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><div data-vn-stickers></div>
-<div data-vn-hud><div data-vn-clock></div><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
+<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
@@ -197,6 +206,22 @@ export interface StageState {
   narrVoice?: boolean;
   /** BGM is playing (the button then pauses it). */
   bgm?: boolean;
+  /** The reader waits on something (another reply, the chat read again): the spinner turns. */
+  busy?: boolean;
+  /** 메시지's "more" row being filled: it turns too. */
+  msgsLoading?: 'before' | 'after' | '';
+}
+// Each breathes at their own pace, so two lit at once never move as one.
+const BREATH = [[4.6, 0], [5.2, -1.7], [4.2, -3.1]] as const;
+/**
+ * Breathing, for the lit only (the speaker; everyone in narration): the others stand dimmed
+ * and blurred, and anything moving inside a blur has it drawn again every frame, on a phone
+ * the dearest thing on the stage. A CG on show dims everyone: nobody breathes.
+ */
+function breathing(s: StageState): string {
+  if (!s.motion?.breathe || (s.cg && s.cgView !== 'fold')) return '';
+  const lit = s.narration ? s.cast.slice(0, 3) : s.cast.slice(0, 3).filter(p => p.speaking);
+  return lit.map((p, i) => `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp] img{animation:vn-breathe ${BREATH[i]![0]}s ease-in-out ${BREATH[i]![1]}s infinite}`).join('');
 }
 // Phones are narrow: people overlap, the speaker in front, as a portrait VN stages them.
 const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] };
@@ -222,14 +247,15 @@ export function stageCss(s: StageState): string {
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
     : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}` : ''}` : '',
-    s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;opacity:1!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
+    s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;visibility:visible!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
     s.msgs ? '[x-omni-vn] [data-vn-msgs]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}' : '',
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
-    // Each breathes at its own pace, so the stage never moves as one.
-    s.motion?.breathe ? '[x-omni-vn] [x-vn-sp] img{animation:vn-breathe 4.6s ease-in-out infinite}[x-omni-vn] [x-vn-p]:nth-child(2n) [x-vn-sp] img{animation-duration:5.2s;animation-delay:-1.7s}[x-omni-vn] [x-vn-p]:nth-child(3n) [x-vn-sp] img{animation-duration:4.2s;animation-delay:-3.1s}' : '',
+    breathing(s),
+    s.busy ? '[x-omni-vn] [data-vn-busy]{display:block}' : '',
+    s.msgs && s.msgsLoading ? `[x-omni-vn] [data-vn-msg][data-more="${s.msgsLoading}"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:7px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}` : '',
     s.textScale && s.textScale !== 1 ? `[x-omni-vn] [data-vn-text]{font-size:${(16.5 * s.textScale).toFixed(1)}px}[x-omni-vn] [data-vn-name]{font-size:${(15 * s.textScale).toFixed(1)}px}` : '',
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}`,
