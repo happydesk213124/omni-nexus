@@ -121,8 +121,8 @@ const savePrefs = () => void psSet(VIEWER_KEY, prefs).catch(() => {});
  * lines are scenes is what the chat shows of it: a status panel or summary the
  * bot's regex hides is in the source but never on screen, so it is no scene either.
  */
-async function load(index?: number, keepPlace = false): Promise<void> {
-  context = await currentTtsContext();
+async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Promise<void> {
+  context = ctx ?? await currentTtsContext();
   bot = await currentEmotionBot().catch(() => null);
   const messages = context.messages;
   let i = index ?? messages.length - 1;
@@ -240,6 +240,58 @@ const atEnd = (): boolean => !streaming && at === scenes.length - 1 && !charInde
 function messageId(): string {
   const message = context?.messages[messageIndex];
   return String(message?.chatId || message?.id || `${messageIndex}:${compactHash(source)}`);
+}
+
+/**
+ * Where the reader left each chat: reopened, the viewer goes back to that very line.
+ * A reply that came since (or the last one rerolled) opens instead, from its top:
+ * that is what is unread. Kept on the device, the newest {@link MARKS_MAX} chats.
+ */
+const MARKS_KEY = 'omniviewer.marks', MARKS_MAX = 60;
+interface ReadMark { message: string; hash: string; at: number; newest: string; t: number }
+let marks: Record<string, ReadMark> | null = null, markTimer: ReturnType<typeof setTimeout> | undefined;
+const idOf = (i: number): string => { const m = context?.messages[i]; return String(m?.chatId || m?.id || `${i}:${compactHash(String(m?.data ?? ''))}`); };
+const chatKey = (ctx: TtsChatContext): string => `${ctx.characterId}|${ctx.chatId}`;
+async function readMarks(): Promise<Record<string, ReadMark>> {
+  if (!marks) {
+    const raw = await psGet(MARKS_KEY).catch(() => null);
+    marks = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, ReadMark> : {};
+  }
+  return marks;
+}
+/** Every scene shown notes where the reader is: a JS write now, the device a second later. */
+function noteMark(): void {
+  if (!context || !marks || streaming || messageIndex < 0) return;
+  const list = charIndexes(), newest = list[list.length - 1];
+  marks[chatKey(context)] = { message: idOf(messageIndex), hash: compactHash(source), at, newest: newest === undefined ? '' : idOf(newest), t: Date.now() };
+  clearTimeout(markTimer);
+  markTimer = setTimeout(flushMarks, 1000);
+}
+function flushMarks(): void {
+  clearTimeout(markTimer); markTimer = undefined;
+  if (!marks) return;
+  marks = Object.fromEntries(Object.entries(marks).sort((a, b) => (Number(b[1]?.t) || 0) - (Number(a[1]?.t) || 0)).slice(0, MARKS_MAX));
+  void psSet(MARKS_KEY, marks).catch(() => {});
+}
+/** The reply and scene to open at: where the reader left this chat, or the first reply since. */
+async function resume(): Promise<void> {
+  const ctx = await currentTtsContext(), mark = streaming ? undefined : (await readMarks())[chatKey(ctx)];
+  context = ctx;
+  const list = charIndexes(), newest = list[list.length - 1];
+  let target: number | undefined, resumeAt = 0;
+  if (mark && typeof mark === 'object' && newest !== undefined) {
+    if (mark.newest === idOf(newest)) {
+      // Nothing new since: back to the very line, unless that reply's text changed (a reroll).
+      target = list.find(i => idOf(i) === mark.message);
+      if (target !== undefined && compactHash(String(ctx.messages[target]?.data ?? '')) === mark.hash) resumeAt = Math.max(0, Number(mark.at) || 0);
+    } else {
+      // Replies came since: the first of them, from its top.
+      const seen = list.findIndex(i => idOf(i) === mark.newest);
+      target = seen >= 0 ? list[seen + 1] : undefined;
+    }
+  }
+  await load(target, false, ctx);
+  if (resumeAt) at = Math.min(resumeAt, Math.max(0, scenes.length - 1));
 }
 function voice(scene: ViewerScene): void {
   if (!prefs.voice || !context || !scene.segmentId || !ttsData().settings.enabled) return;
@@ -482,6 +534,7 @@ async function render(force = false): Promise<void> {
     await box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html);
     return;
   }
+  noteMark();
   playCues(scene);
   // A background finished since: put it up.
   if (!bg && place) await stagePlace().catch(() => {});
@@ -772,7 +825,7 @@ export async function openViewer(): Promise<void> {
     // Never while the reader is tapping or a scene is going out: a tap's one call would queue behind these.
     positionTimer = setInterval(() => { if (open && !away && !stepping && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
     streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
-    await load();
+    await resume();
     const clock = storyClock(source) || (context ? context.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
     const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setInnerHTML(clock ? `<span>${esc(clock)}</span>` : ''); await release(clockNode); }
     await render();
@@ -785,6 +838,7 @@ export async function openViewer(): Promise<void> {
 export async function closeViewer(): Promise<void> {
   if (!open) return;
   open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); away = false;
+  if (markTimer) flushMarks();
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
   if (doc && downId) { await quiet(doc.removeEventListener('pointerdown', downId)); downId = ''; }
   if (doc && upId) { await quiet(doc.removeEventListener('pointerup', upId)); upId = ''; }
