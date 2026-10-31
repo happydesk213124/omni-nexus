@@ -175,6 +175,8 @@ export interface StageState {
   cgNav?: { prev: boolean; next: boolean };
   /** The CG shown is a frame for an image still being drawn: there is nothing to see full screen. */
   cgPending?: boolean;
+  /** 글자 크기: the box's letters and name against their usual size (1 = as designed). */
+  textScale?: number;
   /** Why the stage has no background (being drawn, failed, no place said): shown after the clock. */
   bgNote?: string;
   /** The story so far ends on this CG: its end cue shows with it. */
@@ -212,6 +214,7 @@ export function stageCss(s: StageState): string {
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
     s.msgs ? '[x-omni-vn] [data-vn-msgs]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}' : '',
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
+    s.textScale && s.textScale !== 1 ? `[x-omni-vn] [data-vn-text]{font-size:${(16.5 * s.textScale).toFixed(1)}px}[x-omni-vn] [data-vn-name]{font-size:${(15 * s.textScale).toFixed(1)}px}` : '',
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',

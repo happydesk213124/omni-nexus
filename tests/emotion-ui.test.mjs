@@ -43,6 +43,9 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.locator('#emo-skip').fill('상태창, OOC');
     await page.locator('#emo-speed').selectOption('slow');
     await page.waitForFunction(() => window.viewerPrefs().skipWords === '상태창, OOC' && window.viewerPrefs().speed === 'slow');
+    await page.locator('#emo-size').selectOption('large');
+    await page.waitForFunction(() => window.viewerPrefs().textSize === 'large');
+    assert.equal(await page.locator('#tab-emo-assets').textContent(), '뷰어 및 감정 에셋');
     assert.equal(await page.evaluate(() => window.emotionData().settings.prefix), '', "not 감정 에셋's own settings");
     // A TTS card of this bot, listed with the face its reply showed.
     await page.evaluate(async () => { window.ttsData().characters.push({ id: 't-misun', scope: 'global', name: '오미선', surname: '오', givenName: '미선', surnameAliases: [], givenAliases: ['Misun'], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }); await window.saveTtsData(); });

@@ -5,7 +5,7 @@ import { collectFaces, currentEmotionBot, findSprite, makeSprite, spriteJobKey, 
 import { currentTtsContext } from '../services/tts-context';
 import { emotionData, loadEmotionData, updateEmotionSettings, type EmotionSettings } from '../storage/emotion-store';
 import { ttsData } from '../storage/tts-store';
-import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerSpeed } from '../storage/viewer-prefs';
+import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerSpeed, type ViewerTextSize } from '../storage/viewer-prefs';
 import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTION_TABS } from './markup';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
@@ -71,12 +71,13 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   await Promise.all([loadEmotionData(), loadViewerPrefs()]); if (!live()) return;
   fillSettings(emotionData().settings);
   // 옴니 뷰어's own settings (its store, not 감정 에셋's): read on its next open.
-  const skip = root.querySelector<HTMLTextAreaElement>('#emo-skip'), speed = root.querySelector<HTMLSelectElement>('#emo-speed');
+  const skip = root.querySelector<HTMLTextAreaElement>('#emo-skip'), speed = root.querySelector<HTMLSelectElement>('#emo-speed'), size = root.querySelector<HTMLSelectElement>('#emo-size');
   if (skip) skip.value = viewerPrefs().skipWords;
   if (speed) speed.value = viewerPrefs().speed;
-  const keepViewer = () => void saveViewerPrefs({ skipWords: skip?.value ?? '', speed: (speed?.value || 'fast') as ViewerSpeed });
+  if (size) size.value = viewerPrefs().textSize;
+  const keepViewer = () => void saveViewerPrefs({ skipWords: skip?.value ?? '', speed: (speed?.value || 'fast') as ViewerSpeed, textSize: (size?.value || 'normal') as ViewerTextSize });
   let viewerTimer: ReturnType<typeof setTimeout> | undefined;
-  for (const node of [skip, speed]) {
+  for (const node of [skip, speed, size]) {
     // Kept as typed (a window closed mid-word keeps it); not 감정 에셋's own save.
     node?.addEventListener('input', event => { event.stopPropagation(); clearTimeout(viewerTimer); viewerTimer = setTimeout(keepViewer, 400); });
     node?.addEventListener('change', event => { event.stopPropagation(); clearTimeout(viewerTimer); keepViewer(); });

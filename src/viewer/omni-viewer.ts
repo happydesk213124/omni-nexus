@@ -13,7 +13,7 @@ import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
 import { streamingPlace } from '../domain/viewer/place';
 import { currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
-import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, viewerPrefs } from '../storage/viewer-prefs';
+import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
 import { setSoundPage } from '../sound-ui/page';
 import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
@@ -650,7 +650,7 @@ async function comeBack(): Promise<void> {
 
 const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
-  log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
+  log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 

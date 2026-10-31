@@ -11,7 +11,7 @@ export const SOUND_PAGE_TABS: Record<SoundPage, readonly string[]> = {
   models: ['tts-models'],
   asset: ['emo-assets'],
 };
-export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', models: '소리 모델 설정', asset: '감정 에셋' };
+export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', models: '소리 모델 설정', asset: '뷰어 및 감정 에셋' };
 let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
 export function setSoundPage(next: unknown): void { if (next === 'tts' || next === 'sound' || next === 'models' || next === 'asset') page = next; }
