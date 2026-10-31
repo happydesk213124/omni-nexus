@@ -259,9 +259,9 @@ try {
     if (tab === 'dashboard') {
       assert.equal(await page.locator('#nx-tts-exclusions,#nx-tts-exclude-text').count(),0,'TTS options are not on the illustration dashboard');
       assert.equal(await page.locator('#nx-tabs .nx-nav-label').allTextContents().then(t=>t.join('|')),'삽화 쓰기|삽화 연결|TTS · BGM · 감정 에셋|보기');
-      // Three entries share the curation slot; data-sound-page picks the page.
-      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','소리 모델 설정','뷰어 및 감정 에셋']);
-      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').evaluateAll(n=>n.map(b=>b.dataset.soundPage)),['tts','sound','models','asset']);
+      // Five entries share the curation slot; data-sound-page picks the page. TTS 캐릭터 comes right under BGM·효과음.
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','TTS 캐릭터','TTS·BGM·JEV 모델 설정','뷰어 및 감정 에셋']);
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').evaluateAll(n=>n.map(b=>b.dataset.soundPage)),['tts','sound','people','models','asset']);
     }
     if (tab === 'models') {
       await page.locator('[data-backend="comfy"]').click();
@@ -298,19 +298,24 @@ try {
       }
     }
   }
-  // The four entries share one slot: moving between them must move the mark and the title too,
+  // The five entries share one slot: moving between them must move the mark and the title too,
   // even when the vendor does not repaint (the slot is already open).
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
   const marked = () => page.evaluate(() => [[...document.querySelectorAll('#nx-tabs [data-nx-tab].active')].map(b => b.textContent.trim()), document.getElementById('nx-version-line')?.textContent]);
   // The vendor opens the slot on pointerdown and paints at once; that first paint is already the chosen page (no flash of another).
   await page.locator('#nx-tabs [data-sound-page="models"]').dispatchEvent('pointerdown');
   await page.waitForFunction(() => document.querySelector('#nx-main')?.getAttribute('data-nx-ux-tab') === 'curation', null, { timeout: 3000 });
-  assert.deepEqual(await marked(), [['소리 모델 설정'], '소리 모델 설정'], 'pointerdown alone already opens the chosen sound page');
+  assert.deepEqual(await marked(), [['TTS·BGM·JEV 모델 설정'], 'TTS·BGM·JEV 모델 설정'], 'pointerdown alone already opens the chosen sound page');
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
-  for (const [name, label] of [['sound','BGM·효과음'],['models','소리 모델 설정'],['asset','뷰어 및 감정 에셋'],['tts','TTS 설정(beta)'],['sound','BGM·효과음']]) {
+  for (const [name, label] of [['sound','BGM·효과음'],['people','TTS 캐릭터'],['models','TTS·BGM·JEV 모델 설정'],['asset','뷰어 및 감정 에셋'],['tts','TTS 설정(beta)'],['people','TTS 캐릭터'],['sound','BGM·효과음']]) {
     await page.locator(`#nx-tabs [data-sound-page="${name}"]`).click();
     await page.waitForFunction(label => document.querySelector('#nx-tabs [data-nx-tab].active')?.textContent.trim() === label, label, { timeout: 3000 }).catch(() => {});
     assert.deepEqual(await marked(), [[label], label], `${name}: only the open sound page is marked`);
+    // TTS 캐릭터: TTS 설정's 캐릭터 tab alone, opened on it, with TTS's own switch above it.
+    if (name === 'people') {
+      await page.waitForFunction(() => document.querySelector('#tts-settings-root')?.dataset.soundPage === 'people', null, { timeout: 3000 });
+      assert.deepEqual(await page.evaluate(() => [[...document.querySelectorAll('#tts-settings-root [data-tts-tab]')].filter(b => !b.hidden).map(b => b.dataset.ttsTab), [...document.querySelectorAll('#tts-settings-root section.panel')].filter(p => !p.hidden).map(p => p.id), document.querySelector('#tts-settings-root #tts-power-controls')?.hidden]), [['tts-characters'], ['tts-characters'], false]);
+    }
   }
   await page.evaluate(async () => {
     await globalThis.__OMNI_SETTINGS_ACTIONS__.save({card:{presets:[{id:'rename-probe',name:'Before rename',positive:'probe',negative:''}],active_preset_id:'rename-probe'}});

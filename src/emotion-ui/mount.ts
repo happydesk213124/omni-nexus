@@ -73,7 +73,8 @@ async function renderPeople(): Promise<void> {
   const ctx = await currentTtsContext().catch(() => null);
   if (ctx) collectFaces(ctx.messages.filter(m => m?.role === 'char').slice(-30).map(m => String(m.data ?? '')), ctx.rosterScope);
   const people = ttsData().characters.filter(c => !c.role && (c.scope === 'global' || c.scope === ctx?.rosterScope));
-  const seen = emotionData().seen;
+  const seen = emotionData().seen, count = $('emo-people-count');
+  if (count) count.textContent = people.length ? `${people.length}명` : '';
   box.innerHTML = people.length ? people.map(c => `<div class="emo-person" role="listitem"><span><b>${esc(c.name)}</b> <small>본 감정 ${(seen[c.id] || []).length}개</small></span><button type="button" data-emo-open="${esc(c.id)}">감정 에셋</button></div>`).join('')
     : '<small>이 봇의 TTS 캐릭터가 없습니다. TTS 설정의 캐릭터 탭에서 먼저 등록하세요.</small>';
 }

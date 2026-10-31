@@ -259,7 +259,7 @@ export class OmniSoundRuntime {
       if (m !== 'embedding' && jev) steps.push(() => chooseBgm(scene, items, 'jev', tts, tags));
       if (embed) steps.push(async () => (await embedRank(`${tags.length ? `BGM 태그: ${tags.join(', ')}\n` : ''}${scene}`, items, item => `${item.name}: ${item.tags.join(', ')}`, embed, BGM_DRAW)).map(item => item.key));
       if (m === 'auto' || (m === 'tag' && !jev)) steps.push(() => chooseBgm(scene, items, 'llm', tts, tags));
-      if (m === 'embedding' && !embed) throw new Error('임베딩이 설정되지 않았습니다. 소리 모델 설정의 임베딩 키를 넣어 주세요.');
+      if (m === 'embedding' && !embed) throw new Error('임베딩이 설정되지 않았습니다. TTS·BGM·JEV 모델 설정의 임베딩 키를 넣어 주세요.');
     }
     const cacheKey = JSON.stringify([m, scene, tags, items.map(item => item.key).join(',')]);
     let pick = fresh ? undefined : this.sceneCache.get(cacheKey), failure: unknown;

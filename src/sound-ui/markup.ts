@@ -49,7 +49,8 @@ export function markSoundPage(root: HTMLElement, openPanel?: string): void {
     b.setAttribute('aria-selected', String(tab === open)); b.tabIndex = tab === open ? 0 : -1;
   }
   for (const panel of root.querySelectorAll<HTMLElement>('section.panel')) panel.hidden = panel.id !== open;
-  const tts = page === 'tts';
+  // TTS 캐릭터 is a page of TTS 설정's: its switch and notice stay with it (a character's fields wait on TTS on).
+  const tts = page === 'tts' || page === 'people';
   const toggle = (selector: string, show: boolean) => { const node = root.querySelector<HTMLElement>(selector); if (node) node.hidden = !show; };
   toggle('#tts-controls', tts); toggle('#tts-power-controls', tts); toggle('#sound-controls', !tts);
   if (!tts) toggle('#tts-off-notice', false);

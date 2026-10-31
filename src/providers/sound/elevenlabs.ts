@@ -4,7 +4,7 @@ import { sniffAudioMime } from '../../domain/sound/audio';
 /** ElevenLabs text-to-sound-effect. Returns mp3 bytes. */
 export async function generateSoundEffect(text: string, options: { key: string; durationSeconds?: number; promptInfluence?: number }): Promise<{ bytes: ArrayBuffer; mime: string }> {
   const key = options.key.trim();
-  if (!key) throw new Error('소리 모델 설정에 ElevenLabs API 키를 넣어 주세요.');
+  if (!key) throw new Error('TTS·BGM·JEV 모델 설정에 ElevenLabs API 키를 넣어 주세요.');
   const prompt = text.trim().slice(0, 450);
   if (!prompt) throw new Error('효과음 설명(프롬프트)을 넣어 주세요.');
   const body: Record<string, unknown> = { text: prompt, prompt_influence: options.promptInfluence ?? .4 };
@@ -21,7 +21,7 @@ export async function generateSoundEffect(text: string, options: { key: string; 
 /** ElevenLabs music (Eleven Music), instrumental, for BGM. Returns mp3 bytes. */
 export async function generateMusic(text: string, options: { key: string; lengthSeconds?: number }): Promise<{ bytes: ArrayBuffer; mime: string }> {
   const key = options.key.trim();
-  if (!key) throw new Error('소리 모델 설정에 ElevenLabs API 키를 넣어 주세요.');
+  if (!key) throw new Error('TTS·BGM·JEV 모델 설정에 ElevenLabs API 키를 넣어 주세요.');
   const prompt = text.trim().slice(0, 1000);
   if (!prompt) throw new Error('BGM 설명(프롬프트)을 넣어 주세요.');
   // BGM sits under the voice: never lyrics.

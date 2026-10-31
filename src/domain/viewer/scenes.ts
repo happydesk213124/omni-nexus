@@ -1,6 +1,7 @@
 import type { TtsSegment } from '../../core/tts-types';
 import { expressionOfTone } from '../emotion/emotions';
 import { INLINE_CAST_MASK_SOURCE } from '../prompt/inline-shot-pattern';
+import { imageHistoryRoot } from '../gallery/image-history';
 
 /**
  * 옴니 뷰어: a reply read as visual-novel scenes, from its source text (never the
@@ -32,13 +33,30 @@ const SLOT = /\[\[inx(\d{1,3})\]\]/g;
 const WAIT = /\[\[@inraywait::([a-zA-Z0-9_-]{1,64})::/g;
 const SPIN = /\[\[@inrayspinner::([^:\[\]]{1,200})::/g;
 
-/** Images in a reply, by position. A streaming block is its slot until its image is baked. */
+/**
+ * Images in a reply, by position. A streaming block is its slot until its image is baked.
+ * A picture redrawn keeps its earlier draws beside it (`card`, `card_r1`, … the newest
+ * last): the chat draws only the last of such a run, and so is it one scene here, not
+ * one per draw (each a picture never shown, and one more in the count). So is a line
+ * batch's picture that kept its spinner as its frame, the image right after it.
+ */
 export function replyImages(raw: string): Array<{ at: number; cg: ViewerCg }> {
   const out: Array<{ at: number; cg: ViewerCg }> = [];
-  for (const m of raw.matchAll(BAKED)) out.push({ at: m.index!, cg: { kind: 'baked', card: m[1]!, asset: m[2]! } });
+  const baked = [...raw.matchAll(BAKED)], bakedAt = new Set(baked.map(m => m.index!));
+  // Where the text goes on past the white space from `from`: only white space may stand between the two.
+  const space = /\s*/y, solidFrom = (from: number): number => { space.lastIndex = from; space.exec(raw); return space.lastIndex; };
+  baked.forEach((m, i) => {
+    const next = baked[i + 1];
+    if (next && next.index === solidFrom(m.index! + m[0].length) && imageHistoryRoot(next[1]!) === imageHistoryRoot(m[1]!)) return;
+    out.push({ at: m.index!, cg: { kind: 'baked', card: m[1]!, asset: m[2]! } });
+  });
   for (const m of raw.matchAll(SLOT)) out.push({ at: m.index!, cg: { kind: 'slot', n: Number(m[1]) } });
   for (const m of raw.matchAll(WAIT)) out.push({ at: m.index!, cg: { kind: 'wait', id: m[1]! } });
-  for (const m of raw.matchAll(SPIN)) out.push({ at: m.index!, cg: { kind: 'spin', id: m[1]! } });
+  for (const m of raw.matchAll(SPIN)) {
+    const end = raw.indexOf(']]', m.index!);
+    if (end >= 0 && bakedAt.has(solidFrom(end + 2))) continue;
+    out.push({ at: m.index!, cg: { kind: 'spin', id: m[1]! } });
+  }
   return out.sort((a, b) => a.at - b.at);
 }
 

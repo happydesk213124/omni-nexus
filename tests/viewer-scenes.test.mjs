@@ -46,3 +46,15 @@ test("a line batch's spinner is a picture still being drawn, in its place among 
   const raw = '문이 열렸다.\n[[@inrayspinner::job7_0::832::1216]]\n하린: "왔어?"\n[[@inray::card1::inxshot_abc::832::1216]]\n[[inx2]]{"shot":1}[[/inx2]]';
   assert.deepEqual(api.replyImages(raw).map(i => i.cg), [{ kind: 'spin', id: 'job7_0' }, { kind: 'baked', card: 'card1', asset: 'inxshot_abc' }, { kind: 'slot', n: 2 }]);
 });
+
+test("a redrawn picture is one scene, as the chat draws it: the newest of its run, the draws before it never shown", () => {
+  const raw = '문이 열렸다.\n[[@inray::card1::inxshot_abc::832::1216]][[@inray::card1_r1::inxshot_new::832::1216_r1]]\n[[@inray::card1_r2::inxshot_newer::832::1216_r2_pin]]\n하린: "왔어?"\n[[@inray::card9::inxshot_other::832::1216]]';
+  assert.deepEqual(api.replyImages(raw).map(i => i.cg), [{ kind: 'baked', card: 'card1_r2', asset: 'inxshot_newer' }, { kind: 'baked', card: 'card9', asset: 'inxshot_other' }]);
+  // Apart in the reply (a line between them), the same picture twice is two scenes: the chat draws both.
+  const apart = '[[@inray::card1::inxshot_abc::832::1216]]\n하린: "왔어?"\n[[@inray::card1_r1::inxshot_new::832::1216_r1_pin]]';
+  assert.deepEqual(api.replyImages(apart).map(i => i.cg.card), ['card1', 'card1_r1']);
+  assert.equal(api.buildScenes(raw, api.parseTtsMessage(raw)).filter(s => s.kind === 'cg').length, 2);
+  // A line batch's finished picture keeps its spinner as its frame: one picture, the image.
+  const framed = '[[@inrayspinner::job7_0::832::1216]]\n[[@inray::card1::inxshot_abc::832::1216]][[@inray::card1_r1::inxshot_new::832::1216_r1_pin]]\n하린: "왔어?"\n[[@inrayspinner::job7_1::832::1216]]';
+  assert.deepEqual(api.replyImages(framed).map(i => i.cg), [{ kind: 'baked', card: 'card1_r1', asset: 'inxshot_new' }, { kind: 'spin', id: 'job7_1' }], 'a spinner with no image after it is still being drawn');
+});

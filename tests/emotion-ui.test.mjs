@@ -97,6 +97,10 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     // A TTS card of this bot, listed with the face its reply showed.
     await page.evaluate(async () => { window.ttsData().characters.push({ id: 't-misun', scope: 'global', name: '오미선', surname: '오', givenName: '미선', surnameAliases: [], givenAliases: ['Misun'], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }); await window.saveTtsData(); });
     await page.locator('#tab-emo-assets').click();
+    // Folded at first (a long list made the page long), its count on the fold.
+    await page.waitForFunction(() => document.getElementById('emo-people-count')?.textContent === '1명');
+    assert.equal(await page.locator('[data-emo-open="t-misun"]').isVisible(), false, "the bot's characters start folded");
+    await page.locator('.emo-people-fold summary').click();
     await page.locator('[data-emo-open="t-misun"]').click();
     await page.waitForFunction(() => document.getElementById('character-dialog').open && document.getElementById('character-form').dataset.emoView === 'faces');
     assert.equal(await page.locator('#c-name').isVisible(), false, 'the faces view hides the voice fields');

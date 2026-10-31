@@ -153,7 +153,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.evaluate(()=>{window.__OMNI_OPEN_TTS__=()=>{window.ttsOpened={page:window.soundPage(),focus:window.soundFocus()};};});
     await page.waitForTimeout(450);await page.locator('[data-tts-control="people"]').click();
     await page.waitForFunction(()=>!!window.ttsOpened);
-    assert.deepEqual(await page.evaluate(()=>window.ttsOpened),{page:'tts',focus:{panel:'tts-characters',search:'하린'}});
+    assert.deepEqual(await page.evaluate(()=>window.ttsOpened),{page:'people',focus:{panel:'tts-characters',search:'하린'}});
     await page.waitForTimeout(450);await page.locator('[data-tts-control="audio"]').click();
     await page.waitForFunction(()=>window.ttsData().settings.panel==='');
     await page.waitForTimeout(450);await page.locator('[data-tts-control="minimize"]').click();

@@ -69,21 +69,28 @@ globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
   return true;
 };
 globalThis.__OMNI_INSPECT_OPEN__ = () => !!t._nxHostInspectOpen;
-// 옴니 뷰어's 🎲 리롤 and 🔮 샷 태그 수정 on its picture: what 크게보기's 🎲 and 🔮 do. true once done (the tag editor: opened).
+// 옴니 뷰어's 🎲 리롤 and 🔮 샷 태그 수정 on its picture: what 크게보기's 🎲 and 🔮 do. true once done (the tag
+// editor: once it closes), else why not, for the viewer to say: this window's toasts are under it, never seen.
 globalThis.__OMNI_SHOT_ACTION__ = async (act, cardId) => {
-  const find = () => (t.gallery || []).find((c) => String(c?.id || "") === String(cardId || ""));
-  let card = find();
-  if (!card) { try { const scope = await Z({ useOverride: false }); if (scope?.sessionId) await ce(scope.sessionId, true); } catch {} card = find(); }
-  if (!card) { y("warn", "viewer.shot", "card not in gallery " + String(cardId).slice(0, 12)); return false; }
-  if (act === "base") { await openCardTagEdit(card); return true; }
+  const id = String(cardId || ""), find = (rows) => (Array.isArray(rows) ? rows : []).find((c) => String(c?.id || "") === id);
+  if (act === "base") {
+    let card = find(t.gallery);
+    // The strip holds the session's newest 120: an older reply's picture is looked up in the whole session.
+    if (!card) try {
+      const scope = await Z({ useOverride: false });
+      if (scope?.sessionId) card = find(await ce(scope.sessionId, true)) || find((await K("/v1/gallery?session_id=" + encodeURIComponent(scope.sessionId) + "&limit=2000", { method: "GET" }))?.items);
+    } catch {}
+    if (!card) { y("warn", "viewer.shot", "card not in gallery " + id.slice(0, 12)); return "이 삽화를 갤러리에서 찾지 못했습니다."; }
+    await openCardTagEdit(card); return true;
+  }
   if (act !== "reroll") return false;
+  // The card's id is all a reroll takes (the route reads nothing else): the gallery as loaded is not asked.
   try {
-    const B = await withImageRerollToast("이미지 리롤 중…", async () => await K("/v1/cards/" + encodeURIComponent(card.id) + "/reroll",
-      { method: "POST", body: { mode: "nai", character_id: card.character_id, chat_id: card.chat_id, message_index: card.message_index } }, 18e4));
-    if (B?.busy || B?.error?.code === "busy") throw new Error("지금은 바쁩니다. 잠시 뒤 다시 시도해 주세요.");
+    const B = await withImageRerollToast("이미지 리롤 중…", async () => await K("/v1/cards/" + encodeURIComponent(id) + "/reroll", { method: "POST", body: { mode: "nai" } }, 18e4));
+    if (B?.busy || B?.ok === false) return String(B?.error?.message || "지금은 리롤할 수 없습니다. 잠시 뒤 다시 시도해 주세요.");
     try { const scope = await Z({ useOverride: false }); if (scope?.sessionId) await ce(scope.sessionId, true); } catch {}
     return true;
-  } catch (e) { y("error", "viewer.shot.reroll", String(e?.message || e)); $e(String(e?.message || e)); return false; }
+  } catch (e) { y("error", "viewer.shot.reroll", String(e?.message || e)); return String(e?.message || e || "리롤하지 못했습니다."); }
 };
 // The shot-tag editor 🔮 opened is still up: the viewer waits for it to close, then takes its picture again.
 globalThis.__OMNI_SHOT_TAGS_OPEN__ = () => !!t.cardTagUi;

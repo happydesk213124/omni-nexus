@@ -57,7 +57,7 @@ ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성
 <label class="field full"><span>자세 태그 · 비우면 기본</span><input id="emo-pose" maxlength="600" placeholder="${esc(DEFAULT_POSE)}"></label>
 <label class="field full"><span>후행 프롬프트</span><textarea id="emo-suffix" rows="2" maxlength="2000"></textarea></label>
 </div></div></div>
-<div class="tts-settings-column"><div class="group"><h3>이 봇의 캐릭터</h3><div id="emo-people" class="emo-people" role="list"></div></div>
+<div class="tts-settings-column"><div class="group"><details class="emo-people-fold"><summary><h3>이 봇의 캐릭터 <small id="emo-people-count"></small></h3></summary><div id="emo-people" class="emo-people" role="list"></div></details></div>
 <div class="group"><h3>감정 표 · 표정 태그</h3><div id="emo-faces" class="emo-faces">${BASE_EXPRESSIONS.map(e => `<label class="emo-face-row"><span><b>${esc(e.label)}</b><small>${esc(e.key)} · ${esc(e.words.slice(0, 5).join(', '))}</small></span><input id="emo-face-${e.key}" data-face="${e.key}" maxlength="400" placeholder="${esc(e.tags)}"></label>`).join('')}</div>
 <div class="fields"><label class="field full"><span>단어 더하기 · 한 줄에 하나 (예: pouting=sad)</span><textarea id="emo-words" rows="3" maxlength="4000"></textarea></label></div></div></div>
 </div></section>`;
@@ -87,6 +87,10 @@ export const EMOTION_CSS = `
 #emo-assets .emo-face-row span{display:flex;flex-direction:column;min-width:0}
 #emo-assets .emo-face-row small{opacity:.6;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #emo-assets .emo-people{display:grid;gap:6px}
+#emo-assets .emo-people-fold summary{cursor:pointer;min-height:32px}
+#emo-assets .emo-people-fold summary h3{display:inline;margin:0}
+#emo-assets .emo-people-fold summary small{font-weight:400;opacity:.7}
+#emo-assets .emo-people-fold[open] summary{margin-bottom:8px}
 #emo-assets .emo-person{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid #ffffff18;border-radius:8px}
 #emo-assets .emo-person small{opacity:.7}
 .emo-sheet-switch{display:flex;gap:4px;margin:0 0 10px}

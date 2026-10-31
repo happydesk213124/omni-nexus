@@ -11,6 +11,7 @@ import { soundData, soundReady, updateSoundSettings } from '../storage/sound-sto
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
+import { stageAt, type StageLine } from '../domain/viewer/cast';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
@@ -477,30 +478,33 @@ function voice(scene: ViewerScene): void {
   voicesAhead();
 }
 
-interface Member { key: string; name: string; person: TtsCharacter | null; face: string; speaking: boolean }
+/** `front`: 0 spoke last (in front where people overlap), then on back. */
+interface Member { key: string; name: string; person: TtsCharacter | null; face: string; speaking: boolean; front: number }
+/** The reply's lines as the stage reads them (who speaks, with what face), worked out once per reply and roster. */
+let staged: { scenes: ViewerScene[]; roster: readonly TtsCharacter[]; size: number; scope: string; lines: Array<StageLine | null>; who: Map<string, { name: string; person: TtsCharacter | null }> } | null = null;
+function stageLines(): NonNullable<typeof staged> {
+  const roster = ttsData().characters, scope = context?.rosterScope ?? '';
+  if (staged && staged.scenes === scenes && staged.roster === roster && staged.size === roster.length && staged.scope === scope) return staged;
+  const who = new Map<string, { name: string; person: TtsCharacter | null }>();
+  const lines = scenes.map((scene): StageLine | null => {
+    if (scene.kind === 'cg') return null;
+    if (scene.kind !== 'line' || !scene.speaker) return { who: '', face: null };
+    const person = context ? resolveTtsSpeaker(scene.speaker, roster, context.rosterScope) : null;
+    const id = person ? `t${key(person.id)}` : `n${key(scene.speaker)}`;
+    if (!who.has(id)) who.set(id, { name: person?.name || scene.speaker, person });
+    return { who: id, face: scene.face };
+  });
+  return staged = { scenes, roster, size: roster.length, scope, lines, who };
+}
 /**
- * Who stands on stage at scene `index`: everyone who has spoken so far (the
- * last three), left to right in the order they came in, each with the face of
+ * Who stands on stage at scene `index` (`stageAt`): from their first line on, who has a
+ * line within two lines of the one read, before or after it, three at most (the speaker,
+ * then the nearest), left to right as they came into the reply, each with the face of
  * their latest line. A speaker without a TTS card still stands, as a silhouette.
  */
 function castAt(index: number): Member[] {
-  const seen = new Map<string, Member>(), order: string[] = [];
-  let speaker = '';
-  for (let i = 0; i <= index && i < scenes.length; i++) {
-    const scene = scenes[i]!;
-    if (scene.kind !== 'line' || !scene.speaker) continue;
-    const person = context ? resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope) : null;
-    const id = person ? `t${key(person.id)}` : `n${key(scene.speaker)}`;
-    const before = seen.get(id);
-    seen.set(id, { key: id, name: person?.name || scene.speaker, person, face: scene.face || before?.face || DEFAULT_EXPRESSION, speaking: false });
-    const pos = order.indexOf(id);
-    if (pos >= 0) order.splice(pos, 1);
-    order.push(id);
-    if (i === index) speaker = id;
-  }
-  const recent = new Set(order.slice(-MAX_CAST));
-  // Map keeps first-entrance order: people keep their spots as others come and go.
-  return [...seen.values()].filter(m => recent.has(m.key)).map(m => ({ ...m, speaking: m.key === speaker }));
+  const { lines, who } = stageLines();
+  return stageAt(lines, index, MAX_CAST).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, speaking: m.speaking, front: m.front }));
 }
 /** The TTS characters this reply brings on, in the order they first speak. */
 function replyPeople(): string[] {
@@ -589,7 +593,7 @@ function sendFace(m: Member, place: SafeElement, sprite: EmotionSprite): Promise
   sending.set(slot, job);
   return job;
 }
-type CastEntry = { key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b' };
+type CastEntry = { key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b'; front?: number };
 /** Work a scene leaves for after its line: started only once the line has gone out, so no call of theirs is ahead of it. */
 type Later = Array<() => Promise<unknown>>;
 /**
@@ -609,7 +613,7 @@ function castNow(index: number, later: Later): CastEntry[] {
     else if (sprite && faces.has(`${m.key}|${sprite.path}`)) face = key(sprite.path);
     else if (sprite) { later.push(() => send(m, sprite)); face = shownFace.get(m.key) ?? ''; }
     if (face) shownFace.set(m.key, face);
-    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m), bounce: springOf(m.key, face, m.speaking) });
+    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m), bounce: springOf(m.key, face, m.speaking), front: m.front });
   }
   return cast;
 }
@@ -787,38 +791,72 @@ async function measureCgThumb(): Promise<void> {
  */
 const shotLocked = (): boolean => streaming || scenes[lastCgAt]?.cg?.kind !== 'baked' || typeof Reflect.get(globalThis, '__OMNI_SHOT_ACTION__') !== 'function';
 let shotWatch: ReturnType<typeof setInterval> | undefined;
+/**
+ * What 🎲 or 🔮 says over the picture: the redraw under way, or why nothing happened. Omni's own
+ * toasts are in its window, under the viewer: a tap that failed there looked like a dead button.
+ */
+let shotNote = '', shotNoteTimer: ReturnType<typeof setTimeout> | undefined, rolling = false;
+function sayShot(note: string, ms = 0): void {
+  clearTimeout(shotNoteTimer); shotNote = note;
+  if (ms) shotNoteTimer = setTimeout(() => { shotNote = ''; if (open) void restyle().catch(() => {}); }, ms);
+  if (open) void restyle().catch(() => {});
+}
+const shotFailed = (done: unknown, fallback: string): string => typeof done === 'string' && done.trim() ? done.trim().slice(0, 120) : fallback;
 async function shotAction(act: 'reroll' | 'base'): Promise<void> {
   const cg = scenes[lastCgAt]?.cg, run = Reflect.get(globalThis, '__OMNI_SHOT_ACTION__');
-  if (shotLocked() || cg?.kind !== 'baked' || typeof run !== 'function') return;
-  if (act === 'reroll') { await waitOn(async () => { if (await run('reroll', cg.card) === true) await pictureAgain(cg.asset, 8); }); return; }
-  if (await run('base', cg.card) !== true) return;
+  if (rolling) return;
+  if (shotLocked() || cg?.kind !== 'baked' || typeof run !== 'function') {
+    sayShot(streaming ? '답장을 다 받은 뒤에 할 수 있어요.' : cg?.kind !== 'baked' ? '아직 저장되지 않은 삽화예요.' : 'Omni가 아직 준비되지 않았어요.', 2600);
+    return;
+  }
+  if (act === 'reroll') {
+    // One at a time: a second 🎲 while the first draws would pay for two pictures.
+    rolling = true; sayShot('🎲 리롤 중… 다 그리면 바뀝니다');
+    await waitOn(async () => {
+      try {
+        const done = await run('reroll', cg.card);
+        if (done !== true) { sayShot(shotFailed(done, '리롤하지 못했습니다.'), 4500); return; }
+        sayShot('');
+        await pictureAgain(cg.asset, 8);
+      } catch (error) { sayShot(shotFailed(String((error as Error)?.message || error), '리롤하지 못했습니다.'), 4500); }
+      finally { rolling = false; }
+    });
+    return;
+  }
+  let done: unknown;
+  try { done = await run('base', cg.card); } catch (error) { done = String((error as Error)?.message || error); }
+  if (done !== true) { sayShot(shotFailed(done, '샷 태그 수정을 열지 못했습니다.'), 4500); return; }
   // The editor is Omni's window over everything: once it closes, the picture (drawn again or not) is read again.
   clearInterval(shotWatch);
   shotWatch = setInterval(() => {
     const up = Reflect.get(globalThis, '__OMNI_SHOT_TAGS_OPEN__');
     if (open && typeof up === 'function' && up() === true) return;
     clearInterval(shotWatch); shotWatch = undefined;
-    if (open) void pictureAgain(cg.asset, 1).catch(error => dbg('viewer.shot', { message: String(error) }, 'warn'));
+    if (open) void pictureAgain(cg.asset, 3).catch(error => dbg('viewer.shot', { message: String(error) }, 'warn'));
   }, 500);
 }
-/** The reply read again until its picture is another one (`tries` reads, the chat given a moment between), then on show once the chat shows it. */
+/**
+ * The reply read again until its picture is another one (`tries` reads, the chat given a moment between), then on
+ * show once the chat shows it. A redraw stays where the picture was: it joins the picture's run (see replyImages).
+ */
 async function pictureAgain(was: string, tries: number): Promise<void> {
-  const cgAt = lastCgAt;
+  // A reader gone to another reply meanwhile finds the new picture there when they come back: this one is not reread.
+  const cgAt = lastCgAt, reply = messageIndex;
   let now = '';
-  for (let i = 0; i < tries && open && !streaming; i++) {
+  for (let i = 0; i < tries && open && !streaming && messageIndex === reply; i++) {
     if (i) await new Promise(resolve => setTimeout(resolve, 800));
     await load(messageIndex, true, 'fresh');
     const cg = scenes[cgAt]?.cg;
     now = cg?.kind === 'baked' ? cg.asset : '';
     if (now && now !== was) break;
   }
-  if (!open || !now || now === was) return;
+  if (!open || !now || now === was || messageIndex !== reply) return;
   for (let i = 0; i < 20 && open && doc; i++) {
     const img = await doc.querySelector(`${LIST} [data-inray-asset="${now}"] img`);
     if (img) { await release(img); break; }
     await new Promise(resolve => setTimeout(resolve, 400));
   }
-  if (open) await render(true);
+  if (open && messageIndex === reply) await render(true);
 }
 /** The reply's illustration before or after the one on show; -1 when there is none that way. */
 function cgNeighbour(dir: 1 | -1): number {
@@ -881,11 +919,11 @@ async function comeBack(): Promise<void> {
   await measureCgControls();
 }
 
-const state = (cast: Array<{ key: string; face: string; speaking: boolean }>, extra: Partial<StageState> = {}): StageState => ({
+const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
-  busy: busy > 0, msgsLoading, cgLocked: shotLocked(), voiceWait: voiceWaiting,
+  busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
 /**
@@ -974,7 +1012,7 @@ async function moreMsgs(side: 'before' | 'after'): Promise<void> {
   await restyle();
   if (msgsOpen && msgsEl) msgsRect = await msgsEl.getBoundingClientRect();
 }
-let lastCast: Array<{ key: string; face: string; speaking: boolean }> = [];
+let lastCast: CastEntry[] = [];
 
 /**
  * One scene. The stage (one style text) is always brought up to date — a face may
@@ -1007,7 +1045,9 @@ async function render(force = false): Promise<void> {
     // The illustration is a photo over the dimmed stage; the stage itself stays the place.
     const cg = await cgFor(scene);
     if (mine !== epoch) return;
-    if (!cg) { queueStep(1); return; }
+    // A picture the chat does not show is passed over the way the reader was going. Always passed
+    // forward, ◀ from the scene after it landed on it and was sent straight back: it never got past.
+    if (!cg) { queueStep(stepDir); return; }
     // Shown once; past it, it waits folded at the top, a tap away.
     lastCg = cg; lastCgAt = at; cgView = 'open'; revealedAt = -1;
     const end = atEnd(), endCue = end && !(shownSig === '' && shownEnd);
@@ -1086,6 +1126,8 @@ async function autoNext(mine: number): Promise<void> {
  * the end of them is drawn once, a jump.
  */
 let pendingSteps = 0, stepping = false, burstTimer: ReturnType<typeof setTimeout> | undefined;
+/** Which way the reading last went (a picture that cannot show is passed over that way). */
+let stepDir: 1 | -1 = 1;
 /** `burst`: 광클. Those taps are gathered and drawn once they pause, so a burst is one jump. */
 function queueStep(delta: number, burst = false): void {
   pendingSteps += delta;
@@ -1101,6 +1143,7 @@ async function runSteps(): Promise<void> {
 }
 /** Past either end of a reply the next or previous reply goes on; the newest reply's end stays. */
 async function go(delta: number): Promise<void> {
+  stepDir = delta < 0 ? -1 : 1;
   // A step moves the reading: a photo shown big over the line folds away, or the line it moved to stays under it.
   const folded = cgView === 'show' || cgView === 'full';
   if (folded) { cgView = 'fold'; cgThumb = null; }
@@ -1141,7 +1184,7 @@ async function act(name: string): Promise<void> {
     // illustration roster on a message's: in the settings window, so the viewer closes as for ⚙.
     const people = replyPeople();
     await closeViewer();
-    setSoundPage('tts');
+    setSoundPage('people');
     focusSoundPanel('tts-characters', people.join(', '));
     await openSoundWindow();
   }
@@ -1595,11 +1638,14 @@ export async function installOmniViewer(): Promise<void> {
   if (installed || !host?.registerButton || !host.getRootDocument) return;
   installed = true;
   const toggle = (from: 'resume' | 'center') => () => void (open ? closeViewer() : openViewer(from)).catch(error => dbg('viewer.toggle', { message: String(error) }, 'warn'));
-  const icon = '<span style="font-size:16px">🎬</span>';
-  await host.registerButton({ name: '옴니 뷰어', icon, iconType: 'html', location: 'chat', id: 'omni-viewer-chat' }, toggle('resume'));
-  // The menu opens it two ways: where the reader left this chat, or at the message in the middle of the chat screen.
-  await host.registerButton({ name: '옴니 뷰어 · 보던 곳', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu' }, toggle('resume'));
-  await host.registerButton({ name: '옴니 뷰어 · 화면 중앙', icon, iconType: 'html', location: 'hamburger', id: 'omni-viewer-menu-center' }, toggle('center'));
+  // Beside ⚛️Omni Nexus in both of Risu's menus (the chat's and the side bar's), two ways in: where the reader
+  // left this chat, or at the message in the middle of the chat screen.
+  const icon = '<span style="font-size:16px">📽️</span>';
+  const entries = [['보던 곳', 'resume', ''], ['화면 중앙', 'center', '-center']] as const;
+  for (const [label, from, suffix] of entries) {
+    await host.registerButton({ name: `⚛️Omni 뷰어 · ${label}`, icon, iconType: 'html', location: 'chat', id: `omni-viewer-chat${suffix}` }, toggle(from));
+    await host.registerButton({ name: `⚛️Omni 뷰어 · ${label}`, icon, iconType: 'html', location: 'hamburger', id: `omni-viewer-menu${suffix}` }, toggle(from));
+  }
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
   Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));
   // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses).

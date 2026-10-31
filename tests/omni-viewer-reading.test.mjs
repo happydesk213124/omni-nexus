@@ -151,3 +151,46 @@ test('옴니 뷰어 over a restricted SafeDOM: from any picture ◀ and ← go b
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });
+
+test('옴니 뷰어 over a restricted SafeDOM: a picture the chat does not show is passed over the way the reader goes — ◀ from the last picture gets past it', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    // Two pictures end the reply; the chat draws only the last (the first has no image there to show).
+    const v = await viewerOn(browser, ['하린: "앞 줄이야."', '[[@inray::card8::inxshot_gone::832::1216]]', '[[@inray::card9::inxshot_pic::832::1216]]']);
+    await v.shows(/앞 줄/);
+    await v.tapUntil(async () => await v.picture() === 'big');
+    await v.page.waitForFunction(() => /^"3 \/ 3"/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    await v.page.waitForTimeout(600);
+    // ◀: past the picture it cannot show, back to the line (it bounced forward to the last picture, for good).
+    await v.press('prev');
+    await v.shows(/앞 줄/);
+    await v.page.waitForFunction(() => /^"1 \/ 3"/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    // And ← from the last picture too.
+    await v.tapUntil(async () => await v.picture() === 'big');
+    await v.page.waitForTimeout(600);
+    await v.page.keyboard.press('ArrowLeft');
+    await v.page.waitForFunction(() => /^"1 \/ 3"/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: the stage — one quiet for two lines steps off, and where people overlap the last to speak stands in front', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const v = await viewerOn(browser, ['오미선: "왔어?"', '하린: "응, 방금 왔어."', '문이 열렸다.', '바람이 불었다.', '창밖이 어두워졌다.', '하린: "벌써 이렇게 늦었네."']);
+    /** Who stands, by name, with how far forward (z-index). */
+    const standing = () => v.page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[x-omni-vn] [x-vn-p]')].filter(n => getComputedStyle(n).display !== 'none').map(n => [n.querySelector('b')?.textContent, Number(getComputedStyle(n).zIndex)])));
+    const step = async re => { await v.tapUntil(async () => re.test(await v.text())); await v.shows(re); await v.page.waitForTimeout(150); };
+    await v.shows(/왔어/);
+    assert.deepEqual(Object.keys(await standing()), ['오미선']);
+    await step(/방금 왔어/);
+    assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, 'the speaker in front');
+    await step(/문이 열렸다/);
+    assert.deepEqual(await standing(), { 오미선: 2, 하린: 3 }, 'narration: who spoke last stays in front');
+    await step(/바람이 불었다/);
+    assert.deepEqual(Object.keys(await standing()), ['하린'], '오미선, quiet two lines and not speaking again: off the stage');
+    await step(/창밖이/);
+    assert.deepEqual(Object.keys(await standing()), ['하린'], '하린 speaks again in two lines: stays');
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});

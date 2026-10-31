@@ -105,7 +105,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       await bind('bgm-volume',()=>{});await bind('bgm-duck',()=>{});await bind('bgm-follow',()=>updateSoundSettings({listBgm:!soundData().settings.listBgm}));await bind('narration',()=>updateTtsSettings({narration:!ttsData().settings.narration}));await bind('continuous',()=>updateTtsSettings({continuous:!ttsData().settings.continuous}));
       for(const name of ['audio','list'] as const)await bind(name,()=>{const open=ttsData().settings.panel==='cache'?'audio':ttsData().settings.panel,shown=open===name&&!picking;bgmPicking=false;return shown?updateTtsSettings({panel:''}):open===name?paint():updateTtsSettings({panel:name});});
       // 👨‍👩‍👧‍👦: TTS 캐릭터 with this message's people searched, as 옴니 뷰어's.
-      await bind('people',async()=>{const names=await readingPeople();setSoundPage('tts');focusSoundPanel('tts-characters',names.join(', '));await openTtsSettings();});
+      await bind('people',async()=>{const names=await readingPeople();setSoundPage('people');focusSoundPanel('tts-characters',names.join(', '));await openTtsSettings();});
       await bind('locate',async()=>{locating=true;void revealInChat().catch(error=>omniTts.report(error));if(ttsData().settings.panel!=='list')await updateTtsSettings({panel:'list'});else{stateSignature='';await paintState();}});
       await bind('regenerate',()=>withTtsAudio(()=>omniTts.regenerate()));
       await bind('stop',()=>omniTts.stop());await bind('previous',()=>withTtsAudio(()=>omniTts.next(-1)));await bind('next',()=>withTtsAudio(()=>omniTts.next(1)));

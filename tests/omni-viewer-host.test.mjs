@@ -346,14 +346,21 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'none');
     // 🎲 리롤 and 🔮 샷 태그 수정 beside 전체화면: Omni's own (stubbed). While a reply streams they wait, dimmed.
     await page.evaluate(() => {
-      window.shot = [];
+      window.shot = []; window.rollAnswers = ['같은 메시지 작업이 아직 진행 중입니다.'];
       window.__OMNI_SHOT_ACTION__ = async (act, card) => {
         window.shot.push([act, card]);
-        // A redraw baked into the reply: it names another picture, and the chat shows that one.
-        if (act === 'reroll') { const row = window.bot.chats[0].message[2]; row.data = row.data.replace('card1::inxshot_abc', 'card2::inxshot_new'); document.querySelector('[data-inray-asset="inxshot_abc"]').setAttribute('data-inray-asset', 'inxshot_new'); }
+        if (act !== 'reroll') return true;
+        // Omni says why it did not redraw: the viewer has to say it, its toasts are under it.
+        if (window.rollAnswers.length) return window.rollAnswers.shift();
+        await new Promise(resolve => { window.finishRoll = resolve; });
+        // A redraw is kept beside the picture it replaced (its history), the newest pinned; the chat shows only that one.
+        const row = window.bot.chats[0].message[2];
+        row.data = row.data.replace('[[@inray::card1::inxshot_abc::832::1216]]', '[[@inray::card1::inxshot_abc::832::1216]][[@inray::card1_r1::inxshot_new::832::1216_r1_pin]]');
+        document.querySelector('[data-inray-asset="inxshot_abc"]').setAttribute('data-inray-asset', 'inxshot_new');
         return true;
       };
     });
+    const note = () => page.evaluate(() => { const n = document.querySelector('[x-omni-vn] [data-vn-note]'); return getComputedStyle(n).display === 'none' ? '' : getComputedStyle(n, '::after').content; });
     const pictureShown = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])')].filter(n => getComputedStyle(n).display !== 'none').map(n => n.getAttribute('x-vn-cg')));
     const rollLook = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).opacity);
     await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
@@ -361,19 +368,36 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await rollLook(), '0.35', 'streaming: 🎲 waits, dimmed');
     await press('cgroll'); await page.waitForTimeout(300);
     assert.deepEqual(await page.evaluate(() => window.shot), [], 'streaming: nothing redrawn');
+    assert.match(await note(), /답장을 다 받은 뒤/, 'a dimmed 🎲 says why it waits');
     await page.evaluate(() => window.output({ messageIndex: 2 }));
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).opacity === '1');
     const wasShown = await pictureShown();
     assert.equal(wasShown.length, 1);
     await page.waitForTimeout(300);
     await press('cgroll');
+    await page.waitForFunction(() => /같은 메시지 작업/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-note]'), '::after').content));
+    assert.deepEqual(await pictureShown(), wasShown, 'refused: the picture stays');
+    const totalOf = shown => Number(shown.replace(/"/g, '').split('/')[1].trim().split(' ')[0]);
+    const lineUnder = await page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]').textContent), total = totalOf(await count());
+    await page.waitForTimeout(300);
+    await press('cgroll');
+    await page.waitForFunction(() => /리롤 중/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-note]'), '::after').content));
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]'), '::after').animationName), 'vn-spin', 'drawing: 🎲 turns');
+    await page.waitForTimeout(300);
+    await press('cgroll'); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.shot.length), 2, 'one redraw at a time: a second 🎲 would pay for two pictures');
+    await page.evaluate(() => window.finishRoll());
     await page.waitForFunction(was => { const now = [...document.querySelectorAll('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])')].filter(n => getComputedStyle(n).display !== 'none').map(n => n.getAttribute('x-vn-cg')); return now.length === 1 && now[0] !== was; }, wasShown[0]);
-    assert.deepEqual(await page.evaluate(() => window.shot), [['reroll', 'card1']], 'the picture on show, rerolled; the new one taken from the chat');
+    assert.deepEqual(await page.evaluate(() => window.shot), [['reroll', 'card1'], ['reroll', 'card1']], 'the picture on show, rerolled; the new one taken from the chat');
+    assert.equal(await note(), '', 'redrawn: nothing more to say');
     assert.equal(await rollLook(), '1');
+    // The draw it replaced stays in the reply, unshown: no scene of its own, the same line under the picture.
+    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]').textContent), lineUnder);
+    assert.equal(totalOf(await count()), total);
     await page.waitForTimeout(300);
     await press('cgtags');
-    await page.waitForFunction(() => window.shot.length === 2);
-    assert.deepEqual(await page.evaluate(() => window.shot[1]), ['base', 'card2'], "the redrawn picture's own tags");
+    await page.waitForFunction(() => window.shot.length === 3);
+    assert.deepEqual(await page.evaluate(() => window.shot[2]), ['base', 'card1_r1'], "the redrawn picture's own tags");
     await page.evaluate(() => { delete window.__OMNI_SHOT_ACTION__; });
     // 요소: nothing registered, nothing read (the reply's HTML is not even fetched).
     assert.equal(await page.evaluate(() => window.htmlReads || 0), 0, 'every reply loaded so far: a bot with nothing registered costs nothing');
