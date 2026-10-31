@@ -487,6 +487,30 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#snd-sfx-max').fill('2.5'); await page.locator('#snd-sfx-max').dispatchEvent('change');
     await page.waitForFunction(() => window.soundData().settings.sfxMaxSec === 2.5);
     assert.equal(await page.locator('#snd-sfx-max').inputValue(), '2.5');
+    // YouTube: a BGM link registers as a YouTube track (YouTube's title as its name, nothing downloaded); an effect link is refused.
+    assert.equal(await page.locator('#snd-youtube').isChecked(), true, '유튜브로 재생: on by default');
+    await page.evaluate(() => { const was = window.confirm; window.confirmSeen = []; window.confirm = text => { window.confirmSeen.push(text); return false; }; window.restoreConfirm = () => { window.confirm = was; }; });
+    await page.locator('#snd-youtube-hidden').evaluate(n => { n.checked = true; n.dispatchEvent(new Event('change')); });
+    await page.waitForTimeout(200);
+    assert.match(await page.evaluate(() => window.confirmSeen.join('|')), /약관/, 'the terms are named before it hides');
+    assert.equal(await page.evaluate(() => window.soundData().settings.youtubeHidden), false, 'hiding the player is the reader\'s call: declined, it stays seen');
+    assert.equal(await page.locator('#snd-youtube-hidden').isChecked(), false);
+    await page.evaluate(() => window.restoreConfirm());
+    await page.locator('#snd-youtube-hidden').evaluate(n => { n.checked = true; n.dispatchEvent(new Event('change')); });
+    await page.waitForFunction(() => window.soundData().settings.youtubeHidden === true);
+    await page.evaluate(() => { window.fetched = []; const native = window.risuai.nativeFetch; window.risuai.nativeFetch = async (url, options) => { window.fetched.push(url); return url.includes('youtube.com/oembed') ? { ok: true, json: async () => ({ title: '테스트 곡' }) } : native(url, options); }; });
+    await page.locator('#tab-sound-bgm').click();
+    await page.locator('#snd-bgm-add').click();
+    await page.locator('#snd-item-url').fill('https://youtu.be/Te5tVide0_x?si=share'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => window.soundData().bgm.some(item => item.url === 'https://www.youtube.com/watch?v=Te5tVide0_x'));
+    const tube = await page.evaluate(() => window.soundData().bgm.find(item => item.url === 'https://www.youtube.com/watch?v=Te5tVide0_x'));
+    assert.deepEqual([tube.name, tube.source], ['테스트 곡', 'youtube']);
+    assert.deepEqual(await page.evaluate(() => window.fetched.filter(url => !url.includes('oembed'))), [], 'nothing downloaded');
+    assert.match(await page.locator('#snd-bgm-list .voice-row', { hasText: '테스트 곡' }).locator('.snd-row-meta').textContent(), /유튜브/);
+    await page.locator('#tab-sound-sfx').click();
+    await page.locator('#snd-sfx-add').click();
+    await page.locator('#snd-item-url').fill('https://www.youtube.com/watch?v=sMcWOaJFuw0'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => document.getElementById('snd-item-status').textContent.includes('유튜브 링크로 등록할 수 없습니다'));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

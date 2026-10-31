@@ -9,9 +9,14 @@ export interface SoundItem {
   name: string;
   tags: string[];
   folder: string;
-  /** 'url': fetched from a direct audio link. 'asset': stored in the kind's Risu module. */
-  source: 'url' | 'asset';
+  /**
+   * 'url': fetched from a direct audio link. 'asset': stored in the kind's Risu module.
+   * 'youtube': a YouTube video (BGM only), played by YouTube's own player, nothing downloaded.
+   */
+  source: 'url' | 'asset' | 'youtube';
   url?: string;
+  /** A YouTube track's audio file, played instead when YouTube cannot play here (the examples have one). */
+  fallbackUrl?: string;
   /** Module asset name and the path saveAsset returned. */
   assetName?: string;
   assetPath?: string;
@@ -76,6 +81,10 @@ export interface SoundSettings {
   sfxDuration: number;
   /** BGM kept on this device for the next play, in megabytes; 0 keeps nothing there. */
   bgmCacheMb: number;
+  /** YouTube BGM plays through YouTube's player (off: only tracks with an audio file play, from that file). */
+  youtubeBgm: boolean;
+  /** The YouTube player is kept out of sight (YouTube's terms want it seen; the reader's call). */
+  youtubeHidden: boolean;
   /** Upper bound for a file stored in a module (megabytes). */
   maxFileMb: number;
 }

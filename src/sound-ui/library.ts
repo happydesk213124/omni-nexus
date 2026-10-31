@@ -7,6 +7,7 @@ import { el, input, val, set, text, esc, dialog, run, notify, download, readJson
 import { uuid } from '../core/util/text';
 import { setWordsFor, wordsFor } from './glossary';
 import { BGM_SAMPLE_CREDIT, BGM_SAMPLE_HOST, sampleSoundData } from '../config/sound-samples';
+import { youtubeVideoId } from '../domain/sound/youtube';
 
 const LABEL: Record<SoundKind, string> = { bgm: 'BGM', sfx: '효과음' };
 const sizeOf = (item: SoundItem) => !item.bytes ? '' : item.bytes < 1048576 ? `${Math.max(1, Math.round(item.bytes / 1024))}KB` : `${(item.bytes / 1048576).toFixed(1)}MB`;
@@ -48,7 +49,7 @@ export class SoundLibrary {
       tile.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(item.name)} 선택" ${on ? 'checked' : ''}><strong title="${esc(item.name)}">${esc(item.name)}</strong></div>`
         + `<p class="voice-tags">${esc(item.tags.join(', ') || '태그 없음')}</p>`
         + (this.kind === 'sfx' ? `<p class="snd-row-words${words.length ? '' : ' none'}" title="이 말이 나오면 이 효과음 (용어집)${words.length ? ': ' + esc(words.join(', ')) : ''}">${words.length ? '용어 · ' + esc(words.slice(0, 6).join(', ')) + (words.length > 6 ? ` 외 ${words.length - 6}` : '') : '용어 없음'}</p>` : '')
-        + `<small class="snd-row-meta">▱ ${esc(item.folder || '미분류')} · ${item.source === 'asset' ? '파일' : '주소'}${sizeOf(item) ? ' · ' + sizeOf(item) : ''}</small>`;
+        + `<small class="snd-row-meta">▱ ${esc(item.folder || '미분류')} · ${item.source === 'asset' ? '파일' : item.source === 'youtube' ? '유튜브' : '주소'}${sizeOf(item) ? ' · ' + sizeOf(item) : ''}</small>`;
       const play = document.createElement('button'); play.type = 'button'; play.className = 'tile-audition tts-listen';
       if (fetching) { play.innerHTML = '<span class="snd-spin" aria-hidden="true"></span>'; play.title = '불러오는 중'; }
       else { play.textContent = live ? '⏸' : this.kind === 'bgm' ? '♪' : '▶'; play.title = live ? '정지' : '미리 듣기'; }
@@ -82,7 +83,7 @@ export class SoundLibrary {
       list.append(tile);
     });
     // CC BY 4.0 asks for the credit wherever the example music is offered.
-    if (this.kind === 'bgm' && items.some(item => item.url?.includes(BGM_SAMPLE_HOST))) { const credit = document.createElement('p'); credit.className = 'snd-credit'; credit.textContent = BGM_SAMPLE_CREDIT; list.append(credit); }
+    if (this.kind === 'bgm' && items.some(item => item.url?.includes(BGM_SAMPLE_HOST) || item.fallbackUrl?.includes(BGM_SAMPLE_HOST))) { const credit = document.createElement('p'); credit.className = 'snd-credit'; credit.textContent = BGM_SAMPLE_CREDIT; list.append(credit); }
     const count = this.selected.size;
     text(this.id('selected-count'), count ? `선택 ${count}개` : '선택 없음');
     input(this.id('edit')).disabled = count !== 1;
@@ -149,7 +150,8 @@ export class SoundLibrary {
         ? await omniSound.addFromEleven(this.kind, { name, tags, folder, prompt: val('snd-item-prompt'), duration: Number(val('snd-item-duration')) || 0 })
         : val('snd-item-source') === 'file'
         ? await omniSound.addFromFile(this.kind, { name, tags, folder, file: file! })
-        : await omniSound.addFromUrl(this.kind, { name: name || decodeURIComponent(val('snd-item-url').split('/').pop() || '').replace(/\.[^.]+$/, ''), tags, folder, url: val('snd-item-url') });
+        // A YouTube link's name comes from YouTube itself (its title), not from the link's last segment.
+        : await omniSound.addFromUrl(this.kind, { name: name || (youtubeVideoId(val('snd-item-url')) ? '' : decodeURIComponent(val('snd-item-url').split('/').pop() || '').replace(/\.[^.]+$/, '')), tags, folder, url: val('snd-item-url') });
       if (this.kind === 'sfx' && words.length) { setWordsFor(item.key, words); await saveSoundData(); }
       dialog('snd-item-dialog', false); this.render(); notify(`${LABEL[this.kind]} 추가: ${item.name}`);
     } catch (error) { text('snd-item-status', String((error as Error).message || error)); }

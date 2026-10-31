@@ -75,7 +75,7 @@ function renderCueStatus(): void {
   node.textContent = sfxCueStatusText(soundData().settings, hook?.cues?.() ?? null, hook?.status?.().registered);
 }
 
-const SWITCHES = [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst'], ['snd-sfx-autocreate', 'sfxAutoCreate']] as const;
+const SWITCHES = [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst'], ['snd-sfx-autocreate', 'sfxAutoCreate'], ['snd-youtube', 'youtubeBgm'], ['snd-youtube-hidden', 'youtubeHidden']] as const;
 const RANGES = [['snd-bgm-volume', 'bgmVolume'], ['snd-sfx-volume', 'sfxVolume'], ['snd-duck', 'duck']] as const;
 const SELECTS = [['snd-bgm-matcher', 'bgmMatcher'], ['snd-bgm-basis', 'bgmBasis'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const;
 
@@ -108,7 +108,11 @@ export function paintSoundSettings(rules = true): void {
 
 let unsubscribe: (() => void) | undefined;
 export function bindSoundSettings(): void {
-  for (const [id, key] of SWITCHES) el(id).addEventListener('change', () => run(() => updateSoundSettings({ [key]: input(id).checked } as Partial<SoundSettings>)));
+  for (const [id, key] of SWITCHES) el(id).addEventListener('change', () => run(() => {
+    // YouTube's terms want its player seen: hiding it is the reader's call, asked once each time.
+    if (id === 'snd-youtube-hidden' && input(id).checked && !confirm('유튜브 약관은 플레이어가 화면에 보이기를 요구합니다. 숨기는 것은 사용자 책임이에요. 숨길까요?')) { input(id).checked = false; return; }
+    return updateSoundSettings({ [key]: input(id).checked } as Partial<SoundSettings>);
+  }));
   for (const [id, key] of RANGES) {
     // The percentage follows the slider while it moves; the value is saved on release.
     el(id).addEventListener('input', () => text(`${id}-value`, `${val(id)}%`));

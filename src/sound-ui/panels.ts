@@ -18,7 +18,7 @@ function library(kind: 'bgm' | 'sfx', title: string): string {
   const id = (part: string) => `snd-${kind}-${part}`;
   return `<section class="panel" id="sound-${kind}" role="tabpanel" hidden>
 <div class="voice-command-bar"><div class="voice-search-wrap"><input id="${id('search')}" placeholder="이름·태그 검색 ( | 또는, &amp; 모두 )" aria-label="${title} 검색" maxlength="500"><button id="${id('search-clear')}" type="button" hidden aria-label="검색 비우기" title="검색 비우기">×</button></div>
-<select id="${id('filter')}" aria-label="등록 방식 필터"><option value="all">전체</option><option value="url">주소</option><option value="asset">파일</option></select>
+<select id="${id('filter')}" aria-label="등록 방식 필터"><option value="all">전체</option><option value="url">주소</option><option value="asset">파일</option><option value="youtube">유튜브</option></select>
 <select id="${id('sort')}" aria-label="${title} 정렬"><option value="added">추가순</option><option value="name">이름순</option><option value="size">크기순</option></select>
 <span id="${id('count')}"></span><span class="badge" id="${id('total')}" hidden></span>
 <div class="actions voice-tools"><button class="primary" id="${id('add')}">+ ${title}</button><details class="file-menu"><summary>파일 ⋯</summary><div><button id="${id('import')}">JSON 가져오기</button><button id="${id('export')}">JSON 내보내기</button><button id="${id('samples')}" title="기본 예제 중 목록에 없는 것만 더합니다">예제 불러오기</button></div></details></div>
@@ -38,6 +38,8 @@ ${row('BGM 사용', sw('snd-bgm-enabled', 'BGM 사용'))}
 ${row('BGM 볼륨', range('snd-bgm-volume', 'BGM 볼륨'))}
 ${row('TTS 재생 중 BGM', range('snd-duck', 'TTS 재생 중 BGM 크기'))}
 ${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number" min="0" max="10" step="0.5" aria-label="크로스페이드 초" style="width:72px"><span>초 크로스페이드</span></div>`)}
+${row('유튜브로 재생', sw('snd-youtube', '유튜브로 재생'))}
+${row('유튜브 창 숨기기', sw('snd-youtube-hidden', '유튜브 창 숨기기'))}
 ${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'))}
 ${row('TTS 읽는 위치의 BGM 자동 전환', sw('snd-list-bgm', 'TTS 읽는 위치의 BGM 자동 전환'))}
 ${row('곡 고르는 방식', matcher('snd-bgm-matcher'))}
@@ -80,7 +82,7 @@ export const SOUND_DIALOG = `<dialog id="snd-move-dialog"><h2>폴더 이동</h2>
 <label class="field"><span>폴더</span><select id="snd-item-folder"></select></label>
 <label class="field full" id="snd-item-terms-wrap" hidden><span>용어집 단어 · 이 말이 나오면 이 효과음 (쉼표로 구분)</span><input id="snd-item-terms" maxlength="500" placeholder="쾅, 콰앙, 쿵"></label>
 <label class="field"><span>등록 방식</span><select id="snd-item-source"><option value="url">오디오 파일 주소 (https)</option><option value="file">파일 직접 등록 (모듈에 저장)</option><option value="eleven">ElevenLabs로 만들기 (유료)</option></select></label>
-<label class="field full" id="snd-item-url-wrap"><span>오디오 파일 주소</span><input id="snd-item-url" type="url" placeholder="https://…/sound.mp3" maxlength="2000"></label>
+<label class="field full" id="snd-item-url-wrap"><span>오디오 파일 주소 · BGM은 유튜브 링크도 됩니다</span><input id="snd-item-url" type="url" placeholder="https://…/sound.mp3 · https://youtu.be/…" maxlength="2000"></label>
 <label class="field full" id="snd-item-prompt-wrap" hidden><span id="snd-item-prompt-label">만들 효과음 설명 · 영어가 가장 정확합니다</span><textarea id="snd-item-prompt" rows="2" maxlength="450" placeholder="heavy wooden door slamming shut"></textarea><span>길이 (초 · 0이면 자동)</span><input id="snd-item-duration" type="number" min="0" max="30" step="0.5" value="0" style="width:72px"></label>
 <label class="field full" id="snd-item-file-wrap" hidden><span>파일 (mp3 · wav · ogg · m4a · flac · webm)</span><input id="snd-item-file" type="file" accept="audio/*"></label>
 <small id="snd-item-status" role="status"></small></div></div>

@@ -4,7 +4,13 @@
  * chat play through the voice player instead, so they and the lines never overlap). The iframe's
  * audio activation is shared with TTS: once the user enabled playback there, these
  * elements may play too.
+ *
+ * A YouTube track is BGM too, played by YouTube's own player (the tube): while it is
+ * the live music, every BGM question and command here goes to it, and switching
+ * between it and the file decks crossfades as two decks do.
  */
+import { YoutubeTube } from './youtube';
+
 interface Deck { audio: HTMLAudioElement; gain: GainNode; url: string; key: string }
 
 export class SoundPlayer {
@@ -19,22 +25,31 @@ export class SoundPlayer {
   private ducked = false;
   private duckLevel = .35;
   private muted = false;
+  private tube?: YoutubeTube;
+  /** The live music is the tube's (else the decks'). */
+  private onTube = false;
   onChange: () => void = () => {};
-  get bgmKey(): string { return this.decks[this.live]?.key || ''; }
-  get bgmPlaying(): boolean { const deck = this.decks[this.live]; return !!deck?.key && !deck.audio.paused; }
+  get bgmKey(): string { return this.onTube ? this.tube?.key || '' : this.decks[this.live]?.key || ''; }
+  get bgmPlaying(): boolean { if (this.onTube) return !!this.tube?.playing; const deck = this.decks[this.live]; return !!deck?.key && !deck.audio.paused; }
   get isMuted(): boolean { return this.muted; }
   /** Paused, not stopped: the deck keeps its track and position. */
-  get bgmPaused(): boolean { const deck = this.decks[this.live]; return !!deck?.key && deck.audio.paused; }
+  get bgmPaused(): boolean { if (this.onTube) return !!this.tube?.paused; const deck = this.decks[this.live]; return !!deck?.key && deck.audio.paused; }
   get bgmProgress(): { current: number; duration: number } {
+    if (this.onTube && this.tube) return this.tube.progress;
     const audio = this.decks[this.live]?.audio;
     return { current: audio?.currentTime || 0, duration: audio && Number.isFinite(audio.duration) ? audio.duration : 0 };
   }
-  pauseBgm(): void { const deck = this.decks[this.live]; if (deck?.key && !deck.audio.paused) { deck.audio.pause(); this.onChange(); } }
+  pauseBgm(): void {
+    if (this.onTube) { this.tube?.pause(); return; }
+    const deck = this.decks[this.live]; if (deck?.key && !deck.audio.paused) { deck.audio.pause(); this.onChange(); }
+  }
   seekBgm(seconds: number): void {
+    if (this.onTube) { this.tube?.seek(seconds); return; }
     const audio = this.decks[this.live]?.audio;
     if (audio && this.decks[this.live]!.key && Number.isFinite(audio.duration)) audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
   }
   async resumeBgm(): Promise<boolean> {
+    if (this.onTube) return !!this.tube && await this.tube.resume();
     const deck = this.decks[this.live];
     if (!deck?.key || !deck.audio.paused) return !!deck?.key;
     await this.ensure().resume(); await deck.audio.play(); this.onChange();
@@ -56,10 +71,12 @@ export class SoundPlayer {
     this.apply();
     return context;
   }
+  private bgmLevel(): number { return this.muted ? 0 : this.bgmVolume * (this.ducked ? this.duckLevel : 1); }
   private apply(): void {
+    if (this.onTube) this.tube?.setLevel(this.bgmLevel());
     if (!this.bgmBus || !this.sfxBus || !this.context) return;
     const now = this.context.currentTime;
-    const bgm = this.muted ? 0 : this.bgmVolume * (this.ducked ? this.duckLevel : 1);
+    const bgm = this.bgmLevel();
     this.bgmBus.gain.cancelScheduledValues(now); this.bgmBus.gain.setTargetAtTime(bgm, now, .12);
     this.sfxBus.gain.value = this.muted ? 0 : this.sfxVolume;
   }
@@ -73,10 +90,34 @@ export class SoundPlayer {
   /** Lowers BGM while another voice (TTS) plays. */
   duck(active: boolean): void { if (this.ducked !== active) { this.ducked = active; this.apply(); } }
 
+  private tubeOf(): YoutubeTube {
+    if (!this.tube) { this.tube = new YoutubeTube(); this.tube.onChange = () => this.onChange(); }
+    return this.tube;
+  }
+  /** The YouTube player made ahead (seed, clone, handshake), so the first track starts at once. */
+  prepareTube(): Promise<void> { return this.tubeOf().ensure(); }
+  setTubeHidden(hidden: boolean): void { if (this.tube) void this.tube.setHidden(hidden).catch(() => {}); }
+  /**
+   * A YouTube video as the BGM, crossfaded from the file decks. On a failure the file
+   * music plays on; a play the browser holds back until a tap still takes over (the
+   * player shows itself, and the music comes when it is tapped).
+   */
+  async playTube(key: string, video: string, fadeMs: number, hidden: boolean): Promise<void> {
+    const tube = this.tubeOf();
+    try { await tube.play(key, video, { level: this.bgmLevel(), fadeMs, hidden }); }
+    catch (error) { if (tube.waiting) this.toTube(fadeMs); throw error; }
+    this.toTube(fadeMs);
+  }
+  private toTube(fadeMs: number): void {
+    if (!this.onTube) this.fadeOutDeck(fadeMs);
+    this.onTube = true; this.onChange();
+  }
   /** Starts `key` on the idle deck and crossfades to it. The same key keeps playing. */
   async playBgm(key: string, bytes: ArrayBuffer, mime: string, fadeMs = 1500): Promise<void> {
     const context = this.ensure();
     if (this.bgmKey === key && this.bgmPlaying) return;
+    // From YouTube back to a file: YouTube fades out under it.
+    if (this.onTube) { this.onTube = false; void this.tube?.stop(fadeMs).catch(() => {}); }
     await context.resume();
     const next = this.decks[1 - this.live]!, previous = this.decks[this.live]!;
     if (next.url) URL.revokeObjectURL(next.url);
@@ -92,6 +133,10 @@ export class SoundPlayer {
     this.onChange();
   }
   stopBgm(fadeMs = 600): void {
+    if (this.onTube) { void this.tube?.stop(fadeMs).catch(() => {}); return; }
+    this.fadeOutDeck(fadeMs);
+  }
+  private fadeOutDeck(fadeMs: number): void {
     const deck = this.decks[this.live];
     if (!deck || !this.context) return;
     const now = this.context.currentTime;
@@ -121,6 +166,7 @@ export class SoundPlayer {
     return { ended };
   }
   stopAll(): void {
+    void this.tube?.stop(0).catch(() => {});
     for (const deck of this.decks) { deck.audio.pause(); deck.key = ''; }
     for (const row of this.sfx.splice(0)) { row.audio.pause(); URL.revokeObjectURL(row.url); }
     this.onChange();

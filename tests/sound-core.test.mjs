@@ -249,7 +249,8 @@ test('a first run starts with the example lists; a save whose lists were emptied
     const first = await api.loadSoundData();
     assert.equal(first.bgm.length, api.SOUND_SAMPLES.bgm.items.length); assert.equal(first.sfx.length, api.SOUND_SAMPLES.sfx.items.length);
     assert.ok(first.bgm.length > 100 && first.sfx.length > 100, 'both example lists are there');
-    assert.ok(first.bgm.every(item => item.source === 'url' && item.url.startsWith('https://')), 'links only: nothing goes into the save file');
+    assert.ok(first.bgm.every(item => (item.source === 'url' || item.source === 'youtube') && item.url.startsWith('https://')), 'links only (YouTube or a file link): nothing goes into the save file');
+    assert.ok(first.bgm.filter(item => item.source === 'youtube').every(item => item.fallbackUrl?.startsWith('https://')), 'a YouTube example keeps its file link');
     assert.deepEqual(first.folders.bgm, api.SOUND_SAMPLES.bgm.folders);
     assert.equal(kv.size, 0, 'loading writes nothing');
     first.bgm.length = 0; first.sfx.length = 0; await api.saveSoundData();
