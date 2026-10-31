@@ -22,6 +22,7 @@ import { psGet, psSet } from '../storage/device-store';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, quiet, release, rowAt, unwrap } from './safe-dom';
+import { elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
@@ -133,6 +134,7 @@ async function load(index?: number, keepPlace = false, ctx?: TtsChatContext): Pr
   place = await readPlace();
   bg = '';
   await stagePlace().catch(error => dbg('viewer.place', { message: String(error) }, 'warn'));
+  await elementsForReply().catch(error => dbg('viewer.elements', { message: String(error) }, 'warn'));
 }
 /** The reply as the chat draws it (innerText: what CSS hides is left out). '' when it is not on screen. */
 async function renderedText(index: number): Promise<string> {
@@ -545,7 +547,8 @@ async function render(force = false): Promise<void> {
     if (!cg) { queueStep(1); return; }
     // Shown once; past it, it waits folded at the top, a tap away.
     lastCg = cg; lastCgAt = at; cgView = 'open'; revealedAt = -1;
-    await dyn.setTextContent(stageCss(state(lastCast, { cg, cgView })));
+    await elementsAtEnd(atEnd());
+    await writeStage(state(lastCast, { cg, cgView }));
     // The reply ends on this picture: the cue to write the next message comes with it.
     if (atEnd() && !(shownSig === '' && shownEnd)) { shownSig = ''; shownEnd = true; await box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html); }
     if (prefs.auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
@@ -575,7 +578,8 @@ async function render(force = false): Promise<void> {
     lastCast = cast;
     // Only the end cue is new (the reply finished streaming): the letters already shown stay shown.
     if (!same) revealedAt = askReveal === draw || (sig === shownSig && !force) ? at : -1;
-    await dyn.setTextContent(stageCss(state(cast, { narration: scene.kind === 'narration' })));
+    await elementsAtEnd(end);
+    await writeStage(state(cast, { narration: scene.kind === 'narration' }));
     if (same) return;
     shownSig = sig; shownEnd = end;
     if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
@@ -592,7 +596,7 @@ async function render(force = false): Promise<void> {
 async function reveal(): Promise<void> {
   if (!dyn) return;
   revealedAt = at; revealUntil = 0;
-  await dyn.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
+  await writeStage(state(lastCast, { narration: scenes[at]?.kind === 'narration' }));
 }
 /** 자동: wait for the voice to end (when it speaks), then move on. */
 async function autoNext(mine: number): Promise<void> {
@@ -655,6 +659,13 @@ async function act(name: string): Promise<void> {
     await restyle();
     if (stripOpen) setTimeout(() => { if (stripOpen) void measureThumbs().catch(() => {}); }, 380);
   }
+  else if (name === 'elems') await toggleElements();
+  else if (name === 'eledit') {
+    if (!elementsShown()) return;
+    // 편집 is a panel too: the others make room.
+    if (!elementsEditing()) { stripOpen = false; msgsOpen = false; logOpen = false; }
+    await toggleEdit();
+  }
   else if (name === 'msgs') {
     msgsOpen = !msgsOpen; msgsRect = null;
     if (msgsOpen) { stripOpen = false; logOpen = false; await buildMsgs(); }
@@ -702,11 +713,22 @@ function completeLine(now: number): boolean {
   if (now < revealUntil) { void reveal().catch(() => {}); return true; }
   return false;
 }
+/**
+ * The button under a point, as the reader sees it: a panel's tab lies under its open
+ * panel (there the tap is the panel's), a full-screen CG leaves only its own sheet,
+ * and 편집 shows only with 요소.
+ */
+function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
+  const editing = elementsEditing();
+  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(c.act === 'msgs' && msgsOpen)
+    && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()));
+}
 function onClick(p: HostPoint): void {
   if (!open || away || !Number.isFinite(p?.clientX) || !inside(p, rect)) return;
-  // A panel's tab lies under the open panel: there the tap is the panel's.
-  const hit = controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(c.act === 'strip' && stripOpen) && !(c.act === 'msgs' && msgsOpen));
+  const hit = liveHit(p);
   const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
+  // 요소 first: 편집 takes every tap but the buttons', and the end's choices take theirs.
+  if (elementsClick(p, !!hit)) return;
   // An open panel takes the tap: a tile or row jumps to its place, anywhere else closes it.
   if (msgsOpen && !hit) { void (msgsRect && inside(p, msgsRect) ? jumpFromMsgs(p.clientY) : act('msgs')).catch(report('viewer.msgs')); return; }
   if (stripOpen && !hit) { const tile = thumbs.find(t => inside(p, t.r)); void (tile ? jumpTo(tile) : act('strip')).catch(report('viewer.strip')); return; }
@@ -725,9 +747,13 @@ function onClick(p: HostPoint): void {
   queueStep(1, tapRun >= 3);
 }
 
+/** The scene's one style text: the stage's, then 요소's (its stickers, its panel, its choices). */
+async function writeStage(s: StageState): Promise<void> {
+  await dyn?.setTextContent(`${stageCss(s)}\n${elementsCss()}`);
+}
 /** Only the stage's style text: buttons' state, panels. */
 async function restyle(): Promise<void> {
-  await dyn?.setTextContent(stageCss(state(lastCast, { narration: scenes[at]?.kind === 'narration' })));
+  await writeStage(state(lastCast, { narration: scenes[at]?.kind === 'narration' }));
 }
 /** The tapped line of the open 기록: its rows are in reading order, so a binary search finds it in a few calls. */
 let logRows: number[] = [], logRect: DOMRect | null = null;
@@ -746,15 +772,17 @@ async function jumpFromLog(y: number): Promise<void> {
 let swipeFrom: { x: number; y: number } | null = null, swipeUntil = 0, downId = '', upId = '';
 function onDown(p: HostPoint): void {
   swipeFrom = null;
-  if (!open || away || !Number.isFinite(p?.clientY) || !inside(p, rect) || logOpen || stripOpen || msgsOpen) return;
+  if (!open || away || !Number.isFinite(p?.clientY) || !inside(p, rect)) return;
+  if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
   swipeFrom = { x: p.clientX, y: p.clientY };
-  if (controls.some(c => inside(p, c.r)) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
+  if (liveHit(p) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
   const now = Date.now();
   pressAt = now;
   if (completeLine(now)) pressRevealAt = now;
 }
 function onUp(p: HostPoint): void {
   const from = swipeFrom; swipeFrom = null;
+  if (open && !away && elementsUp(p)) return;
   if (!from || !open || away || !Number.isFinite(p?.clientY)) return;
   const dy = p.clientY - from.y, dx = p.clientX - from.x;
   if (Math.abs(dy) < 36 || Math.abs(dy) < Math.abs(dx)) return;
@@ -812,6 +840,8 @@ export async function openViewer(): Promise<void> {
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
     [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]'].map(s => root!.querySelector(s)));
+    await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
+      reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused;
@@ -844,6 +874,7 @@ export async function closeViewer(): Promise<void> {
   if (doc && upId) { await quiet(doc.removeEventListener('pointerup', upId)); upId = ''; }
   for (const node of [root, dyn, fold]) if (node) { await quiet(node.remove()); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
+  await elementsClose().catch(() => {});
   for (const place of people.values()) await release(place);
   people.clear();
   root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = null;

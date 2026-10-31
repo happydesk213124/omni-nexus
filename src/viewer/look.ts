@@ -62,10 +62,31 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-act="bgm"]{width:64px;margin-right:auto}
 [x-omni-vn] [data-vn-act="bgm"]::after{content:"▶";margin-left:5px;font-size:9px}
 [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{color:var(--gold);font-size:13px}
-/* Two tabs on the stage's edges: 메시지 on the left, 삽화 on the right. */
-[x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"]{position:absolute;top:38%;z-index:4;height:auto;min-width:0;padding:12px 7px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:11px;color:var(--gold);background:rgba(10,9,17,.72);border:1px solid var(--line)}
+/* Tabs on the stage's edges: 메시지 on the left, 삽화 and 요소 on the right. */
+[x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{position:absolute;top:38%;z-index:4;height:auto;min-width:0;padding:12px 7px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:11px;color:var(--gold);background:rgba(10,9,17,.72);border:1px solid var(--line)}
 [x-omni-vn] [data-vn-act="strip"]{right:0;border-radius:12px 0 0 12px;border-right:0}
 [x-omni-vn] [data-vn-act="msgs"]{left:0;border-radius:0 12px 12px 0;border-left:0}
+[x-omni-vn] [data-vn-act="elems"]{right:0;top:calc(38% + 84px);border-radius:12px 0 0 12px;border-right:0}
+/* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices. */
+[x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:2;pointer-events:none}
+[x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
+[x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
+[x-omni-vn] [data-vn-act="eledit"]{position:absolute;right:12px;top:58px;z-index:7;visibility:hidden}
+[x-omni-vn] [data-vn-edit]{position:absolute;top:104px;right:0;width:min(84%,330px);max-height:calc(100% - 104px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;z-index:7;display:flex;flex-direction:column;gap:8px;
+  background:rgba(10,9,17,.96);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
+[x-omni-vn] [data-vn-edit] h4{margin:0;font-size:13px;color:var(--gold)}
+[x-omni-vn] [data-vn-edit] [data-vn-hint]{font-size:11px;line-height:1.5;color:#a59cb6}
+[x-omni-vn] [data-vn-el]{flex:none;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)}
+[x-omni-vn] [data-vn-el] b{font-size:12px;color:#efe9da;margin-right:6px}
+[x-omni-vn] [data-vn-el] small{font-size:10.5px;color:#a59cb6}
+[x-omni-vn] [data-vn-el] span{display:block;margin:3px 0 7px;font-size:11.5px;color:#cfc6b2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[x-omni-vn] [data-vn-el] p{margin:0;display:flex;flex-wrap:wrap;gap:5px}
+[x-omni-vn] [data-vn-el] i{font-style:normal;font-size:11.5px;padding:5px 10px;border-radius:999px;cursor:pointer;color:#e9e3d3;border:1px solid rgba(255,255,255,.2);transition:background .15s}
+[x-omni-vn] [data-vn-el] i[data-on]{color:#1a1408;background:var(--gold);border-color:var(--gold)}
+[x-omni-vn] [data-vn-choices]{display:none;position:absolute;left:50%;bottom:calc(12px + clamp(136px,26%,200px) + 16px);translate:-50% 0;width:min(76%,460px);flex-direction:column;gap:8px;z-index:4}
+[x-omni-vn] [data-vn-ch]{padding:11px 16px;border-radius:12px;cursor:pointer;text-align:center;font:15px/1.5 ${SERIF};color:#f4f1ea;background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 6px 20px rgba(0,0,0,.4);transition:background .15s,border-color .15s}
+[x-omni-vn] [data-vn-ch][data-sel]{border-color:var(--gold);background:rgba(227,194,122,.2)}
+[x-omni-vn] [data-vn-ch][data-sel]::after{content:"한 번 더 누르면 보내요";display:block;margin-top:2px;font:11px/1.4 system-ui,sans-serif;color:var(--gold)}
 [x-omni-vn] [data-vn-strip]{position:absolute;top:56px;right:0;width:min(42%,210px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:hidden;padding:10px;z-index:5;display:flex;flex-direction:column;gap:8px;
   background:rgba(10,9,17,.94);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-strip] [x-vn-thumb]{flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
@@ -85,12 +106,12 @@ export const STATIC_CSS = `
 /* Every row and tile is a way somewhere: it lights under the pointer (or the finger), so it reads as one. */
 [x-omni-vn] [data-vn-log] p:active,[x-omni-vn] [data-vn-msg]:active,[x-omni-vn] [data-vn-hud] button:active,[x-omni-vn] [data-vn-menu] button:active,[x-omni-vn] [data-vn-dock] button:active,[x-omni-vn] [data-vn-cgbar] button:active{background:rgba(227,194,122,.16)}
 @media (hover:hover){[x-omni-vn] button:hover{background:rgba(48,41,70,.85)}[x-omni-vn] [data-vn-menu] button:hover{background:rgba(255,255,255,.09)}[x-omni-vn] [data-vn-dock] button:hover{background:rgba(255,255,255,.16)}
-  [x-omni-vn] [data-vn-log] p:hover,[x-omni-vn] [data-vn-msg]:hover{background:rgba(227,194,122,.12)}[x-omni-vn] [data-vn-msg]:hover{border-color:var(--line)}}
+  [x-omni-vn] [data-vn-log] p:hover,[x-omni-vn] [data-vn-msg]:hover,[x-omni-vn] [data-vn-ch]:hover,[x-omni-vn] [data-vn-el] i:not([data-on]):hover{background:rgba(227,194,122,.12)}[x-omni-vn] [data-vn-msg]:hover{border-color:var(--line)}}
 /* Fingers: bigger targets. */
 @media (hover:none),(pointer:coarse){[x-omni-vn] button{height:40px;min-width:40px;padding:0 12px;font-size:13px}[x-omni-vn] [data-vn-box]{padding-bottom:58px}
   [x-omni-vn] [data-vn-menu]{left:16px;right:16px;bottom:15px;gap:1px}[x-omni-vn] [data-vn-menu] button{height:40px;min-width:40px;padding:0 8px;font-size:12.5px}[x-omni-vn] [data-vn-act="bgm"]{width:68px}
   [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:46px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}
-  [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
+  [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-30% 4%;rotate:3deg}to{opacity:1;translate:-50% 0;rotate:-1.2deg}}
 @keyframes vn-ch{to{opacity:1}}
@@ -101,11 +122,12 @@ export const STATIC_CSS = `
 `;
 
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
-export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div>
+export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><div data-vn-stickers></div>
 <div data-vn-hud><div data-vn-clock></div><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
+<button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
 <div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
 <div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;

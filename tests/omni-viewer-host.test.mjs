@@ -30,6 +30,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async getOuterHTML() { count('getOuterHTML'); return this.node.outerHTML; }
         async innerText() { count('innerText'); return this.node.innerText; }
         async scrollIntoView(o) { count('scrollIntoView'); this.node.scrollIntoView(o); }
+        async getInnerHTML() { window.htmlReads = (window.htmlReads || 0) + 1; return this.node.innerHTML; }
+        async setClassName(v) { count('setClassName'); this.node.className = v; }
         async setInnerHTML(v) { count('setInnerHTML'); if (/data:image/.test(v)) count('imageSent'); this.node.innerHTML = DOMPurify.sanitize(v); }
         async setStyleAttribute(v) { count('setStyleAttribute'); this.node.style.cssText = v; }
         async appendChild(child) { count('appendChild'); this.node.append(child.node); }
@@ -41,12 +43,13 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         async createElement(tag) { count('createElement'); if (!['div', 'button', 'style'].includes(tag)) throw Error('Unsupported host element ' + tag); return new Safe(document.createElement(tag)); }
       }
       const older = Array.from({ length: 5 }, (_, i) => `<div class="chat-message-container"><div class="risu-chat" data-chat-index="${i}"><div class="chattext">old ${i}</div></div></div>`).join('');
-      document.body.innerHTML = `<div style="position:fixed;inset:0;z-index:50"></div><div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="2"><div class="chattext"><p>문이 열렸다.</p><p>오미선: “왔어?”</p><p>오미선: “자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아.”</p><p>하린: “응, 늦었지.”</p><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${png}" style="width:50%"></div></div></div></div>${older}</div></div>`;
+      document.body.innerHTML = `<div style="position:fixed;inset:0;z-index:50"></div><div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="2"><div class="chattext"><p>문이 열렸다.</p><p>오미선: “왔어?”</p><p>오미선: “자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아.”</p><p>하린: “응, 늦었지.”</p><div class="x-risu-status" style="width:180px;background:#335">HP 3 <span>MP 2</span></div><div class="x-risu-choices"><p>1. 창가에 앉는다</p><p>2. 카운터로 간다</p></div><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${png}" style="width:50%"></div></div></div></div>${older}</div></div>`;
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [['오미선_happy', 'assets/h.png', 'png'], ['하린_neutral', 'assets/n.png', 'png']], chats: [{ id: 'chat', message: [{ role: 'char', chatId: 'm0', data: '전날 밤은 조용했다.' }, { role: 'user', data: 'hi' }, { role: 'char', chatId: 'm1', data: reply }] }], chatPage: 0 };
       window.bot = bot;
       window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
+        sendChat: async text => { window.sent = text; },
         readImage: async () => bytes, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
     }, { png: PNG, reply });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
@@ -227,6 +230,49 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] img[x-vn-cg]')).objectFit === 'cover');
     await press('cgback');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-dock]')).display === 'none');
+    // 요소: nothing registered, nothing read (the reply's HTML is not even fetched).
+    assert.equal(await page.evaluate(() => window.htmlReads || 0), 0, 'every reply loaded so far: a bot with nothing registered costs nothing');
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    assert.equal(await page.locator('[x-omni-vn] [x-vn-st]').count(), 0, 'only registered kinds come up');
+    // 편집 lists the bot's own elements (not ours): the status panel and the choice list.
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length === 2);
+    await page.waitForTimeout(500);
+    const chip = (row, label) => page.locator(`[x-omni-vn] [data-vn-el]:has(b:text-is("${row}")) i`, { hasText: label });
+    const tapChip = async (row, label) => { const b = await chip(row, label).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
+    await tapChip('status', '스티커');
+    await page.waitForFunction(() => { const st = document.querySelector('[x-omni-vn] [x-vn-st]'); return !!st?.querySelector('.x-risu-status') && getComputedStyle(st).display === 'block'; });
+    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st]').className), 'chattext', "inside a .chattext the bot's chat CSS still reaches it");
+    // Dragged in 편집, it stays where it was put (a share of the frame, so any screen keeps it).
+    await page.waitForTimeout(300);
+    const sticker = await page.locator('[x-omni-vn] [x-vn-st]').boundingBox();
+    const before = await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st]').style.left);
+    await page.mouse.move(sticker.x + 20, sticker.y + 8); await page.mouse.down();
+    await page.mouse.move(sticker.x + 60, sticker.y + 60, { steps: 5 }); await page.mouse.move(sticker.x + 100, sticker.y + 110, { steps: 5 }); await page.mouse.up();
+    await page.waitForFunction(was => { const left = document.querySelector('[x-omni-vn] [x-vn-st]').style.left; return /%$/.test(left) && left !== was; }, before);
+    const moved = await page.locator('[x-omni-vn] [x-vn-st]').boundingBox();
+    assert.ok(Math.abs(moved.x - sticker.x - 80) < 6 && Math.abs(moved.y - sticker.y - 102) < 6, `the sticker followed the drag: ${JSON.stringify([sticker, moved])}`);
+    assert.equal(await page.evaluate(() => window.liveListeners), 3, 'the move listener lasted only as long as the drag');
+    // The choice list as 선택지: at the newest reply's end, its options come up instead of the end cue.
+    await tapChip('choices', '선택지');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-choices]')).display === 'flex');
+    assert.deepEqual(await page.locator('[x-omni-vn] [data-vn-ch]').allTextContents(), ['1. 창가에 앉는다', '2. 카운터로 간다']);
+    await press('eledit');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [x-vn-st]')).outlineStyle === 'none');
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [x-vn-st]')).display === 'none', null, { timeout: 3000 });
+    // One tap picks a choice; a second on it sends it as the user's message.
+    await page.waitForTimeout(300);
+    const option = await page.locator('[x-omni-vn] [data-vn-ch]').first().boundingBox();
+    await page.mouse.click(option.x + option.width / 2, option.y + option.height / 2);
+    await page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-ch]')?.hasAttribute('data-sel'));
+    assert.equal(await page.evaluate(() => window.sent), undefined, 'one tap sends nothing');
+    await page.waitForTimeout(200);
+    const picked = await page.locator('[x-omni-vn] [data-vn-ch]').first().boundingBox();
+    await page.mouse.click(picked.x + picked.width / 2, picked.y + picked.height / 2);
+    await page.waitForFunction(() => window.sent === '1. 창가에 앉는다');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-choices]')).display === 'none');
     // ✕ closes: no frame, no styles, no listener.
     const close = await page.locator('[x-omni-vn] [data-vn-act="close"]').boundingBox();
     await page.mouse.click(close.x + close.width / 2, close.y + close.height / 2);
