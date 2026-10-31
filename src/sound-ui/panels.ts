@@ -38,7 +38,7 @@ ${row('BGM 사용', sw('snd-bgm-enabled', 'BGM 사용'))}
 ${row('BGM 볼륨', range('snd-bgm-volume', 'BGM 볼륨'))}
 ${row('TTS 재생 중 BGM', range('snd-duck', 'TTS 재생 중 BGM 크기'))}
 ${row('곡 전환', `<div class="control"><input id="snd-crossfade" type="number" min="0" max="10" step="0.5" aria-label="크로스페이드 초" style="width:72px"><span>초 크로스페이드</span></div>`)}
-${row('유튜브로 재생', sw('snd-youtube', '유튜브로 재생'))}
+${row('유튜브로 재생', sw('snd-youtube', '유튜브로 재생'), '<span class="snd-warn">유튜브 약관은 플레이어가 화면에 보이기를 요구합니다. 창을 숨기는 것은 사용자 책임이에요.</span>')}
 ${row('유튜브 창 숨기기', sw('snd-youtube-hidden', '유튜브 창 숨기기'))}
 ${row('LLM에게 BGM 태그 요청', sw('snd-bgm-prompt', 'LLM에게 BGM 태그 요청'))}
 ${row('TTS 읽는 위치의 BGM 자동 전환', sw('snd-list-bgm', 'TTS 읽는 위치의 BGM 자동 전환'))}

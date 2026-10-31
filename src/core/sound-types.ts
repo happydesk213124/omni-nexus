@@ -90,7 +90,7 @@ export interface SoundSettings {
 }
 
 export interface SoundData {
-  version: 1;
+  version: 2;
   settings: SoundSettings;
   bgm: SoundItem[];
   sfx: SoundItem[];

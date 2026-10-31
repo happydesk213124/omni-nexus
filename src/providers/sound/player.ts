@@ -90,13 +90,15 @@ export class SoundPlayer {
   /** Lowers BGM while another voice (TTS) plays. */
   duck(active: boolean): void { if (this.ducked !== active) { this.ducked = active; this.apply(); } }
 
+  // 유튜브 창 숨기기, kept for a player not made yet: made ahead, it starts as the setting says.
+  private tubeHidden = true;
   private tubeOf(): YoutubeTube {
-    if (!this.tube) { this.tube = new YoutubeTube(); this.tube.onChange = () => this.onChange(); }
+    if (!this.tube) { this.tube = new YoutubeTube(); this.tube.onChange = () => this.onChange(); void this.tube.setHidden(this.tubeHidden).catch(() => {}); }
     return this.tube;
   }
   /** The YouTube player made ahead (seed, clone, handshake), so the first track starts at once. */
   prepareTube(): Promise<void> { return this.tubeOf().ensure(); }
-  setTubeHidden(hidden: boolean): void { if (this.tube) void this.tube.setHidden(hidden).catch(() => {}); }
+  setTubeHidden(hidden: boolean): void { this.tubeHidden = hidden; if (this.tube) void this.tube.setHidden(hidden).catch(() => {}); }
   /**
    * A YouTube video as the BGM, crossfaded from the file decks. On a failure the file
    * music plays on; a play the browser holds back until a tap still takes over (the

@@ -44,6 +44,10 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.locator('#tab-emo-bg').click();
     assert.equal(await page.locator('#emo-bg').isVisible(), true);
     assert.equal(await page.locator('#emo-bg-samples button').count(), 106, 'the sample places, tags only');
+    // The page opened again (new markup): listed again (it stayed empty once reopened).
+    await page.evaluate(async () => { document.getElementById('nx-main').innerHTML = window.ttsSettingsHtml(); await window.mountTts(); });
+    await page.locator('#tab-emo-bg').click();
+    await page.waitForFunction(() => document.querySelectorAll('#emo-bg-samples button').length === 106);
     await page.locator('#emo-places').uncheck();
     await page.waitForFunction(() => window.emotionData().settings.placeBackgrounds === false && document.getElementById('emo-bg-gate').disabled);
     await page.locator('#emo-places').check();

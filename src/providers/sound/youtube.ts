@@ -80,7 +80,7 @@ export class YoutubeTube {
       this.state = state;
       // BGM loops: a track that ends starts again.
       if (state === 0 && this.key) { this.send('seekTo', [0, true]); this.send('playVideo'); }
-      if (state === 1 && this.tapNeeded) { this.tapNeeded = false; void this.place().catch(() => {}); void this.fadeTo(this.key ? this.pendingLevel : 0, 600); }
+      if (state === 1 && this.tapNeeded) { this.tapNeeded = false; void this.disarm(); void this.place().catch(() => {}); void this.fadeTo(this.key ? this.pendingLevel : 0, 600); }
       if (state !== was) this.onChange();
     }
   };
@@ -96,10 +96,33 @@ export class YoutubeTube {
   private broadcast(): void { for (const win of this.frames()) if (win !== window) this.post(win, { event: 'listening' }); }
   private send(func: string, args: unknown[] = []): void { if (this.win) this.post(this.win, { event: 'command', func, args }); }
 
-  /** Where the player sits: small, low on the left; or out of sight (but laid out, so it loads). A blocked play shows it for a tap. */
+  /**
+   * Where the player sits: small, low on the left, while a track is on and it is not
+   * hidden (a blocked play outlined, for its tap); else out of sight, but laid out so it
+   * loads. Nothing on (made ahead, or stopped) it is never seen: it would show YouTube's
+   * sample video. Hidden, a blocked play waits for the next press anywhere instead.
+   */
   private style(): string {
     const box = 'position:fixed;left:10px;bottom:96px;width:200px;height:113px;border:0;border-radius:10px;background:#000;margin:0';
-    return this.hidden && !this.tapNeeded ? `${box};opacity:0;pointer-events:none;z-index:-1` : `${box};z-index:30;box-shadow:0 6px 22px rgba(0,0,0,.45)${this.tapNeeded ? ';outline:3px solid #e3c27a' : ''}`;
+    return this.key && !this.hidden ? `${box};z-index:30;box-shadow:0 6px 22px rgba(0,0,0,.45)${this.tapNeeded ? ';outline:3px solid #e3c27a' : ''}` : `${box};opacity:0;pointer-events:none;z-index:-1`;
+  }
+  /**
+   * Hidden and held back by the browser: the next press anywhere in Risu plays it. That
+   * press lets the page play sound, and YouTube's window (allowed to autoplay) with it.
+   */
+  private retryId = '';
+  private async armRetry(): Promise<void> {
+    if (this.retryId || !this.doc) return;
+    const doc = this.doc;
+    const id = await doc.addEventListener('pointerup', () => { if (this.tapNeeded && this.key) this.send('playVideo'); else void this.disarm(); });
+    // Played or stopped while the listener went in: none is left behind.
+    if (!this.tapNeeded || !this.hidden) { await quiet(doc.removeEventListener('pointerup', id)); return; }
+    this.retryId = id;
+  }
+  private async disarm(): Promise<void> {
+    const id = this.retryId;
+    this.retryId = '';
+    if (id && this.doc) await quiet(this.doc.removeEventListener('pointerup', id));
   }
   private async place(): Promise<void> { await this.el?.setStyleAttribute(this.style()); }
 
@@ -190,11 +213,12 @@ export class YoutubeTube {
       throw new Error(code === 101 || code === 150 ? '이 유튜브 영상은 다른 사이트에서 재생할 수 없게 막혀 있습니다.' : code === 100 ? '유튜브 영상을 찾을 수 없습니다 (삭제·비공개).' : `유튜브 재생 오류 (${code})`);
     }
     if (!started) {
-      // Held back until a tap (no tap has reached YouTube's window yet): the player shows
-      // itself; the track stays loaded, and comes in at its level once it is tapped.
+      // Held back until a tap: the track stays loaded, and comes in at its level once played.
+      // Shown, the player asks for that tap itself; hidden, the next press anywhere plays it.
       this.tapNeeded = true; this.pendingLevel = options.level;
       await this.place(); this.onChange();
-      throw Object.assign(new Error('브라우저가 유튜브 자동 재생을 막았습니다. 왼쪽 아래 유튜브 창을 한 번 눌러 주세요.'), { tap: true });
+      if (this.hidden) void this.armRetry().catch(() => {});
+      throw Object.assign(new Error(this.hidden ? '브라우저가 유튜브 자동 재생을 막았습니다. 화면을 한 번 누르면 재생됩니다.' : '브라우저가 유튜브 자동 재생을 막았습니다. 왼쪽 아래 유튜브 창을 한 번 눌러 주세요.'), { tap: true });
     }
     await this.place();
     await this.fadeTo(options.level, options.fadeMs);
@@ -211,14 +235,19 @@ export class YoutubeTube {
   }
   seek(seconds: number): void { if (this.key) this.send('seekTo', [Math.max(0, seconds), true]); }
   async stop(fadeMs = 600): Promise<void> {
-    if (this.tapNeeded) { this.tapNeeded = false; await this.place(); }
+    if (this.tapNeeded) { this.tapNeeded = false; await this.disarm(); await this.place(); }
     if (!this.key) return;
     const key = this.key;
     await this.fadeTo(0, fadeMs);
     if (this.key !== key) return;
     this.send('pauseVideo'); this.key = ''; this.state = 2; this.onChange();
+    await this.place();
   }
-  /** The player shown, or kept out of sight, as the setting says. */
-  async setHidden(hidden: boolean): Promise<void> { this.hidden = hidden; await this.place(); }
+  /** The player shown, or kept out of sight, as the setting says (a track waiting for a tap: by the window, or by the next press). */
+  async setHidden(hidden: boolean): Promise<void> {
+    this.hidden = hidden;
+    if (this.tapNeeded) { if (hidden) void this.armRetry().catch(() => {}); else await this.disarm(); }
+    await this.place();
+  }
 }
 const quiet = (value: unknown): Promise<unknown> => Promise.resolve(value).catch(() => undefined);
