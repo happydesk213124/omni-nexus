@@ -44,6 +44,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       document.body.innerHTML = `<div style="position:fixed;inset:0;z-index:50"></div><div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse"><div class="chat-message-container"><div class="risu-chat" data-chat-index="2"><div class="chattext"><p>문이 열렸다.</p><p>오미선: “왔어?”</p><p>오미선: “자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아.”</p><p>하린: “응, 늦었지.”</p><div data-inray-asset="inxshot_abc"><img src="data:image/png;base64,${png}" style="width:50%"></div></div></div></div>${older}</div></div>`;
       const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
       const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [['오미선_happy', 'assets/h.png', 'png'], ['하린_neutral', 'assets/n.png', 'png']], chats: [{ id: 'chat', message: [{ role: 'char', chatId: 'm0', data: '전날 밤은 조용했다.' }, { role: 'user', data: 'hi' }, { role: 'char', chatId: 'm1', data: reply }] }], chatPage: 0 };
+      window.bot = bot;
       window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
         readImage: async () => bytes, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
@@ -234,6 +235,19 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await page.evaluate(({ x, y }) => window.__OMNI_VIEWER_COVERS__(x, y), { x: box.x + 10, y: box.y + 10 }), false, 'closed, it covers nothing');
     assert.equal(await page.evaluate(() => window.liveListeners), 0);
     assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 6, 'the chat is whole again');
+    // Reopened, it is where the reader left it (하린's line, the last), not back at the top.
+    const reopen = async () => { await page.evaluate(() => window.buttons['omni-viewer-chat']()); await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-text]')); };
+    const shut = async () => { await press('close'); await page.waitForFunction(() => !document.querySelector('[x-omni-vn]')); };
+    await reopen();
+    await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    assert.match(await count(), /^"5 \//, 'back at the line it was closed on');
+    await shut();
+    // A reply that came since opens instead, from its top: that is what is unread.
+    await page.evaluate(() => window.bot.chats[0].message.push({ role: 'user', data: '또 만나' }, { role: 'char', chatId: 'm2', data: '새 아침이 밝았다.\n하린: "또 보네."' }));
+    await reopen();
+    await page.waitForFunction(() => /새 아침이 밝았다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    assert.match(await count(), /^"1 \/ 2"/);
+    await shut();
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
