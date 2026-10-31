@@ -95,6 +95,27 @@ test('a place background: V5 at medium effort, nobody in it, the place tags', as
   assert.ok(await f.api.findBackground('cafe, window, afternoon', f.bot));
 });
 
+test('a background is found again: after a reload (a long place), its tags in any order, by its asset name on the bot', async () => {
+  const f = await fixture([['bg_park, bench, night', 'assets/bg-park.png', 'png']]);
+  const long = 'cafe, indoor, window, afternoon, wooden table, sunlight, potted plant';
+  const made = await f.api.makeBackground(long, f.bot);
+  assert.equal(made.name, `bg_${long}.${made.name.split('.').pop()}`, 'named by its tags');
+  // A reload: the record comes back from storage, its whole place kept (it was cut to 40 characters, and never matched).
+  await new Promise(r => setTimeout(r, 50));
+  f.api.resetEmotionStore(); await f.api.loadEmotionData();
+  assert.equal(f.api.emotionData().made.find(m => m.person === '__place__')?.face, long, 'the whole place, as saved');
+  assert.equal((await f.api.findBackground(long, f.bot))?.path, made.path);
+  assert.equal((await f.api.findBackground('potted plant, sunlight, Cafe, indoor, window, afternoon, wooden table', f.bot))?.path, made.path, 'the same tags in another order');
+  // A record saved before the fix holds the first 40 characters: it is still that place's.
+  const legacy = 'street, night, neon lights, rain, puddle, umbrella';
+  f.api.emotionData().made.push({ bot: f.bot.id, person: '__place__', face: legacy.slice(0, 40), name: 'bg_0123456789ab.png', path: 'assets/bg-legacy.png', registered: true, at: 1 });
+  assert.equal((await f.api.findBackground(legacy, f.bot))?.path, 'assets/bg-legacy.png');
+  // Not in Omni's records at all: the bot's asset named by its tags.
+  const bot = await f.api.findBackground('night, park, bench', f.bot);
+  assert.equal(bot?.source, 'bot'); assert.equal(bot?.name, 'bg_park, bench, night');
+  assert.equal(await f.api.findBackground('park, bench', f.bot), null, 'fewer tags is another place');
+});
+
 test('without looks no image is drawn, and faces seen in replies are remembered per TTS character', async () => {
   const f = await fixture();
   const before = f.host.naiRequests.length;
