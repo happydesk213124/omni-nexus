@@ -90,6 +90,7 @@ import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
 import { holdChatNote, releaseChatNote } from '../storage/chat-session-store';
 import { holdShotAssets, releaseShotAssets } from '../storage/shot-character';
+import { rememberReplyPlace } from '../storage/viewer-places';
 import { effectivePresetIdFor } from './preset-bindings';
 import { cardWithPreset } from '../domain/style-presets/binding';
 import { chatNoteSessionId, getSessionAuthorNote, persistSessionLocation, sessionOutfitRevision, rosterWithSessionOutfits, persistSessionOutfits } from './session-author-note';
@@ -1213,6 +1214,9 @@ async function runJob(jobId: string): Promise<void> {
     // The place an earlier block of this reply (or of a tapped slot's message) states comes first.
     const priorLocation = inlineBlock !== null ? streamLocation(request) : cleanText(request.inline_prior_location, 800);
     sessionLocation = applyLocationContinuityToShots(shots, priorLocation || sessionLocation);
+    // 옴니 뷰어 stages the reply in its first picture's place, when its cast block named none.
+    const pictured = shots.map(shot => cleanText(shot.location, 400)).find(Boolean);
+    if (pictured && request.host_message_id) void rememberReplyPlace(cleanText(request.character_id, 200), cleanText(request.chat_id, 200), cleanText(request.host_message_id, 200), pictured, inlineBlock !== null ? Math.max(1, Number(inlineBlock) || 1) : 1).catch(error => dbg('job.place', { message: String(error) }, 'warn'));
     // A streaming reply saves the last place any of its blocks states, whichever block finishes last.
     const locationToSave = (): string => inlineBlock !== null ? streamLocation(request, false) || noteLocation : sessionLocation;
     // A slot tapped on an older reply draws in that reply's state, but never moves the
