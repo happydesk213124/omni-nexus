@@ -26,7 +26,7 @@ import { emotionData, loadEmotionData, noteSeenFaces, saveEmotionData, type Emot
 import { putCharacterAssetRows, removeCharacterAssetRows } from '../storage/shot-character';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { putSharedBackgrounds, removeSharedBackgrounds, sharedBackgroundRows } from './char-ref-module';
-import { ttsData } from '../storage/tts-store';
+import { loadTtsData, ttsData } from '../storage/tts-store';
 import { collectAssetNaiTags, listSearchableAssets } from './asset-tags';
 import { characterPreviewTags } from './character-preview';
 import { ensureCostumes } from '../domain/character/costume';
@@ -425,6 +425,30 @@ export async function registerMadeSprites(): Promise<void> {
   }
   forgetEmotionPool();
   await saveEmotionData();
+}
+/**
+ * 고아 메모 정리: the records of pictures whose bot is gone from Risu, or whose person from TTS 캐릭터. Nothing else
+ * ever drops them (a redraw replaces its own, a background's delete takes its own). Only the records, never the
+ * files: those are Risu's assets. A shared background (every bot's) and a place stay. Null when Risu's bot list
+ * cannot be read: then nothing counts as gone.
+ */
+export interface OrphanMade { records: EmotionMade[]; bots: number; people: number; bytes: number }
+const madeKey = (m: EmotionMade): string => [m.bot, m.person, m.face, m.costume ?? 0].join('|');
+export async function orphanMade(): Promise<OrphanMade | null> {
+  const db = await risuHost()?.getDatabase?.(['characters']).catch(() => null);
+  const list = Array.isArray(db?.characters) ? db!.characters as Array<{ chaId?: unknown }> : null;
+  if (!list) return null;
+  const bots = new Set(list.map(c => String(c?.chaId || '')).filter(Boolean));
+  const people = new Set((await loadTtsData()).characters.map(c => c.id));
+  const records = (await loadEmotionData()).made.filter(m => m.bot !== SHARED_BOT && (!bots.has(m.bot) || (m.person !== PLACE_PERSON && !people.has(m.person))));
+  return { records, bots: new Set(records.filter(m => !bots.has(m.bot)).map(m => m.bot)).size,
+    people: new Set(records.filter(m => bots.has(m.bot)).map(m => m.person)).size, bytes: JSON.stringify(records).length };
+}
+export async function forgetOrphans(records: readonly EmotionMade[]): Promise<number> {
+  const gone = new Set(records.map(madeKey)), data = await loadEmotionData(), before = data.made.length;
+  data.made = data.made.filter(m => !gone.has(madeKey(m)));
+  if (data.made.length !== before) { forgetEmotionPool(); await saveEmotionData(); notify(); }
+  return before - data.made.length;
 }
 async function botIndex(botId: string): Promise<number> {
   const bot = await currentEmotionBot();

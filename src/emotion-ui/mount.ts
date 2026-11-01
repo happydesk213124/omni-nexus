@@ -1,7 +1,7 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
 import { BASE_EXPRESSIONS, baseExpression } from '../domain/emotion/emotions';
-import { backgroundPlaces, collectFaces, currentEmotionBot, deleteBackground, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { backgroundPlaces, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { placeKey, samePlace } from '../domain/viewer/place';
 import { ensurePlaceModule } from '../storage/place-module';
@@ -196,6 +196,23 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
     void work().catch(error => { button.disabled = false; button.title = String((error as Error)?.message || error); alert(String((error as Error)?.message || error)); }).finally(() => void renderBackgrounds());
   });
   $('tab-emo-assets')?.addEventListener('click', () => void renderPeople());
+  // 고아 메모 정리: what would go, told first; only on a yes.
+  $('emo-tidy')?.addEventListener('click', () => void (async () => {
+    const button = $('emo-tidy') as HTMLButtonElement | null, status = $('emo-tidy-status');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const found = await orphanMade();
+      if (!found) { if (status) status.textContent = 'Risu 봇 목록을 읽지 못해 정리하지 않았습니다.'; return; }
+      if (!found.records.length) { if (status) status.textContent = '정리할 메모가 없습니다.'; return; }
+      const size = found.bytes < 1024 ? `${found.bytes}B` : `${(found.bytes / 1024).toFixed(1)}KB`;
+      const who = [found.bots ? `지운 봇 ${found.bots}개` : '', found.people ? `지운 캐릭터 ${found.people}명` : ''].filter(Boolean).join(', ');
+      if (!confirm(`${who}의 메모 ${found.records.length}개(약 ${size})를 지울까요? 그림 파일은 그대로 둡니다.`)) return;
+      const gone = await forgetOrphans(found.records);
+      if (status) status.textContent = `메모 ${gone}개를 정리했습니다.`;
+    } catch (error) { if (status) status.textContent = String((error as Error)?.message || error); }
+    finally { button.disabled = false; }
+  })());
   // Drawn whenever 배경 comes into view: its tab pressed, or the page opened (again) on it.
   const bgPanel = $('emo-bg');
   if (bgPanel) {

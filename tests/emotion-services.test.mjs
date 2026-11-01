@@ -258,3 +258,19 @@ test('a costume named in a cue (이름_2) has its own sprites: drawn in that cos
     await assert.rejects(f.api.makeSprite(f.person, 'happy', f.bot, true, 5), /5번 코스튬이 없습니다/);
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
 });
+
+test('고아 메모 정리: records of a bot gone from Risu or a person gone from TTS 캐릭터 go, never the files; a shared background and a place stay', async () => {
+  const f = await fixture();
+  const made = (bot, person, face, name) => ({ bot, person, face, name, path: `assets/${name}.png`, registered: true, at: 1 });
+  f.api.emotionData().made.push(made('bot', 't-misun', 'happy', 'kept'), made('bot', 't-gone', 'sad', 'person-gone'), made('gone-bot', 't-misun', 'happy', 'bot-gone'),
+    made('bot', '__place__', 'cafe', 'place'), made('*', '__place__', 'park', 'shared'));
+  const found = await f.api.orphanMade();
+  assert.deepEqual(found.records.map(m => m.name).sort(), ['bot-gone', 'person-gone']);
+  assert.deepEqual([found.bots, found.people], [1, 1]);
+  assert.ok(found.bytes > 50, 'its size, to be told before');
+  assert.equal(await f.api.forgetOrphans(found.records), 2);
+  assert.deepEqual(f.api.emotionData().made.map(m => m.name), ['kept', 'place', 'shared']);
+  // Risu's bot list unreadable: nothing counts as gone.
+  risuai.getDatabase = async () => { throw new Error('busy'); };
+  assert.equal(await f.api.orphanMade(), null);
+});
