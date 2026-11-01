@@ -73,6 +73,13 @@ test('a status window gives the clock from its labeled fields, at any length and
   assert.equal(api.proseDate('그는 오후 4시에 왔다.'), '', 'a time of day alone is how prose talks');
 });
 
+test('a date with no year: 9월 6일 (일), 09-06 and 09/06 on their own or in a field, a bare 9/6 as a Date:; a score never', () => {
+  const clocks = { '9월 6일 (일)': '9월 6일 (일)', 'Date: 9월 6일 (일)': '9월 6일 (일)', '09-06': '09-06', '09/06': '09/06', 'Date: 09-06': '09-06',
+    '[09-06 | 학교]': '09-06 · 학교', 'Date: 9/6': '9/6', 'Date: 9.6(일)': '9.6(일)', '20-09-06 | 학교': '20-09-06 · 학교' };
+  for (const [line, clock] of Object.entries(clocks)) assert.equal(api.clockLines(line)[0]?.text ?? '', clock, line);
+  for (const line of ['HP 10/10 | MP 30/30', '9/6', 'Date: 13/40', '13-40']) assert.equal(api.clockLines(line)[0]?.text ?? '', '', line);
+});
+
 test('clock lines split at emoji, at commas when two of the parts are dates or times, and a bracketed one at its last date or time', () => {
   const clocks = {
     '📅 3월 2일 ⏰ 오후 3시 📍 카페': '3월 2일 · 오후 3시 · 카페',

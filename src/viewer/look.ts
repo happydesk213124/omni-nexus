@@ -19,7 +19,8 @@ export const STATIC_CSS = `
 [x-omni-vn]{position:fixed;z-index:45;isolation:isolate;overflow:hidden;color:#f4f1ea;font:14px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;
   background:radial-gradient(120% 90% at 50% 0%,#2a2340 0%,#141224 45%,#07070c 100%);--gold:#e3c27a;--line:rgba(227,194,122,.38)}
 [x-omni-vn] *{box-sizing:border-box}
-[x-omni-vn] [data-vn-bg]{position:absolute;inset:0;pointer-events:none}
+/* Its own stacking: a background's order over the one it replaces (z-index, see stageCss) stays inside it, never over the picture. */
+[x-omni-vn] [data-vn-bg]{position:absolute;inset:0;pointer-events:none;isolation:isolate}
 [x-omni-vn] [data-vn-bg]::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 50% 40%,transparent 50%,rgba(0,0,0,.55) 100%),linear-gradient(transparent 55%,rgba(5,5,10,.55))}
 [x-omni-vn] div[x-vn-bg]{display:none;position:absolute;inset:0;animation:vn-fade .6s ease}
 [x-omni-vn] div[x-vn-bg] img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(3px) brightness(.7) saturate(1.05);transform:scale(1.06)}
