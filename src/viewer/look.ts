@@ -116,7 +116,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-choices]{display:none;position:absolute;left:50%;bottom:calc(12px + clamp(136px,26%,200px) + 16px);translate:-50% 0;width:min(76%,460px);flex-direction:column;gap:8px;z-index:4}
 [x-omni-vn] [data-vn-ch]{padding:11px 16px;border-radius:12px;cursor:pointer;text-align:center;font:15px/1.5 ${SERIF};color:#f4f1ea;background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 6px 20px rgba(0,0,0,.4);transition:background .15s,border-color .15s}
 [x-omni-vn] [data-vn-ch][data-sel]{border-color:var(--gold);background:rgba(227,194,122,.2)}
-[x-omni-vn] [data-vn-ch][data-sel]::after{content:"한 번 더 누르면 보내요 · 입력창에 쓰면 같이 가요";display:block;margin-top:2px;font:11px/1.4 system-ui,sans-serif;color:var(--gold)}
+[x-omni-vn] [data-vn-ch][data-sel]::after{content:"한 번 더 누르면 보내요 · 입력창에 쓰면 같이 가요 · 빈 곳을 누르면 풀려요";display:block;margin-top:2px;font:11px/1.4 system-ui,sans-serif;color:var(--gold)}
 [x-omni-vn] [data-vn-strip]{position:absolute;top:56px;right:0;width:min(42%,210px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:hidden;padding:10px;z-index:5;display:flex;flex-direction:column;gap:8px;
   background:rgba(10,9,17,.94);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-strip] [x-vn-thumb]{flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}

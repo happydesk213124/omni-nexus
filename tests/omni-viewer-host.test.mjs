@@ -472,6 +472,17 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(await page.evaluate(() => window.sent), undefined, 'one tap sends nothing');
     // Armed: a message typed in Risu's box would go with it (Risu's input handler, there only while one is armed).
     await page.waitForFunction(() => window.scriptHandlers?.input?.length === 1);
+    // A tap off the list lets it go: no light, no handler, the list still up and no step taken.
+    const off = await page.locator('[x-omni-vn] [data-vn-text]').boundingBox(), atScene = await count();
+    await page.waitForTimeout(200);
+    await page.mouse.click(off.x + off.width / 2, off.y + off.height / 2);
+    await page.waitForFunction(() => !document.querySelector('[x-omni-vn] [data-vn-ch]')?.hasAttribute('data-sel'));
+    assert.equal(await page.evaluate(() => window.scriptHandlers.input.length), 0, 'let go: what is typed goes alone');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-choices]')).display), 'flex', 'the list stays up');
+    assert.equal(await count(), atScene, 'the tap was only that');
+    await page.waitForTimeout(200);
+    await page.mouse.click(option.x + option.width / 2, option.y + option.height / 2);
+    await page.waitForFunction(() => window.scriptHandlers?.input?.length === 1);
     await page.evaluate(() => { window.armedWith = window.scriptHandlers.input[0]; });
     await page.waitForTimeout(200);
     const picked = await page.locator('[x-omni-vn] [data-vn-ch]').first().boundingBox();

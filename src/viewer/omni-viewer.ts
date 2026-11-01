@@ -31,7 +31,7 @@ import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } fro
 import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
-import { onSticker, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
+import { onSticker, choiceArmed, disarmChoice, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
@@ -1503,6 +1503,8 @@ function onClick(p: HostPoint): void {
   if (elementsClick(p, !!hit)) return;
   // The click a drag ends with is not a tap (buttons still work): a selection, a list moved by the mouse, a swipe.
   if (!hit && Date.now() < swipeUntil) return;
+  // A picked choice: a tap anywhere but a button or the list lets it go, and is only that. An open panel's taps stay its own.
+  if (!hit && choiceArmed() && !msgsOpen && !stripOpen && !logOpen) { void disarmChoice().catch(report('viewer.choice')); return; }
   // An open panel takes the tap: a tile or row jumps to its place, anywhere else closes it.
   if (msgsOpen && !hit) { void (msgsRect && inside(p, msgsRect) ? jumpFromMsgs(p.clientY) : act('msgs')).catch(report('viewer.msgs')); return; }
   if (stripOpen && !hit) { const tile = thumbs.find(t => inside(p, t.r)); void (tile ? jumpTo(tile) : act('strip')).catch(report('viewer.strip')); return; }
