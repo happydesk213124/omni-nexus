@@ -19,13 +19,21 @@ export const soundPage = (): SoundPage => page;
 export function setSoundPage(next: unknown): void { if (typeof next === 'string' && Object.hasOwn(SOUND_PAGE_TABS, next)) page = next as SoundPage; }
 /**
  * A panel to open the page on, and what its search starts with: 옴니 뷰어's 👨‍👩‍👧‍👦 opens the
- * 캐릭터 tab on the reply's people ("하린, 세라"). Shown from the first paint; the search is
- * taken once, by the mount.
+ * 캐릭터 tab on the reply's people ("하린, 세라"), and a name over a line that person's sheet
+ * (`sheet`: their card, else a new one in their name). Shown from the first paint; taken once,
+ * by the mount, which says `shown` once the page (and the sheet) is up, and the sheet `done`
+ * when it is closed for good.
  */
-let focus: { panel: string; search: string } | null = null;
-export function focusSoundPanel(panel: string, search = ''): void { focus = { panel, search }; }
-export const soundFocus = (): { panel: string; search: string } | null => focus;
-export function takeSoundFocus(): { panel: string; search: string } | null { const f = focus; focus = null; return f; }
+export interface SoundFocus { panel: string; search: string; sheet?: { id: string; name: string }; shown?: () => void; done?: () => void }
+let focus: SoundFocus | null = null;
+export function focusSoundPanel(panel: string, search = '', more: Omit<SoundFocus, 'panel' | 'search'> = {}): void { focus = { panel, search, ...more }; }
+export const soundFocus = (): SoundFocus | null => focus;
+export function takeSoundFocus(): SoundFocus | null { const f = focus; focus = null; return f; }
+
+/** Whether the settings window is up: the frozen UI's own flag. */
+export function soundWindowOpen(): boolean { const read = Reflect.get(globalThis, '__OMNI_TTS_SETTINGS_OPEN__'); return typeof read === 'function' && !!read(); }
+/** The settings window closed as its ✕ does, its save first. */
+export function closeSoundWindow(): void { document.getElementById('nx-close')?.click(); }
 
 /**
  * Marks the open page in the menu and the header. The vendor marks every entry

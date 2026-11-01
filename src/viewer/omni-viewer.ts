@@ -10,13 +10,13 @@ import { omniSound } from '../services/sound-runtime';
 import { soundData, soundReady, updateSoundSettings } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
-import { buildScenes, replyGist, replyImages, storyClock, type ViewerScene } from '../domain/viewer/scenes';
+import { buildScenes, clockLines, lastClock, replyGist, replyImages, storyClock, type ClockMark, type ViewerScene } from '../domain/viewer/scenes';
 import { stageAt, type StageLine } from '../domain/viewer/cast';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
-import { focusSoundPanel, setSoundPage } from '../sound-ui/page';
+import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeSoundFocus, type SoundFocus, type SoundPage } from '../sound-ui/page';
 import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
 import { replyPlace } from '../storage/viewer-places';
@@ -136,7 +136,7 @@ async function measureCgControls(): Promise<void> {
  */
 async function readChat(ctx?: TtsChatContext): Promise<void> {
   context = ctx ?? await currentTtsContext();
-  shownText.clear();
+  shownText.clear(); clockCache.clear();
   const index = Number(await Promise.resolve(risuHost()?.getCurrentCharacterIndex?.()).catch(() => NaN));
   bot = Number.isInteger(index) && index >= 0 && context.characterId ? { id: context.characterId, index, character: context.character } : await currentEmotionBot().catch(() => null);
 }
@@ -157,6 +157,7 @@ async function load(index?: number, keepPlace = false, read: TtsChatContext | 'f
   messageIndex = i;
   const shown = i >= 0 && !streaming ? await shownOf(i) : '';
   setSource(i >= 0 ? String(messages[i]!.data ?? '') : '', keepPlace, shown);
+  carriedClock = clockMarks.length ? '' : clockBefore(i);
   // A reply loaded (again) asks its voices afresh: what is made already is cached and skipped.
   askedAhead = new Set(); askedFor = '';
   // Just streamed: the place its blocks said holds until the reply's own is stored.
@@ -187,6 +188,42 @@ function makeForReply(): void {
     seen.add(`${person.id}|${face}|${costume}`); wants.push({ person, face, costume });
   }
   void makeAhead(wants, who).catch(error => dbg('viewer.ahead', { message: String(error) }, 'warn'));
+}
+/**
+ * The story clock in the top bar, as of the line on screen: the reply's latest clock line at
+ * or before it (its first for the lines above that); a reply with none, the clock the nearest
+ * earlier reply left. Written only when it changes, after the line.
+ */
+let clockMarks: ClockMark[] = [], carriedClock = '', clockShown = '', clockWanted = '';
+const clockCache = new Map<number, { size: number; clock: string }>();
+function clockAt(scene: ViewerScene | undefined): string {
+  if (!clockMarks.length) return carriedClock;
+  let clock = clockMarks[0]!.text;
+  for (const mark of clockMarks) { if (scene && mark.start <= scene.start) clock = mark.text; else break; }
+  return clock;
+}
+/** The clock the nearest earlier reply left: each reply read once (until the chat is read again), a few dozen back at most. */
+function clockBefore(index: number): string {
+  const messages = context?.messages ?? [];
+  for (let i = Math.min(index, messages.length) - 1, looked = 0; i >= 0 && looked < 40; i--) {
+    const message = messages[i];
+    if (message?.role !== 'char') continue;
+    looked++;
+    const raw = String(message.data ?? '');
+    let seen = clockCache.get(i);
+    if (!seen || seen.size !== raw.length) { seen = { size: raw.length, clock: lastClock(raw) }; clockCache.set(i, seen); }
+    if (seen.clock) return seen.clock;
+  }
+  return '';
+}
+async function showClock(clock: string): Promise<void> {
+  clockWanted = clock;
+  if (!root || clock === clockShown) return;
+  clockShown = clock;
+  const node = await root.querySelector('[data-vn-clock]');
+  if (!node) return;
+  // The latest asked for: a line turned meanwhile asked again.
+  try { await node.setInnerHTML(clockWanted ? `<span>${esc(clockWanted)}</span>` : ''); } finally { await release(node); }
 }
 /** The reply as the chat draws it, read once per reply (and ahead, near a reply's edge: turning to the next waits on nothing). */
 const shownText = new Map<number, Promise<string>>();
@@ -313,6 +350,7 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   }
   cues = segments.filter(isSoundSegment);
   scenes = buildScenes(settled, segments, emotionData().settings.words);
+  clockMarks = clockLines(settled);
   // The stage keeps its background until the new reply's place is up (or the reply says none).
   if (!keepPlace) { at = 0; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
   placeMarks = placeMarkers(source);
@@ -520,9 +558,58 @@ function replyPeople(): string[] {
   return names;
 }
 /** The settings window on the TTS · 감정 에셋 slot (its page chosen before). */
-async function openSoundWindow(): Promise<void> {
+async function openSoundWindow(): Promise<boolean> {
   const openPage = Reflect.get(globalThis, '__OMNI_OPEN_TTS__');
-  if (typeof openPage === 'function') await Promise.resolve(openPage()).catch(error => dbg('viewer.settings', { message: String(error) }, 'warn'));
+  if (typeof openPage !== 'function') return false;
+  try { await openPage(); return true; } catch (error) { dbg('viewer.settings', { message: String(error) }, 'warn'); return false; }
+}
+/**
+ * A page of the settings window, from the viewer: typing never comes back from Risu's screen
+ * layer, so what takes typing is there. The spinner turns from the tap until the page (or the
+ * sheet asked for) is up, and the viewer closes only then; the window closed (or that sheet),
+ * the viewer comes back where it was.
+ */
+let toSettingsBusy = false;
+async function toSettings(page: SoundPage, focus: Omit<SoundFocus, 'shown'>): Promise<void> {
+  if (toSettingsBusy) return;
+  toSettingsBusy = true;
+  try {
+    let opened = false;
+    await waitOn(async () => {
+      const up = new Promise<void>(resolve => { focusSoundPanel(focus.panel, focus.search, { ...focus, shown: resolve }); setTimeout(resolve, 4000); });
+      setSoundPage(page);
+      opened = await openSoundWindow();
+      if (opened) await up;
+    });
+    // No window to go to: the viewer stays, and nothing waits for a mount that will not come.
+    if (!opened) { takeSoundFocus(); return; }
+    await closeViewer();
+    watchForBack();
+  } finally { toSettingsBusy = false; }
+}
+/** A person's TTS 캐릭터 sheet, by the name a line is spoken under: theirs, or a new card in that name. */
+function toSheetOf(speaker: string): Promise<void> {
+  const person = context ? resolveTtsSpeaker(speaker, ttsData().characters, context.rosterScope) : null, name = person?.name || speaker;
+  return toSettings('people', { panel: 'tts-characters', search: name, sheet: { id: person?.id ?? '', name }, done: () => void backToViewer(true) });
+}
+// Only a local flag is read: the window's own, in this frame (no call to Risu).
+let backWatch: ReturnType<typeof setInterval> | undefined;
+function watchForBack(): void {
+  clearInterval(backWatch);
+  // Up already as a rule (the viewer waited for it): closed before the first look is closed too.
+  let seen = soundWindowOpen();
+  const watch = backWatch = setInterval(() => {
+    // Up, then down: the reader is done there.
+    if (soundWindowOpen()) { seen = true; return; }
+    if (seen) void backToViewer(false);
+  }, 500);
+  // Never up within a while: nothing to wait for.
+  setTimeout(() => { if (!seen && backWatch === watch) { clearInterval(watch); backWatch = undefined; } }, 8000);
+}
+async function backToViewer(closeWindow: boolean): Promise<void> {
+  clearInterval(backWatch); backWatch = undefined;
+  if (closeWindow && soundWindowOpen()) closeSoundWindow();
+  if (!open) await openViewer('resume');
 }
 function resolveName(speaker: string): string {
   const person = context ? resolveTtsSpeaker(speaker, ttsData().characters, context.rosterScope) : null;
@@ -1099,7 +1186,7 @@ async function render(force = false): Promise<void> {
   clearTimeout(autoTimer);
   if (!scene) {
     // The stage as it was, its spinner gone.
-    await Promise.all([box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html), writeStage(state(lastCast))]);
+    await Promise.all([box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html), writeStage(state(lastCast)), showClock(clockAt(undefined))]);
     return;
   }
   noteMark();
@@ -1109,6 +1196,8 @@ async function render(force = false): Promise<void> {
   place = sceneWants(scene) || place;
   const later: Later = [];
   if (place && (!bg || bgFor !== place)) later.push(() => stagePlace());
+  const clock = clockAt(scene);
+  if (clock !== clockShown) later.push(() => showClock(clock));
   if (scene.kind === 'cg') {
     // The illustration is a photo over the dimmed stage; the stage itself stays the place.
     const cg = await cgFor(scene);
@@ -1243,21 +1332,14 @@ async function act(name: string): Promise<void> {
   else if (name === 'cgprev' || name === 'cgnext') await cgStep(name === 'cgnext' ? 1 : -1);
   else if (name === 'auto') { await saveViewerPrefs({ auto: !viewerPrefs().auto }); await render(true); }
   else if (name === 'voice') { await saveViewerPrefs({ voice: !viewerPrefs().voice }); if (!viewerPrefs().voice) omniTts.stop(); await restyle(); }
-  else if (name === 'set') {
-    // Its settings need typing, which Risu's screen layer never hands a plugin back: they live
-    // on a page of the settings window (감정 에셋 › 옴니 뷰어). Reopened, the viewer is where it was.
-    await closeViewer();
-    setSoundPage('asset');
-    await openSoundWindow();
-  }
+  // Its settings live on a page of the settings window (감정 에셋 › 옴니 뷰어), see toSettings.
+  else if (name === 'set') await toSettings('asset', { panel: '', search: '' });
   else if (name === 'cast') {
     // This reply's people in TTS 캐릭터, searched ("하린, 세라"), as the chat's 👨‍👩‍👧‍👦 opens the
-    // illustration roster on a message's: in the settings window, so the viewer closes as for ⚙.
+    // illustration roster on a message's; a reply of one person opens their sheet.
     const people = replyPeople();
-    await closeViewer();
-    setSoundPage('people');
-    focusSoundPanel('tts-characters', people.join(', '));
-    await openSoundWindow();
+    if (people.length === 1) await toSheetOf(people[0]!);
+    else await toSettings('people', { panel: 'tts-characters', search: people.join(', ') });
   }
   else if (name === 'narr') {
     // TTS 나레이션 itself: one style outside the chat, no module write (the TTS viewer's own switch).
@@ -1350,6 +1432,19 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
   return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show' && cgView !== 'open') && !(c.act === 'msgs' && msgsOpen)
     && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()));
 }
+/**
+ * The speaker whose name a tap is on, over the line in the box. The name's plate sits at the
+ * box's corner (look.ts: 16px in, 15px above, its text 15px a letter, a wide one about half),
+ * so it is laid out here rather than measured: a line is never held up by a call for it.
+ */
+function nameUnder(p: HostPoint): string {
+  const scene = scenes[at];
+  if (!boxRect || scene?.kind !== 'line' || !scene.speaker || (cgView !== 'none' && cgView !== 'fold')) return '';
+  const scale = TEXT_SCALE[viewerPrefs().textSize] ?? 1, name = resolveName(scene.speaker);
+  const width = Math.min(boxRect.width * 0.62, 32 + [...name].reduce((w, ch) => w + (ch.codePointAt(0)! >= 0x1100 ? 15 : 8.5) * scale, 0));
+  const left = boxRect.left + 16, top = boxRect.top - 15;
+  return p.clientX >= left - 6 && p.clientX <= left + width + 6 && p.clientY >= top - 6 && p.clientY <= top + 29 * scale + 4 ? scene.speaker : '';
+}
 /** A picture shown big, left without a step: full screen opened on its own scene goes back there, else it folds. */
 const leaveBig = (): 'open' | 'fold' => cgView === 'full' && fullFrom === 'open' ? 'open' : 'fold';
 function onClick(p: HostPoint): void {
@@ -1371,6 +1466,8 @@ function onClick(p: HostPoint): void {
   if (!hit && cgView === 'fold' && cgThumb && inside(p, cgThumb)) { cgView = 'show'; void restyle().then(() => measureCgControls()).catch(() => {}); return; }
   if (!hit && (cgView === 'show' || cgView === 'full')) { cgView = leaveBig(); void restyle().then(() => cgView === 'open' ? measureCgControls() : undefined).catch(() => {}); return; }
   if (hit) { void act(hit.act).catch(report('viewer.tap')); return; }
+  const speaker = nameUnder(p);
+  if (speaker) { void toSheetOf(speaker).catch(report('viewer.sheet')); return; }
   const now = Date.now();
   // This tap's press already completed the line.
   if (now - pressRevealAt < 1500) { pressRevealAt = 0; return; }
@@ -1529,7 +1626,8 @@ function onStreamTick(text: string): void {
   tickTimer = setTimeout(() => {
     tickTimer = undefined;
     const waiting = at >= scenes.length - 1;
-    if (!streaming) { streaming = true; messageIndex = -1; }
+    // A new reply: until its own clock line comes, the clock the last one left.
+    if (!streaming) { streaming = true; messageIndex = -1; carriedClock = clockBefore(context?.messages.length ?? 0); }
     setSource(pendingText, true);
     // The reply's cast block (or its first picture's block) has closed: its place is the stage now.
     const said = streamingPlace(pendingText);
@@ -1620,6 +1718,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
     opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = ''; springs.clear();
     placing.clear(); bgSending.clear(); shownText.clear(); context = null; elementsDue = false; elementsReady = Promise.resolve(); busy = 0; busyShown = true;
+    clockMarks = []; carriedClock = ''; clockShown = ''; clockWanted = ''; clockCache.clear();
     // Behind it the chat's TTS buttons and window go quiet until it closes.
     setViewerCovering(true);
     voiceWaiting = false; unsubscribeVoice?.(); unsubscribeVoice = omniTts.subscribe(onVoiceChange);
@@ -1635,10 +1734,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     positionTimer = setInterval(() => { if (open && !away && !stepping && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
     streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
     if (centered >= 0) await openAt(centered); else await resume();
-    // Read by openAt or resume (the reset above leaves the compiler thinking it is still null).
-    const read = context as TtsChatContext | null;
-    const clock = storyClock(source) || (read ? read.messages.slice(0, messageIndex).reverse().map(m => storyClock(String(m.data ?? ''))).find(Boolean) || '' : '');
-    const clockNode = await root.querySelector('[data-vn-clock]'); if (clockNode) { await clockNode.setInnerHTML(clock ? `<span>${esc(clock)}</span>` : ''); await release(clockNode); }
+    // The clock comes with the first line (see clockAt).
     await render();
     // The voice needs a press inside the plugin before it can sound: asked for now, so the first line speaks.
     if (viewerPrefs().voice && ttsData().settings.enabled && !omniTts.player.ready) void withTtsAudio(() => { const scene = scenes[at]; if (scene) voice(scene); }).catch(error => dbg('viewer.audio', { message: String(error) }, 'warn'));

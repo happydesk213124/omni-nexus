@@ -181,13 +181,14 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     await step('ArrowRight', /R1 /);
     await step('ArrowLeft', /R0 /);
     await page.waitForFunction(() => window.sfxPlayed.includes('쾅'));
-    // 👨‍👩‍👧‍👦: TTS 캐릭터, this reply's people searched; the viewer closes as for ⚙.
-    await page.evaluate(() => { window.__OMNI_OPEN_TTS__ = () => { window.ttsOpened = { page: window.soundPage(), focus: window.soundFocus() }; }; });
+    // 👨‍👩‍👧‍👦: TTS 캐릭터, this reply's people searched (two of them: the list, no one's sheet); the viewer closes
+    // once the page says it is up, as for ⚙.
+    await page.evaluate(() => { window.__OMNI_OPEN_TTS__ = () => { const f = window.soundFocus(); window.ttsOpened = { page: window.soundPage(), focus: { panel: f.panel, search: f.search, sheet: f.sheet ?? null, shown: typeof f.shown } }; setTimeout(() => f.shown(), 200); }; });
     await page.waitForTimeout(300);
     await press('cast');
     await page.waitForFunction(() => !!window.ttsOpened);
-    assert.deepEqual(await page.evaluate(() => window.ttsOpened), { page: 'people', focus: { panel: 'tts-characters', search: '오미선, 하린' } });
-    assert.equal(await page.evaluate(() => window.viewerOpen()), false);
+    assert.deepEqual(await page.evaluate(() => window.ttsOpened), { page: 'people', focus: { panel: 'tts-characters', search: '오미선, 하린', sheet: null, shown: 'function' } });
+    await page.waitForFunction(() => !window.viewerOpen());
     assert.equal(await page.evaluate(() => window.viewerCovering()), false);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

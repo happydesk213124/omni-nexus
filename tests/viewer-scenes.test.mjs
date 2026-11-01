@@ -34,6 +34,35 @@ test('the story clock is read from its own line; prose and dialogue are not cloc
   assert.equal(api.storyClock('본문뿐'), '');
 });
 
+test('the story clock reads every way a date or a time is written, cut at its separators and never inside a date', () => {
+  const clocks = {
+    '2020-05-04': '2020-05-04', '[2020-05-04]': '2020-05-04', '[2020-05-04 ◆ 카페]': '2020-05-04 · 카페',
+    '[2020/05/04 ◆ 오후 3시]': '2020/05/04 · 오후 3시', '2020. 5. 4.': '2020. 5. 4.', '05/04/2020 | Seoul': '05/04/2020 · Seoul',
+    '5/4(월) 14:30 | 카페': '5/4(월) 14:30 · 카페', '[2024년 3월 2일 (토) | 오후 4:30 | 카페]': '2024년 3월 2일 (토) · 오후 4:30 · 카페',
+    '📅 3월 2일 토요일 | ⏰ 오후 4시 | 📍 카페': '3월 2일 토요일 · 오후 4시 · 카페', '<time>2024.03.02 SAT 16:30</time>': '2024.03.02 SAT 16:30',
+    '**[Day 3 - Morning - Classroom]**': 'Day 3 · Morning · Classroom', '[May 4th, 2020 - Evening - Rooftop]': 'May 4th, 2020 · Evening · Rooftop',
+    'the 4th of May': 'the 4th of May', 'Time: 16:30 / Date: 2024-03-02 / Location: Café': '16:30 · 2024-03-02 · Café',
+    '[3월 2일] [오후 4시] [카페]': '3월 2일 · 오후 4시 · 카페', '【2020年5月4日（月）・午後3時・東京】': '2020年5月4日（月） · 午後3時 · 東京',
+    '星期一 · 下午3点 · 北京': '星期一 · 下午3点 · 北京', '[제국력 312년 3월 ◆ 수도]': '제국력 312년 3월 · 수도', '[D+3 | 밤 | 숲]': 'D+3 · 밤 · 숲',
+    '3일차 · 아침 · 집': '3일차 · 아침 · 집', '1日目 · 朝 · 学校': '1日目 · 朝 · 学校', '[늦은 밤 ◆ 집]': '늦은 밤 · 집', '[봄 ◆ 벚꽃길]': '봄 · 벚꽃길',
+    '[밤 ◆ 바다]': '밤 · 바다', '오후 3시.': '오후 3시', '- 날짜: 2020-05-04': '2020-05-04', '12:00~13:00 | 회의실': '12:00~13:00 · 회의실',
+    '3 p.m. | Park': '3 p.m. · Park', 'AM 9:00 | 출근길': 'AM 9:00 · 출근길', '── 3월 2일 ──': '3월 2일', '2020년 5월 4일 월요일': '2020년 5월 4일 월요일',
+  };
+  for (const [line, clock] of Object.entries(clocks)) assert.equal(api.clockOf(line), clock, line);
+  // A score, a sentence, a pause in prose, a cue: none of them a clock.
+  for (const line of ['HP 4/5 | MP 3/10', '밤.', '3일 후.', '그날 밤 — 모든 것이 바뀌었다', '오후 4시 — 그녀가 왔다', '오후 4시 · 그녀가 왔다.',
+    '하린(cheerful): 오늘 밤 · 같이 가자', '[[@inray::card1::inxshot_abc::832::1216]]', '[학교 ◆ 교실]']) assert.equal(api.clockOf(line), '', line);
+});
+
+test("a reply's clock lines stand where they are: a time skip mid-reply is its own mark, no scene, and the reply leaves the last", () => {
+  const raw = '[3월 2일 ◆ 오후 4시 ◆ 카페]\n오미선: "왔어?"\n[오후 9시 ◆ 집]\n하린: "늦었네."';
+  assert.deepEqual(api.clockLines(raw).map(m => [raw.slice(m.start, m.end), m.text]), [['[3월 2일 ◆ 오후 4시 ◆ 카페]', '3월 2일 · 오후 4시 · 카페'], ['[오후 9시 ◆ 집]', '오후 9시 · 집']]);
+  assert.deepEqual(api.buildScenes(raw, api.parseTtsMessage(raw)).map(s => s.text), ['왔어?', '늦었네.'], 'neither clock line is a scene');
+  assert.equal(api.storyClock(raw), '3월 2일 · 오후 4시 · 카페');
+  assert.equal(api.lastClock(raw), '오후 9시 · 집');
+  assert.equal(api.lastClock('본문뿐'), '');
+});
+
 test("a reply's gist for its tile: the first line the reader sees, no clock, tags, cast block or status field", () => {
   assert.equal(api.replyGist('[[inxc]]{"place":"카페","new_characters":[]}[[/inxc]]\n[3월 2일 ◆ 오후 4시 ◆ 카페]\n- Main Storylines: 숨은 요약 줄\n<br>\n문이 열렸다.\n오미선: "왔어?"'), '문이 열렸다.');
   assert.equal(api.replyGist('[3월 2일 ◆ 오후 4시 ◆ 카페]\n- 위치: 카페\n**문이 열렸다.**\n[[@inray::card1::inxshot_abc::832::1216]]'), '문이 열렸다.');

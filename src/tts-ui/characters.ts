@@ -49,6 +49,9 @@ export class TtsCharacters {
   private saveRevision = 0;
   /** The costume list being read for the card on show: an older read lands on nothing. */
   private costumeEpoch = 0;
+  /** Told when the sheet 옴니 뷰어 opened closes for good; 목소리 고르기 closes it only to come back to it. */
+  private sheetDone?: () => void;
+  private choosingVoice = false;
   constructor(private library: TtsLibrary, private tab: (name: string) => void) {}
   dispose(): void { this.visibility?.disconnect(); void this.flushSave(); }
   /** Role cards lead the list (this bot's pair, then the global pair); everyone else keeps roster order. */
@@ -66,6 +69,17 @@ export class TtsCharacters {
     if (!box) { this.render(); return; }
     box.value = search;
     box.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  /**
+   * 옴니 뷰어: one person's sheet, from their name over a line: their card, else a new one in
+   * their name (made only once something on it is set). `done` once it closes for good.
+   */
+  openSheet(who: { id: string; name: string }, done?: () => void): void {
+    const card = ttsData().characters.find(c => c.id === who.id);
+    this.choosingVoice = false;
+    this.edit(card);
+    if (!card) set('c-name', who.name);
+    this.sheetDone = done;
   }
   render(): void {
     const root = el('character-list'); if (!root) return;
@@ -340,7 +354,11 @@ export class TtsCharacters {
     }
     const done = () => { if (this.save(true)) { dialog('character-dialog',false); void this.flushSave(); } };
     on('character-form',done,'submit'); on('character-done',done);
-    el('character-dialog').addEventListener('close',()=>{void this.flushSave();});
+    el('character-dialog').addEventListener('close',()=>{
+      void this.flushSave();
+      if (this.choosingVoice) return;
+      const done = this.sheetDone; this.sheetDone = undefined; done?.();
+    });
     on('delete-character', async () => { if (!this.draft || !confirm(`${this.draft.name} 캐릭터를 삭제할까요?`)) return; clearTimeout(this.saveTimer); this.saveTimer = undefined; deleteTtsCharacters([this.draft]); this.draft = undefined; await persist(); dialog('character-dialog',false); this.render(); });
     auditionButton(el<HTMLButtonElement>('test-character-editor'), () => {
       // A card that follows another character is heard with that character's voice and loudness.
@@ -350,7 +368,7 @@ export class TtsCharacters {
       return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0, ...this.readToneModel() };
     });
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
-    on('choose-character-voice', () => { this.draft = this.read(); dialog('character-dialog',false); this.library.pickVoice(voice => { this.tab('tts-characters'); dialog('character-dialog'); this.choose(voice); }); });
+    on('choose-character-voice', () => { this.draft = this.read(); this.choosingVoice = true; dialog('character-dialog',false); this.library.pickVoice(voice => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog');this.choose(voice); }); });
     for (const engine of ['llm','jev','embedding'] as const) on(`recommend-${engine}`, async () => {
       const c = this.read(); text('character-voice-choice','음성 추천 중…');
       const voices = (await selectTtsVoices([c],ttsCandidateVoices(),ttsData().settings,engine,undefined,engine === 'embedding' ? await voiceEmbedding() : null)).get(c.id)!;
