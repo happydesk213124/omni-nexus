@@ -719,6 +719,7 @@ const NEW_ONLY_STEPS = new Map([
   ['prompts.author_note_presets',v=>v?.examples>=8 && v.examplesKept===v.examples && v.savedMine==='parity-note' && v.listedMine==='parity-note' && v.customStays && v.picked==='example-pov' && v.shipped ? null : 'Author note presets must list examples without storing them and keep a saved row: '+JSON.stringify(v)],
   ['chars.roster_command',v=>v?.target && v.edits===1 && v.deletes===0 && v.edited===1 && v.mole ? null : 'Roster command must plan one edit (an unlisted delete dropped) and apply it: '+JSON.stringify(v)],
   ['backup.full_roundtrip',v=>v?.type==='omni-nexus-full-backup' && v.parts && v.keyKept && v.restored && v.same ? null : 'Full backup must carry every part with its keys and restore to the same state: '+JSON.stringify(v)],
+  ['backup.keyless_roundtrip',v=>v?.type==='omni-nexus-full-backup' && v.keys===false && v.parts && v.noKey && v.restored && v.keysKept ? null : 'Full backup without keys must carry every part but no key, and restoring it must keep this device\'s keys: '+JSON.stringify(v)],
   ['settings.character_fields',v=>v?.defaultOn && v.savedOff && v.exportedOff ? null : 'Character height/age setting persistence failed'],
   // Revisions intentionally keep the original entity; assert identity and the complete family.
   ['cards.reroll',v=>v?.ok === true && v.card?.id === v.replaced+'_r1' ? null : 'Reroll must retain the source hash and add r1'],

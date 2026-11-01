@@ -23,6 +23,7 @@ test('디버그 백업: 내보내기 saves the keyed file, 불러오기 asks fir
         request: async (path, body) => {
           window.calls.push(path);
           if (path === '/v1/backup/full-export') return { ok: true, json: JSON.stringify({ type: 'omni-nexus-full-backup', settings: { llm: { api_key: 'sk-real' } } }) };
+          if (path === '/v1/backup/full-export?keys=0') return { ok: true, json: JSON.stringify({ type: 'omni-nexus-full-backup', keys: false, settings: { llm: {} } }) };
           if (path === '/v1/backup/full-import') { window.imported = body.json; return { ok: true, restored: ['삽화 설정', 'TTS', 'BGM·효과음'] }; }
           return { ok: false };
         },
@@ -40,6 +41,15 @@ test('디버그 백업: 내보내기 saves the keyed file, 불러오기 asks fir
     assert.equal(dialogs.length, 1); assert.match(dialogs[0], /API 키 포함/);
     assert.equal(await page.evaluate(() => window.imported), '{"type":"omni-nexus-full-backup"}');
     assert.match(await page.locator('#nx-full-backup-status').innerText(), /불러왔습니다: 삽화 설정 · TTS · BGM·효과음/);
+    // 키 제외: the backend's keyless file, named apart; brought back, the question says this device keeps its keys.
+    await page.evaluate(() => { window.calls = []; });
+    const [keyless] = await Promise.all([page.waitForEvent('download'), page.locator('#nx-full-backup-export-keyless').click()]);
+    assert.match(keyless.suggestedFilename(), /^omni-nexus-full-backup-nokeys-\d{4}-\d{2}-\d{2}\.json$/);
+    assert.deepEqual(await page.evaluate(() => window.calls), ['flush', '/v1/backup/full-export?keys=0']);
+    assert.match(await page.locator('#nx-full-backup-status').innerText(), /API 키를 빼고 내보냈습니다/);
+    await page.locator('#nx-full-backup-file').setInputFiles({ name: 'c.json', mimeType: 'application/json', buffer: Buffer.from('{"type":"omni-nexus-full-backup","keys":false}') });
+    await page.waitForFunction(() => window.reloads === 2);
+    assert.equal(dialogs.length, 2); assert.match(dialogs[1], /API 키가 없어서, 이 기기의 키는 그대로 둡니다/);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

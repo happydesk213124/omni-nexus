@@ -64,3 +64,43 @@ test('모든 설정 내보내기 carries every key; 불러오기 restores all of
   const refused = await b.importFullBackup(JSON.stringify({ type: 'omnitts-settings', settings: {} }));
   assert.equal(refused.ok, false); assert.equal(b.getConfig().llm.api_key, 'llm-secret-123456');
 });
+
+test('모든 설정 내보내기 · 키 제외: every part, no key anywhere (TTS·sound keys by their plain names too); 불러오기 keeps the keys the device has', { timeout: 60000 }, async () => {
+  const a = await fresh();
+  const config = a.getConfig();
+  config.llm = { ...config.llm, api_key: 'llm-secret-123456' };
+  config.nai = { ...config.nai, api_key: 'nai-secret-123456', width: 1024 };
+  config.card.image_max = 4;
+  a.setConfig(config);
+  const tts = a.ttsData().settings;
+  await a.updateTtsSettings({ fish: { ...tts.fish, key: 'fish-secret-123456', routerKey: 'router-secret-123456' }, jev: { ...tts.jev, key: 'jev-secret-123456' },
+    translation: { ...tts.translation, deeplKey: 'deepl-secret-123456' }, speed: 1.5 });
+  await a.updateSoundSettings({ elevenKey: 'eleven-secret-123', embed: { ...a.soundData().settings.embed, key: 'embed-secret-123456' }, bgmVolume: 0.3 });
+  // A key pasted into a prompt by mistake goes too.
+  await a.setPrompt('author_note', 'pov, fish-secret-123456');
+  const text = await a.exportFullBackup({ keys: false });
+  const doc = JSON.parse(text);
+  assert.equal(doc.type, a.FULL_BACKUP_TYPE); assert.equal(doc.keys, false); assert.match(doc.warning, /빠져 있습니다/);
+  for (const secret of ['llm-secret', 'nai-secret', 'fish-secret', 'router-secret', 'jev-secret', 'deepl-secret', 'eleven-secret', 'embed-secret']) assert.ok(!text.includes(secret), `${secret} is not in it`);
+  assert.equal(doc.settings.nai.width, 1024); assert.equal(doc.settings.card.image_max, 4);
+  assert.equal(doc.tts.speed, 1.5); assert.equal(doc.tts.fish.model, tts.fish.model, 'the rest of a group that held a key stays');
+  assert.equal(doc.sound.bgmVolume, 0.3);
+  assert.ok(doc.prompts && Object.keys(doc.prompts).length > 3, 'prompts ride along');
+  // With keys it is as it was: no mark, every key.
+  const full = await a.exportFullBackup();
+  assert.equal(JSON.parse(full).keys, undefined); assert.ok(full.includes('router-secret-123456') && full.includes('embed-secret-123456'));
+
+  // A device with keys of its own: the file's settings, and its own keys still.
+  const b = await fresh();
+  const own = b.getConfig();
+  own.llm = { ...own.llm, api_key: 'b-llm-key-123456' }; own.nai = { ...own.nai, api_key: 'b-nai-key-123456' };
+  b.setConfig(own);
+  await b.updateTtsSettings({ fish: { ...b.ttsData().settings.fish, key: 'b-fish-key-123456' } });
+  await b.updateSoundSettings({ elevenKey: 'b-eleven-key-123' });
+  const result = await b.importFullBackup(text);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(b.getConfig().nai.width, 1024); assert.equal(b.getConfig().card.image_max, 4);
+  assert.equal(b.getConfig().llm.api_key, 'b-llm-key-123456'); assert.equal(b.getConfig().nai.api_key, 'b-nai-key-123456');
+  assert.equal(b.ttsData().settings.speed, 1.5); assert.equal(b.ttsData().settings.fish.key, 'b-fish-key-123456');
+  assert.equal(b.soundData().settings.bgmVolume, 0.3); assert.equal(b.soundData().settings.elevenKey, 'b-eleven-key-123');
+});

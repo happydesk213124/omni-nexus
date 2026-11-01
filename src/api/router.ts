@@ -137,8 +137,8 @@ function uploadBase64(body: Record<string, unknown>): string {
 // never be reached.
 const GET_ROUTES: readonly Route[] = [
   { match: exact('/v1/settings/export'), handler: async () => ok({ ok: true, json: await settingsTransfer.exportSettingsFile() }) },
-  // 디버그 → 백업: keys included, unlike every other export (see services/full-backup).
-  { match: exact('/v1/backup/full-export'), handler: async () => ok({ ok: true, json: await fullBackup.exportFullBackup() }) },
+  // 디버그 → 백업: keys included, unlike every other export (see services/full-backup); `?keys=0` without them.
+  { match: exact('/v1/backup/full-export'), handler: async ({ query }) => ok({ ok: true, json: await fullBackup.exportFullBackup({ keys: q(query, 'keys', '1') !== '0' }) }) },
   { match: exact('/v1/settings'), handler: () => ok({ ok: true, settings: settings.publicSettings() }) },
   {
     match: exact('/v1/storage/migrate/status'),
