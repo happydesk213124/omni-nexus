@@ -15,6 +15,7 @@ import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
 import { getConfig } from './context';
+import { messageBaked } from './bake-events';
 import type { BakeDimensions } from '../domain/chat-bake';
 import type { TaggerResult } from '../core/types';
 import { imageAssetRef, imageMeta, imagePng, idbGet } from '../storage/stores';
@@ -120,6 +121,7 @@ async function writeChat(
   const slot = opts.scrollSlot ? { slot: { index: opts.messageIndex, ...opts.scrollSlot } } : {};
   if (getConfig().card?.scroll_hold && typeof bridge === 'function') await bridge(work,{requireMutation:true,...slot});
   else await work();
+  messageBaked({ charIndex, chatIndex, messageIndex: opts.messageIndex });
   const repaint = Reflect.get(globalThis, '__OMNI_REPAINT_FANS__');
   if (typeof repaint === 'function') void Promise.resolve(repaint()).catch(() => {});
 }

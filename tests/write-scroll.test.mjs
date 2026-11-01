@@ -113,6 +113,29 @@ test('a picture across the top of the screen is the anchor, read by its opening 
  assert.equal(f.shot.margin,-30,'the picture, not the paragraph under it, was scrolled to');
 });
 
+test('a hold in a chat too short to scroll that far: the page it pushed instead is put back at once',async()=>{
+ const f=screenFixture();
+ // The paragraph cannot come back inside the chat: the browser moves Risu's page by what was left over.
+ let page=0;const pageMoves=[];
+ for(const p of f.paragraphs){const scroll=p.scrollIntoView;p.scrollIntoView=async o=>{await scroll(o);page=-150;};}
+ f.doc.getBoundingClientRect=async()=>({top:page,left:0});
+ f.doc.scrollIntoView=async o=>{pageMoves.push(o);page=0;};
+ const {hold}=load({hostDoc:f.doc},()=>true,async()=>'a',f.k);
+ await hold(async()=>f.move(300),{requireMutation:true});
+ assert.deepEqual(pageMoves[0],{block:'start',inline:'start'},'the page goes back where it sits');
+ assert.equal(page,0);
+});
+
+test('while 옴니 뷰어 covers the chat the hold rests: nobody reads the chat behind it',async()=>{
+ const f=screenFixture();
+ globalThis.__OMNI_VIEWER_COVERING__=()=>true;
+ try {
+   const {hold}=load({hostDoc:f.doc},()=>true,async()=>'a',f.k);
+   assert.equal(await hold(async()=>{f.move(300);return 'saved';},{requireMutation:true}),'saved');
+   assert.equal(f.shift,300,'the chat is left where the write put it');
+ } finally {delete globalThis.__OMNI_VIEWER_COVERING__;}
+});
+
 test('a hold marks the scroll busy for the TTS scan until it ends',async()=>{
  const f=screenFixture();
  const {hold}=load({hostDoc:f.doc},()=>true,async()=>'a',f.k);
