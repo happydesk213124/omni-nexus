@@ -2,6 +2,9 @@ import type { TtsSegment } from '../../core/tts-types';
 import { expressionOfTone } from '../emotion/emotions';
 import { INLINE_CAST_MASK_SOURCE } from '../prompt/inline-shot-pattern';
 import { imageHistoryRoot } from '../gallery/image-history';
+import { clockLines, clockOf } from './clock';
+
+export { clockLines, clockOf, lastClock, storyClock, type ClockMark } from './clock';
 
 /**
  * 옴니 뷰어: a reply read as visual-novel scenes, from its source text (never the
@@ -69,7 +72,7 @@ export function replyImages(raw: string): Array<{ at: number; cg: ViewerCg }> {
  */
 export function buildScenes(raw: string, segments: readonly TtsSegment[], words: Readonly<Record<string, string>> = {}): ViewerScene[] {
   const faces = new Map<string, string>(), out: ViewerScene[] = [];
-  const images = replyImages(raw);
+  const images = replyImages(raw), clocks = clockLines(raw);
   let next = 0;
   const flushImages = (before: number) => {
     while (next < images.length && images[next]!.at < before) {
@@ -80,8 +83,8 @@ export function buildScenes(raw: string, segments: readonly TtsSegment[], words:
   for (const s of segments) {
     if (s.kind !== 'dialogue' && s.kind !== 'narration' && s.kind !== 'illustration') continue;
     flushImages(s.start);
-    // Sound cues are no scene; the clock line shows in the top bar instead.
-    if (s.kind === 'illustration' || (s.kind === 'narration' && clockOf(s.text))) continue;
+    // Sound cues are no scene; the clock line shows in the top bar instead (found by line, once a reply).
+    if (s.kind === 'illustration' || (s.kind === 'narration' && clocks.some(c => s.start >= c.start && s.end <= c.end))) continue;
     const line = s.kind === 'dialogue' && !!s.speaker;
     let face: string | null = null;
     if (line) {
@@ -92,24 +95,6 @@ export function buildScenes(raw: string, segments: readonly TtsSegment[], words:
   }
   flushImages(Infinity);
   return out;
-}
-
-/**
- * The story's clock line (`[3월 2일 ◆ 오후 4시 ◆ 카페]`, `📅 Day 3 | 08:10 | 교실`):
- * the first short bracketed or separated line with a date or a time in it, its
- * parts joined with ` · `. '' when the reply has none.
- */
-const TIME_WORD = /\d{1,2}\s*[:시]\s*\d{0,2}|\d{1,2}\s*월|\d{1,2}\s*일|\d{4}\s*년|오전|오후|아침|점심|저녁|밤|새벽|\bday\s*\d+|\b(?:am|pm)\b|\d{1,2}:\d{2}|월요일|화요일|수요일|목요일|금요일|토요일|일요일/i;
-export function clockOf(rawLine: string): string {
-  const line = rawLine.replace(/<[^>]*>/g, '').trim();
-  if (!line || line.length > 120 || /^["“'‘「『]/.test(line)) return '';
-  const inner = line.replace(/^[\s*_`>#\-]*[\[【(〔「]?/, '').replace(/[\]】)〕」]?[\s*_`]*$/, '');
-  const parts = inner.split(/\s*[◆◇|｜/·•∙]\s*/).map(p => p.replace(/^[^\p{L}\p{N}]+/u, '').trim()).filter(Boolean);
-  return parts.length >= 2 && TIME_WORD.test(inner) ? parts.slice(0, 5).join(' · ').slice(0, 80) : '';
-}
-export function storyClock(raw: string): string {
-  for (const line of raw.split('\n').slice(0, 40)) { const clock = clockOf(line); if (clock) return clock; }
-  return '';
 }
 
 const CAST_BLOCK = new RegExp(INLINE_CAST_MASK_SOURCE, 'g');

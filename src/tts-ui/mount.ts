@@ -56,9 +56,10 @@ export async function mountTts(): Promise<void> {
   const refresh = () => { if(live()){library.render(); characters.render();} };
   observer.observe(document.body,{childList:true,subtree:true});
   await characters.bind(live); if(!live())return;
-  // Opened for some people (옴니 뷰어's 👨‍👩‍👧‍👦): the 캐릭터 tab, them searched.
+  // Opened for some people (옴니 뷰어's 👨‍👩‍👧‍👦), or one person's sheet (a name over a line): the 캐릭터 tab, them searched.
   const focus = takeSoundFocus();
-  if (focus?.panel === 'tts-characters') { tab('tts-characters'); characters.showOnly(focus.search); }
+  if (focus?.panel === 'tts-characters') { tab('tts-characters'); characters.showOnly(focus.search); if (focus.sheet) characters.openSheet(focus.sheet, focus.done); }
+  focus?.shown?.();
   bindTtsLlmActions(refresh);
   // 「LLM으로 추가」 and 「LLM 정리 요청」 are one request now: add, rename, refile and retag.
   for (const id of ['bulk-voice', 'organize-voices']) el(id)?.setAttribute('hidden', '');

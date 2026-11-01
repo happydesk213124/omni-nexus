@@ -43,7 +43,8 @@ test('YouTube BGM: the seed is cloned into the player, its window found among ot
         async querySelector(s) { const n = this.node.querySelector(s); return n ? new Safe(n) : null; }
         async querySelectorAll(s) { return [...this.node.querySelectorAll(s)].map(n => new Safe(n)); }
         async setAttribute(k, v) { if (!k.startsWith('x-')) throw Error('Forbidden attribute write ' + k); this.node.setAttribute(k, v); }
-        async setStyleAttribute(v) { this.node.style.cssText = v; }
+        // Each place the player is given, in turn, with whether it was in the page yet.
+        async setStyleAttribute(v) { this.node.style.cssText = v; (window.places ||= []).push({ style: v, attached: this.node.isConnected }); }
         async appendChild(child) { this.node.append(child.node); }
         async remove() { this.node.remove(); }
         async cloneNode(deep) { return new Safe(this.node.cloneNode(deep)); }
@@ -51,6 +52,7 @@ test('YouTube BGM: the seed is cloned into the player, its window found among ot
         async addEventListener(type, fn) { const id = String(Math.random()), cb = e => fn({ clientX: e.clientX, clientY: e.clientY }); (this.listeners ||= new Map()).set(id, [type, cb]); this.node.addEventListener(type, cb); window.liveListeners = (window.liveListeners || 0) + 1; return id; }
         async removeEventListener(type, id) { const row = this.listeners?.get(id); if (row) { this.node.removeEventListener(row[0], row[1]); this.listeners.delete(id); window.liveListeners--; } }
       }
+      window.box = () => { const r = document.querySelector('[x-omni-yt-tv]').getBoundingClientRect(); return { left: r.left, right: r.right, width: r.width }; };
       // The chat as Risu drew it: someone else's YouTube embed, and our planted seed.
       document.body.innerHTML = `<div class="chat"><iframe src="https://www.youtube.com/embed/OTHERVIDEO1?enablejsapi=1" width="320" height="180"></iframe><p>본문</p>${window.SEED}</div>`;
       window.risuai = { getRootDocument: async () => new Safe(document) };
@@ -62,6 +64,13 @@ test('YouTube BGM: the seed is cloned into the player, its window found among ot
     // Made ahead with nothing to play: never seen (it would show YouTube's sample video), hidden or not.
     await page.evaluate(() => window.tube.ensure());
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-yt-tv]')).opacity), '0', 'made ahead, nothing on: out of sight');
+    // Out of sight it loads in view (lazily, as its seed), and once it has answered it leaves the screen, thumbnail-sized:
+    // nothing draws it there, and YouTube sends the smallest picture for a player that small.
+    const places = await page.evaluate(() => window.places);
+    assert.match(places[0].style, /left:10px/, 'laid out in view while it loads');
+    assert.equal(places[0].attached, false, 'given its place before it went in');
+    const away = await page.evaluate(() => window.box());
+    assert.ok(away.right <= 0 && away.width <= 16, `loaded, off the screen and small: ${JSON.stringify(away)}`);
     await page.evaluate(() => window.tube.play('bgm1', 'sMcWOaJFuw0', { level: 0.5, fadeMs: 0, hidden: false }));
     assert.equal(await page.locator('[data-omni-yt-seed] iframe').count(), 1, 'the seed stays where it was planted');
     assert.equal(await page.evaluate(() => document.querySelectorAll('body > iframe[x-omni-yt-tv]').length), 1, 'one player, cloned under <body>');
@@ -85,11 +94,13 @@ test('YouTube BGM: the seed is cloned into the player, its window found among ot
     await page.waitForFunction(() => window.tube.playing && !window.tube.waiting);
     await page.waitForFunction(() => window.log.filter(l => l[0] === 'setVolume').at(-1)[1][0] === 40, null, { timeout: 3000 });
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-yt-tv]')).opacity), '0', 'played, still out of sight');
+    assert.ok((await page.evaluate(() => window.box())).right <= 0, 'played hidden: off the screen');
     await page.waitForFunction(() => window.liveListeners === 0);
     // Shown (not hidden): held back, it shows itself, outlined, for the tap on it.
     await page.evaluate(() => window.tube.stop(0));
     await assert.rejects(page.evaluate(() => window.tube.play('bgm4', 'blocked1111', { level: 0.4, fadeMs: 0, hidden: false })), /한 번 눌러/);
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-yt-tv]')).opacity), '1', 'shown for the tap it needs');
+    assert.deepEqual(await page.evaluate(() => window.box()), { left: 10, right: 210, width: 200 }, 'shown at its own size, low on the left');
     assert.equal(await page.evaluate(() => window.liveListeners), 0, 'shown, it waits for its own tap: nothing listens elsewhere');
     await page.locator('[x-omni-yt-tv]').click();
     await page.waitForFunction(() => window.tube.playing && !window.tube.waiting);

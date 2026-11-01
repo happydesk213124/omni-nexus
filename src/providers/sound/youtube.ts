@@ -50,6 +50,8 @@ export class YoutubeTube {
   private fading: ReturnType<typeof setInterval> | undefined;
   private error = 0;
   private hidden = false;
+  /** The player has answered: it may go off the screen now (see style). */
+  private loaded = false;
   private tapNeeded = false;
   /** The BGM item playing (or paused) here; '' when stopped. */
   key = '';
@@ -100,13 +102,21 @@ export class YoutubeTube {
 
   /**
    * Where the player sits: small, low on the left, while a track is on and it is not
-   * hidden (a blocked play outlined, for its tap); else out of sight, but laid out so it
-   * loads. Nothing on (made ahead, or stopped) it is never seen: it would show YouTube's
-   * sample video. Hidden, a blocked play waits for the next press anywhere instead.
+   * hidden (a blocked play outlined, for its tap); else out of sight. Nothing on (made
+   * ahead, or stopped) it is never seen: it would show YouTube's sample video. Hidden, a
+   * blocked play waits for the next press anywhere instead.
+   *
+   * Out of sight it is laid out in view only until it has loaded (it loads lazily, as
+   * its seed does); then it goes off the screen at a thumbnail's size. Merely see-through,
+   * it was still drawn every frame, video and controls, on a phone in the same thread as
+   * Risu; off the screen the browser stops drawing it, and YouTube, which picks the
+   * picture by the player's size (it takes no quality from an embed any more), sends the
+   * smallest. The sound comes apart from the picture and stays as it was.
    */
   private style(): string {
     const box = 'position:fixed;left:10px;bottom:96px;width:200px;height:113px;border:0;border-radius:10px;background:#000;margin:0';
-    return this.key && !this.hidden ? `${box};z-index:30;box-shadow:0 6px 22px rgba(0,0,0,.45)${this.tapNeeded ? ';outline:3px solid #e3c27a' : ''}` : `${box};opacity:0;pointer-events:none;z-index:-1`;
+    if (this.key && !this.hidden) return `${box};z-index:30;box-shadow:0 6px 22px rgba(0,0,0,.45)${this.tapNeeded ? ';outline:3px solid #e3c27a' : ''}`;
+    return this.loaded ? 'position:fixed;left:-480px;top:0;width:16px;height:9px;border:0;margin:0;opacity:0;pointer-events:none;z-index:-1' : `${box};opacity:0;pointer-events:none;z-index:-1`;
   }
   /**
    * Hidden and held back by the browser: the next press anywhere in Risu plays it. That
@@ -144,7 +154,7 @@ export class YoutubeTube {
     for (let i = 0; i < n; i++) { const node = Array.isArray(stale) ? stale[i] : await stale.at(i); if (node) await quiet(node.remove()); }
     const seed = await doc.querySelector(SEED) ?? await this.plant(doc);
     if (!seed) throw new Error('유튜브 플레이어를 놓을 자리를 아직 못 찾았습니다. 채팅이 한 번 그려지면 다시 시도해요.');
-    this.win = null; this.known.clear(); this.seeking = false;
+    this.win = null; this.known.clear(); this.seeking = false; this.loaded = false;
     this.broadcast(); await sleep(450); this.broadcast(); await sleep(250);
     const body = await doc.querySelector('body');
     if (!body) throw new Error('Risu 화면을 찾지 못했습니다.');
@@ -157,6 +167,8 @@ export class YoutubeTube {
     for (let i = 0; i < 50 && !this.win; i++) { this.broadcast(); await sleep(300); }
     this.seeking = false;
     if (!this.win) { await quiet(el.remove()); this.el = null; throw new Error('유튜브 플레이어가 응답하지 않습니다.'); }
+    this.loaded = true;
+    await this.place();
     dbg('bgm.youtube.ready', {});
   }
 

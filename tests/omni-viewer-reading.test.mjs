@@ -4,19 +4,20 @@ import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {saveViewerPrefs} from './src/storage/viewer-prefs';import {idbPut} from './src/storage/stores';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,saveViewerPrefs,idbPut});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {saveViewerPrefs} from './src/storage/viewer-prefs';import {idbPut} from './src/storage/stores';import {takeSoundFocus} from './src/sound-ui/page';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,saveViewerPrefs,idbPut,takeSoundFocus});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 
 /**
  * The viewer open on a chat of two replies, the newest one `lines` (a picture among them as
  * `[[@inray::card9::inxshot_pic::832::1216]]`, the chat showing it at portrait size). `files`: cards whose
  * picture only their file holds (card id → asset path), as an older reply's that the chat does not draw.
+ * `older`: the reply before it.
  */
-async function viewerOn(browser, lines, files = {}) {
+async function viewerOn(browser, lines, files = {}, older = '하린: "어제는 비가 왔지."') {
   const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
   page.setDefaultTimeout(8000); page.on('pageerror', e => errors.push(e.message));
   await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="margin:0"></body></html>' })); await page.goto('https://vn.test/');
   await page.addScriptTag({ content: readFileSync('node_modules/dompurify/dist/purify.min.js', 'utf8') });
-  await page.evaluate(({ lines, files }) => {
+  await page.evaluate(({ lines, files, older }) => {
     // A picture as large as NovelAI's portrait (832×1216): the photo covers most of the stage.
     const canvas = document.createElement('canvas'); canvas.width = 832; canvas.height = 1216;
     const g = canvas.getContext('2d'); g.fillStyle = '#7aa'; g.fillRect(0, 0, 832, 1216);
@@ -41,7 +42,7 @@ async function viewerOn(browser, lines, files = {}) {
       async removeEventListener() {}
       async createElement(tag) { return new Safe(document.createElement(tag)); }
     }
-    const older = '하린: "어제는 비가 왔지."', newest = lines.join('\n');
+    const newest = lines.join('\n');
     const drawn = lines.map(line => /^\[\[@inray::/.test(line) ? `<div data-inray-asset="inxshot_pic"><img src="${picture}"></div>` : `<p>${line}</p>`).join('');
     document.body.innerHTML = `<div class="default-chat-screen" style="position:fixed;inset:0;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse">`
       + `<div class="chat-message-container"><div class="risu-chat" data-chat-index="2"><div class="chattext">${drawn}</div></div></div>`
@@ -52,7 +53,7 @@ async function viewerOn(browser, lines, files = {}) {
     window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
       getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
       readImage: async path => Object.values(files).includes(path) ? Uint8Array.from(atob(picture.split(',')[1]), c => c.charCodeAt(0)) : null, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
-  }, { lines, files });
+  }, { lines, files, older });
   await page.evaluate(() => { window.crypto.randomUUID = undefined; });
   await page.addScriptTag({ content: built.outputFiles[0].text });
   await page.evaluate(async () => {
@@ -289,6 +290,71 @@ test('옴니 뷰어 over a restricted SafeDOM: a picture the chat does not draw 
     await v.tapUntil(async () => /그 다음 줄/.test(await v.text()));
     await v.pictureIs('folded');
     assert.equal(await v.page.locator('[x-omni-vn] img[x-vn-cg]').count(), 1, 'read once: the same picture folds');
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: the top bar keeps the clock of the line on screen — a time skip once passed, and an earlier reply\'s own when turned back to', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const v = await viewerOn(browser, ['[3월 2일 ◆ 오후 4시 ◆ 카페]', '오미선: "왔어? 오늘은 일찍 왔네."', '[오후 9시 ◆ 집]', '하린: "벌써 밤이네, 들어가자."'], {},
+      '[3월 1일 ◆ 밤 ◆ 집]\n하린: "어제는 비가 왔지."');
+    const clockIs = want => v.page.waitForFunction(want => (document.querySelector('[x-omni-vn] [data-vn-clock]')?.textContent || '') === want, want);
+    await v.shows(/일찍 왔네/);
+    await clockIs('3월 2일 · 오후 4시 · 카페');
+    await v.tapUntil(async () => /들어가자/.test(await v.text()));
+    await clockIs('오후 9시 · 집');
+    await v.page.waitForTimeout(400);
+    await v.press('prev');
+    await v.shows(/일찍 왔네/);
+    await clockIs('3월 2일 · 오후 4시 · 카페');
+    // ◀ from the reply's first line: the reply before, with its own clock (it was the one shown at opening, once).
+    await v.page.waitForTimeout(400);
+    await v.press('prev');
+    await v.shows(/비가 왔지/);
+    await clockIs('3월 1일 · 밤 · 집');
+    assert.equal(await v.page.evaluate(() => /\[오후 9시/.test(document.querySelector('[x-omni-vn] [data-vn-log]')?.textContent || '')), false, 'a clock line is never a scene');
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line opens that person\'s TTS 캐릭터 sheet — the spinner until it is up, and back on the same line once it closes', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const v = await viewerOn(browser, ['오미선: "왔어? 오늘은 일찍 왔네."', '하린: "응, 수업이 빨리 끝났어."']);
+    // The settings window as the frozen UI makes it: opened on a tab, its flag, its ✕. Its mount takes the ask a moment later.
+    await v.page.evaluate(() => {
+      window.settingsUp = false; window.asked = [];
+      window.__OMNI_TTS_SETTINGS_OPEN__ = () => window.settingsUp;
+      window.__OMNI_OPEN_TTS__ = async () => {
+        window.settingsUp = true;
+        setTimeout(() => { const ask = window.takeSoundFocus(); window.asked.push(ask); ask?.shown?.(); }, 900);
+      };
+      const close = document.createElement('button'); close.id = 'nx-close'; close.onclick = () => { window.settingsUp = false; }; document.body.append(close);
+    });
+    const tapName = async () => { const r = await v.rect('[x-omni-vn] [data-vn-name]'); await v.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2); };
+    await v.shows(/일찍 왔네/);
+    await v.page.waitForTimeout(500);
+    await tapName();
+    await v.page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-busy]')).display !== 'none', null, { timeout: 800 });
+    assert.equal(await v.page.evaluate(() => window.viewerOpen()), true, 'the viewer stays up, its spinner turning, until the sheet is');
+    await v.page.waitForFunction(() => !window.viewerOpen());
+    const ask = await v.page.evaluate(() => { const { panel, search, sheet } = window.asked[0]; return { panel, search, sheet }; });
+    assert.deepEqual(ask, { panel: 'tts-characters', search: '오미선', sheet: { id: 't-misun', name: '오미선' } });
+    // The sheet closed for good: the window goes as by its ✕, and the viewer is back where it was.
+    await v.page.evaluate(() => window.asked[0].done());
+    await v.page.waitForFunction(() => window.viewerOpen() && /일찍 왔네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    assert.equal(await v.page.evaluate(() => window.settingsUp), false, 'the settings window closed with it');
+    // The window closed instead (its ✕): back as well.
+    await v.page.waitForTimeout(700);
+    await tapName();
+    await v.page.waitForFunction(() => !window.viewerOpen());
+    await v.page.evaluate(() => { window.settingsUp = false; });
+    await v.page.waitForFunction(() => window.viewerOpen() && /일찍 왔네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    // Off the name, a tap still turns the line.
+    await v.page.waitForTimeout(700);
+    await v.tapUntil(async () => /수업이/.test(await v.text()));
+    assert.equal(await v.page.evaluate(() => window.asked.length), 2);
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });

@@ -103,6 +103,9 @@ export class OmniSoundRuntime {
   private prepareTube(): void {
     const s = soundData().settings;
     if (this.tubeTried || Date.now() < this.tubeAt || !s.bgmEnabled || !s.youtubeBgm || !soundData().bgm.some(item => item.source === 'youtube')) return;
+    // Its page loads while no reply streams: a reply being written (and tagged) is when a stall shows most.
+    const live = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__');
+    if (typeof live === 'function' && live()) { setTimeout(() => this.prepareTube(), 5000); return; }
     this.tubeTried = true;
     void this.player.prepareTube().catch(error => { this.tubeTried = false; dbg('bgm.youtube.prepare', { message: String((error as Error)?.message || error) }, 'warn'); });
   }

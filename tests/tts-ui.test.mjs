@@ -287,6 +287,27 @@ test('production settings persist independently, edit voice tiles and survive re
     await clearSearch.click();
     assert.equal(await page.locator('#char-search').inputValue(),'');
     await page.waitForFunction(()=>[...document.querySelectorAll('#character-list .char-card b')].some(b=>b.textContent==='나레이션'));
+    // A name over a line in 옴니 뷰어: that person's sheet on their card, `shown` once it is up and `done` once it closes for
+    // good (목소리 고르기 closes it only to come back). A name with no card: a new one in it, made only once something is set.
+    const remount=async ask=>{await page.evaluate(async ask=>{window.sheetLog=[];const id=ask.id??window.ttsData().characters.find(c=>c.name===ask.name).id;window.focusSoundPanel('tts-characters',ask.name,{sheet:{id,name:ask.name},shown:()=>window.sheetLog.push('shown'),done:()=>window.sheetLog.push('done')});document.getElementById('tts-settings-root').remove();document.body.insertAdjacentHTML('beforeend',window.ttsSettingsHtml());await window.mountTts();},ask);await page.waitForFunction(()=>document.getElementById('character-dialog').open);};
+    await remount({name:'하린'});
+    assert.equal(await page.locator('#c-name').inputValue(),'하린');
+    assert.deepEqual(await page.evaluate(()=>window.sheetLog),['shown']);
+    await page.locator('#choose-character-voice').click();
+    await page.waitForFunction(()=>!document.getElementById('character-dialog').open);await page.waitForTimeout(50);
+    assert.deepEqual(await page.evaluate(()=>window.sheetLog),['shown'],'closed to pick a voice: not done');
+    // (The settings shell drawn above lies over the list here: the picks are clicks on the elements themselves.)
+    await page.evaluate(()=>{document.querySelector('#voice-folder-list .folder-item').click();for(let i=0;i<2;i++)document.querySelectorAll('#voice-list .voice-row')[1].click();});
+    await page.waitForFunction(()=>document.getElementById('character-dialog').open);
+    assert.deepEqual(await page.evaluate(()=>window.sheetLog),['shown'],'back from the voice list: still not done');
+    await page.locator('#character-dialog [data-close]').first().click();
+    await page.waitForFunction(()=>window.sheetLog.includes('done'));
+    assert.deepEqual(await page.evaluate(()=>window.sheetLog),['shown','done']);
+    await remount({id:'',name:'새 사람'});
+    assert.equal(await page.locator('#c-name').inputValue(),'새 사람','a new card in the name the line was spoken under');
+    await page.locator('#character-dialog [data-close]').first().click();
+    await page.waitForFunction(()=>window.sheetLog.includes('done'));
+    assert.equal(await page.evaluate(()=>window.ttsData().characters.some(c=>c.name==='새 사람')),false,'only looked at, no card is made');
     await page.screenshot({path:'.tts-ui-check.png',fullPage:true});
     await page.evaluate(()=>{document.getElementById('nx-main').innerHTML=window.tabHtml('dashboard','');});
     assert.equal(await page.locator('#dashboard #nx-tts-exclude-text, #dashboard #nx-tts-omit-characters, #nx-tts-exclusions').count(),0,'TTS options live only in the TTS settings, not the illustration dashboard');
