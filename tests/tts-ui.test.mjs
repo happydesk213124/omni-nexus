@@ -200,18 +200,27 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.waitForFunction(()=>!window.ttsData().characters.find(c=>c.name==='하린').costumeFish?.['1']);
     assert.equal(await page.locator('[data-costume-fish="1"]').inputValue(),'');
     await page.locator('#c-costume-voice').uncheck();
-    // 연결된 삽화: she is an illustration character, so it opens 캐릭터's tag sheet for her.
+    // 연결된 삽화: she is an illustration character, so it opens 캐릭터's tag sheet for her, by the frozen UI's own
+    // opener (it loads the tab's roster when there is none yet). It stands by 감정 에셋, in their row.
     assert.equal(await page.locator('#c-illustration-link').isDisabled(),false);
-    await page.evaluate(()=>{window.opened=[];window.uxBefore=window.__INLAY_SETTINGS_UX__;window.__OMNI_OPEN_SETTINGS__=async tab=>{window.opened.push(tab);};window.__INLAY_SETTINGS_UX__={...window.uxBefore,openCharacterEditor:target=>{window.opened.push(target);return true;}};});
+    assert.equal(await page.locator('#c-illustration-link').evaluate(n=>!!n.closest('.emo-sheet-switch')),true);assert.equal(await page.locator('[data-sheet-links]').count(),0);
+    const herTile=page.locator('#character-list .char-card').filter({hasText:'하린'});
+    const reopen=async()=>{await herTile.click();if(!await page.locator('#character-dialog').isVisible())await herTile.click();await page.waitForFunction(()=>document.getElementById('character-dialog').open);};
+    await page.evaluate(()=>{window.opened=[];window.__OMNI_OPEN_CAST_EDITOR__=async target=>{window.opened.push(target);};});
+    await page.locator('#c-illustration-link').click();
+    await page.waitForFunction(()=>window.opened.length===1);
+    const cast=await page.evaluate(()=>window.opened[0]);
+    assert.deepEqual([cast.id,cast.name,cast.roster.id],['ill-harin','하린','ill-harin']);
+    assert.equal(await page.locator('#character-dialog').isVisible(),false,'the sheet steps aside for 캐릭터');
+    // An older frozen UI with no such opener: the tab, then its editor, looked for.
+    await reopen();
+    await page.evaluate(()=>{delete window.__OMNI_OPEN_CAST_EDITOR__;window.opened=[];window.uxBefore=window.__INLAY_SETTINGS_UX__;window.__OMNI_OPEN_SETTINGS__=async tab=>{window.opened.push(tab);};window.__INLAY_SETTINGS_UX__={...window.uxBefore,openCharacterEditor:target=>{window.opened.push(target);return true;}};});
     await page.locator('#c-illustration-link').click();
     await page.waitForFunction(()=>window.opened.length===2);
     const opened=await page.evaluate(()=>window.opened);
     assert.equal(opened[0],'characters');assert.deepEqual([opened[1].id,opened[1].name],['ill-harin','하린']);
-    assert.equal(await page.locator('#character-dialog').isVisible(),false,'the sheet steps aside for 캐릭터');
     await page.evaluate(()=>{window.__INLAY_SETTINGS_UX__=window.uxBefore;delete window.__OMNI_OPEN_SETTINGS__;});
-    const herTile=page.locator('#character-list .char-card').filter({hasText:'하린'});
-    await herTile.click();if(!await page.locator('#character-dialog').isVisible())await herTile.click();
-    await page.waitForFunction(()=>document.getElementById('character-dialog').open);
+    await reopen();
     assert.equal(await page.locator('#c-gain-manual').isChecked(),false,'new characters leave loudness to automatic adjustment');assert.equal(await page.locator('#c-gain').isDisabled(),true);
     await page.locator('#c-gain-manual').check();assert.equal(await page.locator('#c-gain').isDisabled(),false,'switching manual on unlocks the dB slider');
     await page.locator('#c-gain').fill('-6');await page.locator('#c-gain').dispatchEvent('change');

@@ -130,6 +130,11 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     assert.equal(await page.locator('.emo-tile').count() >= 15, true);
     await page.locator('[data-emo-tab="voice"]').click();
     assert.equal(await page.locator('#c-name').isVisible(), true);
+    // 연결된 삽화 stands by 감정 에셋 in their row, not in a row of its own.
+    assert.equal(await page.locator('.emo-sheet-switch #c-illustration-link').count(), 1);
+    assert.equal(await page.locator('[data-sheet-links]').count(), 0);
+    const [tab, link] = await Promise.all(['[data-emo-tab="faces"]', '#c-illustration-link'].map(s => page.locator(s).boundingBox()));
+    assert.ok(Math.abs(tab.y - link.y) < 2 && link.x > tab.x, 'on the same line, after 감정 에셋: ' + JSON.stringify({ tab, link }));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

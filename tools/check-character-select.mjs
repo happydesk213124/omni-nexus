@@ -14,6 +14,8 @@ try {
   await page.goto('about:blank');
   await page.evaluate(() => {
     const kv = new Map();
+    // Alpha is a TTS character too (연결된 TTS); Gamma is not.
+    kv.set('omnitts.data', { version: 1, settings: {}, voices: [], folders: [], characters: [{ id: 't-alpha', scope: 'global', name: 'Alpha', surname: '', givenName: '', surnameAliases: [], givenAliases: [], triggers: ['Alpha'], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }] });
     const roster = [
       { id: 'alpha', name: 'Alpha', aliases: ['Alpha'], appearance: 'girl, red hair', schema_version: 2, example_hash: 'alpha-shot' },
       { id: 'beta', name: 'Beta', aliases: ['Beta'], appearance: 'boy, black hair', schema_version: 2 },
@@ -112,5 +114,19 @@ try {
   await select.click();
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true, '선택 off ends selection');
   assert.equal(await page.locator('[data-ux-character-tile].nx-picked').count(), 0);
-  console.log('[character select] PASS: pick, 비활성화/활성화 saved and shown, LLM command for the picked, bulk delete, 참고컷 생성·vibe레퍼로 one by one, no 완료');
+  // 연결된 TTS, by 삭제: the TTS character the card is, greyed for one who is none; pressed, the TTS 캐릭터 page.
+  assert.equal(await page.locator('#nx-char-edit-body [data-char-delete] + #nx-char-to-tts').count(), 1, 'right after 삭제');
+  await tile('Gamma').click();
+  await page.waitForFunction(() => document.getElementById('nx-char-to-tts').disabled === true);
+  await tile('Alpha').click();
+  await page.waitForFunction(() => document.getElementById('nx-char-to-tts').disabled === false);
+  await page.evaluate(() => { globalThis.ttsOpened = 0; globalThis.__OMNI_OPEN_TTS__ = async () => { globalThis.ttsOpened++; }; document.getElementById('nx-char-to-tts').click(); });
+  await page.waitForFunction(() => globalThis.ttsOpened === 1);
+  // 연결된 삽화 from a TTS sheet when the 캐릭터 tab has no list yet (no chat picked, or never shown): the frozen UI's
+  // own opener loads it first, then opens the sheet (it once found nothing).
+  await page.evaluate(async () => { const r = globalThis.selectRuntime; r.t.charactersSession = []; r.t.charactersGlobal = []; await r.paint(); });
+  await page.waitForFunction(() => !document.querySelector('[data-ux-character-tile]'));
+  await page.evaluate(() => globalThis.__OMNI_OPEN_CAST_EDITOR__({ id: 'gamma', name: 'Gamma', scope: 'session' }));
+  await page.waitForFunction(() => document.getElementById('nx-char-sheet')?.classList.contains('open') && document.getElementById('nx-char-edit-title')?.textContent === 'Gamma');
+  console.log('[character select] PASS: pick, 비활성화/활성화 saved and shown, LLM command for the picked, bulk delete, 참고컷 생성·vibe레퍼로 one by one, no 완료, 연결된 TTS, the cast opener loading an empty tab');
 } finally { await browser.close(); }

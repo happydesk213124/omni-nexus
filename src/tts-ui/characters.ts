@@ -181,11 +181,12 @@ export class TtsCharacters {
     let link = document.getElementById('c-illustration-link') as HTMLButtonElement | null;
     if (!link) {
       link = document.createElement('button'); link.type = 'button'; link.id = 'c-illustration-link'; link.textContent = '연결된 삽화';
-      const sheetSwitch = scroll.querySelector('.emo-sheet-switch');
-      if (sheetSwitch) sheetSwitch.append(link);
-      else { const row = document.createElement('div'); row.className = 'actions'; row.append(link); scroll.prepend(row); }
       link.addEventListener('click', () => run(() => this.openReference()));
     }
+    // By 감정 에셋 in its row; before that row exists (its page not yet opened), in one of its own.
+    const sheetSwitch = scroll.querySelector('.emo-sheet-switch');
+    if (sheetSwitch && link.parentElement !== sheetSwitch) { const row = link.closest('[data-sheet-links]'); sheetSwitch.append(link); row?.remove(); }
+    else if (!sheetSwitch && !link.isConnected) { const row = document.createElement('div'); row.className = 'actions'; row.dataset.sheetLinks = '1'; row.append(link); scroll.prepend(row); }
     const reference = this.referenceOf(c);
     link.disabled = !reference;
     link.title = reference ? `${reference.name} · 삽화 캐릭터 태그 열기` : '이 캐릭터와 이어진 삽화 캐릭터가 없습니다';
@@ -193,13 +194,15 @@ export class TtsCharacters {
   private async openReference(): Promise<void> {
     const reference = this.draft && this.referenceOf(this.draft);
     if (!reference) return;
-    const openTab = Reflect.get(globalThis, '__OMNI_OPEN_SETTINGS__');
-    if (typeof openTab !== 'function') throw new Error('설정 창의 캐릭터 탭을 열 수 없습니다.');
+    // The frozen UI's own opener: it loads the 캐릭터 tab's roster first when there is none yet.
+    const openCast = Reflect.get(globalThis, '__OMNI_OPEN_CAST_EDITOR__'), openTab = Reflect.get(globalThis, '__OMNI_OPEN_SETTINGS__');
+    if (typeof openCast !== 'function' && typeof openTab !== 'function') throw new Error('설정 창의 캐릭터 탭을 열 수 없습니다.');
     // Going there, not coming back: a sheet 옴니 뷰어 opened does not take the reader back to the viewer.
     this.sheetDone = undefined;
     dialog('character-dialog', false);
-    await openTab('characters');
     const target = { id: reference.id, name: reference.name, scope: reference.scope };
+    if (typeof openCast === 'function') { await openCast({ ...target, roster: target }); return; }
+    await openTab('characters');
     // Its tiles are drawn once the tab is up: looked for a few times.
     for (let i = 0; i < 20; i++) {
       const ux = Reflect.get(globalThis, '__INLAY_SETTINGS_UX__') as { openCharacterEditor?: (target: object) => boolean } | undefined;
