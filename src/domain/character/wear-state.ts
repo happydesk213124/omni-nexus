@@ -77,9 +77,10 @@ export function wrapWearCatalogTags(text: unknown, state: WearState): string {
 
 /**
  * Keep base attire unweighted in every state (dropped when completely); append
- * clothing-state tags + anatomy. topless → nipples only; bottomless → penis
- * (male) or pussy (female). nude → `2::nsfw::` + exposure anatomy, clothes kept
- * as-is (partially undressed/draped, or clothed-but-exposed).
+ * clothing-state tags + anatomy. torn → plain nipples, pussy (female) showing
+ * through the tears, lighter than nude's 2:: emphasis; topless → nipples only;
+ * bottomless → penis (male) or pussy (female). nude → `2::nsfw::` + exposure
+ * anatomy, clothes kept as-is (partially undressed/draped, or clothed-but-exposed).
  */
 export function wearTagsForWearState(
   attire: unknown,
@@ -90,7 +91,10 @@ export function wearTagsForWearState(
   const base = wrapWearCatalogTags(attire, state);
   const malePenis = cleanText(penisSize, 40) || 'penis';
   if (state === 'clothed') return base;
-  if (state === 'torn') return joinTags(base, '2::torn clothes::');
+  if (state === 'torn') {
+    if (gender === 'f') return joinTags(base, '2::torn clothes::', 'nipples', 'pussy');
+    return joinTags(base, '2::torn clothes::');
+  }
   if (state === 'topless') return joinTags(base, '2::topless::', 'nipples');
   if (state === 'bottomless') {
     if (gender === 'f') return joinTags(base, '2::bottomless::', 'pussy');

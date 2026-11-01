@@ -428,8 +428,9 @@ test("nude levels keep attire and append gendered anatomy tags", () => {
   assert.match(tornF, /dress, earrings/);
   assert.equal(tornF.includes("0.8::"), false);
   assert.match(tornF, /2::torn clothes::/);
-  assert.equal(tornF.includes("nipples"), false);
-  assert.equal(tornF.includes("pussy"), false);
+  // A woman's torn clothes show nipples and pussy as plain tags, never nude's 2:: emphasis.
+  const tornTags = tornF.split(/,\s*/);
+  assert.ok(tornTags.includes("nipples") && tornTags.includes("pussy"), tornF);
   assert.equal(tornF.includes("penis"), false);
 
   const nudeF = composeCharacterCaptionTags(female, { nude: 2 });
