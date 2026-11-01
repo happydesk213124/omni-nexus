@@ -10,6 +10,8 @@ import { omniSound } from '../services/sound-runtime';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import { matchTtsAnchors, ttsAnchorTexts } from '../domain/tts/anchors';
 import { settledWhileStreaming } from '../domain/tts/streaming';
+import { revealSegments } from '../domain/tts/base64-words';
+import { loadViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { TTS_NARRATION_OFF_CSS } from '../domain/tts/module';
 import { illustrationTtsRequests } from '../services/tts-illustration';
 import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
@@ -28,7 +30,9 @@ const soundOn = () => !!soundCues();
 function requests(context: TtsChatContext, index: number): TtsRequest[] {
   const message = context.messages[index]; if (!message || message.role !== 'char') return [];
   const source = String(message.data || '');
-  return parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly,soundCues()).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
+  const segments = parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly,soundCues());
+  // risu64 난독 (a switch of 옴니 뷰어's): the hidden words are read as words; the line is still matched as the chat shows it.
+  return (viewerPrefs().revealBase64 ? revealSegments(segments) : segments).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
 }
 function findLine(list: TtsRequest[], key: string, line: string): number {
   if (!key) return list.findIndex(r => r.segment.id === line);
@@ -41,6 +45,8 @@ export async function installTtsHost(): Promise<void> {
   const host = risuHost(); if (!host?.getRootDocument || !host.createMutationObserver) return;
   await omniTts.init(); const doc = await host.getRootDocument(); if (!doc) return;
   installed = true;
+  // Read by every reply's lines (risu64 난독), not only once the viewer has opened.
+  await loadViewerPrefs().catch(() => null);
   let refreshViewer = async () => {}, flash = (_message: string) => {};
   const bindings = new Map<string,Binding>(); let timer: ReturnType<typeof setTimeout> | undefined, scanTask: Promise<void> | undefined, again = false, lastScope = '', lastPrefetch = '', disposed=false, inputEpoch=0, hovered='', bootAttempts=0;
   // Lines a module control is actually shown for; status panels other modules

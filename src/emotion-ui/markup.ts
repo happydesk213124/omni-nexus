@@ -24,7 +24,8 @@ ${row('통통 튀기 · 나올 때, 표정 바뀔 때, 말할 차례일 때', sw
 </div></div>
 <div class="tts-settings-column"><div class="group"><h3>장면</h3><div class="fields">
 <label class="field full"><span>장면으로 띄우지 않을 단어 · 쉼표로 구분</span><textarea id="emo-skip" rows="3" maxlength="2000" placeholder="예: 상태창, OOC, 시스템"></textarea></label>
-</div></div></div>
+</div>
+${row('risu64 난독(base64) 풀어 읽기 · TTS도 같이', sw('emo-base64', 'risu64 난독 풀어 읽기'))}</div></div>
 </div></section>`;
 
 const BACKGROUND_PANEL = `<section class="panel" id="emo-bg" role="tabpanel" hidden><div class="tts-settings-columns">

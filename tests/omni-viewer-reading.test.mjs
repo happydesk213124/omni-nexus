@@ -93,6 +93,21 @@ async function viewerOn(browser, lines, files = {}, older = '하린: "어제는 
   return { page, errors, text, shows, picture, pictureIs, rect, press, lineBox, frame, tapUntil, onTopOfPicture };
 }
 
+test('옴니 뷰어 over a restricted SafeDOM: risu64 난독 — off, a [base64] word shows as written; on, as its word, and its line is kept though the chat shows it hidden', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const v = await viewerOn(browser, ['하린: "[7IKs6rO8] 먹을래?"', '오미선: "응, 하나만."']);
+    await v.shows(/\[7IKs6rO8\] 먹을래/);
+    await v.page.evaluate(() => window.saveViewerPrefs({ revealBase64: true }));
+    await v.page.waitForTimeout(300); await v.press('newest');
+    // Matched against the chat as drawn ([7IKs6rO8]) first: revealed before that, the line was no line the chat shows.
+    await v.shows(/사과 먹을래/);
+    await v.page.waitForTimeout(300); await v.page.keyboard.press('ArrowRight');
+    await v.shows(/하나만/);
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
 test('옴니 뷰어 over a restricted SafeDOM: a reply that ends on its picture can still be left — the picture folds on a tap, ◀ and a swipe go back, ✕ closes', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {

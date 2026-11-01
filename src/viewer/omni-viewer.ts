@@ -3,6 +3,7 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { DEFAULT_EXPRESSION } from '../domain/emotion/emotions';
 import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
+import { revealSegments } from '../domain/tts/base64-words';
 import { ttsComparable } from '../domain/tts/anchors';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import type { TtsSegment } from '../core/tts-types';
@@ -355,6 +356,8 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
     // Drawn text that matches none of the reply is another row (or a bot that redraws everything): keep the reply whole.
     if (kept.some(s => !isSoundSegment(s))) segments = kept;
   }
+  // risu64 난독: matched against the chat as it shows them, the hidden words are shown and read as words.
+  if (viewerPrefs().revealBase64) segments = revealSegments(segments, true);
   cues = segments.filter(isSoundSegment);
   // Kept by where it stands in the text, not by its number: the saved reply (or the chat's own drawing of it)
   // may hold fewer scenes than the stream did, and the same number was then another line.
@@ -468,7 +471,7 @@ let parsedFor = '', parsed: TtsSegment[] = [];
 function requestOf(scene: ViewerScene): TtsRequest | null {
   if (!viewerPrefs().voice || !context || !scene.segmentId || !ttsData().settings.enabled) return null;
   if (scene.kind === 'narration' && ttsData().settings.narration === false) return null;
-  if (parsedFor !== source) { parsedFor = source; parsed = parseTtsMessage(source); }
+  if (parsedFor !== source) { parsedFor = source; parsed = parseTtsMessage(source); if (viewerPrefs().revealBase64) parsed = revealSegments(parsed); }
   const segment = parsed.find(s => s.id === scene.segmentId);
   return segment ? { context, messageId: messageId(), sourceKey: cueLineKey(source.slice(segment.start, segment.end)), segment } : null;
 }
@@ -502,7 +505,7 @@ function nextReplyRequests(index: number, count: number): TtsRequest[] {
   if (!context || !message || count <= 0) return [];
   const text = String(message.data ?? ''), id = String(message.chatId || message.id || `${index}:${compactHash(text)}`), s = ttsData().settings;
   const out: TtsRequest[] = [];
-  for (const segment of parseTtsMessage(text)) {
+  for (const segment of viewerPrefs().revealBase64 ? revealSegments(parseTtsMessage(text)) : parseTtsMessage(text)) {
     if (out.length >= count) break;
     if (segment.kind !== 'dialogue' && segment.kind !== 'narration') continue;
     if (segment.kind === 'narration' && s.narration === false) continue;
