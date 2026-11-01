@@ -58,12 +58,15 @@ const CASED = /(?<![A-Za-z])(?:MON|TUES?|WED|THU|THURS?|FRI|SAT|SUN|Mon|Tues?|We
 const WEEKDAY_TOKEN = new RegExp(String.raw`^(?:[월화수목금토일]요일|星期|礼拜|禮拜|[周週]|[月火水木金土日]曜|[(（]|[월화수목금토일]$|${WEEKDAY}$)`, 'iu');
 
 const QUOTED = /^['‘]|["“”„「」『』]/;
+// An emoji opens a field (📅 3월 2일 ⏰ 오후 3시 📍 카페): pictographs and the old symbol blocks, by code point.
+const EMOJI = '[' + [[0x1f300, 0x1faff], [0x2600, 0x27bf], [0x2b50, 0x2b55], [0x231a, 0x23ff]].map(([a, b]) => String.fromCodePoint(a) + '-' + String.fromCodePoint(b)).join('') + ']';
 const WRAP: Readonly<Record<string, string>> = { '[': ']', '【': '】', '(': ')', '（': '）', '〔': '〕', '［': '］', '《': '》', '〈': '〉', '{': '}' };
-const MARKS = /\s*[◆◇◈♦❖|｜┃│‖·•∙・⋅▪▫■□●○★☆✦✧※]\s*|\s*[\]】］]\s*[[【［]\s*|\s+[/／]\s+|(?<=[^\d\s])[/／](?=[^\d\s])/u;
+const MARKS = new RegExp(String.raw`\s*[◆◇◈♦❖|｜┃│‖·•∙・⋅▪▫■□●○★☆✦✧※]\s*|\s*[\]】］]\s*[[【［]\s*|\s+[/／]\s+|(?<=[^\d\s])[/／](?=[^\d\s])|\s+(?=${EMOJI})`, 'u');
 // A dash, tilde or arrow between spaces splits a bracketed line, or one it splits twice (`Day 3 - Morning - Classroom`):
 // once in prose it is a pause (`오후 4시 — 그녀가 왔다`).
 const DASH = /\s+[-–—~〜→»>]\s+/gu;
 const LABEL = /^\p{L}[\p{L} ]{0,9}[:：]\s*/u;
+const COMMA = /\s*[,，、]\s*/u;
 const SLOT = /\uE000(\d+)\uE001/gu;
 const FILLER = /[\s\p{P}\p{S}\p{M}\p{Cf}]+/gu;
 
@@ -81,10 +84,13 @@ export function clockOf(rawLine: string): string {
   // A styled status bar's tags can be long: what counts is the text left once they are gone.
   if (rawLine.length > 4000) return '';
   const line = (rawLine.includes('<') ? rawLine.replace(/<[^>]*>/g, '') : rawLine).trim();
-  if (!line || line.length > 120 || QUOTED.test(line)) return '';
+  // Up to a status line's length (each field is held to 40 below); a quote only inside a bracketed one (a place's
+  // name): anywhere else it is a line of dialogue.
+  if (!line || line.length > 400) return '';
   let inner = line.replace(/^[\s*_`>#~=─━═-]+/, '').replace(/[\s*_`~=─━═-]+$/, '');
   const close = WRAP[inner[0] ?? ''], wrapped = !!close && inner.length > 1 && inner.endsWith(close);
   if (wrapped) inner = inner.slice(1, -1).trim();
+  if (wrapped ? /^['‘"“「『]/u.test(inner) : QUOTED.test(line) || line.length > 120) return '';
   // Each date or time is set aside first, so a separator inside one (2020/05/04, 오후 4시 · ) never cuts it.
   const found: string[] = [], weekdays = new Set<number>();
   const slot = (token: string, weekday: boolean): string => { if (weekday) weekdays.add(found.length); return `\uE000${found.push(token) - 1}\uE001`; };
@@ -95,6 +101,16 @@ export function clockOf(rawLine: string): string {
   fields = fields.map(field => field.replace(LABEL, '').trim()).filter(field => field.replace(FILLER, ''));
   const tokens = (field: string): string[] => [...field.matchAll(SLOT)].map(m => found[Number(m[1])] ?? '');
   const rest = (field: string): string => field.replace(SLOT, ' ').replace(FILLER, ' ').trim();
+  if (fields.length === 1) {
+    // Commas part it only when two of its parts are dates or times (`3월 2일, 오후 3시, 카페`): `아침, 햇살이…` stays prose.
+    const parts = fields[0]!.split(COMMA).filter(part => part.replace(FILLER, ''));
+    if (parts.filter(part => !rest(part) && part.includes('\uE000')).length >= 2) fields = parts;
+    // Bracketed, spaces only (`[2024-03-02 15:00 카페]`): its dates and times, then the place they lead to.
+    else if (wrapped) {
+      const lead = /^((?:\uE000\d+\uE001[\s,]*)+)(\S.*)$/u.exec(fields[0]!);
+      if (lead && !lead[2]!.includes('\uE000')) fields = [lead[1]!.trim(), lead[2]!.trim()];
+    }
+  }
   if (fields.length >= 2) {
     // Prose a separator happens to cut (`오후 4시 · 그녀가 왔다.`): a sentence ends it, or no field is a clock's.
     if (/[.!?。！？…]$/u.test(masked.trim())) return '';
@@ -107,7 +123,47 @@ export function clockOf(rawLine: string): string {
   return fields.slice(0, 5).map(field => tidy(restore(field, found))).filter(Boolean).join(' · ').slice(0, 80);
 }
 
-export interface ClockMark { start: number; end: number; text: string }
+// A status window's own fields, wherever they stand and however long its line (Date: … | Time: … | Site: …).
+// A value runs to a bar, a bracket, or the next label (`Date: 2020-05-04, Time: 09:54`, `날짜: 3월 2일 / 장소: 학교`).
+const FIELD = /(?:^|[\s[(|｜│·•,/])(date|날짜|일자|일시|when|time|시간|시각|site|location|place|장소|위치|area|region|지역)\s*[:：]\s*((?:(?!(?:[,，]|\s[/／])\s*\p{L}[\p{L} ]{0,14}[:：])[^|｜│\]\n·•]){1,80})/giu;
+const DATES = ['date', '날짜', '일자', '일시', 'when'], TIMES = ['time', '시간', '시각'];
+// The most particular place first: a site is in a location, an area a site's corner (too fine to name the scene).
+const PLACES = ['site', 'location', 'place', '장소', '위치', 'area', 'region', '지역'];
+const ONE_TOKEN = new RegExp(TOKEN.source, 'iu');
+/** A status window's date, time and place, from its labeled fields; '' without a date or a time among them. */
+export function labeledClock(line: string): string {
+  if (!/[:：]/u.test(line)) return '';
+  let date = '', time = '', place = '', placeRank = PLACES.length;
+  for (const m of line.replace(/<[^>]*>/g, ' ').matchAll(FIELD)) {
+    const label = m[1]!.toLowerCase(), value = m[2]!.replace(/[\s,/／]+$/u, '').trim();
+    if (!value) continue;
+    if (DATES.includes(label)) { if (!date && ONE_TOKEN.test(value)) date = value; }
+    else if (TIMES.includes(label)) { if (!time && ONE_TOKEN.test(value)) time = value; }
+    else if (PLACES.indexOf(label) < placeRank && value.length <= 40) { placeRank = PLACES.indexOf(label); place = value; }
+  }
+  if (!date && !time) return '';
+  return [date, time && !date.includes(time) ? time : '', place].filter(Boolean).map(tidy).filter(Boolean).join(' · ').slice(0, 80);
+}
+
+// A date of the story's own: a year, a month and its day, a day's count (time of day alone is how prose talks).
+const STRONG = /\d{4}|\d\s*[월月]\s*\d|day\s*\d|^d\s*[+-]\s*\d|일\s*[차째]|日目|第|^[a-z]{3,9}\.?\s+\d|\d\s+(?:of\s+)?[a-z]{3}/iu;
+const SPOKEN = /"[^"\n]*"|“[^”\n]*”|「[^」\n]*」|『[^』\n]*』/gu;
+/** A date the story's words give (`2020년 5월 4일 오후 3시, 그날은…`), outside its dialogue, with the times right by it. */
+export function proseDate(line: string): string {
+  const plain = line.replace(/<[^>]*>/g, tag => ' '.repeat(tag.length)).replace(SPOKEN, said => ' '.repeat(said.length));
+  const hits = [...plain.matchAll(TOKEN)], first = hits.findIndex(m => STRONG.test(m[0]));
+  if (first < 0) return '';
+  const from = hits[first]!.index!;
+  let to = from + hits[first]![0].length;
+  for (const m of hits.slice(first + 1)) { if (!/^[\s,·]{0,3}$/u.test(plain.slice(to, m.index))) break; to = m.index! + m[0].length; }
+  return tidy(plain.slice(from, to)).slice(0, 80);
+}
+
+/**
+ * A place the story's clock is given: `line` when the whole line is the clock's (a clock line, a status window),
+ * which is no scene of its own then; else a date the story's words give, and its line stays the story's.
+ */
+export interface ClockMark { start: number; end: number; text: string; line: boolean }
 /** Each line, by offset, while `keep` wants more: no split of the whole reply (a long one is read to its end only when asked). */
 function eachLine(raw: string, keep: (start: number, end: number) => boolean): void {
   for (let start = 0; start <= raw.length;) {
@@ -117,25 +173,25 @@ function eachLine(raw: string, keep: (start: number, end: number) => boolean): v
   }
 }
 let memo: { raw: string; marks: ClockMark[] } = { raw: '', marks: [] };
-/** Every clock line of a reply, where each stands (the viewer and the scene builder ask for the same text in turn). */
+/**
+ * Every clock in a reply, where each stands, read from the whole of it: a status window at its end, however long,
+ * as much as a clock line at its start (the viewer and the scene builder ask for the same text in turn).
+ */
 export function clockLines(raw: string): ClockMark[] {
   if (memo.raw === raw) return memo.marks;
   const marks: ClockMark[] = [];
   eachLine(raw, (start, end) => {
-    if (end > start && end - start <= 4000) { const text = clockOf(raw.slice(start, end)); if (text) marks.push({ start, end, text }); }
+    if (end > start && end - start <= 4000) {
+      const text = raw.slice(start, end), own = clockOf(text), clock = labeledClock(text) || own || proseDate(text);
+      // A line of two labeled fields or more is a status window's, as a clock line is.
+      if (clock) marks.push({ start, end, text: clock, line: !!own || [...text.matchAll(FIELD)].length >= 2 });
+    }
     return true;
   });
   memo = { raw, marks };
   return marks;
 }
-/** The reply's first clock in its first 40 lines (a tile's, the log's); '' when it has none. */
-export function storyClock(raw: string): string {
-  let clock = '', n = 0;
-  eachLine(raw, (start, end) => {
-    if (end > start && end - start <= 4000) clock = clockOf(raw.slice(start, end));
-    return !clock && ++n < 40;
-  });
-  return clock;
-}
-/** Where a reply leaves the story's clock: its last clock line. */
+/** The reply's first clock, wherever in it (a tile's, the log's); '' when it has none. */
+export const storyClock = (raw: string): string => clockLines(raw)[0]?.text ?? '';
+/** Where a reply leaves the story's clock: its last. */
 export const lastClock = (raw: string): string => clockLines(raw).at(-1)?.text ?? '';

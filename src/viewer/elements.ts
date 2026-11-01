@@ -47,6 +47,7 @@ export async function elementsOpen(h: ElementsHost): Promise<void> {
 }
 export async function elementsClose(): Promise<void> {
   await endDrag();
+  await arm(null);
   for (const s of stickers.values()) await release(s.el);
   stickers.clear();
   for (const el of [layer, choicesEl, panel]) await release(el);
@@ -115,6 +116,7 @@ async function putSticker(doc: SafeDocument, index: number, kind: ElementKind, r
 export async function elementsForReply(): Promise<void> {
   for (const s of stickers.values()) { await quiet(s.el.remove()); await release(s.el); }
   stickers.clear(); kinds = []; options = []; choicesOn = false; chosen = -1; choicesRect = null;
+  await arm(null);
   const h = host, doc = h?.doc(), reply = h?.reply();
   if (h && doc && reply) {
     if (reply.bot !== bot) { bot = reply.bot; rules = await elementRules(bot); }
@@ -136,24 +138,45 @@ export async function elementsAtEnd(end: boolean): Promise<void> {
   const want = end && options.length > 0;
   if (want === choicesOn) return;
   choicesOn = want; chosen = -1; choicesRect = null;
+  if (!want) await arm(null);
   if (want) { await paintChoices(); setTimeout(() => void measureChoices().catch(() => {}), 150); }
 }
 async function paintChoices(): Promise<void> {
   await choicesEl?.setInnerHTML(options.map((text, i) => `<div data-vn-ch${i === chosen ? ' data-sel' : ''}>${esc(text)}</div>`).join(''));
 }
 async function measureChoices(): Promise<void> { if (choicesOn && choicesEl) choicesRect = await choicesEl.getBoundingClientRect(); }
-/** One tap picks a choice (it lights, and says so); a second on it sends it as the user's message. */
+/**
+ * One tap picks a choice (it lights, and says so); a second on it sends it as the user's message. Picked, it is
+ * armed: what the reader types in Risu's own box goes with it, the choice first. That is Risu's input handler,
+ * there only while a choice is armed (a handler costs every send a call into the plugin).
+ */
 async function choiceTap(p: HostPoint): Promise<void> {
   if (!choicesEl) return;
   const i = await rowAt(choicesEl, '[data-vn-ch]', p.clientY);
   if (i < 0 || !options[i]) return;
-  if (chosen !== i) { chosen = i; await paintChoices(); await measureChoices(); return; }
+  if (chosen !== i) { chosen = i; await paintChoices(); await measureChoices(); await arm(options[i]!); return; }
   const send = risuHost()?.sendChat;
   if (typeof send !== 'function') throw new Error('이 Risu는 플러그인이 메시지를 보낼 수 없습니다 (sendChat 없음).');
   const text = options[i]!;
+  // Sent on its own: never a second time by the handler.
+  await arm(null);
   choicesOn = false; chosen = -1; options = [];
   await host?.restyle();
   await send.call(risuHost(), text);
+}
+let armed: ((typed: string) => string) | null = null;
+async function arm(choice: string | null): Promise<void> {
+  const risu = risuHost();
+  if (armed) { const was = armed; armed = null; await quiet(risu?.removeRisuScriptHandler?.('input', was)); }
+  if (!choice || typeof risu?.addRisuScriptHandler !== 'function') return;
+  const withChoice = (typed: string): string => {
+    // Once: the choice went with this message, and the list is done.
+    if (armed === withChoice) { void arm(null).catch(() => {}); choicesOn = false; chosen = -1; options = []; void host?.restyle().catch(() => {}); }
+    const own = String(typed ?? '').trim();
+    return own && own !== choice ? `${choice}\n${own}` : choice;
+  };
+  armed = withChoice;
+  await risu.addRisuScriptHandler('input', withChoice);
 }
 
 /** The 편집 list: the reply's kinds, then registered kinds this reply lacks (so they can be let go). */

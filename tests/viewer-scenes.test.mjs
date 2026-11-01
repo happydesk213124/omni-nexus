@@ -54,6 +54,37 @@ test('the story clock reads every way a date or a time is written, cut at its se
     '하린(cheerful): 오늘 밤 · 같이 가자', '[[@inray::card1::inxshot_abc::832::1216]]', '[학교 ◆ 교실]']) assert.equal(api.clockOf(line), '', line);
 });
 
+test('a status window gives the clock from its labeled fields, at any length and wherever it stands; a date in prose counts, its line stays', () => {
+  const raw = [
+    '꼬지조가 날카로운 눈빛을 번뜩이며 발밑의 물웅덩이를 박찰 준비를 마친 순간, 하루키는 숨 가쁘게 다음 수를 떠올렸다.',
+    '',
+    '[Status Window | Date: 2020-05-04 (월) | Time: 09:54 | Weather: 맑음 | Region: 가라르지방 | Location: 바우마을 | Site: 바우마을 스타디움 | Area: 메인 수상 배틀 코트 | Money: 10220]',
+    '[Own Pokémon 1 | Name: 흥나숭 | Level: 14 | HP: 12% | Condition: 정상 | State: 배틀 | English Name: Grookey]',
+  ].join('\n');
+  assert.deepEqual(api.clockLines(raw).map(m => [m.text, m.line]), [['2020-05-04 (월) · 09:54 · 바우마을 스타디움', true]], 'its date, time and most particular place; a status window is no scene');
+  assert.equal(api.storyClock(raw), '2020-05-04 (월) · 09:54 · 바우마을 스타디움', 'at the reply\'s end, still its clock');
+  assert.deepEqual(api.buildScenes(raw, api.parseTtsMessage(raw)).map(s => s.text.slice(0, 4)), ['꼬지조가', '[Own'], 'the window gone, the undated status line left to 장면으로 띄우지 않을 단어');
+  assert.match(api.replyGist(`${raw.split('\n')[2]}\n본문이다.`), /^본문이다/, 'no tile shows a status window');
+  assert.equal(api.labeledClock('Date: 2020-05-04, Time: 09:54, Location: 카페'), '2020-05-04 · 09:54 · 카페', 'a value ends where the next label begins');
+  assert.equal(api.labeledClock('날짜: 3월 2일 / 장소: 학교'), '3월 2일 · 학교');
+  assert.equal(api.labeledClock('Location: 카페 | Weather: 맑음'), '', 'a place alone is no clock');
+  const prose = '2020년 5월 4일 오후 3시, 그날은 비가 왔다.\n하린: "2021년 1월 1일에 또 보자."';
+  assert.deepEqual(api.clockLines(prose).map(m => [m.text, m.line]), [['2020년 5월 4일 오후 3시', false]], 'a date of the story\'s own words, its line kept; one in dialogue is no clock');
+  assert.equal(api.proseDate('그는 오후 4시에 왔다.'), '', 'a time of day alone is how prose talks');
+});
+
+test('clock lines split at emoji, at commas when two of the parts are dates or times, and a bracketed one at its last date or time', () => {
+  const clocks = {
+    '📅 3월 2일 ⏰ 오후 3시 📍 카페': '3월 2일 · 오후 3시 · 카페',
+    '📅 2024.03.02 (토) 🕒 15:00 📍 학교 정문': '2024.03.02 (토) · 15:00 · 학교 정문',
+    '3월 2일, 오후 3시, 카페': '3월 2일 · 오후 3시 · 카페',
+    '[2024-03-02 15:00 카페]': '2024-03-02 15:00 · 카페',
+    '[3월 2일 | 오후 3시 | "카페 모모"]': '3월 2일 · 오후 3시 · 카페 모모',
+  };
+  for (const [line, clock] of Object.entries(clocks)) assert.equal(api.clockOf(line), clock, line);
+  for (const line of ['아침, 햇살이 비쳤다', '하린: "3월 2일 | 오후"', '"[3월 2일 | 오후]"']) assert.equal(api.clockOf(line), '', line);
+});
+
 test("a reply's clock lines stand where they are: a time skip mid-reply is its own mark, no scene, and the reply leaves the last", () => {
   const raw = '[3월 2일 ◆ 오후 4시 ◆ 카페]\n오미선: "왔어?"\n[오후 9시 ◆ 집]\n하린: "늦었네."';
   assert.deepEqual(api.clockLines(raw).map(m => [raw.slice(m.start, m.end), m.text]), [['[3월 2일 ◆ 오후 4시 ◆ 카페]', '3월 2일 · 오후 4시 · 카페'], ['[오후 9시 ◆ 집]', '오후 9시 · 집']]);

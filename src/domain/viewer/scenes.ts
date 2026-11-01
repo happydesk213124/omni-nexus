@@ -2,9 +2,9 @@ import type { TtsSegment } from '../../core/tts-types';
 import { expressionOfTone } from '../emotion/emotions';
 import { INLINE_CAST_MASK_SOURCE } from '../prompt/inline-shot-pattern';
 import { imageHistoryRoot } from '../gallery/image-history';
-import { clockLines, clockOf } from './clock';
+import { clockLines, clockOf, labeledClock } from './clock';
 
-export { clockLines, clockOf, lastClock, storyClock, type ClockMark } from './clock';
+export { clockLines, clockOf, labeledClock, lastClock, proseDate, storyClock, type ClockMark } from './clock';
 
 /**
  * 옴니 뷰어: a reply read as visual-novel scenes, from its source text (never the
@@ -84,7 +84,7 @@ export function buildScenes(raw: string, segments: readonly TtsSegment[], words:
     if (s.kind !== 'dialogue' && s.kind !== 'narration' && s.kind !== 'illustration') continue;
     flushImages(s.start);
     // Sound cues are no scene; the clock line shows in the top bar instead (found by line, once a reply).
-    if (s.kind === 'illustration' || (s.kind === 'narration' && clocks.some(c => s.start >= c.start && s.end <= c.end))) continue;
+    if (s.kind === 'illustration' || (s.kind === 'narration' && clocks.some(c => c.line && s.start >= c.start && s.end <= c.end))) continue;
     const line = s.kind === 'dialogue' && !!s.speaker;
     let face: string | null = null;
     if (line) {
@@ -107,7 +107,7 @@ export function replyGist(raw: string, max = 44): string {
   const text = raw.replace(CAST_BLOCK, ' ').replace(/\[\[[^\]]*\]\]/g, ' ').replace(/<(style|script)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\{\{[\s\S]*?\}\}/g, ' ');
   for (const rawLine of text.split('\n').slice(0, 80)) {
     const line = rawLine.replace(/[*_`#>~]+/g, '').replace(/\s+/g, ' ').trim();
-    if (!line || clockOf(line) || /^[-=─—]{3,}$/.test(line) || /^[-•·]\s*[^:：\n]{1,40}[:：]/.test(line)) continue;
+    if (!line || clockOf(line) || labeledClock(line) || /^[-=─—]{3,}$/.test(line) || /^[-•·]\s*[^:：\n]{1,40}[:：]/.test(line)) continue;
     return line.length > max ? `${line.slice(0, max - 1)}…` : line;
   }
   return '';

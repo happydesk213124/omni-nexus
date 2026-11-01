@@ -115,7 +115,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-choices]{display:none;position:absolute;left:50%;bottom:calc(12px + clamp(136px,26%,200px) + 16px);translate:-50% 0;width:min(76%,460px);flex-direction:column;gap:8px;z-index:4}
 [x-omni-vn] [data-vn-ch]{padding:11px 16px;border-radius:12px;cursor:pointer;text-align:center;font:15px/1.5 ${SERIF};color:#f4f1ea;background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 6px 20px rgba(0,0,0,.4);transition:background .15s,border-color .15s}
 [x-omni-vn] [data-vn-ch][data-sel]{border-color:var(--gold);background:rgba(227,194,122,.2)}
-[x-omni-vn] [data-vn-ch][data-sel]::after{content:"한 번 더 누르면 보내요";display:block;margin-top:2px;font:11px/1.4 system-ui,sans-serif;color:var(--gold)}
+[x-omni-vn] [data-vn-ch][data-sel]::after{content:"한 번 더 누르면 보내요 · 입력창에 쓰면 같이 가요";display:block;margin-top:2px;font:11px/1.4 system-ui,sans-serif;color:var(--gold)}
 [x-omni-vn] [data-vn-strip]{position:absolute;top:56px;right:0;width:min(42%,210px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:hidden;padding:10px;z-index:5;display:flex;flex-direction:column;gap:8px;
   background:rgba(10,9,17,.94);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-strip] [x-vn-thumb]{flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
@@ -189,6 +189,8 @@ export interface StageState {
   cast: Array<{ key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b'; front?: number }>;
   narration: boolean;
   bg: string;
+  /** The background just left, kept under the new one while that fades in (no dark gap between them). */
+  bgPrev?: string;
   cg: string;
   /** The box shows its whole text at once (a tap during the reveal). */
   revealed: boolean;
@@ -274,7 +276,10 @@ export function stageCss(s: StageState): string {
     ...rules,
     // As specific as the rule that hides every background (`div[x-vn-bg]`), and after it: without the element
     // it lost, and a background drawn and sent stayed hidden.
-    s.bg ? `[x-omni-vn] :is(img,div)[x-vn-bg="${s.bg}"]{display:block}` : '',
+    s.bg ? `[x-omni-vn] :is(img,div)[x-vn-bg="${s.bg}"]{display:block;z-index:1}` : '',
+    // A new background fades in over the old one, which stays as it is until then: shown alone, the new one
+    // came up out of the dark (a blink each time the stage was given another, the same place's too).
+    s.bgPrev && s.bgPrev !== s.bg ? `[x-omni-vn] :is(img,div)[x-vn-bg="${s.bgPrev}"]{display:block;z-index:0;animation:none}` : '',
     // Folded, the picture is a thumb above the people (their z-index is at most 3): a head in front of it hid it.
     s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px;top:60px;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}`
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:0!important;top:0;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`

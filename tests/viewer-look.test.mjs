@@ -74,6 +74,14 @@ test('a long line: the box is given its reckoned height as a least one (a line n
   assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-box\]\{[^}]*;height:/, 'no fixed height: a long line ran on below the box, out of sight');
 });
 
+test('a new background fades in over the one it replaces, shown as it is underneath until then (no dark gap)', () => {
+  const css = stage({ bg: 'b2', bgPrev: 'b1' });
+  assert.match(css, /\[x-vn-bg="b2"\]\{display:block;z-index:1\}/);
+  assert.match(css, /\[x-vn-bg="b1"\]\{display:block;z-index:0;animation:none\}/, 'the old one stays still, under it');
+  assert.doesNotMatch(stage({ bg: 'b1', bgPrev: 'b1' }), /animation:none/, 'the same one: only it');
+  assert.match(api.STATIC_CSS, /div\[x-vn-bg\]\{display:none;[^}]*animation:vn-fade/, 'a background fades in as it comes');
+});
+
 test('기록: the line the keys picked is outlined, none when no key has picked one', () => {
   assert.match(stage({ log: true, logSel: 2 }), /\[data-vn-log\] p:nth-of-type\(3\)\{outline:2px solid/);
   assert.doesNotMatch(stage({ log: true, logSel: -1 }), /nth-of-type/);
