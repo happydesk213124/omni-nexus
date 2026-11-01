@@ -113,6 +113,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     // The lines ahead have their faces sent while this one is read: 하린, two lines on.
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-sp] img').length === 2);
     assert.ok((again.setInnerHTML || 0) + (again.setTextContent || 0) <= 2, 'a scene is one box and one style text: ' + JSON.stringify(again));
+    // A picture drawn in a spinner's slot: the chat's <img> carries inset:0, and the copy keeps it.
+    await page.evaluate(() => document.querySelector('[data-inray-asset="inxshot_abc"] img').setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain'));
     const cg = await tap('');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] img[x-vn-cg]').length === 1);
     assert.equal(await page.locator('[x-omni-vn] [x-vn-bg]').count(), 0, 'an illustration is a photo, never the stage');
@@ -120,9 +122,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.equal(cg.cloneNode, 1, 'one copy, as the photo');
     // The photo's frame hugs the picture (no band of white inside the border), in the middle of the stage.
     await page.waitForTimeout(700);
-    const photo = await page.evaluate(() => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg]'), r = img.getBoundingClientRect(); return { ratio: img.clientWidth / img.clientHeight, natural: img.naturalWidth / img.naturalHeight, mid: r.left + r.width / 2 }; });
+    const photo = await page.evaluate(() => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg]'), r = img.getBoundingClientRect(); return { ratio: img.clientWidth / img.clientHeight, natural: img.naturalWidth / img.naturalHeight, mid: r.left + r.width / 2, middle: r.top + r.height / 2 }; });
     assert.ok(Math.abs(photo.ratio - photo.natural) < 0.02, 'the frame is the picture\'s own shape: ' + JSON.stringify(photo));
     assert.ok(Math.abs(photo.mid - (box.x + box.width / 2)) < 3, 'centred: ' + JSON.stringify(photo));
+    assert.ok(Math.abs(photo.middle - (box.y + box.height / 2 - 40)) < 3, 'its inline inset:0 moves it nowhere: ' + JSON.stringify({ photo, box }));
     await tap('늦었지');
     // Back to the picture before its folded rect was read (it came up big meanwhile), and on:
     // the folded thumb still takes a tap later (it once kept the big picture's rect).
@@ -255,7 +258,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.match(await page.locator('[x-omni-vn] [data-vn-end]').textContent(), /메시지를 입력해 주세요/);
     assert.equal(await page.locator('[x-omni-vn] [data-vn-next]').count(), 0, 'no arrow promising more');
     // A CG passed folds up at the top of the stage.
-    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /:is\(img,div\)\[x-vn-cg="[^"]+"\]\{display:block;left:auto!important;right:12px;top:60px;height:84px/, 'the CG waits folded');
+    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /:is\(img,div\)\[x-vn-cg="[^"]+"\]\{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:84px/, 'the CG waits folded');
     // The viewer covers the chat for every other tap handler.
     assert.equal(await page.evaluate(({ x, y }) => window.__OMNI_VIEWER_COVERS__(x, y), mid), true);
     // 나레이션 is TTS 나레이션 itself (narration still shown, not voiced). BGM only pauses: it never
@@ -322,6 +325,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       window.__OMNI_INSPECT_OPEN__ = () => window.inspecting === true;
     });
     const thumb = await page.locator('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])').boundingBox();
+    assert.ok(Math.abs(thumb.y - box.y - 60) < 3 && Math.abs(box.x + box.width - thumb.x - thumb.width - 12) < 3, 'the thumb where it folds to, inline inset:0 or not: ' + JSON.stringify({ thumb, box }));
     await page.mouse.click(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgfull"]')).display !== 'none');
     await page.waitForTimeout(300);
