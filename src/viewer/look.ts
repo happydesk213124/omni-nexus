@@ -89,7 +89,12 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-act="bgm"]{width:64px}
 [x-omni-vn] [data-vn-act="sfx"]{margin-right:auto}
 [x-omni-vn] [data-vn-act="bgm"]::after{content:"▶";margin-left:5px;font-size:9px}
-[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{color:var(--gold);font-size:13px}
+[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{color:var(--gold);font-size:13px}
+/* |◀ and ▶|: the reply's first and last line, a bar drawn at the arrow's end (no glyph a phone turns into an emoji),
+   stood off from ◀ ▶ so a step is never a jump by a slip of the finger. */
+[x-omni-vn] [data-vn-act="first"]::before,[x-omni-vn] [data-vn-act="last"]::after{content:"";width:2px;height:.8em;background:currentColor;border-radius:1px}
+[x-omni-vn] [data-vn-act="first"]::before{margin-right:1px}[x-omni-vn] [data-vn-act="last"]::after{margin-left:1px}
+[x-omni-vn] [data-vn-menu] [data-vn-act="first"]{margin-right:14px}[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{margin-left:14px}
 /* Tabs on the stage's edges: 메시지 on the left, 삽화 and 요소 on the right. */
 [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{position:absolute;top:38%;z-index:4;height:auto;min-width:0;padding:12px 7px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:11px;color:var(--gold);background:rgba(10,9,17,.72);border:1px solid var(--line)}
 [x-omni-vn] [data-vn-act="strip"]{right:0;border-radius:12px 0 0 12px;border-right:0}
@@ -146,7 +151,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 /* Fingers: bigger targets. */
 @media (hover:none),(pointer:coarse){[x-omni-vn] button{height:40px;min-width:40px;padding:0 12px;font-size:13px}[x-omni-vn] [data-vn-box]{padding-bottom:58px}
   [x-omni-vn] [data-vn-menu]{left:16px;right:16px;bottom:15px;gap:1px}[x-omni-vn] [data-vn-menu] button{height:40px;min-width:40px;padding:0 8px;font-size:12.5px}[x-omni-vn] [data-vn-act="bgm"]{width:68px}
-  [x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:46px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}[x-omni-vn] [data-vn-voicewait]{bottom:58px}
+  [x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:40px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}[x-omni-vn] [data-vn-voicewait]{bottom:58px}
   [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-act="eledit"]{right:42px;top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
@@ -160,8 +165,12 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 @keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 @keyframes vn-blink{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes vn-spin{to{rotate:360deg}}
-@media (max-width:420px){[x-omni-vn] [data-vn-menu]{left:14px;right:14px}[x-omni-vn] [data-vn-menu] button{padding:0 5px;min-width:34px}[x-omni-vn] [data-vn-act="bgm"]{width:auto}[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:36px}}
-@media (max-width:340px){[x-omni-vn] [data-vn-menu] button{font-size:11.5px;padding:0 4px}}
+/* A phone: nine buttons in one row, the words drawn in to make room (on 360 px there were 8 px to spare before |◀ ▶|). */
+@media (max-width:540px){[x-omni-vn] [data-vn-menu] button{padding:0 3px;min-width:30px;font-size:11.5px;letter-spacing:0}[x-omni-vn] [data-vn-act="bgm"]{width:auto}[x-omni-vn] [data-vn-act="bgm"]::after{margin-left:3px}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:30px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:28px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"]{margin-right:8px}[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{margin-left:8px}}
+@media (max-width:420px){[x-omni-vn] [data-vn-menu]{left:14px;right:14px}}
+@media (max-width:380px){[x-omni-vn] [data-vn-menu]{left:12px;right:12px;gap:0}[x-omni-vn] [data-vn-menu] button{padding:0 2px;min-width:26px;font-size:11px}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:26px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:24px}}
+/* Narrower still there is no room for them: ◀ ▶ alone, as before. */
+@media (max-width:340px){[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{display:none}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:32px}}
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);min-height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
@@ -174,7 +183,7 @@ export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn
 <button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
 <div data-vn-note></div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
-<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button></div>`;
+<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="first" type="button" aria-label="이 답장의 처음">◀</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button><button data-vn-act="last" type="button" aria-label="이 답장의 끝">▶</button></div>`;
 
 /** A person's place on stage: an oval with their name until their picture comes. */
 export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"><b>${esc(name)}</b></div>`;
