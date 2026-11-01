@@ -92,7 +92,13 @@ function onScriptOutput(content) {
   omniStreamScrollTrack();
   let run = omniKeywordRun;
   if(run && run.mode!==omniStreamMode(t.backendSettings?.card)) {omniCancelKeywordRun(run);run=null;}
-  if (!run) omniKeywordRun = run = omniNewKeywordRun();
+  if (!run) {
+    omniKeywordRun = run = omniNewKeywordRun();
+    // Streaming tags ask where the reply goes once, as it starts, while the bridge is quiet. Asked at its first
+    // closed block instead, behind 옴니 뷰어 following the stream, the answer came back once the stream was over
+    // ("not streaming"), and every block waited for the reply's end to start.
+    if (run.inlineMode && omniInlineAutogen(t.backendSettings?.card)) omniPrimeInlineTarget(run);
+  }
   run.text=String(content || '');run.activeAt=Date.now();
   if(run.cancelled || run.committing)return content;
   omniArmKeywordExpiry(run);
