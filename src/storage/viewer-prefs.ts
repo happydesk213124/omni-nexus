@@ -18,8 +18,10 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * stageReach: a person stays on stage this many lines after their latest line (0: to the
  * reply's end, as the stage once was).
  * revealBase64: risu64 난독's [base64] words read as words, by the viewer and by the voice in the chat too.
+ * cgSize: how big a folded picture stays at the top (1 the small thumb, 2 and 3 bigger), set by its + button.
  */
-export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean }
+export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize }
+export type CgSize = 1 | 2 | 3;
 export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
 const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
 /** The box's letters, against 'normal' (the size the viewer had before it was a choice). */
@@ -39,6 +41,7 @@ function normalize(raw: unknown): ViewerPrefs {
     breathe: r.breathe !== false, bounce: r.bounce !== false,
     stageReach: typeof r.stageReach === 'number' && STAGE_REACHES.includes(r.stageReach) ? r.stageReach : 3,
     revealBase64: r.revealBase64 === true,
+    cgSize: r.cgSize === 2 || r.cgSize === 3 ? r.cgSize : 1,
   };
 }
 let prefs = normalize(null);
