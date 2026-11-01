@@ -41,6 +41,12 @@ test('a person with no picture is an oval with their name; the face and how its 
 });
 
 test('letter speed: 즉시 writes the line as it is; slower ones wait longer per letter', () => {
+  // A line in a costume past the default: its name after the person's, the plate in the person's colour still.
+  const dressed = api.boxHtml({ speaker: '멜론', costume: 'melony_form', text: '변신!', narration: false });
+  assert.match(dressed.html, /<div data-vn-name style="--c:([^"]+)">멜론<span data-vn-costume> · melony_form<\/span><\/div>/);
+  assert.equal(/--c:([^";]+)/.exec(dressed.html)[1], /--c:([^";]+)/.exec(api.boxHtml({ speaker: '멜론', text: '변신!', narration: false }).html)[1]);
+  assert.doesNotMatch(api.boxHtml({ speaker: '멜론', costume: '', text: '응.', narration: false }).html, /data-vn-costume/, 'the default one: the name alone');
+  assert.doesNotMatch(api.boxHtml({ speaker: '', costume: 'melony_form', text: '바람이 불었다.', narration: true }).html, /melony_form/, 'narration has no plate');
   const instant = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 0 });
   assert.equal(instant.revealMs, 0);
   assert.doesNotMatch(instant.html, /<i>/);
