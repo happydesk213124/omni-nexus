@@ -49,7 +49,8 @@ ${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'))}
 ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'))}
 ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
 ${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 에셋'), '<span id="emo-costumes-status" role="status"></span>')}
-</fieldset></div>
+</fieldset>
+${row('고아 메모 정리', '<button type="button" id="emo-tidy">정리</button>', '<span id="emo-tidy-status" role="status"></span>')}</div>
 <div class="group"><h3>그리기 · 태그로만</h3><div class="fields">
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
 <label class="field"><span>Effort (V5)</span><select id="emo-effort"><option value="follow">삽화 설정 따름</option><option value="high">high</option><option value="medium">medium · 빠르고 덜 씀</option></select></label>
