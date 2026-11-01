@@ -59,7 +59,9 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-dock]{display:none;position:absolute;left:50%;bottom:12px;translate:-50% 0;width:min(440px,calc(100% - 24px));grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px;z-index:9;border-radius:14px;background:rgba(18,22,32,.9);border:1px solid rgba(255,255,255,.14)}
 [x-omni-vn] [data-vn-dock] button{width:100%;height:44px;padding:0;border:0;border-radius:10px;font-size:22px;background:rgba(255,255,255,.08)}
 [x-omni-vn] [data-vn-dock] [data-vn-act="cgback"]{font-size:14px}
-[x-omni-vn] [data-vn-box]{position:absolute;left:12px;right:12px;bottom:12px;height:clamp(136px,26%,200px);padding:22px 18px 46px;border-radius:16px;z-index:3;
+/* The box grows up with a long line (its text was cut off below, out of reach), on its own and to the height fit.ts
+   reckons for it (the scene's style text; its least and most here are fit.ts's too): past most of the stage the line scrolls. */
+[x-omni-vn] [data-vn-box]{position:absolute;left:12px;right:12px;bottom:12px;min-height:clamp(136px,26%,200px);max-height:58%;display:flex;flex-direction:column;padding:22px 18px 46px;border-radius:16px;z-index:3;
   background:linear-gradient(180deg,rgba(22,19,34,.88),rgba(10,9,17,.95));border:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);transition:opacity .25s}
 [x-omni-vn] [data-vn-box]::before{content:"";position:absolute;left:14px;right:14px;top:8px;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent)}
 /* "3 / 12" rides the box's top edge; the scene's style text writes it, costing no call of its own. */
@@ -67,7 +69,7 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-name]{position:absolute;left:16px;top:-15px;max-width:62%;padding:4px 16px 5px;border-radius:10px 10px 10px 2px;font:700 15px/1.3 ${SERIF};color:#fff;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   background:linear-gradient(135deg,var(--c,#7c5cf5),color-mix(in srgb,var(--c,#7c5cf5) 55%,#100c1c));box-shadow:0 4px 14px -4px var(--c,#7c5cf5)}
 [x-omni-vn] [data-vn-name]:empty{display:none}
-[x-omni-vn] [data-vn-text]{height:100%;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:none}
+[x-omni-vn] [data-vn-text]{flex:1 1 auto;min-height:0;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:thin;scrollbar-color:rgba(227,194,122,.3) transparent}
 [x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc;font-style:italic}
 /* The line and 기록's lines can be selected, to copy: a drag on the line selects (a phone: a long press); a tap still goes on. */
 [x-omni-vn] [data-vn-text],[x-omni-vn] [data-vn-log] p{user-select:text!important;-webkit-user-select:text!important;-webkit-touch-callout:default}
@@ -147,7 +149,11 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
   [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-act="eledit"]{right:42px;top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
-@keyframes vn-ch{to{visibility:visible}}
+/* Visible at both ends, not only at the end: a 1ms step past a second's delay is held at a rounding
+   short of its end (Chromium), the "from" value, and every letter after that stayed hidden for good:
+   a long line stopped mid-word (at 20ms a letter, after the 50th). Before its turn a letter has no
+   animation applied yet (fill forwards only), so it still waits hidden. */
+@keyframes vn-ch{from,to{visibility:visible}}
 @keyframes vn-fade{from{opacity:0}to{opacity:1}}
 @keyframes vn-next{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 3px}}
 @keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
@@ -155,7 +161,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 @keyframes vn-spin{to{rotate:360deg}}
 @media (max-width:420px){[x-omni-vn] [data-vn-menu]{left:14px;right:14px}[x-omni-vn] [data-vn-menu] button{padding:0 5px;min-width:34px}[x-omni-vn] [data-vn-act="bgm"]{width:auto}[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"]{min-width:36px}}
 @media (max-width:340px){[x-omni-vn] [data-vn-menu] button{font-size:11.5px;padding:0 4px}}
-@media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
+@media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);min-height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
@@ -211,6 +217,8 @@ export interface StageState {
   cgNote?: string;
   /** The line's voice is being made or fetched: its spinner turns. */
   voiceWait?: boolean;
+  /** The box's height for a long line (fit.ts), px; absent, the box's own. */
+  boxHeight?: number;
   /** 뷰어 설정: the people breathe; a spring when one comes in, changes face or steps forward. */
   motion?: { breathe: boolean; bounce: boolean };
   /** 글자 크기: the box's letters and name against their usual size (1 = as designed). */
@@ -282,6 +290,8 @@ export function stageCss(s: StageState): string {
     breathing(s),
     s.busy ? '[x-omni-vn] [data-vn-busy]{display:block}' : '',
     s.voiceWait ? '[x-omni-vn] [data-vn-voicewait]{display:block}' : '',
+    // A least height, not a height: a line that needs more than reckoned still grows the box itself.
+    s.boxHeight ? `[x-omni-vn] [data-vn-box]{min-height:${Math.round(s.boxHeight)}px}` : '',
     s.msgs && s.msgsLoading ? `[x-omni-vn] [data-vn-msg][data-more="${s.msgsLoading}"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:7px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}` : '',
     s.textScale && s.textScale !== 1 ? `[x-omni-vn] [data-vn-text]{font-size:${(16.5 * s.textScale).toFixed(1)}px}[x-omni-vn] [data-vn-name]{font-size:${(15 * s.textScale).toFixed(1)}px}` : '',
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',

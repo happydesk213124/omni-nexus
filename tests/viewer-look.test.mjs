@@ -59,10 +59,19 @@ test('letters are plain <i>: their delay is by place in the style sheet, never a
   assert.match(stage({ revealed: true }), /\[data-vn-text\] i\{animation:none!important;visibility:visible!important\}/);
   // Shown at its turn, at once: no letter is ever a fading layer of its own (that cost a phone every frame of a reveal).
   assert.match(api.STATIC_CSS, /\[data-vn-text\] i\{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps\(1,end\) forwards\}/);
-  assert.match(api.STATIC_CSS, /@keyframes vn-ch\{to\{visibility:visible\}\}/);
+  // Visible at both ends: a 1ms step past a second's delay held at a rounding short of its end showed its "from" (hidden)
+  // and the line stopped there for good (the browser check is in omni-viewer-reading: a long line to its last letter).
+  assert.match(api.STATIC_CSS, /@keyframes vn-ch\{from,to\{visibility:visible\}\}/);
   assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-text\] i\{[^}]*opacity/);
   const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 }), vs = Number(long.html.match(/--vs:(\d+)ms/)[1]);
   assert.equal(long.revealMs, 321 * vs, 'a long line is whole when its last delayed letter is: the cue does not wait for 1000 of them');
+});
+
+test('a long line: the box is given its reckoned height as a least one (a line needing more still grows it), a short one none', () => {
+  assert.match(stage({ boxHeight: 260.4 }), /\[x-omni-vn\] \[data-vn-box\]\{min-height:260px\}/);
+  assert.doesNotMatch(stage({}), /\[data-vn-box\]\{min-height/);
+  assert.match(api.STATIC_CSS, /\[data-vn-box\]\{[^}]*min-height:clamp\(136px,26%,200px\);max-height:58%;/, 'its own least and most, as fit.ts reckons them');
+  assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-box\]\{[^}]*;height:/, 'no fixed height: a long line ran on below the box, out of sight');
 });
 
 test('기록: the line the keys picked is outlined, none when no key has picked one', () => {

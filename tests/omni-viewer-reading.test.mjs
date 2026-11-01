@@ -358,3 +358,49 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line ope
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });
+
+test('옴니 뷰어 over a restricted SafeDOM: a long line comes out to its last letter (past a second in, its letters stayed hidden mid-word) and grows the box until all of it shows (it was cut off below, out of reach); the next short one takes it back, and the name rides on top', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const long = '야청이 오른손에 쥐고 있던 파란색 무늬의 수퍼볼을 입술 가까이 가져다 대며 윙크하더니, 유려한 투구 폼으로 코트 한가운데를 향해 힘차게 던져 올렸다.';
+    const v = await viewerOn(browser, [`하린: "${long} ${long}"`, `${long} ${long}`, '오미선: "와, 높다."']);
+    await v.page.evaluate(() => {
+      window.settingsUp = false; window.asked = [];
+      window.__OMNI_TTS_SETTINGS_OPEN__ = () => window.settingsUp;
+      window.__OMNI_OPEN_TTS__ = async () => { window.settingsUp = true; setTimeout(() => { const ask = window.takeSoundFocus(); window.asked.push(ask); ask?.shown?.(); }, 300); };
+    });
+    /** Once every letter is out: all of them inside the box's text, nothing left below it. */
+    const whole = () => v.page.waitForFunction(() => {
+      const text = document.querySelector('[x-omni-vn] [data-vn-text]'), letters = [...text.querySelectorAll('i')];
+      return letters.length > 0 && getComputedStyle(letters.at(-1)).visibility === 'visible';
+    }).then(() => v.page.evaluate(() => {
+      const text = document.querySelector('[x-omni-vn] [data-vn-text]'), area = text.getBoundingClientRect(), last = [...text.querySelectorAll('i')].at(-1).getBoundingClientRect();
+      return { fits: text.scrollHeight <= text.clientHeight + 1 && last.bottom <= area.bottom + 1, box: Math.round(document.querySelector('[x-omni-vn] [data-vn-box]').getBoundingClientRect().height) };
+    }));
+    await v.shows(/야청이/);
+    const spoken = await whole();
+    assert.equal(spoken.fits, true, 'the long line whole in its box');
+    // The name rose with the box's top: a tap on it, where it is now, opens that person's sheet.
+    await v.page.waitForTimeout(600);
+    const plate = await v.rect('[x-omni-vn] [data-vn-name]');
+    await v.page.mouse.click(plate.x + plate.width / 2, plate.y + plate.height / 2);
+    await v.page.waitForFunction(() => window.asked.length === 1);
+    assert.equal(await v.page.evaluate(() => window.asked[0].sheet.name), '하린');
+    await v.page.evaluate(() => window.asked[0].done());
+    await v.page.waitForFunction(() => window.viewerOpen() && /야청이/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await v.page.waitForTimeout(600);
+    await v.tapUntil(async () => !/하린/.test(await v.page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-name]')?.textContent || '')) && /야청이/.test(await v.text()));
+    assert.equal((await whole()).fits, true, 'the long narration whole too');
+    await v.page.waitForTimeout(600);
+    await v.tapUntil(async () => /높다/.test(await v.text()));
+    const short = await whole();
+    assert.ok(short.box < spoken.box, `a short line takes the box back: ${short.box} < ${spoken.box}`);
+    await v.page.waitForTimeout(600);
+    const back = await v.rect('[x-omni-vn] [data-vn-name]');
+    assert.ok(back.y > plate.y + 40, 'its name sits lower again');
+    await v.page.mouse.click(back.x + back.width / 2, back.y + back.height / 2);
+    await v.page.waitForFunction(() => window.asked.length === 2);
+    assert.equal(await v.page.evaluate(() => window.asked[1].sheet.name), '오미선', 'and is a tap away there');
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
