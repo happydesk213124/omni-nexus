@@ -70,6 +70,7 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-name]{position:absolute;left:16px;top:-15px;max-width:62%;padding:4px 16px 5px;border-radius:10px 10px 10px 2px;font:700 15px/1.3 ${SERIF};color:#fff;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   background:linear-gradient(135deg,var(--c,#7c5cf5),color-mix(in srgb,var(--c,#7c5cf5) 55%,#100c1c));box-shadow:0 4px 14px -4px var(--c,#7c5cf5)}
 [x-omni-vn] [data-vn-name]:empty{display:none}
+[x-omni-vn] [data-vn-costume]{font-size:.82em;font-weight:400;opacity:.85}
 [x-omni-vn] [data-vn-text]{flex:1 1 auto;min-height:0;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:thin;scrollbar-color:rgba(227,194,122,.3) transparent}
 [x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc;font-style:italic}
 /* The line and 기록's lines can be selected, to copy: a drag on the line selects (a phone: a long press); a tap still goes on. */
@@ -322,14 +323,15 @@ export function stageCss(s: StageState): string {
  * end of the story so far (`end`) the arrow is a blinking cue to write the next
  * message instead. Returns the reveal time.
  */
-export function boxHtml(input: { speaker: string; text: string; narration: boolean; end?: boolean; pace?: number }): { html: string; revealMs: number } {
+/** `costume`: the costume a line is in, by its name (none in the default one): after the name, the plate keeping the person's colour. */
+export function boxHtml(input: { speaker: string; text: string; narration: boolean; end?: boolean; pace?: number; costume?: string }): { html: string; revealMs: number } {
   const chars = [...input.text], pace = input.pace ?? 1;
   const step = Math.max(6, Math.min(20, Math.floor(1800 / Math.max(1, chars.length)))) * pace;
   const shown = input.narration || !input.speaker ? chars : ['“', ...chars, '”'];
   const letters = pace <= 0 ? esc(shown.join('')) : shown.map(ch => ch === '\n' ? '\n' : `<i>${esc(ch)}</i>`).join('');
   // Letters past LETTERS come with the last of them: the line is whole by then.
   const vs = Math.round(step), revealMs = Math.min(shown.length, LETTERS + 1) * vs;
-  const name = input.narration ? '' : esc(input.speaker);
+  const name = input.narration || !input.speaker ? '' : esc(input.speaker) + (input.costume ? `<span data-vn-costume> · ${esc(input.costume)}</span>` : '');
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {
     html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="--vs:${vs}ms">${letters}</div>${tail}<div data-vn-voicewait></div>`,

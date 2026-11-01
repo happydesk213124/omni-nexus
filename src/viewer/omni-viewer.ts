@@ -542,6 +542,11 @@ function voice(scene: ViewerScene): void {
 interface Member { key: string; name: string; person: TtsCharacter | null; face: string; costume: number; speaking: boolean; front: number }
 /** A line's costume, as the stage dresses it: 감정 에셋's 코스튬별 에셋 off, everyone is in the default one. */
 const costumeOf = (costume: number | undefined): number => costume && emotionData().settings.costumes ? costume : 0;
+/** The costume a line is in, by its name for the name plate (`멜론 · melony_form`): '' in the default one, as the stage. */
+function costumeName(scene: ViewerScene): string {
+  const costume = costumeOf(scene.costume);
+  return costume && context && bot ? costumesOf(context.rosterScope, bot.id)(scene.speaker)?.[costume] ?? '' : '';
+}
 /** The reply's lines as the stage reads them (who speaks, with what face), worked out once per reply and roster. */
 let staged: { scenes: ViewerScene[]; roster: readonly TtsCharacter[]; size: number; scope: string; lines: Array<StageLine | null>; who: Map<string, { name: string; person: TtsCharacter | null }> } | null = null;
 function stageLines(): NonNullable<typeof staged> {
@@ -1282,7 +1287,7 @@ async function render(force = false): Promise<void> {
       return;
     }
     shownSig = sig; shownEnd = end;
-    const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
+    const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', costume: scene.kind === 'line' ? costumeName(scene) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
     revealUntil = revealedAt === at ? 0 : Date.now() + revealMs;
     // The line and its stage go out first, together (the bridge keeps their order): all else follows them.
     const out = Promise.all([elementsAtEnd(end), box.setInnerHTML(html), writeStage(stage)]);
@@ -1497,7 +1502,7 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
 function nameUnder(p: HostPoint): string {
   const scene = scenes[at], now = boxNow();
   if (!now || scene?.kind !== 'line' || !scene.speaker || (cgView !== 'none' && cgView !== 'fold')) return '';
-  const scale = TEXT_SCALE[viewerPrefs().textSize] ?? 1, name = resolveName(scene.speaker);
+  const scale = TEXT_SCALE[viewerPrefs().textSize] ?? 1, dressed = costumeName(scene), name = dressed ? `${resolveName(scene.speaker)} · ${dressed}` : resolveName(scene.speaker);
   const width = Math.min(now.width * 0.62, 32 + [...name].reduce((w, ch) => w + (ch.codePointAt(0)! >= 0x1100 ? 15 : 8.5) * scale, 0));
   const left = now.left + 16, top = now.top - 15;
   return p.clientX >= left - 6 && p.clientX <= left + width + 6 && p.clientY >= top - 6 && p.clientY <= top + 29 * scale + 4 ? scene.speaker : '';
