@@ -10,6 +10,7 @@ import { bindCostumeEditor } from './costume-editor';
 import { loadCharacterPreviews } from './character-preview-loading';
 import { connectCharacterImages, paintReferenceProgress, syncCharacterTilePreviews } from './reference-progress';
 import { listCharacters, upsertCharacter, deleteCharacter } from '../services/characters';
+import { linkedTts, openLinkedTts, ttsReady } from './linked-tts';
 import { resetCharacterPreviewIndex, registerCharacterPreview, unregisterCharacterPreview, characterCardForTile } from './character-preview-index';
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const isField = (element: Element): element is Field => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
@@ -38,6 +39,14 @@ export function bindCharacterSheet(): void {
     moduleButton.onclick = () => { if (current) void pickCharacterAsset(current, 'module').catch(error => window.alert(String(error))); };
     assetButton.after(moduleButton);
     if (assetButton.parentElement) { assetButton.parentElement.style.flexWrap = 'wrap'; assetButton.parentElement.style.minWidth = '0'; }
+  }
+  // 연결된 TTS, by 삭제: the TTS character this card is, their sheet on the TTS 캐릭터 page (greyed when none).
+  const deleteButton = sheet.querySelector<HTMLElement>('[data-char-delete]');
+  if (deleteButton && !document.getElementById('nx-char-to-tts')) {
+    const ttsButton = document.createElement('button'); ttsButton.type = 'button';
+    ttsButton.id = 'nx-char-to-tts'; ttsButton.className = deleteButton.className; ttsButton.textContent = '연결된 TTS';
+    ttsButton.onclick = () => { void openLinkedTts(current).catch(error => window.alert(String((error as Error)?.message || error))); };
+    deleteButton.after(ttsButton);
   }
   for (const field of sheet.querySelectorAll<HTMLElement>('[data-char-priority]')) field.closest('label')?.setAttribute('hidden','');
   for (const field of sheet.querySelectorAll<HTMLElement>('[data-char-eye-color]')) {
@@ -76,7 +85,11 @@ export function bindCharacterSheet(): void {
     }
     const warning = document.getElementById('nx-char-edit-empty');
     if (warning) warning.hidden = !!current?.querySelector<HTMLTextAreaElement>('[data-char-appearance]')?.value.trim();
+    const tts = document.getElementById('nx-char-to-tts') as HTMLButtonElement | null, person = tts ? linkedTts(current) : null;
+    if (tts) { tts.disabled = !person; tts.title = person ? `${person.name} · TTS 캐릭터 시트 열기` : '이 캐릭터와 이어진 TTS 캐릭터가 없습니다'; }
   };
+  // The TTS data may not be read yet in a window opened before anything was voiced: once it is, the button knows.
+  void ttsReady().then(() => refresh()).catch(() => {});
   for (const { element, selector } of mirrors) {
     for (const type of isField(element) ? ['input', 'change'] : ['click', 'dblclick']) {
       element.addEventListener(type, event => {

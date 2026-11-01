@@ -313,7 +313,10 @@ export function repairOmniUi(source) {
     if (kind0 === "stop") {`);
   replace('      const cur = ba();', '      await flushSettingsSave(); await pe(Oe());\n      const cur = ba();');
   replace('      if (hidden) hidden.value = next;\n      await P();', '      if (hidden) hidden.value = next;\n      await pe({nai:{backend:next}});\n      await P();');
-  replace('  async function Ua(e) {', `  async function Ua(e) {
+  replace('  async function Ua(e) {', `  // Plugin pages (TTS 캐릭터's 연결된 삽화) open a roster character's sheet as the gallery's cast chips do: the
+  // list is loaded first when the 캐릭터 tab has none (no chat picked yet, or the global roster never shown).
+  globalThis.__OMNI_OPEN_CAST_EDITOR__ = e => Ua(e);
+  async function Ua(e) {
     await closeCardTagEdit();
     await openSettingsTab("characters");
     const opened = globalThis.__INLAY_SETTINGS_UX__?.openCharacterEditor?.(e || {});

@@ -231,6 +231,10 @@ function bindCharacterSheet(live: () => boolean): void {
   if (!form || !scroll || $('emo-char-section')) return;
   scroll.insertAdjacentHTML('afterbegin', EMOTION_SHEET_SWITCH);
   scroll.insertAdjacentHTML('beforeend', EMOTION_SHEET);
+  // The TTS sheet's 연결된 삽화, put in a row of its own before this one was here: by 감정 에셋 now.
+  const link = $('c-illustration-link'), linkRow = link?.closest('[data-sheet-links]');
+  if (link) form.querySelector('.emo-sheet-switch')?.append(link);
+  linkRow?.remove();
   // costume: the one the faces show and are made in (0 the default), picked on the bar over them.
   let person: TtsCharacter | null = null, bot: EmotionBot | null = null, epoch = 0, costume = 0;
   const view = (name: 'voice' | 'faces') => {
