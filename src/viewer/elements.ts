@@ -164,6 +164,16 @@ async function choiceTap(p: HostPoint): Promise<void> {
   await host?.restyle();
   await send.call(risuHost(), text);
 }
+/** A choice picked and not sent: armed. */
+export const choiceArmed = (): boolean => choicesOn && chosen >= 0;
+/** Let go: the light off, and what the reader types goes alone again. The list stays up. */
+export async function disarmChoice(): Promise<void> {
+  if (!choiceArmed()) return;
+  chosen = -1;
+  await arm(null);
+  await paintChoices();
+  await measureChoices();
+}
 let armed: ((typed: string) => string) | null = null;
 async function arm(choice: string | null): Promise<void> {
   const risu = risuHost();
