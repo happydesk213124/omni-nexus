@@ -659,12 +659,16 @@ function comicKindHowTo(ratioPct: unknown, comicAspect?: unknown, withMain = fal
         : aspectMode === 'square'
           ? 'Every comic shot MUST set `aspect` to exactly `square` (1024×1024). Illustration shots still pick aspect from the scene.'
           : '';
+  // 100% is every shot, as 0% is none: "at most" alone, beside the two-panel rule, left most shots illustrations.
+  const all = share >= 100;
   return [
     'KIND: every shot MUST set `kind` to `illustration` or `comic`.',
-    'Use `comic` only when the moment needs two or more sequential panels (dialogue + continuous action). A single still scene is `illustration`.',
+    all
+      ? 'Comic ratio is 100%. Every shot MUST be `comic`: even a single still moment is drawn as a comic page. Do not emit `kind: illustration`.'
+      : 'Use `comic` only when the moment needs two or more sequential panels (dialogue + continuous action). A single still scene is `illustration`.',
     share === 0
       ? 'Comic ratio is 0%. Every shot MUST be `illustration`. Do not emit `kind: comic`.'
-      : `About ${share}% of the shots in this message may be comic (at most that share). Extra comic-worthy beats become illustration.`,
+      : all ? '' : `About ${share}% of the shots in this message may be comic (at most that share). Extra comic-worthy beats become illustration.`,
     'For a comic shot: `line` is the start (image sits immediately above that line, same as illustration). Also set `comic_line_end` to the last prose line this page covers. The next illustration must pick a line after `comic_line_end`.',
     'Do not infer a comic range from neighboring shot `line` values.',
     'Ignore `<img>`, `┣ observation/insight/foreshadow ┫`, `<RP-Guide>`, `<AOS>`, HTML comments, and Upcoming lines — they are not scenes.',

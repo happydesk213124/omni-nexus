@@ -7,6 +7,14 @@ import { adoptVoiceTags } from '../domain/tts/library';
 import { callLlm } from '../providers/llm/client';
 import { ttsData, saveTtsData, ttsCandidateVoices } from '../storage/tts-store';
 import { ttsCharacterSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
+import { loadSoundData } from '../storage/sound-store';
+import { soundEmbedSettings } from '../providers/sound/embed';
+import type { EmbeddingSettings } from '../providers/embedding/client';
+
+/** The embedding connection voice picking by embedding uses: the one TTS·BGM·JEV 모델 설정 holds for BGM and places. */
+export async function voiceEmbedding(): Promise<EmbeddingSettings | null> {
+  return soundEmbedSettings((await loadSoundData()).settings, ttsData().settings);
+}
 
 export function blankTtsCharacter(scope: string, name = ''): TtsCharacter {
   return { id: uuid(), scope, name, surname: '', givenName: '', surnameAliases: [], givenAliases: [], triggers: name ? [name] : [], tags: [], gender: 'unknown', voiceKey: '', fishId: '', fixed: false, gain: 0 };
@@ -104,5 +112,5 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
     await applyTtsCharacterProposals(proposals.filter(p => !resolveTtsSpeaker(p.draft.name, ttsData().characters, context.rosterScope)));
   }
   const empty=[...new Map(names.flatMap(name=>{const c=resolveTtsSpeaker(name,ttsData().characters,context.rosterScope);return c&&!c.fixed&&!c.fishId&&!ttsData().voices.some(v=>v.key===c.voiceKey)?[[c.id,c] as const]:[];})).values()];
-  if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selected=await selectTtsVoices(empty,ttsCandidateVoices(),ttsData().settings,ttsData().settings.selector);if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];c.voiceKey=voice.key;c.fishId=voice.fishId;adoptVoiceTags(c,voice);}await saveTtsData();}
+  if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selector=ttsData().settings.selector;const selected=await selectTtsVoices(empty,ttsCandidateVoices(),ttsData().settings,selector,undefined,selector==='embedding'?await voiceEmbedding():null);if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];c.voiceKey=voice.key;c.fishId=voice.fishId;adoptVoiceTags(c,voice);}await saveTtsData();}
 }

@@ -77,7 +77,7 @@ export interface TtsSettings {
   autoAssign: boolean;
   /** Send the message being voiced along when a new speaker's voice is chosen. */
   assignWithChat: boolean;
-  selector: 'llm' | 'jev';
+  selector: 'llm' | 'jev' | 'embedding';
   clickPlay: boolean;
   hoverPlay: boolean;
   autoReply: boolean;
@@ -133,7 +133,11 @@ export interface TtsSettings {
     /** '' follows dialogue, 'original' keeps narration untranslated. */
     narrationLanguage: string;
     url: string;
+    /** The key of the service in use (Google's or DeepL's), '' for the others. */
     key: string;
+    /** Each service's own key: switching to another (or off) and back finds it again. */
+    googleKey?: string;
+    deeplKey?: string;
     llm: LlmSettings;
   };
   jev: { url: string; key: string; model: string; format: 'openrouter' | 'typesafe' };

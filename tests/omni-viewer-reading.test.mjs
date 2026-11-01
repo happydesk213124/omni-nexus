@@ -4,18 +4,19 @@ import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {saveViewerPrefs} from './src/storage/viewer-prefs';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,saveViewerPrefs});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {saveViewerPrefs} from './src/storage/viewer-prefs';import {idbPut} from './src/storage/stores';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,saveViewerPrefs,idbPut});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 
 /**
  * The viewer open on a chat of two replies, the newest one `lines` (a picture among them as
- * `[[@inray::card9::inxshot_pic::832::1216]]`, the chat showing it at portrait size).
+ * `[[@inray::card9::inxshot_pic::832::1216]]`, the chat showing it at portrait size). `files`: cards whose
+ * picture only their file holds (card id → asset path), as an older reply's that the chat does not draw.
  */
-async function viewerOn(browser, lines) {
+async function viewerOn(browser, lines, files = {}) {
   const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
   page.setDefaultTimeout(8000); page.on('pageerror', e => errors.push(e.message));
   await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="margin:0"></body></html>' })); await page.goto('https://vn.test/');
   await page.addScriptTag({ content: readFileSync('node_modules/dompurify/dist/purify.min.js', 'utf8') });
-  await page.evaluate(lines => {
+  await page.evaluate(({ lines, files }) => {
     // A picture as large as NovelAI's portrait (832×1216): the photo covers most of the stage.
     const canvas = document.createElement('canvas'); canvas.width = 832; canvas.height = 1216;
     const g = canvas.getContext('2d'); g.fillStyle = '#7aa'; g.fillRect(0, 0, 832, 1216);
@@ -47,14 +48,15 @@ async function viewerOn(browser, lines) {
       + `<div class="chat-message-container"><div class="risu-chat" data-chat-index="1"><div class="chattext">응</div></div></div>`
       + `<div class="chat-message-container"><div class="risu-chat" data-chat-index="0"><div class="chattext"><p>${older}</p></div></div></div></div></div>`;
     const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [], chats: [{ id: 'chat', message: [{ role: 'char', chatId: 'm0', data: older }, { role: 'user', chatId: 'u0', data: '응' }, { role: 'char', chatId: 'm1', data: newest }] }], chatPage: 0 };
-    const saved = new Map(), local = new Map(); window.buttons = {};
+    const saved = new Map(), local = new Map(); window.buttons = {}; window.cardFiles = files;
     window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
       getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
-      readImage: async () => null, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
-  }, lines);
+      readImage: async path => Object.values(files).includes(path) ? Uint8Array.from(atob(picture.split(',')[1]), c => c.charCodeAt(0)) : null, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; } };
+  }, { lines, files });
   await page.evaluate(() => { window.crypto.randomUUID = undefined; });
   await page.addScriptTag({ content: built.outputFiles[0].text });
   await page.evaluate(async () => {
+    for (const [id, path] of Object.entries(window.cardFiles || {})) await window.idbPut('images', { id, location: { asset_path: path } });
     await window.loadTtsData(); const d = window.ttsData(); d.settings.enabled = false;
     for (const [id, name] of [['t-harin', '하린'], ['t-misun', '오미선']]) d.characters.push({ id, scope: 'global', name, surname: '', givenName: name, surnameAliases: [], givenAliases: [], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 });
     await window.loadEmotionData(); window.emotionData().settings.enabled = false;
@@ -271,6 +273,22 @@ test('옴니 뷰어 over a restricted SafeDOM: a picture as it first comes up ha
     await v.press('cgclose');
     await v.shows(/그림 다음 줄/);
     await v.pictureIs('folded');
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: a picture the chat does not draw (an older reply) is read from its own file, once', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    // card7's picture is in no chat image (Risu draws only the newest messages): only its file has it.
+    const v = await viewerOn(browser, ['하린: "옛날 그림이야."', '[[@inray::card7::inxshot_old::832::1216]]', '하린: "그 다음 줄."'], { card7: 'assets/old.png' });
+    await v.shows(/옛날 그림/);
+    await v.tapUntil(async () => await v.picture() === 'big');
+    assert.match(await v.page.evaluate(() => document.querySelector('[x-omni-vn] img[x-vn-cg]').getAttribute('src')), /^data:image\//, 'the file, fitted and sent once');
+    await v.page.waitForTimeout(500);
+    await v.tapUntil(async () => /그 다음 줄/.test(await v.text()));
+    await v.pictureIs('folded');
+    assert.equal(await v.page.locator('[x-omni-vn] img[x-vn-cg]').count(), 1, 'read once: the same picture folds');
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });

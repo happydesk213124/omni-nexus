@@ -83,6 +83,16 @@
       font: 700 18px/1 var(--font);
     }
     .search-toggle { font-size: 16px; }
+    /* ⚡ 빠른 설정: its words where there is room, the glyph alone on a phone. */
+    .quick-setup-toggle {
+      min-height: 42px; padding: 0 12px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+      font: 700 14px/1 var(--font); white-space: nowrap;
+    }
+    @media (max-width: 768px) {
+      .quick-setup-toggle { width: 42px; padding: 0; font-size: 18px; }
+      .quick-setup-label { display: none; }
+    }
     .search-toggle[aria-expanded="true"] {
       background: var(--accent-soft);
       border-color: rgba(113, 50, 245, .45);
@@ -1105,6 +1115,7 @@
       </div>
       <div class="top-right">
         <span class="live" id="live">바로 저장됨</span>
+        <button class="icon-btn quick-setup-toggle" type="button" id="nx-quick-setup" aria-label="빠른 설정" title="빠른 설정 도우미">⚡<span class="quick-setup-label"> 빠른 설정</span></button>
         <button class="icon-btn search-toggle" type="button" id="nx-search-toggle" aria-expanded="false" aria-label="설정 검색" title="설정 검색">🔍</button>
         <button class="icon-btn help-toggle" type="button" id="nx-help-toggle" aria-pressed="false" aria-label="도움말">?</button>
         <button class="icon-btn" type="button" id="nx-export-all" title="인증정보를 제외한 설정 JSON 내보내기">EXPORT</button>

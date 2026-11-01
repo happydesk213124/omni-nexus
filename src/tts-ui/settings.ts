@@ -43,7 +43,7 @@ export function bindTtsSettings(): void {
   el('volume')?.addEventListener('input', () => text('volume-value', `${Math.round(Number(val('volume')))}%`));
   text('speed-value', `${s.rate.toFixed(2)}×`); text('volume-value', `${Math.round(s.volume * 100)}%`);
   set('speed-presets', s.rates.join(', ')); on('speed-presets', async () => { await updateTtsSettings({ rates: parseRates(val('speed-presets'), ttsData().settings.rates) }); speedOptions(); }, 'change');
-  set('voice-selector-engine', s.selector); on('voice-selector-engine', () => updateTtsSettings({ selector: val('voice-selector-engine') as 'llm' | 'jev' }), 'change');
+  set('voice-selector-engine', s.selector); on('voice-selector-engine', () => updateTtsSettings({ selector: val('voice-selector-engine') as TtsSettings['selector'] }), 'change');
   on('tts-power', async () => { await omniTts.power(input('tts-power').checked); if(input('tts-power').checked)promptAudioActivation(); }, 'change');
   on('audio-enable-settings', promptAudioActivation);
   on('clear-cache', async () => { if (confirm('TTS 음성·번역 캐시를 비울까요?')) await omniTts.clearCache(); });
@@ -62,13 +62,13 @@ export function bindTtsSettings(): void {
   const saveJev = () => updateTtsSettings({ jev: { url: val('jev-url'), model: val('jev-model'), key: val('jev-key'), format: val('jev-format') === 'systemone' ? 'typesafe' : 'openrouter' } });
   for (const id of ['jev-url', 'jev-model', 'jev-key', 'jev-format']) on(id, saveJev, 'change');
   set('translation', s.translation.provider); set('language', ['en', 'ja'].includes(s.translation.language) ? s.translation.language : 'custom'); set('custom-lang', s.translation.language);
-  set('tts-google-key', s.translation.provider === 'google' ? s.translation.key : ''); set('tts-deepl-key', s.translation.provider === 'deepl' ? s.translation.key : ''); set('tts-deepl-plan', s.translation.url.includes('api-free') ? 'API Free' : 'API Pro');
+  set('tts-google-key', s.translation.googleKey || ''); set('tts-deepl-key', s.translation.deeplKey || ''); set('tts-deepl-plan', s.translation.url.includes('api-free') ? 'API Free' : 'API Pro');
   set('translation-model', Object.entries(source).find(([,v]) => v === s.translation.llm.source)?.[0] || 'separate');
   set('tts-translation-url', s.translation.llm.endpoint); set('tts-translation-model', s.translation.llm.model); set('tts-translation-key', s.translation.llm.api_key);
   const translationUi = () => { el('custom-lang-wrap').hidden = val('language') !== 'custom'; };
   for (const id of ['translation', 'language', 'custom-lang', 'translation-model', 'tts-google-key', 'tts-deepl-key', 'tts-deepl-plan', 'tts-translation-url', 'tts-translation-model', 'tts-translation-key']) on(id, () => {
     translationUi(); const choice = val('translation-model'), provider = val('translation') === 'custom' ? 'llm' : val('translation');
-    return updateTtsSettings({ translation: { provider: provider as TtsSettings['translation']['provider'], language: val('language') === 'custom' ? val('custom-lang') : val('language'), narrationLanguage: ttsData().settings.translation.narrationLanguage, key: provider === 'google' ? val('tts-google-key') : val('tts-deepl-key'), url: provider === 'deepl' ? (val('tts-deepl-plan') === 'API Free' ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate') : '', llm: choice === 'shared' ? { ...ttsData().settings.llm } : llmFrom(choice, ttsData().settings.translation.llm, 'tts-translation') } });
+    return updateTtsSettings({ translation: { provider: provider as TtsSettings['translation']['provider'], language: val('language') === 'custom' ? val('custom-lang') : val('language'), narrationLanguage: ttsData().settings.translation.narrationLanguage, key: provider === 'google' ? val('tts-google-key') : provider === 'deepl' ? val('tts-deepl-key') : '', googleKey: val('tts-google-key'), deeplKey: val('tts-deepl-key'), url: provider === 'deepl' ? (val('tts-deepl-plan') === 'API Free' ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate') : '', llm: choice === 'shared' ? { ...ttsData().settings.llm } : llmFrom(choice, ttsData().settings.translation.llm, 'tts-translation') } });
   }, 'change');
   translationUi(); bindTextSetting('tts-exclude-text', 'excludeText'); bindTextSetting('tts-omit-characters', 'omitCharacters'); bindTextSetting('tts-default-tone', 'tone'); syncPower();
   const unsubscribe = omniTts.subscribe(syncPower);

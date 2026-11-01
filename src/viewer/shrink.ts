@@ -33,6 +33,8 @@ export async function screenImage(path: string, bytes: Uint8Array, box: { width:
   while (made.size > KEEP) made.delete(made.keys().next().value!);
   return url;
 }
+/** A picture read from its file (its reply too old for the chat to draw it): enough for full screen on a phone. */
+export const PICTURE_BOX = { width: 1080, height: 1600, quality: 0.86 };
 /** A standing figure fills at most the stage's height: this much is enough on a phone's dense screen. */
 export const SPRITE_BOX = { width: 700, height: 1000, quality: 0.86 };
 /** A background is blurred behind the cast: small and lighter still. */

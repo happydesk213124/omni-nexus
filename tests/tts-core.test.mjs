@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-const compiled=await build({stdin:{contents:"export * from './src/domain/tts/queue';export {hasTtsSpeech} from './src/domain/tts/filter';export * from './src/domain/tts/identity';export * from './src/domain/tts/library';export * from './src/domain/tts/segment';export * from './src/config/tts-defaults';export * from './src/providers/tts/player';export * from './src/tts-ui/host-utils';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
+const compiled=await build({stdin:{contents:"export * from './src/domain/tts/queue';export {hasTtsSpeech} from './src/domain/tts/filter';export * from './src/domain/tts/identity';export * from './src/domain/tts/library';export * from './src/domain/tts/segment';export * from './src/config/tts-defaults';export * from './src/providers/tts/player';export * from './src/tts-ui/host-utils';export {normalizeTtsSettings} from './src/storage/tts-store';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const deferred=()=>{let resolve,reject;const promise=new Promise((y,n)=>{resolve=y;reject=n;});return {promise,resolve,reject};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -185,4 +185,14 @@ test('코스튬에 따라 음성 변경: a line naming a costume speaks with its
   assert.equal(api.costumeVoiceOf(card, {}), '', 'the default costume: the card voice');
   assert.equal(api.costumeVoiceOf({ ...card, costumeVoice: false }, { costume: 2 }), '', 'switched off: the card voice');
   assert.equal(api.costumeVoiceOf(null, { costume: 2 }), '');
+});
+
+test("Google's and DeepL's translation keys are each kept: switched away and back, neither is lost", () => {
+  const old = api.normalizeTtsSettings({ translation: { provider: 'deepl', language: 'ja', narrationLanguage: '', url: '', key: 'deepl-key', llm: {} } });
+  assert.deepEqual([old.translation.deeplKey, old.translation.googleKey], ['deepl-key', ''], "an older save's one key goes to its own service");
+  const off = api.normalizeTtsSettings({ ...old, translation: { ...old.translation, provider: 'off', key: '' } });
+  assert.equal(off.translation.deeplKey, 'deepl-key', 'off: the DeepL key stays');
+  assert.equal(api.ttsDefaults().illustration, false, '옴니 삽화 텍스트 읽기: off unless switched on');
+  assert.equal(api.normalizeTtsSettings({ selector: 'embedding' }).selector, 'embedding');
+  assert.equal(api.normalizeTtsSettings({ selector: 'nonsense' }).selector, api.ttsDefaults().selector);
 });

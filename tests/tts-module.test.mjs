@@ -9,9 +9,10 @@ const compiled = await build({stdin:{contents:"export * from './src/domain/tts/m
 const api = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const external = JSON.parse(readFileSync('tests/fixtures/tts-external-display.json','utf8'));
 const status = JSON.parse(readFileSync('tests/fixtures/tts-dd-status.json','utf8')).data;
-const hidden = {...api.ttsDefaults(),hideName:true,hideTone:true};
+// 옴니 삽화 텍스트 읽기 is off unless switched on: these read the module with its illustration control on.
+const hidden = {...api.ttsDefaults(),hideName:true,hideTone:true,illustration:true};
 const module = api.ttsModule(hidden);
-const visible = {...api.ttsDefaults(),hideName:false,hideTone:false};
+const visible = {...api.ttsDefaults(),hideName:false,hideTone:false,illustration:true};
 const plain = api.ttsModule(visible);
 
 function renderer(codes) {

@@ -28,7 +28,8 @@ import { setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
-import { BACKGROUND_BOX, screenImage, SPRITE_BOX } from './shrink';
+import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
+import { imageAssetRef } from '../storage/stores';
 import { onSticker, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
@@ -661,6 +662,14 @@ async function restage(mine: number, round = 0): Promise<void> {
   if (mine !== epoch || !open) return;
   const more: Later = [], cast = castNow(at, more);
   lastCast = cast;
+  // A folded picture that was still being read when its line went up: here now, it folds in.
+  if (!lastCg && scenes[at]?.kind !== 'cg') {
+    let passedAt = -1;
+    for (let i = at - 1; i >= 0; i--) if (scenes[i]!.kind === 'cg') { passedAt = i; break; }
+    const id = passedAt >= 0 ? await cgFor(scenes[passedAt]!, false) : '';
+    if (mine !== epoch || !open) return;
+    if (id) { lastCg = id; lastCgAt = passedAt; cgThumb = null; if (cgView === 'none') cgView = 'fold'; setTimeout(() => void measureCgThumb().catch(() => {}), 450); }
+  }
   await restyle();
   if (more.length && round < 2) void Promise.allSettled(more.map(run => run())).then(() => restage(mine, round + 1));
 }
@@ -706,12 +715,16 @@ async function pendingFrame(): Promise<string> {
   watchPending();
   return PENDING;
 }
-/** The picture for a CG scene: baked, cloned from the chat; still being drawn, its picture once done (else the frame); a pink slot, its picture or none. */
-const cgFor = (scene: ViewerScene): Promise<string> => {
+/**
+ * The picture for a CG scene: baked, cloned from the chat (else read from its file); still being drawn, its
+ * picture once done (else the frame); a pink slot, its picture or none. `wait` false: a file being read is
+ * not waited on ('' meanwhile).
+ */
+const cgFor = (scene: ViewerScene, wait = true): Promise<string> => {
   const cg = scene.cg;
   if (cg?.kind === 'slot' || cg?.kind === 'spin') { const id = previewOf(cg); return id ? Promise.resolve(id) : pendingFrame(); }
   if (cg?.kind === 'wait') return Promise.resolve(previewOf(cg));
-  return cloneImage(scene, cgLayer, 'x-vn-cg');
+  return cloneImage(scene, cgLayer, 'x-vn-cg', wait);
 };
 /**
  * A streaming reply's pictures as they finish: the chat shows each in its slot (its
@@ -770,20 +783,49 @@ function watchPending(): void {
 }
 function stopPending(): void { clearInterval(pendingTimer); pendingTimer = undefined; slotsShown = -1; }
 /** A chat image, cloned into a layer (its pixels never cross the bridge). '' when the chat does not show it. */
-async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: 'x-vn-bg' | 'x-vn-cg'): Promise<string> {
+async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: 'x-vn-bg' | 'x-vn-cg', wait = true): Promise<string> {
   if (!scene.cg || !doc || !layer) return '';
   const selector = scene.cg.kind === 'baked' ? `[data-inray-asset="${scene.cg.asset}"] img` : '';
   if (!selector) return '';
   const id = key(selector);
   if (clones.has(`${attr}:${id}`)) return id;
   const img = await doc.querySelector(`${LIST} ${selector}`);
-  if (!img) return '';
+  if (!img) {
+    // Risu draws only the chat's newest messages: an older reply's picture is in no chat image to copy.
+    if (scene.cg.kind !== 'baked' || attr !== 'x-vn-cg') return '';
+    let job = fromFile.get(id);
+    if (!job) { job = pictureFromFile(scene.cg.card, id, layer).catch(error => { dbg('viewer.picture', { message: String(error) }, 'warn'); return ''; }); fromFile.set(id, job); }
+    return wait ? job : '';
+  }
   try {
     const copy = await img.cloneNode(true);
     await copy.setAttribute(attr, id);
     await layer.appendChild(copy); await release(copy);
   } finally { await release(img); }
   clones.add(`${attr}:${id}`);
+  return id;
+}
+
+/**
+ * A picture the chat does not draw, from its own file: read, fitted to the screen and sent once (the dearest
+ * way, so only where no chat image can be copied). '' when it has no file to read.
+ */
+const fromFile = new Map<string, Promise<string>>();
+async function pictureFromFile(card: string, id: string, layer: SafeElement): Promise<string> {
+  const run = opened, ref = await imageAssetRef(card).catch(() => null);
+  const raw = ref?.path ? await risuHost()?.readImage?.(ref.path).catch(() => null) : null;
+  const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
+  if (!ref || !bytes?.byteLength || !doc || run !== opened) return '';
+  const src = await screenImage(ref.path, bytes, PICTURE_BOX), holder = await doc.createElement('div');
+  try {
+    await holder.setInnerHTML(`<img alt="" src="${src}">`);
+    const img = await holder.querySelector('img');
+    if (!img || run !== opened) { await release(img); return ''; }
+    // The chat's copy is an img with the attribute: so is this one, for the stage's rules are written for that.
+    await img.setAttribute('x-vn-cg', id);
+    await layer.appendChild(img); await release(img);
+  } finally { await release(holder); }
+  clones.add(`x-vn-cg:${id}`);
   return id;
 }
 
@@ -870,7 +912,9 @@ async function pictureAgain(was: string, tries: number): Promise<void> {
     if (now && now !== was) break;
   }
   if (!open || !now || now === was || messageIndex !== reply) return;
-  for (let i = 0; i < 20 && open && doc; i++) {
+  const drawn = doc ? await doc.querySelector(`.risu-chat[data-chat-index="${reply}"]`) : null;
+  await release(drawn);
+  for (let i = 0; i < 20 && open && doc && drawn; i++) {
     const img = await doc.querySelector(`${LIST} [data-inray-asset="${now}"] img`);
     if (img) { await release(img); break; }
     await new Promise(resolve => setTimeout(resolve, 400));
@@ -1095,7 +1139,9 @@ async function render(force = false): Promise<void> {
     if (cgView === 'open') cgView = 'fold';
     let passedAt = -1;
     for (let i = at - 1; i >= 0; i--) if (scenes[i]!.kind === 'cg') { passedAt = i; break; }
-    const passedId = passedAt >= 0 ? await cgFor(scenes[passedAt]!) : '';
+    const passedId = passedAt >= 0 ? await cgFor(scenes[passedAt]!, false) : '';
+    // A picture read from its file comes after the line, never holding it up (restage folds it in).
+    if (passedAt >= 0 && !passedId) { const scene = scenes[passedAt]!; later.push(() => cgFor(scene)); }
     if (passedId !== lastCg) { lastCg = passedId; cgThumb = null; }
     lastCgAt = passedId ? passedAt : -1;
     if (!lastCg) cgView = 'none'; else if (cgView === 'none') cgView = 'fold';
@@ -1571,7 +1617,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
-    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
+    open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
     opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = ''; springs.clear();
     placing.clear(); bgSending.clear(); shownText.clear(); context = null; elementsDue = false; elementsReady = Promise.resolve(); busy = 0; busyShown = true;
     // Behind it the chat's TTS buttons and window go quiet until it closes.

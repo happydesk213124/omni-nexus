@@ -1236,3 +1236,17 @@ test("감정 에셋's 코스튬별 에셋: the streaming rules ask for a cue's c
   f.api.emotionData().settings.costumes = false;
   assert.equal(await asks(), false);
 });
+
+test('comic ratio 100%: the tagger is told every shot is a comic, as at 0% every shot is an illustration', async () => {
+  const f = await fixture(); const card = f.api.getConfig().card;
+  Object.assign(card, { stream_inline_tags: true, comic_gen: 'on', comic_gen_ratio: 100 });
+  const all = await f.api.inlineTagRules();
+  assert.match(all, /Comic ratio is 100%\. Every shot MUST be `comic`/);
+  assert.doesNotMatch(all, /Use `comic` only when the moment needs two or more sequential panels/, 'no two-panel rule to talk most shots back into illustrations');
+  card.comic_gen_ratio = 50;
+  const half = await f.api.inlineTagRules();
+  assert.match(half, /About 50% of the shots in this message may be comic/);
+  assert.match(half, /Use `comic` only when the moment needs two or more sequential panels/);
+  card.comic_gen_ratio = 0;
+  assert.match(await f.api.inlineTagRules(), /Comic ratio is 0%\. Every shot MUST be `illustration`/);
+});

@@ -317,6 +317,50 @@ try {
       assert.deepEqual(await page.evaluate(() => [[...document.querySelectorAll('#tts-settings-root [data-tts-tab]')].filter(b => !b.hidden).map(b => b.dataset.ttsTab), [...document.querySelectorAll('#tts-settings-root section.panel')].filter(p => !p.hidden).map(p => p.id), document.querySelector('#tts-settings-root #tts-power-controls')?.hidden]), [['tts-characters'], ['tts-characters'], false]);
     }
   }
+  // ⚡ 빠른 설정, left of 🔍: a sheet over the window, a few steps, applied into the settings it asked about.
+  await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
+  const headButtons = await page.evaluate(() => [...document.querySelectorAll('#nx-shell .head-actions > button')].map(b => b.id));
+  assert.equal(headButtons.indexOf('nx-quick-setup'), headButtons.indexOf('nx-search-toggle') - 1, '⚡ 빠른 설정 left of 🔍: ' + headButtons);
+  assert.equal(await page.locator('.nx-qs').count(), 0, 'an automated browser gets no first-run sheet');
+  // What the sheet writes is put back after: the checks below expect the settings as they were.
+  const beforeSheet = await page.evaluate(() => { const s = globalThis.uxTestRuntime.t.backendSettings; return JSON.parse(JSON.stringify({ card: s.card, llm: { source: s.llm?.source } })); });
+  const sheetStep = () => page.evaluate(() => document.querySelector('.nx-qs-steps')?.textContent || '');
+  const qsPress = async selector => { await page.locator(`.nx-qs ${selector}`).first().click(); };
+  await page.locator('#nx-quick-setup').click();
+  await page.waitForSelector('.nx-qs .nx-qs-cards');
+  assert.match(await sheetStep(), /^1 \/ \d · 무엇을 쓸까요/);
+  // It opens on the settings as they are (earlier checks switched comics on): pressed only where off.
+  for (const feature of ['image', 'comic']) if (await page.locator(`.nx-qs [data-qs-feature="${feature}"]`).getAttribute('aria-pressed') !== 'true') await qsPress(`[data-qs-feature="${feature}"]`);
+  assert.match(await sheetStep(), /^1 \/ 4/, 'pictures wanted: a 그림 step too');
+  await qsPress('[data-qs="next"]');
+  // 연결: the tagging choice says what it is like (the community modules), one OpenRouter key for the helper, JEV and embedding.
+  assert.match(await page.locator('.nx-qs-body').textContent(), /그림삽화·아르곤 삽화모듈 같은 방식/);
+  await qsPress('[data-qs-choice="helper"][data-value="custom"]');
+  assert.equal(await page.locator('.nx-qs [data-qs-key="routerKey"]').count(), 1);
+  await page.locator('.nx-qs [data-qs-key="routerKey"]').fill('or-probe');
+  await qsPress('[data-qs-choice="helper"][data-value="aux"]');
+  await qsPress('[data-qs="next"]');
+  // 그림: comics only, three to four a reply; 퀄리티 향상 shows what it costs.
+  assert.match(await page.locator('.nx-qs-body').textContent(), /약 [\d,]+ 토큰 더 씀/);
+  await qsPress('[data-qs-choice="comicShare"][data-value="100"]');
+  await qsPress('[data-qs-choice="images"][data-value="3"]');
+  await qsPress('[data-qs="next"]');
+  assert.match(await sheetStep(), /^4 \/ 4 · 확인/);
+  assert.match(await page.locator('.nx-qs-review').textContent(), /만화 100%/);
+  await qsPress('[data-qs="apply"]');
+  await page.waitForFunction(() => /완료/.test(document.querySelector('.nx-qs-steps')?.textContent || ''), null, { timeout: 8000 });
+  assert.deepEqual(await page.evaluate(() => { const c = globalThis.uxTestRuntime.t.backendSettings.card; return [c.comic_gen, c.comic_gen_ratio, c.image_min, c.image_max, c.stream_inline_tags]; }), ['on', 100, 3, 4, true]);
+  await qsPress('[data-qs="close"]');
+  assert.equal(await page.locator('.nx-qs').count(), 0);
+  // On a phone it is the whole screen.
+  await page.setViewportSize({ width: 375, height: 760 });
+  await page.locator('#nx-quick-setup').click();
+  await page.waitForSelector('.nx-qs .nx-qs-cards');
+  const sheetBox = await page.locator('.nx-qs-card').boundingBox();
+  assert.ok(sheetBox.x <= 0.5 && Math.abs(sheetBox.width - 375) <= 1 && Math.abs(sheetBox.height - 760) <= 1, 'full screen on a phone: ' + JSON.stringify(sheetBox));
+  await qsPress('[data-qs="close"]');
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate(async before => { await globalThis.__OMNI_SETTINGS_ACTIONS__.save(before); }, beforeSheet);
   await page.evaluate(async () => {
     await globalThis.__OMNI_SETTINGS_ACTIONS__.save({card:{presets:[{id:'rename-probe',name:'Before rename',positive:'probe',negative:''}],active_preset_id:'rename-probe'}});
     const {t,paint}=globalThis.uxTestRuntime;t.uiTab='style_presets';await paint();
