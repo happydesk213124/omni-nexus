@@ -2,17 +2,16 @@ import type { TtsSettings } from '../../core/tts-types';
 import { ttsExcludeTerms } from './filter';
 
 export const OMNI_TTS_MODULE = 'omni-tts';
-export const TTS_CUE_PROMPT = `@@depth 0
-<OmniTTS>
-For spoken dialogue, write one complete cue per line: Name (delivery): "Dialogue"
-A character's inner thoughts use the same cue with single quotes: Name (delivery): 'Thought'
-Use the established full speaker name consistently. Do not invent identity or gender.
-This also applies to the viewpoint character's own speech in a first-person story: even when the prose calls the speaker I, me, 나 or 저, label their spoken dialogue with their established actual name and delivery. Never omit the cue just because that character is narrating the scene.
-Example: I said hello -> Harin (happy): "Hello."; I thought it was late -> Harin (calm): 'It is late.' Only speech and inner thoughts receive that cue; first-person actions and descriptions remain plain prose. If the speaker's identity is not established, do not invent a name or label them I/나 as a character.
-Write delivery in short English Fish Audio cues, e.g. happy, sad, angry, calm, curious, soft tone, whispering. Use calm for neutral delivery.
-Keep both quotation marks on the same line. Narration remains plain prose without a speaker or delivery prefix.
-Never label code, hidden reasoning blocks, images or status panels as dialogue or thoughts. Preserve the story language.
-</OmniTTS>`;
+// Sent with every reply: each line keeps a rule a reply once broke, in as few words as it takes.
+const CUE_RULES = `Spoken dialogue: one cue per line, Name (delivery): "Dialogue". Inner thoughts: Name (delivery): 'Thought'.
+Use each speaker's established full name; never invent a name, identity or gender.
+In a first-person story the viewpoint character's own speech and thoughts still take the cue with their actual name and delivery, never I/나/저: I said hi -> Harin (happy): "Hi." First-person actions and descriptions remain plain prose.
+Delivery: short English Fish Audio cues (happy, sad, angry, calm, curious, soft tone, whispering); calm when neutral.
+Keep both quotation marks on the same line. Narration stays plain prose. Never cue code, hidden reasoning, images or status panels. Preserve the story language.`;
+// 첫 등장 이모지: the six age-gender emoji are named (they become the voice library's ages); the personality one is the model's own pick.
+const CUE_EMOJI = `A character's first cue in the story starts with two emoji: age-gender (👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to adult; 👵, 👴: middle-aged or older), then one for personality: 👩🥺 Harin (soft tone): "Hi." Later cues have none.`;
+export const ttsCuePrompt = (emoji = false): string => `@@depth 0\n<OmniTTS>\n${CUE_RULES}${emoji ? `\n${CUE_EMOJI}` : ''}\n</OmniTTS>`;
+export const TTS_CUE_PROMPT = ttsCuePrompt();
 
 // Every rule below runs after all other display rules (lowest order wins last).
 // Other modules therefore see the reply exactly as written: no token, no moved
@@ -98,7 +97,7 @@ export const TTS_MODULE_CSS = [
   '@media (prefers-reduced-motion:reduce){[data-omnitts-play][x-omnitts-state]{animation:none!important}[data-omnitts-play][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
 
-export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter'>>, sfxMarks: TtsSfxMarks = []) {
+export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter' | 'cueEmoji'>>, sfxMarks: TtsSfxMarks = []) {
   const excluded = exclusion(settings.excludeText || '');
   const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${effectOnly(sfxMarks)}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
   const imageCss = `[data-omnitts-image]{display:${settings.illustration ? 'flex' : 'none'};align-items:center;gap:6px;max-width:100%;overflow-x:auto}[data-omnitts-image] [data-omnitts-cast]{display:flex;gap:6px}[data-inlay-inline-shot]:has(>[data-omnitts-image]){display:flex!important;flex-direction:column}[data-omnitts-image]{order:10;justify-content:flex-start;margin-top:8px;min-height:40px}[data-omnitts-image] [data-omnitts-play]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 4px;margin-left:0;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e3fff0;cursor:pointer}[data-omnitts-image] [data-omnitts-play]:hover{background:#219c63;border-color:#9effcc}`;
@@ -113,7 +112,7 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
     id: OMNI_TTS_MODULE, namespace: OMNI_TTS_MODULE, name: '⚛️ omni tts',
     description: '이름·영문 억양 규칙과 채팅 재생 버튼. 음성 처리는 Omni Nexus 플러그인이 담당합니다.',
     hideIcon: false, lowLevelAccess: false, assets: [], backgroundEmbedding: `<style>${TTS_MODULE_CSS}${settings.controlGutter ? TTS_GUTTER_CSS : ''}${imageCss}</style>`,
-    lorebook: [{ key: '', secondkey: '', comment: 'omnitts-cues', content: TTS_CUE_PROMPT, mode: 'normal', insertorder: 999, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 }],
+    lorebook: [{ key: '', secondkey: '', comment: 'omnitts-cues', content: ttsCuePrompt(!!settings.cueEmoji), mode: 'normal', insertorder: 999, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 }],
     trigger: [],
     regex: [
       { comment: 'omnitts-image-controls', type: 'editdisplay', ableFlag: true, flag: 'g<order -10110>',

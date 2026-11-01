@@ -107,7 +107,7 @@ export class OmniTtsRuntime {
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
     const marks = this.sound?.marks?.() ?? [];
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, marks]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, marks]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s, marks); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
@@ -236,7 +236,9 @@ export class OmniTtsRuntime {
     const context = requests[0].context;
     this.stage = '화자 확인'; this.emit();
     const speaking = requests.filter(r => !r.fishId && r.segment.speaker);
-    await ensureTtsSpeakers(context, speaking.map(r => r.segment.speaker), valid, [...new Set(speaking.map(r => r.messageId))]);
+    // 첫 등장 이모지: the emoji a speaker's line opened with tell a new voice's gender and age.
+    const marks = new Map(speaking.flatMap(r => r.segment.marks ? [[r.segment.speaker, r.segment.marks] as const] : []));
+    await ensureTtsSpeakers(context, speaking.map(r => r.segment.speaker), valid, [...new Set(speaking.map(r => r.messageId))], marks);
     if (!valid()) return [];
     const settings = JSON.parse(JSON.stringify(ttsData().settings)) as TtsSettings;
     const prepared = requests.flatMap(request => {

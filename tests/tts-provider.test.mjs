@@ -127,6 +127,47 @@ test('LLM auto-fill assigns a supplied preset and known speakers require no repe
   }finally{delete globalThis.risuai;}
 });
 
+const herVoices=()=>[{key:'man',name:'man',fishId:voiceId,gender:'male',tags:['남성','청년','낮음'],folder:''},{key:'woman',name:'woman',fishId:'5f229cc0c94f512d9570ad1ab6c09368',gender:'female',tags:['여성','청년','소심한'],folder:''}];
+const emojiContext=()=>({scope:'emoji',rosterScope:'bot:emoji',characterId:'emoji',chatId:'emoji-chat',sessionId:'s',character:{},chat:{},messages:[]});
+
+test('첫 등장 이모지: a new speaker\'s emoji set her gender and age before JEV chooses, so no man\'s voice is offered',async()=>{
+  const saved=new Map();let sent;
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
+    nativeFetch:async(_url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({answers:{0:{choice:Object.keys(sent.questions[0].criteria)[0]}}})};}};
+  try{
+    const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'jev',cueEmoji:true});data.settings.jev.key='fake';data.voices=herVoices();data.characters=[];
+    const context=emojiContext();
+    await api.ensureTtsSpeakers(context,['하린'],()=>true,[],new Map([['하린','👩🥺']]));
+    assert.deepEqual(Object.values(sent.questions[0].criteria),['여성, 청년, 소심한'],'only her gender\'s voices');
+    assert.deepEqual(sent.questions[0].instructions.character,['하린','female',['청년','소심한','부드러운']]);
+    assert.equal(data.characters[0].gender,'female');assert.equal(data.characters[0].voiceKey,'woman');assert.deepEqual(data.characters[0].tags,['청년','소심한','부드러운']);
+    // Switched off, the emoji say nothing: she is unknown and every voice is offered, as before.
+    data.settings.cueEmoji=false;data.characters=[];
+    await api.ensureTtsSpeakers(context,['하린'],()=>true,[],new Map([['하린','👩🥺']]));
+    assert.equal(Object.keys(sent.questions[0].criteria).length,2);assert.equal(sent.questions[0].instructions.character[1],'unknown');
+    // A later line played first carries none: they are found in the chat's newest replies.
+    data.settings.cueEmoji=true;data.characters=[];
+    context.messages=[{role:'char',chatId:'m1',data:'👩🥺 하린 (soft tone): "안녕."'},{role:'user',chatId:'u1',data:'응'},{role:'char',chatId:'m2',data:'하린 (calm): "또 왔어?"'}];
+    await api.ensureTtsSpeakers(context,['하린'],()=>true,['m2']);
+    assert.deepEqual(Object.values(sent.questions[0].criteria),['여성, 청년, 소심한']);
+  }finally{delete globalThis.risuai;}
+});
+
+test('첫 등장 이모지: an LLM pick of the other gender is let go, and chosen again among hers alone',async()=>{
+  const saved=new Map(),asked=[];
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
+    runLLMModel:async options=>{const body=JSON.parse(options.messages.at(-1).content);asked.push(body);
+      return {success:true,content:body.requested_names?'[[-1,"하린","","하린",["Harin"],["차분함"],"male",1001]]':JSON.stringify({0:[body.characters[0][3][0]]})};}};
+  try{
+    const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'llm',cueEmoji:true});data.voices=herVoices();data.characters=[];
+    await api.ensureTtsSpeakers(emojiContext(),['하린'],()=>true,[],new Map([['하린','👩']]));
+    assert.equal(asked.length,2,'proposed, then chosen again');
+    assert.deepEqual(asked[1].characters[0][3],[1],'among her gender\'s voices alone');
+    const harin=data.characters[0];
+    assert.equal(harin.gender,'female');assert.equal(harin.voiceKey,'woman');assert.deepEqual(harin.tags,['청년','차분함']);
+  }finally{delete globalThis.risuai;}
+});
+
 test('speaker names are case-insensitive, and a deleted speaker is assigned again on the next play',async()=>{
   let calls=0;const saved=new Map();
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),runLLMModel:async()=>{calls++;return {success:true,content:'[[-1,"Jet","","Jet",["jet"],["calm"],"male",1001]]'};}};
