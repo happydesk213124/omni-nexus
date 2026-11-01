@@ -1,5 +1,5 @@
 import { SOUND_PANELS, SOUND_TABS } from './panels';
-import { SOUND_PAGE_TABS, markSoundNav, soundFocus, soundPage } from './page';
+import { SOUND_PAGE_OPENS, SOUND_PAGE_TABS, markSoundNav, soundFocus, soundPage } from './page';
 import { SOUND_LIST_CSS, SOUND_PAGE_CSS, voiceListCssFor } from './style';
 import layout from '../tts-ui/layout.json';
 import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
@@ -42,7 +42,7 @@ export function markSoundPage(root: HTMLElement, openPanel?: string): void {
   const page = soundPage(), allowed = SOUND_PAGE_TABS[page];
   root.dataset.soundPage = page;
   const focus = soundFocus()?.panel;
-  const open = openPanel && allowed.includes(openPanel) ? openPanel : focus && allowed.includes(focus) ? focus : allowed[0]!;
+  const open = openPanel && allowed.includes(openPanel) ? openPanel : focus && allowed.includes(focus) ? focus : SOUND_PAGE_OPENS[page] ?? allowed[0]!;
   for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) {
     const tab = b.dataset.ttsTab || '';
     b.hidden = !allowed.includes(tab);
@@ -72,9 +72,12 @@ export function soundAwareHtml(html: string): string {
 }
 export const soundStyleText = SOUND_STYLE;
 
-/** Switches an already mounted root to the current page, keeping its open panel when it belongs there. */
-export function applySoundPage(root: HTMLElement, tab: (name: string) => void): void {
-  const open = [...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id;
+/**
+ * Switches an already mounted root to the current page, keeping its open panel when it belongs there. Chosen
+ * from the menu, the page opens on its own tab instead: TTS 캐릭터 on 캐릭터 even after TTS 설정's 음성 목록.
+ */
+export function applySoundPage(root: HTMLElement, tab: (name: string) => void, chosen = false): void {
+  const open = chosen ? undefined : [...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id;
   markSoundPage(root, open);
   tab([...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)!.id);
   markSoundNav('curation');

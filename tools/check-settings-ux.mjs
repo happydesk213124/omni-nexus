@@ -259,9 +259,10 @@ try {
     if (tab === 'dashboard') {
       assert.equal(await page.locator('#nx-tts-exclusions,#nx-tts-exclude-text').count(),0,'TTS options are not on the illustration dashboard');
       assert.equal(await page.locator('#nx-tabs .nx-nav-label').allTextContents().then(t=>t.join('|')),'삽화 쓰기|삽화 연결|TTS · BGM · 감정 에셋|보기');
-      // Five entries share the curation slot; data-sound-page picks the page. TTS 캐릭터 comes right under BGM·효과음.
-      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','TTS 캐릭터','TTS·BGM·JEV 모델 설정','뷰어 및 감정 에셋']);
-      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').evaluateAll(n=>n.map(b=>b.dataset.soundPage)),['tts','sound','people','models','asset']);
+      // Five entries share the curation slot; data-sound-page picks the page. TTS 캐릭터 comes right under BGM·효과음,
+      // and the model settings last, under 뷰어 및 감정 에셋.
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').allTextContents(),['TTS 설정(beta)','BGM·효과음','TTS 캐릭터','뷰어 및 감정 에셋','TTS·BGM·JEV 모델 설정']);
+      assert.deepEqual(await page.locator('#nx-tabs [data-nx-tab="curation"]').evaluateAll(n=>n.map(b=>b.dataset.soundPage)),['tts','sound','people','asset','models']);
     }
     if (tab === 'models') {
       await page.locator('[data-backend="comfy"]').click();
@@ -311,10 +312,24 @@ try {
     await page.locator(`#nx-tabs [data-sound-page="${name}"]`).click();
     await page.waitForFunction(label => document.querySelector('#nx-tabs [data-nx-tab].active')?.textContent.trim() === label, label, { timeout: 3000 }).catch(() => {});
     assert.deepEqual(await marked(), [[label], label], `${name}: only the open sound page is marked`);
-    // TTS 캐릭터: TTS 설정's 캐릭터 tab alone, opened on it, with TTS's own switch above it.
+    const shown = () => page.evaluate(() => [[...document.querySelectorAll('#tts-settings-root [data-tts-tab]')].filter(b => !b.hidden).map(b => b.dataset.ttsTab), [...document.querySelectorAll('#tts-settings-root section.panel')].filter(p => !p.hidden).map(p => p.id), document.querySelector('#tts-settings-root #tts-power-controls')?.hidden]);
+    // TTS 설정 from the menu opens on its first tab; its 음성 목록 is left open for the next entry.
+    if (name === 'tts') {
+      await page.waitForFunction(() => document.querySelector('#tts-settings-root')?.dataset.soundPage === 'tts', null, { timeout: 3000 });
+      assert.deepEqual(await shown(), [['tts-settings', 'tts-characters', 'tts-voices'], ['tts-settings'], false]);
+      await page.locator('#tab-voices').click();
+      await page.waitForFunction(() => !document.getElementById('tts-voices')?.hidden, null, { timeout: 3000 });
+      // A tap inside the page (on the open panel; with TTS off its controls are disabled) is no choice from the menu:
+      // the tab stays where it was put.
+      await page.locator('#tts-voices').dispatchEvent('click');
+      await page.waitForTimeout(150);
+      assert.deepEqual((await shown())[1], ['tts-voices'], 'a tap inside the page leaves its open tab alone');
+    }
+    // TTS 캐릭터: TTS 설정's three tabs, opened on 캐릭터 even when TTS 설정 was left on 음성 목록, its switch above them.
     if (name === 'people') {
       await page.waitForFunction(() => document.querySelector('#tts-settings-root')?.dataset.soundPage === 'people', null, { timeout: 3000 });
-      assert.deepEqual(await page.evaluate(() => [[...document.querySelectorAll('#tts-settings-root [data-tts-tab]')].filter(b => !b.hidden).map(b => b.dataset.ttsTab), [...document.querySelectorAll('#tts-settings-root section.panel')].filter(p => !p.hidden).map(p => p.id), document.querySelector('#tts-settings-root #tts-power-controls')?.hidden]), [['tts-characters'], ['tts-characters'], false]);
+      await page.waitForFunction(() => !document.getElementById('tts-characters')?.hidden, null, { timeout: 3000 }).catch(() => {});
+      assert.deepEqual(await shown(), [['tts-settings', 'tts-characters', 'tts-voices'], ['tts-characters'], false]);
     }
   }
   // ⚡ 빠른 설정, left of 🔍: a sheet over the window, a few steps, applied into the settings it asked about.

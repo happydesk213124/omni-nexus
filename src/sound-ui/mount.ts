@@ -27,7 +27,7 @@ export function injectSoundPanels(root: HTMLElement): void {
 }
 
 export async function mountSound(root: HTMLElement, tab: (name: string) => void, live: () => boolean): Promise<void> {
-  const apply = () => { if (live()) applySoundPage(root, tab); };
+  const apply = (chosen = false) => { if (live()) applySoundPage(root, tab, chosen); };
   apply();
   setSoundApplier(apply);
   await omniSound.init(); if (!live()) return;
