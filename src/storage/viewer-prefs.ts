@@ -17,8 +17,9 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * sfx: its 효과음 button, the effects of the lines read played (off, passed over).
  * stageReach: a person stays on stage this many lines after their latest line (0: to the
  * reply's end, as the stage once was).
+ * revealBase64: risu64 난독's [base64] words read as words, by the viewer and by the voice in the chat too.
  */
-export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number }
+export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean }
 export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
 const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
 /** The box's letters, against 'normal' (the size the viewer had before it was a choice). */
@@ -37,6 +38,7 @@ function normalize(raw: unknown): ViewerPrefs {
     placeModule: r.placeModule === true, bgPick: BG_PICKS.includes(r.bgPick as ViewerBgPick) ? r.bgPick as ViewerBgPick : 'auto',
     breathe: r.breathe !== false, bounce: r.bounce !== false,
     stageReach: typeof r.stageReach === 'number' && STAGE_REACHES.includes(r.stageReach) ? r.stageReach : 3,
+    revealBase64: r.revealBase64 === true,
   };
 }
 let prefs = normalize(null);

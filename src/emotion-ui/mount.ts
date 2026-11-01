@@ -141,7 +141,7 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   const reach = root.querySelector<HTMLSelectElement>('#emo-reach');
   if (reach) reach.value = String(viewerPrefs().stageReach);
   reach?.addEventListener('change', event => { event.stopPropagation(); void saveViewerPrefs({ stageReach: Number(reach.value) }); });
-  for (const [id, key] of [['emo-breathe', 'breathe'], ['emo-bounce', 'bounce']] as const) {
+  for (const [id, key] of [['emo-breathe', 'breathe'], ['emo-bounce', 'bounce'], ['emo-base64', 'revealBase64']] as const) {
     const node = root.querySelector<HTMLInputElement>(`#${id}`);
     if (!node) continue;
     node.checked = viewerPrefs()[key];

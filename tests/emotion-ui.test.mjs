@@ -51,6 +51,10 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.waitForFunction(() => window.viewerPrefs().stageReach === 0);
     await page.locator('#emo-reach').selectOption('2');
     await page.waitForFunction(() => window.viewerPrefs().stageReach === 2);
+    // risu64 난독 풀어 읽기: off unless switched on.
+    assert.equal(await page.locator('#emo-base64').isChecked(), false);
+    await page.locator('#emo-base64').check();
+    await page.waitForFunction(() => window.viewerPrefs().revealBase64 === true);
     assert.equal(await page.locator('#emo-reach').evaluate(n => n.closest('.row')?.dataset.nxHelpId), 'emo-reach');
     // 배경: its switch greys out the rest; ⚛️ omni place goes into Risu's modules, on; a reply with no place is picked by JEV.
     await page.locator('#tab-emo-bg').click();
