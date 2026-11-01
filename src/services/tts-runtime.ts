@@ -107,7 +107,7 @@ export class OmniTtsRuntime {
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
     const marks = this.sound?.marks?.() ?? [];
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, marks]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, marks]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s, marks); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }

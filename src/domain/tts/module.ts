@@ -97,16 +97,18 @@ export const TTS_MODULE_CSS = [
   '@media (prefers-reduced-motion:reduce){[data-omnitts-play][x-omnitts-state]{animation:none!important}[data-omnitts-play][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
 
-export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter' | 'cueEmoji'>>, sfxMarks: TtsSfxMarks = []) {
+export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter' | 'cueEmoji' | 'hideEmoji'>>, sfxMarks: TtsSfxMarks = []) {
   const excluded = exclusion(settings.excludeText || '');
   const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${effectOnly(sfxMarks)}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
   const imageCss = `[data-omnitts-image]{display:${settings.illustration ? 'flex' : 'none'};align-items:center;gap:6px;max-width:100%;overflow-x:auto}[data-omnitts-image] [data-omnitts-cast]{display:flex;gap:6px}[data-inlay-inline-shot]:has(>[data-omnitts-image]){display:flex!important;flex-direction:column}[data-omnitts-image]{order:10;justify-content:flex-start;margin-top:8px;min-height:40px}[data-omnitts-image] [data-omnitts-play]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 4px;margin-left:0;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e3fff0;cursor:pointer}[data-omnitts-image] [data-omnitts-play]:hover{background:#219c63;border-color:#9effcc}`;
   const hide = (flags: string, order: number, tone: boolean, out: string) => ({
     comment: tone ? 'omnitts-hide-cue-tone' : 'omnitts-hide-cue-name', type: 'editdisplay', ableFlag: true, flag: `${flags}<order ${order}>`,
     in: `(^|\\n)${HEADER_PREFIX}${SPEAKER}${tone ? '[ \\t]*\\(([A-Za-z][A-Za-z ,\\-]{0,99})\\)' : ''}${BEFORE_ANCHORED_QUOTE}`, out });
+  // $3 is the emoji before the name, $4 the name, $5 the tone: each stays unless hidden.
+  const { hideName: name, hideTone: tone } = settings, emoji = settings.hideEmoji ? '' : '$3';
   const hideRules = [
-    ...(settings.hideName || settings.hideTone ? [hide('gu', TTS_DISPLAY_ORDER.hideTone, true, settings.hideName && settings.hideTone ? '$1$2' : settings.hideName ? '$1$2($5) ' : '$1$2$3$4: ')] : []),
-    ...(settings.hideName ? [hide('gu', TTS_DISPLAY_ORDER.hideName, false, '$1$2')] : []),
+    ...(name || tone || settings.hideEmoji ? [hide('gu', TTS_DISPLAY_ORDER.hideTone, true, `$1$2${emoji}${name ? '' : '$4'}${tone ? '' : name ? '($5)' : ' ($5)'}${name ? (tone ? '' : ' ') : ': '}`)] : []),
+    ...(name || settings.hideEmoji ? [hide('gu', TTS_DISPLAY_ORDER.hideName, false, `$1$2${emoji}${name ? '' : '$4: '}`)] : []),
   ];
   return {
     id: OMNI_TTS_MODULE, namespace: OMNI_TTS_MODULE, name: '⚛️ omni tts',
