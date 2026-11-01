@@ -1666,10 +1666,13 @@ async function runJob(jobId: string): Promise<void> {
             ...(c.raw.wear_state ? {wear_state:String(c.raw.wear_state)} : {})})),
           generatedAt:Date.now(),
           ...(durableSpinners || deferred?.lineAttachments ? { onPreview: async (url: string) => {
-            if (!isJobCurrent(jobId) || request.inline_wait_preview === false) return;
-            // 옴니 뷰어 shows the picture as the chat does, before the reply is baked.
+            if (!isJobCurrent(jobId)) return;
+            // 옴니 뷰어 shows the picture as the chat does, before the reply is baked. A batch's last picture too:
+            // it skips the chat's preview (its bake writes it next), which is the cost saved; the viewer is only
+            // handed the picture in hand, and without this it showed "그리는 중" until the reply was read again.
             const viewer = Reflect.get(globalThis, '__OMNI_VIEWER_PREVIEW__');
             if (typeof viewer === 'function') try { viewer({ messageIndex: request.message_index, url, jobId, shot: idx, ...previewSlot() }); } catch { /* the viewer's own */ }
+            if (request.inline_wait_preview === false) return;
             const preview = Reflect.get(globalThis, '__OMNI_SPINNER_PREVIEW__');
             if (typeof preview !== 'function') {
               dbg('job.preview.unavailable', { shot: idx }, 'warn');
