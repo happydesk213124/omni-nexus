@@ -24,6 +24,12 @@ test('BGM tags: thirty vocabulary words, synonyms fold in, the marker yields thr
   assert.equal(api.parseBgmMarker('그냥 본문'), null);
   assert.match(api.bgmPromptText(api.BGM_TAGS), /exactly three tags/);
   assert.doesNotMatch(api.bgmPromptText(api.BGM_TAGS), /https?:/, 'the prompt never carries the track list');
+  // Both go with every reply. Cut down from 853 and 475 characters, every rule kept: one added back should earn its words.
+  const bgm = api.bgmPromptText(api.BGM_TAGS);
+  for (const rule of [/on a line of its own/, /after any title, status panel or header/, /At most three per reply/, /While the mood holds write none/]) assert.match(bgm, rule);
+  assert.ok(bgm.length <= 730, `the BGM prompt grew to ${bgm.length} characters`);
+  for (const rule of [/on a line of its own, just before the line it belongs to/, /at most five per reply/, /Never inside a narration or dialogue line/]) assert.match(api.SFX_CUE_PROMPT, rule);
+  assert.ok(api.SFX_CUE_PROMPT.length <= 400, `the effect prompt grew to ${api.SFX_CUE_PROMPT.length} characters`);
 });
 
 test('BGM pick: shared tags decide, the current track stays unless another is strictly better', () => {
@@ -92,7 +98,7 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.match(bgm.backgroundEmbedding, /\[data-omni-bgm\]::before\{content:"♪"\}/);
   assert.match(bgm.lorebook[0].content, /\[\[bgm:mood,place,tempo\]\]/);
   assert.match(bgm.lorebook[0].content, /only where the music should change[\s\S]*turns sharply/, 'a cue only where the music changes, mid-reply too');
-  assert.match(bgm.lorebook[0].content, /directly before the first narration or dialogue line/, 'the cue sits before the line it scores, not at the very top');
+  assert.match(bgm.lorebook[0].content, /just before the first narration or dialogue line it scores[\s\S]*never at the top of a reply by habit/, 'the cue sits before the line it scores, not at the very top');
   assert.doesNotMatch(bgm.lorebook[0].content, /begin every reply/);
   assert.equal(api.soundModule('bgm', { ...settings, bgmPrompt: false }, []).lorebook.length, 0);
   const sfx = api.soundModule('sfx', settings, []);
@@ -111,7 +117,7 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.equal(api.soundModule('sfx', { ...settings, sfxRules: settings.sfxRules.map(r => ({ ...r, enabled: false })) }, []).lorebook.length, 0, 'no rule in use, no instruction');
   const own = api.soundModule('sfx', { ...settings, sfxRules: [{ id: 'mine', name: 'mine', open: '【', close: '】', enabled: true }] }, []);
   assert.match(own.lorebook[0]?.content || '', /\n【쾅】\n문이 닫혔다\./, 'the instruction uses the marks the chat will show, for any rule, on a line of their own');
-  assert.match(own.lorebook[0]?.content || '', /Never put the marks inside a narration or dialogue line/);
+  assert.match(own.lorebook[0]?.content || '', /Never inside a narration or dialogue line, quotes, names or code/);
   assert.equal(render(own.regex, '【쾅】').includes('data-omni-sfx'), true);
   assert.equal(render(sfx.regex, '<div title="§쾅§">x</div>'), '<div title="§쾅§">x</div>', 'a mark inside a tag attribute gets no button');
 });

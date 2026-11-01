@@ -54,11 +54,11 @@ export function bgmMarkers(text: string): { tags: string[]; index: number; lengt
 }
 
 /** Chat-model instruction; it names the vocabulary but never the track list. */
+// Sent with every reply: each rule in as few words as it takes (the tag list is most of it).
 export function bgmPromptText(tags: readonly string[]): string {
   return [
-    'Background music cue: write one line [[bgm:mood,place,tempo]] — exactly three tags, chosen only from this list — only where the music should change: when no cue has been written in this chat yet, or when the mood or place turns sharply (a sudden attack, a jump to another place or time).',
+    'Music cue [[bgm:mood,place,tempo]]: exactly three tags from this list, on a line of its own, only where the music should change (no cue yet in this chat, or the mood or place turns sharply: a sudden attack, a jump in place or time).',
     `Tags: ${tags.join(', ')}`,
-    'Put the cue on its own line directly before the first narration or dialogue line of the part it scores — after any title, status panel or header, never at the very top of the reply by habit.',
-    'While the scene goes on in the same mood write no cue; the current music keeps playing. At most three cues per reply. Never mention the cues in the story.',
+    'Put it just before the first narration or dialogue line it scores, after any title, status panel or header; never at the top of a reply by habit. While the mood holds write none (the music keeps playing). At most three per reply. Never mention cues.',
   ].join('\n');
 }

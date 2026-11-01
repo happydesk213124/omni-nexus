@@ -51,10 +51,10 @@ export const SFX_SECTION_RULE = 'section-sign';
 export function sfxCuePrompt(rule: Pick<SfxRule, 'open' | 'close'>): string {
   return `@@depth 0
 <OmniSFX>
-Sound effects: when a distinct sound happens in the scene (a door slams, thunder, footsteps, a gunshot), write a short sound word between ${rule.open} and ${rule.close} on a line of its own, just before the narration or dialogue line it belongs to, e.g.
+Sound effect: for a distinct sound (a door slams, thunder, footsteps, a gunshot), write a short sound word between ${rule.open} and ${rule.close} on a line of its own, just before the line it belongs to:
 ${rule.open}쾅${rule.close}
 문이 닫혔다.
-Never put the marks inside a narration or dialogue line, dialogue quotes, names or code. Keep each one short (one to four words, in the story language), at most five per reply. Never explain the marks.
+One to four words in the story language, at most five per reply. Never inside a narration or dialogue line, quotes, names or code. Never explain the marks.
 </OmniSFX>`;
 }
 export const SFX_CUE_PROMPT = sfxCuePrompt({ open: '§', close: '§' });
