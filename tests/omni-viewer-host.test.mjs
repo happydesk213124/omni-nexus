@@ -202,11 +202,12 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     // A streaming reply re-reads every tick: the line on screen keeps its letters (it once restarted them each time).
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    // A look a second while streaming (each goes over Risu's bridge): each waited out.
     await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(1300);
     await page.evaluate(() => { window.calls = {}; });
     await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(1300);
     assert.equal((await page.evaluate(() => window.calls.setInnerHTML)) || 0, 0, 'the same line is not written again');
     // The reply's cast block closes mid-stream: its place is the stage from then (its background was drawn before).
     await page.evaluate(() => { const d = window.emotionData(); d.settings.placeBackgrounds = true; d.made.push({ bot: 'bot', person: '__place__', face: 'cafe, window', name: 'bg_cafe.png', path: 'assets/bg.png', registered: false, at: 1 }); });
@@ -367,6 +368,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const rollLook = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).opacity);
     await page.evaluate(text => window.__OMNI_STREAM_TICK__(text), reply + '\n');
     await page.waitForFunction(() => /받는 중/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    // A reply that starts streaming is read from its first line (it opened on its third or so): on to its picture.
+    const onPicture = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).display !== 'none');
+    for (let i = 0; i < 8 && !await onPicture(); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(500); }
+    assert.equal(await onPicture(), true, 'on the picture, its bar up');
     assert.equal(await rollLook(), '0.35', 'streaming: 🎲 waits, dimmed');
     await press('cgroll'); await page.waitForTimeout(300);
     assert.deepEqual(await page.evaluate(() => window.shot), [], 'streaming: nothing redrawn');
@@ -401,6 +406,9 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => window.shot.length === 3);
     assert.deepEqual(await page.evaluate(() => window.shot[2]), ['base', 'card1_r1'], "the redrawn picture's own tags");
     await page.evaluate(() => { delete window.__OMNI_SHOT_ACTION__; });
+    // On to the reply's end, its last line past the picture (the reader is kept on the picture by place once its
+    // stream ended): choices come up there, and 편집 below takes every key.
+    for (let i = 0; i < 4 && !/늦었지/.test(await page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '')); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(500); }
     // 요소: nothing registered, nothing read (the reply's HTML is not even fetched).
     assert.equal(await page.evaluate(() => window.htmlReads || 0), 0, 'every reply loaded so far: a bot with nothing registered costs nothing');
     await press('elems');

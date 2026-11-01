@@ -356,10 +356,14 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
     if (kept.some(s => !isSoundSegment(s))) segments = kept;
   }
   cues = segments.filter(isSoundSegment);
+  // Kept by where it stands in the text, not by its number: the saved reply (or the chat's own drawing of it)
+  // may hold fewer scenes than the stream did, and the same number was then another line.
+  const keepAt = keepPlace ? scenes[at]?.start : undefined;
   scenes = buildScenes(settled, segments, emotionData().settings.words);
   clockMarks = clockLines(settled);
   // The stage keeps its background until the new reply's place is up (or the reply says none).
   if (!keepPlace) { at = 0; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
+  else if (keepAt !== undefined) { const i = scenes.findIndex(scene => scene.start >= keepAt); if (i >= 0) at = i; }
   placeMarks = placeMarkers(source);
   at = Math.max(0, Math.min(at, scenes.length - 1));
 }
@@ -1185,7 +1189,7 @@ let lastCast: CastEntry[] = [];
 /**
  * One scene. The stage (one style text) is always brought up to date — a face may
  * have arrived — but the box and the voice only change when the scene does: a
- * streaming reply re-reads every 0.4 s, and rewriting the box each time restarted
+ * streaming reply re-reads every second, and rewriting the box each time restarted
  * its letters over and over.
  *
  * A tap may come while a line is still being drawn (its people, its faces): it is
@@ -1667,10 +1671,12 @@ function onStreamTick(text: string): void {
   if (tickTimer) return;
   tickTimer = setTimeout(() => {
     tickTimer = undefined;
-    const waiting = at >= scenes.length - 1;
-    // A new reply: until its own clock line comes, the clock the last one left.
-    if (!streaming) { streaming = true; messageIndex = -1; carriedClock = clockBefore(context?.messages.length ?? 0); }
-    setSource(pendingText, true);
+    // A new reply is read from its first line: the place in the last one was carried over, and it opened on
+    // whatever line had ended by its first look (its third or so). Its stage stays until its own place is up.
+    const fresh = !streaming, waiting = !fresh && at >= scenes.length - 1;
+    // Until its own clock line comes, the clock the last one left.
+    if (fresh) { streaming = true; messageIndex = -1; carriedClock = clockBefore(context?.messages.length ?? 0); }
+    setSource(pendingText, !fresh);
     // The reply's cast block (or its first picture's block) has closed: its place is the stage now.
     const said = streamingPlace(pendingText);
     if (said && said !== livePlace) { livePlace = said; basePlace = said; }
@@ -1678,7 +1684,9 @@ function onStreamTick(text: string): void {
     void render();
     // No chunk for a while: the reply ended, if Risu has not said so already.
     setTimeout(() => { if (Date.now() - lastTick >= 4000) endStream(); }, 4200);
-  }, 400);
+    // A look a second: each one is the box, the stage and the chat read again over Risu's bridge, which the
+    // reply's own picture blocks need too (where the reply goes, asked as they close).
+  }, 1000);
 }
 /**
  * The reply ended (Risu says so once it is saved, else no chunk came for a while): the
@@ -1773,7 +1781,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
     clearInterval(positionTimer);
     // Never while the reader is tapping or a scene is going out: a tap's one call would queue behind these.
-    positionTimer = setInterval(() => { if (open && !away && !stepping && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
+    positionTimer = setInterval(() => { if (open && !away && !stepping && !streaming && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
     streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
     if (centered >= 0) await openAt(centered); else await resume();
     // The clock comes with the first line (see clockAt).

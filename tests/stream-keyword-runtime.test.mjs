@@ -156,6 +156,17 @@ test('line mode sends 1-10 and 11-20 during streaming, then commits both without
   assert.equal(f.galleries.length,2);assert.equal(f.t.pollTimer,null);
 });
 const shot=(n,extra='')=>`[[inx${n}]]{"place":"room, indoor","aspect":"portrait","characters":[{"name":"Harin","action":"waving"}]${extra}}[[/inx${n}]]`;
+test('streaming tags ask where the reply goes once, as it starts: a block closed later starts at once, whatever the host says by then',async()=>{
+  const f=fixture({stream_inline_tags:true});
+  f.onScriptOutput('First narrative line, long enough to depict.');await tick();await tick();
+  assert.equal(f.reads(),1,'asked with the first chunk, before any block');
+  // Later the host answers as if the reply were done (behind 옴니 뷰어's calls it answered after the stream):
+  // the address it gave at the start is the one used, so the block need not wait for the reply's end.
+  f.scope.chat.isStreaming=false;
+  f.onScriptOutput(['First narrative line, long enough to depict.',shot(1),'Second line.'].join('\n'));await f.fire();await tick();
+  assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,1,'the block started mid-stream');
+  assert.equal(f.reads(),1,'and nothing was asked again');
+});
 test('a reply Risu ends without completion (an error or Stop) is committed as it stands, so its images bake',async()=>{
   const f=fixture({stream_inline_tags:true});
   const reply=['First narrative line, long enough to depict.',shot(1),'Second line of the scene.',shot(2),'Third line, cut off by an err'];

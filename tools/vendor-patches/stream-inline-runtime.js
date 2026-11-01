@@ -21,6 +21,19 @@ async function omniSendInlineCast(run, body) {
     char_index:scope.charIndex,chat_index:scope.chatIndex,host_message_id:target.id,body:String(body||'').slice(0,12000)}});
   if(!result?.ok)throw Error(result?.error?.message || '새 캐릭터를 등록하지 못했습니다.');
 }
+/** The streaming reply's address, asked as it starts: the blocks it closes then start at once (see onScriptOutput). */
+function omniPrimeInlineTarget(run) {
+  if(run.target || run.identity)return;
+  const target=omniCaptureKeywordTarget().catch(error=>{y('warn','stream.inline.target',String(error));return null;});
+  run.target=target;
+  void target.then(value=>{
+    if(run.target!==target || run.cancelled || run.committing)return;
+    // Not marked streaming yet: the first closed block asks again.
+    if(!value){run.target=null;return;}
+    run.identity=value;run.targetResolved=true;
+    omniScanInlineRun(run);
+  });
+}
 function omniScanInlineRun(run, final=false) {
   const SK=globalThis.__INLAY_STREAM_KW__, card=t.backendSettings?.card;
   if(!run.castSent && card?.stream_inline_cast_first!==false) {
