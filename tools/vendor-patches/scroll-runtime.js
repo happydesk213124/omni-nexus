@@ -26,6 +26,18 @@ async function omniOpeningTag(node) {
 }
 const OMNI_SLOT_ID=/^[a-zA-Z0-9_-]{1,256}$/;
 const omniOnScreen=(r,sr)=>r.height>0&&r.bottom>sr.top&&r.top<sr.bottom;
+// 옴니 뷰어 over the chat: nobody reads the chat then, and behind the viewer only its newest messages are laid out,
+// so a place put back there only pushed the whole page (see omniScrollInto). The holds rest while it covers.
+const omniViewerCovers=()=>globalThis.__OMNI_VIEWER_COVERING__?.()===!0;
+// In a chat too short to scroll that far, a scroll into view moves the page itself, and Risu's page cannot be
+// scrolled back by hand. A page that sat still is put back at once, as the TTS reader does.
+async function omniScrollInto(node,options){
+  const doc=t.hostDoc || await ue(),before=typeof doc?.getBoundingClientRect==='function'?await doc.getBoundingClientRect().catch(()=>null):null;
+  await node.scrollIntoView(options);
+  if(!before||Math.abs(before.top)>1||Math.abs(before.left)>1)return;
+  const after=await doc.getBoundingClientRect().catch(()=>null);
+  if(after&&(Math.abs(after.top)>1||Math.abs(after.left)>1))await doc.scrollIntoView({block:'start',inline:'start'});
+}
 async function omniReadAnchor() {
   const doc=t.hostDoc || await ue();if(!doc)return null;
   const screen=await doc.querySelector('.default-chat-screen');if(!screen)return null;
@@ -222,12 +234,12 @@ async function omniHoldAnchor(anchor,work,options={}) {
           own=true;
           try {
             if(anchor.bottom) {
-              if(!userMoved)await found.node.scrollIntoView({behavior:'instant',block:'end',inline:'nearest'});
+              if(!userMoved)await omniScrollInto(found.node,{behavior:'instant',block:'end',inline:'nearest'});
             } else {
               const original=await found.node.getStyleAttribute();
               try {
                 await found.node.setStyle('scrollMarginTop',anchor.offset+'px');
-                if(!userMoved)await found.node.scrollIntoView({behavior:'instant',block:'start',inline:'nearest'});
+                if(!userMoved)await omniScrollInto(found.node,{behavior:'instant',block:'start',inline:'nearest'});
               } finally {await found.node.setStyleAttribute(original || '');}
             }
           } finally {own=false;ownAt=performance.now();}
@@ -249,7 +261,7 @@ async function omniHoldAnchor(anchor,work,options={}) {
   }
 }
 async function omniWithScrollWrite(work,options={}) {
-  if(!nxScrollHoldOn() || t.uiOpen)return work();
+  if(!nxScrollHoldOn() || t.uiOpen || omniViewerCovers())return work();
   return omniScrollQueue(async()=>{
     const anchor=await omniReadSlotAnchor(options.slot) || await omniReadAnchor();
     return anchor?omniHoldAnchor(anchor,work,options):work();
@@ -463,12 +475,12 @@ async function omniStreamPut(run,place,watchMs=0) {
     if(moves>=3)return '3번 옮겨도 '+Math.round(off)+'px 어긋남';
     omniScrollTrace(run,'  '+(moves+1)+'번째 옮김: '+Math.round(off)+'px 어긋남 · 답변 높이 '+Math.round(reply.rect.height)+'px'+basis+(run.swaps!==swaps?' · 그새 갈아끼움':''));
     const node=target.node;
-    if(place.bottom)await node.scrollIntoView({behavior:'instant',block:'end',inline:'nearest'});
+    if(place.bottom)await omniScrollInto(node,{behavior:'instant',block:'end',inline:'nearest'});
     else {
       const original=await node.getStyleAttribute();
       try {
         await node.setStyle('scrollMarginTop',want+'px');
-        await node.scrollIntoView({behavior:'instant',block:'start',inline:'nearest'});
+        await omniScrollInto(node,{behavior:'instant',block:'start',inline:'nearest'});
       } finally {await node.setStyleAttribute(original || '');}
     }
     moves++;
@@ -510,7 +522,7 @@ function omniStreamRedrawn(run) {
 }
 async function omniStreamAfterSwap(run) {
   if(run.closed)return;
-  if(!omniStreamScrollOn() || t.uiOpen){omniScrollTrace(run,'갈아끼움 → 건너뜀: 설정 꺼짐 또는 설정창 열림');return;}
+  if(!omniStreamScrollOn() || t.uiOpen || omniViewerCovers()){omniScrollTrace(run,'갈아끼움 → 건너뜀: 설정 꺼짐, 설정창 또는 옴니 뷰어 열림');return;}
   await run.marking;
   const hand=omniStreamHandBusy(run)?' · 손가락 움직이는 중':'';
   if(run.after) {
@@ -548,7 +560,7 @@ async function omniStreamScrollStop(run) {
 function omniStreamScrollTrack() {
   let run=omniStreamScroll;
   if(run && Date.now()-run.chunkAt>OMNI_STREAM_SCROLL_STALE_MS){omniScrollTrace(run,'15초 동안 조각 없음 → 이 추적 끝');void omniStreamScrollStop(run);run=null;}
-  if(!omniStreamScrollOn() || t.uiOpen)return run?.ready;
+  if(!omniStreamScrollOn() || t.uiOpen || omniViewerCovers())return run?.ready;
   if(!run) {
     // A new reply: the last one's watch after its end would restore into this one.
     if(omniStreamAfterRun)void omniStreamScrollStop(omniStreamAfterRun);
@@ -589,7 +601,7 @@ function omniStreamScrollEnd() {
       const head='끝 알림 (조각'+run.chunks+', 표시 '+run.marks.length+'개)';
       if(run.swapRestored){omniScrollTrace(run,head+' → 건너뜀: 갈아끼울 때 이미 복원함');return;}
       if(!mark){omniScrollTrace(run,head+' → 건너뜀: 표시 없음');return;}
-      if(!omniStreamScrollOn() || t.uiOpen){omniScrollTrace(run,head+' → 건너뜀: 설정 꺼짐 또는 설정창 열림');run.placed=null;return;}
+      if(!omniStreamScrollOn() || t.uiOpen || omniViewerCovers()){omniScrollTrace(run,head+' → 건너뜀: 설정 꺼짐, 설정창 또는 옴니 뷰어 열림');run.placed=null;return;}
       omniScrollTrace(run,head+' → 복원 시도: '+omniPlaceText(mark.place)+' (조각'+mark.chunk+')'+(omniStreamHandBusy(run)?' · 손가락 움직이는 중':''));
       const result=await omniStreamPut(run,mark.place,1500);
       omniScrollTrace(run,'끝 복원 결과: '+result);

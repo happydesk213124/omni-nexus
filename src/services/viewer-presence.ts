@@ -12,6 +12,8 @@ export const viewerCovering = (): boolean => covering;
 export function setViewerCovering(on: boolean): void {
   if (covering === on) return;
   covering = on;
+  // The vendor's scroll holds (tools/vendor-patches/scroll-runtime.js) cannot import this: they ask the global.
+  Reflect.set(globalThis, '__OMNI_VIEWER_COVERING__', viewerCovering);
   if (on) return;
   for (const fn of [...uncovered]) {
     try { fn(); } catch { /* one catching up never stops the others */ }

@@ -20,6 +20,7 @@ import { boxLeast, fitBoxHeight, type BoxGeometry } from '../domain/viewer/fit';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { makeSpeakerLooks } from '../services/speaker-looks';
+import { onMessageBaked } from '../services/bake-events';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs, type CgSize } from '../storage/viewer-prefs';
 import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeSoundFocus, type SoundFocus, type SoundPage } from '../sound-ui/page';
@@ -93,12 +94,32 @@ async function chatArea(screen: SafeElement): Promise<{ left: number; top: numbe
   for (const node of await unwrap(others)) { const r = await node.getBoundingClientRect(); below += r.height; await release(node); }
   return { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
 }
+/**
+ * Risu's page itself pushed up, the chat screen with it: a scroll into view in a chat too short to scroll that far
+ * (behind the viewer only its newest messages are laid out) moves the page instead, and Risu's page cannot be
+ * scrolled back by hand. It is put back where it always sits, as the TTS reader does, rather than followed with the
+ * frame. Not while something there takes typing: on a phone the keyboard moves the page on purpose.
+ */
+async function putPageBack(): Promise<boolean> {
+  if (!doc) return false;
+  try {
+    const page = await doc.getBoundingClientRect();
+    if (Math.abs(page.top) <= 1 && Math.abs(page.left) <= 1) return false;
+    const typing = await doc.querySelector(':is(textarea,input,[contenteditable="true"]):focus');
+    if (typing) { await release(typing); return false; }
+    await doc.scrollIntoView({ block: 'start', inline: 'start' });
+    return true;
+  } catch { return false; }
+}
 async function measure(): Promise<void> {
   if (!doc || !root) return;
   const screen = await doc.querySelector('.default-chat-screen');
   let next = rect;
   try {
     if (screen) next = await chatArea(screen);
+    // Read only when the chat screen went up since the last look (or above the window): a frame that stays put
+    // costs no extra call.
+    if (screen && (next.top < -1 || (rect.width > 0 && next.top < rect.top - 1)) && await putPageBack()) next = await chatArea(screen);
   } finally { await release(screen); }
   if (screen && next.width > 0) {
     if (JSON.stringify(next) !== JSON.stringify(rect)) await root.setStyleAttribute(`left:${next.left}px;top:${next.top}px;width:${next.width}px;height:${next.height}px`);
@@ -945,6 +966,19 @@ function watchPending(): void {
   })().catch(error => dbg('viewer.pending', { message: String(error) }, 'warn')), 2500);
 }
 function stopPending(): void { clearInterval(pendingTimer); pendingTimer = undefined; slotsShown = -1; }
+/**
+ * The reply on stage had its pictures baked into it (the stream's end reads it before that: its pictures were the
+ * stream's previews, and 🎲 리롤 / 🔮 샷 태그 waited for them to be saved). Read again once Risu has drawn it; a few
+ * bakes in a row are one read, after the last.
+ */
+let bakedTimer: ReturnType<typeof setTimeout> | undefined;
+function rereadBaked(): void {
+  clearTimeout(bakedTimer);
+  bakedTimer = setTimeout(() => {
+    if (!open || streaming || messageIndex < 0) return;
+    void load(messageIndex, true, 'fresh').then(() => render()).catch(error => dbg('viewer.baked', { message: String(error) }, 'warn'));
+  }, 600);
+}
 /** A chat image, cloned into a layer (its pixels never cross the bridge). '' when the chat does not show it. */
 async function cloneImage(scene: ViewerScene, layer: SafeElement | null, attr: 'x-vn-bg' | 'x-vn-cg', wait = true): Promise<string> {
   if (!scene.cg || !doc || !layer) return '';
@@ -1752,9 +1786,13 @@ function onStreamTick(text: string): void {
     tickTimer = undefined;
     // A new reply is read from its first line: the place in the last one was carried over, and it opened on
     // whatever line had ended by its first look (its third or so). Its stage stays until its own place is up.
-    const fresh = !streaming, waiting = !fresh && at >= scenes.length - 1;
+    // The same reply going on after the 4 s guess took its end early (the writer only paused) is no new reply: its
+    // place stays, and the place it was read to is where it goes on from.
+    const goesOn = !streaming && !!pausedHead && pendingText.startsWith(pausedHead);
+    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1;
     // Until its own clock line comes, the clock the last one left.
-    if (fresh) { streaming = true; messageIndex = -1; carriedClock = clockBefore(context?.messages.length ?? 0); }
+    if (!streaming) { streaming = true; messageIndex = -1; if (fresh) carriedClock = clockBefore(context?.messages.length ?? 0); }
+    pausedHead = ''; streamHead = pendingText.slice(0, 200);
     setSource(pendingText, !fresh);
     // The reply's cast block (or its first picture's block) has closed: its place is the stage now.
     const said = streamingPlace(pendingText);
@@ -1762,7 +1800,7 @@ function onStreamTick(text: string): void {
     if (waiting && at < scenes.length - 1) at++;
     void render();
     // No chunk for a while: the reply ended, if Risu has not said so already.
-    setTimeout(() => { if (Date.now() - lastTick >= 4000) endStream(); }, 4200);
+    setTimeout(() => { if (Date.now() - lastTick >= 4000) endStream(true); }, 4200);
     // A look a second: each one is the box, the stage and the chat read again over Risu's bridge, which the
     // reply's own picture blocks need too (where the reply goes, asked as they close).
   }, 1000);
@@ -1770,9 +1808,12 @@ function onStreamTick(text: string): void {
 /**
  * The reply ended (Risu says so once it is saved, else no chunk came for a while): the
  * saved one is read, its images baked by then or soon. A chunk still waiting to be drawn
- * is dropped: the saved reply holds it.
+ * is dropped: the saved reply holds it. `guessed`: only the silence said so, and the same
+ * reply may yet go on (see onStreamTick); Risu saying it is saved settles it.
  */
-function endStream(): void {
+let streamHead = '', pausedHead = '';
+function endStream(guessed = false): void {
+  pausedHead = guessed && streaming ? streamHead : '';
   if (!open || !streaming) return;
   clearTimeout(tickTimer); tickTimer = undefined;
   streaming = false;
@@ -1951,6 +1992,8 @@ export async function installOmniViewer(): Promise<void> {
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => open && inside({ clientX: x, clientY: y }, rect));
   // A reply saved: its faces made ahead, and a viewer showing it as it streamed reads the saved one at once.
   if (host.addRisuChatListener) await host.addRisuChatListener('output', () => { scheduleAhead(); endStream(); });
+  // The reply on stage baked: read again, once (see rereadBaked).
+  onMessageBaked(baked => { if (open && !streaming && baked.messageIndex === messageIndex) rereadBaked(); });
   // A sprite finished: the scene on screen may be waiting for it.
   // A picture finished (or a background drawn again): the scene may be waiting for it, and the stage looks again.
   // A picture made (or begun): the stage takes it up, faces and background. Only the stage: the whole scene
