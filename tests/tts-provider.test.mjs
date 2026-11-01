@@ -130,7 +130,7 @@ test('LLM auto-fill assigns a supplied preset and known speakers require no repe
 const herVoices=()=>[{key:'man',name:'man',fishId:voiceId,gender:'male',tags:['남성','청년','낮음'],folder:''},{key:'woman',name:'woman',fishId:'5f229cc0c94f512d9570ad1ab6c09368',gender:'female',tags:['여성','청년','소심한'],folder:''}];
 const emojiContext=()=>({scope:'emoji',rosterScope:'bot:emoji',characterId:'emoji',chatId:'emoji-chat',sessionId:'s',character:{},chat:{},messages:[]});
 
-test('첫 등장 이모지: a new speaker\'s emoji set her gender and age before JEV chooses, so no man\'s voice is offered',async()=>{
+test('첫 대사 이모지: a new speaker\'s emoji set her gender and age before JEV chooses, so no man\'s voice is offered',async()=>{
   const saved=new Map();let sent;
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
     nativeFetch:async(_url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({answers:{0:{choice:Object.keys(sent.questions[0].criteria)[0]}}})};}};
@@ -153,7 +153,7 @@ test('첫 등장 이모지: a new speaker\'s emoji set her gender and age before
   }finally{delete globalThis.risuai;}
 });
 
-test('첫 등장 이모지: an LLM pick of the other gender is let go, and chosen again among hers alone',async()=>{
+test('첫 대사 이모지: an LLM pick of the other gender is let go, and chosen again among hers alone',async()=>{
   const saved=new Map(),asked=[];
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
     runLLMModel:async options=>{const body=JSON.parse(options.messages.at(-1).content);asked.push(body);

@@ -1,7 +1,7 @@
 import type { TtsCharacter } from '../../core/tts-types';
 
 /**
- * 첫 등장 이모지: with the TTS switch on, a character's first cue carries two emoji before
+ * 첫 대사 이모지: with the TTS switch on, each character's first cue in a reply carries two emoji before
  * the name, `👩🥺 하린 (soft tone): "…"`: age and gender, then personality. They are read
  * here into what a new character's voice is chosen by: the gender outright, the age and
  * personality as mood tags in the words the sample voices are tagged with (청년, 소심한…).
