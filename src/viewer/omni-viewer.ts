@@ -12,6 +12,7 @@ import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { buildScenes, clockLines, lastClock, replyGist, replyImages, storyClock, type ClockMark, type ViewerScene } from '../domain/viewer/scenes';
 import { stageAt, type StageLine } from '../domain/viewer/cast';
+import { boxLeast, fitBoxHeight, type BoxGeometry } from '../domain/viewer/fit';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
@@ -1078,7 +1079,7 @@ const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState =
   cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
-  busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting,
+  busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
 
 /**
@@ -1186,6 +1187,7 @@ async function render(force = false): Promise<void> {
   clearTimeout(autoTimer);
   if (!scene) {
     // The stage as it was, its spinner gone.
+    boxFit = 0;
     await Promise.all([box.setInnerHTML(boxHtml({ speaker: '', text: streaming ? '…' : '이 답장에는 읽을 문장이 없습니다.', narration: true }).html), writeStage(state(lastCast)), showClock(clockAt(undefined))]);
     return;
   }
@@ -1208,7 +1210,7 @@ async function render(force = false): Promise<void> {
     // Shown once; past it, it waits folded at the top, a tap away.
     lastCg = cg; lastCgAt = at; cgView = 'open'; revealedAt = -1;
     const end = atEnd(), endCue = end && !(shownSig === '' && shownEnd);
-    if (endCue) { shownSig = ''; shownEnd = true; }
+    if (endCue) { shownSig = ''; shownEnd = true; boxFit = 0; }
     if (end) { elementsAfter(); await elementsReady; }
     // The reply ends on this picture: the cue to write the next message comes with it. Its calls go out together.
     await Promise.all([elementsAtEnd(end), writeStage(state(lastCast, { cg, cgView })), endCue ? box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html) : null]);
@@ -1242,6 +1244,8 @@ async function render(force = false): Promise<void> {
     // Only the end cue is new (the reply finished streaming): the letters already shown stay shown.
     if (!same) revealedAt = askReveal === draw || (sig === shownSig && !force) ? at : -1;
     if (end) { elementsAfter(); await elementsReady; }
+    // A long line's box grows with it in the same style text (look.ts): never a call of its own.
+    if (!same) boxFit = fitBox(scene);
     const stage = state(cast, { narration: scene.kind === 'narration' });
     // The folded picture's rect, also when the same line comes back (from its picture, a key back and on).
     if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
@@ -1267,6 +1271,31 @@ async function render(force = false): Promise<void> {
     behind(mine, later);
     sendAhead(mine);
   } finally { if (drawId === draw) drawing = -1; }
+}
+/**
+ * The box's height for the line in it (fit.ts), written with the stage: 0 while the line fits the box
+ * as it is. Its top, where the name sits, is known from it, never read back.
+ */
+let boxFit = 0;
+function boxGeometry(): BoxGeometry | null {
+  if (!boxRect || !rect.height) return null;
+  // The box spans the frame less 12px a side, or (a wide screen) sits centered and narrower.
+  const wide = boxRect.width < rect.width - 30, size = 16.5 * (TEXT_SCALE[viewerPrefs().textSize] ?? 1);
+  // A finger's screen gives the box's bottom more room (the buttons under the line); the plugin's frame is on the same device.
+  const touch = typeof matchMedia === 'function' && matchMedia('(hover:none),(pointer:coarse)').matches;
+  return { frameHeight: rect.height, boxWidth: boxRect.width, across: 18 * 2 + 2, down: 22 + (touch ? 58 : 46) + 2, size, lineHeight: size * 1.78, least: boxLeast(rect.height, wide) };
+}
+function fitBox(scene: ViewerScene | undefined): number {
+  const g = boxGeometry();
+  if (!g || !scene || scene.kind === 'cg') return 0;
+  const height = fitBoxHeight(scene.kind === 'line' ? `“${scene.text}”` : scene.text, g);
+  return height > g.least + 1 ? height : 0;
+}
+/** The box as it stands now: its measured sides, its top from its height. */
+function boxNow(): { left: number; top: number; width: number; height: number } | null {
+  if (!boxRect) return null;
+  const height = boxFit || (boxGeometry()?.least ?? boxRect.height);
+  return { left: boxRect.left, width: boxRect.width, height, top: rect.top + rect.height - 12 - height };
 }
 /** A tap while the letters still come in shows them all; the next tap moves on. */
 async function reveal(): Promise<void> {
@@ -1435,14 +1464,14 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
 /**
  * The speaker whose name a tap is on, over the line in the box. The name's plate sits at the
  * box's corner (look.ts: 16px in, 15px above, its text 15px a letter, a wide one about half),
- * so it is laid out here rather than measured: a line is never held up by a call for it.
+ * so it is laid out here from the box as it stands (boxNow) rather than measured: a tap costs no call.
  */
 function nameUnder(p: HostPoint): string {
-  const scene = scenes[at];
-  if (!boxRect || scene?.kind !== 'line' || !scene.speaker || (cgView !== 'none' && cgView !== 'fold')) return '';
+  const scene = scenes[at], now = boxNow();
+  if (!now || scene?.kind !== 'line' || !scene.speaker || (cgView !== 'none' && cgView !== 'fold')) return '';
   const scale = TEXT_SCALE[viewerPrefs().textSize] ?? 1, name = resolveName(scene.speaker);
-  const width = Math.min(boxRect.width * 0.62, 32 + [...name].reduce((w, ch) => w + (ch.codePointAt(0)! >= 0x1100 ? 15 : 8.5) * scale, 0));
-  const left = boxRect.left + 16, top = boxRect.top - 15;
+  const width = Math.min(now.width * 0.62, 32 + [...name].reduce((w, ch) => w + (ch.codePointAt(0)! >= 0x1100 ? 15 : 8.5) * scale, 0));
+  const left = now.left + 16, top = now.top - 15;
   return p.clientX >= left - 6 && p.clientX <= left + width + 6 && p.clientY >= top - 6 && p.clientY <= top + 29 * scale + 4 ? scene.speaker : '';
 }
 /** A picture shown big, left without a step: full screen opened on its own scene goes back there, else it folds. */
@@ -1597,7 +1626,8 @@ function onDown(p: HostPoint): void {
   pressFrom = { x: p.clientX, y: p.clientY };
   if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
   // (A picture up front hides the box, or leaves only the end cue there: no line to select, the swipe is the stage's.)
-  if (!boxRect || !inside(p, boxRect) || cgView === 'open') swipeFrom = { x: p.clientX, y: p.clientY };
+  const lineBox = boxNow();
+  if (!lineBox || !inside(p, lineBox) || cgView === 'open') swipeFrom = { x: p.clientX, y: p.clientY };
   if (liveHit(p) || onSticker(p) || cgView === 'show' || cgView === 'full' || (cgView === 'fold' && cgThumb && inside(p, cgThumb))) return;
   const now = Date.now();
   pressAt = now;
@@ -1718,7 +1748,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
     opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = ''; springs.clear();
     placing.clear(); bgSending.clear(); shownText.clear(); context = null; elementsDue = false; elementsReady = Promise.resolve(); busy = 0; busyShown = true;
-    clockMarks = []; carriedClock = ''; clockShown = ''; clockWanted = ''; clockCache.clear();
+    clockMarks = []; carriedClock = ''; clockShown = ''; clockWanted = ''; clockCache.clear(); boxFit = 0;
     // Behind it the chat's TTS buttons and window go quiet until it closes.
     setViewerCovering(true);
     voiceWaiting = false; unsubscribeVoice?.(); unsubscribeVoice = omniTts.subscribe(onVoiceChange);
