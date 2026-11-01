@@ -2016,6 +2016,20 @@ export async function runScenario(N, handles) {
     return { type: doc.type, parts: ['settings', 'prompts', 'tts', 'sound'].every(k => doc[k] && typeof doc[k] === 'object'),
       keyKept: /(?:sk|pst)-parity/.test(JSON.stringify(doc.settings || {})), restored: restored?.ok === true, same: strip(doc) === strip(again) };
   });
+  // 2.0 only: 키 제외. The same parts with no key in them; restoring it keeps the keys this device has.
+  await rec('backup.keyless_roundtrip', async () => {
+    const before = await get('/v1/backup/full-export');
+    const keyless = await get('/v1/backup/full-export?keys=0');
+    const doc = JSON.parse(keyless?.json || '{}');
+    const restored = await post('/v1/backup/full-import', { json: keyless?.json || '' });
+    const after = await get('/v1/backup/full-export');
+    // Key order is no state: a key put back from this device comes last in its group when the defaults lack it
+    // (`nai.api_keys_v5`). Every value must be as it was.
+    const canon = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => x < y ? -1 : x > y ? 1 : 0)) : v);
+    const strip = text => canon({ ...JSON.parse(text || '{}'), exported_at: '' });
+    return { type: doc.type, keys: doc.keys, parts: ['settings', 'prompts', 'tts', 'sound'].every(k => doc[k] && typeof doc[k] === 'object'),
+      noKey: !/(?:sk|pst)-parity/.test(keyless?.json || ''), restored: restored?.ok === true, keysKept: strip(before?.json) === strip(after?.json) };
+  });
   // 2.0 only: main author's note presets. Examples are listed but never stored; a saved row round-trips.
   await rec('prompts.author_note_presets', async () => {
     const before = await get('/v1/author-note-presets');

@@ -57,16 +57,16 @@ export function sanitizeForExport(value: unknown, credentials?: unknown): unknow
   return visit(value);
 }
 
-/** Sharing a file must not replace the recipient's connection credentials. */
-export function retainLocalCredentials(next: unknown, previous: unknown): void {
+/** Sharing a file must not replace the recipient's connection credentials. `secret`: which fields hold them. */
+export function retainLocalCredentials(next: unknown, previous: unknown, secret: (name: string) => boolean = isCredentialField): void {
   if (!next || typeof next !== 'object' || Array.isArray(next)) return;
   if (!previous || typeof previous !== 'object' || Array.isArray(previous)) return;
   const target = next as Record<string, unknown>;
   const source = previous as Record<string, unknown>;
   for (const key of new Set([...Object.keys(target), ...Object.keys(source)])) {
-    if (isCredentialField(key)) {
+    if (secret(key)) {
       if (Object.hasOwn(source, key)) target[key] = JSON.parse(JSON.stringify(source[key] ?? null));
       else delete target[key];
-    } else retainLocalCredentials(target[key], source[key]);
+    } else retainLocalCredentials(target[key], source[key], secret);
   }
 }
