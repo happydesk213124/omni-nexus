@@ -272,8 +272,14 @@ async function stagePlace(): Promise<void> {
   const wanted = place, id = bgs.get(made.path) ?? await sendBackground(made, bot);
   // The reading moved to another place meanwhile: that one is its turn.
   if (!id || place !== wanted) return;
-  bg = id; bgFor = wanted;
+  bgFor = wanted;
+  // The same picture again: nothing to change (asked again, as after every picture made, it stays as it is).
+  if (id === bg) return;
+  // Another: it fades in over the one it replaces, which goes once it has (look.ts).
+  if (bg) { bgPrev = bg; clearTimeout(bgPrevTimer); bgPrevTimer = setTimeout(() => { bgPrev = ''; if (open) void restyle().catch(() => {}); }, 900); }
+  bg = id;
 }
+let bgPrev = '', bgPrevTimer: ReturnType<typeof setTimeout> | undefined;
 /** A background's picture into its layer, once (asked again while on its way, the same trip). '' when unreadable. */
 const bgSending = new Map<string, Promise<string>>();
 function sendBackground(made: EmotionSprite, who: EmotionBot): Promise<string> {
@@ -746,6 +752,12 @@ function springOf(key: string, face: string, speaking: boolean): 'a' | 'b' {
  * stays as it is. What that brought to light (a face, once the bot's pictures were read)
  * comes the same way, a round or two at most.
  */
+/** The stage again (faces, background), the box and the scene left as they are. */
+async function refreshStage(): Promise<void> {
+  const mine = epoch;
+  if (place) await stagePlace();
+  await restage(mine);
+}
 async function restage(mine: number, round = 0): Promise<void> {
   if (mine !== epoch || !open) return;
   const more: Later = [], cast = castNow(at, more);
@@ -1076,7 +1088,7 @@ async function comeBack(): Promise<void> {
 }
 
 const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState => ({
-  cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
+  cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
@@ -1748,7 +1760,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
     opened++; sending.clear(); shownFace.clear(); previews.clear(); previewMsg = -2; askedAhead = new Set(); askedFor = ''; springs.clear();
     placing.clear(); bgSending.clear(); shownText.clear(); context = null; elementsDue = false; elementsReady = Promise.resolve(); busy = 0; busyShown = true;
-    clockMarks = []; carriedClock = ''; clockShown = ''; clockWanted = ''; clockCache.clear(); boxFit = 0;
+    clockMarks = []; carriedClock = ''; clockShown = ''; clockWanted = ''; clockCache.clear(); boxFit = 0; bgPrev = ''; clearTimeout(bgPrevTimer);
     // Behind it the chat's TTS buttons and window go quiet until it closes.
     setViewerCovering(true);
     voiceWaiting = false; unsubscribeVoice?.(); unsubscribeVoice = omniTts.subscribe(onVoiceChange);
@@ -1853,5 +1865,7 @@ export async function installOmniViewer(): Promise<void> {
   if (host.addRisuChatListener) await host.addRisuChatListener('output', () => { scheduleAhead(); endStream(); });
   // A sprite finished: the scene on screen may be waiting for it.
   // A picture finished (or a background drawn again): the scene may be waiting for it, and the stage looks again.
-  subscribeSprites(() => { if (open) { bgFor = ''; void render(); } });
+  // A picture made (or begun): the stage takes it up, faces and background. Only the stage: the whole scene
+  // drawn again with it showed the picture up front anew, a blink at the reply's end where they are asked.
+  subscribeSprites(() => { if (open) { bgFor = ''; void refreshStage().catch(error => dbg('viewer.sprites', { message: String(error) }, 'warn')); } });
 }

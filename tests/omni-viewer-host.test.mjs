@@ -52,6 +52,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
       window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
         sendChat: async text => { window.sent = text; },
+        addRisuScriptHandler: async (mode, fn) => { window.scriptHandlers = window.scriptHandlers || {}; (window.scriptHandlers[mode] = window.scriptHandlers[mode] || []).push(fn); },
+        removeRisuScriptHandler: async (mode, fn) => { window.scriptHandlers[mode] = (window.scriptHandlers?.[mode] || []).filter(f => f !== fn); },
         showContainer: async () => { window.containerShown = (window.containerShown || 0) + 1; throw new Error('no container in the test'); }, hideContainer: async () => {},
         readImage: async () => { if (window.imageDelay) await new Promise(r => setTimeout(r, window.imageDelay)); return bytes; }, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; },
         addRisuChatListener: async (mode, fn) => { if (mode === 'output') window.output = fn; } };
@@ -448,10 +450,15 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.mouse.click(option.x + option.width / 2, option.y + option.height / 2);
     await page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-ch]')?.hasAttribute('data-sel'));
     assert.equal(await page.evaluate(() => window.sent), undefined, 'one tap sends nothing');
+    // Armed: a message typed in Risu's box would go with it (Risu's input handler, there only while one is armed).
+    await page.waitForFunction(() => window.scriptHandlers?.input?.length === 1);
+    await page.evaluate(() => { window.armedWith = window.scriptHandlers.input[0]; });
     await page.waitForTimeout(200);
     const picked = await page.locator('[x-omni-vn] [data-vn-ch]').first().boundingBox();
     await page.mouse.click(picked.x + picked.width / 2, picked.y + picked.height / 2);
     await page.waitForFunction(() => window.sent === '1. 창가에 앉는다');
+    assert.equal(await page.evaluate(() => window.scriptHandlers.input.length), 0, 'sent on its own: disarmed first, never sent twice');
+    assert.equal(await page.evaluate(() => window.armedWith('먼저 둘러본다')), '1. 창가에 앉는다\n먼저 둘러본다', 'a typed message: the choice first, then it');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-choices]')).display === 'none');
     // Voices ahead (TTS on): the lines after the one on screen are made while it is read, the picture skipped.
     await page.evaluate(() => { window.prefetched = []; window.omniTts.prefetch = async list => { window.prefetched.push(list.map(q => q.segment.text)); }; window.played = []; window.omniTts.play = async (list, i) => { window.played.push(list[i].segment.text); }; window.ttsData().settings.enabled = true; });
