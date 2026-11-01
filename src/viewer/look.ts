@@ -267,6 +267,18 @@ function breathing(s: StageState): string {
 }
 // Phones are narrow: people overlap, the speaker in front, as a portrait VN stages them.
 const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] };
+type Box = { left: number; top: number; width: number; height: number };
+/**
+ * Where the oval of the person at `index` of `count` on stage is, worked out from the numbers STATIC_CSS lays it
+ * out by ([x-vn-p]: 90% high, 13:19, at most 82% wide, centred on its spot; [data-vn-sil]: 16% in from each side,
+ * 30% down, 1:1.15), so a tap on it is read with no call. Change those rules and this goes with them.
+ */
+export function ovalBox(stage: Box, index: number, count: number): Box {
+  const spot = SPOTS[Math.min(3, count)]?.[index] ?? 50;
+  const height = stage.height * 0.9, width = Math.min(height * 13 / 19, stage.width * 0.82);
+  const left = stage.left + stage.width * spot / 100 - width / 2, top = stage.top + stage.height - height;
+  return { left: left + width * 0.16, top: top + height * 0.3, width: width * 0.68, height: width * 0.68 * 1.15 };
+}
 /** The one style text a scene sets: who stands where, who is lit, which picture, which background. */
 export function stageCss(s: StageState): string {
   const spots = SPOTS[Math.min(3, s.cast.length)] ?? [];

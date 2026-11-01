@@ -19,6 +19,7 @@ import { stageAt, type StageLine } from '../domain/viewer/cast';
 import { boxLeast, fitBoxHeight, type BoxGeometry } from '../domain/viewer/fit';
 import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
+import { makeSpeakerLooks } from '../services/speaker-looks';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
 import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeSoundFocus, type SoundFocus, type SoundPage } from '../sound-ui/page';
@@ -31,7 +32,7 @@ import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
 import { setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
-import { boxHtml, FRAME, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
+import { boxHtml, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
@@ -644,8 +645,50 @@ function resolveName(speaker: string): string {
 
 /** Under the name in a person's oval: the face, then whether its picture is being drawn, or why it could not be. */
 function ovalLabel(m: Member): string {
+  const making = m.person ? looksMaking.get(m.person.id) : undefined;
+  if (making) return `(${m.face})\n${making.state === 'running' ? '외형 만드는 중…' : `외형 못 만듦 · 눌러서 다시\n${making.message.slice(0, 22)}`}`;
   const status = m.person && bot && emotionData().settings.enabled ? spriteStatus(bot.id, m.person.id, m.face, m.costume) : { state: '', message: '' };
-  return `(${m.face})${status.state === 'running' ? '\n그리는 중…' : status.state === 'failed' ? `\n못 그림 · ${status.message.slice(0, 22)}` : ''}`;
+  return `(${m.face})${status.state === 'running' ? '\n그리는 중…' : status.state === 'failed' ? offersLooks(m) ? '\n외형 없음 · 눌러서 만들기' : `\n못 그림 · ${status.message.slice(0, 22)}` : ''}`;
+}
+/**
+ * 외형 없음 · 눌러서 만들기: whose looks are being made from the oval (by the character LLM), or why that failed (the
+ * oval says so until a tap tries again). A person made is dropped from it.
+ */
+const looksMaking = new Map<string, { state: 'running' | 'failed'; message: string }>();
+/** A default-costume face that could not be drawn for want of looks (or making them failed): its oval makes them. */
+function offersLooks(m: Member): boolean {
+  if (!m.person || !bot || m.costume || !emotionData().settings.enabled) return false;
+  const making = looksMaking.get(m.person.id);
+  return making ? making.state === 'failed' : !!spriteStatus(bot.id, m.person.id, m.face, m.costume).noLooks;
+}
+/** What this reply shows of them, for the character LLM: their lines, and the narration right before each. */
+function seenOf(person: TtsCharacter): { said: string[]; story: string[] } {
+  const said: string[] = [], story: string[] = [];
+  scenes.forEach((scene, i) => {
+    if (scene.kind !== 'line' || !scene.speaker || !context) return;
+    if (resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope)?.id !== person.id) return;
+    said.push(scene.text);
+    const before = scenes[i - 1];
+    if (before?.kind === 'narration' && !story.includes(before.text)) story.push(before.text);
+  });
+  return { said, story };
+}
+/** Their illustration character made, then the face on stage drawn at once (no waiting out the failures before). */
+async function makeLooksFor(m: Member): Promise<void> {
+  const person = m.person, who = bot;
+  if (!person || !who || looksMaking.get(person.id)?.state === 'running') return;
+  looksMaking.set(person.id, { state: 'running', message: '' });
+  void refreshStage().catch(() => {});
+  try {
+    await makeSpeakerLooks(person, who, { ...seenOf(person), sessionId: context?.sessionId });
+    looksMaking.delete(person.id);
+    void makeSprite(person, m.face, who, true, m.costume).catch(() => {});
+  } catch (error) {
+    looksMaking.set(person.id, { state: 'failed', message: String((error as Error)?.message || error) });
+    throw error;
+  } finally {
+    if (open) void refreshStage().catch(() => {});
+  }
 }
 /** A person's place on stage, made once (asked again while on its way, the same trip; its three calls sent together). */
 const placing = new Map<string, Promise<SafeElement | null>>();
@@ -726,7 +769,8 @@ function sendFace(m: Member, place: SafeElement, sprite: EmotionSprite): Promise
   sending.set(slot, job);
   return job;
 }
-type CastEntry = { key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b'; front?: number };
+/** `makeLooks`: its oval shows, offering to make their looks (a tap there does, see looklessUnder). */
+type CastEntry = { key: string; face: string; speaking: boolean; label?: string; bounce?: 'a' | 'b'; front?: number; makeLooks?: boolean };
 /** Work a scene leaves for after its line: started only once the line has gone out, so no call of theirs is ahead of it. */
 type Later = Array<() => Promise<unknown>>;
 /**
@@ -746,7 +790,7 @@ function castNow(index: number, later: Later): CastEntry[] {
     else if (sprite && faces.has(`${m.key}|${sprite.path}`)) face = key(sprite.path);
     else if (sprite) { later.push(() => send(m, sprite)); face = shownFace.get(m.key) ?? ''; }
     if (face) shownFace.set(m.key, face);
-    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m), bounce: springOf(m.key, face, m.speaking), front: m.front });
+    cast.push({ key: m.key, face, speaking: m.speaking, label: ovalLabel(m), bounce: springOf(m.key, face, m.speaking), front: m.front, ...(!face && offersLooks(m) ? { makeLooks: true } : {}) });
   }
   return cast;
 }
@@ -1507,6 +1551,15 @@ function nameUnder(p: HostPoint): string {
   const left = now.left + 16, top = now.top - 15;
   return p.clientX >= left - 6 && p.clientX <= left + width + 6 && p.clientY >= top - 6 && p.clientY <= top + 29 * scale + 4 ? scene.speaker : '';
 }
+/** The person whose oval, offering to make their looks, a tap is on: the stage as last drawn, by its own numbers. */
+function looklessUnder(p: HostPoint): Member | null {
+  if (cgView !== 'none' && cgView !== 'fold') return null;
+  // The line's box is over the stage: a tap there is the box's.
+  const now = boxNow();
+  if (now && inside(p, now)) return null;
+  const shown = lastCast.slice(0, 3), hit = shown.find((entry, i) => entry.makeLooks && inside(p, ovalBox(rect, i, shown.length)));
+  return hit ? castAt(at).find(m => m.key === hit.key) ?? null : null;
+}
 /** A picture shown big, left without a step: full screen opened on its own scene goes back there, else it folds. */
 const leaveBig = (): 'open' | 'fold' => cgView === 'full' && fullFrom === 'open' ? 'open' : 'fold';
 function onClick(p: HostPoint): void {
@@ -1532,6 +1585,9 @@ function onClick(p: HostPoint): void {
   if (hit) { void act(hit.act).catch(report('viewer.tap')); return; }
   const speaker = nameUnder(p);
   if (speaker) { void toSheetOf(speaker).catch(report('viewer.sheet')); return; }
+  // 외형 없음 · 눌러서 만들기: that oval makes their looks, and the tap is only that.
+  const lookless = looklessUnder(p);
+  if (lookless) { void makeLooksFor(lookless).catch(report('viewer.looks')); return; }
   const now = Date.now();
   // This tap's press already completed the line.
   if (now - pressRevealAt < 1500) { pressRevealAt = 0; return; }

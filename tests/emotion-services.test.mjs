@@ -140,6 +140,38 @@ test('without looks no image is drawn, and faces seen in replies are remembered 
   assert.deepEqual(f.api.emotionData().seen['t-misun'].sort(), ['cry', 'happy']);
 });
 
+test('외형 없음 · 눌러서 만들기: the character LLM makes them from their voice card and lines, into the bot roster, and every failed face of theirs goes again at once', async () => {
+  const f = await fixture();
+  f.person.tags = ['20대', '밝은'];
+  await assert.rejects(f.api.makeSprite(f.person, 'happy', f.bot), /외형 태그가 없습니다/);
+  await assert.rejects(f.api.makeSprite(f.person, 'sad', f.bot), /외형 태그가 없습니다/);
+  assert.equal(f.api.spriteStatus('bot', f.person.id, 'happy').noLooks, true, 'failed for want of looks, and the viewer can tell');
+  f.host.setLlmReply(JSON.stringify({ new_characters: [{ name: '오미선', aliases: ['미선', 'Misun'], gender: 'girl', appearance: 'girl, black hair, short hair, blue eyes', attire: 'white blouse' }] }));
+  const before = f.host.llmRequests.length;
+  await f.api.makeSpeakerLooks(f.person, f.bot, { said: ['안녕, 오늘도 왔네?'], story: ['카페 문이 열리고 단발머리 여자가 들어왔다.'] });
+  const asked = JSON.stringify(f.host.llmRequests.slice(before));
+  assert.equal(f.host.llmRequests.length - before, 1, 'one call');
+  assert.match(asked, /Create exactly one character, \\"오미선\\"/);
+  assert.match(asked, /gender female; tags 20대, 밝은/);
+  assert.match(asked, /안녕, 오늘도 왔네\?/);
+  assert.match(asked, /단발머리 여자가 들어왔다/);
+  const saved = (await f.api.listCharacters(unifiedSessionIdForCharacter('bot'))).find(c => c.name === '오미선');
+  assert.match(saved?.appearance || '', /black hair/, 'in the roster their faces are looked for in');
+  assert.deepEqual(['happy', 'sad'].map(face => f.api.spriteStatus('bot', f.person.id, face).state), ['', ''], 'no failure left to wait out');
+  const naiBefore = f.host.naiRequests.length;
+  assert.equal((await f.api.makeSprite(f.person, 'sad', f.bot)).name, 'omni_오미선_sad.png');
+  assert.equal(f.host.naiRequests.length - naiBefore, 1);
+  assert.match(JSON.stringify(f.host.naiRequests.at(-1).body), /black hair, short hair, blue eyes/);
+});
+
+test('외형 없음 · 눌러서 만들기: someone made under another name is not taken for them', async () => {
+  const f = await fixture();
+  await assert.rejects(f.api.makeSprite(f.person, 'happy', f.bot), /외형 태그가 없습니다/);
+  f.host.setLlmReply(JSON.stringify({ new_characters: [{ name: 'Gym Referee', gender: 'boy', appearance: 'boy, short hair, whistle' }] }));
+  await assert.rejects(f.api.makeSpeakerLooks(f.person, f.bot, {}), /오미선\(으\)로 이어지지 않았습니다/);
+  assert.equal(f.api.spriteStatus('bot', f.person.id, 'happy').noLooks, true, 'their face still waits for looks');
+});
+
 test('a sample place is drawn once for every chat: kept in the 참고이미지 module, found from another bot, drawn again, deleted', async () => {
   const f = await fixture();
   const sample = 'cafe, indoors, window, daytime';
