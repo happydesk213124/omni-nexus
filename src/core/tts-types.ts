@@ -81,6 +81,8 @@ export interface TtsSettings {
   assignWithChat: boolean;
   /** 첫 등장 이모지: the cue prompt asks for age-gender and personality emoji on a character's first line; a new character's voice is chosen by them. */
   cueEmoji: boolean;
+  /** Hide the emoji before a cue's name on screen (화자 이름 숨기기 switches it on with it). */
+  hideEmoji: boolean;
   selector: 'llm' | 'jev' | 'embedding';
   clickPlay: boolean;
   hoverPlay: boolean;

@@ -203,6 +203,25 @@ test('changed active module refreshes cached display code without touching other
   }finally{globalThis.risuai=original;}
 });
 
+test('name, tone and the emoji before the name hide each on their own, and the line still plays',()=>{
+  const cue='👩🥺 하린 (soft tone): "안녕."',toneless='👨 Sora: “반가워요.”';
+  const shown=(settings,text)=>strip(apply(text,api.ttsModule({...visible,...settings}).regex));
+  assert.equal(shown({hideEmoji:true},cue),'하린 (soft tone): "안녕."');
+  assert.equal(shown({hideEmoji:true},toneless),'Sora: “반가워요.”');
+  assert.equal(shown({hideName:true},cue),'👩🥺 (soft tone) "안녕."','the name alone: its emoji stay');
+  assert.equal(shown({hideName:true},toneless),'👨 “반가워요.”');
+  assert.equal(shown({hideName:true,hideTone:true},cue),'👩🥺 "안녕."');
+  assert.equal(shown({hideTone:true},cue),'👩🥺 하린: "안녕."');
+  assert.equal(shown({hideName:true,hideTone:true,hideEmoji:true},cue),'"안녕."');
+  assert.equal(shown({hideName:true,hideEmoji:true},cue),'(soft tone) "안녕."','as 화자 이름 숨기기 alone once showed it');
+  const html=apply(cue,api.ttsModule({...visible,hideEmoji:true}).regex);
+  assert.deepEqual(kinds(html),['dialogue']);assert.deepEqual(bound(html,cue).map(s=>s?.text),['안녕.']);
+  // Saves from before the switch: 화자 이름 숨기기 hid the emoji too, and still does until it is set apart.
+  assert.equal(api.normalizeTtsSettings({hideName:true}).hideEmoji,true);
+  assert.equal(api.normalizeTtsSettings({hideName:false}).hideEmoji,false);
+  assert.equal(api.normalizeTtsSettings({hideName:true,hideEmoji:false}).hideEmoji,false);
+});
+
 test('module and playback agree on plain names, emoji headers, English tone and next-line quotations',()=>{
   for(const mod of [module,plain])for(const cue of ["하린: '반가워요.'",'Sora： 「hello: again.」','하린: ‘반가워요.’','하린: 『반가워요.』','하린: “반가워요.”','하린 (happy): "반가워요."','👨 Sora:\n“자자, 성으로 데려가자.”','🧑‍🚀 Sora (soft tone)：\n“안녕하세요.”','👩🥺 하린 (soft tone): "안녕하세요."','하린：\n"안녕하세요."','이민지 (calm) “안녕하세요.”']){
     const segments=api.parseTtsMessage(cue);assert.equal(segments.length,1,cue);assert.equal(segments[0].kind,'dialogue');

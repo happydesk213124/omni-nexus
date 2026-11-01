@@ -43,6 +43,16 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.waitForFunction(()=>window.ttsData().settings.cueEmoji===true);
     await page.locator('#cue-emoji').uncheck();
     await page.waitForFunction(()=>window.ttsData().settings.cueEmoji===false);
+    // 화자 이름 숨기기 switched on takes 이모지 숨기기 with it; switched off, it leaves it be.
+    assert.equal(await page.locator('#hide-emoji').isChecked(),false);
+    await page.locator('#hide-name').check();
+    await page.waitForFunction(()=>window.ttsData().settings.hideName===true&&window.ttsData().settings.hideEmoji===true);
+    assert.equal(await page.locator('#hide-emoji').isChecked(),true);
+    await page.locator('#hide-name').uncheck();
+    await page.waitForFunction(()=>window.ttsData().settings.hideName===false);
+    assert.equal(await page.evaluate(()=>window.ttsData().settings.hideEmoji),true);
+    await page.locator('#hide-emoji').uncheck();
+    await page.waitForFunction(()=>window.ttsData().settings.hideEmoji===false);
     await page.locator('#speed-presets').fill('1, 2, 2.5, 3.5');await page.locator('#speed-presets').dispatchEvent('change');
     assert.deepEqual(await page.evaluate(()=>window.ttsData().settings.rates),[1,2,2.5,3.5]);
     assert.deepEqual(await page.locator('#speed option').allTextContents(),['1×','2×','2.5×','3.5×'],'speed choices are the custom rate list');

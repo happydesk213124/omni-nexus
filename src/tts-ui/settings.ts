@@ -6,7 +6,7 @@ import { omniTts } from '../services/tts-runtime';
 import { el, input, val, set, text, on, run } from './common';
 import { promptAudioActivation } from './activation';
 
-const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'control-gutter': 'controlGutter', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'auto-voice-chat': 'assignWithChat', 'cue-emoji': 'cueEmoji', 'skip-symbol-only': 'skipSymbolOnly', 'tts-omit-paren-text': 'omitParenText' };
+const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'hide-emoji': 'hideEmoji', 'control-gutter': 'controlGutter', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'auto-voice-chat': 'assignWithChat', 'cue-emoji': 'cueEmoji', 'skip-symbol-only': 'skipSymbolOnly', 'tts-omit-paren-text': 'omitParenText' };
 const numbers: Record<string, keyof TtsSettings> = { speed: 'rate', volume: 'volume', 'tts-skip-chars': 'skipChars', prefetch: 'prefetch', concurrency: 'concurrency', 'background-concurrency': 'background', 'cache-limit': 'cacheMb' };
 const source: Record<string, LlmSettings['source']> = { model: 'main', submodel: 'aux', emotion: 'emotion', translate: 'translate', memory: 'memory', otherAx: 'other' };
 function llmChoice(model: LlmSettings): string { return Object.entries(source).find(([,v]) => v === model.source)?.[0] || (model.provider === 'google' ? 'Gemini' : model.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 호환'); }
@@ -32,7 +32,9 @@ function bindTextSetting(id: string, key: 'excludeText' | 'omitCharacters' | 'to
 }
 export function bindTtsSettings(): void {
   const s = ttsData().settings;
-  for (const [id, key] of Object.entries(booleans)) { input(id).checked = Boolean(s[key]); on(id, () => updateTtsSettings({ [key]: input(id).checked }), 'change'); }
+  for (const [id, key] of Object.entries(booleans)) { input(id).checked = Boolean(s[key]); if (id !== 'hide-name') on(id, () => updateTtsSettings({ [key]: input(id).checked }), 'change'); }
+  // 화자 이름 숨기기 switched on takes the emoji before the name with it, in one write (the module is rewritten once).
+  on('hide-name', () => { const hide = input('hide-name').checked; if (hide) input('hide-emoji').checked = true; return updateTtsSettings(hide ? { hideName: true, hideEmoji: true } : { hideName: false }); }, 'change');
   for (const [id, key] of Object.entries(numbers)) {
     set(id, Number(s[key]) * (id === 'volume' ? 100 : 1));
     on(id, async () => { await updateTtsSettings({ [key]: Number(val(id)) / (id === 'volume' ? 100 : 1) }); text('speed-value', `${ttsData().settings.rate.toFixed(2)}×`); text('volume-value', `${Math.round(ttsData().settings.volume * 100)}%`); }, 'change');
