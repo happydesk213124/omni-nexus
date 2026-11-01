@@ -380,6 +380,18 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="cgroll"]')).opacity === '1');
     const wasShown = await pictureShown();
     assert.equal(wasShown.length, 1);
+    // The background (up since the cast block) is under the picture: its fade's order (a z-index) once reached past
+    // its layer and stood over it, the picture seen only full screen.
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn] [x-vn-bg]').length > 0), true);
+    assert.equal(await page.evaluate(() => {
+      const probe = document.createElement('style');
+      probe.textContent = '[x-omni-vn] :is([data-vn-bg],[data-vn-cg]),[x-omni-vn] :is([data-vn-bg],[data-vn-cg]) *{pointer-events:auto!important}';
+      document.head.append(probe);
+      try {
+        const img = [...document.querySelectorAll('[x-omni-vn] img[x-vn-cg]')].find(n => getComputedStyle(n).display !== 'none'), r = img.getBoundingClientRect();
+        return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('[x-vn-cg]');
+      } finally { probe.remove(); }
+    }), true, 'the picture over the background');
     await page.waitForTimeout(300);
     await press('cgroll');
     await page.waitForFunction(() => /같은 메시지 작업/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-note]'), '::after').content));

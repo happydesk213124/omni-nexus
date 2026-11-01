@@ -18,10 +18,12 @@ const SHORT_DAY = String.raw`(?:[월화수목금토일月火水木金土日]|(?:
 const alone = (words: string): string => String.raw`(?<![\p{L}\p{N}])(?:${words})(?!\p{L})`;
 
 const TOKEN = new RegExp([
-  // 2020-05-04 · 2020. 5. 4. · 05/04/2020 · 20.05.04; 5/4 only beside a weekday or a time (alone it is a score).
+  // 2020-05-04 · 2020. 5. 4. · 05/04/2020 · 20.05.04; 5/4 only beside a weekday or a time, or as a Date: (alone it is a score).
   String.raw`\d{4}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}\.?`,
   String.raw`\d{1,2}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{4}`,
-  String.raw`(?<!\d)\d{2}[./]\d{2}[./]\d{2}(?!\d)`,
+  String.raw`(?<!\d)\d{2}[-./]\d{2}[-./]\d{2}(?!\d)`,
+  // 09-06 · 09/06 · 09.06, no year: two digits each, never after a word or a number (HP 10/10, Lv.10/20 are scores).
+  String.raw`(?<![\p{L}\p{N}/.\-]\s?)(?:0[1-9]|1[0-2])[-./](?:0[1-9]|[12]\d|3[01])(?![\d/.\-])`,
   String.raw`\d{1,2}\s*[./]\s*\d{1,2}\.?(?=\s*(?:[(（]\s*${SHORT_DAY}\s*[)）]|[월화수목금토일]요일|[月火水木金土日]曜|${WEEKDAY}|\d{1,2}:\d{2}|오전|오후|午前|午後|[ap]\.?m(?![a-z])))`,
   // 2020년 5월 4일 · 5月4日 · 4号 · 3일차 · 2주째 · 제3일 · 1日目 · 第3天 · 2020년도 · 3개월
   String.raw`\d{1,5}\s*[년年]\s*\d{1,2}\s*[월月](?:\s*\d{1,2}\s*[일日号號])?`,
@@ -130,6 +132,8 @@ const DATES = ['date', '날짜', '일자', '일시', 'when'], TIMES = ['time', '
 // The most particular place first: a site is in a location, an area a site's corner (too fine to name the scene).
 const PLACES = ['site', 'location', 'place', '장소', '위치', 'area', 'region', '지역'];
 const ONE_TOKEN = new RegExp(TOKEN.source, 'iu');
+/** `9/6`, `9-6`, `9.6` as a month and a day (a Date: field's; anywhere else it may be a score). */
+const monthDay = (value: string): boolean => { const m = /^(\d{1,2})\s*[-./]\s*(\d{1,2})(?!\d)/u.exec(value); return !!m && +m[1]! >= 1 && +m[1]! <= 12 && +m[2]! >= 1 && +m[2]! <= 31; };
 /** A status window's date, time and place, from its labeled fields; '' without a date or a time among them. */
 export function labeledClock(line: string): string {
   if (!/[:：]/u.test(line)) return '';
@@ -137,7 +141,7 @@ export function labeledClock(line: string): string {
   for (const m of line.replace(/<[^>]*>/g, ' ').matchAll(FIELD)) {
     const label = m[1]!.toLowerCase(), value = m[2]!.replace(/[\s,/／]+$/u, '').trim();
     if (!value) continue;
-    if (DATES.includes(label)) { if (!date && ONE_TOKEN.test(value)) date = value; }
+    if (DATES.includes(label)) { if (!date && (ONE_TOKEN.test(value) || monthDay(value))) date = value; }
     else if (TIMES.includes(label)) { if (!time && ONE_TOKEN.test(value)) time = value; }
     else if (PLACES.indexOf(label) < placeRank && value.length <= 40) { placeRank = PLACES.indexOf(label); place = value; }
   }
@@ -146,7 +150,7 @@ export function labeledClock(line: string): string {
 }
 
 // A date of the story's own: a year, a month and its day, a day's count (time of day alone is how prose talks).
-const STRONG = /\d{4}|\d\s*[월月]\s*\d|day\s*\d|^d\s*[+-]\s*\d|일\s*[차째]|日目|第|^[a-z]{3,9}\.?\s+\d|\d\s+(?:of\s+)?[a-z]{3}/iu;
+const STRONG = /^(?:0[1-9]|1[0-2])[-./]\d{2}$|\d{4}|\d\s*[월月]\s*\d|day\s*\d|^d\s*[+-]\s*\d|일\s*[차째]|日目|第|^[a-z]{3,9}\.?\s+\d|\d\s+(?:of\s+)?[a-z]{3}/iu;
 const SPOKEN = /"[^"\n]*"|“[^”\n]*”|「[^」\n]*」|『[^』\n]*』/gu;
 /** A date the story's words give (`2020년 5월 4일 오후 3시, 그날은…`), outside its dialogue, with the times right by it. */
 export function proseDate(line: string): string {
