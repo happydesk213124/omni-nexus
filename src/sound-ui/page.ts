@@ -3,16 +3,19 @@ import { SOUND_TABS } from './panels';
 /**
  * The menu group "TTS · BGM · 감정 에셋" has five entries that all open the one
  * frozen-UI tab slot (`curation`); which panels show is decided here. TTS 캐릭터 is
- * TTS 설정's 캐릭터 tab on its own: the one most often wanted, a tap from the menu.
+ * TTS 설정 opened on its 캐릭터 tab, the one most often wanted, with its other two
+ * tabs a tap away.
  */
 export type SoundPage = 'tts' | 'sound' | 'people' | 'models' | 'asset';
 export const SOUND_PAGE_TABS: Record<SoundPage, readonly string[]> = {
   tts: ['tts-settings', 'tts-characters', 'tts-voices'],
   sound: SOUND_TABS.map(([id]) => id),
-  people: ['tts-characters'],
+  people: ['tts-settings', 'tts-characters', 'tts-voices'],
   models: ['tts-models'],
   asset: ['emo-viewer', 'emo-bg', 'emo-assets'],
 };
+/** The tab a page opens on when the menu chooses it: its first, but TTS 캐릭터's. */
+export const SOUND_PAGE_OPENS: Partial<Record<SoundPage, string>> = { people: 'tts-characters' };
 export const SOUND_PAGE_TITLES: Record<SoundPage, string> = { tts: 'TTS 설정(beta)', sound: 'BGM·효과음', people: 'TTS 캐릭터', models: 'TTS·BGM·JEV 모델 설정', asset: '뷰어 및 감정 에셋' };
 let page: SoundPage = 'tts';
 export const soundPage = (): SoundPage => page;
@@ -49,19 +52,21 @@ export function markSoundNav(slot: string): void {
   if (line && slot === 'curation') line.textContent = SOUND_PAGE_TITLES[page];
 }
 
-let applier: (() => void) | undefined;
-/** The mounted root registers how to switch its panels; the nav calls it. */
-export function setSoundApplier(apply: (() => void) | undefined): void { applier = apply; }
+let applier: ((chosen?: boolean) => void) | undefined;
+/** The mounted root registers how to switch its panels; the nav calls it (`chosen`: from the menu). */
+export function setSoundApplier(apply: ((chosen?: boolean) => void) | undefined): void { applier = apply; }
 /** Nav entries carry data-sound-page; remember the choice before the UI re-renders. */
 export function bindSoundNav(): void {
   if (document.documentElement.dataset.soundNav) return;
   document.documentElement.dataset.soundNav = '1';
   const choose = (event: Event) => {
+    // The TTS area carries data-sound-page too (for its styles): a tap inside it is no choice of page, and taken
+    // for one it sent the reader back to the page's first tab.
     const target = (event.target as Element | null)?.closest?.('[data-sound-page]');
-    if (!target) return;
+    if (!target || target.id === 'tts-settings-root') return;
     setSoundPage(target.getAttribute('data-sound-page'));
     // The tab may already be open (same slot): switch panels without a reload.
-    queueMicrotask(() => applier?.());
+    queueMicrotask(() => applier?.(true));
   };
   // The vendor switches tabs on pointerdown and paints right away: the page has to be chosen before that.
   document.addEventListener('pointerdown', choose, true);
