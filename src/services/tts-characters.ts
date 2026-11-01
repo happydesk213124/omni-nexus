@@ -6,6 +6,8 @@ import { parseLlmJson } from '../providers/tts/translation';
 import { adoptVoiceTags } from '../domain/tts/library';
 import { applyCueHint, cueHint, type CueHint } from '../domain/tts/cue-emoji';
 import { parseTtsMessage } from '../domain/tts/segment';
+import { costumeCue } from '../domain/tts/costume-cue';
+import { costumesOf, refreshCostumeNames } from './costume-names';
 import { callLlm } from '../providers/llm/client';
 import { ttsData, saveTtsData, ttsCandidateVoices } from '../storage/tts-store';
 import { ttsCharacterSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
@@ -116,6 +118,10 @@ function speakerHints(context: TtsChatContext, names: readonly string[], marks: 
 async function assignSpeakers(context: TtsChatContext, names: string[], messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   const data = ttsData();
   if (!data.settings.autoAssign) return;
+  // A cue that named a costume by its name (하린_melony_form) is that person, never someone new to add.
+  await refreshCostumeNames(context.characterId, context.rosterScope);
+  const worn = costumesOf(context.rosterScope, context.characterId);
+  names = names.map(name => costumeCue(name, worn)?.speaker ?? name);
   const unknown = [...new Set(names)].filter(name => {
     if (resolveTtsSpeaker(name, data.characters, context.rosterScope)) return false;
     // Ambiguous aliases require a surname, not another automatically created row.

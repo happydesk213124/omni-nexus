@@ -236,6 +236,22 @@ test('a sprite wears the default costume, whichever one the roster has on', asyn
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
 });
 
+test('a cue naming a costume by its name (미선_melony_form): its number read from the illustration character, and nobody new made of it', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform' }, { name: 'melony_form', attire: 'melon dress, leaf hair ornament' }] });
+  await f.api.refreshCostumeNames('bot', 'bot:bot');
+  const worn = f.api.costumesOf('bot:bot', 'bot');
+  assert.deepEqual(worn('오미선'), ['default', 'melony_form']);
+  assert.deepEqual(worn('미선'), ['default', 'melony_form'], 'by any of her names');
+  assert.equal(worn('유나'), undefined, 'no one');
+  // TTS: with the names known, the cue is 오미선 and no "미선_Melony Form" is added to the roster.
+  const tts = f.api.ttsData();
+  tts.settings.enabled = true; tts.settings.autoAssign = true; f.person.fishId = '4e118bfbb83e401c84699c09b5f08257';
+  const before = tts.characters.length;
+  await f.api.ensureTtsSpeakers({ scope: 'emo', rosterScope: 'bot:bot', characterId: 'bot', chatId: 'chat', sessionId: 's', character: {}, chat: {}, messages: [] }, ['미선_Melony Form'], () => true);
+  assert.equal(tts.characters.length, before);
+});
+
 test('a costume named in a cue (이름_2) has its own sprites: drawn in that costume, saved and found apart from the default ones', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform, pleated skirt' }, { name: 'swim', attire: 'red bikini' }] });

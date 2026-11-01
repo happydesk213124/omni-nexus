@@ -38,7 +38,8 @@ export function expandBaseTokens(value: unknown, fallback: unknown): string {
   return joinTags(...out);
 }
 
-const costumeKey = (value: unknown): string =>
+/** A costume name as it is compared: no case, spaces, underscores, dots or dashes (also how a cue names one). */
+export const costumeKey = (value: unknown): string =>
   cleanText(value, 120).normalize('NFKC').toLocaleLowerCase().replace(/[\s_.·•･-]+/g, '');
 
 /** Sanitize one costume row. Empty name → `default` when index is 0, else `costumeN`. */
