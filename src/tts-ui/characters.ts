@@ -12,9 +12,10 @@ import { unifiedSessionIdForCharacter } from '../core/util/text';
 import { getCharRefAssetPreviewUrl } from '../services/char-ref-module';
 import { resolveTtsSpeaker, ttsCharacterGain } from '../domain/tts/identity';
 import type { CharacterRecord } from '../core/types';
-import { el, input, val, set, text, list, characterGender, genderLabel, esc, on, dialog, button, persist, listenButton, auditionButton } from './common';
+import { el, input, val, set, text, list, characterGender, genderLabel, esc, on, run, dialog, button, persist, listenButton, auditionButton } from './common';
 import type { TtsLibrary } from './library';
 import { uuid } from '../core/util/text';
+import { sleep } from '../core/util/async';
 import { characterAvatar, roleAvatar } from './character-avatar';
 import { currentEmotionBot, spriteCostumes } from '../services/emotion-assets';
 
@@ -49,6 +50,8 @@ export class TtsCharacters {
   private saveRevision = 0;
   /** The costume list being read for the card on show: an older read lands on nothing. */
   private costumeEpoch = 0;
+  /** The card's costumes on show (past the default): their names and notes go with a costume's voice recommendation. */
+  private costumes: Array<{ index: number; name: string; note: string }> = [];
   /** Told when the sheet 옴니 뷰어 opened closes for good; 목소리 고르기 closes it only to come back to it. */
   private sheetDone?: () => void;
   private choosingVoice = false;
@@ -92,7 +95,7 @@ export class TtsCharacters {
         }).catch(() => {});
       } }, {root,rootMargin:'150px'});
     }
-    const refRoster = this.references.map(r => ({...blankTtsCharacter('global',r.name), id:r.id, surname:r.surname,givenName:r.given_name,surnameAliases:r.surname_variants,givenAliases:r.given_name_variants,triggers:r.aliases}));
+    const refRoster = this.referenceRoster();
     const visible=this.visible();
     const ids = new Set(visible.map(c => c.id)), tiles = new Map<string, HTMLElement>();
     for (const node of [...root.children] as HTMLElement[]) {
@@ -114,8 +117,7 @@ export class TtsCharacters {
       if (scopeLabel.textContent !== scopeText) scopeLabel.textContent = scopeText;
       const name = tile.querySelector('b')!; if (name.textContent !== c.name) name.textContent = c.name;
       const label = tile.querySelector<HTMLElement>('.char-voice-label')!; if (label.textContent !== voiceName) label.textContent = voiceName; label.title = voiceName;
-      const match = c.role ? null : resolveTtsSpeaker(c.name,refRoster,'global') || c.triggers.map(t => resolveTtsSpeaker(t,refRoster,'global')).find(Boolean);
-      const reference = match && this.references.find(r=>r.id===match.id);
+      const reference = this.referenceOf(c, refRoster);
       // The reference image identifies the character best; an example look is the fallback.
       const hash = reference?.ref_hash || reference?.example_hash || '';
       if (tile.dataset.ref !== hash) { this.visibility?.unobserve(tile); tile.dataset.ref = hash; tile.dataset.imageRef = ''; tile.dataset.avatarGender = ''; if (hash) this.visibility?.observe(tile); }
@@ -160,6 +162,52 @@ export class TtsCharacters {
     tile.addEventListener('keydown',event => { if (event.target === tile && ['Enter',' '].includes(event.key)) { event.preventDefault(); act(event); } });
     return tile;
   }
+  /** The illustration characters as TTS cards, matched by their names. */
+  private referenceRoster(): TtsCharacter[] {
+    return this.references.map(r => ({...blankTtsCharacter('global',r.name), id:r.id, surname:r.surname,givenName:r.given_name,surnameAliases:r.surname_variants,givenAliases:r.given_name_variants,triggers:r.aliases}));
+  }
+  /** The illustration character a card is (its tile's picture is theirs); none for a role card. */
+  private referenceOf(c: TtsCharacter, roster = this.referenceRoster()): CharacterRecord | undefined {
+    const match = c.role ? null : resolveTtsSpeaker(c.name,roster,'global') || c.triggers.map(t => resolveTtsSpeaker(t,roster,'global')).find(Boolean);
+    return match ? this.references.find(r=>r.id===match.id) : undefined;
+  }
+  /**
+   * 연결된 삽화, beside 음성 | 감정 에셋: pressed, the card's illustration character opens in the settings' 캐릭터 tab
+   * (its tag sheet). Greyed when the card is no one there.
+   */
+  private fillReferenceLink(c: TtsCharacter): void {
+    const form = el('character-form'), scroll = form?.querySelector('.editor-scroll');
+    if (!form || !scroll) return;
+    let link = document.getElementById('c-illustration-link') as HTMLButtonElement | null;
+    if (!link) {
+      link = document.createElement('button'); link.type = 'button'; link.id = 'c-illustration-link'; link.textContent = '연결된 삽화';
+      const sheetSwitch = scroll.querySelector('.emo-sheet-switch');
+      if (sheetSwitch) sheetSwitch.append(link);
+      else { const row = document.createElement('div'); row.className = 'actions'; row.append(link); scroll.prepend(row); }
+      link.addEventListener('click', () => run(() => this.openReference()));
+    }
+    const reference = this.referenceOf(c);
+    link.disabled = !reference;
+    link.title = reference ? `${reference.name} · 삽화 캐릭터 태그 열기` : '이 캐릭터와 이어진 삽화 캐릭터가 없습니다';
+  }
+  private async openReference(): Promise<void> {
+    const reference = this.draft && this.referenceOf(this.draft);
+    if (!reference) return;
+    const openTab = Reflect.get(globalThis, '__OMNI_OPEN_SETTINGS__');
+    if (typeof openTab !== 'function') throw new Error('설정 창의 캐릭터 탭을 열 수 없습니다.');
+    // Going there, not coming back: a sheet 옴니 뷰어 opened does not take the reader back to the viewer.
+    this.sheetDone = undefined;
+    dialog('character-dialog', false);
+    await openTab('characters');
+    const target = { id: reference.id, name: reference.name, scope: reference.scope };
+    // Its tiles are drawn once the tab is up: looked for a few times.
+    for (let i = 0; i < 20; i++) {
+      const ux = Reflect.get(globalThis, '__INLAY_SETTINGS_UX__') as { openCharacterEditor?: (target: object) => boolean } | undefined;
+      if (ux?.openCharacterEditor?.(target)) return;
+      await sleep(150);
+    }
+    throw new Error(`캐릭터 탭에서 ${reference.name}을(를) 찾지 못했습니다.`);
+  }
   edit(character?: TtsCharacter): void {
     this.draft = structuredClone(character || blankTtsCharacter(this.context?.rosterScope || 'global'));
     const c = this.draft, voice = characterVoice(c);
@@ -170,6 +218,7 @@ export class TtsCharacters {
     el('c-language-custom-wrap').hidden = val('c-language') !== 'custom';
     this.fillToneModel(c);
     void this.fillCostumeVoices(c);
+    this.fillReferenceLink(c);
     const autoGain = c.autoGain ?? c.gain === 0;
     input('c-gain-manual').checked = !autoGain; input('c-gain').disabled = autoGain;
     text('c-gain-value', autoGain ? '자동' : `${c.gain} dB`); el('character-voice-suggestions').replaceChildren(); el('character-voice-suggestions').hidden = true;
@@ -227,8 +276,12 @@ export class TtsCharacters {
     const bot = await currentEmotionBot().catch(() => null);
     const costumes = bot ? (await spriteCostumes(c, bot).catch(() => [])).filter(x => x.index > 0) : [];
     if (mine !== this.costumeEpoch) return;
+    this.costumes = costumes;
+    // Each picked like the card's own voice: by JEV, the LLM or embedding, from the voice list, or emptied (✕).
+    const picks = (index: number) => [['jev', 'JEV', 'JEV로 고르기'], ['llm', 'LLM', 'LLM으로 고르기'], ['embedding', 'E.B', '임베딩으로 고르기'], ['list', 'LIST', '음성 목록에서 고르기'], ['clear', '✕', '비우기 · 기본 음성']]
+      .map(([how, label, title]) => `<button type="button" data-costume-pick="${how}" data-costume="${index}" title="${title}" aria-label="${index}번 코스튬 음성 ${title}">${label}</button>`).join('');
     list.innerHTML = costumes.length
-      ? `<div class="fields">${costumes.map(x => `<label class="field"><span>${x.index}번 · ${esc(x.name)}</span><input data-costume-fish="${x.index}" maxlength="128" placeholder="비우면 기본 음성 · Fish ID 또는 링크" value="${esc(c.costumeFish?.[String(x.index)] || '')}"></label>`).join('')}</div>`
+      ? `<div class="fields">${costumes.map(x => { const fish = c.costumeFish?.[String(x.index)] || ''; return `<div class="field full costume-voice-row"><span>${x.index}번 · ${esc(x.name)}</span><div class="costume-voice-line"><input data-costume-fish="${x.index}" maxlength="128" placeholder="비우면 기본 음성 · Fish ID 또는 링크" aria-label="${x.index}번 코스튬 음성" value="${esc(fish)}">${picks(x.index)}</div><small data-costume-voice-name="${x.index}">${esc(fish ? ttsData().voices.find(v => v.fishId === fish)?.name || '' : '')}</small></div>`; }).join('')}</div>`
       : '<small>삽화 캐릭터 탭에서 이 캐릭터에 코스튬을 더하면, 코스튬마다 음성을 넣을 수 있습니다.</small>';
   }
   /**
@@ -295,6 +348,24 @@ export class TtsCharacters {
     catch(error) { feedback(`저장 실패: ${String((error as Error).message)}`); }
   }
   private choose(voice: TtsVoice): void { if (!this.draft) return; this.draft.voiceKey = voice.key; set('c-id',voice.fishId); text('character-voice-choice',voice.name); this.save(); }
+  /** A costume's voice set (or emptied back to the card's): its field, the voice's name under it, saved. */
+  private chooseCostume(index: number, voice: TtsVoice | null, note = voice?.name || ''): void {
+    const field = document.querySelector<HTMLInputElement>(`#c-costume-voice-list [data-costume-fish="${index}"]`), named = document.querySelector(`#c-costume-voice-list [data-costume-voice-name="${index}"]`);
+    if (named) named.textContent = note;
+    if (!field || !voice && note) return;
+    field.value = voice?.fishId || ''; this.save();
+  }
+  /** Recommended the way the card's own voice is, with the costume's name and note asked along with the card's. */
+  private async recommendCostume(index: number, engine: 'jev' | 'llm' | 'embedding'): Promise<void> {
+    const c = this.read(), costume = this.costumes.find(x => x.index === index);
+    if (!costume) return;
+    this.chooseCostume(index, null, '음성 추천 중…');
+    const asked: TtsCharacter = { ...c, id: `${c.id}#costume${index}`, name: `${c.name} (${costume.name})`, tags: [...new Set([...c.tags, costume.name, costume.note].filter(Boolean))] };
+    try {
+      const voices = (await selectTtsVoices([asked], ttsCandidateVoices(), ttsData().settings, engine, undefined, engine === 'embedding' ? await voiceEmbedding() : null)).get(asked.id) || [];
+      if (voices[0]) this.chooseCostume(index, voices[0]); else this.chooseCostume(index, null, '');
+    } catch (error) { this.chooseCostume(index, null, ''); throw error; }
+  }
   async bind(live:()=>boolean=()=>true): Promise<void> {
     try { this.context = await currentTtsContext(); } catch { /* Global library remains usable outside a chat. */ }
     if(!live())return;
@@ -348,6 +419,16 @@ export class TtsCharacters {
     // Its costume fields come and go with the card: listened to where they are put.
     el('c-costume-voice-list')?.addEventListener('input', event => { if ((event.target as Element).matches('[data-costume-fish]') && ttsData().characters.some(c => c.id === this.draft?.id)) this.save(); });
     el('c-costume-voice-list')?.addEventListener('change', event => { if ((event.target as Element).matches('[data-costume-fish]')) this.save(); });
+    el('c-costume-voice-list')?.addEventListener('click', event => {
+      const pick = (event.target as Element).closest<HTMLButtonElement>('[data-costume-pick]');
+      if (!pick || !this.draft) return;
+      event.preventDefault();
+      const index = Number(pick.dataset.costume), how = pick.dataset.costumePick;
+      if (how === 'clear') { this.chooseCostume(index, null); return; }
+      // As the card's own 음성 목록에서 선택: the sheet steps aside for the voice list and comes back to it.
+      if (how === 'list') { this.draft = this.read(); this.choosingVoice = true; dialog('character-dialog',false); this.library.pickVoice(voice => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog'); this.chooseCostume(index, voice); }); return; }
+      if (how === 'jev' || how === 'llm' || how === 'embedding') run(() => this.recommendCostume(index, how));
+    });
     for (const field of el('character-form').querySelectorAll<HTMLInputElement | HTMLSelectElement>('input,select')) {
       field.addEventListener('input',()=>{if(ttsData().characters.some(c=>c.id===this.draft?.id))this.save();});
       field.addEventListener('change',()=>{this.save(['c-name','c-surname','c-given_name','c-surname_variants','c-given_name_variants'].includes(field.id));});

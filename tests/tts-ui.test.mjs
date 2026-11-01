@@ -10,10 +10,12 @@ test('production settings persist independently, edit voice tiles and survive re
     const page=await browser.newPage({viewport:{width:1360,height:900}}),errors=[];
     page.setDefaultTimeout(8000);page.setDefaultNavigationTimeout(8000);page.on('pageerror',error=>errors.push(error.message));let acceptDialogs=false;page.on('dialog',d=>acceptDialogs?d.accept():d.dismiss());
     await page.route('https://tts.test/',route=>route.fulfill({contentType:'text/html',body:'<html><head></head><body style="background:#0b0f18;color:#eee;font:14px sans-serif"></body></html>'}));await page.goto('https://tts.test/');
-    await page.evaluate(()=>{const save=new Map(),local=new Map();window.bots=[{chaId:'test-char',name:'봇',globalLore:[{comment:'keep',key:'k',content:'other lore'}],chats:[{id:'test-chat',message:[]}]}];window.risuai={pluginStorage:{getItem:async k=>save.get(k),setItem:async(k,v)=>save.set(k,v)},getLocalPluginStorage:async()=>({getItem:async k=>local.get(k),setItem:async(k,v)=>local.set(k,v),removeItem:async k=>local.delete(k)}),requestPluginPermission:async()=>true,getDatabase:async()=>({modules:[],enabledModules:[]}),setDatabase:async()=>{},getCurrentCharacterIndex:async()=>0,getCharacterFromIndex:async i=>structuredClone(window.bots[i]??null),setCharacterToIndex:async(i,c)=>{window.bots[i]=structuredClone(c);},getCharacter:async()=>{if(window.delayCharacter){window.delayCharacter=false;await new Promise(resolve=>window.resumeCharacter=resolve);}return {chaId:'test-char',chatPage:0,chats:[{id:'test-chat',message:[]}]};},runLLMModel:async()=>({success:true,content:'OK'}),nativeFetch:async url=>url.includes('/model/')?{ok:true,json:async()=>({title:'Fish 이름',tags:['female','calm'],languages:['ja']})}:url.includes('translate.googleapis.com')?{ok:true,json:async()=>[[['こんにちは。']]]}:url.includes('decisions')?{ok:true,json:async()=>({answers:{0:{choice:'1',probabilities:{1:1}}}})}:window.holdFish?new Promise(resolve=>{window.releaseFish=()=>resolve({ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer});}):{ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer}};window.Audio=class{play(){return Promise.resolve();}pause(){}load(){}removeAttribute(){}};window.AudioContext=class{state='running';destination={};resume(){return Promise.resolve();}createGain(){return {gain:{value:1},connect(){return this;}};}createMediaElementSource(){return {connect(n){return n;}};}};});
+    await page.evaluate(()=>{const save=new Map(),local=new Map();window.bots=[{chaId:'test-char',name:'봇',globalLore:[{comment:'keep',key:'k',content:'other lore'}],chats:[{id:'test-chat',message:[]}]}];window.risuai={pluginStorage:{getItem:async k=>save.get(k),setItem:async(k,v)=>save.set(k,v)},getLocalPluginStorage:async()=>({getItem:async k=>local.get(k),setItem:async(k,v)=>local.set(k,v),removeItem:async k=>local.delete(k)}),requestPluginPermission:async()=>true,getDatabase:async()=>({modules:[],enabledModules:[],characters:structuredClone(window.bots)}),setDatabase:async()=>{},getCurrentCharacterIndex:async()=>0,getCharacterFromIndex:async i=>structuredClone(window.bots[i]??null),setCharacterToIndex:async(i,c)=>{window.bots[i]=structuredClone(c);},getCharacter:async()=>{if(window.delayCharacter){window.delayCharacter=false;await new Promise(resolve=>window.resumeCharacter=resolve);}return {chaId:'test-char',chatPage:0,chats:[{id:'test-chat',message:[]}]};},runLLMModel:async()=>({success:true,content:'OK'}),nativeFetch:async url=>url.includes('/model/')?{ok:true,json:async()=>({title:'Fish 이름',tags:['female','calm'],languages:['ja']})}:url.includes('translate.googleapis.com')?{ok:true,json:async()=>[[['こんにちは。']]]}:url.includes('decisions')?{ok:true,json:async()=>({answers:{0:{choice:'1',probabilities:{1:1}}}})}:window.holdFish?new Promise(resolve=>{window.releaseFish=()=>resolve({ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer});}):{ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer}};window.Audio=class{play(){return Promise.resolve();}pause(){}load(){}removeAttribute(){}};window.AudioContext=class{state='running';destination={};resume(){return Promise.resolve();}createGain(){return {gain:{value:1},connect(){return this;}};}createMediaElementSource(){return {connect(n){return n;}};}};});
     // Risu's plugin frame is sandboxed without allow-forms and allow-popups:
     // submit events never fire and window.open returns null.
     await page.evaluate(()=>{window.crypto.randomUUID=undefined;document.addEventListener('submit',e=>{e.preventDefault();e.stopImmediatePropagation();},true);window.open=()=>null;});
+    // The bot's illustration roster: 하린, with a costume past the default one.
+    await page.evaluate(()=>{window.bots[0].globalLore.push({comment:'omni.nexus.data.global',key:'',secondkey:'',alwaysActive:false,selective:false,mode:'normal',insertorder:0,content:JSON.stringify({version:1,characterId:'test-char',roster:[{id:'ill-harin',name:'하린',costumes:[{name:'default',attire:'school uniform'},{name:'idol_dress',note:'stage idol outfit',attire:'idol dress'}]}]})});});
     await page.addScriptTag({content:built.outputFiles[0].text});
     await page.evaluate(async()=>{document.documentElement.classList.add('nx-ux-on');document.documentElement.dataset.theme='dark';const style=document.createElement('style');style.textContent=window.settingsUxCss;document.head.append(style);document.body.innerHTML='<div id="nx-shell" class="nx-ux">'+window.previewChrome()+'</div>';document.getElementById('nx-main').innerHTML=window.ttsSettingsHtml();await window.mountTts();});
     assert.equal(await page.locator('#speed').isDisabled(),true);
@@ -183,6 +185,33 @@ test('production settings persist independently, edit voice tiles and survive re
     assert.equal(await page.locator('#character-form button[type=submit]').count(),0,'editing has no apply step');
     await page.locator('#c-tags').fill('차분한,청년');
     assert.deepEqual(await page.evaluate(()=>window.ttsData().characters.find(c=>c.name==='하린').tags),['차분한','청년'],'edits apply while the dialog remains open');
+    // 코스튬에 따라 음성 변경: each costume's voice picked as the card's own is (JEV asked with the costume's name and note), ✕ empties it.
+    await page.evaluate(()=>{window.ttsData().settings.jev.key='fake';window.decisions=[];const fetch0=window.risuai.nativeFetch;window.risuai.nativeFetch=async(url,o)=>{if(String(url).includes('decisions'))window.decisions.push(JSON.parse(o.body));return fetch0(url,o);};});
+    await page.locator('#c-costume-voice').check();
+    await page.waitForSelector('#c-costume-voice-list [data-costume-fish="1"]');
+    assert.deepEqual(await page.locator('#c-costume-voice-list [data-costume-pick][data-costume="1"]').allTextContents(),['JEV','LLM','E.B','LIST','✕']);
+    await page.locator('[data-costume-pick="jev"][data-costume="1"]').click();
+    await page.waitForFunction(()=>window.ttsData().characters.find(c=>c.name==='하린').costumeFish?.['1']);
+    const asked=await page.evaluate(()=>window.decisions.at(-1).questions[0].instructions.character);
+    assert.equal(asked[0],'하린 (idol_dress)');
+    assert.ok(asked[2].includes('idol_dress')&&asked[2].includes('stage idol outfit')&&asked[2].includes('차분한'),'the card\'s tags and the costume\'s: '+JSON.stringify(asked));
+    assert.notEqual(await page.locator('[data-costume-voice-name="1"]').textContent(),'','the voice\'s name under it');
+    await page.locator('[data-costume-pick="clear"][data-costume="1"]').click();
+    await page.waitForFunction(()=>!window.ttsData().characters.find(c=>c.name==='하린').costumeFish?.['1']);
+    assert.equal(await page.locator('[data-costume-fish="1"]').inputValue(),'');
+    await page.locator('#c-costume-voice').uncheck();
+    // 연결된 삽화: she is an illustration character, so it opens 캐릭터's tag sheet for her.
+    assert.equal(await page.locator('#c-illustration-link').isDisabled(),false);
+    await page.evaluate(()=>{window.opened=[];window.uxBefore=window.__INLAY_SETTINGS_UX__;window.__OMNI_OPEN_SETTINGS__=async tab=>{window.opened.push(tab);};window.__INLAY_SETTINGS_UX__={...window.uxBefore,openCharacterEditor:target=>{window.opened.push(target);return true;}};});
+    await page.locator('#c-illustration-link').click();
+    await page.waitForFunction(()=>window.opened.length===2);
+    const opened=await page.evaluate(()=>window.opened);
+    assert.equal(opened[0],'characters');assert.deepEqual([opened[1].id,opened[1].name],['ill-harin','하린']);
+    assert.equal(await page.locator('#character-dialog').isVisible(),false,'the sheet steps aside for 캐릭터');
+    await page.evaluate(()=>{window.__INLAY_SETTINGS_UX__=window.uxBefore;delete window.__OMNI_OPEN_SETTINGS__;});
+    const herTile=page.locator('#character-list .char-card').filter({hasText:'하린'});
+    await herTile.click();if(!await page.locator('#character-dialog').isVisible())await herTile.click();
+    await page.waitForFunction(()=>document.getElementById('character-dialog').open);
     assert.equal(await page.locator('#c-gain-manual').isChecked(),false,'new characters leave loudness to automatic adjustment');assert.equal(await page.locator('#c-gain').isDisabled(),true);
     await page.locator('#c-gain-manual').check();assert.equal(await page.locator('#c-gain').isDisabled(),false,'switching manual on unlocks the dB slider');
     await page.locator('#c-gain').fill('-6');await page.locator('#c-gain').dispatchEvent('change');
