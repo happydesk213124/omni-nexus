@@ -236,7 +236,7 @@ export class OmniTtsRuntime {
     const context = requests[0].context;
     this.stage = '화자 확인'; this.emit();
     const speaking = requests.filter(r => !r.fishId && r.segment.speaker);
-    // 첫 등장 이모지: the emoji a speaker's line opened with tell a new voice's gender and age.
+    // 첫 대사 이모지: the emoji a speaker's line opened with tell a new voice's gender and age.
     const marks = new Map(speaking.flatMap(r => r.segment.marks ? [[r.segment.speaker, r.segment.marks] as const] : []));
     await ensureTtsSpeakers(context, speaking.map(r => r.segment.speaker), valid, [...new Set(speaking.map(r => r.messageId))], marks);
     if (!valid()) return [];

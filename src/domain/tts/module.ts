@@ -8,8 +8,10 @@ Use each speaker's established full name; never invent a name, identity or gende
 In a first-person story the viewpoint character's own speech and thoughts still take the cue with their actual name and delivery, never I/나/저: I said hi -> Harin (happy): "Hi." First-person actions and descriptions remain plain prose.
 Delivery: short English Fish Audio cues (happy, sad, angry, calm, curious, soft tone, whispering); calm when neutral.
 Keep both quotation marks on the same line. Narration stays plain prose. Never cue code, hidden reasoning, images or status panels. Preserve the story language.`;
-// 첫 등장 이모지: the six age-gender emoji are named (they become the voice library's ages); the personality one is the model's own pick.
-const CUE_EMOJI = `A character's first cue in the story starts with two emoji: age-gender (👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to adult; 👵, 👴: middle-aged or older), then one for personality: 👩🥺 Harin (soft tone): "Hi." Later cues have none.`;
+// 첫 대사 이모지: each speaker's first cue in a reply. The model knows its own reply, where "first in the story" was a guess
+// (an early reply cut from its prompt). The six age-gender emoji are named (they become the voice library's ages); the
+// personality one is the model's own pick.
+const CUE_EMOJI = `Each character's first cue in every reply starts with two emoji: age-gender (👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to adult; 👵, 👴: middle-aged or older), then one for personality: 👩🥺 Harin (soft tone): "Hi." Their later cues in that reply have none.`;
 export const ttsCuePrompt = (emoji = false): string => `@@depth 0\n<OmniTTS>\n${CUE_RULES}${emoji ? `\n${CUE_EMOJI}` : ''}\n</OmniTTS>`;
 export const TTS_CUE_PROMPT = ttsCuePrompt();
 

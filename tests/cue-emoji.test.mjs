@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 const built = await build({ stdin: { contents: "export * from './src/domain/tts/cue-emoji';export {parseTtsMessage} from './src/domain/tts/segment';export {ttsCuePrompt,TTS_CUE_PROMPT,ttsModule} from './src/domain/tts/module';export {ttsDefaults} from './src/config/tts-defaults';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 
-test('첫 등장 이모지: age-gender then personality, read into a gender and the sample voices\' own tags', () => {
+test('첫 대사 이모지: age-gender then personality, read into a gender and the sample voices\' own tags', () => {
   assert.deepEqual(api.cueHint('👩🥺'), { gender: 'female', tags: ['청년', '소심한', '부드러운'] });
   assert.deepEqual(api.cueHint('👦😤'), { gender: 'male', tags: ['어린이', '츤데레', '툴툴대는'] });
   assert.deepEqual(api.cueHint('👴'), { gender: 'male', tags: ['중년'] });
@@ -56,7 +56,9 @@ test('the cue prompt asks for the emoji only with the switch on, and stays short
   const on = api.ttsModule({ ...api.ttsDefaults(), cueEmoji: true }).lorebook[0].content;
   assert.equal(off, api.TTS_CUE_PROMPT);
   assert.doesNotMatch(off, /emoji/);
-  assert.match(on, /first cue in the story starts with two emoji/);
+  assert.match(on, /Each character's first cue in every reply starts with two emoji/);
+  assert.match(on, /Their later cues in that reply have none/);
+  assert.doesNotMatch(on, /in the story/, 'never "first in the story": the model cannot know that');
   assert.match(on, /👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to adult; 👵, 👴: middle-aged or older/);
   assert.ok(on.startsWith(off.replace('\n</OmniTTS>', '')), 'the same rules, one line more');
   // It goes with every reply: 1261 characters before it was cut down. A rule added back should earn its words.

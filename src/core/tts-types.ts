@@ -61,7 +61,7 @@ export interface TtsSegment {
   monologue?: boolean;
   /** The costume a cue names (`이름_2 (tone):`): its number in the speaker's illustration character's list; absent, the default one. */
   costume?: number;
-  /** The emoji the cue opened with (`👩🥺 하린 (shy):`): 첫 등장 이모지, read by cue-emoji.ts. */
+  /** The emoji the cue opened with (`👩🥺 하린 (shy):`): 첫 대사 이모지, read by cue-emoji.ts. */
   marks?: string;
   /** The text read aloud when it differs from `text` (marked effect words removed). `text` stays the line as shown, for matching. */
   spoken?: string;
@@ -79,7 +79,7 @@ export interface TtsSettings {
   autoAssign: boolean;
   /** Send the message being voiced along when a new speaker's voice is chosen. */
   assignWithChat: boolean;
-  /** 첫 등장 이모지: the cue prompt asks for age-gender and personality emoji on a character's first line; a new character's voice is chosen by them. */
+  /** 첫 대사 이모지: the cue prompt asks for age-gender and personality emoji on each character's first line in a reply; a new character's voice is chosen by them. */
   cueEmoji: boolean;
   /** Hide the emoji before a cue's name on screen (화자 이름 숨기기 switches it on with it). */
   hideEmoji: boolean;

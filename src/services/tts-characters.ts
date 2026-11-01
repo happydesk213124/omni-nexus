@@ -71,7 +71,7 @@ const scopeTails = new Map<string, Promise<void>>();
 const failed = new Map<string, number>();
 /**
  * `messageIds`: the messages being voiced; their text is the evidence for a new speaker. `marks`: the emoji each
- * speaker's line opened with (첫 등장 이모지), by speaker.
+ * speaker's line opened with (첫 대사 이모지), by speaker.
  */
 export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
@@ -95,7 +95,7 @@ export function ensureTtsSpeakers(context: TtsChatContext, names: string[], curr
   assignments.set(key,task);scopeTails.set(context.rosterScope,task);return task;
 }
 /**
- * 첫 등장 이모지, by speaker: from the lines about to be read, else from the newest replies (the line played may
+ * 첫 대사 이모지, by speaker: from the lines about to be read, else from the newest replies (the line played may
  * be a later one, which carries none). Only the replies holding an emoji are parsed.
  */
 const EMOJI = /\p{Extended_Pictographic}/u;
