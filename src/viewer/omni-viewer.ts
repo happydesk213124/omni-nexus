@@ -11,6 +11,7 @@ import { omniSound } from '../services/sound-runtime';
 import { soundData, soundReady, updateSoundSettings } from '../storage/sound-store';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 import { settledWhileStreaming } from '../domain/tts/streaming';
+import { keptPlace } from '../domain/viewer/keep-place';
 import { buildScenes, clockLines, lastClock, replyGist, replyImages, storyClock, type ClockMark, type ViewerScene } from '../domain/viewer/scenes';
 import { stageAt, type StageLine } from '../domain/viewer/cast';
 import { boxLeast, fitBoxHeight, type BoxGeometry } from '../domain/viewer/fit';
@@ -359,14 +360,14 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   // risu64 난독: matched against the chat as it shows them, the hidden words are shown and read as words.
   if (viewerPrefs().revealBase64) segments = revealSegments(segments, true);
   cues = segments.filter(isSoundSegment);
-  // Kept by where it stands in the text, not by its number: the saved reply (or the chat's own drawing of it)
-  // may hold fewer scenes than the stream did, and the same number was then another line.
-  const keepAt = keepPlace ? scenes[at]?.start : undefined;
+  // Kept by what was read, not by its number or offset (keep-place.ts): the saved reply holds fewer scenes than the
+  // stream did, and shorter text before them.
+  const before = keepPlace ? scenes : [], was = at;
   scenes = buildScenes(settled, segments, emotionData().settings.words);
   clockMarks = clockLines(settled);
   // The stage keeps its background until the new reply's place is up (or the reply says none).
   if (!keepPlace) { at = 0; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
-  else if (keepAt !== undefined) { const i = scenes.findIndex(scene => scene.start >= keepAt); if (i >= 0) at = i; }
+  else { const i = keptPlace(before, was, scenes); if (i >= 0) at = i; }
   placeMarks = placeMarkers(source);
   at = Math.max(0, Math.min(at, scenes.length - 1));
 }
