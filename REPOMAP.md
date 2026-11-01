@@ -189,6 +189,7 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_pending_shot_assets` | shots saved while an image job ran but not yet registered in the character (`[{target:{id,index},rows:[{name,path}]}]`); registered with the bake, or at the next start |
 | `onx_char_command_presets` | LLM 명령수정 phrase presets (legacy device row; live list is `card.command_presets`) |
 | `onx_settings_presets` | Dashboard settings presets, hidden examples and last applied id; no style collections or credentials. |
+| `onx_quick_setup` | ⚡ 빠른 설정 opened or applied (`{at}`): a first install (no settings saved before) opens it by itself only until then (`src/settings-ux/quick-setup.ts`). |
 | `omnitts.data` | TTS settings, voice library, folders and **global** TTS characters (`src/storage/tts-store.ts`). |
 | `omnisound.data` | BGM·효과음 settings, lists, glossary (`src/storage/sound-store.ts`). |
 | `omniinline.waits` | Streaming-tag waiting slots: older slots only (new ones are `[[inxwN]]` blocks in the message itself): the shot each pink `[[@inraywait::id…]]` will draw, newest 300 (`src/storage/inline-wait-store.ts`). |

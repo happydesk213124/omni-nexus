@@ -21,6 +21,7 @@ import { settingsUxCss } from './styles';
 import { previewChrome, tabHtml, previewHelp } from './tab-html';
 import { bindFullBackup } from './full-backup';
 import { bindSettingsSearch } from './settings-search';
+import { bindQuickSetup } from './quick-setup';
 
 let explorerOpen = false;
 let explorerCharacter = '';
@@ -310,6 +311,7 @@ export function afterPaint(): void {
   if (shell.dataset.nxUxApp !== '1') replaceShell();
   bindMenu();
   bindSettingsSearch();
+  bindQuickSetup();
   bindSoundNav();
   bindLiveFlash();
   syncModelWarning();

@@ -20,6 +20,7 @@ import { installWaitTaps } from './image-ui/wait-taps';
 import { installNoteExtras } from './image-ui/note-extras';
 import { restorePendingShotAssets } from './storage/shot-character';
 import { installOmniViewer } from './viewer/omni-viewer';
+import { installQuickSetup } from './settings-ux/quick-setup';
 
 installUiContractGlobals();
 installSettingsUx();
@@ -29,6 +30,7 @@ void installInlineTags({ ready }).catch(error => dbg('inline-tags.boot', { messa
 installWaitTaps();
 installNoteExtras();
 void installOmniViewer().catch(error => dbg('viewer.boot', { message: String(error) }, 'warn'));
+void installQuickSetup({ ready }).catch(error => dbg('quick-setup.boot', { message: String(error) }, 'warn'));
 // Shots saved but not registered when the app last closed (shot-character).
 void restorePendingShotAssets().catch(error => dbg('shot.pending.restore', { message: String(error) }, 'warn'));
 dbg('boot.loaded', { message: VERSION });

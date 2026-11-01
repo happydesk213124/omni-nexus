@@ -17,6 +17,8 @@ export interface EmotionSettings {
   /** The place each reply opens in becomes a background with nobody in it (the viewer's stage). */
   placeBackgrounds: boolean;
   family: EmotionFamily;
+  /** NAI V5 effort for faces: the illustration settings', or its own (medium: faster, uses less). */
+  effort: 'follow' | 'high' | 'medium';
   width: number;
   height: number;
   prefix: string;
@@ -39,7 +41,7 @@ export interface EmotionMade { bot: string; person: string; face: string; name: 
 export interface EmotionData { settings: EmotionSettings; seen: Record<string, string[]>; made: EmotionMade[] }
 
 export const emotionDefaults = (): EmotionSettings => ({
-  enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, family: 'v5', width: 832, height: 1216,
+  enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, family: 'v5', effort: 'follow', width: 832, height: 1216,
   prefix: '', suffix: '', pose: '', transparent: true, costumes: false, faceTags: {}, words: {},
 });
 
@@ -67,7 +69,7 @@ export function normalizeEmotionSettings(raw: unknown): EmotionSettings {
     .filter(([k, value]) => k && value && keep(k, value)).slice(0, 200));
   return {
     enabled: r.enabled !== false, useExisting: r.useExisting !== false, autoGenerate: r.autoGenerate !== false, placeBackgrounds: r.placeBackgrounds !== false,
-    family: r.family === 'v4' ? 'v4' : 'v5', width: size(r.width, d.width), height: size(r.height, d.height),
+    family: r.family === 'v4' ? 'v4' : 'v5', effort: r.effort === 'high' || r.effort === 'medium' ? r.effort : 'follow', width: size(r.width, d.width), height: size(r.height, d.height),
     prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
     faceTags: strings(r.faceTags, () => true), words: strings(r.words, (_k, value) => !!baseExpression(value)),
   };

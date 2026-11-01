@@ -2,17 +2,34 @@ import type { TtsCharacter, TtsSettings, TtsVoice } from '../../core/tts-types';
 import { callLlm } from '../llm/client';
 import { objectValue, ttsFetch, ttsJson } from './http';
 import { parseLlmJson } from './translation';
+import { embedNearestTexts } from '../sound/embed';
+import type { EmbeddingSettings } from '../embedding/client';
 
 export interface VoiceCandidate { number: number; voice: TtsVoice }
 export function numberedVoices(voices: TtsVoice[]): VoiceCandidate[] {
   const count = { female: 0, male: 1000, unknown: 2000 };
   return voices.map(voice => ({ number: ++count[voice.gender], voice }));
 }
-export async function selectTtsVoices(characters: TtsCharacter[], voices: TtsVoice[], settings: TtsSettings, engine: 'llm' | 'jev', sources?: Record<string, unknown>): Promise<Map<string, TtsVoice[]>> {
+/** `embed`: the embedding connection, for the embedding engine (TTS·BGM·JEV 모델 설정's). */
+export async function selectTtsVoices(characters: TtsCharacter[], voices: TtsVoice[], settings: TtsSettings, engine: TtsSettings['selector'], sources?: Record<string, unknown>, embed?: EmbeddingSettings | null): Promise<Map<string, TtsVoice[]>> {
   if (!voices.length) throw new Error('선택할 음성이 없습니다.');
   const candidates = numberedVoices(voices);
   const allowed = characters.map(character => candidates.filter(c => character.gender === 'unknown' || character.gender === 'other' || c.voice.gender === character.gender || c.voice.gender === 'unknown'));
   if (allowed.some(v => !v.length)) throw new Error('캐릭터 성별에 맞는 음성이 후보 폴더에 없습니다.');
+  if (engine === 'embedding') {
+    if (!embed) throw new Error('임베딩이 설정되지 않았습니다. TTS·BGM·JEV 모델 설정의 임베딩을 먼저 넣어 주세요.');
+    // No model call: the character's mood tags against each voice's, nearest first. With no tags of its own a
+    // character is known by name and gender only, and the pick is as rough as that.
+    const picked = new Map<string, TtsVoice[]>();
+    for (let i = 0; i < characters.length; i++) {
+      const c = characters[i]!, rows = allowed[i]!;
+      const query = [`${c.gender} character`, c.name, c.tags.join(', ')].filter(Boolean).join(' — ');
+      const order = await embedNearestTexts(query, rows.map(r => [`${r.voice.gender} voice`, r.voice.tags.join(', ')].filter(Boolean).join(' — ')), embed, 3, -1);
+      if (!order.length) throw new Error(`${c.name}: 유효한 음성 추천 결과가 없습니다.`);
+      picked.set(c.id, order.map(n => rows[n]!.voice));
+    }
+    return picked;
+  }
   let answer: unknown;
   if (engine === 'jev') {
     if (allowed.some(rows => rows.length > 255)) throw new Error('JEV 후보는 캐릭터별 최대 255개입니다. 폴더로 후보를 좁혀 주세요.');

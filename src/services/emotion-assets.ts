@@ -195,7 +195,7 @@ const notify = () => { for (const callback of listeners) callback(); };
  * NovelAI to be free first (one generation at a time per account: an illustration
  * job running alongside would make one of them fail).
  */
-async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'medium'; webp?: number }): Promise<{ bytes: Uint8Array; path: string }> {
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number }): Promise<{ bytes: Uint8Array; path: string }> {
   const settings = (await loadEmotionData()).settings, config = getConfig();
   const nai = input.effort ? { ...config.nai, effort_v5: input.effort } : config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
@@ -235,7 +235,7 @@ async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costum
   const looks = sfwTags(await spriteLooks(c, bot, costume));
   if (!looks) throw new Error(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
-    width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE,
+    width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE, effort: settings.effort === 'follow' ? undefined : settings.effort,
     prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
   });

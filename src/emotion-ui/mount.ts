@@ -44,7 +44,7 @@ function fillSettings(s: EmotionSettings): void {
   const value = (id: string, v: string) => { const node = $<HTMLInputElement>(id); if (node && document.activeElement !== node) node.value = v; };
   check('emo-enabled', s.enabled); check('emo-existing', s.useExisting); check('emo-auto', s.autoGenerate); check('emo-places', s.placeBackgrounds); check('emo-costumes', s.costumes);
   costumeGate();
-  value('emo-family', s.family); value('emo-transparent', s.transparent ? '1' : '0');
+  value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-pose', s.pose);
   for (const e of BASE_EXPRESSIONS) value(`emo-face-${e.key}`, s.faceTags[e.key] || '');
@@ -74,7 +74,7 @@ function readSettings(): Partial<EmotionSettings> {
   return {
     enabled: !!$<HTMLInputElement>('emo-enabled')?.checked, useExisting: !!$<HTMLInputElement>('emo-existing')?.checked, autoGenerate: !!$<HTMLInputElement>('emo-auto')?.checked, placeBackgrounds: !!$<HTMLInputElement>('emo-places')?.checked,
     costumes: !!$<HTMLInputElement>('emo-costumes')?.checked,
-    family: val('emo-family') === 'v4' ? 'v4' : 'v5', transparent: val('emo-transparent') !== '0',
+    family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0',
     width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), pose: val('emo-pose'),
     faceTags: Object.fromEntries(BASE_EXPRESSIONS.map(e => [e.key, val(`emo-face-${e.key}`).trim()]).filter(([, tags]) => tags)), words,
   };

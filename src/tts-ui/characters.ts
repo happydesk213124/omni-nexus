@@ -1,6 +1,6 @@
 import type { TtsCharacter, TtsSettings, TtsVoice } from '../core/tts-types';
 import { ttsData, saveTtsData, updateTtsSettings, ttsCandidateVoices } from '../storage/tts-store';
-import { blankTtsCharacter, deleteTtsCharacters } from '../services/tts-characters';
+import { blankTtsCharacter, deleteTtsCharacters, voiceEmbedding } from '../services/tts-characters';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { mergeTtsCharacter, ensureTtsRoleCards, resolveTtsRole, TTS_ROLE_NAMES } from '../domain/tts/identity';
 import { fishVoiceId, adoptVoiceTags } from '../domain/tts/library';
@@ -351,9 +351,9 @@ export class TtsCharacters {
     });
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
     on('choose-character-voice', () => { this.draft = this.read(); dialog('character-dialog',false); this.library.pickVoice(voice => { this.tab('tts-characters'); dialog('character-dialog'); this.choose(voice); }); });
-    for (const engine of ['llm','jev'] as const) on(`recommend-${engine}`, async () => {
+    for (const engine of ['llm','jev','embedding'] as const) on(`recommend-${engine}`, async () => {
       const c = this.read(); text('character-voice-choice','음성 추천 중…');
-      const voices = (await selectTtsVoices([c],ttsCandidateVoices(),ttsData().settings,engine)).get(c.id)!;
+      const voices = (await selectTtsVoices([c],ttsCandidateVoices(),ttsData().settings,engine,undefined,engine === 'embedding' ? await voiceEmbedding() : null)).get(c.id)!;
       if (!list(val('c-tags')).length && voices[0]?.tags.length) set('c-tags', voices[0].tags.join(', '));
       if (characterGender(val('c-gender')) === 'unknown' && voices[0] && voices[0].gender !== 'unknown') set('c-gender', genderLabel(voices[0].gender));
       this.choose(voices[0]); const target = el('character-voice-suggestions'); target.hidden = false; target.replaceChildren();

@@ -39,13 +39,18 @@ function parseSettingsRaw(raw: unknown): unknown | null {
   return typeof raw === 'object' ? raw : null;
 }
 
+/** Nothing was saved before this start: a first install (⚡ 빠른 설정 opens on its own then). */
+let firstStart = false;
+export const settingsWereNew = (): boolean => firstStart;
+
 export async function loadSettingsFromStorage(): Promise<Settings> {
   persistedJson = undefined;
   try {
     const raw = await psGet(SETTINGS_KEY, LEGACY_SETTINGS_KEY);
     const parsed = parseSettingsRaw(raw);
     persistedJson = JSON.stringify(parsed);
-    if (!parsed) return deepcopy(DEFAULT_CONFIG);
+    // Unreadable is not new: only a store with no settings in it at all.
+    if (!parsed) { firstStart = raw == null; return deepcopy(DEFAULT_CONFIG); }
     const migrated = migrateSettings(parsed);
     const config = deepMerge(DEFAULT_CONFIG, migrated) as Settings;
     if (JSON.stringify(parsed) !== JSON.stringify(migrated)) await saveSettingsToStorage(config, { verify: true });

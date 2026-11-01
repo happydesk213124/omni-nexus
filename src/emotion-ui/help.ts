@@ -17,6 +17,7 @@ export const EMOTION_HELP: Record<string, { title: string; body: string }> = {
   'emo-existing': { title: '봇에 있는 기존 에셋 쓰기', body: '봇의 에셋·감정 이미지·켜진 모듈에서 이름_감정, 감정_이름, 별칭 같은 이름의 그림을 찾아 씁니다. Omni가 그린 그림은 omni_이름_감정으로 저장되어 섞이지 않습니다.' },
   'emo-auto': { title: '없는 그림 자동 생성', body: '뷰어에 필요한데 없는 표정·배경을 NovelAI로 그립니다. 기본 표정을 먼저 보여 주고 다 되면 바꿉니다. NAI가 쉴 때 다음 답장 것을 미리 그리는 것은 무료 생성일 때만입니다.' },
   'emo-family': { title: '모델', body: '표정 그림을 그릴 NovelAI 모델입니다. 배경은 이 설정과 상관없이 V5 medium으로 그립니다(V5 키가 없으면 기본 모델).' },
+  'emo-effort': { title: 'Effort (V5)', body: '표정 그림을 그릴 때의 NAI V5 effort입니다. 「삽화 설정 따름」은 삽화 생성의 설정을 그대로 씁니다. medium은 high보다 빠르고 사용량(Anlas)이 적게 들며, 서서 보이는 표정 그림에는 대개 충분합니다. V4.5에는 effort가 없어 이 설정이 쓰이지 않습니다.' },
   'emo-transparent': { title: '투명 배경', body: 'V5에서 표정 그림의 배경을 투명하게 그립니다. 뷰어의 배경 위에 자연스럽게 섭니다.' },
   'emo-width': { title: '가로', body: '표정 그림의 가로 크기입니다(64 단위).' },
   'emo-height': { title: '세로', body: '표정 그림의 세로 크기입니다(64 단위).' },

@@ -52,6 +52,7 @@ ${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 �
 </fieldset></div>
 <div class="group"><h3>그리기 · 태그로만</h3><div class="fields">
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
+<label class="field"><span>Effort (V5)</span><select id="emo-effort"><option value="follow">삽화 설정 따름</option><option value="high">high</option><option value="medium">medium · 빠르고 덜 씀</option></select></label>
 <label class="field"><span>투명 배경 (V5)</span><select id="emo-transparent"><option value="1">투명</option><option value="0">흰 배경</option></select></label>
 <label class="field"><span>가로</span><input id="emo-width" type="number" min="512" max="1600" step="64"></label>
 <label class="field"><span>세로</span><input id="emo-height" type="number" min="512" max="1600" step="64"></label>

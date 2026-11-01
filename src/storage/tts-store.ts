@@ -41,6 +41,12 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     result.omitSeed = 1;
   }
   if (typeof result.translation.narrationLanguage !== 'string') result.translation.narrationLanguage = '';
+  // Google and DeepL once shared one key: switched away and back, the other's empty field wrote over it.
+  const translation = result.translation;
+  // Read off the save itself: the defaults fill both fields in, which would hide an older save's one key.
+  if (typeof raw.translation?.googleKey !== 'string') translation.googleKey = translation.provider === 'google' ? translation.key : '';
+  if (typeof raw.translation?.deeplKey !== 'string') translation.deeplKey = translation.provider === 'deepl' ? translation.key : '';
+  if (!['llm', 'jev', 'embedding'].includes(result.selector)) result.selector = defaults.selector;
   const clamp = (n: number, min: number, max: number, fallback: number) => Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
   result.rate = clamp(result.rate, .25, 4, 1);
   result.skipChars = Math.floor(clamp(result.skipChars, 0, 8000, 1));

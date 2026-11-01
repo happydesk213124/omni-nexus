@@ -51,7 +51,8 @@ V5 natural: call the viewpoint person "the viewer" (e.g. the viewer's hand reach
 type Example = [id: string, name: string, text: string];
 const EXAMPLES: Example[] = [
   // The user's quality pass, with their additions (keep wear_state, heart eyes, back view,
-  // x-ray when it helps an insertion shot, the goal), compacted to English by request.
+  // x-ray when it helps an insertion shot, motion blur, the goal), compacted to English by request.
+  // The back-view lines are theirs word for word, the Korean one too: so worded, it was used more.
   ['quality', '퀄리티 향상', `1 Speech text: Korean, ≤6 chars, fits context.
 2 Continuity: keep pose, sex position, location (e.g. bed) and wear_state across shots; no random stand/sit jumps, no clothes coming back.
 3 Main prompt (natural language): describe layout, poses, hand positions, actions and camera like a hand-made render. Camera view (upper body, dutch angle, from above...) goes in BOTH main and character prompts; vary angles, pick the exact one needed (high/low). Face focus -> close-up. Aroused or ecstatic faces: use heart eyes often, written as "heart-shaped pupils" + a detailed expression.
@@ -59,12 +60,14 @@ const EXAMPLES: Example[] = [
 - appearance: always hair_color + hair_style (infer if unknown, e.g. blue clothes -> blue hair); never expressions.
 - expression/gaze/pose -> action (e.g. "looking at brown hair boy").
 - mostly upper body -> add 2::upper body:: to action.
-- seen from behind -> add "back view" to action.
+- seen from behind -> add 2::back head::, "2::back view::" to action.
 - register every new character/animal/creature/monster; original = Danbooru "character (series)".
 5 Contact: source = performer; target = receiver, with the EXACT same English verb (no passive/names, never "being sucked"); mutual = both at once. Expression/gaze/posture stay in action; no unmentioned acts.
-6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face"; when an x-ray view of the insertion would make the shot hotter, add 2::x-ray:: (judge per shot, not always).
+6 NSFW: position + NSFW tags in mutual; carry positions over from prior shots; insertion -> "deep penetration"; facing -> "face to face"; when an x-ray view would make the shot hotter, add 2::x-ray:: to the receiving chara's action (judge per shot, not always).
 7 Structure: spread "line" (L12, L15...) evenly, no bias; precise location ("on bed") so no one stands by accident; keep character coords far apart (real hitboxes), too close merges tags into malformed bodies.
-Goal: intensely arousing images with striking composition and mood.`],
+8 Apply "motion blur" to dynamic scenes.
+Goal: intensely arousing images with striking composition and mood.
+그 사람한테도 이미지상 뭔가 뒷모습 보이는게 자연스러우면 back view 태그 넣어줘`],
   ['pov', 'POV · 1인칭 시점', `[POV]
 ${POV_CORE}`],
   ['pov-touch', 'POV · 손과 스킨십', `[POV · hands and touch]
