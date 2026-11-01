@@ -239,15 +239,21 @@ test('a sprite wears the default costume, whichever one the roster has on', asyn
 test('a cue naming a costume by its name (미선_melony_form): its number read from the illustration character, and nobody new made of it', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform' }, { name: 'melony_form', attire: 'melon dress, leaf hair ornament' }] });
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '메타몽', gender: 'girl', appearance: 'pink hair', costumes: [{ name: 'default', attire: 'pink dress' }, { name: 'melony_form', attire: 'melon dress' }] });
   await f.api.refreshCostumeNames('bot', 'bot:bot');
   const worn = f.api.costumesOf('bot:bot', 'bot');
   assert.deepEqual(worn('오미선'), ['default', 'melony_form']);
   assert.deepEqual(worn('미선'), ['default', 'melony_form'], 'by any of her names');
   assert.equal(worn('유나'), undefined, 'no one');
+  assert.deepEqual(worn('메타몽'), ['default', 'melony_form'], 'one who speaks before they are a TTS character: their illustration character says who');
   // TTS: with the names known, the cue is 오미선 and no "미선_Melony Form" is added to the roster.
   const tts = f.api.ttsData();
   tts.settings.enabled = true; tts.settings.autoAssign = true; f.person.fishId = '4e118bfbb83e401c84699c09b5f08257';
+  // A TTS character made of such a cue before (as TTS once did) does not stand in the way.
+  tts.characters.push({ ...misun, id: 't-made', name: '오미선_melony_form', surname: '', givenName: '', surnameAliases: [], givenAliases: [], triggers: ['오미선_melony_form'], gender: 'unknown', fishId: '' });
   const before = tts.characters.length;
+  await f.api.ensureTtsSpeakers({ scope: 'emo', rosterScope: 'bot:bot', characterId: 'bot', chatId: 'chat', sessionId: 's', character: {}, chat: {}, messages: [] }, ['오미선_melony_form'], () => true);
+  assert.equal(tts.characters.length, before, 'no voice chosen for it, and nobody new');
   await f.api.ensureTtsSpeakers({ scope: 'emo', rosterScope: 'bot:bot', characterId: 'bot', chatId: 'chat', sessionId: 's', character: {}, chat: {}, messages: [] }, ['미선_Melony Form'], () => true);
   assert.equal(tts.characters.length, before);
 });
