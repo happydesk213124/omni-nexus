@@ -10,7 +10,7 @@ const TALL = 'iVBORw0KGgoAAAANSUhEUgAAACgAAAA8CAIAAACb22+3AAAAOElEQVR4nO3NQQkAAA
 const reply = ['[3월 2일 ◆ 오후 4시 ◆ 카페]', '- Main Storylines: 숨은 요약 줄', '문이 열렸다.', '오미선 (cheerful): "왔어?"', '오미선: "자리 맡아놨어. 오늘은 창가 쪽이 제일 따뜻하더라, 얼른 앉아."', '[[@inray::card1::inxshot_abc::832::1216]]', '하린: "응, 늦었지."'].join('\n');
 
 test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites go over once, chat images are cloned, closing leaves nothing', async () => {
-  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {soundData} from './src/storage/sound-store';import {omniTts} from './src/services/tts-runtime';import {saveViewerPrefs} from './src/storage/viewer-prefs';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,soundData,saveViewerPrefs,omniTts});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {soundData} from './src/storage/sound-store';import {omniTts} from './src/services/tts-runtime';import {saveViewerPrefs,viewerPrefs} from './src/storage/viewer-prefs';Object.assign(window,{installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,soundData,saveViewerPrefs,viewerPrefs,omniTts});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
@@ -325,6 +325,23 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForTimeout(200);
     await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500);
     assert.match(await count(), /^"5 \//, 'the keys were Risu\'s');
+    // + under the folded picture: two bigger sizes, then small again, each a tap on the + as laid out; the + stays
+    // right under the picture, the line stays where it is, and the size is kept.
+    const folded = () => page.locator('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])').boundingBox();
+    const plus = () => page.locator('[x-omni-vn] [data-vn-act="zoom"]').boundingBox();
+    const plusSays = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="zoom"]'), '::after').content);
+    const plusUnder = async () => { const [cg, z] = [await folded(), await plus()]; return z.y > cg.y + cg.height && z.y - (cg.y + cg.height) < 12 && Math.abs(z.x + z.width - (cg.x + cg.width)) < 3; };
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="zoom"]')).display !== 'none');
+    assert.ok(Math.abs((await folded()).height - 84) < 2 && await plusUnder(), 'the + right under the small thumb');
+    assert.equal(await plusSays(), '"+"');
+    for (const [size, share, label] of [[2, 0.3, '"+"'], [3, 0.45, '"−"'], [1, 0, '"+"']]) {
+      await press('zoom');
+      await page.waitForFunction(height => Math.abs(document.querySelector('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])').getBoundingClientRect().height - height) < 2, share ? box.height * share : 84);
+      assert.ok(await plusUnder(), `size ${size}: the + still right under it`);
+      assert.equal(await plusSays(), label);
+      assert.equal(await page.evaluate(() => window.viewerPrefs().cgSize), size, 'the size is kept');
+    }
+    assert.match(await count(), /^"5 \//, 'sizing the picture reads no line on');
     // 전체화면 opens Omni's own 크게보기 (stubbed): the viewer steps down under it, takes no tap, and comes back when it closes.
     await page.evaluate(() => {
       window.__OMNI_INSPECT_SHOT__ = async (card, asset) => { window.inspected = [card, asset]; window.inspecting = true; return true; };

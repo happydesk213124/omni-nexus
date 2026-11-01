@@ -21,7 +21,7 @@ import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { makeSpeakerLooks } from '../services/speaker-looks';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
-import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs } from '../storage/viewer-prefs';
+import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs, type CgSize } from '../storage/viewer-prefs';
 import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeSoundFocus, type SoundFocus, type SoundPage } from '../sound-ui/page';
 import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
@@ -1006,7 +1006,9 @@ async function measureCgThumb(): Promise<void> {
   await release(node);
   // Only the folded picture is the thumb: a key back to its scene meanwhile (it came up big)
   // made this the big one, and the thumb would never take a tap again.
-  if (cgView === 'fold' && lastCg === id) cgThumb = box;
+  if (cgView === 'fold' && lastCg === id) cgThumb = box; else return;
+  // Its + stands right under it, hidden (no rectangle) until there was a folded picture.
+  await remeasure('zoom');
 }
 /**
  * 🎲 리롤 and 🔮 샷 태그 수정 on the picture on show, as 크게보기 has them. Not while the reply
@@ -1151,7 +1153,7 @@ async function comeBack(): Promise<void> {
 }
 
 const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState => ({
-  cgView: cgView === 'none' ? undefined : cgView, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
+  cgView: cgView === 'none' ? undefined : cgView, cgSize: viewerPrefs().cgSize, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
@@ -1434,6 +1436,8 @@ async function act(name: string): Promise<void> {
   else if (name === 'cgfull') { fullFrom = cgView === 'open' ? 'open' : 'show'; if (!await inspectCg()) { cgView = 'full'; await restyle(); await measureCgControls(); } }
   else if (name === 'cgback') { cgView = fullFrom; await restyle(); await measureCgControls(); }
   else if (name === 'cgfit') { cgFill = !cgFill; await restyle(); }
+  // The folded picture a size bigger (after the biggest, small again); it and the + under it are read again.
+  else if (name === 'zoom') { await saveViewerPrefs({ cgSize: (viewerPrefs().cgSize % 3 + 1) as CgSize }); cgThumb = null; await restyle(); await measureCgThumb(); }
   else if (name === 'cgroll' || name === 'cgtags') await shotAction(name === 'cgroll' ? 'reroll' : 'base');
   else if (name === 'cgprev' || name === 'cgnext') await cgStep(name === 'cgnext' ? 1 : -1);
   else if (name === 'auto') { await saveViewerPrefs({ auto: !viewerPrefs().auto }); await render(true); }
@@ -1536,7 +1540,7 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
   // A CG's bar and full-screen sheet keep the rectangles they had when last shown: hidden, they take no tap
   // (the sheet's ▶ and 닫기 lay over the menu's ◀ and took its taps). The bar is up while the picture is big.
   return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show' && cgView !== 'open') && !(c.act === 'msgs' && msgsOpen)
-    && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()));
+    && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()) && !(c.act === 'zoom' && (cgView !== 'fold' || !lastCg)));
 }
 /**
  * The speaker whose name a tap is on, over the line in the box. The name's plate sits at the

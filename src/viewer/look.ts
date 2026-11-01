@@ -47,6 +47,7 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;bottom:72px;translate:-50% 0;display:flex;gap:8px;z-index:9}
 [x-omni-vn] [data-vn-note]{display:none;position:absolute;left:50%;top:58px;translate:-50% 0;z-index:10;width:max-content;max-width:min(340px,88%);padding:7px 12px;border-radius:10px;background:rgba(14,12,20,.88);border:1px solid rgba(227,194,122,.35);color:#efe9da;font-size:12.5px;line-height:1.45;text-align:center;pointer-events:none}
 [x-omni-vn] [data-vn-cgbar] button{display:none}
+[x-omni-vn] [data-vn-act="zoom"]{display:none;position:absolute;right:12px;top:150px;z-index:5;padding:0;font-size:18px;line-height:1;color:var(--gold)}
 [x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);width:auto!important;height:auto!important;max-width:94%!important;max-height:calc(100% - 190px)!important;object-fit:contain;translate:-50% -50%;rotate:-.8deg;margin:0!important;border:3px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .5s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-hud]{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:10px 10px 18px;background:linear-gradient(rgba(5,5,10,.7),transparent);z-index:4}
 [x-omni-vn] [data-vn-clock]{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.02em;color:#ece6d6}
@@ -176,7 +177,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 `;
 
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
-export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><div data-vn-stickers></div>
+export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div>
 <div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
@@ -216,6 +217,8 @@ export interface StageState {
   count?: string;
   /** The reply's last CG: coming in, folded at the top, shown again, or full screen. */
   cgView?: 'open' | 'fold' | 'show' | 'full';
+  /** Folded, how big it stays at the top (its + button): 1 the small thumb, 2 and 3 bigger. */
+  cgSize?: number;
   /** Full screen fills the frame (cover) rather than fitting in it. */
   cgFill?: boolean;
   /** Whether the reply has an illustration before / after the full-screen one. */
@@ -267,6 +270,14 @@ function breathing(s: StageState): string {
 }
 // Phones are narrow: people overlap, the speaker in front, as a portrait VN stages them.
 const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] };
+/**
+ * A folded picture's height at each of its + button's sizes, 60px down from the top: the small thumb, then a
+ * share of the stage that stays clear of the line's box at the bottom. Its box is exactly this high (a wide
+ * picture is fitted inside it), so the button can stand right under it.
+ */
+const foldHeight = (size: number | undefined): string => size === 3 ? '45%' : size === 2 ? '30%' : '84px';
+const foldZoom = (size: number | undefined): string => `[x-omni-vn] [data-vn-act="zoom"]{display:inline-flex;top:calc(66px + ${foldHeight(size)})}`
+  + `[x-omni-vn] [data-vn-act="zoom"]::after{content:"${size === 3 ? '−' : '+'}"}`;
 type Box = { left: number; top: number; width: number; height: number };
 /**
  * Where the oval of the person at `index` of `count` on stage is, worked out from the numbers STATIC_CSS lays it
@@ -306,7 +317,7 @@ export function stageCss(s: StageState): string {
     // Folded, the picture is a thumb above the people (their z-index is at most 3): a head in front of it hid it.
     // Every place is !important, here and below: the picture is the chat's <img> cloned with its inline style, and a
     // picture drawn in a spinner's slot carries inset:0 and object-fit there (it put the big one's middle on the frame's corner).
-    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:84px!important;width:auto!important;max-width:120px!important;max-height:84px!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}`
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:${foldHeight(s.cgSize)}!important;width:auto!important;max-width:${s.cgSize === 2 || s.cgSize === 3 ? '60%' : '120px'}!important;max-height:${foldHeight(s.cgSize)}!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}${foldZoom(s.cgSize)}`
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}!important}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
     : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:50%!important;top:calc(50% - 40px)!important;right:auto!important;bottom:auto!important}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' || s.cgView === 'open' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}${s.cgRolling ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
