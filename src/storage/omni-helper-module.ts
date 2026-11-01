@@ -4,7 +4,8 @@ import { asShotAssetRows } from '../domain/gallery/shot-assets';
 import { isTokenGuardComment, tokenGuardScripts, TOKEN_GUARD_ORDER } from '../domain/inray-display';
 
 export const OMNI_HELPER_ID = 'omni-nexus-helper';
-export const OMNI_HELPER_PROMPT = '이번 응답의 이야기와 대사를 모두 작성한 뒤, 상태창·요약·진행상황 같은 부가 내용 전에 별도 줄로 [[imgstart]]를 한 번 출력하세요. 생각·추론 구간에는 출력하지 마세요.';
+// In English, as every other instruction of ours: the same rule in fewer tokens than the Korean it was.
+export const OMNI_HELPER_PROMPT = 'After all of the story and dialogue, before any status panel, summary or progress notes, write [[imgstart]] once on a line of its own. Never in thinking or reasoning.';
 const promptComment = 'omni-imgstart-prompt';
 const regexComment = 'omni-imgstart-display';
 type Row = Record<string, unknown>;

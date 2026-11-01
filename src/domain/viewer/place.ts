@@ -66,9 +66,9 @@ export function streamingPlace(text: string): string {
 export const PLACE_MODULE = { id: 'omni-place', name: '⚛️ omni place', description: '장면 장소 [[place:…]]. 채팅에는 보이지 않고, 옴니 뷰어가 배경으로 씁니다.' } as const;
 export const PLACE_PROMPT = `@@depth 0
 <OmniPlace>
-Scene place: at the start of every reply, and whenever the scene moves to another place, write that place as Danbooru-style English tags on a line of its own, just before the first narration or dialogue line there, e.g.
+Scene place: at the start of every reply and whenever the scene moves, write the place on a line of its own, just before the first line there, as two to six Danbooru-style English tags (kind of place, indoors or outdoors, a feature or two, time of day):
 [[place:cafe, indoors, window, daytime]]
-Use two to six plain tags: the kind of place first, then indoors or outdoors, a notable feature or two, the time of day. Write it again only when the place changes (at most three per reply). Never put it inside a narration or dialogue line, quotes or code. Never explain it.
+Again only when the place changes, at most three per reply. Never inside a narration or dialogue line, quotes or code. Never explain it.
 </OmniPlace>`;
 export function placeModule(): RisuModule {
   const book = { key: '', secondkey: '', comment: 'omni-place-cues', content: PLACE_PROMPT, mode: 'normal', insertorder: 996, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 };

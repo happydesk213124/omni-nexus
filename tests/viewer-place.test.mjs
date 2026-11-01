@@ -61,6 +61,9 @@ test('⚛️ omni place: the writer is asked for marks on lines of their own; th
   const module = api.placeModule();
   assert.equal(module.name, '⚛️ omni place');
   assert.match(module.lorebook[0].content, /\[\[place:cafe, indoors, window, daytime\]\]/);
+  // It goes with every reply: cut down from 570 characters, every rule kept.
+  for (const rule of [/at the start of every reply and whenever the scene moves/, /on a line of its own/, /at most three per reply/]) assert.match(module.lorebook[0].content, rule);
+  assert.ok(module.lorebook[0].content.length <= 480, `the place prompt grew to ${module.lorebook[0].content.length} characters`);
   assert.equal(module.lorebook[0].alwaysActive, true);
   const hide = module.regex[0];
   assert.equal(hide.type, 'editdisplay');
