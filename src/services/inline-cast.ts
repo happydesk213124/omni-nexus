@@ -1,12 +1,14 @@
 import type { ApiResult, JobRequest } from '../core/types';
 import { dbg } from '../core/debug';
 import { cleanText, sessionIdHash, writeSessionId } from '../core/util/text';
-import { inlineCastCharacters, inlineCastPlace } from '../domain/prompt/inline-shots';
+import { inlineCastCharacters, inlineCastCostumes, inlineCastPlace } from '../domain/prompt/inline-shots';
 import type { TaggerResult } from '../core/types';
 import { rememberReplyPlace } from '../storage/viewer-places';
 import { flushShotAssets } from '../storage/shot-character';
 import { mergeRosterFromTagged } from './characters';
 import { recordStreamBlock, rosterWritten } from './stream-continuity';
+import { refreshCostumeNames } from './costume-names';
+import { ttsBotScope } from '../storage/tts-roster';
 
 /**
  * 「새 캐릭터를 맨 앞에 쓰기」: the streaming runtime sends the reply's
@@ -14,6 +16,8 @@ import { recordStreamBlock, rosterWritten } from './stream-continuity';
  * of the story is written. It is the reply's block 0: shot blocks wait for its
  * roster write like they wait for an earlier block's (stream-continuity), so a
  * person it registers is known by name in block 1 even when both close at once.
+ * Its `new_costumes` too: an outfit worn in this reply is someone's costume before
+ * the first line that wears it (`하루키_idol_dress`), not only once a picture shows it.
  */
 export async function registerInlineCast(body: Record<string, unknown>): Promise<ApiResult> {
   const characterId = cleanText(body.character_id, 200), chatId = cleanText(body.chat_id, 200);
@@ -22,31 +26,34 @@ export async function registerInlineCast(body: Record<string, unknown>): Promise
   if (!characterId || !chatId || !sessionId) return { ok: false, error: { code: 'bad_request', message: '캐릭터와 채팅 ID가 필요합니다.' } };
   const people = Array.isArray(body.new_characters) ? inlineCastCharacters({ new_characters: body.new_characters }) : inlineCastCharacters(body.body);
   if (!people) return { ok: false, error: { code: 'bad_json', message: '캐스트 블록 JSON을 읽지 못했습니다.' } };
+  const costumes = Array.isArray(body.new_costumes) ? inlineCastCostumes({ new_costumes: body.new_costumes }) : inlineCastCostumes(body.body);
   // Where the reply opens: the shot blocks after it keep it until one moves (stream-continuity), and the viewer stages it.
   const place = Array.isArray(body.new_characters) ? cleanText(body.place, 400) : inlineCastPlace(body.body);
   const hostMessageId = cleanText(body.host_message_id, 200);
   const request: Partial<JobRequest> = {
     stream_id: cleanText(body.stream_id, 200), character_id: characterId, chat_id: chatId,
     host_message_id: hostMessageId, inline_block: 0,
-    inline_tagged: { new_characters: people, scenes: place ? [{ place, shots: [{ location: place }] }] : [] } as unknown as TaggerResult,
+    inline_tagged: { new_characters: people, ...(costumes.length ? { new_costumes: costumes } : {}), scenes: place ? [{ place, shots: [{ location: place }] }] : [] } as unknown as TaggerResult,
   };
   recordStreamBlock(request);
   try {
-    if (people.length) {
+    if (people.length || costumes.length) {
       await mergeRosterFromTagged({
-        sessionId, tagged: { new_characters: people, scenes: [] }, shotChars: [],
+        sessionId, tagged: { new_characters: people, ...(costumes.length ? { new_costumes: costumes } : {}), scenes: [] }, shotChars: [],
         unifiedSessionId: sessionId, characterId, sourceSessionIds: [],
         // Never a character write mid-reply: it goes out with the reply's bake, or after the reply ends.
         bufferWrites: true,
       });
       flushWhenReplyEnds();
+      // The buffered rows are what the roster reads: the names a cue may wear are read again now, not in 30 s.
+      if (costumes.length) void refreshCostumeNames(characterId, ttsBotScope(characterId), true);
     }
   } finally {
     rosterWritten(request);
   }
   if (place) await rememberReplyPlace(characterId, chatId, hostMessageId, place).catch(error => dbg('inline-cast.place', { message: String(error) }, 'warn'));
-  dbg('inline-cast.registered', { message: people.map(p => cleanText(p.name, 80)).join(', '), count: people.length, place });
-  return { ok: true, session_id: sessionId, registered: people.map(p => cleanText(p.name, 120)), place };
+  dbg('inline-cast.registered', { message: people.map(p => cleanText(p.name, 80)).join(', '), count: people.length, costumes: costumes.length, place });
+  return { ok: true, session_id: sessionId, registered: people.map(p => cleanText(p.name, 120)), place, ...(costumes.length ? { costumes: costumes.map(c => cleanText(c.name, 120)) } : {}) };
 }
 
 /**
