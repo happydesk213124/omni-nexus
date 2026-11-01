@@ -37,6 +37,12 @@ test('production settings persist independently, edit voice tiles and survive re
     assert.deepEqual(await page.evaluate(()=>window.containerEvents),['fullscreen','hidden'],'activation returns to chat automatically');
     await page.evaluate(()=>{delete window.__OMNI_TTS_SETTINGS_OPEN__;delete window.__OMNI_OPEN_TTS__;});
 
+    // 첫 등장 이모지로 음성 고르기: off unless switched on, and kept.
+    assert.equal(await page.locator('#cue-emoji').isChecked(),false);
+    await page.locator('#cue-emoji').check();
+    await page.waitForFunction(()=>window.ttsData().settings.cueEmoji===true);
+    await page.locator('#cue-emoji').uncheck();
+    await page.waitForFunction(()=>window.ttsData().settings.cueEmoji===false);
     await page.locator('#speed-presets').fill('1, 2, 2.5, 3.5');await page.locator('#speed-presets').dispatchEvent('change');
     assert.deepEqual(await page.evaluate(()=>window.ttsData().settings.rates),[1,2,2.5,3.5]);
     assert.deepEqual(await page.locator('#speed option').allTextContents(),['1×','2×','2.5×','3.5×'],'speed choices are the custom rate list');

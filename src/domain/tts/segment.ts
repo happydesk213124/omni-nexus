@@ -8,6 +8,8 @@ import { INLINE_CAST_MASK_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOU
 /** Sound cues to list with the spoken lines: BGM markers and the effect rules in use. */
 export interface TtsSoundCues { bgm: boolean; sfxRules: readonly SfxRule[] }
 export const isSoundSegment = (segment: Pick<TtsSegment, 'kind'>): boolean => segment.kind === 'bgm' || segment.kind === 'sfx';
+// The emoji a cue may open with (`👨 Sora:`), as cueHeader takes them off the name.
+const LEAD_EMOJI = new RegExp(`^[\\s*\\p{Extended_Pictographic}\\p{Emoji_Modifier}${String.fromCodePoint(0xfe0f, 0x200d)}]+`, 'u');
 
 export function cueLineKey(line: string): string {
   let a = 0, b = 0;
@@ -40,7 +42,7 @@ export function speechTone(line: string, base: string): string {
 export function fishText(text: string, tone: string): string {
   return toneCues(tone).slice(0, 4).map(cue => `[${cue}]`).join('') + text;
 }
-export function cueHeader(value:string): {speaker:string;tone:string;costume?:number}|null {
+export function cueHeader(value:string): {speaker:string;tone:string;costume?:number;marks?:string}|null {
   let prefix=value.trim().replace(/[:：]\s*$/,'').trim();
   let tone='';
   const opening=prefix.indexOf('('),closing=prefix.indexOf(')',opening+1);
@@ -48,9 +50,11 @@ export function cueHeader(value:string): {speaker:string;tone:string;costume?:nu
   const speaker=prefix.replace(/^[\s*\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]+/u,'').replace(/\*+$/,'').trim();
   if(!speaker||speaker.length>80||!/[\p{L}\p{N}]/u.test(speaker)||/[<>:："“”(){}\[\]|#!`~]/.test(speaker))return null;
   // `이름_2`: the costume the speaker wears, by its number in their illustration character's list (`_0`, the default, as none).
+  // 첫 등장 이모지 (cue-emoji.ts): what stood before the name is kept with the line.
+  const lead=LEAD_EMOJI.exec(prefix)?.[0].replace(/[\s*]/g,''),marks=lead?{marks:lead}:{};
   const worn=/^(.*\S)_(\d{1,2})$/u.exec(speaker);
-  if(worn)return Number(worn[2])?{speaker:worn[1]!.trim(),tone,costume:Number(worn[2])}:{speaker:worn[1]!.trim(),tone};
-  return {speaker,tone};
+  if(worn)return Number(worn[2])?{speaker:worn[1]!.trim(),tone,costume:Number(worn[2]),...marks}:{speaker:worn[1]!.trim(),tone,...marks};
+  return {speaker,tone,...marks};
 }
 export function quotedCue(value:string):string|null {
   const body=value.trim();

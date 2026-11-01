@@ -63,7 +63,9 @@ test('module display name and first-person speech instructions preserve module i
   assert.match(api.TTS_CUE_PROMPT,/first-person story/);
   assert.match(api.TTS_CUE_PROMPT,/actual name and delivery/);
   assert.match(api.TTS_CUE_PROMPT,/actions and descriptions remain plain prose/);
-  assert.match(api.TTS_CUE_PROMPT,/inner thoughts use the same cue with single quotes: Name \(delivery\): 'Thought'/);
+  assert.match(api.TTS_CUE_PROMPT,/Inner thoughts: Name \(delivery\): 'Thought'/);
+  assert.match(api.TTS_CUE_PROMPT,/never invent a name, identity or gender/);
+  assert.match(api.TTS_CUE_PROMPT,/Keep both quotation marks on the same line/);
   assert.equal(api.ttsDefaults().hideName,false);assert.equal(api.ttsDefaults().translation.provider,'google-free');
 });
 
@@ -202,7 +204,7 @@ test('changed active module refreshes cached display code without touching other
 });
 
 test('module and playback agree on plain names, emoji headers, English tone and next-line quotations',()=>{
-  for(const mod of [module,plain])for(const cue of ["하린: '반가워요.'",'Sora： 「hello: again.」','하린: ‘반가워요.’','하린: 『반가워요.』','하린: “반가워요.”','하린 (happy): "반가워요."','👨 Sora:\n“자자, 성으로 데려가자.”','🧑‍🚀 Sora (soft tone)：\n“안녕하세요.”','하린：\n"안녕하세요."','이민지 (calm) “안녕하세요.”']){
+  for(const mod of [module,plain])for(const cue of ["하린: '반가워요.'",'Sora： 「hello: again.」','하린: ‘반가워요.’','하린: 『반가워요.』','하린: “반가워요.”','하린 (happy): "반가워요."','👨 Sora:\n“자자, 성으로 데려가자.”','🧑‍🚀 Sora (soft tone)：\n“안녕하세요.”','👩🥺 하린 (soft tone): "안녕하세요."','하린：\n"안녕하세요."','이민지 (calm) “안녕하세요.”']){
     const segments=api.parseTtsMessage(cue);assert.equal(segments.length,1,cue);assert.equal(segments[0].kind,'dialogue');
     const html=apply(cue,mod.regex);
     assert.deepEqual(kinds(html),['dialogue'],cue);

@@ -4,6 +4,8 @@ import { mergeTtsCharacter, resolveTtsSpeaker, ttsNameKey } from '../domain/tts/
 import { numberedVoices, selectTtsVoices } from '../providers/tts/selection';
 import { parseLlmJson } from '../providers/tts/translation';
 import { adoptVoiceTags } from '../domain/tts/library';
+import { applyCueHint, cueHint, type CueHint } from '../domain/tts/cue-emoji';
+import { parseTtsMessage } from '../domain/tts/segment';
 import { callLlm } from '../providers/llm/client';
 import { ttsData, saveTtsData, ttsCandidateVoices } from '../storage/tts-store';
 import { ttsCharacterSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
@@ -65,8 +67,11 @@ export function deleteTtsCharacters(rows: readonly TtsCharacter[]): void {
 const assignments = new Map<string, Promise<void>>();
 const scopeTails = new Map<string, Promise<void>>();
 const failed = new Map<string, number>();
-/** `messageIds`: the messages being voiced; their text is the evidence for a new speaker. */
-export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = []): Promise<void> {
+/**
+ * `messageIds`: the messages being voiced; their text is the evidence for a new speaker. `marks`: the emoji each
+ * speaker's line opened with (첫 등장 이모지), by speaker.
+ */
+export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
   const data = ttsData();
   // A ready voice must not join the scope-wide queue for unrelated new people.
@@ -82,12 +87,33 @@ export function ensureTtsSpeakers(context: TtsChatContext, names: string[], curr
     if(!current()||!ttsData().settings.enabled)return;
     if((failed.get(key)||0)>Date.now()-30_000)throw new Error('화자 자동 배정 재시도 대기 중입니다. 모델 설정을 확인해 주세요.');
     // 「음성 고를 때 채팅 내용 포함」 off: lore, persona and the image roster only.
-    try { await assignSpeakers(context,names,ttsData().settings.assignWithChat===false?[]:messageIds);failed.delete(key); }
+    try { await assignSpeakers(context,names,ttsData().settings.assignWithChat===false?[]:messageIds,marks);failed.delete(key); }
     catch(error){failed.set(key,Date.now());if(failed.size>100)failed.delete(failed.keys().next().value!);throw error;}
   }).finally(()=>{assignments.delete(key);if(scopeTails.get(context.rosterScope)===task)scopeTails.delete(context.rosterScope);});
   assignments.set(key,task);scopeTails.set(context.rosterScope,task);return task;
 }
-async function assignSpeakers(context: TtsChatContext, names: string[], messageIds: string[] = []): Promise<void> {
+/**
+ * 첫 등장 이모지, by speaker: from the lines about to be read, else from the newest replies (the line played may
+ * be a later one, which carries none). Only the replies holding an emoji are parsed.
+ */
+const EMOJI = /\p{Extended_Pictographic}/u;
+function speakerHints(context: TtsChatContext, names: readonly string[], marks: ReadonlyMap<string, string>): Map<string, CueHint> {
+  const hints = new Map<string, CueHint>(), wanted = new Set(names.map(ttsNameKey));
+  const take = (speaker: string, mark: string | undefined) => {
+    const key = ttsNameKey(speaker), hint = wanted.has(key) && !hints.has(key) ? cueHint(mark) : null;
+    if (hint) hints.set(key, hint);
+  };
+  for (const [speaker, mark] of marks) take(speaker, mark);
+  for (let i = context.messages.length - 1, seen = 0; i >= 0 && seen < 40 && hints.size < wanted.size; i--) {
+    const message = context.messages[i];
+    if (message?.role !== 'char') continue;
+    seen++;
+    const text = String(message.data ?? '');
+    if (EMOJI.test(text)) for (const segment of parseTtsMessage(text)) take(segment.speaker, segment.marks);
+  }
+  return hints;
+}
+async function assignSpeakers(context: TtsChatContext, names: string[], messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   const data = ttsData();
   if (!data.settings.autoAssign) return;
   const unknown = [...new Set(names)].filter(name => {
@@ -95,12 +121,21 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
     // Ambiguous aliases require a surname, not another automatically created row.
     return !data.characters.some(c => (c.scope === context.rosterScope || c.scope === 'global') && [c.name, ...c.triggers].some(n => ttsNameKey(n) === ttsNameKey(name)));
   }).sort();
+  const hints = data.settings.cueEmoji ? speakerHints(context, names, marks) : new Map<string, CueHint>();
   if (unknown.length) {
     const engine=data.settings.selector;
     // Names already came from the parser. JEV can select from lore directly;
     // it must not require a second, independently configured LLM connection.
     const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true, messages: messageIds }, context.rosterScope, unknown);
     for(const name of unknown)if(!proposals.some(p=>ttsNameKey(p.draft.name)===ttsNameKey(name)))proposals.push({draft:blankTtsCharacter(context.rosterScope,name)});
+    // A new person takes their emoji's gender and tags before a voice is chosen; a voice the LLM already
+    // picked of the other gender is let go, and chosen again below among that gender's.
+    for (const proposal of proposals) {
+      const hint = proposal.previous ? undefined : hints.get(ttsNameKey(proposal.draft.name));
+      if (!hint || !applyCueHint(proposal.draft, hint, true) || !hint.gender) continue;
+      const voice = ttsData().voices.find(v => v.key === proposal.draft.voiceKey);
+      if (voice && (voice.gender === 'female' || voice.gender === 'male') && voice.gender !== hint.gender) { proposal.draft.voiceKey = ''; proposal.draft.fishId = ''; }
+    }
     if (!ttsData().settings.enabled) return;
     if (engine === 'jev' && proposals.length) {
       // The message being voiced is the evidence for a speaker no lorebook describes.
@@ -112,5 +147,7 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
     await applyTtsCharacterProposals(proposals.filter(p => !resolveTtsSpeaker(p.draft.name, ttsData().characters, context.rosterScope)));
   }
   const empty=[...new Map(names.flatMap(name=>{const c=resolveTtsSpeaker(name,ttsData().characters,context.rosterScope);return c&&!c.fixed&&!c.fishId&&!ttsData().voices.some(v=>v.key===c.voiceKey)?[[c.id,c] as const]:[];})).values()];
+  // One known but still voiceless keeps what it holds: its emoji fill only an unknown gender and empty tags.
+  for (const c of empty) { const hint = [c.name, ...c.triggers].map(n => hints.get(ttsNameKey(n))).find(Boolean); if (hint) applyCueHint(c, hint, false); }
   if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selector=ttsData().settings.selector;const selected=await selectTtsVoices(empty,ttsCandidateVoices(),ttsData().settings,selector,undefined,selector==='embedding'?await voiceEmbedding():null);if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];c.voiceKey=voice.key;c.fishId=voice.fishId;adoptVoiceTags(c,voice);}await saveTtsData();}
 }
