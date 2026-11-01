@@ -151,14 +151,23 @@ export const spriteJobs = (): ReadonlySet<string> => new Set(jobs.keys());
  * minute, then two, up to ten (a viewer redraws often, and each try may cost Anlas).
  * 만들기 in the asset tab asks at once.
  */
-const failures = new Map<string, { at: number; count: number; message: string }>();
+const failures = new Map<string, { at: number; count: number; message: string; noLooks: boolean }>();
 const backoff = (count: number): number => Math.min(600_000, 30_000 * 2 ** Math.max(0, count - 1));
-/** What the viewer says under a face it has no picture for: being drawn, or why it failed. */
-export function spriteStatus(bot: string, person: string, face: string, costume = 0): { state: 'running' | 'failed' | ''; message: string } {
+/** Nothing to draw a face from (no roster looks, no asset tags): 옴니 뷰어 offers to make them (외형 없음 · 눌러서 만들기). */
+export class NoLooksError extends Error {}
+/** What the viewer says under a face it has no picture for: being drawn, or why it failed (`noLooks`: for want of looks). */
+export function spriteStatus(bot: string, person: string, face: string, costume = 0): { state: 'running' | 'failed' | ''; message: string; noLooks?: boolean } {
   const key = spriteJobKey(bot, person, face, costume);
   if (jobs.has(key)) return { state: 'running', message: '' };
   const failed = failures.get(key);
-  return failed ? { state: 'failed', message: failed.message } : { state: '', message: '' };
+  return failed ? { state: 'failed', message: failed.message, ...(failed.noLooks ? { noLooks: true } : {}) } : { state: '', message: '' };
+}
+/** Their looks made: every face of theirs that failed is asked for again at once, as if it never had. */
+export function forgetSpriteFailures(bot: string, person: string): void {
+  const theirs = spriteJobKey(bot, person, '');
+  let forgot = false;
+  for (const key of [...failures.keys()]) if (key.startsWith(theirs)) { failures.delete(key); forgot = true; }
+  if (forgot) notify();
 }
 function queueJob(key: string, draw: () => Promise<EmotionSprite>, force: boolean): Promise<EmotionSprite> {
   const running = jobs.get(key);
@@ -166,7 +175,7 @@ function queueJob(key: string, draw: () => Promise<EmotionSprite>, force: boolea
   const failed = failures.get(key);
   if (!force && failed && Date.now() < failed.at + backoff(failed.count)) return Promise.reject(new Error(failed.message));
   const job = chain.catch(() => {}).then(draw).then(sprite => { failures.delete(key); return sprite; }, error => {
-    failures.set(key, { at: Date.now(), count: (failures.get(key)?.count || 0) + 1, message: String((error as Error)?.message || error).slice(0, 160) });
+    failures.set(key, { at: Date.now(), count: (failures.get(key)?.count || 0) + 1, message: String((error as Error)?.message || error).slice(0, 160), noLooks: error instanceof NoLooksError });
     throw error;
   }).finally(() => { jobs.delete(key); notify(); });
   jobs.set(key, job); chain = job; notify();
@@ -233,7 +242,7 @@ async function remember(owner: string, person: string, face: string, name: strin
 async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<EmotionSprite> {
   const settings = (await loadEmotionData()).settings;
   const looks = sfwTags(await spriteLooks(c, bot, costume));
-  if (!looks) throw new Error(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
+  if (!looks) throw new NoLooksError(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
     width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE, effort: settings.effort === 'follow' ? undefined : settings.effort,
     prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
