@@ -23,6 +23,13 @@ export function rememberAudio(key: string, bytes: ArrayBuffer, mime: string): vo
   cache.set(key, { bytes, mime }); cached += bytes.byteLength;
   for (const [old, row] of cache) { if (cached <= CACHE_LIMIT) break; cache.delete(old); cached -= row.bytes.byteLength; }
 }
+/** A tile pointed at another link: what was fetched from the old one, and cut from it, is not played again. */
+export function forgetAudio(key: string): void {
+  const row = cache.get(key);
+  if (row) { cache.delete(key); cached -= row.bytes.byteLength; }
+  const quoted = JSON.stringify(key);
+  for (const clip of [...clips.keys()]) if (clip.includes(quoted)) clips.delete(clip);
+}
 
 export async function downloadAudio(url: string): Promise<{ bytes: ArrayBuffer; mime: string }> {
   if (!/^https:\/\//i.test(url)) throw new Error('https:// 로 시작하는 오디오 파일 주소를 넣어 주세요.');

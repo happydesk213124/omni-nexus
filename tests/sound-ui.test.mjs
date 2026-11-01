@@ -515,6 +515,35 @@ test('BGM·효과음 page: menu pages, settings install the ⚛️ modules, link
     await page.locator('#snd-sfx-add').click();
     await page.locator('#snd-item-url').fill('https://www.youtube.com/watch?v=sMcWOaJFuw0'); await page.locator('#snd-item-save').click();
     await page.waitForFunction(() => document.getElementById('snd-item-status').textContent.includes('유튜브 링크로 등록할 수 없습니다'));
+
+    // 수정 points a link tile at another link: refused as an add would be, else saved, and the new sound plays at
+    // once (what was fetched and cut from the old link is forgotten). A file tile has no link to change.
+    await page.evaluate(() => {
+      const native = window.risuai.nativeFetch, ogg = new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      window.risuai.nativeFetch = async (url, options) => url.endsWith('.ogg') ? { ok: true, arrayBuffer: async () => ogg.buffer } : native(url, options);
+      const make = URL.createObjectURL; window.blobTypes = []; URL.createObjectURL = blob => { window.blobTypes.push(blob.type); return make(blob); };
+    });
+    await page.locator('#snd-item-name').fill('쾅 링크'); await page.locator('#snd-item-url').fill('https://audio.test/boom.mp3'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => window.soundData().sfx.some(item => item.name === '쾅 링크'));
+    const boom = () => page.evaluate(() => window.soundData().sfx.find(item => item.name === '쾅 링크'));
+    const playBoom = () => page.evaluate(async () => { await window.omniSound.play(window.soundData().sfx.find(item => item.name === '쾅 링크')); return window.blobTypes.at(-1); });
+    assert.equal(await playBoom(), 'audio/mpeg');
+    const locked = () => page.evaluate(() => ['snd-item-source', 'snd-item-url', 'snd-item-file'].map(id => document.getElementById(id).disabled));
+    await page.keyboard.press('Escape');
+    await page.locator('#snd-sfx-list .voice-row', { hasText: '문 쾅' }).dblclick();
+    assert.deepEqual(await locked(), [true, true, true], 'a file tile has no link to change');
+    await page.keyboard.press('Escape');
+    await page.locator('#snd-sfx-list .voice-row', { hasText: '쾅 링크' }).dblclick();
+    assert.deepEqual(await locked(), [true, false, true], 'a link tile\'s link opens; how it was registered does not');
+    await page.locator('#snd-item-url').fill('https://audio.test/page.html'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => document.getElementById('snd-item-status').textContent.includes('오디오 파일이 아닙니다'));
+    await page.locator('#snd-item-url').fill('https://www.youtube.com/watch?v=sMcWOaJFuw0'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => document.getElementById('snd-item-status').textContent.includes('유튜브 링크로 등록할 수 없습니다'));
+    assert.equal((await boom()).url, 'https://audio.test/boom.mp3', 'a refused link leaves the tile as it was');
+    await page.locator('#snd-item-url').fill('https://audio.test/boom.ogg'); await page.locator('#snd-item-save').click();
+    await page.waitForFunction(() => window.soundData().sfx.find(item => item.name === '쾅 링크')?.url === 'https://audio.test/boom.ogg');
+    assert.equal((await boom()).mime, 'audio/ogg');
+    assert.equal(await playBoom(), 'audio/ogg', 'the new sound plays, not the one fetched from the old link');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

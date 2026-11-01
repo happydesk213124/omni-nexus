@@ -117,8 +117,10 @@ export class SoundLibrary {
     const folder = el<HTMLSelectElement>('snd-item-folder');
     folder.innerHTML = ['', ...soundData().folders[this.kind]].map(name => `<option value="${esc(name)}">${esc(name || '미분류')}</option>`).join('');
     folder.value = item?.folder ?? (this.folder === '*' ? '' : this.folder);
-    // A registered file or address cannot be swapped in place; editing changes the label only.
-    for (const id of ['snd-item-source', 'snd-item-url', 'snd-item-file']) input(id).disabled = !!item;
+    // How a tile was registered stays; a link tile's link can change (save checks it as a link being added), a
+    // file tile's file cannot.
+    for (const id of ['snd-item-source', 'snd-item-file']) input(id).disabled = !!item;
+    input('snd-item-url').disabled = !!item && item.source !== 'url' && item.source !== 'youtube';
     // ElevenLabs makes both: a sound effect, or instrumental music for BGM.
     const bgm = this.kind === 'bgm';
     text('snd-item-prompt-label', bgm ? '만들 BGM 설명 · 영어가 가장 정확합니다 (가사 없는 연주곡)' : '만들 효과음 설명 · 영어가 가장 정확합니다');
@@ -137,6 +139,12 @@ export class SoundLibrary {
   async save(): Promise<void> {
     const name = val('snd-item-name'), tags = val('snd-item-tags'), folder = val('snd-item-folder'), words = soundTags(val('snd-item-terms'));
     if (this.editing) {
+      const link = val('snd-item-url').trim();
+      if (!input('snd-item-url').disabled && link !== (this.editing.url || '')) {
+        text('snd-item-status', '확인하는 중…');
+        try { await omniSound.relink(this.kind, this.editing, link); }
+        catch (error) { text('snd-item-status', String((error as Error)?.message || error)); return; }
+      }
       Object.assign(this.editing, { name: name.trim() || this.editing.name, tags: soundTags(tags), folder });
       if (this.kind === 'sfx') setWordsFor(this.editing.key, words);
       await saveSoundData(); dialog('snd-item-dialog', false); this.render(); return;

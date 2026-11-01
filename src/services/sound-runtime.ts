@@ -15,7 +15,7 @@ import { generateMusic, generateSoundEffect, englishText } from '../providers/so
 import { chooseBgm, chooseSfxMany, type SfxChoice } from '../providers/sound/choose';
 import { sfxPartSeconds, sfxParts } from '../domain/sound/combo';
 import { bgmSceneText } from '../domain/sound/scene';
-import { audioOf, downloadAudio, effectClip, planClip, prefetchAudio, rememberAudio } from './sound-clips';
+import { audioOf, downloadAudio, effectClip, forgetAudio, planClip, prefetchAudio, rememberAudio } from './sound-clips';
 import { bgmDeviceCache } from '../storage/bgm-cache';
 import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
 import { ttsFetch, ttsJson } from '../providers/tts/http';
@@ -24,6 +24,7 @@ import { ttsFetch, ttsJson } from '../providers/tts/http';
 export const AUTO_SFX_FOLDER = '자동 생성';
 /** How long after start YouTube's player is made ahead: after Risu has loaded and drawn the chat. */
 const TUBE_AHEAD_MS = 15_000;
+const NO_TUBE_SFX = '효과음은 유튜브 링크로 등록할 수 없습니다 (짧은 소리는 늦게 납니다). 오디오 파일 주소를 넣어 주세요.';
 
 export class OmniSoundRuntime {
   readonly player = new SoundPlayer();
@@ -131,7 +132,7 @@ export class OmniSoundRuntime {
   async addFromUrl(kind: SoundKind, input: { name: string; tags: string; folder: string; url: string }): Promise<SoundItem> {
     const video = youtubeVideoId(input.url);
     if (video) {
-      if (kind !== 'bgm') throw new Error('효과음은 유튜브 링크로 등록할 수 없습니다 (짧은 소리는 늦게 납니다). 오디오 파일 주소를 넣어 주세요.');
+      if (kind !== 'bgm') throw new Error(NO_TUBE_SFX);
       const url = youtubeWatchUrl(video);
       const item: SoundItem = { key: uuid(), kind, name: input.name.trim() || await youtubeTitle(url) || '유튜브 곡', tags: soundTags(input.tags), folder: input.folder, source: 'youtube', url };
       this.list(kind).push(item); await saveSoundData();
@@ -142,6 +143,30 @@ export class OmniSoundRuntime {
     rememberAudio(item.key, audio.bytes, audio.mime);
     this.list(kind).push(item); await saveSoundData();
     return item;
+  }
+  /**
+   * 수정 pointing a link tile at another link: checked as a link being added is (an audio file; a YouTube link for
+   * BGM only), and nothing changes when it fails. What was fetched and cut from the old link is forgotten, so the
+   * tile sounds as its new link at once; the caller saves. A file tile has no link to change.
+   */
+  async relink(kind: SoundKind, item: SoundItem, link: string): Promise<void> {
+    const url = link.trim();
+    if (url === (item.url || '')) return;
+    if (item.source !== 'url' && item.source !== 'youtube') throw new Error('파일로 올린 소리는 링크가 없습니다. 지우고 새로 추가해 주세요.');
+    const video = youtubeVideoId(url);
+    // An example's stand-in file is the old song's: YouTube failing, the new link must not play it.
+    if (video) {
+      if (kind !== 'bgm') throw new Error(NO_TUBE_SFX);
+      forgetAudio(item.key);
+      Object.assign(item, { source: 'youtube', url: youtubeWatchUrl(video) });
+      delete item.mime; delete item.bytes; delete item.fallbackUrl;
+      return;
+    }
+    const audio = await downloadAudio(url);
+    forgetAudio(item.key);
+    Object.assign(item, { source: 'url', url, mime: audio.mime, bytes: audio.bytes.byteLength });
+    delete item.fallbackUrl;
+    rememberAudio(item.key, audio.bytes, audio.mime);
   }
   async addFromFile(kind: SoundKind, input: { name: string; tags: string; folder: string; file: File }): Promise<SoundItem> {
     const limit = soundData().settings.maxFileMb * 1024 * 1024;
