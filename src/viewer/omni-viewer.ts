@@ -1369,6 +1369,8 @@ async function act(name: string): Promise<void> {
   if (name === 'close') { await closeViewer(); return; }
   if (name === 'next') queueStep(1);
   else if (name === 'prev') queueStep(-1);
+  // The reply's first and last line: steps to there, counted from where the steps already asked for lead.
+  else if (name === 'first' || name === 'last') queueStep((name === 'first' ? 0 : scenes.length - 1) - (at + pendingSteps));
   else if (name === 'cgclose') { if (cgView === 'open') queueStep(1); else { cgView = lastCg ? 'fold' : 'none'; await restyle(); } }
   else if (name === 'cgfull') { fullFrom = cgView === 'open' ? 'open' : 'show'; if (!await inspectCg()) { cgView = 'full'; await restyle(); await measureCgControls(); } }
   else if (name === 'cgback') { cgView = fullFrom; await restyle(); await measureCgControls(); }

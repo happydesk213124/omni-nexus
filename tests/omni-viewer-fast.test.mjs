@@ -194,11 +194,11 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
   } finally { await browser.close(); }
 });
 
-test('the bottom row keeps every button on a phone, 효과음 among them, from 320 px wide on', async () => {
+test('the bottom row keeps every button on a phone, 효과음 and |◀ ▶| among them, from 320 px wide on', async () => {
   const built = await build({ stdin: { contents: "import {FRAME,STATIC_CSS} from './src/viewer/look';Object.assign(window,{FRAME,STATIC_CSS});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
-    for (const width of [320, 360, 412]) {
+    for (const width of [320, 360, 375, 393, 412, 430, 480]) {
       // A phone: a finger's pointer, so the bigger buttons.
       const page = await browser.newPage({ viewport: { width, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
       // As Risu's page: laid out at the phone's own width (without this a phone lays a page out 980 px wide).
@@ -208,13 +208,16 @@ test('the bottom row keeps every button on a phone, 효과음 among them, from 3
         const style = document.createElement('style'); style.textContent = window.STATIC_CSS; document.head.append(style);
         const root = document.createElement('div'); root.setAttribute('x-omni-vn', '1'); root.style.cssText = 'left:0;top:0;width:100vw;height:calc(100dvh - 96px)'; root.innerHTML = window.FRAME; document.body.append(root);
         const menu = root.querySelector('[data-vn-menu]'), box = root.querySelector('[data-vn-box]').getBoundingClientRect();
-        const buttons = [...menu.children], rects = buttons.map(b => b.getBoundingClientRect());
+        const buttons = [...menu.children].filter(b => getComputedStyle(b).display !== 'none'), rects = buttons.map(b => b.getBoundingClientRect());
         // Every button whole (its label inside it, none squeezed over the next), the row inside the box.
-        return { coarse: matchMedia('(pointer:coarse)').matches, fits: menu.scrollWidth <= menu.clientWidth + 1 && buttons.every(b => b.scrollWidth <= b.clientWidth + 1), left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)), boxLeft: box.left, box: box.right, names: buttons.map(b => b.textContent) };
+        return { coarse: matchMedia('(pointer:coarse)').matches, fits: menu.scrollWidth <= menu.clientWidth + 1 && buttons.every(b => b.scrollWidth <= b.clientWidth + 1), left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)), boxLeft: box.left, box: box.right, names: buttons.map(b => b.textContent), gaps: [rects.at(-3).left - rects.at(-4).right, rects.at(-1).left - rects.at(-2).right] };
       });
       assert.equal(row.coarse, true);
       assert.ok(row.box <= width, 'laid out at the phone width: ' + row.box);
-      assert.deepEqual(row.names, ['최신', '기록', '나레이션', 'BGM', '효과음', '◀', '▶']);
+      // Under 340 px there is no room for |◀ ▶|: ◀ ▶ alone.
+      assert.deepEqual(row.names, ['최신', '기록', '나레이션', 'BGM', '효과음', ...(width > 340 ? ['◀', '◀', '▶', '▶'] : ['◀', '▶'])]);
+      // |◀ and ▶| stand off from ◀ ▶: a slip of the finger is never a jump.
+      if (width > 340) assert.ok(row.gaps[0] >= 8 && row.gaps[1] >= 8, width + 'px, the ends stood off: ' + JSON.stringify(row.gaps));
       assert.ok(row.fits && row.right <= row.box && row.left >= row.boxLeft, width + 'px: ' + JSON.stringify(row));
       await page.close();
     }

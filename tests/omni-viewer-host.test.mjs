@@ -190,6 +190,12 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('newest');
     await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    // ▶| goes to the reply's last line, |◀ back to its first: within the reply, never past it.
+    await page.waitForTimeout(450); await press('last');
+    await page.waitForFunction(() => /^"(\d+) \/ \1"$/.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    await page.waitForTimeout(450); await press('first');
+    await page.waitForFunction(() => /^"1 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    await page.waitForFunction(() => /문이 열렸다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     // 삽화 strip: the chat's own image cloned as a tile; tapping it jumps to that scene. It slides in at once, the tile behind it.
     await page.evaluate(() => { window.cloneDelay = 600; });
     await press('strip');
