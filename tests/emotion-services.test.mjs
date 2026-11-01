@@ -258,6 +258,19 @@ test('a cue naming a costume by its name (미선_melony_form): its number read f
   assert.equal(tts.characters.length, before);
 });
 
+test('a cast block registers an outfit worn in this reply before its first line, and its name is a costume at once', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform' }] });
+  await f.api.refreshCostumeNames('bot', 'bot:bot');
+  assert.deepEqual(f.api.costumesOf('bot:bot', 'bot')('오미선'), ['default']);
+  const res = await f.api.registerInlineCast({ character_id: 'bot', chat_id: 'chat', stream_id: 's1', host_message_id: 'm1', body: JSON.stringify({ place: 'stage', new_characters: [], new_costumes: [{ name: '오미선', costumes: [{ name: 'idol_dress', note: 'stage idol outfit', attire: 'idol dress, frills' }] }] }) });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.costumes, ['오미선']);
+  assert.deepEqual((await f.api.spriteCostumes(f.person, f.bot)).map(c => c.name), ['default', 'idol_dress'], 'her costume list has it, mid-reply (the write is buffered, the roster reads it)');
+  await f.api.refreshCostumeNames('bot', 'bot:bot');
+  assert.deepEqual(f.api.costumesOf('bot:bot', 'bot')('오미선'), ['default', 'idol_dress'], 'read again at once, not 30 s later');
+});
+
 test('a costume named in a cue (이름_2) has its own sprites: drawn in that costume, saved and found apart from the default ones', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform, pleated skirt' }, { name: 'swim', attire: 'red bikini' }] });

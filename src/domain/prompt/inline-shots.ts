@@ -147,6 +147,16 @@ export function inlineCastCharacters(body: unknown): NonNullable<TaggerResult['n
   if (!list) return null;
   return list.filter((row): row is Record<string, unknown> => shotObject(row) && typeof row.name === 'string' && !!row.name.trim()) as NonNullable<TaggerResult['new_characters']>;
 }
+/**
+ * A cast block's new outfits and forms (`"new_costumes":[{"name":…,"costumes":[…]}]`): registered before the story,
+ * as its people are, so a cue can wear one from its first line. [] with none, or when it is not JSON.
+ */
+export function inlineCastCostumes(body: unknown): NonNullable<TaggerResult['new_costumes']> {
+  let parsed: unknown = body;
+  if (!shotObject(body)) try { parsed = parseJsonLoose(String(body ?? '').trim()); } catch { return []; }
+  const list = shotObject(parsed) && Array.isArray(parsed.new_costumes) ? parsed.new_costumes : [];
+  return list.filter((row): row is Record<string, unknown> => shotObject(row) && typeof row.name === 'string' && !!row.name.trim() && Array.isArray(row.costumes) && row.costumes.length > 0) as NonNullable<TaggerResult['new_costumes']>;
+}
 /** Where a cast block opens the reply (a shot's place tags); '' when it says nowhere. */
 export function inlineCastPlace(body: unknown): string {
   let parsed: unknown;

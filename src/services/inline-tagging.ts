@@ -50,7 +50,7 @@ function imageRange(): { min: number; max: number } {
   return { min, max: Math.max(min, Number(card.image_max ?? 3) || 3) };
 }
 
-export function blockRules(min: number, max: number, castFirst = false): string {
+export function blockRules(min: number, max: number, castFirst = false, costumes = false): string {
   const count = min === max ? `exactly ${max}` : `between ${min} and ${max}`;
   return [
     INLINE_RULES_MARK,
@@ -61,7 +61,7 @@ export function blockRules(min: number, max: number, castFirst = false): string 
     '- Each block holds ONE shot as one raw JSON object: the fields of one scenes[].shots[] item from the format below, plus "place" (that shot\'s place tags). No "line" or "paragraph": the block\'s position is the image position.',
     // The cast block registers people before their first line is even streamed, so
     // their portraits and voices can be ready when they speak; it draws nothing.
-    ...castFirst ? ['- Open every reply, before any story text, with ONE cast block on its own line: [[inxc]]{"place":"...","new_characters":[...]}[[/inxc]]. "place": the place tags where this reply opens, as a shot\'s place. "new_characters": anyone in this reply who is new (not registered below, or listed as missing looks), in the new_characters format below; [] when nobody is. People it registers need no new_characters again.'] : [],
+    ...castFirst ? [`- Open every reply, before any story text, with ONE cast block on its own line: [[inxc]]{"place":"...","new_characters":[...]${costumes ? ',"new_costumes":[...]' : ''}}[[/inxc]]. "place": the place tags where this reply opens, as a shot's place. "new_characters": anyone in this reply who is new (not registered below, or listed as missing looks), in the new_characters format below; [] when nobody is. People it registers need no new_characters again.${costumes ? ' "new_costumes": any outfit or form someone puts on for the first time in this reply, in the new_costumes format below; omit it when there is none. Costumes it registers need no new_costumes again.' : ''}`] : [],
     `- A person who is new, or listed below as missing looks, gets "new_characters" (and "new_costumes" when costumes are on) inside the first block that shows them${castFirst ? ', unless the cast block already has them' : ''}, in the format below. Registered people keep their exact names.`,
     '- Double-quoted JSON only inside the block: no markdown, no comments. Never put a block inside dialogue quotes, code, a status panel or thinking. Never mention or explain the blocks; the story stays exactly as it would be without them.',
     'The rules below were written for a separate tagging step that returns one JSON object for a numbered message. Here they only describe what goes inside each block; anything about returning a single object, L numbers, line or paragraph does not apply.',
@@ -72,7 +72,7 @@ export function blockRules(min: number, max: number, castFirst = false): string 
  * 감정 에셋's 코스튬별 에셋: a spoken cue names the costume its speaker wears, by the number the costume list gives
  * it (`이름_2`), for the viewer's faces and the voice; the default one is the plain name, as cues always were.
  */
-export const COSTUME_CUE_RULE = '- In a spoken cue line (Name (delivery): "Dialogue"), a registered character who wears a costume other than [0] gets that costume\'s number right after the name: Name_2 (delivery): "Dialogue" for the costume listed as [2]. In [0], write the plain Name. Keep the same name as always; only the number is added.';
+export const COSTUME_CUE_RULE = '- In a spoken cue line (Name (delivery): "Dialogue"), a registered character who wears a costume other than [0] gets that costume\'s number right after the name: Name_2 (delivery): "Dialogue" for the costume listed as [2]. In [0], write the plain Name. Keep the same name as always; only the number is added. A costume registered in this reply has no number yet: write its name instead, Name_idol_dress.';
 
 /** The fixed part. Same settings and prompts give the same text, byte for byte. */
 export async function inlineTagRules(): Promise<string> {
@@ -83,7 +83,7 @@ export async function inlineTagRules(): Promise<string> {
   // Only with costumes on is the list (and its numbers) in the prompt to name one by.
   const costumeCues = card.costume === true && (await loadEmotionData().catch(() => null))?.settings.costumes === true;
   return [
-    blockRules(min, max, card.stream_inline_cast_first !== false),
+    blockRules(min, max, card.stream_inline_cast_first !== false, card.costume === true),
     costumeCues ? COSTUME_CUE_RULE : '',
     await taggerRules(card, { imageMin: min, imageMax: max, inline: true }),
     authorNoteSystemContent("Global Author's Note", await getPrompt('global_author_note')),

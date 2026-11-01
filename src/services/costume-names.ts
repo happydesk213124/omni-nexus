@@ -17,6 +17,8 @@ const FRESH_MS = 30_000;
 // A name two illustration characters share says neither: null.
 interface Names { tts: Map<string, string[]>; people: Map<string, string[] | null> }
 const known = new Map<string, { at: number; names: Names; reading?: Promise<void> }>();
+let reads = 0;
+const latest = new Map<string, number>();
 
 async function readNames(botId: string, rosterScope: string): Promise<Names> {
   const people = [...await listCharacters(GLOBAL_SCOPE).catch(() => []), ...await listCharacters(unifiedSessionIdForCharacter(botId)).catch(() => [])];
@@ -33,14 +35,18 @@ async function readNames(botId: string, rosterScope: string): Promise<Names> {
   return names;
 }
 
-export function refreshCostumeNames(botId: string, rosterScope: string): Promise<void> {
-  const now = known.get(botId);
-  if (!botId || now?.reading) return now?.reading ?? Promise.resolve();
-  if (now && Date.now() - now.at < FRESH_MS) return Promise.resolve();
-  const names = now?.names ?? { tts: new Map(), people: new Map() };
+/** `now`: the roster just changed (a cast block registered a costume): read at once, even mid-read. */
+export function refreshCostumeNames(botId: string, rosterScope: string, now = false): Promise<void> {
+  const held = known.get(botId);
+  if (!botId) return Promise.resolve();
+  if (held?.reading && !now) return held.reading;
+  if (held && !now && Date.now() - held.at < FRESH_MS) return Promise.resolve();
+  const names = held?.names ?? { tts: new Map(), people: new Map() }, mine = ++reads;
+  latest.set(botId, mine);
+  const keep = (read: Names) => { if (latest.get(botId) === mine) known.set(botId, { at: Date.now(), names: read }); };
   // A failed read keeps the names it had and is not asked again until they would be stale.
-  const reading = readNames(botId, rosterScope).then(read => { known.set(botId, { at: Date.now(), names: read }); }, () => { known.set(botId, { at: Date.now(), names }); });
-  known.set(botId, { at: now?.at ?? 0, names, reading });
+  const reading = readNames(botId, rosterScope).then(keep, () => keep(names));
+  known.set(botId, { at: held?.at ?? 0, names, reading });
   return reading;
 }
 

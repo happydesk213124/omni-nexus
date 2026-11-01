@@ -25,6 +25,11 @@ test('the cast block is found outside reasoning only, and its people are the nam
   assert.equal(api.inlineCastBlock('<think>' + cast + '</think>\n본문'), null, 'a draft in the thoughts registers no one');
   assert.equal(api.inlineCastBlock('<think>' + cast + '\n아직 생각 중', { live: true }), null, 'an open thought counts while streaming');
   assert.equal(api.inlineCastBlock('[[inxc]]{"new_characters":[]}'), null, 'unclosed is not sent');
+  // Its new outfits: named rows with costumes, as the people are.
+  const worn = api.inlineCastCostumes('{"new_characters":[],"new_costumes":[{"name":"하루키","costumes":[{"name":"idol_dress","note":"stage idol outfit"}]},{"name":"빈","costumes":[]},{"costumes":[{"name":"x"}]}]}');
+  assert.deepEqual(worn.map(c => [c.name, c.costumes.map(x => x.name)]), [['하루키', ['idol_dress']]]);
+  assert.deepEqual(api.inlineCastCostumes(block.body), [], 'none: nothing to add');
+  assert.deepEqual(api.inlineCastCostumes('{"new_costumes":'), [], 'broken JSON adds nothing');
   // Shot blocks are untouched by it, and it takes no shot number.
   assert.deepEqual(api.inlineShotBlocks(reply).map(b => b.n), [1]);
 });
@@ -61,4 +66,9 @@ test('the prompt asks for the cast block only when the option is on', async () =
   assert.match(on, /Open every reply/, 'every reply: the viewer stages its place');
   assert.match(on, /unless the cast block already has them/);
   assert.doesNotMatch(off, /inxc|cast block/, 'off: the prompt is exactly as before');
+  // Costumes on: the cast block may carry this reply's new outfits too; off, not a word of it.
+  const dressed = blockRules(1, 3, true, true);
+  assert.match(dressed, /\[\[inxc\]\]\{"place":"\.\.\.","new_characters":\[\.\.\.\],"new_costumes":\[\.\.\.\]\}\[\[\/inxc\]\]/);
+  assert.match(dressed, /any outfit or form someone puts on for the first time in this reply/);
+  assert.doesNotMatch(on, /new_costumes":/, 'costumes off: the cast block has no new_costumes');
 });
