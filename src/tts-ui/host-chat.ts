@@ -11,6 +11,8 @@ import { ttsExcludeTerms } from '../domain/tts/filter';
 import { matchTtsAnchors, ttsAnchorTexts } from '../domain/tts/anchors';
 import { settledWhileStreaming } from '../domain/tts/streaming';
 import { revealSegments } from '../domain/tts/base64-words';
+import { namedCostumes } from '../domain/tts/costume-cue';
+import { costumesOf, refreshCostumeNames } from '../services/costume-names';
 import { loadViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { TTS_NARRATION_OFF_CSS } from '../domain/tts/module';
 import { illustrationTtsRequests } from '../services/tts-illustration';
@@ -30,7 +32,9 @@ const soundOn = () => !!soundCues();
 function requests(context: TtsChatContext, index: number): TtsRequest[] {
   const message = context.messages[index]; if (!message || message.role !== 'char') return [];
   const source = String(message.data || '');
-  const segments = parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly,soundCues());
+  // A cue that named a costume by its name (하린_melony_form) is that person in that costume: the names are read ahead.
+  void refreshCostumeNames(context.characterId, context.rosterScope);
+  const segments = namedCostumes(parseTtsMessage(source,ttsExcludeTerms(ttsData().settings.excludeText),ttsData().settings.skipChars,ttsData().settings.skipSymbolOnly,soundCues()), costumesOf(context.rosterScope, context.characterId));
   // risu64 난독 (a switch of 옴니 뷰어's): the hidden words are read as words; the line is still matched as the chat shows it.
   return (viewerPrefs().revealBase64 ? revealSegments(segments) : segments).map(segment => ({ context, messageId:String(message.chatId || message.id || `${index}:${compactHash(source)}`), sourceKey:cueLineKey(source.slice(segment.start,segment.end)), segment }));
 }

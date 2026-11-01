@@ -4,6 +4,8 @@ import { risuHost } from '../core/host';
 import { DEFAULT_EXPRESSION } from '../domain/emotion/emotions';
 import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
 import { revealSegments } from '../domain/tts/base64-words';
+import { namedCostumes } from '../domain/tts/costume-cue';
+import { costumesOf, refreshCostumeNames } from '../services/costume-names';
 import { ttsComparable } from '../domain/tts/anchors';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import type { TtsSegment } from '../core/tts-types';
@@ -142,7 +144,10 @@ async function readChat(ctx?: TtsChatContext): Promise<void> {
   shownText.clear(); clockCache.clear();
   const index = Number(await Promise.resolve(risuHost()?.getCurrentCharacterIndex?.()).catch(() => NaN));
   bot = Number.isInteger(index) && index >= 0 && context.characterId ? { id: context.characterId, index, character: context.character } : await currentEmotionBot().catch(() => null);
+  if (bot) await refreshCostumeNames(bot.id, context.rosterScope);
 }
+/** A cue that named a costume by its name (하린_melony_form): that person in that costume (costume-cue.ts). */
+const named = (segments: TtsSegment[]): TtsSegment[] => context && bot ? namedCostumes(segments, costumesOf(context.rosterScope, bot.id)) : segments;
 /**
  * The newest reply (or the one at/before `index`), from the chat data. Which of its
  * lines are scenes is what the chat shows of it: a status panel or summary the
@@ -346,7 +351,7 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   const settled = streaming ? text.slice(0, Math.max(0, text.lastIndexOf('\n'))) : text;
   // The voice's own filters (excluded text, short or symbol-only lines) apply to scenes too.
   const t = ttsData().settings;
-  let segments = parseTtsMessage(settled, ttsExcludeTerms(t.excludeText), t.skipChars, t.skipSymbolOnly, soundCues());
+  let segments = named(parseTtsMessage(settled, ttsExcludeTerms(t.excludeText), t.skipChars, t.skipSymbolOnly, soundCues()));
   if (streaming) segments = settledWhileStreaming(segments.map(segment => ({ segment })), settled + '\n').map(r => r.segment);
   // 뷰어 설정: lines holding any of these words are no scene (a status line, an OOC note).
   const skip = skipWordList(viewerPrefs().skipWords).map(word => word.toLowerCase());
@@ -472,7 +477,7 @@ let parsedFor = '', parsed: TtsSegment[] = [];
 function requestOf(scene: ViewerScene): TtsRequest | null {
   if (!viewerPrefs().voice || !context || !scene.segmentId || !ttsData().settings.enabled) return null;
   if (scene.kind === 'narration' && ttsData().settings.narration === false) return null;
-  if (parsedFor !== source) { parsedFor = source; parsed = parseTtsMessage(source); if (viewerPrefs().revealBase64) parsed = revealSegments(parsed); }
+  if (parsedFor !== source) { parsedFor = source; parsed = named(parseTtsMessage(source)); if (viewerPrefs().revealBase64) parsed = revealSegments(parsed); }
   const segment = parsed.find(s => s.id === scene.segmentId);
   return segment ? { context, messageId: messageId(), sourceKey: cueLineKey(source.slice(segment.start, segment.end)), segment } : null;
 }
@@ -506,7 +511,8 @@ function nextReplyRequests(index: number, count: number): TtsRequest[] {
   if (!context || !message || count <= 0) return [];
   const text = String(message.data ?? ''), id = String(message.chatId || message.id || `${index}:${compactHash(text)}`), s = ttsData().settings;
   const out: TtsRequest[] = [];
-  for (const segment of viewerPrefs().revealBase64 ? revealSegments(parseTtsMessage(text)) : parseTtsMessage(text)) {
+  const lines = named(parseTtsMessage(text));
+  for (const segment of viewerPrefs().revealBase64 ? revealSegments(lines) : lines) {
     if (out.length >= count) break;
     if (segment.kind !== 'dialogue' && segment.kind !== 'narration') continue;
     if (segment.kind === 'narration' && s.narration === false) continue;
@@ -1850,7 +1856,8 @@ async function ahead(): Promise<void> {
   const at = await replyPlace(ctx.characterId, ctx.chatId, reply).catch(() => '');
   for (const p of new Set([at, ...placeMarkers(text).map(mark => mark.place)].filter(Boolean))) wants.push({ place: p });
   const seen = new Set<string>();
-  for (const scene of buildScenes(text, parseTtsMessage(text), settings.words)) {
+  await refreshCostumeNames(who.id, ctx.rosterScope);
+  for (const scene of buildScenes(text, namedCostumes(parseTtsMessage(text), costumesOf(ctx.rosterScope, who.id)), settings.words)) {
     if (scene.kind !== 'line' || !scene.speaker) continue;
     const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, ctx.rosterScope), face = scene.face || DEFAULT_EXPRESSION;
     if (!person || seen.has(person.id + face)) continue;
