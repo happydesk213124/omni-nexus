@@ -4,8 +4,9 @@ import { build } from 'esbuild';
 
 const built = await build({ stdin: { contents: "export * from './src/domain/tts/costume-cue';export {parseTtsMessage} from './src/domain/tts/segment';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
-// 하린 wears default [0], swimsuit [1], melony_form [2]; Dark_Knight is someone in their own right; 소라 has no costumes read.
-const people = { 하린: ['default', 'swimsuit', 'melony_form'], Dark_Knight: ['default'], Dark: ['default', 'knight'], 소라: [] };
+// 하린 wears default [0], swimsuit [1], melony_form [2]; Dark_Knight is someone in their own right, and Dark wears no
+// knight; 소라 has no costumes read; "메타몽_melony_form" is a TTS character made of such a cue before it was read so.
+const people = { 하린: ['default', 'swimsuit', 'melony_form'], Dark_Knight: ['default'], Dark: ['default', 'armor'], 소라: [], 메타몽: ['default', 'melony_form'], '메타몽_melony_form': [] };
 const costumesOf = name => people[name];
 
 test('a cue naming the costume by its name: that person, that costume\'s number', () => {
@@ -16,8 +17,12 @@ test('a cue naming the costume by its name: that person, that costume\'s number'
   assert.deepEqual(api.costumeCue('하린_default', costumesOf), { speaker: '하린', costume: 0 });
 });
 
-test('never split: a whole name that is someone, a rest that names none of their costumes, no one known', () => {
-  assert.equal(api.costumeCue('Dark_Knight', costumesOf), null, 'Dark_Knight is someone: not Dark in a knight costume');
+test('a character once made of such a cue does not stand in the way of the person it is', () => {
+  assert.deepEqual(api.costumeCue('메타몽_melony_form', costumesOf), { speaker: '메타몽', costume: 1 });
+});
+
+test('never split: a rest that names none of their costumes, no one known', () => {
+  assert.equal(api.costumeCue('Dark_Knight', costumesOf), null, 'Dark wears no knight: Dark_Knight stays who they are');
   assert.equal(api.costumeCue('하린_pajamas', costumesOf), null);
   assert.equal(api.costumeCue('소라_melony_form', costumesOf), null, 'no costume of theirs known');
   assert.equal(api.costumeCue('유나_melony_form', costumesOf), null);
