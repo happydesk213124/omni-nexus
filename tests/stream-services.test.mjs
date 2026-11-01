@@ -255,6 +255,22 @@ test('a pink slot tapped later follows its own message\'s earlier block, not the
   assert.equal(note.location,undefined,'an older reply\'s slot never moves the chat\'s place');assert.equal(note.wear,undefined,'nor its outfits');
 });
 
+test('the last of a run of pink slots skips the chat\'s preview (its bake writes it next), but 옴니 뷰어 is still handed it',{timeout:15000},async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,stream_inline_autogen:false,llm_json_retry:false});
+  const block=n=>`[[inx${n}]]{"place":"office, indoor","aspect":"portrait","characters":[]}[[/inx${n}]]`;
+  await risuai.setCharacterToIndex(0,{chaId:'c',name:'C',chats:[{id:'chat',message:[{role:'char',chatId:'m',data:`First narrative paragraph long enough for generating images.\n${block(1)}\nLast line.`}]}]});
+  const previews=[],viewer=[],spinner=globalThis.__OMNI_SPINNER_PREVIEW__;
+  globalThis.__OMNI_SPINNER_PREVIEW__=async row=>previews.push(row);globalThis.__OMNI_VIEWER_PREVIEW__=row=>viewer.push(row);
+  try {
+    const tapped=await f.api.generateInlineWait({character_id:'c',chat_id:'chat',char_index:0,chat_index:0,host_message_id:'m',message_index:0,session_id:'session',wait_id:'b1',inline_wait_preview:false});
+    assert.equal(tapped.accepted,true);
+    await f.wait(tapped.job_id,j=>j.state==='done'||j.state==='error');
+    assert.equal(viewer.length,1,'the viewer has it the moment it is drawn (it showed 그리는 중 until the reply was read again)');
+    assert.match(viewer[0].url,/^data:image\//);
+    assert.equal(previews.length,0,'the chat\'s preview still skipped: its bake writes it next');
+  } finally {globalThis.__OMNI_SPINNER_PREVIEW__=spinner;delete globalThis.__OMNI_VIEWER_PREVIEW__;}
+});
+
 test('streaming tags bake by message id: an edited reply or a shifted index still bakes, and a lost slot holds back only itself',{timeout:15000},async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true});
   const lines=['First narrative paragraph long enough for generating images.','Second dialogue in the scene.','Third line of the reply here.','Fourth line closes it.'];
