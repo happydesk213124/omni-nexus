@@ -14,11 +14,14 @@ export interface CueHint { gender?: 'female' | 'male'; tags: string[] }
 const ZWJ = String.fromCodePoint(0x200d), VS16 = String.fromCodePoint(0xfe0f);
 const MODIFIER = /\p{Emoji_Modifier}/u;
 
-// The voice library's three ages: 어린이, 청년 (teens to adults), 중년.
-const PEOPLE: Record<string, readonly [CueHint['gender'], string]> = {
-  '👧': ['female', '어린이'], '👦': ['male', '어린이'], '🧒': [undefined, '어린이'], '👶': [undefined, '어린이'],
-  '👩': ['female', '청년'], '👨': ['male', '청년'], '🧑': [undefined, '청년'], '👱': [undefined, '청년'],
-  '👵': ['female', '중년'], '👴': ['male', '중년'], '🧓': [undefined, '중년'],
+// The voice library's ages are three, 어린이, 청년 (teens to adults) and 중년, and a few voices are 성숙한. Mature
+// (red hair, 👩‍🦰 👨‍🦰) and elderly people are both 중년 there; they say which with 성숙한 or 노인 (no voice is 노인
+// yet: one tagged so later comes first for them).
+const CHILD = ['어린이'], YOUNG = ['청년'], MATURE = ['중년', '성숙한'], ELDERLY = ['중년', '노인'];
+const PEOPLE: Record<string, readonly [CueHint['gender'], readonly string[]]> = {
+  '👧': ['female', CHILD], '👦': ['male', CHILD], '🧒': [undefined, CHILD], '👶': [undefined, CHILD],
+  '👩': ['female', YOUNG], '👨': ['male', YOUNG], '🧑': [undefined, YOUNG], '👱': [undefined, YOUNG],
+  '👵': ['female', ELDERLY], '👴': ['male', ELDERLY], '🧓': [undefined, ELDERLY],
 };
 const PERSONALITY: Record<string, readonly string[]> = {
   '😊': ['밝은', '친근한'], '🙂': ['차분함', '친근한'], '😄': ['명랑한', '활기찬'], '😁': ['명랑한', '활기찬'],
@@ -56,20 +59,22 @@ const bare = (emoji: string): string => [...emoji].filter(ch => ch !== VS16 && !
 
 export function cueHint(marks: string | undefined): CueHint | null {
   if (!marks) return null;
-  let gender: CueHint['gender'], age = '';
-  const tags: string[] = [];
+  let gender: CueHint['gender'], age: readonly string[] = [];
+  const mood: string[] = [];
   for (const emoji of graphemes(marks)) {
     const parts = bare(emoji).split(ZWJ), person = PEOPLE[parts[0]!];
-    if (person && !age) {
-      // 👩‍🦳: white hair; 👱‍♀️: the sign says who.
-      age = parts.includes('🦳') ? '중년' : person[1];
+    if (person && !age.length) {
+      // 👩‍🦳: white hair, elderly; 👩‍🦰: red hair on a grown-up, mature; 👱‍♀️: the sign says who.
+      age = parts.includes('🦳') ? ELDERLY : parts.includes('🦰') && person[1] === YOUNG ? MATURE : person[1];
       gender = person[0] ?? (parts.includes('♀') ? 'female' : parts.includes('♂') ? 'male' : undefined);
       continue;
     }
-    for (const tag of PERSONALITY[parts[0]!] ?? []) if (!tags.includes(tag)) tags.push(tag);
+    for (const tag of PERSONALITY[parts[0]!] ?? []) if (!mood.includes(tag)) mood.push(tag);
   }
-  if (!age && !tags.length) return null;
-  return { ...(gender ? { gender } : {}), tags: [...(age ? [age] : []), ...tags].slice(0, MOST_TAGS) };
+  // The age first, whichever emoji came first; a mood word the age already says (🍷's 성숙한) once.
+  const tags = [...age, ...mood.filter(tag => !age.includes(tag))];
+  if (!tags.length) return null;
+  return { ...(gender ? { gender } : {}), tags: tags.slice(0, MOST_TAGS) };
 }
 
 /**

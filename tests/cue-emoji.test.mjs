@@ -8,11 +8,16 @@ const api = await import('data:text/javascript;base64,' + Buffer.from(built.outp
 test('첫 대사 이모지: age-gender then personality, read into a gender and the sample voices\' own tags', () => {
   assert.deepEqual(api.cueHint('👩🥺'), { gender: 'female', tags: ['청년', '소심한', '부드러운'] });
   assert.deepEqual(api.cueHint('👦😤'), { gender: 'male', tags: ['어린이', '츤데레', '툴툴대는'] });
-  assert.deepEqual(api.cueHint('👴'), { gender: 'male', tags: ['중년'] });
+  // Mature and elderly are both 중년 in the voice library, told apart by 성숙한 and 노인.
+  assert.deepEqual(api.cueHint('👴'), { gender: 'male', tags: ['중년', '노인'] });
+  assert.deepEqual(api.cueHint('🧓'), { tags: ['중년', '노인'] });
+  assert.deepEqual(api.cueHint('👨‍🦰'), { gender: 'male', tags: ['중년', '성숙한'] }, 'red hair on a grown-up: mature');
+  assert.deepEqual(api.cueHint('👩‍🦰🍷'), { gender: 'female', tags: ['중년', '성숙한', '우아한'] }, "🍷's 성숙한 once");
+  assert.deepEqual(api.cueHint('👵😊'), { gender: 'female', tags: ['중년', '노인', '밝은', '친근한'] });
   // The other way round, a skin tone, a ZWJ sequence: still the same person.
   assert.deepEqual(api.cueHint('🥺👩'), { gender: 'female', tags: ['청년', '소심한', '부드러운'] });
   assert.deepEqual(api.cueHint('👩🏻😎'), { gender: 'female', tags: ['청년', '쿨함', '자신감 있는'] });
-  assert.deepEqual(api.cueHint('👩‍🦳'), { gender: 'female', tags: ['중년'] }, 'white hair: older');
+  assert.deepEqual(api.cueHint('👩‍🦳'), { gender: 'female', tags: ['중년', '노인'] }, 'white hair: elderly');
   assert.deepEqual(api.cueHint('👱‍♂️'), { gender: 'male', tags: ['청년'] }, 'the sign says who');
   // No gender to say: the age alone.
   assert.deepEqual(api.cueHint('🧑🤓'), { tags: ['청년', '지적인'] });
@@ -59,7 +64,7 @@ test('the cue prompt asks for the emoji only with the switch on, and stays short
   assert.match(on, /Each character's first cue in every reply starts with two emoji/);
   assert.match(on, /Their later cues in that reply have none/);
   assert.doesNotMatch(on, /in the story/, 'never "first in the story": the model cannot know that');
-  assert.match(on, /👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to adult; 👵, 👴: middle-aged or older/);
+  assert.match(on, /👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to young adult; 👩‍🦰, 👨‍🦰: mature, 30s-40s; 👵, 👴: elderly/);
   assert.ok(on.startsWith(off.replace('\n</OmniTTS>', '')), 'the same rules, one line more');
   // It goes with every reply: 1261 characters before it was cut down. A rule added back should earn its words.
   assert.ok(off.length <= 760, `the cue prompt grew to ${off.length} characters`);
