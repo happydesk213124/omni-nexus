@@ -222,7 +222,9 @@ test('session costumes override defaults per chat and successful narrative order
   assert.equal(view[0].active_costume,1);assert.equal(view[0].wear_state,'nude');
   assert.equal(roster[0].active_costume,0);assert.equal(roster[0].wear_state,'clothed');
   assert.equal((await api.getSessionAuthorNote(sid('two'))).costumes,undefined);
-  assert.match(await api.sessionAuthorNoteLlmContent(sid('one')),/Aria: costume=night/);
+  // Wear and costume of one person on one line.
+  const outfits=await api.sessionAuthorNoteLlmContent(sid('one'));
+  assert.match(outfits,/- Aria: nude · costume=night\n/);assert.match(outfits,/- Bo: topless\n/);
   const revision=api.sessionOutfitRevision(sid('one'));
   await api.persistSessionOutfits(sid('one'),[
     {characters:[{name:'Aria',wear_state:'nude',costume:'night'}]},

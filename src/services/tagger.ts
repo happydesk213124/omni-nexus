@@ -201,18 +201,20 @@ function formatAppearanceInjectLine(
   const gender = cleanText(c.gender, 20);
   if (gender) parts.push(`gender=${gender}`);
   if (opts.withCostumes) {
+    // The catalog stays whole here, the default's clothes in it: this is where the tagger sees what they wear.
     const catalog = formatCostumeCatalog(costumes);
     if (catalog) parts.push(`costumes: ${catalog}`);
     const current = costumes[active_costume]?.name;
-    if (current) parts.push(`active_costume=${current}[${active_costume}]`);
+    if (current && active_costume > 0) parts.push(`active_costume=${current}[${active_costume}]`);
   } else {
     const attire = cleanText(c.attire || costumes[active_costume]?.attire || costumes[0]?.attire || '', 160);
     const accessories = cleanText(c.accessories || costumes[active_costume]?.accessories || costumes[0]?.accessories || '', 120);
     if (attire) parts.push(`attire=${attire}`);
     if (accessories) parts.push(`accessories=${accessories}`);
   }
+  // The default worn, clothed, goes without saying (the heading says so).
   const wear = formatWearStateForPrompt(c.wear_state);
-  parts.push(`wear_state=${wear}`);
+  if (wear !== 'clothed') parts.push(`wear_state=${wear}`);
   return parts.length ? `${name} ← ${parts.join(' | ')}` : name;
 }
 
@@ -442,7 +444,7 @@ function appearancePayload(
     session_id: sessionId,
   });
   return [
-    '## Characters in this message',
+    `## Characters in this message (unless a line says otherwise: ${withCostumes ? 'active_costume [0], ' : ''}wear_state=clothed)`,
     detectedBlock,
     '',
     '## Incomplete in this message (empty appearance)',
