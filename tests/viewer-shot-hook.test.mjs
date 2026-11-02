@@ -10,7 +10,7 @@ const start = source.indexOf(OPEN), end = source.indexOf('\n};\n', start);
 assert.ok(start >= 0 && end > start, 'the hook is where it was');
 const body = source.slice(start + OPEN.length, end + 3);
 
-function hook({ gallery = [], wide = [], reroll = async () => ({ ok: true }) } = {}) {
+function hook({ gallery = [], wide = [], reroll = async () => ({ ok: true }), roster = {} } = {}) {
   const calls = [], t = { gallery };
   const Z = async () => ({ sessionId: 'sess' });
   const ce = async () => { calls.push(['ce']); return t.gallery; };
@@ -19,10 +19,13 @@ function hook({ gallery = [], wide = [], reroll = async () => ({ ok: true }) } =
     if (path.startsWith('/v1/gallery')) return { ok: true, items: wide };
     return reroll(path, options);
   };
-  const opened = [];
-  const run = new Function('t', 'Z', 'ce', 'K', 'y', 'openCardTagEdit', 'withImageRerollToast', `return ${body}`)(
-    t, Z, ce, K, () => {}, async card => { opened.push(card); }, async (_label, work) => await work());
-  return { run, calls, opened };
+  const opened = [], edited = [];
+  // The UI's own: w cuts a string short, Dt finds a roster row by name, Ua opens 캐릭터 태그 수정.
+  const w = (s, n = 2e5) => String(s ?? '').slice(0, n);
+  const run = new Function('t', 'Z', 'ce', 'K', 'y', 'openCardTagEdit', 'withImageRerollToast', 'w', 'ensureViewerRosterLoaded', 'Dt', 'Ua', `return ${body}`)(
+    t, Z, ce, K, () => {}, async card => { opened.push(card); }, async (_label, work) => await work(),
+    w, async () => { calls.push(['roster']); }, name => roster[name] ?? null, async e => { edited.push(e); });
+  return { run, calls, opened, edited };
 }
 
 test("🎲 takes the card's id alone: a picture the gallery as loaded does not hold is still redrawn", async () => {
@@ -53,4 +56,16 @@ test('🔮 finds an old picture past the strip\'s newest: the whole session is a
   const lost = hook();
   assert.match(String(await lost.run('base', 'gone')), /찾지 못했습니다/);
   assert.deepEqual(lost.opened, []);
+});
+
+test("a cast chip (c1·하쿠키) opens that person's tags as 크게보기's chip does: by the name, at the chip's place, the roster read first", async () => {
+  const haku = { name: '하쿠키', id: 'c-haku' };
+  const { run, calls, edited, opened } = hook({ roster: { 하쿠키: haku } });
+  assert.equal(await run('char', 'card1', { index: 1, name: '하쿠키' }), true);
+  assert.deepEqual(calls, [['roster']]);
+  assert.deepEqual(edited, [{ name: '하쿠키', prompt: '', roster: haku, index: 1 }]);
+  assert.deepEqual(opened, [], 'not the picture\'s own tags');
+  const nameless = hook();
+  assert.match(String(await nameless.run('char', 'card1', { index: 0, name: '' })), /찾지 못했습니다/);
+  assert.deepEqual(nameless.edited, []);
 });

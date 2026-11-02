@@ -76,15 +76,14 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     const scene = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
     const shows = re => page.waitForFunction(source => new RegExp(source).test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), re.source);
 
-    // Both of Risu's menus (the chat's, the side bar's) open it two ways, named beside ⚛️Omni Nexus.
+    // The chat's menu opens it two ways, named beside ⚛️Omni Nexus; the side bar's menu (hamburger) has none of it.
     assert.deepEqual(await page.evaluate(() => Object.keys(window.names).sort().map(id => [id, window.names[id]])), [
-      ['omni-viewer-chat', '⚛️Omni 뷰어 · 보던 곳'], ['omni-viewer-chat-center', '⚛️Omni 뷰어 · 화면 중앙'],
-      ['omni-viewer-menu', '⚛️Omni 뷰어 · 보던 곳'], ['omni-viewer-menu-center', '⚛️Omni 뷰어 · 화면 중앙']]);
-    assert.deepEqual(await page.evaluate(() => Object.keys(window.places).sort().map(id => window.places[id])), ['chat', 'chat', 'hamburger', 'hamburger']);
+      ['omni-viewer-chat', '⚛️Omni 뷰어 · 보던 곳'], ['omni-viewer-chat-center', '⚛️Omni 뷰어 · 화면 중앙']]);
+    assert.deepEqual(await page.evaluate(() => Object.keys(window.places).sort().map(id => window.places[id])), ['chat', 'chat']);
 
     // 화면 중앙: the chat scrolled so the reader's turn after R2 is in the middle; that turn's next reply opens, from its top.
     await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="5"]').scrollIntoView({ block: 'center' }));
-    await page.evaluate(() => { window.log = []; window.charDelay = 500; window.buttons['omni-viewer-menu-center'](); });
+    await page.evaluate(() => { window.log = []; window.charDelay = 500; window.buttons['omni-viewer-chat-center'](); });
     // Never a blank frame: the spinner turns while the chat is read.
     await page.waitForFunction(() => /\[data-vn-busy\]\{display:block\}/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-busy]')).display), 'block');

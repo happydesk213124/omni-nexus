@@ -325,19 +325,21 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForTimeout(200);
     await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(500);
     assert.match(await count(), /^"5 \//, 'the keys were Risu\'s');
-    // + under the folded picture: two bigger sizes, then small again, each a tap on the + as laid out; the + stays
-    // right under the picture, the line stays where it is, and the size is kept.
+    // + inside the folded picture, at its bottom-left corner: two bigger sizes, then small again, each a tap on the + as
+    // laid out; the + stays in the picture's corner, the line stays where it is, and the size is kept.
     const folded = () => page.locator('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])').boundingBox();
     const plus = () => page.locator('[x-omni-vn] [data-vn-act="zoom"]').boundingBox();
     const plusSays = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="zoom"]'), '::after').content);
-    const plusUnder = async () => { const [cg, z] = [await folded(), await plus()]; return z.y > cg.y + cg.height && z.y - (cg.y + cg.height) < 12 && Math.abs(z.x + z.width - (cg.x + cg.width)) < 3; };
+    const plusIn = async () => { const [cg, z] = [await folded(), await plus()]; return Math.abs(z.x - cg.x - 4) < 2 && Math.abs(cg.y + cg.height - (z.y + z.height) - 4) < 2; };
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="zoom"]')).display !== 'none');
-    assert.ok(Math.abs((await folded()).height - 84) < 2 && await plusUnder(), 'the + right under the small thumb');
+    assert.ok(Math.abs((await folded()).height - 84) < 2 && await plusIn(), 'the + in the small thumb\'s bottom-left corner');
     assert.equal(await plusSays(), '"+"');
     for (const [size, share, label] of [[2, 0.3, '"+"'], [3, 0.45, '"−"'], [1, 0, '"+"']]) {
       await press('zoom');
       await page.waitForFunction(height => Math.abs(document.querySelector('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])').getBoundingClientRect().height - height) < 2, share ? box.height * share : 84);
-      assert.ok(await plusUnder(), `size ${size}: the + still right under it`);
+      // Read again once the picture is: the + follows it a moment later.
+      await page.waitForFunction(() => { const cg = document.querySelector('[x-omni-vn] img[x-vn-cg]:not([x-vn-cg^="pv"])').getBoundingClientRect(), z = document.querySelector('[x-omni-vn] [data-vn-act="zoom"]').getBoundingClientRect(); return Math.abs(z.left - cg.left - 4) < 2 && Math.abs(cg.bottom - z.bottom - 4) < 2; });
+      assert.ok(await plusIn(), `size ${size}: the + still in its corner`);
       assert.equal(await plusSays(), label);
       assert.equal(await page.evaluate(() => window.viewerPrefs().cgSize), size, 'the size is kept');
     }
@@ -656,7 +658,7 @@ test('옴니 뷰어 over a restricted SafeDOM, when the chat cannot be read: the
     });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
-    await page.evaluate(async () => { await window.installOmniViewer(); window.buttons['omni-viewer-menu'](); });
+    await page.evaluate(async () => { await window.installOmniViewer(); window.buttons['omni-viewer-chat'](); });
     await page.waitForFunction(() => /열지 못했습니다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     const frame = await page.locator('[x-omni-vn]').boundingBox();
     assert.ok(frame.width >= 390 && frame.height > 500, 'no chat screen: the page above the input');

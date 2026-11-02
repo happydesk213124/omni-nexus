@@ -71,8 +71,16 @@ globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
 globalThis.__OMNI_INSPECT_OPEN__ = () => !!t._nxHostInspectOpen;
 // 옴니 뷰어's 🎲 리롤 and 🔮 샷 태그 수정 on its picture: what 크게보기's 🎲 and 🔮 do. true once done (the tag
 // editor: once it closes), else why not, for the viewer to say: this window's toasts are under it, never seen.
-globalThis.__OMNI_SHOT_ACTION__ = async (act, cardId) => {
+// Its cast chips (c1·하쿠키): `who` is the chip's place and name, opened as 크게보기's chip opens that person's tags.
+globalThis.__OMNI_SHOT_ACTION__ = async (act, cardId, who) => {
   const id = String(cardId || ""), find = (rows) => (Array.isArray(rows) ? rows : []).find((c) => String(c?.id || "") === id);
+  if (act === "char") {
+    const name = w(String(who?.name || ""), 200);
+    if (!name) return "이 캐릭터를 찾지 못했습니다.";
+    await ensureViewerRosterLoaded().catch(() => null);
+    await Ua({ name, prompt: "", roster: Dt(name), index: Math.max(0, Math.floor(Number(who?.index) || 0)) });
+    return true;
+  }
   if (act === "base") {
     let card = find(t.gallery);
     // The strip holds the session's newest 120: an older reply's picture is looked up in the whole session.

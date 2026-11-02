@@ -185,6 +185,31 @@ async function omniMessageAction(kind,target,scope) {
       });
     }
 }
+// 옴니 뷰어's 태그 tab: the message controls on the reply on stage (`index`, -1 while it streams), as its own row runs
+// them in the chat. true once done (a tag job: once queued; a window: once open), else why not, for the viewer to
+// say: this window's toasts are under it, never seen.
+globalThis.__OMNI_MESSAGE_ACTION__ = async (kind, index) => {
+  try {
+    if (kind === 'stop') { await optimisticStopJobs(); return true; }
+    if (kind === 'counts') { await openSettingsTab('gen_options'); return true; }
+    const scope = await Z({useOverride:false});
+    const rows = scope.chat?.message || scope.chat?.messages || [], at = Number(index);
+    const row = Number.isInteger(at) && at >= 0 ? rows[at] : null;
+    // The roster and the presets open with no reply too: only the roster's search wants one.
+    if (kind === 'preset' || (kind === 'char' && !row)) { await openSettingsTab(kind === 'char' ? 'characters' : 'style_presets'); return true; }
+    if (!row || (row.role !== 'char' && !(row.role === 'user' && t.backendSettings?.card?.userchat))) return '이 답장을 채팅에서 찾지 못했습니다.';
+    const text = String(row.data ?? row.saying ?? '');
+    const target = {sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,charIndex:scope.charIndex,chatIndex:scope.chatIndex,index:at,hostId:omniMessageId(row),token:omniMessageToken(at,text)};
+    if (kind === 'tag') {
+      // A job for it already running: nothing is queued (Be answers null), and the viewer says so.
+      const job = await Be({...scope,actionMessageIndex:at,actionMessageRole:row.role,actionMessageId:omniMessageId(row)},text,true);
+      return job ? true : '이 답장은 이미 작업 중입니다. 끝날 때까지 기다려 주세요.';
+    }
+    if (kind === 'regen' && !omniMessageCardIds(text).length) return '이 답장에는 리롤할 이미지가 없습니다.';
+    await omniMessageAction(kind, target, scope);
+    return true;
+  } catch (error) { y('error','viewer.message.action',String(error?.message || error)); return String(error?.message || error || '하지 못했습니다.'); }
+};
 function omniMessageCardIds(text) {
   return [...new Set([...String(text).matchAll(/\[\[@inray::([^:\]]+)::[^\]]+\]\]/g)].map(m=>m[1]))];
 }
