@@ -25,3 +25,24 @@ test('옴니 뷰어 covers the chat: a press on it never reaches an illustration
   assert.equal(await press(false), 'beneath', 'uncovered: the chat gets its press as before');
   assert.deepEqual(reached, ['float', 'history']);
 });
+
+// The shipped pointerup head, to its message-button dispatch: a lift with no press taken looks for a button by
+// where it is (gesture-repairs.mjs hit-tests the rows), and under 옴니 뷰어 it found one and pressed it.
+test("옴니 뷰어 covers the chat: a lift on it presses none of a message's buttons beneath", async () => {
+  const OPEN_UP = 'onPointerUp = async (f) => {';
+  const start = source.indexOf(OPEN_UP), end = source.indexOf('      if (inspectOpen) {', start);
+  assert.ok(start >= 0 && end > start, 'the pointerup head is where it was');
+  const head = source.slice(start + OPEN_UP.length, end);
+  const lift = async covers => {
+    const looked = [], pressed = [];
+    const run = new Function('t', 'nxPhysical', 'mobilePress', 'nxPointerWork', 'cancelMobilePress', 'pinClick', 'pointerGesture', 'pendingSheetHit', 'hitMsgChipAt', 'e', 'pressMsgChip', 'runMsgChipAction', 'y', 'globalThis',
+      `return async (f) => {${head} return 'beneath'; };`)(
+      {}, null, null, Promise.resolve(), () => {}, null, null, null,
+      async (_doc, x, y) => { looked.push([x, y]); return { kind: 'tag', index: 3 }; }, {}, async () => {}, async (kind, index) => { pressed.push([kind, index]); }, () => {},
+      { __OMNI_VIEWER_COVERS__: (x, y) => covers && x === 120 && y === 340 });
+    await run({ clientX: 120, clientY: 340, pointerId: 1 });
+    return { looked, pressed };
+  };
+  assert.deepEqual(await lift(true), { looked: [], pressed: [] }, 'covered: no button beneath looked for, none pressed');
+  assert.deepEqual(await lift(false), { looked: [[120, 340]], pressed: [['tag', 3]] }, 'uncovered: a lift on a button presses it as before');
+});

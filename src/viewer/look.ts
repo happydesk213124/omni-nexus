@@ -193,12 +193,13 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 @keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
 @keyframes vn-blink{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes vn-spin{to{rotate:360deg}}
-/* A phone: nine buttons in one row, the words drawn in to make room (on 360 px there were 8 px to spare before |◀ ▶|). */
-@media (max-width:540px){[x-omni-vn] [data-vn-menu] button{padding:0 3px;min-width:30px;font-size:11.5px;letter-spacing:0}[x-omni-vn] [data-vn-act="bgm"]{width:auto}[x-omni-vn] [data-vn-act="bgm"]::after{margin-left:3px}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:30px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:28px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"]{margin-right:8px}[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{margin-left:8px}}
-@media (max-width:420px){[x-omni-vn] [data-vn-menu]{left:14px;right:14px}}
-@media (max-width:380px){[x-omni-vn] [data-vn-menu]{left:12px;right:12px;gap:0}[x-omni-vn] [data-vn-menu] button{padding:0 2px;min-width:26px;font-size:11px}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:26px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:24px}}
+/* A phone: ten buttons in one row (배속 the tenth, its speed in smaller figures), the words drawn in to make room, each at its
+   own width: a row out of room squeezes its buttons over their words. */
+@media (max-width:540px){[x-omni-vn] [data-vn-menu] button{padding:0 3px;min-width:30px;font-size:11.5px;letter-spacing:0}[x-omni-vn] [data-vn-menu] [data-vn-act="rate"]{min-width:0;padding:0 2px;font-size:10.5px}[x-omni-vn] [data-vn-act="bgm"]{width:auto}[x-omni-vn] [data-vn-act="bgm"]::after{margin-left:3px}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:30px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:28px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"]{margin-right:8px}[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{margin-left:8px}}
+@media (max-width:420px){[x-omni-vn] [data-vn-menu]{left:12px;right:12px;gap:0}[x-omni-vn] [data-vn-menu] button{padding:0 2px;min-width:26px;font-size:11px}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:26px}[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:24px}}
+@media (max-width:380px){[x-omni-vn] [data-vn-menu] [data-vn-act="rate"]{font-size:10px}}
 /* Narrower still there is no room for them: ◀ ▶ alone, as before. */
-@media (max-width:340px){[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{display:none}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:32px}}
+@media (max-width:359px){[x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{display:none}[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"]{min-width:32px}}
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);min-height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
@@ -396,7 +397,8 @@ export function stageCss(s: StageState): string {
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}[x-omni-vn] [data-vn-act="sfx"]{opacity:${s.sfx === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',
-    s.rate !== undefined ? `[x-omni-vn] [data-vn-act="rate"]::after{content:"${Number(s.rate)}×"}` : '',
+    // A narrow phone's row has no room for the × (the list it opens says what the figure is).
+    s.rate !== undefined ? `[x-omni-vn] [data-vn-act="rate"]::after{content:"${Number(s.rate)}×"}@media (max-width:380px){[x-omni-vn] [data-vn-act="rate"]::after{content:"${Number(s.rate)}"}}` : '',
     s.rates ? '[x-omni-vn] [data-vn-rates]{display:flex}[x-omni-vn] [data-vn-menu] [data-vn-act="rate"]{color:var(--gold)}' : '',
     s.tags ? '[x-omni-vn] [data-vn-tagbar]{translate:0 0}[x-omni-vn] [data-vn-act="tags"]{opacity:0}' : '',
     s.pink ? `[x-omni-vn] [data-vn-act="pink"]{display:inline-flex}${s.pinkBusy ? '[x-omni-vn] [data-vn-act="pink"]{opacity:.7}[x-omni-vn] [data-vn-act="pink"]::before{border-color:rgba(236,72,153,.3);border-top-color:#ec4899;background:transparent;animation:vn-spin .8s linear infinite}' : ''}` : '',
