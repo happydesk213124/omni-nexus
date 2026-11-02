@@ -3,11 +3,11 @@ import { characterNoteLlmContent } from './character-note';
 import { SESSION_AUTHOR_NOTE_PRESETS_KEY } from '../core/constants';
 import type { ApiResult } from '../core/types';
 import { cleanText, sessionIdHash } from '../core/util/text';
-import { joinSessionAuthorNote, parseSessionAuthorNote, parseSessionWear, formatSessionWearReference, sessionAuthorNoteSystemContent, type SessionWearEntry } from '../domain/tagging/session-note';
+import { joinSessionAuthorNote, parseSessionAuthorNote, parseSessionWear, formatSessionOutfitReference, sessionAuthorNoteSystemContent, type SessionWearEntry } from '../domain/tagging/session-note';
 import { parseWearState } from '../domain/character/wear-state';
 import { psGet, psSet } from '../storage/device-store';
-import { parseSessionCostumes, formatSessionCostumeReference } from '../domain/tagging/session-note';
-import { ensureCostumes, resolveCostumeWear } from '../domain/character/costume';
+import { parseSessionCostumes, type SessionCostumeEntry } from '../domain/tagging/session-note';
+import { costumeKey, ensureCostumes, resolveCostumeWear } from '../domain/character/costume';
 import { resolveCharacter } from '../domain/character/roster';
 import type { CharacterRecord } from '../core/types';
 
@@ -81,18 +81,28 @@ export async function getSessionAuthorNote(
   };
 }
 
-/** Empty when no session or no text. Callers append this after the global note. */
-export async function sessionAuthorNoteLlmContent(sessionId: unknown): Promise<string> {
+/**
+ * Empty when no session or no text. Callers append this after the global note. `outfits`: the caller's roster, whose
+ * lines (`listed`) give those people's outfits already (they are left out of this chat's outfits), and in which a
+ * costume is the default by its place ([0]) rather than by its name.
+ */
+export async function sessionAuthorNoteLlmContent(sessionId: unknown, outfits: { roster?: readonly CharacterRecord[]; listed?: readonly CharacterRecord[] } = {}): Promise<string> {
   const id = cleanText(sessionId, 200);
   if (!id) return '';
   try {
     const note = await getSessionAuthorNote(id);
     const rec = note as unknown as Record<string, unknown>;
     const sys = sessionAuthorNoteSystemContent(note);
-    const ref = formatSessionWearReference(parseSessionWear(rec.wear));
+    const rows = new Map((outfits.roster ?? []).map(row => [cleanText(row.id, 200), row]));
+    const isDefault = (entry: SessionCostumeEntry): boolean => {
+      const row = rows.get(entry.id);
+      return row && (!entry.scope || entry.scope === row.scope) ? resolveCostumeWear(row, entry.costume).index === 0 : costumeKey(entry.costume) === 'default';
+    };
+    const ref = formatSessionOutfitReference(parseSessionWear(rec.wear), parseSessionCostumes(rec.costumes),
+      { skip: new Set((outfits.listed ?? []).map(row => cleanText(row.id, 200)).filter(Boolean)), isDefault });
     // The bot's note goes first: the session's own, after it, wins where they disagree.
     const bot = await characterNoteLlmContent(await characterIdForNoteSession(id).catch(() => ''));
-    return [bot, sys, ref, formatSessionCostumeReference(parseSessionCostumes(rec.costumes))].filter(Boolean).join('\n\n');
+    return [bot, sys, ref].filter(Boolean).join('\n\n');
   } catch {
     return '';
   }

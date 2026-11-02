@@ -420,7 +420,11 @@ test('the chat model gets this chat\'s people, most recently named first, with t
   assert.notEqual(order[2],'예원','예원, three replies back, is not read');
   assert.equal(order.length,20,'twenty at most');
   assert.ok(!order.includes(names.at(-1)),'the rest wait their turn');
-  assert.match(state,/- 하나 — looks saved \| costumes: default\[0\][^;]*; swim\[1\] 수영복 \| wearing default\[0\] \| wear_state=clothed/,'each person: costumes by name and note, what they wear now');
+  assert.match(state,/- 하나 — looks saved \| costumes: default\[0\][^;]*; swim\[1\] 수영복\n/,'each person: costumes by name and note');
+  // The default worn, clothed, goes without saying: the heading says it once, a line only when it is otherwise.
+  assert.match(state,/Unless a line says otherwise: costume default\[0\], wear_state=clothed\.\n/);
+  assert.match(state,/\n- 민아 — looks saved\n/,'one costume, the default, clothed: the name alone');
+  assert.doesNotMatch(state,/wearing default\[0\]|wear_state=clothed \|/);
   assert.doesNotMatch(state,/blue hair|school uniform/,'saved looks stay with the generator');
   assert.equal((await note()).recent_cast,undefined,'nothing written while the reply could still be streaming');
   // Later: 민지 and 채원 in the last two; 하나 and 민아 stay right behind them without being read again.
@@ -432,6 +436,18 @@ test('the chat model gets this chat\'s people, most recently named first, with t
   const roster=await f.api.loadTaggerRoster({sessionId:sid,unifiedSessionId:sid,characterId:'c'});
   assert.deepEqual(kept.slice(0,4).map(id=>roster.find(c=>c.id===id)?.name),['채원','민지','하나','민아'],'saved in this chat\'s note once a reply is done');
   assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
+  // This chat's outfits: whoever a line above dresses is not said again, the rest only when not clothed in the default.
+  const wear={[hana.id]:{name:'하나',wear:'nude'}};
+  for(const c of roster.filter(c=>!order.includes(c.name)))wear[c.id]={name:c.name,wear:'topless'};
+  await f.api.setSessionAuthorNote(sid,{wear,costumes:{[hana.id]:{name:'하나',scope:'',costume:'swim'}}});
+  ({state}=await say('하나가 웃었다.','민아가 손을 흔들었다.'));
+  const [lines,outfits='']=state.split("# Reference: this chat's outfits (people not in the list above)\n");
+  assert.match(lines,/\n- 하나 — looks saved \| costumes: [^\n]*swim\[1\] 수영복 \| wearing swim\[1\] \| wear_state=nude\n/,'her line says what she wears now');
+  assert.doesNotMatch(outfits,/- 하나:/,'said once, on her line');
+  const listed=[...lines.matchAll(/^- (\S+)/gm)].map(m=>m[1]),rest=roster.filter(c=>wear[c.id]&&!listed.includes(c.name));
+  assert.ok(rest.length>0,'some beyond the twenty listed');
+  assert.deepEqual(outfits.split('\n').filter(l=>l.startsWith('- ')),rest.map(c=>`- ${c.name}: topless`),'only they, each on one line');
+  assert.match(outfits,/\nAnyone in neither list is clothed, in their default costume\./);
 });
 
 test('⚛️ omni 스트리밍태그 draws blocks as slots, never hides the story after an unclosed one, and keeps them out of requests',async()=>{

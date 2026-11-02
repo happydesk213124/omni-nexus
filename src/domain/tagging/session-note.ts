@@ -1,5 +1,6 @@
 import { cleanText } from '../../core/util/text.ts';
 import { parseWearState, type WearState } from '../character/wear-state.ts';
+import { costumeKey } from '../character/costume.ts';
 
 export function parseSessionAuthorNote(raw: unknown): {
   prefix: string;
@@ -64,23 +65,28 @@ export function parseSessionCostumes(raw: unknown): SessionCostumeEntry[] {
   });
 }
 
-export function formatSessionCostumeReference(entries: SessionCostumeEntry[]): string {
-  if (!entries.length) return '';
-  return ['# Reference: 이 세션 현재 코스튬', ...entries.map(e => `- ${e.name}: costume=${e.costume}`),
-    '로스터 active_costume보다 이 채팅방의 현재 코스튬을 우선합니다. 이야기에서 갈아입지 않으면 유지하세요.'].join('\n');
-}
-
 /**
- * Reference block for the tagger/comic prompt. Deliberately not a Priority
- * block: this is remembered continuity, not a user instruction, so the story
- * may override it. Empty when nothing is remembered.
+ * This chat's outfits, for the image LLMs. Deliberately not a Priority block: this is remembered continuity, not a
+ * user instruction, so the story may override it. Only what differs from clothed in the default costume, one line a
+ * person (wear and costume together): nearly everyone is that, and a line each for all of them went with every
+ * request. `skip`: people whose outfit the roster lines above already give. `isDefault`: by the costume's place ([0])
+ * where the roster is known, else by its name. Empty when nothing is left.
  */
-export function formatSessionWearReference(entries: SessionWearEntry[]): string {
-  if (!entries.length) return '';
+export function formatSessionOutfitReference(wear: SessionWearEntry[], costumes: SessionCostumeEntry[],
+  opts: { skip?: ReadonlySet<string>; isDefault?: (entry: SessionCostumeEntry) => boolean } = {}): string {
+  const isDefault = opts.isDefault ?? ((entry: SessionCostumeEntry) => costumeKey(entry.costume) === 'default');
+  const people = new Map<string, { name: string; wear: string; costume: string }>();
+  for (const e of wear) if (e.wear !== 'clothed') people.set(e.id, { name: e.name, wear: e.wear, costume: '' });
+  for (const e of costumes) if (!isDefault(e)) people.set(e.id, { name: e.name, wear: '', ...people.get(e.id), costume: e.costume });
+  const lines = [...people].filter(([id]) => !opts.skip?.has(id))
+    .map(([, p]) => `- ${p.name}: ${[p.wear, p.costume ? `costume=${p.costume}` : ''].filter(Boolean).join(' · ')}`);
+  if (!lines.length) return '';
+  const listed = !!opts.skip?.size;
   return [
-    '# Reference: 이 세션 옷 상태',
-    ...entries.map((e) => `- ${e.name}: ${e.wear}`),
-    '새 샷에서 옷이 바뀌었다는 근거가 없으면 이 상태를 유지하세요.',
+    `# Reference: this chat's outfits${listed ? ' (people not in the list above)' : ''}`,
+    ...lines,
+    listed ? 'Anyone in neither list is clothed, in their default costume. Keep these unless the story changes them.'
+      : "Anyone not listed is clothed, in their default costume. These win over the roster's active_costume; keep them unless the story changes them.",
   ].join('\n');
 }
 

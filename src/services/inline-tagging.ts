@@ -99,11 +99,13 @@ function rosterLine(char: CharacterRecord, withCostumes: boolean): string {
   const head = `- ${cleanText(char.name, 120)}${aliases.length ? ` (also: ${aliases.join(', ')})` : ''}`;
   if (!characterHasAppearance(char)) return `${head} — looks missing: give full looks in new_characters`;
   const { costumes, active_costume } = ensureCostumes(char);
-  const worn = costumes[active_costume];
-  // Names and notes only: the generator fills in the saved looks, the model only has to pick one.
-  const catalog = withCostumes ? costumes.map((c, i) => [`${c.name}[${i}]`, cleanText(c.note, 60)].filter(Boolean).join(' ')).join('; ') : '';
+  const worn = costumes[active_costume], wear = formatWearStateForPrompt(char.wear_state);
+  // Names and notes only: the generator fills in the saved looks, the model only has to pick one. A list of one (the
+  // default) has nothing to pick from, and the default worn, clothed, goes without saying (the heading says so): every
+  // line said it, in every request.
+  const catalog = withCostumes && costumes.length > 1 ? costumes.map((c, i) => [`${c.name}[${i}]`, cleanText(c.note, 60)].filter(Boolean).join(' ')).join('; ') : '';
   return [`${head} — looks saved`, catalog ? `costumes: ${catalog}` : '',
-    withCostumes && worn ? `wearing ${worn.name}[${active_costume}]` : '', `wear_state=${formatWearStateForPrompt(char.wear_state)}`].filter(Boolean).join(' | ');
+    withCostumes && worn && active_costume > 0 ? `wearing ${worn.name}[${active_costume}]` : '', wear !== 'clothed' ? `wear_state=${wear}` : ''].filter(Boolean).join(' | ');
 }
 
 /** The varying part for one chat: who is registered (most recently named first), where the last image was, this chat's note. */
@@ -123,13 +125,14 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
     roster = order;
   }
   const withCostumes = getConfig().card?.costume === true;
-  const people = roster.slice(0, ROSTER_LIMIT).map(char => rosterLine(char, withCostumes));
+  const listed = roster.slice(0, ROSTER_LIMIT), people = listed.map(char => rosterLine(char, withCostumes));
   const location = formatPrevLocationLine((note as { location?: unknown } | null)?.location ?? '');
-  const sessionNote = noteId ? await sessionAuthorNoteLlmContent(noteId) : '';
+  // This chat's outfits leave out whoever a line above already dresses (a line of missing looks dresses nobody).
+  const sessionNote = noteId ? await sessionAuthorNoteLlmContent(noteId, { roster, listed: listed.filter(char => characterHasAppearance(char)) }) : '';
   if (!people.length && !location && !sessionNote) return '';
   return [
     INLINE_STATE_MARK,
-    people.length ? `Registered characters, most recently in the story first (reuse these exact names in "characters"; never repeat a saved one in new_characters; pick a listed costume instead of registering the same look again):\n${people.join('\n')}` : '',
+    people.length ? `Registered characters, most recently in the story first (reuse these exact names in "characters"; never repeat a saved one in new_characters; pick a listed costume instead of registering the same look again). Unless a line says otherwise: ${withCostumes ? 'costume default[0], ' : ''}wear_state=clothed.\n${people.join('\n')}` : '',
     location,
     sessionNote,
   ].filter(Boolean).join('\n\n');

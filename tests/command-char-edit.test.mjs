@@ -13,7 +13,7 @@ import {
   joinSessionAuthorNote,
   parseSessionAuthorNote,
   parseSessionWear,
-  formatSessionWearReference,
+  formatSessionOutfitReference,
   sessionAuthorNoteSystemContent,
 } from "../.test-build/session-note.mjs";
 
@@ -134,12 +134,26 @@ test("parseSessionWear keeps id-keyed entries and drops unknown states", () => {
   assert.deepEqual(carried.wear, [{ id: "char_a", name: "A", wear: "topless" }]);
 });
 
-test("formatSessionWearReference renders names, stays empty when none", () => {
-  const ref = formatSessionWearReference([{ id: "char_a", name: "A", wear: "nude" }]);
-  assert.match(ref, /이 세션 옷 상태/);
-  assert.match(ref, /- A: nude/);
+test("formatSessionOutfitReference: only what is not clothed in the default costume, one line a person; empty when none", () => {
+  const ref = formatSessionOutfitReference(
+    [{ id: "char_a", name: "A", wear: "nude" }, { id: "char_b", name: "B", wear: "clothed" }],
+    [{ id: "char_b", name: "B", scope: "", costume: "default" }, { id: "char_c", name: "C", scope: "", costume: "night" }, { id: "char_a", name: "A", scope: "", costume: "swim" }],
+  );
+  assert.match(ref, /^# Reference: this chat's outfits\n/);
+  assert.match(ref, /\n- A: nude · costume=swim\n/, "wear and costume on one line");
+  assert.match(ref, /\n- C: costume=night\n/);
+  assert.doesNotMatch(ref, /- B:/, "clothed, in the default: nothing to say");
+  assert.match(ref, /Anyone not listed is clothed, in their default costume/);
   assert.doesNotMatch(ref, /Priority/);
-  assert.equal(formatSessionWearReference([]), "");
+  // People the roster lines above already dress are left out, and the section says it is the rest.
+  const rest = formatSessionOutfitReference([{ id: "char_a", name: "A", wear: "nude" }], [{ id: "char_c", name: "C", scope: "", costume: "night" }], { skip: new Set(["char_a"]) });
+  assert.doesNotMatch(rest, /- A:/);
+  assert.match(rest, /people not in the list above/);
+  assert.match(rest, /Anyone in neither list is clothed/);
+  // The default by its place ([0]) where the caller knows it, whatever its name.
+  assert.equal(formatSessionOutfitReference([], [{ id: "char_d", name: "D", scope: "", costume: "교복" }], { isDefault: () => true }), "");
+  assert.equal(formatSessionOutfitReference([{ id: "x", name: "X", wear: "clothed" }], [{ id: "x", name: "X", scope: "", costume: "default" }]), "", "all clothed in the default: no section at all");
+  assert.equal(formatSessionOutfitReference([], []), "");
 });
 
 test("applyCharacterCommandDeltas removes named costumes but keeps one", () => {
