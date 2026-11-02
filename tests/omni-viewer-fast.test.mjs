@@ -193,30 +193,38 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
   } finally { await browser.close(); }
 });
 
-test('the bottom row keeps every button on a phone, 효과음 and |◀ ▶| among them, from 320 px wide on', async () => {
-  const built = await build({ stdin: { contents: "import {FRAME,STATIC_CSS} from './src/viewer/look';Object.assign(window,{FRAME,STATIC_CSS});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+test('the bottom row keeps every button on a phone, 효과음, 배속 and |◀ ▶| among them, from 320 px wide on', async () => {
+  const built = await build({ stdin: { contents: "import {FRAME,STATIC_CSS,stageCss} from './src/viewer/look';Object.assign(window,{FRAME,STATIC_CSS,stageCss});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
-    for (const width of [320, 360, 375, 393, 412, 430, 480]) {
+    for (const width of [320, 360, 375, 380, 381, 393, 412, 421, 430, 480]) {
       // A phone: a finger's pointer, so the bigger buttons.
       const page = await browser.newPage({ viewport: { width, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
       // As Risu's page: laid out at the phone's own width (without this a phone lays a page out 980 px wide).
       await page.setContent('<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0"></body></html>');
       await page.addScriptTag({ content: built.outputFiles[0].text });
       const row = await page.evaluate(() => {
-        const style = document.createElement('style'); style.textContent = window.STATIC_CSS; document.head.append(style);
+        // 배속 as wide as it commonly gets, written as the stage writes it.
+        const stage = window.stageCss({ cast: [], narration: false, bg: '', cg: '', revealed: false, log: false, auto: false, voice: true, rate: 1.75 });
+        const style = document.createElement('style'); style.textContent = window.STATIC_CSS + stage; document.head.append(style);
         const root = document.createElement('div'); root.setAttribute('x-omni-vn', '1'); root.style.cssText = 'left:0;top:0;width:100vw;height:calc(100dvh - 96px)'; root.innerHTML = window.FRAME; document.body.append(root);
         const menu = root.querySelector('[data-vn-menu]'), box = root.querySelector('[data-vn-box]').getBoundingClientRect();
         const buttons = [...menu.children].filter(b => getComputedStyle(b).display !== 'none'), rects = buttons.map(b => b.getBoundingClientRect());
+        const name = b => b.textContent || getComputedStyle(b, '::after').content.replace(/"/g, '');
+        // Each button at its own width too: a row out of room squeezes its buttons (over their words, into their padding)
+        // rather than overflowing, so none may give way here.
+        const hold = document.createElement('style'); hold.textContent = '[x-omni-vn] [data-vn-menu] button{flex-shrink:0!important}'; document.head.append(hold);
+        const roomy = menu.scrollWidth <= menu.clientWidth + 1;
+        hold.remove();
         // Every button whole (its label inside it, none squeezed over the next), the row inside the box.
-        return { coarse: matchMedia('(pointer:coarse)').matches, fits: menu.scrollWidth <= menu.clientWidth + 1 && buttons.every(b => b.scrollWidth <= b.clientWidth + 1), left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)), boxLeft: box.left, box: box.right, names: buttons.map(b => b.textContent), gaps: [rects.at(-3).left - rects.at(-4).right, rects.at(-1).left - rects.at(-2).right] };
+        return { coarse: matchMedia('(pointer:coarse)').matches, fits: roomy && menu.scrollWidth <= menu.clientWidth + 1 && buttons.every(b => b.scrollWidth <= b.clientWidth + 1), left: Math.min(...rects.map(r => r.left)), right: Math.max(...rects.map(r => r.right)), boxLeft: box.left, box: box.right, names: buttons.map(name), gaps: [rects.at(-3).left - rects.at(-4).right, rects.at(-1).left - rects.at(-2).right] };
       });
       assert.equal(row.coarse, true);
       assert.ok(row.box <= width, 'laid out at the phone width: ' + row.box);
-      // Under 340 px there is no room for |◀ ▶|: ◀ ▶ alone.
-      assert.deepEqual(row.names, ['최신', '기록', '나레이션', 'BGM', '효과음', ...(width > 340 ? ['◀', '◀', '▶', '▶'] : ['◀', '▶'])]);
+      // Under 360 px there is no room for |◀ ▶|: ◀ ▶ alone. Up to 380 px 배속 drops its ×.
+      assert.deepEqual(row.names, ['최신', '기록', '나레이션', 'BGM', '효과음', width > 380 ? '1.75×' : '1.75', ...(width >= 360 ? ['◀', '◀', '▶', '▶'] : ['◀', '▶'])]);
       // |◀ and ▶| stand off from ◀ ▶: a slip of the finger is never a jump.
-      if (width > 340) assert.ok(row.gaps[0] >= 8 && row.gaps[1] >= 8, width + 'px, the ends stood off: ' + JSON.stringify(row.gaps));
+      if (width >= 360) assert.ok(row.gaps[0] >= 8 && row.gaps[1] >= 8, width + 'px, the ends stood off: ' + JSON.stringify(row.gaps));
       assert.ok(row.fits && row.right <= row.box && row.left >= row.boxLeft, width + 'px: ' + JSON.stringify(row));
       await page.close();
     }

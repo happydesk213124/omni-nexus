@@ -1801,7 +1801,10 @@ async function writeStage(s: StageState): Promise<void> {
   await dyn?.setTextContent(`${stageCss(s)}\n${elementsCss()}`);
   // 전체 생성 comes and goes with the reply's pink slots: where it stands is read once it shows.
   if (!!s.pink !== pinkShown) { pinkShown = !!s.pink; if (pinkShown) void remeasure('pink').catch(() => {}); }
+  // 배속 is as wide as the figure this style draws in it (on a phone it has no width of its own): read again when it changes.
+  if (s.rate !== rateShown) { rateShown = s.rate; void remeasure('rate').catch(() => {}); }
 }
+let rateShown: number | undefined;
 /**
  * Work the reader waits on (another reply read in, the chat read again): the spinner turns
  * from the tap on, at once, and stops when it is done.
@@ -2047,7 +2050,7 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
-    ratesOpen = false; rateRows = []; tagsOpen = false; pinkShown = false; castNames.clear(); castReading.clear();
+    ratesOpen = false; rateRows = []; tagsOpen = false; pinkShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
