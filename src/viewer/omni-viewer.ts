@@ -21,6 +21,11 @@ import { placeAt, placeMarkers, streamingPlace } from '../domain/viewer/place';
 import { pickPlace, placeEngine } from '../services/place-backgrounds';
 import { makeSpeakerLooks } from '../services/speaker-looks';
 import { onMessageBaked } from '../services/bake-events';
+import { resolveCastNames } from '../services/cast-ids';
+import { castFromShotAssetName } from '../domain/gallery/shot-assets';
+import { pinkSlotIds } from '../domain/chat-bake';
+import { MESSAGE_CONTROL_KINDS } from '../domain/message-controls';
+import { makeMessageWaits } from '../image-ui/wait-taps';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
 import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs, type CgSize } from '../storage/viewer-prefs';
 import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeSoundFocus, type SoundFocus, type SoundPage } from '../sound-ui/page';
@@ -33,7 +38,7 @@ import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
 import { setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
-import { boxHtml, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
+import { boxHtml, CAST_CHIPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
@@ -55,13 +60,18 @@ const LIST = '.default-chat-screen > .flex-col-reverse';
 // More than three on a phone's stage hide each other; the three last to speak stay.
 const MAX_CAST = 3;
 // The frame's buttons in document order, read once from FRAME: measuring them reads no HTML.
-const ACTS = [...FRAME.matchAll(/data-vn-act="([a-z]+)"/g)].map(m => m[1]!);
+const ACTS = [...FRAME.matchAll(/data-vn-act="([a-z0-9]+)"/g)].map(m => m[1]!);
 const CG_ACTS = ACTS.filter(name => name.startsWith('cg'));
-const CG_CONTROLS = '[data-vn-cgbar] [data-vn-act],[data-vn-dock] [data-vn-act]';
+// In document order, as CG_ACTS are: the cast chips, the bar, the full-screen sheet.
+const CG_CONTROLS = '[data-vn-cgchips] [data-vn-act],[data-vn-cgbar] [data-vn-act],[data-vn-dock] [data-vn-act]';
 // A full-screen CG covers the frame: only its own sheet's buttons are under a finger then.
 const DOCK = new Set(['cgprev', 'cgfit', 'cgnext', 'cgback']);
-// A shown CG's own bar: its buttons are there only while it is shown big.
-const CG_BAR = new Set(['cgfull', 'cgroll', 'cgtags', 'cgclose']);
+// A shown CG's own bar and its cast chips (c1 …): there only while it is shown big.
+const CHIP_ACTS = Array.from({ length: CAST_CHIPS }, (_, i) => `cgc${i + 1}`);
+const CG_BAR = new Set(['cgfull', 'cgroll', 'cgtags', 'cgclose', ...CHIP_ACTS]);
+// 태그's row: the chat's message controls, each `m` + its kind (look.ts), in its order.
+const TAG_ACTS = MESSAGE_CONTROL_KINDS.map(([kind]) => `m${kind}`);
+const TAG_BAR = new Set<string>(TAG_ACTS);
 // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
@@ -69,7 +79,7 @@ const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-ch
 
 interface HostPoint { clientX: number; clientY: number }
 let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeElement | null = null, fold: SafeElement | null = null;
-let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cgLayer: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null, stripEl: SafeElement | null = null, msgsEl: SafeElement | null = null;
+let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cgLayer: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null, stripEl: SafeElement | null = null, msgsEl: SafeElement | null = null, ratesEl: SafeElement | null = null;
 // The right-hand strip: this reply's illustrations, each a way back to its scene.
 interface StripItem { key: string; message: number; asset: string }
 let stripOpen = false, stripItems: StripItem[] = [], thumbs: Array<StripItem & { r: DOMRect }> = [];
@@ -145,6 +155,11 @@ async function measureActs(selector: string, names: readonly string[]): Promise<
 async function remeasure(name: string): Promise<void> {
   const [found] = await measureActs(`[data-vn-act="${name}"]`, [name]);
   if (found) controls = controls.map(c => c.act === name ? found : c);
+}
+/** A row of buttons that moved together (태그's, slid out): their rectangles read again. */
+async function remeasureRow(selector: string, names: readonly string[]): Promise<void> {
+  const found = await measureActs(selector, names);
+  controls = controls.map(c => found.find(f => f.act === c.act) ?? c);
 }
 /**
  * A CG brings its own buttons (its bar, its full-screen sheet): only theirs are read
@@ -1041,8 +1056,42 @@ async function measureCgThumb(): Promise<void> {
   // Only the folded picture is the thumb: a key back to its scene meanwhile (it came up big)
   // made this the big one, and the thumb would never take a tap again.
   if (cgView === 'fold' && lastCg === id) cgThumb = box; else return;
-  // Its + stands right under it, hidden (no rectangle) until there was a folded picture.
+  // Its + stands inside it, at its bottom-left corner: put there from this rectangle, then read where it is.
+  await restyle();
   await remeasure('zoom');
+}
+/**
+ * The cast of the picture shown big, by its file name (`.c<id-id>`, as 크게보기 reads it) and the roster: read once a
+ * picture, its chips (c1·하쿠키 …) up once the names are in. None while it is folded or not saved.
+ */
+const castNames = new Map<string, string[]>(), castReading = new Set<string>();
+function shownCast(): string[] | undefined {
+  const cg = cgView === 'show' || cgView === 'open' ? scenes[lastCgAt]?.cg : undefined;
+  if (cg?.kind !== 'baked' || !lastCg || lastCg === PENDING) return undefined;
+  const asset = cg.asset, known = castNames.get(asset);
+  if (known || castReading.has(asset)) return known;
+  const ids = castFromShotAssetName(asset).slice(0, CAST_CHIPS);
+  if (!ids.length) { castNames.set(asset, []); return []; }
+  castReading.add(asset);
+  void resolveCastNames(ids).catch(() => ({} as Record<string, string>)).then(async names => {
+    castNames.set(asset, ids.map(id => names[id] ?? ''));
+    castReading.delete(asset);
+    // Still that picture, big: its chips come up, and are read for the taps.
+    const now = cgView === 'show' || cgView === 'open' ? scenes[lastCgAt]?.cg : undefined;
+    if (open && now?.kind === 'baked' && now.asset === asset) { await restyle(); await measureCgControls(); }
+  }).catch(error => dbg('viewer.cast', { message: String(error) }, 'warn'));
+  return undefined;
+}
+/** A cast chip: that person's tags (캐릭터 태그 수정), as 크게보기's chip opens them; a name unknown, the picture's own (🔮). */
+async function castChip(index: number): Promise<void> {
+  const cg = scenes[lastCgAt]?.cg;
+  if (cg?.kind !== 'baked') return;
+  const name = castNames.get(cg.asset)?.[index] ?? '', run = Reflect.get(globalThis, '__OMNI_SHOT_ACTION__');
+  if (!name) { await shotAction('base'); return; }
+  if (typeof run !== 'function') { sayShot('Omni가 아직 준비되지 않았어요.', 2600); return; }
+  let done: unknown;
+  try { done = await run('char', cg.card, { index, name }); } catch (error) { done = String((error as Error)?.message || error); }
+  if (done !== true) sayShot(shotFailed(done, '캐릭터 태그 수정을 열지 못했습니다.'), 4500);
 }
 /**
  * 🎲 리롤 and 🔮 샷 태그 수정 on the picture on show, as 크게보기 has them. Not while the reply
@@ -1052,8 +1101,8 @@ async function measureCgThumb(): Promise<void> {
 const shotLocked = (): boolean => streaming || scenes[lastCgAt]?.cg?.kind !== 'baked' || typeof Reflect.get(globalThis, '__OMNI_SHOT_ACTION__') !== 'function';
 let shotWatch: ReturnType<typeof setInterval> | undefined;
 /**
- * What 🎲 or 🔮 says over the picture: the redraw under way, or why nothing happened. Omni's own
- * toasts are in its window, under the viewer: a tap that failed there looked like a dead button.
+ * What 🎲 or 🔮 says over the picture (태그's buttons and 전체 생성 under the top bar): the redraw under way, or why
+ * nothing happened. Omni's own toasts are in its window, under the viewer: a tap that failed there looked like a dead button.
  */
 let shotNote = '', shotNoteTimer: ReturnType<typeof setTimeout> | undefined, rolling = false;
 function sayShot(note: string, ms = 0): void {
@@ -1188,6 +1237,8 @@ async function comeBack(): Promise<void> {
 
 const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cgSize: viewerPrefs().cgSize, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
+  zoomAt: cgView === 'fold' && cgThumb ? { left: cgThumb.left - rect.left, top: cgThumb.top + cgThumb.height - rect.top } : undefined, chips: shownCast(),
+  rate: ttsData().settings.rate, rates: ratesOpen, tags: tagsOpen, pink: pinkCount() > 0, pinkBusy: pinkRun,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
@@ -1460,8 +1511,104 @@ async function go(delta: number): Promise<void> {
   if (endsOnIt || folded) { await restyle(); setTimeout(() => void measureCgThumb().catch(() => {}), 450); }
 }
 
+/**
+ * 배속: the voice's speed, from TTS 설정's list, as the floating TTS viewer's 1× picks it (the player takes it at once,
+ * the voice made already too). The list is drawn when it opens and its speeds read then: a tap on one costs no call.
+ */
+let ratesOpen = false, rateRows: Array<{ rate: number; r: DOMRect }> = [];
+async function toggleRates(): Promise<void> {
+  ratesOpen = !ratesOpen; rateRows = [];
+  if (ratesOpen) { tagsOpen = false; stripOpen = false; msgsOpen = false; logOpen = false; }
+  if (!ratesOpen || !ratesEl) { ratesOpen = false; await restyle(); return; }
+  const { rate, rates } = ttsData().settings;
+  // Not data-vn-act: every button by that is read in FRAME's order (measure), and these come and go.
+  await ratesEl.setInnerHTML(rates.map(r => `<button type="button" data-vn-rate${r === rate ? ' data-on' : ''}>${r}×</button>`).join(''));
+  await restyle();
+  const found: typeof rateRows = [], rows = await unwrap(await ratesEl.querySelectorAll('button'));
+  for (let i = 0; i < rows.length; i++) { try { if (rates[i] !== undefined) found.push({ rate: rates[i]!, r: await rows[i]!.getBoundingClientRect() }); } finally { await release(rows[i]); } }
+  if (ratesOpen) rateRows = found;
+}
+async function pickRate(rate: number): Promise<void> {
+  ratesOpen = false; rateRows = [];
+  await updateTtsSettings({ rate });
+  await restyle();
+}
+/**
+ * 태그: its row slides out over its tab (the other panels make room); its buttons are read once it is out. A phone busy
+ * when it was pressed starts the slide late: read still on its way (its first button short of the frame's edge), it is
+ * read again a moment later.
+ */
+let tagsOpen = false;
+async function toggleTags(): Promise<void> {
+  tagsOpen = !tagsOpen;
+  if (tagsOpen) { ratesOpen = false; rateRows = []; stripOpen = false; msgsOpen = false; logOpen = false; }
+  await restyle();
+  const settle = async (tries: number): Promise<void> => {
+    if (!tagsOpen) return;
+    await remeasureRow('[data-vn-tagbar] [data-vn-act]', TAG_ACTS);
+    const first = controls.find(c => c.act === TAG_ACTS[0]);
+    if (tagsOpen && tries > 0 && first && first.r.left < rect.left) setTimeout(() => void settle(tries - 1).catch(() => {}), 200);
+  };
+  if (tagsOpen) setTimeout(() => void settle(3).catch(() => {}), 380);
+}
+/**
+ * 태그's buttons: the chat's message controls (message-controls.ts) on the reply on stage, run in Omni's window as its
+ * own row runs them (__OMNI_MESSAGE_ACTION__, tools/vendor-patches/message-runtime.js). What a button started, or why
+ * not, is said over the stage (Omni's toasts are under the viewer); the pictures it makes come in as the reply is baked
+ * (onMessageBaked). A window it opens (캐릭터, 프리셋, 작가 노트, 생성 장수) is over the viewer.
+ */
+const MESSAGE_NOTES: Record<string, readonly [doing: string, done: string]> = {
+  tag: ['⚛️ 태그 생성을 거는 중…', '⚛️ 태그 생성을 시작했어요 · 다 그리면 삽화가 나와요'],
+  regen: ['🔃 전체 이미지 리롤 중… 다 그리면 바뀌어요', '🔃 전체 이미지 리롤을 마쳤어요'],
+  stop: ['', '🟥 생성을 멈췄어요'],
+};
+let messageBusy = '';
+async function messageAction(kind: string): Promise<void> {
+  const run = Reflect.get(globalThis, '__OMNI_MESSAGE_ACTION__');
+  if (typeof run !== 'function') { sayShot('Omni가 아직 준비되지 않았어요.', 2600); return; }
+  // Tags, rerolls and the reply's note need it as saved; a stop, the settings and the roster do not.
+  if ((kind === 'tag' || kind === 'regen' || kind === 'note') && (streaming || messageIndex < 0)) { sayShot('답장을 다 받은 뒤에 할 수 있어요.', 2600); return; }
+  // One at a time (a stop aside): a second tap while the first is under way would pay for its pictures twice.
+  if (messageBusy && kind !== 'stop') { sayShot(MESSAGE_NOTES[messageBusy]?.[0] || '이미 하고 있어요.', 2600); return; }
+  const [doing, done] = MESSAGE_NOTES[kind] ?? ['', ''];
+  if (doing) { messageBusy = kind; sayShot(doing); }
+  let result: unknown;
+  try { result = await run(kind, streaming ? -1 : messageIndex); } catch (error) { result = String((error as Error)?.message || error); }
+  finally { if (messageBusy === kind) messageBusy = ''; }
+  if (result !== true) sayShot(shotFailed(result, '하지 못했습니다.'), 4500);
+  else if (done) sayShot(done, 3500);
+  else if (doing) sayShot('');
+}
+/**
+ * 전체 생성: every pink slot of the reply on stage made, from its first, as a press held on one makes them in the
+ * chat (wait-taps.ts). How far it is is said over the stage (Omni's toasts are under the viewer); the pictures go
+ * into the reply all at once at the end, and the reply is read again then (onMessageBaked).
+ */
+let pinkRun = false, pinkShown = false, pinkFor = '', pinkSlots = 0;
+function pinkCount(): number {
+  if (streaming || messageIndex < 0) return 0;
+  if (pinkFor !== source) { pinkFor = source; pinkSlots = pinkSlotIds(source).length; }
+  return pinkSlots;
+}
+async function makePinks(): Promise<void> {
+  if (pinkRun) return;
+  if (!pinkCount()) { sayShot('이 답장에는 분홍 칸이 없어요.', 2600); return; }
+  pinkRun = true; sayShot('분홍 칸 만드는 중…');
+  try {
+    const result = await makeMessageWaits(messageIndex, state => {
+      if (!state.finished) { sayShot(`분홍 칸 만드는 중 ${Math.min(state.done + 1, state.total)}/${state.total}`); return; }
+      pinkRun = false;
+      sayShot(state.stopped ? `분홍 칸 만들기 멈춤 · ${state.stopped}` : `분홍 칸 ${state.made}/${state.total}개 만들기 끝`, 4000);
+    });
+    if (!result?.ok) { pinkRun = false; sayShot(String(result?.error?.message || (result ? '분홍 칸을 만들지 못했습니다.' : '이 답장을 채팅에서 찾지 못했어요.')).slice(0, 120), 4000); }
+  } catch (error) { pinkRun = false; sayShot(String((error as Error)?.message || error).slice(0, 120), 4000); }
+}
+
 async function act(name: string): Promise<void> {
   if (name === 'close') { await closeViewer(); return; }
+  // A button pressed while 배속's list or 태그's row is out puts it away (its own buttons are its business).
+  if (ratesOpen && name !== 'rate') { ratesOpen = false; rateRows = []; void restyle().catch(() => {}); }
+  if (tagsOpen && name !== 'tags' && !TAG_BAR.has(name)) { tagsOpen = false; void restyle().catch(() => {}); }
   if (name === 'next') queueStep(1);
   else if (name === 'prev') queueStep(-1);
   // The reply's first and last line: steps to there, counted from where the steps already asked for lead.
@@ -1470,10 +1617,15 @@ async function act(name: string): Promise<void> {
   else if (name === 'cgfull') { fullFrom = cgView === 'open' ? 'open' : 'show'; if (!await inspectCg()) { cgView = 'full'; await restyle(); await measureCgControls(); } }
   else if (name === 'cgback') { cgView = fullFrom; await restyle(); await measureCgControls(); }
   else if (name === 'cgfit') { cgFill = !cgFill; await restyle(); }
-  // The folded picture a size bigger (after the biggest, small again); it and the + under it are read again.
+  // The folded picture a size bigger (after the biggest, small again); it and the + in its corner are read again.
   else if (name === 'zoom') { await saveViewerPrefs({ cgSize: (viewerPrefs().cgSize % 3 + 1) as CgSize }); cgThumb = null; await restyle(); await measureCgThumb(); }
   else if (name === 'cgroll' || name === 'cgtags') await shotAction(name === 'cgroll' ? 'reroll' : 'base');
+  else if (CHIP_ACTS.includes(name)) await castChip(CHIP_ACTS.indexOf(name));
   else if (name === 'cgprev' || name === 'cgnext') await cgStep(name === 'cgnext' ? 1 : -1);
+  else if (name === 'rate') await toggleRates();
+  else if (name === 'tags') await toggleTags();
+  else if (TAG_BAR.has(name)) { tagsOpen = false; await restyle(); await messageAction(name.slice(1)); }
+  else if (name === 'pink') await makePinks();
   else if (name === 'auto') { await saveViewerPrefs({ auto: !viewerPrefs().auto }); await render(true); }
   else if (name === 'voice') { await saveViewerPrefs({ voice: !viewerPrefs().voice }); if (!viewerPrefs().voice) omniTts.stop(); await restyle(); }
   // Its settings live on a page of the settings window (감정 에셋 › 옴니 뷰어), see toSettings.
@@ -1574,7 +1726,10 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
   // A CG's bar and full-screen sheet keep the rectangles they had when last shown: hidden, they take no tap
   // (the sheet's ▶ and 닫기 lay over the menu's ◀ and took its taps). The bar is up while the picture is big.
   return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show' && cgView !== 'open') && !(c.act === 'msgs' && msgsOpen)
-    && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()) && !(c.act === 'zoom' && (cgView !== 'fold' || !lastCg)));
+    && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()) && !(c.act === 'zoom' && (cgView !== 'fold' || !lastCg || !cgThumb))
+    // 태그's row out: its buttons, over its tab; none of it while 편집 is open (on a phone ✎ 편집 steps out over the tab).
+    // 전체 생성 only while it shows (it keeps the rectangle it had then).
+    && !(TAG_BAR.has(c.act) && (!tagsOpen || editing)) && !(c.act === 'tags' && (tagsOpen || editing)) && !(c.act === 'pink' && !pinkShown));
 }
 /**
  * The speaker whose name a tap is on, over the line in the box. The name's plate sits at the
@@ -1607,12 +1762,18 @@ function onClick(p: HostPoint): void {
   if (p.clientX === 0 && p.clientY === 0) return;
   const hit = liveHit(p);
   const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
+  // 배속's list is over what it lies on (a big picture's bar): a speed in it is picked whatever is under it.
+  const rateRow = ratesOpen ? rateRows.find(r => inside(p, r.r)) : undefined;
+  if (rateRow) { void pickRate(rateRow.rate).catch(report('viewer.rate')); return; }
   // 요소 first: 편집 takes every tap but the buttons', and the end's choices take theirs.
   if (elementsClick(p, !!hit)) return;
   // The click a drag ends with is not a tap (buttons still work): a selection, a list moved by the mouse, a swipe.
   if (!hit && Date.now() < swipeUntil) return;
   // A picked choice: a tap anywhere but a button or the list lets it go, and is only that. An open panel's taps stay its own.
   if (!hit && choiceArmed() && !msgsOpen && !stripOpen && !logOpen) { void disarmChoice().catch(report('viewer.choice')); return; }
+  // A tap off 배속's list (its speeds were taken above) or off 태그's row puts it away, and is only that.
+  if (ratesOpen && !hit) { void toggleRates().catch(report('viewer.rate')); return; }
+  if (tagsOpen && !hit) { void toggleTags().catch(report('viewer.tags')); return; }
   // An open panel takes the tap: a tile or row jumps to its place, anywhere else closes it.
   if (msgsOpen && !hit) { void (msgsRect && inside(p, msgsRect) ? jumpFromMsgs(p.clientY) : act('msgs')).catch(report('viewer.msgs')); return; }
   if (stripOpen && !hit) { const tile = thumbs.find(t => inside(p, t.r)); void (tile ? jumpTo(tile) : act('strip')).catch(report('viewer.strip')); return; }
@@ -1638,6 +1799,8 @@ function onClick(p: HostPoint): void {
 async function writeStage(s: StageState): Promise<void> {
   busyShown = !!s.busy;
   await dyn?.setTextContent(`${stageCss(s)}\n${elementsCss()}`);
+  // 전체 생성 comes and goes with the reply's pink slots: where it stands is read once it shows.
+  if (!!s.pink !== pinkShown) { pinkShown = !!s.pink; if (pinkShown) void remeasure('pink').catch(() => {}); }
 }
 /**
  * Work the reader waits on (another reply read in, the chat read again): the spinner turns
@@ -1728,6 +1891,7 @@ function onKey(event: { key?: unknown; repeat?: unknown }): void {
     else if (key === 'Escape') void act('log').catch(report);
     return;
   }
+  if (ratesOpen || tagsOpen) { if (key === 'Escape') void (ratesOpen ? toggleRates() : toggleTags()).catch(report); return; }
   if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
   // A photo shown big: ← → step through the story as ever (the photo folds away with the step); the other keys fold it.
   if ((cgView === 'show' || cgView === 'full') && key !== 'ArrowLeft' && key !== 'ArrowRight') { if (!held && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = leaveBig(); void restyle().then(() => cgView === 'open' ? measureCgControls() : undefined).catch(report); } return; }
@@ -1879,10 +2043,11 @@ export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<
     await dyn.setTextContent('[x-omni-vn] [data-vn-busy]{display:block}');
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
-    [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]'].map(s => root!.querySelector(s)));
+    [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl, ratesEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]', '[data-vn-rates]'].map(s => root!.querySelector(s)));
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
+    ratesOpen = false; rateRows = []; tagsOpen = false; pinkShown = false; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
@@ -1933,7 +2098,7 @@ async function takeDown(): Promise<void> {
   await elementsClose().catch(() => {});
   for (const place of people.values()) await release(place);
   people.clear(); placing.clear();
-  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = null;
+  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = ratesEl = null;
 }
 export const viewerOpen = (): boolean => open;
 
@@ -1978,13 +2143,12 @@ export async function installOmniViewer(): Promise<void> {
   if (installed || !host?.registerButton || !host.getRootDocument) return;
   installed = true;
   const toggle = (from: 'resume' | 'center') => () => void (open ? closeViewer() : openViewer(from)).catch(error => dbg('viewer.toggle', { message: String(error) }, 'warn'));
-  // Beside ⚛️Omni Nexus in both of Risu's menus (the chat's and the side bar's), two ways in: where the reader
-  // left this chat, or at the message in the middle of the chat screen.
+  // Beside ⚛️Omni Nexus in the chat's menu, two ways in: where the reader left this chat, or at the message in the
+  // middle of the chat screen. Not in the side bar's menu (the reader asked for them out of it).
   const icon = '<span style="font-size:16px">📽️</span>';
   const entries = [['보던 곳', 'resume', ''], ['화면 중앙', 'center', '-center']] as const;
   for (const [label, from, suffix] of entries) {
     await host.registerButton({ name: `⚛️Omni 뷰어 · ${label}`, icon, iconType: 'html', location: 'chat', id: `omni-viewer-chat${suffix}` }, toggle(from));
-    await host.registerButton({ name: `⚛️Omni 뷰어 · ${label}`, icon, iconType: 'html', location: 'hamburger', id: `omni-viewer-menu${suffix}` }, toggle(from));
   }
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
   Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));

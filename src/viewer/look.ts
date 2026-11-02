@@ -3,7 +3,9 @@
  * rewrites (one style text, one box). Pure strings, so a scene costs Risu two
  * calls whatever happens on stage.
  */
-const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+import { MESSAGE_CONTROL_KINDS } from '../domain/message-controls';
+
+const esc =(s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /** One stable hue per name, for its nameplate and silhouette. */
 export function accentOf(name: string): string {
@@ -47,15 +49,29 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-cgbar]{position:absolute;left:50%;bottom:72px;translate:-50% 0;display:flex;gap:8px;z-index:9}
 [x-omni-vn] [data-vn-note]{display:none;position:absolute;left:50%;top:58px;translate:-50% 0;z-index:10;width:max-content;max-width:min(340px,88%);padding:7px 12px;border-radius:10px;background:rgba(14,12,20,.88);border:1px solid rgba(227,194,122,.35);color:#efe9da;font-size:12.5px;line-height:1.45;text-align:center;pointer-events:none}
 [x-omni-vn] [data-vn-cgbar] button{display:none}
-[x-omni-vn] [data-vn-act="zoom"]{display:none;position:absolute;right:12px;top:150px;z-index:5;padding:0;font-size:18px;line-height:1;color:var(--gold)}
+/* The picture's cast (c1·하쿠키 …, read from its file name) over its bar, as 크게보기 has them: each opens that person's tags. */
+[x-omni-vn] [data-vn-cgchips]{position:absolute;left:50%;bottom:112px;translate:-50% 0;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;width:max-content;max-width:94%;z-index:9}
+[x-omni-vn] [data-vn-cgchips] button{display:none;height:28px;min-width:0;padding:0 11px;font-size:11.5px;letter-spacing:0;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18)}
+/* The folded picture's + stands inside it, at its bottom-left corner (stageCss puts it there from the picture's rectangle);
+   with a mouse it shows only while the pointer is over the picture, or over itself. Two rules: a browser that cannot
+   read :has() drops the whole rule it is in, and over itself the + still shows there. */
+[x-omni-vn] [data-vn-act="zoom"]{display:none;position:absolute;z-index:5;width:26px;height:26px;min-width:0;padding:0;translate:4px calc(-100% - 4px);font-size:17px;line-height:1;color:var(--gold);background:rgba(10,9,17,.78);border:1px solid var(--line)}
+@media (hover:hover){[x-omni-vn] [data-vn-act="zoom"]{opacity:0;transition:opacity .15s}[x-omni-vn] [data-vn-act="zoom"]:hover{opacity:1}[x-omni-vn] [data-vn-cg]:has([x-vn-cg]:hover)~[data-vn-act="zoom"]{opacity:1}}
 [x-omni-vn] img[x-vn-cg]{display:none;position:absolute;left:50%;top:calc(50% - 40px);width:auto!important;height:auto!important;max-width:94%!important;max-height:calc(100% - 190px)!important;object-fit:contain;translate:-50% -50%;rotate:-.8deg;margin:0!important;border:3px solid #f3efe6!important;border-radius:4px!important;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:vn-photo .5s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-hud]{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:6px;padding:10px 10px 18px;background:linear-gradient(rgba(5,5,10,.7),transparent);z-index:4}
+/* A narrow phone: closer together, so 전체 생성 and the spinner both fit before ✕ (the clock gives way first). */
+@media (max-width:400px){[x-omni-vn] [data-vn-hud]{gap:4px;padding:10px 8px 18px}}
 [x-omni-vn] [data-vn-clock]{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.02em;color:#ece6d6}
 [x-omni-vn] [data-vn-clock]:not(:empty)::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold)}
 [x-omni-vn] [data-vn-clock] span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 [x-omni-vn] [data-vn-clock]::after{flex:none;max-width:55%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:#bdb4c8;opacity:.85}
 /* Something the reader waits on (another reply read in, more rows): it turns while they wait. */
 [x-omni-vn] [data-vn-busy]{display:none;flex:none;width:16px;height:16px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
+/* 전체 생성: the reply on stage has pink slots (and is not streaming), all made as a press held on one makes them in the
+   chat. A pink slot's look is its mark; on a phone's top bar there is room for that alone. */
+[x-omni-vn] [data-vn-act="pink"]{display:none;gap:6px;color:#fde7f3;background:rgba(60,18,44,.72);border-color:rgba(236,72,153,.55)}
+[x-omni-vn] [data-vn-act="pink"]::before{content:"";flex:none;box-sizing:border-box;width:13px;height:13px;border-radius:50%;border:3px solid #7132f5;background:#ec4899}
+@media (max-width:520px){[x-omni-vn] [data-vn-act="pink"]{font-size:0;gap:0;padding:0}}
 [x-omni-vn] button{all:unset;box-sizing:border-box;white-space:nowrap;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;height:32px;min-width:32px;padding:0 10px;border-radius:999px;font-size:12px;letter-spacing:.04em;color:#efe9da;background:rgba(14,12,22,.55);border:1px solid rgba(255,255,255,.14);transition:background .15s,opacity .15s,color .15s}
 /* Full screen when Omni's own 크게보기 cannot open: the same bottom sheet of big emoji buttons. */
 [x-omni-vn] [data-vn-dock]{display:none;position:absolute;left:50%;bottom:12px;translate:-50% 0;width:min(440px,calc(100% - 24px));grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:10px;z-index:9;border-radius:14px;background:rgba(18,22,32,.9);border:1px solid rgba(255,255,255,.14)}
@@ -89,7 +105,11 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-menu]{position:absolute;left:18px;right:18px;bottom:16px;display:flex;align-items:center;gap:2px;z-index:4}
 [x-omni-vn] [data-vn-menu] button{height:30px;min-width:30px;padding:0 9px;font-size:11.5px;border-radius:8px;background:transparent;border-color:transparent;color:#d8cfb4}
 [x-omni-vn] [data-vn-act="bgm"]{width:64px}
-[x-omni-vn] [data-vn-act="sfx"]{margin-right:auto}
+[x-omni-vn] [data-vn-act="rate"]{margin-right:auto}
+/* 배속: the voice's speeds (TTS 설정's list, as the floating TTS viewer's 1× opens them), over the menu while open. */
+[x-omni-vn] [data-vn-rates]{display:none;position:absolute;left:50%;bottom:58px;translate:-50% 0;z-index:6;width:max-content;max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center;gap:4px;padding:8px;border-radius:12px;background:rgba(10,9,17,.95);border:1px solid var(--line);box-shadow:0 8px 26px rgba(0,0,0,.5)}
+[x-omni-vn] [data-vn-rates] button{height:30px;min-width:46px;padding:0 9px;font-size:12px}
+[x-omni-vn] [data-vn-rates] [data-on]{color:#1a1408;background:var(--gold);border-color:var(--gold)}
 [x-omni-vn] [data-vn-act="bgm"]::after{content:"▶";margin-left:5px;font-size:9px}
 [x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{color:var(--gold);font-size:13px}
 /* |◀ and ▶|: the reply's first and last line, a bar drawn at the arrow's end (no glyph a phone turns into an emoji),
@@ -97,11 +117,15 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-act="first"]::before,[x-omni-vn] [data-vn-act="last"]::after{content:"";width:2px;height:.8em;background:currentColor;border-radius:1px}
 [x-omni-vn] [data-vn-act="first"]::before{margin-right:1px}[x-omni-vn] [data-vn-act="last"]::after{margin-left:1px}
 [x-omni-vn] [data-vn-menu] [data-vn-act="first"]{margin-right:14px}[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{margin-left:14px}
-/* Tabs on the stage's edges: 메시지 on the left, 삽화 and 요소 on the right. */
-[x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{position:absolute;top:38%;z-index:4;height:auto;min-width:0;padding:12px 7px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:11px;color:var(--gold);background:rgba(10,9,17,.72);border:1px solid var(--line)}
+/* Tabs on the stage's edges: 메시지 and 태그 on the left, 삽화 and 요소 on the right. */
+[x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"],[x-omni-vn] [data-vn-act="tags"]{position:absolute;top:38%;z-index:4;height:auto;min-width:0;padding:12px 7px;writing-mode:vertical-rl;letter-spacing:.2em;font-size:11px;color:var(--gold);background:rgba(10,9,17,.72);border:1px solid var(--line)}
 [x-omni-vn] [data-vn-act="strip"]{right:0;border-radius:12px 0 0 12px;border-right:0}
 [x-omni-vn] [data-vn-act="msgs"]{left:0;border-radius:0 12px 12px 0;border-left:0}
 [x-omni-vn] [data-vn-act="elems"]{right:0;top:calc(38% + 84px);border-radius:12px 0 0 12px;border-right:0}
+[x-omni-vn] [data-vn-act="tags"]{left:0;top:calc(38% + 84px);border-radius:0 12px 12px 0;border-left:0}
+/* 태그: the chat's own message controls (⚛️ 태그 생성 … 🔢 생성 장수) for the reply on stage, a row slid out over its tab. */
+[x-omni-vn] [data-vn-tagbar]{position:absolute;left:0;top:calc(38% + 84px);z-index:5;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100% - 16px);padding:6px;background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;translate:-105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
+[x-omni-vn] [data-vn-tagbar] button{width:40px;height:40px;min-width:0;padding:0;border:0;border-radius:10px;font-size:20px;letter-spacing:0;background:rgba(255,255,255,.08)}
 /* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices. */
 [x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:2;pointer-events:none}
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
@@ -147,14 +171,16 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-log] p{color:#cbc3d6}
 [x-omni-vn] [data-vn-log] [data-now]{color:#fff;background:rgba(227,194,122,.16);border-left:3px solid var(--gold);padding-left:8px}
 /* Every row and tile is a way somewhere: it lights under the pointer (or the finger), so it reads as one. */
-[x-omni-vn] [data-vn-log] p:active,[x-omni-vn] [data-vn-msg]:active,[x-omni-vn] [data-vn-hud] button:active,[x-omni-vn] [data-vn-menu] button:active,[x-omni-vn] [data-vn-dock] button:active,[x-omni-vn] [data-vn-cgbar] button:active{background:rgba(227,194,122,.16)}
-@media (hover:hover){[x-omni-vn] button:hover{background:rgba(48,41,70,.85)}[x-omni-vn] [data-vn-menu] button:hover{background:rgba(255,255,255,.09)}[x-omni-vn] [data-vn-dock] button:hover{background:rgba(255,255,255,.16)}
+[x-omni-vn] [data-vn-log] p:active,[x-omni-vn] [data-vn-msg]:active,[x-omni-vn] [data-vn-hud] button:active,[x-omni-vn] [data-vn-menu] button:active,[x-omni-vn] [data-vn-dock] button:active,[x-omni-vn] [data-vn-cgbar] button:active,[x-omni-vn] [data-vn-cgchips] button:active,[x-omni-vn] [data-vn-tagbar] button:active,[x-omni-vn] [data-vn-rates] button:active{background:rgba(227,194,122,.16)}
+@media (hover:hover){[x-omni-vn] button:hover{background:rgba(48,41,70,.85)}[x-omni-vn] [data-vn-menu] button:hover{background:rgba(255,255,255,.09)}[x-omni-vn] [data-vn-dock] button:hover,[x-omni-vn] [data-vn-tagbar] button:hover{background:rgba(255,255,255,.16)}
   [x-omni-vn] [data-vn-log] p:hover,[x-omni-vn] [data-vn-msg]:hover,[x-omni-vn] [data-vn-ch]:hover,[x-omni-vn] [data-vn-el] i:not([data-on]):hover{background:rgba(227,194,122,.12)}[x-omni-vn] [data-vn-msg]:hover{border-color:var(--line)}}
 /* Fingers: bigger targets. */
 @media (hover:none),(pointer:coarse){[x-omni-vn] button{height:40px;min-width:40px;padding:0 12px;font-size:13px}[x-omni-vn] [data-vn-box]{padding-bottom:58px}
   [x-omni-vn] [data-vn-menu]{left:16px;right:16px;bottom:15px;gap:1px}[x-omni-vn] [data-vn-menu] button{height:40px;min-width:40px;padding:0 8px;font-size:12.5px}[x-omni-vn] [data-vn-act="bgm"]{width:68px}
   [x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:40px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}[x-omni-vn] [data-vn-voicewait]{bottom:58px}
-  [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-act="eledit"]{right:42px;top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}}
+  [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"],[x-omni-vn] [data-vn-act="tags"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-act="eledit"]{right:42px;top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}
+  [x-omni-vn] [data-vn-act="tags"],[x-omni-vn] [data-vn-tagbar]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-tagbar] button{width:44px;height:44px}[x-omni-vn] [data-vn-act="zoom"]{width:30px;height:30px}
+  [x-omni-vn] [data-vn-cgchips]{bottom:120px}[x-omni-vn] [data-vn-cgchips] button{height:34px;padding:0 12px;font-size:12.5px}[x-omni-vn] [data-vn-rates]{bottom:66px}[x-omni-vn] [data-vn-rates] button{height:40px;min-width:52px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
 /* Visible at both ends, not only at the end: a 1ms step past a second's delay is held at a rounding
@@ -176,16 +202,22 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 @media (min-width:700px){[x-omni-vn] [data-vn-box]{left:50%;right:auto;width:min(980px,92%);min-height:clamp(150px,24%,200px);translate:-50% 0}[x-omni-vn] [data-vn-menu]{left:calc(50% - min(490px,46%) + 10px);right:calc(50% - min(490px,46%) + 10px)}[x-omni-vn] [x-vn-p]{height:94%;max-width:40%}}
 `;
 
+/** A picture's cast chips (c1 …), as many as NovelAI draws people in one picture. */
+export const CAST_CHIPS = 6;
+// 태그's row: the message controls' own kinds, each `m` + its kind (mtag, mregen …).
+const TAG_BAR = MESSAGE_CONTROL_KINDS.map(([kind, icon, label]) => `<button data-vn-act="m${kind}" type="button" title="${label}" aria-label="${label}">${icon}</button>`).join('');
+const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div>
-<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
+<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
+<button data-vn-act="tags" type="button">태그</button><div data-vn-tagbar>${TAG_BAR}</div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
 <button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
-<div data-vn-note></div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
+<div data-vn-note></div><div data-vn-cgchips>${CHIPS}</div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
-<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="first" type="button" aria-label="이 답장의 처음">◀</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button><button data-vn-act="last" type="button" aria-label="이 답장의 끝">▶</button></div>`;
+<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="rate" type="button" aria-label="음성 배속"></button><button data-vn-act="first" type="button" aria-label="이 답장의 처음">◀</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button><button data-vn-act="last" type="button" aria-label="이 답장의 끝">▶</button></div><div data-vn-rates></div>`;
 
 /** A person's place on stage: an oval with their name until their picture comes. */
 export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"><b>${esc(name)}</b></div>`;
@@ -219,6 +251,10 @@ export interface StageState {
   cgView?: 'open' | 'fold' | 'show' | 'full';
   /** Folded, how big it stays at the top (its + button): 1 the small thumb, 2 and 3 bigger. */
   cgSize?: number;
+  /** The folded picture's bottom-left corner in the frame, px, where its + stands: absent until the picture is measured. */
+  zoomAt?: { left: number; top: number };
+  /** The cast of the picture on show, c1 first ('' a name unknown): chips over its bar while it is big. */
+  chips?: string[];
   /** Full screen fills the frame (cover) rather than fitting in it. */
   cgFill?: boolean;
   /** Whether the reply has an illustration before / after the full-screen one. */
@@ -255,6 +291,14 @@ export interface StageState {
   busy?: boolean;
   /** 메시지's "more" row being filled: it turns too. */
   msgsLoading?: 'before' | 'after' | '';
+  /** The voice's speed (TTS 설정), on 배속; `rates`: its list is open. */
+  rate?: number;
+  rates?: boolean;
+  /** 태그's row of message controls is out. */
+  tags?: boolean;
+  /** The reply on stage has pink slots and is not streaming: 전체 생성 shows. `pinkBusy`: they are being made. */
+  pink?: boolean;
+  pinkBusy?: boolean;
 }
 // Each breathes at their own pace, so two lit at once never move as one.
 const BREATH = [[4.6, 0], [5.2, -1.7], [4.2, -3.1]] as const;
@@ -272,12 +316,20 @@ function breathing(s: StageState): string {
 const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] };
 /**
  * A folded picture's height at each of its + button's sizes, 60px down from the top: the small thumb, then a
- * share of the stage that stays clear of the line's box at the bottom. Its box is exactly this high (a wide
- * picture is fitted inside it), so the button can stand right under it.
+ * share of the stage that stays clear of the line's box at the bottom (a wide picture is fitted inside it).
  */
 const foldHeight = (size: number | undefined): string => size === 3 ? '45%' : size === 2 ? '30%' : '84px';
-const foldZoom = (size: number | undefined): string => `[x-omni-vn] [data-vn-act="zoom"]{display:inline-flex;top:calc(66px + ${foldHeight(size)})}`
+/**
+ * The + inside the folded picture at its bottom-left corner (its own translate keeps it 4px in): its width is the
+ * picture's, so the corner is known only from the picture as measured, and until then the + is not shown.
+ */
+const foldZoom = (size: number | undefined, at: StageState['zoomAt']): string => !at ? ''
+  : `[x-omni-vn] [data-vn-act="zoom"]{display:inline-flex;left:${Math.round(at.left)}px;top:${Math.round(at.top)}px}`
   + `[x-omni-vn] [data-vn-act="zoom"]::after{content:"${size === 3 ? '−' : '+'}"}`;
+/** The chips shown over a big picture's bar: c1·하쿠키 (a long name cut short), or c1 alone for a name unknown. */
+const chipLabel = (name: string): string => { const chars = [...name.replace(/[\u0000-\u001f]/g, '').trim()]; return chars.length > 12 ? `${chars.slice(0, 11).join('')}…` : chars.join(''); };
+const castChips = (chips: readonly string[] | undefined): string => (chips ?? []).slice(0, CAST_CHIPS).map((name, i) =>
+  `[x-omni-vn] [data-vn-cgchips] [data-vn-act="cgc${i + 1}"]{display:inline-flex}[x-omni-vn] [data-vn-act="cgc${i + 1}"]::after{content:${JSON.stringify(`c${i + 1}${chipLabel(name) ? `·${chipLabel(name)}` : ''}`)}}`).join('');
 type Box = { left: number; top: number; width: number; height: number };
 /**
  * Where the oval of the person at `index` of `count` on stage is, worked out from the numbers STATIC_CSS lays it
@@ -306,6 +358,8 @@ export function stageCss(s: StageState): string {
       + (!p.face && p.label ? `[x-omni-vn] [x-vn-p="${p.key}"] [data-vn-sil]::after{content:"${p.label.replace(/["\\]/g, '').replace(/\n/g, '\\A ')}"}` : '');
   });
   const dim = (act: string, on: boolean | undefined) => on ? '' : `[x-omni-vn] [data-vn-act="${act}"]{opacity:.3}`;
+  // Big (coming in, or shown again): its bar, and its cast over the bar.
+  const big = !!s.cg && (s.cgView === 'show' || s.cgView === 'open'), chipped = big && !!s.chips?.length;
   return [
     ...rules,
     // As specific as the rule that hides every background (`div[x-vn-bg]`), and after it: without the element
@@ -317,11 +371,15 @@ export function stageCss(s: StageState): string {
     // Folded, the picture is a thumb above the people (their z-index is at most 3): a head in front of it hid it.
     // Every place is !important, here and below: the picture is the chat's <img> cloned with its inline style, and a
     // picture drawn in a spinner's slot carries inset:0 and object-fit there (it put the big one's middle on the frame's corner).
-    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:${foldHeight(s.cgSize)}!important;width:auto!important;max-width:${s.cgSize === 2 || s.cgSize === 3 ? '60%' : '120px'}!important;max-height:${foldHeight(s.cgSize)}!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}${foldZoom(s.cgSize)}`
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:${foldHeight(s.cgSize)}!important;width:auto!important;max-width:${s.cgSize === 2 || s.cgSize === 3 ? '60%' : '120px'}!important;max-height:${foldHeight(s.cgSize)}!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}${foldZoom(s.cgSize, s.zoomAt)}`
+      // With a mouse the folded picture takes the pointer, so its + shows while it is over it (a tap is still read by
+      // where it is). Not on a phone: a press held on a picture that takes the pointer brings up its save sheet.
+      + `@media (hover:hover){[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{pointer-events:auto;-webkit-user-drag:none}}`
     : s.cg && s.cgView === 'full' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;translate:0 0;rotate:0deg;border:0!important;border-radius:0!important;background:#000;z-index:8;animation:none;object-fit:${s.cgFill ? 'cover' : 'contain'}!important}[x-omni-vn] [data-vn-dock]{display:grid}${dim('cgprev', s.cgNav?.prev)}${dim('cgnext', s.cgNav?.next)}`
     // A reply ending on its picture: the box steps back to its bare end cue instead of hiding.
-    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:50%!important;top:calc(50% - 40px)!important;right:auto!important;bottom:auto!important}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${s.cgView === 'show' || s.cgView === 'open' ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}${s.cgRolling ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
-    s.cgNote ? `[x-omni-vn] [data-vn-note]{display:block${s.cg && (s.cgView === 'show' || s.cgView === 'open') ? ';top:auto;bottom:124px' : ''}}[x-omni-vn] [data-vn-note]::after{content:${JSON.stringify(s.cgNote)}}` : '',
+    : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:50%!important;top:calc(50% - 40px)!important;right:auto!important;bottom:auto!important}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${big ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${castChips(s.chips)}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}${s.cgRolling ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
+    // Over a big picture's bar (and its chips, when it has some).
+    s.cgNote ? `[x-omni-vn] [data-vn-note]{display:block${big ? `;top:auto;bottom:${chipped ? 150 : 124}px` : ''}}${chipped ? '@media (hover:none),(pointer:coarse){[x-omni-vn] [data-vn-note]{bottom:164px}}' : ''}[x-omni-vn] [data-vn-note]::after{content:${JSON.stringify(s.cgNote)}}` : '',
     s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;visibility:visible!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',
@@ -338,6 +396,10 @@ export function stageCss(s: StageState): string {
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}[x-omni-vn] [data-vn-act="sfx"]{opacity:${s.sfx === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',
+    s.rate !== undefined ? `[x-omni-vn] [data-vn-act="rate"]::after{content:"${Number(s.rate)}×"}` : '',
+    s.rates ? '[x-omni-vn] [data-vn-rates]{display:flex}[x-omni-vn] [data-vn-menu] [data-vn-act="rate"]{color:var(--gold)}' : '',
+    s.tags ? '[x-omni-vn] [data-vn-tagbar]{translate:0 0}[x-omni-vn] [data-vn-act="tags"]{opacity:0}' : '',
+    s.pink ? `[x-omni-vn] [data-vn-act="pink"]{display:inline-flex}${s.pinkBusy ? '[x-omni-vn] [data-vn-act="pink"]{opacity:.7}[x-omni-vn] [data-vn-act="pink"]::before{border-color:rgba(236,72,153,.3);border-top-color:#ec4899;background:transparent;animation:vn-spin .8s linear infinite}' : ''}` : '',
   ].filter(Boolean).join('\n');
 }
 

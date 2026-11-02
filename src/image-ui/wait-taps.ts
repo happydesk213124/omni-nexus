@@ -30,6 +30,34 @@ let synchronize: () => Promise<void> = async () => {};
 /** Called once the chat is known with streaming tags on; boot itself reads nothing. */
 export function syncWaitTaps(): Promise<void> { return synchronize(); }
 
+/** What a slot's job needs to find its message, read when the slot is acted on. */
+async function messageTarget(index: number) {
+  const host = risuHost()!;
+  const [context, charIndex, chatIndex] = await Promise.all([currentTtsContext(), host.getCurrentCharacterIndex?.(), host.getCurrentChatIndex?.()]);
+  const message = context.messages[index] as Record<string, unknown> | undefined;
+  if (!message) return null;
+  return { session_id: context.sessionId, character_id: context.characterId, chat_id: context.chatId,
+    char_index: charIndex, chat_index: chatIndex, host_message_id: String(message.chatId || message.id || ''), message_index: index };
+}
+// The frozen UI owns the progress toast; it follows a slot's job like any other.
+function track(sessionId: string, jobId: string): void {
+  const follow = Reflect.get(globalThis, '__OMNI_TRACK_JOB__');
+  if (typeof follow === 'function') follow(sessionId, jobId);
+}
+/**
+ * Every pink slot of the message at `index`, from `waitId` down then from the top (none named: from the top), each
+ * job followed by the frozen UI: a press held on a slot here, and 옴니 뷰어's 전체 생성. null when the message is gone.
+ */
+export async function makeMessageWaits(index: number, progress: (state: BulkWaitProgress) => void, waitId = ''): Promise<{ ok?: boolean; total?: unknown; error?: { message?: unknown } } | null> {
+  const target = await messageTarget(index);
+  if (!target) return null;
+  const tracked = new Set<string>();
+  return await generateAllInlineWaits({ ...target, wait_id: waitId }, state => {
+    if (state.jobId && !tracked.has(state.jobId)) { tracked.add(state.jobId); track(target.session_id, state.jobId); }
+    progress(state);
+  }) as { ok?: boolean; total?: unknown; error?: { message?: unknown } };
+}
+
 export function installWaitTaps(): void {
   if (installed) return;
   installed = true;
@@ -60,21 +88,6 @@ export function installWaitTaps(): void {
       }
       return null;
     } finally { for (const item of owned) await releaseHost(item); }
-  };
-
-  /** What a slot's job needs to find its message, read when the slot is acted on. */
-  const slotTarget = async (slot: { id: string; index: number }) => {
-    const host = risuHost()!;
-    const [context, charIndex, chatIndex] = await Promise.all([currentTtsContext(), host.getCurrentCharacterIndex?.(), host.getCurrentChatIndex?.()]);
-    const message = context.messages[slot.index] as Record<string, unknown> | undefined;
-    if (!message) return null;
-    return { session_id: context.sessionId, character_id: context.characterId, chat_id: context.chatId,
-      char_index: charIndex, chat_index: chatIndex, host_message_id: String(message.chatId || message.id || ''), message_index: slot.index };
-  };
-  // The frozen UI owns the progress toast; it follows a slot's job like any other.
-  const track = (sessionId: string, jobId: string) => {
-    const follow = Reflect.get(globalThis, '__OMNI_TRACK_JOB__');
-    if (typeof follow === 'function') follow(sessionId, jobId);
   };
 
   // A short notice at the top of the page while a press is held and while its slots are made.
@@ -112,7 +125,7 @@ export function installWaitTaps(): void {
     last = { key: '', at: 0 };
     busy = true;
     try {
-      const target = await slotTarget(slot);
+      const target = await messageTarget(slot.index);
       if (!target) return;
       const result = await generateInlineWait({ ...target, wait_id: slot.id });
       const row = result as { ok?: boolean; job_id?: unknown; error?: { message?: unknown } };
@@ -152,15 +165,11 @@ export function installWaitTaps(): void {
     if (held && !held.fired) { clearTimeout(held.timer); if (held.shown) void hush(); }
   };
   const makeAll = async (slot: { id: string; index: number }) => {
-    const target = await slotTarget(slot);
-    if (!target) { await hush(); return; }
-    const tracked = new Set<string>();
-    const shown = (state: BulkWaitProgress) => {
-      if (state.jobId && !tracked.has(state.jobId)) { tracked.add(state.jobId); track(target.session_id, state.jobId); }
+    const result = await makeMessageWaits(slot.index, state => {
       if (state.finished) void say(state.stopped ? `분홍 칸 만들기 멈춤 · ${state.stopped}` : `분홍 칸 ${state.made}/${state.total}개 만들기 끝`, 4000);
       else void say(`분홍 칸 만드는 중 ${Math.min(state.done + 1, state.total)}/${state.total}`);
-    };
-    const result = await generateAllInlineWaits({ ...target, wait_id: slot.id }, shown) as { ok?: boolean; total?: unknown; error?: { message?: unknown } };
+    }, slot.id);
+    if (!result) { await hush(); return; }
     if (!result.ok) await say(String(result.error?.message || '분홍 칸을 만들지 못했습니다.'), 4000);
     else await say(`분홍 칸 ${Number(result.total)}개를 누른 칸부터 차례로 만듭니다`);
   };
