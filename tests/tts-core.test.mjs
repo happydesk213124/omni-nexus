@@ -165,6 +165,19 @@ test('a whole line in single quotes without a speaker is a monologue; emphasis i
   assert.equal(api.parseCueLine("'a' and 'b'",'a'),null,'several quoted parts are not one thought');
 });
 
+test('prose that ends in a quote is narration: the sentence before it is never a speaker',()=>{
+  // The sentence was taken for a name, and a TTS character (an oval in 옴니 뷰어) was made of it.
+  const thought="말을 마치자마자 얼굴이 화끈거려서 죽고 싶어졌다. '아, 바보 같다. 내 입으로 말하고도 너무 한심해…….'";
+  const said='하루키는 고개를 숙였다. "죄송해요."';
+  for(const line of [thought,said,"그것은 '디지털 데이터'"]){const parsed=api.parseCueLine(line,'a');assert.deepEqual([parsed.kind,parsed.speaker,parsed.text],['narration','',line],line);}
+  assert.equal(api.parseCueLine('Sora "Hi."','a').kind,'narration','no colon and no delivery: not a cue');
+  assert.equal(api.parseCueLine('하루키: "죄송해요."','a').speaker,'하루키');
+  assert.deepEqual(['speaker','tone'].map(k=>api.parseCueLine('하루키 (scared) "죄송해요."','a')[k]),['하루키','scared'],'a delivery names a speaker without a colon');
+  assert.equal(api.parseCueLine('키_0 (scared): "그, 그러면……?"','a').speaker,'키');
+  assert.equal(api.parseCueLine('하루키 (happy) said "Hi."','a').kind,'narration');
+  assert.deepEqual(api.parseTtsMessage(`키_0 (scared): "그, 그러면……?"\n\n${thought}`).map(s=>[s.kind,s.speaker]),[['dialogue','키'],['narration','']]);
+});
+
 test('a voice pick fills the gender only while it is unknown; 기타 characters keep theirs',()=>{
   const fill=gender=>{const c={tags:[],gender};api.adoptVoiceTags(c,{tags:['calm'],gender:'female'});return c;};
   assert.equal(fill('unknown').gender,'female');assert.deepEqual(fill('unknown').tags,['calm']);

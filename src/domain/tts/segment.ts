@@ -43,10 +43,14 @@ export function fishText(text: string, tone: string): string {
   return toneCues(tone).slice(0, 4).map(cue => `[${cue}]`).join('') + text;
 }
 export function cueHeader(value:string): {speaker:string;tone:string;costume?:number;marks?:string}|null {
+  const colon=/[:：]\s*$/.test(value);
   let prefix=value.trim().replace(/[:：]\s*$/,'').trim();
   let tone='';
   const opening=prefix.indexOf('('),closing=prefix.indexOf(')',opening+1);
   if(opening>=0){if(closing!==prefix.length-1)return null;tone=prefix.slice(opening+1,closing).trim();if(!/^[a-z ,\-]{1,100}$/i.test(tone))return null;prefix=prefix.slice(0,opening).trim();}
+  // A name takes a colon or a delivery before its quote. With neither, the words before a quote are prose: read as a
+  // name, a sentence (말을 마치자마자 … 싶어졌다. '아, 바보 같다.') was a speaker, and a TTS character was made of it.
+  else if(!colon)return null;
   const speaker=prefix.replace(/^[\s*\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]+/u,'').replace(/\*+$/,'').trim();
   if(!speaker||speaker.length>80||!/[\p{L}\p{N}]/u.test(speaker)||/[<>:："“”(){}\[\]|#!`~]/.test(speaker))return null;
   // `이름_2`: the costume the speaker wears, by its number in their illustration character's list (`_0`, the default, as none).
@@ -71,6 +75,11 @@ export function parseCueLine(line: string, id: string): TtsSegment | null {
   // `'혼잣말'` with nobody named: the monologue card speaks it. Apostrophes inside words (don't) don't count as quotes.
   const whole=/^['‘]/.test(value)?quotedCue(value):null;
   if(whole&&!/['‘’]/.test(whole.replace(/(?<=\p{L})['’](?=\p{L})/gu,'')))return {id,speaker:'',tone:'',text:whole,kind:'dialogue',monologue:true,start:0,end:line.length};
+  // Prose that ends in one quote, nobody named before it (…싶어졌다. '아, 바보 같다.'): narration, quote and all. Words ending
+  // in a colon or a delivery are a cue gone wrong, kept back as before.
+  const first=quotes[0],unquoted=(text:string)=>!/["“”‘’「」『』']/.test(text.replace(/(?<=\p{L})['’](?=\p{L})/gu,''));
+  const tail=first===undefined?null:quotedCue(value.slice(first)),before=first===undefined?'':value.slice(0,first).trim();
+  if(tail!==null&&unquoted(tail)&&unquoted(before)&&!/[:：)]$/.test(before))return { id, speaker: '', tone: '', text: value, kind: 'narration', start: 0, end: line.length };
   // A short single-quoted word inside prose ('디지털 데이터') is emphasis, not speech.
   const prose=value.replace(/(?<=\S[ \t]?)['‘][^'‘’\n]{1,30}['’](?=[ \t]?[\p{L}\p{N}])/gu,'');
   // Parentheses are prose ((작게) 한숨을 쉬었다): only a speaker header ending in a colon is held back, above.
