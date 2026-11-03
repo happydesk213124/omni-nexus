@@ -27,7 +27,7 @@ import { pinkSlotIds } from '../domain/chat-bake';
 import { MESSAGE_CONTROL_KINDS } from '../domain/message-controls';
 import { makeMessageWaits } from '../image-ui/wait-taps';
 import { backgroundStatus, currentEmotionBot, findBackground, findSprite, forgetMade, makeAhead, makeBackground, makeSprite, PLACE_PERSON, placeKey, SHARED_BOT, spriteNow, spriteStatus, subscribeSprites, type EmotionBot, type EmotionSprite } from '../services/emotion-assets';
-import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, TEXT_SCALE, viewerPrefs, type CgSize } from '../storage/viewer-prefs';
+import { loadViewerPrefs, saveViewerPrefs, skipWordList, SPEED_PACE, subscribeViewerPrefs, TEXT_SCALE, viewerPrefs, type CgSize } from '../storage/viewer-prefs';
 import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeSoundFocus, type SoundFocus, type SoundPage } from '../sound-ui/page';
 import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
@@ -40,6 +40,7 @@ import { setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, CAST_CHIPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
+import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
 import { onSticker, choiceArmed, disarmChoice, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
@@ -2024,7 +2025,7 @@ async function openAt(index: number): Promise<void> {
   await load(target);
 }
 /** `from`: 'resume' where the reader left this chat, 'center' at the message in the middle of the chat screen. */
-export async function openViewer(from: 'resume' | 'center' = 'resume'): Promise<void> {
+export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
   const host = risuHost();
   if (open || opening || !host?.getRootDocument) return;
   opening = true;
@@ -2145,14 +2146,11 @@ export async function installOmniViewer(): Promise<void> {
   const host = risuHost();
   if (installed || !host?.registerButton || !host.getRootDocument) return;
   installed = true;
-  const toggle = (from: 'resume' | 'center') => () => void (open ? closeViewer() : openViewer(from)).catch(error => dbg('viewer.toggle', { message: String(error) }, 'warn'));
-  // Beside ⚛️Omni Nexus in the chat's menu, two ways in: where the reader left this chat, or at the message in the
-  // middle of the chat screen. Not in the side bar's menu (the reader asked for them out of it).
-  const icon = '<span style="font-size:16px">📽️</span>';
-  const entries = [['보던 곳', 'resume', ''], ['화면 중앙', 'center', '-center']] as const;
-  for (const [label, from, suffix] of entries) {
-    await host.registerButton({ name: `⚛️Omni 뷰어 · ${label}`, icon, iconType: 'html', location: 'chat', id: `omni-viewer-chat${suffix}` }, toggle(from));
-  }
+  const toggle = (from: ViewerFrom) => void (open ? closeViewer() : openViewer(from)).catch(error => dbg('viewer.toggle', { message: String(error) }, 'warn'));
+  // 바로가기 (shortcuts.ts), each as its switch says; switched in 뷰어 settings, its button goes up or down at once.
+  await loadViewerPrefs().catch(() => null);
+  await syncViewerShortcuts(host, toggle);
+  subscribeViewerPrefs(() => void syncViewerShortcuts(host, toggle));
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
   Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));
   // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses).

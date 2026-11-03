@@ -56,6 +56,15 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.locator('#emo-base64').check();
     await page.waitForFunction(() => window.viewerPrefs().revealBase64 === true);
     assert.equal(await page.locator('#emo-reach').evaluate(n => n.closest('.row')?.dataset.nxHelpId), 'emo-reach');
+    // 바로가기: four switches, all on unless switched off, each named with its button's emoji and with its own 「?」.
+    for (const id of ['emo-float-resume', 'emo-float-center', 'emo-menu-resume', 'emo-menu-center']) {
+      assert.equal(await page.locator(`#${id}`).isChecked(), true, id);
+      assert.equal(await page.locator(`#${id}`).evaluate(n => n.closest('.row')?.dataset.nxHelpId), id);
+    }
+    assert.match(await page.locator('#emo-float-center').evaluate(n => n.closest('.row')?.textContent), /바로가기 버튼 · 🎯 화면 중앙/);
+    assert.match(await page.locator('#emo-menu-resume').evaluate(n => n.closest('.row')?.textContent), /채팅 ☰ 메뉴 · 📽️ 보던 곳/);
+    await page.locator('#emo-float-center').uncheck();
+    await page.waitForFunction(() => window.viewerPrefs().floatCenter === false && window.viewerPrefs().floatResume === true && window.viewerPrefs().menuCenter === true);
     // 배경: its switch greys out the rest; ⚛️ omni place goes into Risu's modules, on; a reply with no place is picked by JEV.
     await page.locator('#tab-emo-bg').click();
     assert.equal(await page.locator('#emo-bg').isVisible(), true);

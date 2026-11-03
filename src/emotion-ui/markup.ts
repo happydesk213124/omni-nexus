@@ -1,4 +1,5 @@
 import { BASE_EXPRESSIONS, DEFAULT_POSE } from '../domain/emotion/emotions';
+import { SHORTCUT_LOOK, type ViewerFrom } from '../viewer/shortcuts';
 
 /**
  * 뷰어 및 감정 에셋: three tabs like BGM·효과음's, the same classes. 뷰어 is the
@@ -11,6 +12,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 const sw = (id: string, label: string) => `<label class="switch"><input type="checkbox" id="${id}" aria-label="${label}"></label>`;
 const row = (title: string, control: string, status = '') => `<div class="row"><div class="copy"><b>${title}</b>${status ? `<small>${status}</small>` : ''}</div>${control}</div>`;
 const select = (id: string, label: string, options: ReadonlyArray<readonly [string, string]>) => `<select id="${id}" aria-label="${label}">${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>`;
+/** A 바로가기 switch, named with the emoji its button wears. */
+const shortcut = (id: string, place: string, from: ViewerFrom) => { const { emoji, label } = SHORTCUT_LOOK[from]; return row(`${place} · ${emoji} ${label}`, sw(id, `${place} ${label}`)); };
 
 const VIEWER_PANEL = `<section class="panel" id="emo-viewer" role="tabpanel" hidden><div class="tts-settings-columns">
 <div class="tts-settings-column"><div class="group"><h3>화면</h3>
@@ -25,7 +28,13 @@ ${row('통통 튀기 · 나올 때, 표정 바뀔 때, 말할 차례일 때', sw
 <div class="tts-settings-column"><div class="group"><h3>장면</h3><div class="fields">
 <label class="field full"><span>장면으로 띄우지 않을 단어 · 쉼표로 구분</span><textarea id="emo-skip" rows="3" maxlength="2000" placeholder="예: 상태창, OOC, 시스템"></textarea></label>
 </div>
-${row('risu64 난독(base64) 풀어 읽기 · TTS도 같이', sw('emo-base64', 'risu64 난독 풀어 읽기'))}</div></div>
+${row('risu64 난독(base64) 풀어 읽기 · TTS도 같이', sw('emo-base64', 'risu64 난독 풀어 읽기'))}</div>
+<div class="group"><h3>바로가기</h3>
+${shortcut('emo-float-resume', '바로가기 버튼', 'resume')}
+${shortcut('emo-float-center', '바로가기 버튼', 'center')}
+${shortcut('emo-menu-resume', '채팅 ☰ 메뉴', 'resume')}
+${shortcut('emo-menu-center', '채팅 ☰ 메뉴', 'center')}
+</div></div>
 </div></section>`;
 
 const BACKGROUND_PANEL = `<section class="panel" id="emo-bg" role="tabpanel" hidden><div class="tts-settings-columns">
