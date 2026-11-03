@@ -15,7 +15,7 @@ const REPLIES = [
 ];
 
 test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at the chat\'s middle, the chat read once, each line first, 메시지 a few at a time, 👨‍👩‍👧‍👦 to the people', async () => {
-  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {viewerCovering} from './src/services/viewer-presence';import {soundPage,soundFocus} from './src/sound-ui/page';import {loadSoundData,soundData} from './src/storage/sound-store';import {viewerPrefs} from './src/storage/viewer-prefs';import {omniSound} from './src/services/sound-runtime';Object.assign(window,{omniSound,installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,viewerCovering,soundPage,soundFocus,loadSoundData,soundData,viewerPrefs});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: "import {installOmniViewer,viewerOpen} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {viewerCovering} from './src/services/viewer-presence';import {soundPage,soundFocus} from './src/sound-ui/page';import {loadSoundData,soundData} from './src/storage/sound-store';import {viewerPrefs,saveViewerPrefs} from './src/storage/viewer-prefs';import {omniSound} from './src/services/sound-runtime';Object.assign(window,{omniSound,installOmniViewer,viewerOpen,loadTtsData,ttsData,loadEmotionData,emotionData,viewerCovering,soundPage,soundFocus,loadSoundData,soundData,viewerPrefs,saveViewerPrefs});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 400, height: 900 } }), errors = [];
@@ -59,7 +59,8 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
         getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
         getCharacterFromIndex: async () => { window.reads.getCharacterFromIndex++; return structuredClone(bot); },
         getCharacter: async () => { window.reads.getCharacter++; if (window.charDelay) await new Promise(r => setTimeout(r, window.charDelay)); return structuredClone(bot); },
-        readImage: async () => png, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; window.names[arg.id] = arg.name; (window.places ||= {})[arg.id] = arg.location; return { id: arg.id }; } };
+        readImage: async () => png, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; window.names[arg.id] = arg.name; (window.places ||= {})[arg.id] = arg.location; (window.icons ||= {})[arg.id] = arg.icon; return { id: arg.id }; },
+        unregisterUIPart: async id => { for (const map of [window.buttons, window.names, window.places, window.icons]) delete map[id]; } };
     }, { replies: REPLIES });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });
@@ -76,10 +77,19 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     const scene = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
     const shows = re => page.waitForFunction(source => new RegExp(source).test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), re.source);
 
-    // The chat's menu opens it two ways, named beside ⚛️Omni Nexus; the side bar's menu (hamburger) has none of it.
-    assert.deepEqual(await page.evaluate(() => Object.keys(window.names).sort().map(id => [id, window.names[id]])), [
-      ['omni-viewer-chat', '⚛️Omni 뷰어 · 보던 곳'], ['omni-viewer-chat-center', '⚛️Omni 뷰어 · 화면 중앙']]);
-    assert.deepEqual(await page.evaluate(() => Object.keys(window.places).sort().map(id => window.places[id])), ['chat', 'chat']);
+    // 바로가기: two ways in, each a floating button and an entry of the chat's menu beside ⚛️Omni Nexus, all four on
+    // unless switched off; the side bar's menu (hamburger) has none of it. 보던 곳 wears 📽️, 화면 중앙 🎯.
+    const shortcuts = () => page.evaluate(() => Object.keys(window.names).sort().map(id => [id, window.places[id], window.names[id], /🎯/.test(window.icons[id]) ? '🎯' : /📽️/.test(window.icons[id]) ? '📽️' : window.icons[id]]));
+    const all = [['omni-viewer-action', 'action', '⚛️Omni 뷰어 · 보던 곳', '📽️'], ['omni-viewer-action-center', 'action', '⚛️Omni 뷰어 · 화면 중앙', '🎯'],
+      ['omni-viewer-chat', 'chat', '⚛️Omni 뷰어 · 보던 곳', '📽️'], ['omni-viewer-chat-center', 'chat', '⚛️Omni 뷰어 · 화면 중앙', '🎯']];
+    assert.deepEqual(await shortcuts(), all);
+    // Each switch takes its own button down and puts it back, at once; the others stay.
+    await page.evaluate(() => window.saveViewerPrefs({ floatCenter: false, menuResume: false }));
+    await page.waitForFunction(() => !('omni-viewer-action-center' in window.buttons) && !('omni-viewer-chat' in window.buttons));
+    assert.deepEqual(await shortcuts(), [all[0], all[3]]);
+    await page.evaluate(() => window.saveViewerPrefs({ floatCenter: true, menuResume: true }));
+    await page.waitForFunction(() => Object.keys(window.buttons).length === 4);
+    assert.deepEqual(await shortcuts(), all);
 
     // 화면 중앙: the chat scrolled so the reader's turn after R2 is in the middle; that turn's next reply opens, from its top.
     await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="5"]').scrollIntoView({ block: 'center' }));
