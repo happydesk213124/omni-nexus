@@ -355,9 +355,13 @@ The chip rows stay as they are.
 that row to `🟪`: the display regex puts a label with a hidden checkbox first,
 and CSS `:has()` shows the seven only while it is checked, so the browser opens
 it with no plugin round trip; Risu drawing the message again folds it again.
+Folded, the row keeps its box, so it is one height in every state. Its buttons
+are 34 px, so `🟪`, the seven and `🔢`'s panel share one line in a phone's chat.
 `card.floating_tag_bar` (대시보드 「플로팅 태그」, default off) puts the same seven
-on a fixed `🟪` at the chat screen's right edge (`src/image-ui/tag-float.ts`),
-run through `__OMNI_MESSAGE_ACTION__` on the newest reply at the chat's bottom,
+on a fixed `🟪` at the chat screen's right edge (`src/image-ui/tag-float.ts`).
+They slide out from behind it to the left, and back in, as 옴니 뷰어 태그's row
+slides from its edge. They run through `__OMNI_MESSAGE_ACTION__` on the newest
+reply at the chat's bottom,
 else the reply in the middle of the screen. Its `🔢`, and 옴니 뷰어 태그's, open
 `− + 1~3 − +` and step the counts through `__OMNI_IMAGE_COUNTS__` (the chat's own
 serialized write) instead of opening 생성 옵션.

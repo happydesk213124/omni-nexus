@@ -91,8 +91,17 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.evaluate(() => window.installTagFloat());
     const bar = () => page.evaluate(() => { const n = document.querySelector('[x-omni-tagfloat]'); return n ? getComputedStyle(n).display : 'absent'; });
-    const shown = sel => page.waitForFunction(s => { const n = document.querySelector(`[x-omni-tagfloat] ${s}`); return !!n && getComputedStyle(n).display !== 'none'; }, sel);
-    const hidden = sel => page.waitForFunction(s => { const n = document.querySelector(`[x-omni-tagfloat] ${s}`); return !n || getComputedStyle(n).display === 'none'; }, sel);
+    const shown = sel => page.waitForFunction(s => { const n = document.querySelector(`[x-omni-tagfloat] ${s}`), c = n && getComputedStyle(n); return !!c && c.display !== 'none' && c.visibility !== 'hidden'; }, sel);
+    const hidden = sel => page.waitForFunction(s => { const n = document.querySelector(`[x-omni-tagfloat] ${s}`), c = n && getComputedStyle(n); return !c || c.display === 'none' || c.visibility === 'hidden'; }, sel);
+    // The row out and stopped (it slides for .32 s), and its buttons read again where it stopped (.38 s after the
+    // press: a row called back just after it was sent in is in place at once, but read no sooner).
+    const slidOut = async () => {
+      await page.waitForFunction(() => {
+        const row = document.querySelector('[x-omni-tagfloat] [data-tf-row]'), toggle = document.querySelector('[x-omni-tagfloat] [data-tf-act="toggle"]');
+        return getComputedStyle(row).visibility === 'visible' && row.getBoundingClientRect().right <= toggle.getBoundingClientRect().left - 5;
+      });
+      await page.waitForTimeout(450);
+    };
     const tap = async sel => { const b = await page.locator(`[x-omni-tagfloat] ${sel}`).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
     const note = () => page.evaluate(() => document.querySelector('[x-omni-tagfloat] [data-tf-note]')?.textContent || '');
 
@@ -106,18 +115,29 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     assert.equal(await page.locator('[x-omni-tagfloat] [data-tf-act="toggle"]').textContent(), '🟪');
     const [edge, ...edgeSide] = await page.evaluate(() => { const s = getComputedStyle(document.querySelector('[x-omni-tagfloat] [data-tf-act="toggle"]')); return [document.documentElement.clientWidth, s.borderRightWidth, s.borderTopRightRadius, s.borderBottomRightRadius]; });
     assert.ok(Math.abs(handle.x + handle.width - edge) < 1, 'flush against the right edge, as 옴니 뷰어\'s 태그 is against its left');
-    assert.deepEqual(edgeSide, ['0px', '0px', '0px'], 'no border or rounding on the edge\'s side');    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-tagfloat] [data-tf-row]')).display), 'none', 'folded at first');
+    assert.deepEqual(edgeSide, ['0px', '0px', '0px'], 'no border or rounding on the edge\'s side');
+    // Folded, the row waits behind 🟪, past the edge, out of sight: it slides from there.
+    const folded = await page.evaluate(() => {
+      const n = document.querySelector('[x-omni-tagfloat] [data-tf-row]'), c = getComputedStyle(n);
+      return { visibility: c.visibility, left: n.getBoundingClientRect().left, edge: document.querySelector('[x-omni-tagfloat] [data-tf-act="toggle"]').getBoundingClientRect().right, slides: c.transitionProperty.includes('translate') };
+    });
+    assert.equal(folded.visibility, 'hidden', 'folded at first');
+    assert.ok(folded.left >= folded.edge && folded.slides, 'in past 🟪 and the edge, to slide out from there');
+    assert.equal(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('[x-omni-tagfloat]'), [handle.x - 40, handle.y + handle.height / 2]), false, 'the folded row\'s place is the chat\'s');
     // A press on it is no press on the chat beneath; a press beside it is.
     await page.waitForTimeout(1100);
     assert.equal(await page.evaluate(([x, y]) => window.__OMNI_VIEWER_COVERS__(x, y), [handle.x + 5, handle.y + 5]), true);
     assert.equal(await page.evaluate(([x, y]) => window.__OMNI_VIEWER_COVERS__(x, y), [40, handle.y + 5]), false);
+    assert.equal(await page.evaluate(([x, y]) => window.__OMNI_VIEWER_COVERS__(x, y), [handle.x - 40, handle.y + 5]), false);
 
-    // Out: the chat's seven, in its order, beside it and within the screen.
+    // Out: the chat's seven, in its order, beside it and within the screen; 🟪 does not move.
     await tap('[data-tf-act="toggle"]');
-    await shown('[data-tf-row]');
+    await slidOut();
     assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[x-omni-tagfloat] [data-tf-row] button')].map(b => b.textContent)), ['⚛️', '🔃', '👨‍👩‍👧‍👦', '🟥', '📚', '✒️', '🔢']);
     const row = await page.locator('[x-omni-tagfloat] [data-tf-row]').boundingBox();
     assert.ok(row.x >= 0 && row.x + row.width <= handle.x, 'beside 🟪, inside the screen');
+    const still = await page.locator('[x-omni-tagfloat] [data-tf-act="toggle"]').boundingBox();
+    assert.deepEqual([still.x, still.y], [handle.x, handle.y], '🟪 stays where it was');
     // At the chat's bottom: ⚛️ on the newest reply (#8), and the row goes back.
     await tap('[data-tf-act="tag"]');
     await page.waitForFunction(() => window.messageCalls.length === 1);
@@ -134,21 +154,21 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     assert.ok(middle >= 0 && middle < 7, 'an older message is in the middle');
     const expected = middle % 2 === 1 ? middle : middle + 1;
     await tap('[data-tf-act="toggle"]');
-    await shown('[data-tf-row]');
+    await slidOut();
     await tap('[data-tf-act="regen"]');
     await page.waitForFunction(() => window.messageCalls.length === 2);
     assert.deepEqual((await page.evaluate(() => window.messageCalls))[1], ['regen', expected], 'the reply in the middle (a message of the reader\'s: the reply after it)');
 
     // 🔢: the counts row under it, − + 1~3 − +, the row kept out; a step is the chat's own.
     await tap('[data-tf-act="toggle"]');
-    await shown('[data-tf-row]');
-    await tap('[data-tf-act="counts"]');
+    await slidOut();    await tap('[data-tf-act="counts"]');
     await shown('[data-tf-counts]');
     await page.waitForFunction(() => document.querySelector('[x-omni-tagfloat] [data-tf-range]')?.textContent === '1~3');
     assert.deepEqual(await page.evaluate(() => [...document.querySelector('[x-omni-tagfloat] [data-tf-counts]').children].map(n => n.textContent)), ['−', '+', '1~3', '−', '+']);
     const counts = await page.locator('[x-omni-tagfloat] [data-tf-counts]').boundingBox(), out = await page.locator('[x-omni-tagfloat] [data-tf-bar]').boundingBox();
     assert.ok(counts.y >= out.y + out.height, 'on the line under it');
-    assert.ok(Math.abs(counts.x + counts.width - edge) < 1, 'against the edge too');    await tap('[data-tf-act="max-up"]');
+    assert.ok(Math.abs(counts.x + counts.width - edge) < 1, 'against the edge too');
+    await tap('[data-tf-act="max-up"]');
     await page.waitForFunction(() => document.querySelector('[x-omni-tagfloat] [data-tf-range]')?.textContent === '1~4');
     await tap('[data-tf-act="min-down"]');
     await page.waitForTimeout(300);
@@ -159,11 +179,17 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     await page.mouse.click(60, 300);
     await hidden('[data-tf-row]');
     await hidden('[data-tf-counts]');
+    // 🟪 pressed again while the row is still on its way: it folds, and nothing the moving row crosses is pressed.
+    await tap('[data-tf-act="toggle"]');
+    await tap('[data-tf-act="toggle"]');
+    await hidden('[data-tf-row]');
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.messageCalls.length), 2, 'only 🟪 was pressed');
 
     // While a reply arrives, ⚛️ waits for it.
     await page.evaluate(() => { window.streamingNow = true; });
     await tap('[data-tf-act="toggle"]');
-    await shown('[data-tf-row]');
+    await slidOut();
     await tap('[data-tf-act="tag"]');
     await page.waitForFunction(() => /답장을 다 받은 뒤에/.test(document.querySelector('[x-omni-tagfloat] [data-tf-note]')?.textContent || ''));
     assert.equal(await page.evaluate(() => window.messageCalls.length), 2);
