@@ -50,6 +50,9 @@ test('rail thumbnails remain visible after URL release and eviction, including o
       URL.createObjectURL=blob=>{stats.created++;return create(blob);};URL.revokeObjectURL=url=>{stats.revoked++;revoke(url);};
       window.risuai={getCurrentCharacterIndex:async()=>0,getDatabase:async()=>({characters:['a','b','a','huge'].map(image=>({image}))}),readImage:async path=>{
         stats.reads[path]=(stats.reads[path]||0)+1;
+        // Risu answers a read in a later task (a bridge round trip). Answered at once, 'a' was back, and evicted by 'b',
+        // between the tiles' observer callbacks, so the second 'a' tile read it again: red on Edge on every run alone.
+        await new Promise(resolve=>setTimeout(resolve));
         const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
         return new Blob([png,new Uint8Array((path==='huge'?17:9)*1024*1024)],{type:'image/png'});
       }};
@@ -57,7 +60,7 @@ test('rail thumbnails remain visible after URL release and eviction, including o
     });
     const loaded=()=>page.waitForFunction(()=>{const imgs=[...document.querySelectorAll('#nx-risu-pick-tiles img')];return imgs.length===4&&imgs.every(i=>i.naturalWidth===1)&&stats.created===stats.revoked;});
     await loaded();
-    assert.equal((await page.evaluate(()=>stats.reads)).a,1,'two simultaneous tiles share one host read');
+    assert.deepEqual(await page.evaluate(()=>stats.reads),{a:1,b:1,huge:1},'two simultaneous tiles share one host read');
     await page.evaluate(async()=>{
       const old=document.getElementById('nx-risu-pick-tiles'),next=old.cloneNode(false);old.replaceWith(next);
       await Rail.fillRisuTiles(next);
