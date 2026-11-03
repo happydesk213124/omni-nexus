@@ -33,12 +33,15 @@ export const TAG_FLOAT_HTML = `<div data-tf-bar><div data-tf-row>${MESSAGE_CONTR
   + `<div data-tf-counts>${button('min-down', '−', '최소 줄이기')}${button('min-up', '+', '최소 늘리기')}<span data-tf-range></span>${button('max-down', '−', '최대 줄이기')}${button('max-up', '+', '최대 늘리기')}</div><div data-tf-note></div>`;
 // Opacity only: the buttons are measured as they come out, and a slide would move them under the measure.
 // Against the right edge, as 옴니 뷰어's 태그 is against its left: what touches the edge has no border or rounding there.
+// The row slides out from behind 🟪 to its left and back in, as 태그's row slides from its edge. It stays laid out
+// when in, so 🟪 never moves (centred on a row that came and went, it jumped). Unseen, it takes no tap: its
+// visibility waits out the slide, and the bar around it lets taps through.
 const CSS = `[x-omni-tagfloat]{position:fixed;right:0;top:42%;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100vw - 16px);pointer-events:none;font:13px/1.4 system-ui,sans-serif;color:#eee;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
-[x-omni-tagfloat] [data-tf-bar]{display:flex;align-items:center;gap:6px;pointer-events:auto}
-[x-omni-tagfloat] [data-tf-row]{display:none;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:calc(100vw - 72px);padding:5px;box-sizing:border-box;border:1px solid #344052;border-radius:12px;background:rgba(22,30,44,.95)}
-[x-omni-tagfloat][x-tf-open="1"] [data-tf-row]{display:flex;animation:omni-tf-in .18s ease-out}
+[x-omni-tagfloat] [data-tf-bar]{display:flex;align-items:center;gap:6px;overflow:hidden;pointer-events:none}
+[x-omni-tagfloat] [data-tf-row]{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:calc(100vw - 72px);padding:5px;box-sizing:border-box;border:1px solid #344052;border-radius:12px;background:rgba(22,30,44,.95);pointer-events:auto;translate:calc(100% + 54px) 0;visibility:hidden;transition:translate .32s cubic-bezier(.2,.8,.25,1),visibility 0s .32s}
+[x-omni-tagfloat][x-tf-open="1"] [data-tf-row]{translate:0 0;visibility:visible;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-tagfloat] button{display:inline-grid;place-items:center;width:40px;height:40px;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:rgba(255,255,255,.08);color:inherit;font:20px/1 system-ui,sans-serif;cursor:pointer;box-shadow:none;text-shadow:none;touch-action:manipulation}
-[x-omni-tagfloat] [data-tf-act="toggle"]{width:42px;height:42px;border-color:#344052;border-right:0;border-radius:12px 0 0 12px;background:rgba(22,30,44,.88)}
+[x-omni-tagfloat] [data-tf-act="toggle"]{position:relative;z-index:1;pointer-events:auto;width:42px;height:42px;border-color:#344052;border-right:0;border-radius:12px 0 0 12px;background:rgba(22,30,44,.88)}
 [x-omni-tagfloat][x-tf-open="1"] [data-tf-act="toggle"]{background:#7132f566;border-color:#7132f5}
 [x-omni-tagfloat] [data-tf-counts]{display:none;align-items:center;gap:6px;padding:6px;border:1px solid rgba(255,255,255,.25);border-right:0;border-radius:16px 0 0 16px;background:rgba(24,28,40,.95);pointer-events:auto}
 [x-omni-tagfloat][x-tf-counts="1"] [data-tf-counts]{display:flex;animation:omni-tf-in .18s ease-out}
@@ -55,7 +58,8 @@ let installed = false, mounted = false, ticking = false, tick = 0;
 let doc: SafeDocument | null = null, root: SafeElement | null = null, style: SafeElement | null = null;
 let rangeEl: SafeElement | null = null, noteEl: SafeElement | null = null, clickId = '';
 let shown = false, inChat = false, screenSig = '', open = false, countsOpen = false, range = '', note = '', busy = '';
-let noteTimer: ReturnType<typeof setTimeout> | undefined;
+let noteTimer: ReturnType<typeof setTimeout> | undefined, slideTimer: ReturnType<typeof setTimeout> | undefined, sliding = false;
+const SLIDE_MS = 320;
 // What the page has now, so an unchanged paint writes nothing.
 const written = new Map<string, string>();
 // Where the buttons and their panels are, read when they show.
@@ -87,12 +91,13 @@ async function measure(): Promise<void> {
     const node = await root!.querySelector(selector);
     if (node) try { const r = await node.getBoundingClientRect(); if (r.width > 0) panels.push(box(r)); } finally { await release(node); }
   };
-  if (open) { await read('[data-tf-bar] [data-tf-act]', [...KINDS, 'toggle']); await panel('[data-tf-bar]'); }
-  else { await read('[data-tf-act="toggle"]', ['toggle']); panels.push(...found.map(h => h.r)); }
-  if (open && countsOpen) { await read('[data-tf-counts] [data-tf-act]', IMAGE_COUNT_STEPS); await panel('[data-tf-counts]'); }
+  // 🟪 first, so it wins where a row on its way still crosses it; the row is read once it has stopped.
+  await read('[data-tf-act="toggle"]', ['toggle']);
+  if (open && !sliding) { await read('[data-tf-row] [data-tf-act]', [...KINDS]); await panel('[data-tf-bar]'); }
+  else panels.push(...found.map(h => h.r));
+  if (open && !sliding && countsOpen) { await read('[data-tf-counts] [data-tf-act]', IMAGE_COUNT_STEPS); await panel('[data-tf-counts]'); }
   hits = found; areas = panels;
-  written.set('measured', '1');
-}
+  written.set('measured', '1');}
 
 async function paint(): Promise<void> {
   if (!root) return;
@@ -104,6 +109,14 @@ async function paint(): Promise<void> {
   await write(rangeEl, 'range', range, node => node.setTextContent(range));
   await write(noteEl, 'noteText', note, node => node.setTextContent(note));
   await measure();
+}
+
+/** The row in or out: painted now, its buttons read again once it has stopped (until then 🟪 is the one button). */
+async function slide(): Promise<void> {
+  sliding = true;
+  clearTimeout(slideTimer);
+  slideTimer = setTimeout(() => { sliding = false; void measure().catch(() => {}); }, SLIDE_MS + 60);
+  await paint();
 }
 
 function say(text: string, ms: number): void {
@@ -147,12 +160,12 @@ async function messageAction(kind: string): Promise<void> {
 }
 
 async function press(act: string): Promise<void> {
-  if (act === 'toggle') { open = !open; countsOpen = false; await paint(); return; }
+  if (act === 'toggle') { open = !open; countsOpen = false; await slide(); return; }
   if (act === 'counts') { countsOpen = !countsOpen; if (countsOpen) await readCounts(); await paint(); return; }
   if (STEPS.has(act)) { await readCounts(act); await paint(); return; }
   if (!KINDS.has(act)) return;
   // A message button puts the row away, as 옴니 뷰어's does: what it started is said under 🟪.
-  open = false; countsOpen = false; await paint();
+  open = false; countsOpen = false; await slide();
   await messageAction(act);
 }
 
@@ -161,7 +174,7 @@ function onClick(p: HostPoint): void {
   const hit = hits.find(h => inside(p, h.r));
   if (hit) { void press(hit.act).catch(error => dbg('tagfloat.press', { message: String(error) }, 'warn')); return; }
   // A tap anywhere else puts the row away; the tap is still the chat's.
-  if ((open || countsOpen) && !covered(p.clientX, p.clientY)) { open = false; countsOpen = false; void paint().catch(() => {}); }
+  if ((open || countsOpen) && !covered(p.clientX, p.clientY)) { open = false; countsOpen = false; void slide().catch(() => {}); }
 }
 
 async function mount(): Promise<void> {
@@ -192,8 +205,8 @@ async function mount(): Promise<void> {
 }
 
 async function unmount(): Promise<void> {
-  mounted = false; shown = false; inChat = false; screenSig = ''; open = false; countsOpen = false; note = ''; hits = []; areas = [];
-  clearTimeout(noteTimer);
+  mounted = false; shown = false; inChat = false; screenSig = ''; open = false; countsOpen = false; note = ''; hits = []; areas = []; sliding = false;
+  clearTimeout(noteTimer); clearTimeout(slideTimer);
   if (doc && clickId) await quiet(doc.removeEventListener('click', clickId));
   clickId = '';
   for (const node of [root, style, rangeEl, noteEl]) if (node) { if (node === root || node === style) await quiet(node.remove()); await release(node); }

@@ -99,29 +99,34 @@ test('바로가기툴 접어두기: folded, only 🟪 shows; pressed, the seven 
  assert.equal(folded.in,display.in);
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
  try {
-  const page=await browser.newPage({viewport:{width:390,height:700}});
+  const page=await browser.newPage({viewport:{width:560,height:700}});
   const html=folded.out.replace('$1','3').replace('$2','bottom');
   const seen=await page.evaluate(async html=>{
-   document.body.innerHTML='<div class="risu-chat" data-chat-index="3"><p>본문</p>'+html+'</div>';
+   // A phone's chat about 520 px wide (Risu's text a size down), where the seven and 🔢's panel once just fit.
+   document.body.innerHTML='<div class="risu-chat" data-chat-index="3" style="width:520px"><p>본문</p>'+html+'</div>';
    const footer=document.querySelector('[data-omni-footer]'),label=footer.querySelector('[data-omni-fold]');
-   // The chat's 🔢 panel, as omniToggleCounts appends it (its display inline).
-   const panel=document.createElement('div');panel.setAttribute('x-omni-counts','1');panel.style.cssText='display:flex;gap:6px;align-items:center';panel.textContent='1~3';footer.append(panel);
-   const showing=()=>[...footer.querySelectorAll('button')].filter(b=>getComputedStyle(b).display!=='none').length;
-   const read=()=>({buttons:showing(),panel:getComputedStyle(panel).display,width:Math.round(footer.getBoundingClientRect().width),label:getComputedStyle(label).display,box:getComputedStyle(footer).backgroundColor});
-   const before=read();
+   // The chat's 🔢 panel, as omniToggleCounts appends it: − + 4~7 − +, its display inline.
+   const panel=document.createElement('div');panel.setAttribute('x-omni-counts','1');panel.style.cssText='display:flex;gap:6px;align-items:center';
+   for(const text of ['−','+','4~7','−','+']){const n=document.createElement(text==='4~7'?'span':'button');n.textContent=text;if(text==='4~7')n.style.font='18px system-ui';panel.append(n);}
+   footer.append(panel);
+   window.readRow=()=>{const s=getComputedStyle(footer);return {buttons:[...footer.querySelectorAll(':scope > button')].filter(b=>getComputedStyle(b).display!=='none').length,panel:getComputedStyle(panel).display,height:Math.round(footer.getBoundingClientRect().height),border:s.borderTopWidth,box:s.backgroundColor,panelTop:Math.round(panel.getBoundingClientRect().top),labelTop:Math.round(label.getBoundingClientRect().top),label:getComputedStyle(label).display};};
    const r=label.getBoundingClientRect();
-   return {before,at:{x:r.left+r.width/2,y:r.top+r.height/2}};
+   return {before:readRow(),at:{x:r.left+r.width/2,y:r.top+r.height/2}};
   },html);
   assert.equal(seen.before.buttons,0,'folded: no button');
   assert.equal(seen.before.panel,'none','folded: no 🔢 panel');
   assert.notEqual(seen.before.label,'none');
-  assert.ok(seen.before.width<=40,'folded to 🟪 alone');
+  // Folded, the row keeps its box: a fold never changes its height.
+  assert.deepEqual([seen.before.border,seen.before.box],['1px','rgb(22, 30, 44)'],'folded, its box stays');
   await page.mouse.click(seen.at.x,seen.at.y);
-  const open=await page.evaluate(()=>{const footer=document.querySelector('[data-omni-footer]');return {buttons:[...footer.querySelectorAll('button')].filter(b=>getComputedStyle(b).display!=='none').length,panel:getComputedStyle(footer.querySelector('[x-omni-counts]')).display};});
-  assert.deepEqual(open,{buttons:7,panel:'flex'},'pressed: the seven and the panel');
+  const open=await page.evaluate(()=>readRow());
+  assert.deepEqual([open.buttons,open.panel],[7,'flex'],'pressed: the seven and the panel');
+  assert.equal(open.height,seen.before.height,'open, as tall as folded');
+  assert.ok(Math.abs(open.panelTop-open.labelTop)<=4,'🔢\'s panel on the same line, right of the seven');
   await page.mouse.click(seen.at.x,seen.at.y);
-  const again=await page.evaluate(()=>[...document.querySelectorAll('[data-omni-footer] button')].filter(b=>getComputedStyle(b).display!=='none').length);
-  assert.equal(again,0,'pressed again: folded');
+  const again=await page.evaluate(()=>readRow());
+  assert.equal(again.buttons,0,'pressed again: folded');
+  assert.equal(again.height,seen.before.height,'folded again, the same height');
  } finally {await browser.close();}
 });
 
