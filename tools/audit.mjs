@@ -312,3 +312,8 @@ if (failures.length) {
   process.exit(1);
 }
 console.log('[audit] ok');
+// The bundle ran in this process, so it ends only once nothing the bundle started is left running (see smoke.mjs).
+setTimeout(() => {
+  console.error(`[audit] FAIL: still running 10 s after the checks, held by: ${process.getActiveResourcesInfo().join(', ')}`);
+  process.exit(1);
+}, 10_000).unref();

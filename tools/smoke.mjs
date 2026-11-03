@@ -63,6 +63,9 @@ check(
   globalThis.__INLAY_NATIVE_PROMPTS__ === undefined,
   'the harness leaked a prompt pack — this test would prove nothing',
 );
+// A script drives this bundle as the tests' browsers do: say so as they do. Otherwise the first-run sheet waits a
+// minute for the settings window, which the half run here never opens, and holds the process that long.
+Object.defineProperty(globalThis.navigator, 'webdriver', { value: true, configurable: true });
 
 vm.runInThisContext(backendHalf(), { filename: 'omninexus.js' });
 
@@ -222,3 +225,9 @@ if (failures.length) {
   process.exit(1);
 }
 console.log('[smoke] ok — the built bundle boots, serves routes, and carries its prompts');
+// Checked, the process ends when nothing the bundle started is left running. A timer it kept, not unref'd, held this
+// (and `npm test`) up for two hours: whatever still runs a while on is named, and fails.
+setTimeout(() => {
+  console.error(`[smoke] FAIL: still running 10 s after the checks, held by: ${process.getActiveResourcesInfo().join(', ')}`);
+  process.exit(1);
+}, 10_000).unref();

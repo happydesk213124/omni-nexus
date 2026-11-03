@@ -15,11 +15,13 @@
  *
  * A failing step prints its tail at once; every step's output is written to
  * .test-build/logs/<step>.log at the end (the unit bundles' build empties .test-build
- * first). Exit code 1 when any step failed.
+ * first). Exit code 1 when any step failed. A step still running after
+ * TEST_STEP_TIMEOUT_MS (15 minutes; the slowest, the tests, takes about 3½) is stopped
+ * with everything it started, and fails.
  *
  *   node tools/test-all.mjs            (= npm test)
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -28,6 +30,17 @@ const TEST_CONCURRENCY = Math.max(2, Math.min(6, cores - 2));
 const settings = JSON.parse(readFileSync('package.json', 'utf8')).scripts['test:settings-ux'].split(' && ').filter(cmd => !cmd.includes('extract-preview-ux'));
 const checks = [['audit', 'npm run audit'], ['smoke', 'npm run smoke'], ...settings.map(cmd => [cmd.replace(/^node tools\//, '').replace(/\.mjs$/, ''), cmd])];
 
+// A step that never ends held `npm test` silent for two hours: smoke and audit end only once nothing the bundle
+// started is still running, and the bundle had kept a timer.
+const STEP_TIMEOUT_MS = Number(process.env.TEST_STEP_TIMEOUT_MS) || 15 * 60_000;
+
+/** The step's shell and all it started: stopping only the shell leaves its node and browsers running. */
+function stopTree(pid) {
+  if (process.platform === 'win32') { spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore' }); return; }
+  for (const kid of spawnSync('pgrep', ['-P', String(pid)], { encoding: 'utf8' }).stdout?.split(/\s+/).filter(Boolean) ?? []) stopTree(Number(kid));
+  try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+}
+
 const results = [];
 const logName = name => `.test-build/logs/${name.replace(/[^a-zA-Z0-9.-]+/g, '_')}.log`;
 function run(name, cmd) {
@@ -35,10 +48,19 @@ function run(name, cmd) {
   return new Promise(resolve => {
     const child = spawn(cmd, { shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const out = [];
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      out.push(Buffer.from(`\n[test-all] ${name} still running after ${STEP_TIMEOUT_MS / 1000}s: stopped, with everything it started\n`));
+      stopTree(child.pid);
+      // Something that outlived the stop must not keep the pipes, and so the step, open.
+      child.stdout.destroy(); child.stderr.destroy();
+    }, STEP_TIMEOUT_MS);
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => out.push(chunk));
     child.on('close', code => {
-      const row = { name, ok: code === 0, ms: Date.now() - started, log: Buffer.concat(out).toString('utf8') };
+      clearTimeout(timer);
+      const row = { name, ok: code === 0 && !timedOut, ms: Date.now() - started, log: Buffer.concat(out).toString('utf8') };
       results.push(row);
       console.log(`${row.ok ? '✔' : '✖'} ${(row.ms / 1000).toFixed(1).padStart(6)}s  ${name}`);
       if (!row.ok) console.log(row.log.split('\n').slice(-40).map(line => `    ${line}`).join('\n'));
