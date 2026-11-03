@@ -20,7 +20,8 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * revealBase64: risu64 난독's [base64] words read as words, by the viewer and by the voice in the chat too.
  * cgSize: how big a folded picture stays at the top (1 the small thumb, 2 and 3 bigger), set by its + button.
  * floatResume, floatCenter, menuResume, menuCenter: 바로가기, the viewer's two ways in (where the reader left this chat,
- * the message in the middle of the chat screen) as Risu's floating buttons and in the chat's ☰ menu, each up while on.
+ * the message in the middle of the chat screen) as Risu's floating buttons (off unless switched on) and in the chat's
+ * ☰ menu (on unless switched off), each up while on.
  */
 export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean }
 export type CgSize = 1 | 2 | 3;
@@ -44,7 +45,8 @@ function normalize(raw: unknown): ViewerPrefs {
     stageReach: typeof r.stageReach === 'number' && STAGE_REACHES.includes(r.stageReach) ? r.stageReach : 3,
     revealBase64: r.revealBase64 === true,
     cgSize: r.cgSize === 2 || r.cgSize === 3 ? r.cgSize : 1,
-    floatResume: r.floatResume !== false, floatCenter: r.floatCenter !== false,
+    // The floating pair is new over the chat: up only once switched on (the menu's pair was always there).
+    floatResume: r.floatResume === true, floatCenter: r.floatCenter === true,
     menuResume: r.menuResume !== false, menuCenter: r.menuCenter !== false,
   };
 }

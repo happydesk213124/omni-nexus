@@ -77,19 +77,19 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     const scene = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
     const shows = re => page.waitForFunction(source => new RegExp(source).test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''), re.source);
 
-    // 바로가기: two ways in, each a floating button and an entry of the chat's menu beside ⚛️Omni Nexus, all four on
-    // unless switched off; the side bar's menu (hamburger) has none of it. 보던 곳 wears 📽️, 화면 중앙 🎯.
+    // 바로가기: two ways in, each an entry of the chat's menu beside ⚛️Omni Nexus (on unless switched off) and a floating
+    // button (off unless switched on); the side bar's menu (hamburger) has none of it. 보던 곳 wears 📽️, 화면 중앙 🎯.
     const shortcuts = () => page.evaluate(() => Object.keys(window.names).sort().map(id => [id, window.places[id], window.names[id], /🎯/.test(window.icons[id]) ? '🎯' : /📽️/.test(window.icons[id]) ? '📽️' : window.icons[id]]));
     const all = [['omni-viewer-action', 'action', '⚛️Omni 뷰어 · 보던 곳', '📽️'], ['omni-viewer-action-center', 'action', '⚛️Omni 뷰어 · 화면 중앙', '🎯'],
       ['omni-viewer-chat', 'chat', '⚛️Omni 뷰어 · 보던 곳', '📽️'], ['omni-viewer-chat-center', 'chat', '⚛️Omni 뷰어 · 화면 중앙', '🎯']];
-    assert.deepEqual(await shortcuts(), all);
-    // Each switch takes its own button down and puts it back, at once; the others stay.
-    await page.evaluate(() => window.saveViewerPrefs({ floatCenter: false, menuResume: false }));
-    await page.waitForFunction(() => !('omni-viewer-action-center' in window.buttons) && !('omni-viewer-chat' in window.buttons));
-    assert.deepEqual(await shortcuts(), [all[0], all[3]]);
-    await page.evaluate(() => window.saveViewerPrefs({ floatCenter: true, menuResume: true }));
-    await page.waitForFunction(() => Object.keys(window.buttons).length === 4);
-    assert.deepEqual(await shortcuts(), all);
+    assert.deepEqual(await shortcuts(), [all[2], all[3]]);
+    // Each switch puts its own button up or takes it down, at once; the others stay.
+    await page.evaluate(() => window.saveViewerPrefs({ floatResume: true, floatCenter: true, menuResume: false }));
+    await page.waitForFunction(() => Object.keys(window.buttons).length === 3 && !('omni-viewer-chat' in window.buttons));
+    assert.deepEqual(await shortcuts(), [all[0], all[1], all[3]]);
+    await page.evaluate(() => window.saveViewerPrefs({ floatResume: false, floatCenter: false, menuResume: true }));
+    await page.waitForFunction(() => Object.keys(window.buttons).length === 2 && 'omni-viewer-chat' in window.buttons);
+    assert.deepEqual(await shortcuts(), [all[2], all[3]]);
 
     // 화면 중앙: the chat scrolled so the reader's turn after R2 is in the middle; that turn's next reply opens, from its top.
     await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="5"]').scrollIntoView({ block: 'center' }));
