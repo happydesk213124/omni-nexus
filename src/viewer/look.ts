@@ -126,9 +126,10 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 /* 태그: the chat's own message controls (⚛️ 태그 생성 … 🔢 생성 장수) for the reply on stage, a row slid out over its tab. */
 [x-omni-vn] [data-vn-tagbar]{position:absolute;left:0;top:calc(38% + 84px);z-index:5;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100% - 16px);padding:6px;background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;translate:-105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-tagbar] button{width:40px;height:40px;min-width:0;padding:0;border:0;border-radius:10px;font-size:20px;letter-spacing:0;background:rgba(255,255,255,.08)}
-/* Its 🔢: − + 1~3 − + as the floating viewer's (the left pair the least, the right the most), a line of the row
-   itself, so it is under the buttons however they wrap and slides with them. */
-[x-omni-vn] [data-vn-counts]{display:none;flex-basis:100%;align-items:center;gap:6px;margin-top:2px;padding-top:6px;border-top:1px solid var(--line)}
+/* Its 🔢: − + 1~3 − + as the floating viewer's (the left pair the least, the right the most), a drawer of its own hung
+   under the row, as the floating 태그's is: the row keeps its size (a line inside made it a box twice as tall, all of
+   it gap), and the drawer, the row's child, slides with it. */
+[x-omni-vn] [data-vn-counts]{display:none;position:absolute;left:0;top:calc(100% + 6px);align-items:center;gap:6px;width:max-content;padding:6px;background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;animation:vn-counts-in .18s ease-out}
 [x-omni-vn] [data-vn-counts] button{font-size:22px}
 [x-omni-vn] [data-vn-range]{min-width:54px;text-align:center;font:600 15px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#efe9da}
 /* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices. */
@@ -189,6 +190,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
   [x-omni-vn] [data-vn-tagbar]{gap:3px}[x-omni-vn] [data-vn-act="zoom"]{width:30px;height:30px}
   [x-omni-vn] [data-vn-cgchips]{bottom:120px}[x-omni-vn] [data-vn-cgchips] button{height:34px;padding:0 12px;font-size:12.5px}[x-omni-vn] [data-vn-rates]{bottom:66px}[x-omni-vn] [data-vn-rates] button{height:40px;min-width:52px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
+@keyframes vn-counts-in{from{opacity:0}to{opacity:1}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
 /* Visible at both ends, not only at the end: a 1ms step past a second's delay is held at a rounding
    short of its end (Chromium), the "from" value, and every letter after that stayed hidden for good:

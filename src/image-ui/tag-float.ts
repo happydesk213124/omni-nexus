@@ -32,19 +32,20 @@ const button = (act: string, glyph: string, label: string) => `<button data-tf-a
 export const TAG_FLOAT_HTML = `<div data-tf-bar><div data-tf-row>${MESSAGE_CONTROL_KINDS.map(([kind, icon, label]) => button(kind, icon, label)).join('')}</div>${button('toggle', '🟪', '메시지 버튼 펼치기')}</div>`
   + `<div data-tf-counts>${button('min-down', '−', '최소 줄이기')}${button('min-up', '+', '최소 늘리기')}<span data-tf-range></span>${button('max-down', '−', '최대 줄이기')}${button('max-up', '+', '최대 늘리기')}</div><div data-tf-note></div>`;
 // Opacity only: the buttons are measured as they come out, and a slide would move them under the measure.
-const CSS = `[x-omni-tagfloat]{position:fixed;right:8px;top:42%;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100vw - 16px);pointer-events:none;font:13px/1.4 system-ui,sans-serif;color:#eee;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+// Against the right edge, as 옴니 뷰어's 태그 is against its left: what touches the edge has no border or rounding there.
+const CSS = `[x-omni-tagfloat]{position:fixed;right:0;top:42%;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100vw - 16px);pointer-events:none;font:13px/1.4 system-ui,sans-serif;color:#eee;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 [x-omni-tagfloat] [data-tf-bar]{display:flex;align-items:center;gap:6px;pointer-events:auto}
 [x-omni-tagfloat] [data-tf-row]{display:none;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:calc(100vw - 72px);padding:5px;box-sizing:border-box;border:1px solid #344052;border-radius:12px;background:rgba(22,30,44,.95)}
 [x-omni-tagfloat][x-tf-open="1"] [data-tf-row]{display:flex;animation:omni-tf-in .18s ease-out}
 [x-omni-tagfloat] button{display:inline-grid;place-items:center;width:40px;height:40px;margin:0;padding:0;border:1px solid transparent;border-radius:10px;background:rgba(255,255,255,.08);color:inherit;font:20px/1 system-ui,sans-serif;cursor:pointer;box-shadow:none;text-shadow:none;touch-action:manipulation}
-[x-omni-tagfloat] [data-tf-act="toggle"]{width:42px;height:42px;border-color:#344052;background:rgba(22,30,44,.88)}
+[x-omni-tagfloat] [data-tf-act="toggle"]{width:42px;height:42px;border-color:#344052;border-right:0;border-radius:12px 0 0 12px;background:rgba(22,30,44,.88)}
 [x-omni-tagfloat][x-tf-open="1"] [data-tf-act="toggle"]{background:#7132f566;border-color:#7132f5}
-[x-omni-tagfloat] [data-tf-counts]{display:none;align-items:center;gap:6px;padding:6px;border:1px solid rgba(255,255,255,.25);border-radius:16px;background:rgba(24,28,40,.95);pointer-events:auto}
+[x-omni-tagfloat] [data-tf-counts]{display:none;align-items:center;gap:6px;padding:6px;border:1px solid rgba(255,255,255,.25);border-right:0;border-radius:16px 0 0 16px;background:rgba(24,28,40,.95);pointer-events:auto}
 [x-omni-tagfloat][x-tf-counts="1"] [data-tf-counts]{display:flex;animation:omni-tf-in .18s ease-out}
 [x-omni-tagfloat][x-tf-counts="1"] [data-tf-act="counts"]{background:rgba(113,50,245,.55)}
 [x-omni-tagfloat] [data-tf-counts] button{font-size:22px}
 [x-omni-tagfloat] [data-tf-range]{min-width:54px;text-align:center;font:600 15px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
-[x-omni-tagfloat] [data-tf-note]{display:none;max-width:min(280px,calc(100vw - 24px));padding:8px 10px;box-sizing:border-box;border:1px solid #ffffff24;border-radius:10px;background:rgba(23,32,49,.95);font-size:12px;line-height:18px;overflow-wrap:anywhere;pointer-events:none}
+[x-omni-tagfloat] [data-tf-note]{display:none;max-width:min(280px,calc(100vw - 24px));padding:8px 10px;box-sizing:border-box;border:1px solid #ffffff24;border-right:0;border-radius:10px 0 0 10px;background:rgba(23,32,49,.95);font-size:12px;line-height:18px;overflow-wrap:anywhere;pointer-events:none}
 [x-omni-tagfloat][x-tf-note="1"] [data-tf-note]{display:block}
 @keyframes omni-tf-in{from{opacity:0}to{opacity:1}}
 @media (hover:hover){[x-omni-tagfloat] button:hover{background:rgba(255,255,255,.18)}}

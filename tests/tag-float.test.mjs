@@ -104,8 +104,9 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     await page.waitForFunction(() => { const n = document.querySelector('[x-omni-tagfloat]'); return n && getComputedStyle(n).display !== 'none'; });
     const handle = await page.locator('[x-omni-tagfloat] [data-tf-act="toggle"]').boundingBox();
     assert.equal(await page.locator('[x-omni-tagfloat] [data-tf-act="toggle"]').textContent(), '🟪');
-    assert.ok(handle.x + handle.width <= 390 && handle.x + handle.width >= 390 - 16, 'at the right edge');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-tagfloat] [data-tf-row]')).display), 'none', 'folded at first');
+    const [edge, ...edgeSide] = await page.evaluate(() => { const s = getComputedStyle(document.querySelector('[x-omni-tagfloat] [data-tf-act="toggle"]')); return [document.documentElement.clientWidth, s.borderRightWidth, s.borderTopRightRadius, s.borderBottomRightRadius]; });
+    assert.ok(Math.abs(handle.x + handle.width - edge) < 1, 'flush against the right edge, as 옴니 뷰어\'s 태그 is against its left');
+    assert.deepEqual(edgeSide, ['0px', '0px', '0px'], 'no border or rounding on the edge\'s side');    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-tagfloat] [data-tf-row]')).display), 'none', 'folded at first');
     // A press on it is no press on the chat beneath; a press beside it is.
     await page.waitForTimeout(1100);
     assert.equal(await page.evaluate(([x, y]) => window.__OMNI_VIEWER_COVERS__(x, y), [handle.x + 5, handle.y + 5]), true);
@@ -147,7 +148,7 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     assert.deepEqual(await page.evaluate(() => [...document.querySelector('[x-omni-tagfloat] [data-tf-counts]').children].map(n => n.textContent)), ['−', '+', '1~3', '−', '+']);
     const counts = await page.locator('[x-omni-tagfloat] [data-tf-counts]').boundingBox(), out = await page.locator('[x-omni-tagfloat] [data-tf-bar]').boundingBox();
     assert.ok(counts.y >= out.y + out.height, 'on the line under it');
-    await tap('[data-tf-act="max-up"]');
+    assert.ok(Math.abs(counts.x + counts.width - edge) < 1, 'against the edge too');    await tap('[data-tf-act="max-up"]');
     await page.waitForFunction(() => document.querySelector('[x-omni-tagfloat] [data-tf-range]')?.textContent === '1~4');
     await tap('[data-tf-act="min-down"]');
     await page.waitForTimeout(300);

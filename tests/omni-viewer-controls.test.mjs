@@ -195,6 +195,7 @@ test('옴니 뷰어 · 태그\'s 🔢 opens − + 1~3 − + under its row (no se
       const range = () => style('[data-vn-range]', 'content', '::after');
       await tagsOut();
       assert.equal(await style('[data-vn-counts]', 'display'), 'none', 'not until 🔢');
+      const before = await box('[data-vn-tagbar]');
       await tap('[data-vn-tagbar] [data-vn-act="mcounts"]');
       await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-counts]')).display !== 'none');
       assert.equal(await range(), '"1~3"');
@@ -202,10 +203,12 @@ test('옴니 뷰어 · 태그\'s 🔢 opens − + 1~3 − + under its row (no se
       const bar = await box('[data-vn-tagbar]'), counts = await box('[data-vn-counts]'), frame = await box('');
       const buttons = await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tagbar] > button')].map(b => b.getBoundingClientRect().toJSON()));
       assert.equal(new Set(buttons.map(r => Math.round(r.top))).size, 1, 'the seven in one line');
-      assert.ok(counts.y >= Math.max(...buttons.map(r => r.bottom)), 'on the line under the buttons');
-      assert.ok(counts.x >= frame.x - 1 && counts.x + counts.width <= frame.x + frame.width && counts.y + counts.height <= bar.y + bar.height + 1, 'inside the row, inside the frame');
-      assert.ok(bar.x >= -1, '태그\'s row stays out');
-      await tap('[data-vn-counts] [data-vn-act="cmaxup"]');
+      // A drawer of its own, as the floating 태그's: a line inside the row made the row twice as tall, mostly gap.
+      assert.ok(Math.abs(bar.height - before.height) < 1 && Math.abs(bar.width - before.width) < 1, 'the row keeps its size');
+      assert.ok(counts.y >= bar.y + bar.height && counts.y <= bar.y + bar.height + 10, 'just under the row');
+      assert.ok(Math.abs(counts.x - bar.x) < 1 && counts.width < bar.width, 'against the row\'s edge, as wide as its five');
+      assert.ok(counts.x + counts.width <= frame.x + frame.width && counts.y + counts.height <= frame.y + frame.height, 'inside the frame');
+      assert.ok(bar.x >= -1, '태그\'s row stays out');      await tap('[data-vn-counts] [data-vn-act="cmaxup"]');
       await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-range]'), '::after').content === '"1~4"');
       await tap('[data-vn-counts] [data-vn-act="cminup"]');
       await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-range]'), '::after').content === '"2~4"');
