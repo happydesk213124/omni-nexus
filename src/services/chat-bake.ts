@@ -20,6 +20,7 @@ import type { BakeDimensions } from '../domain/chat-bake';
 import type { TaggerResult } from '../core/types';
 import { imageAssetRef, imageMeta, imagePng, idbGet } from '../storage/stores';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { messageControlsOf } from '../domain/message-controls';
 
 export type BakeCardRow = {
   id?: unknown;
@@ -137,7 +138,7 @@ export async function bakeCardsIntoChatMessage(opts: {
 }): Promise<boolean> {
   const loaded = await loadTargetChat(opts.charIndex, opts.chatIndex);
   if (!loaded) return false;
-  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
+  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, messageControlsOf(getConfig().card));
   const messages = chatMessageList(loaded.chat);
   const idx = Math.floor(Number(opts.messageIndex));
   if (!Number.isFinite(idx) || idx < 0 || idx >= messages.length) return false;
@@ -308,7 +309,7 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
   if(target.hostMessageId && String(msg.chatId || msg.id || '')!==target.hostMessageId)throw new Error('Message identity changed');
   const previousBody=messageBody(msg);
   if(target.expectedPrefix && !analysisBody(previousBody).startsWith(target.expectedPrefix))throw new Error('Message body changed');
-  if(!final)await ensureInrayDisplayModule(getConfig().card.persist_chat_images_folded===true,getConfig().card.inline_chat_scale_pct,{enabled:getConfig().card.inline_msg_fan===true,userchat:getConfig().card.userchat===true});
+  if(!final)await ensureInrayDisplayModule(getConfig().card.persist_chat_images_folded===true,getConfig().card.inline_chat_scale_pct,messageControlsOf(getConfig().card));
   // A streaming-tag slot replaced its block on the first placement: that frame is
   // the only record of where the image goes, so later placements keep it.
   const inlineJobs=batches.filter(batch=>batch.shots.some(shot=>Number.isInteger(shot.inline_block))).map(batch=>batch.jobId);
@@ -351,7 +352,7 @@ export async function writeLineGroupSlots(target: ReturnType<typeof jobChatTarge
 
 export async function writeJobSpinners(opts: ReturnType<typeof jobChatTarget> & {jobId:string;preserveJobIds?:string[];shots:Array<{line?:unknown;shot_index:number;width?:number;height?:number}>;onMessage?:(ids:{messageId:string;chatId:string})=>void;pink?:boolean}):Promise<boolean> {
   const loaded=await loadTargetChat(opts.charIndex,opts.chatIndex);if(!loaded)return false;
-  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true });
+  await ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, messageControlsOf(getConfig().card));
   const msg=chatMessageList(loaded.chat)[opts.messageIndex];if(!msg)return false;
   if (opts.hostMessageId && String(msg.chatId || msg.id || '') !== opts.hostMessageId) throw new Error('Message identity changed');
   if (opts.expectedPrefix && !analysisBody(messageBody(msg)).startsWith(opts.expectedPrefix)) throw new Error('Message body changed');

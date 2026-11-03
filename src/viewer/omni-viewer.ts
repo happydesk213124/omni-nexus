@@ -36,10 +36,12 @@ import { currentTtsContext, type TtsChatContext } from '../services/tts-context'
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
-import { setViewerCovering } from '../services/viewer-presence';
+import { chatCovered, setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
-import { boxHtml, CAST_CHIPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
-import { centerIn, nearestRow, quiet, release, rowAt, unwrap } from './safe-dom';
+import { boxHtml, CAST_CHIPS, COUNT_STEPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
+import { centerIn, quiet, release, rowAt, unwrap } from './safe-dom';
+import { CHAT_LIST, chatArea, messageAtCenter } from './chat-screen';
+import { replyAt } from '../domain/viewer/reply-at';
 import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
@@ -57,7 +59,7 @@ import { onSticker, choiceArmed, disarmChoice, elementsAtEnd, elementsClick, ele
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const key = (s: string) => compactHash(s).slice(0, 10);
-const LIST = '.default-chat-screen > .flex-col-reverse';
+const LIST = CHAT_LIST;
 // More than three on a phone's stage hide each other; the three last to speak stay.
 const MAX_CAST = 3;
 // The frame's buttons in document order, read once from FRAME: measuring them reads no HTML.
@@ -73,10 +75,13 @@ const CG_BAR = new Set(['cgfull', 'cgroll', 'cgtags', 'cgclose', ...CHIP_ACTS]);
 // 태그's row: the chat's message controls, each `m` + its kind (look.ts), in its order.
 const TAG_ACTS = MESSAGE_CONTROL_KINDS.map(([kind]) => `m${kind}`);
 const TAG_BAR = new Set<string>(TAG_ACTS);
+// Its 🔢's row under it (look.ts), in its order.
+const COUNT_ACTS = COUNT_STEPS.map(([act]) => act);
+const COUNT_BAR = new Set<string>(COUNT_ACTS);
 // Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
-const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-child(n+3){display:none!important}[x-omnitts-viewer],[x-nx-float]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
+const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-child(n+3){display:none!important}[x-omnitts-viewer],[x-nx-float],[x-omni-tagfloat]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
 
 interface HostPoint { clientX: number; clientY: number }
 let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeElement | null = null, fold: SafeElement | null = null;
@@ -97,14 +102,6 @@ let streaming = false, logOpen = false, autoTimer: ReturnType<typeof setTimeout>
 const people = new Map<string, SafeElement>(), faces = new Map<string, string>(), clones = new Set<string>();
 let bg = '', revealUntil = 0, epoch = 0, voiceKey = '', clickId = '';
 
-/** The chat screen less Risu's input bar under its messages: what the viewer covers. */
-async function chatArea(screen: SafeElement): Promise<{ left: number; top: number; width: number; height: number }> {
-  const s = await screen.getBoundingClientRect();
-  let below = 0;
-  const others = await screen.querySelectorAll(':scope > :not(.absolute):not(.fixed):has(~ .flex-col-reverse)');
-  for (const node of await unwrap(others)) { const r = await node.getBoundingClientRect(); below += r.height; await release(node); }
-  return { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
-}
 /**
  * Risu's page itself pushed up, the chat screen with it: a scroll into view in a chat too short to scroll that far
  * (behind the viewer only its newest messages are laid out) moves the page instead, and Risu's page cannot be
@@ -1239,7 +1236,7 @@ async function comeBack(): Promise<void> {
 const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cgSize: viewerPrefs().cgSize, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   zoomAt: cgView === 'fold' && cgThumb ? { left: cgThumb.left - rect.left, top: cgThumb.top + cgThumb.height - rect.top } : undefined, chips: shownCast(),
-  rate: ttsData().settings.rate, rates: ratesOpen, tags: tagsOpen, pink: pinkCount() > 0, pinkBusy: pinkRun,
+  rate: ttsData().settings.rate, rates: ratesOpen, tags: tagsOpen, counts: tagsOpen && countsOpen ? countRange || '…' : undefined, pink: pinkCount() > 0, pinkBusy: pinkRun,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
@@ -1542,6 +1539,7 @@ async function pickRate(rate: number): Promise<void> {
 let tagsOpen = false;
 async function toggleTags(): Promise<void> {
   tagsOpen = !tagsOpen;
+  countsOpen = false;
   if (tagsOpen) { ratesOpen = false; rateRows = []; stripOpen = false; msgsOpen = false; logOpen = false; }
   await restyle();
   const settle = async (tries: number): Promise<void> => {
@@ -1553,10 +1551,35 @@ async function toggleTags(): Promise<void> {
   if (tagsOpen) setTimeout(() => void settle(3).catch(() => {}), 380);
 }
 /**
+ * 태그's 🔢: not the settings window but a row under 태그's, − + 1~3 − + as the floating viewer has it, open with
+ * the row it came from. The counts are the chat's own (__OMNI_IMAGE_COUNTS__, message-runtime.js): read as it opens,
+ * and each step written as the chat's 🔢 writes it, so every count on screen and the settings show the same.
+ */
+let countsOpen = false, countRange = '';
+async function toggleCounts(): Promise<void> {
+  countsOpen = !countsOpen;
+  if (countsOpen) await readCounts();
+  await restyle();
+  if (countsOpen) await remeasureRow('[data-vn-counts] [data-vn-act]', COUNT_ACTS);
+}
+async function readCounts(step?: string): Promise<boolean> {
+  const counts = Reflect.get(globalThis, '__OMNI_IMAGE_COUNTS__');
+  if (typeof counts !== 'function') { sayShot('Omni가 아직 준비되지 않았어요.', 2600); return false; }
+  try {
+    const { min, max } = await counts(step) as { min: number; max: number };
+    countRange = `${min}~${max}`;
+    return true;
+  } catch (error) { sayShot(shotFailed(String((error as Error)?.message || error), '생성 장수를 바꾸지 못했습니다.'), 4500); return false; }
+}
+// cmindown → min-down: the chat's own name for the step.
+async function stepCount(act: string): Promise<void> {
+  if (await readCounts(`${act.slice(1, 4)}-${act.slice(4)}`)) await restyle();
+}
+/**
  * 태그's buttons: the chat's message controls (message-controls.ts) on the reply on stage, run in Omni's window as its
  * own row runs them (__OMNI_MESSAGE_ACTION__, tools/vendor-patches/message-runtime.js). What a button started, or why
  * not, is said over the stage (Omni's toasts are under the viewer); the pictures it makes come in as the reply is baked
- * (onMessageBaked). A window it opens (캐릭터, 프리셋, 작가 노트, 생성 장수) is over the viewer.
+ * (onMessageBaked). A window it opens (캐릭터, 프리셋, 작가 노트) is over the viewer; 🔢 opens its own row (toggleCounts).
  */
 const MESSAGE_NOTES: Record<string, readonly [doing: string, done: string]> = {
   tag: ['⚛️ 태그 생성을 거는 중…', '⚛️ 태그 생성을 시작했어요 · 다 그리면 삽화가 나와요'],
@@ -1609,7 +1632,7 @@ async function act(name: string): Promise<void> {
   if (name === 'close') { await closeViewer(); return; }
   // A button pressed while 배속's list or 태그's row is out puts it away (its own buttons are its business).
   if (ratesOpen && name !== 'rate') { ratesOpen = false; rateRows = []; void restyle().catch(() => {}); }
-  if (tagsOpen && name !== 'tags' && !TAG_BAR.has(name)) { tagsOpen = false; void restyle().catch(() => {}); }
+  if (tagsOpen && name !== 'tags' && !TAG_BAR.has(name) && !COUNT_BAR.has(name)) { tagsOpen = false; countsOpen = false; void restyle().catch(() => {}); }
   if (name === 'next') queueStep(1);
   else if (name === 'prev') queueStep(-1);
   // The reply's first and last line: steps to there, counted from where the steps already asked for lead.
@@ -1625,7 +1648,10 @@ async function act(name: string): Promise<void> {
   else if (name === 'cgprev' || name === 'cgnext') await cgStep(name === 'cgnext' ? 1 : -1);
   else if (name === 'rate') await toggleRates();
   else if (name === 'tags') await toggleTags();
-  else if (TAG_BAR.has(name)) { tagsOpen = false; await restyle(); await messageAction(name.slice(1)); }
+  // 🔢 and its steps keep 태그's row out: the counts are changed with it in sight.
+  else if (name === 'mcounts') await toggleCounts();
+  else if (COUNT_BAR.has(name)) await stepCount(name);
+  else if (TAG_BAR.has(name)) { tagsOpen = false; countsOpen = false; await restyle(); await messageAction(name.slice(1)); }
   else if (name === 'pink') await makePinks();
   else if (name === 'auto') { await saveViewerPrefs({ auto: !viewerPrefs().auto }); await render(true); }
   else if (name === 'voice') { await saveViewerPrefs({ voice: !viewerPrefs().voice }); if (!viewerPrefs().voice) omniTts.stop(); await restyle(); }
@@ -1730,7 +1756,8 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
     && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()) && !(c.act === 'zoom' && (cgView !== 'fold' || !lastCg || !cgThumb))
     // 태그's row out: its buttons, over its tab; none of it while 편집 is open (on a phone ✎ 편집 steps out over the tab).
     // 전체 생성 only while it shows (it keeps the rectangle it had then).
-    && !(TAG_BAR.has(c.act) && (!tagsOpen || editing)) && !(c.act === 'tags' && (tagsOpen || editing)) && !(c.act === 'pink' && !pinkShown));
+    && !(TAG_BAR.has(c.act) && (!tagsOpen || editing)) && !(c.act === 'tags' && (tagsOpen || editing)) && !(c.act === 'pink' && !pinkShown)
+    && !(COUNT_BAR.has(c.act) && (!tagsOpen || !countsOpen || editing)));
 }
 /**
  * The speaker whose name a tap is on, over the line in the box. The name's plate sits at the
@@ -1999,30 +2026,12 @@ async function showError(error: unknown): Promise<void> {
   const alert = Reflect.get(risuHost() ?? {}, 'alertError');
   if (typeof alert === 'function') await Promise.resolve(alert.call(risuHost(), `[옴니 뷰어] ${message}`)).catch(() => {});
 }
-/**
- * The chat message in the middle of the chat screen as Risu shows it: a binary search over
- * the messages drawn (newest first in the page), a few calls whatever the chat's length.
- * Read before the viewer folds the chat, which moves it. -1 for none.
- */
-async function messageAtCenter(d: SafeDocument): Promise<number> {
-  const screen = await d.querySelector('.default-chat-screen');
-  if (!screen) return -1;
-  let area: Awaited<ReturnType<typeof chatArea>>;
-  try { area = await chatArea(screen); } finally { await release(screen); }
-  const row = await nearestRow(d, `${LIST} .risu-chat[data-chat-index]`, area.top + area.height / 2, true);
-  if (!row) return -1;
-  try {
-    // Risu lets a plugin read only its own x- attributes: the number is read off the row's own tag.
-    const html = String(await row.getOuterHTML() ?? '');
-    return Number(/\bdata-chat-index="(\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? -1);
-  } finally { await release(row); }
-}
 /** Opened at a chat message: its reply from the top (a message of the reader's: the reply after it, else the one before). */
 async function openAt(index: number): Promise<void> {
   // The marks too: where the reader goes from here is noted as from anywhere.
   await Promise.all([readChat(), readMarks()]);
-  const list = charIndexes(), target = context?.messages[index]?.role === 'char' ? index : list.find(i => i > index) ?? [...list].reverse().find(i => i < index);
-  await load(target);
+  const target = replyAt((context?.messages ?? []).map(m => m?.role), index);
+  await load(target >= 0 ? target : undefined);
 }
 /** `from`: 'resume' where the reader left this chat, 'center' at the message in the middle of the chat screen. */
 export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
@@ -2051,7 +2060,7 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
-    ratesOpen = false; rateRows = []; tagsOpen = false; pinkShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
+    ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
@@ -2153,8 +2162,9 @@ export async function installOmniViewer(): Promise<void> {
   subscribeViewerPrefs(() => void syncViewerShortcuts(host, toggle));
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
   Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));
-  // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses).
-  Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => open && inside({ clientX: x, clientY: y }, rect));
+  // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses),
+  // nor are taps on Omni's controls floating over the chat (viewer-presence.ts).
+  Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => (open && inside({ clientX: x, clientY: y }, rect)) || chatCovered(x, y));
   // A reply saved: its faces made ahead, and a viewer showing it as it streamed reads the saved one at once.
   if (host.addRisuChatListener) await host.addRisuChatListener('output', () => { scheduleAhead(); endStream(); });
   // The reply on stage baked: read again, once (see rereadBaked).

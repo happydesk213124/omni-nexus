@@ -315,6 +315,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.inline_msg_actions = normalizeInlineMsgActions(card.inline_msg_actions);
   if (card.inline_msg_fan == null) card.inline_msg_fan = false;
   else card.inline_msg_fan = card.inline_msg_fan === true || card.inline_msg_fan === 'true' || card.inline_msg_fan === 1 || card.inline_msg_fan === '1' || card.inline_msg_fan === 'on';
+  card.inline_msg_fan_folded = card.inline_msg_fan_folded === true;
+  card.floating_tag_bar = card.floating_tag_bar === true;
   {
     const raw = Number(card.inline_chat_scale_pct);
     card.inline_chat_scale_pct = Number.isFinite(raw) && raw > 0

@@ -210,6 +210,13 @@ globalThis.__OMNI_MESSAGE_ACTION__ = async (kind, index) => {
     return true;
   } catch (error) { y('error','viewer.message.action',String(error?.message || error)); return String(error?.message || error || '하지 못했습니다.'); }
 };
+// 🔢 in 옴니 뷰어's 태그 tab and on the 🟪 플로팅 태그: the counts, a step first if one is named, by the chat's own
+// serialized writes (omniChangeCount), so every 🔢 range on screen and the settings form show the same numbers.
+globalThis.__OMNI_IMAGE_COUNTS__ = async (kind) => {
+  if (/^(min|max)-(up|down)$/.test(String(kind || ''))) await omniChangeCount(String(kind));
+  const card = t.backendSettings?.card || {}, min = Number(card.image_min || 1);
+  return {min, max: Number(card.image_max || min)};
+};
 function omniMessageCardIds(text) {
   return [...new Set([...String(text).matchAll(/\[\[@inray::([^:\]]+)::[^\]]+\]\]/g)].map(m=>m[1]))];
 }

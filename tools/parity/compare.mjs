@@ -500,6 +500,9 @@ function expectedAssetChange(a,b,at) {
   if (/\.value\.(?:settings|json)\.card\.image_png_original$/.test(at)) return a === undefined && b === false;
   // 박제는 PNG 원본 is opt-in; settings.image_output asserts persistence/export.
   if (/\.value\.(?:settings|json)\.card\.image_png_bake$/.test(at)) return a === undefined && b === false;
+  // 플로팅 태그 and 바로가기툴 접어두기 are new and opt-in (1.x had neither); settings.chat_tools asserts
+  // that they start off, save, export and switch back off.
+  if (/\.value\.(?:settings|json)\.card\.(?:floating_tag_bar|inline_msg_fan_folded)$/.test(at)) return a === undefined && b === false;
   // WebP 메타데이터 쓰기 is on by default, which is the old behaviour; settings.image_output
   // asserts turning it off saves and exports, generation-image-data asserts what it skips.
   if (/\.value\.(?:settings|json)\.card\.image_webp_metadata$/.test(at)) return a === undefined && b === true;
@@ -707,6 +710,7 @@ const INTENTIONAL_DIFF_STEPS = new Set([
  */
 const NEW_ONLY_STEPS = new Map([
   ['settings.image_output', v => v?.defaults && v.saved && v.exported ? null : 'Image quality/upscale/원본 저장 persistence failed'],
+  ['settings.chat_tools', v => v?.defaults && v.saved && v.exported && v.restored ? null : '플로팅 태그 / 바로가기툴 접어두기 must be off by default, save, export and switch back off: ' + JSON.stringify(v)],
   ['cards.upscale_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'Upscale must reject missing cards before charging'],
   ['preset_bindings.roundtrip', v => v?.defaults && v.bad === 'bad_request' && v.omni === 'omni' && v.cleared ? null : 'Preset bindings must follow Omni by default, refuse an unknown preset and clear: ' + JSON.stringify(v)],
   ['character_note.missing', v => v?.ok === false && v.error?.code === 'bad_request' ? null : 'A bot note needs its bot'],

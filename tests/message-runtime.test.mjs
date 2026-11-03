@@ -91,6 +91,58 @@ test('module-owned controls dispatch, reject stale targets, and lazily reuse per
  } finally {await browser.close();}
 });
 
+test('바로가기툴 접어두기: folded, only 🟪 shows; pressed, the seven and the 🔢 panel open; pressed again, they fold',async()=>{
+ const folded=messageControlsDisplayScript(true);
+ assert.equal((folded.out.match(/data-omni-action=/g)||[]).length,7);
+ assert.match(folded.out,/data-omni-folded><label data-omni-fold[^>]*><input type="checkbox">🟪<\/label><button/);
+ assert.doesNotMatch(display.out,/data-omni-fold/,'unfolded unless switched');
+ assert.equal(folded.in,display.in);
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+ try {
+  const page=await browser.newPage({viewport:{width:390,height:700}});
+  const html=folded.out.replace('$1','3').replace('$2','bottom');
+  const seen=await page.evaluate(async html=>{
+   document.body.innerHTML='<div class="risu-chat" data-chat-index="3"><p>본문</p>'+html+'</div>';
+   const footer=document.querySelector('[data-omni-footer]'),label=footer.querySelector('[data-omni-fold]');
+   // The chat's 🔢 panel, as omniToggleCounts appends it (its display inline).
+   const panel=document.createElement('div');panel.setAttribute('x-omni-counts','1');panel.style.cssText='display:flex;gap:6px;align-items:center';panel.textContent='1~3';footer.append(panel);
+   const showing=()=>[...footer.querySelectorAll('button')].filter(b=>getComputedStyle(b).display!=='none').length;
+   const read=()=>({buttons:showing(),panel:getComputedStyle(panel).display,width:Math.round(footer.getBoundingClientRect().width),label:getComputedStyle(label).display,box:getComputedStyle(footer).backgroundColor});
+   const before=read();
+   const r=label.getBoundingClientRect();
+   return {before,at:{x:r.left+r.width/2,y:r.top+r.height/2}};
+  },html);
+  assert.equal(seen.before.buttons,0,'folded: no button');
+  assert.equal(seen.before.panel,'none','folded: no 🔢 panel');
+  assert.notEqual(seen.before.label,'none');
+  assert.ok(seen.before.width<=40,'folded to 🟪 alone');
+  await page.mouse.click(seen.at.x,seen.at.y);
+  const open=await page.evaluate(()=>{const footer=document.querySelector('[data-omni-footer]');return {buttons:[...footer.querySelectorAll('button')].filter(b=>getComputedStyle(b).display!=='none').length,panel:getComputedStyle(footer.querySelector('[x-omni-counts]')).display};});
+  assert.deepEqual(open,{buttons:7,panel:'flex'},'pressed: the seven and the panel');
+  await page.mouse.click(seen.at.x,seen.at.y);
+  const again=await page.evaluate(()=>[...document.querySelectorAll('[data-omni-footer] button')].filter(b=>getComputedStyle(b).display!=='none').length);
+  assert.equal(again,0,'pressed again: folded');
+ } finally {await browser.close();}
+});
+
+test('🔢 for 옴니 뷰어 and the 🟪 bar: the counts read back, a step by the chat\'s own serialized write, an unknown step none',async()=>{
+ const t={backendSettings:{card:{image_min:2,image_max:3}}},writes=[];
+ const pe=async patch=>{await new Promise(r=>setTimeout(r,2));Object.assign(t.backendSettings.card,patch.card);writes.push(patch);};
+ const before=globalThis.__OMNI_IMAGE_COUNTS__,action=globalThis.__OMNI_MESSAGE_ACTION__;
+ try {
+  new Function('t','pe','y','omniRelease','nxUnwrapSafeNodes',runtime)(t,pe,()=>{},async()=>{},async a=>a);
+  const counts=globalThis.__OMNI_IMAGE_COUNTS__;
+  assert.equal(typeof counts,'function');
+  assert.deepEqual(await counts(),{min:2,max:3});
+  assert.equal(writes.length,0,'a read writes nothing');
+  assert.deepEqual(await Promise.all([counts('max-up'),counts('max-up')]).then(r=>r.at(-1)),{min:2,max:5},'quick steps add up');
+  assert.deepEqual(await counts('min-down'),{min:1,max:5});
+  assert.deepEqual(await counts('min-down'),{min:1,max:5},'never under one');
+  assert.deepEqual(await counts('sideways'),{min:1,max:5});
+  assert.deepEqual(writes,[{card:{image_max:4}},{card:{image_max:5}},{card:{image_min:1}}]);
+ } finally {globalThis.__OMNI_IMAGE_COUNTS__=before;globalThis.__OMNI_MESSAGE_ACTION__=action;}
+});
+
 test('module button renderer regression guard rejects a deliberately removed action',()=>{
  const check=s=>assert.equal((s.match(/data-omni-action=/g)||[]).length,7);
  check(buttons);

@@ -460,8 +460,48 @@ try {
   assert.equal(await page.evaluate(()=>uxTestRuntime.t.backendSettings.card.image_png_bake),true);
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
   assert.equal(await page.locator('#nx-image-png-bake').isChecked(),true);
+  // 플로팅 태그 right under 플로팅 뷰어, 바로가기툴 접어두기 right under 채팅안에 바로가기툴 추가: off at first, saved, kept on a repaint.
+  for (const [after,id,key] of [['nx-floating-viewer','nx-floating-tag','floating_tag_bar'],['nx-inline-msg-fan','nx-inline-msg-fan-fold','inline_msg_fan_folded']]) {
+    assert.equal(await page.locator('#'+after).evaluate(el=>el.closest('.row')?.nextElementSibling?.querySelector('input')?.id),id);
+    assert.equal(await page.locator('#'+id).isChecked(),false,`${id}: off by default`);
+    await page.locator('#'+id).setChecked(true);
+    await page.evaluate(()=>uxTestRuntime.flush());
+    assert.equal(await page.evaluate(k=>uxTestRuntime.t.backendSettings.card[k],key),true,`${key} saved`);
+    await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();});
+    assert.equal(await page.locator('#'+id).isChecked(),true,`${id}: survives a repaint`);
+    await page.locator('#'+id).setChecked(false);
+    await page.evaluate(()=>uxTestRuntime.flush());
+    assert.equal(await page.evaluate(k=>uxTestRuntime.t.backendSettings.card[k],key),false);
+  }
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
   assert.equal(await page.locator('#nx-nai-auto-upscale').isChecked(),true);
+  // 생성 장수: Image Min and Max in one row, − + 1~3 − + as the floating viewer's; a step the chat's rule, then saved.
+  {
+    const row=page.locator('.nx-count-row');
+    assert.equal(await row.count(),1);
+    assert.equal(await row.locator('#nx-min').count()+await row.locator('#nx-max').count(),2,'both numbers in the one row');
+    assert.deepEqual(await row.locator('.nx-count').evaluate(el=>[...el.children].map(n=>n.matches('.nx-count-range')?'range':n.textContent)),['−','+','range','−','+']);
+    const tops=await row.locator('.nx-count > *').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top+n.getBoundingClientRect().height/2)));
+    assert.equal(new Set(tops).size,1,'one line');
+    const label=await row.locator('.row-text b').boundingBox(),group=await row.locator('.nx-count').boundingBox();
+    assert.ok(Math.abs((label.y+label.height/2)-(group.y+group.height/2))<group.height/2,'beside its label, not under it');
+    const min=page.locator('#nx-min'),max=page.locator('#nx-max');
+    await min.fill('1'); await max.fill('3');
+    await row.getByRole('button',{name:'최대 늘리기'}).click();
+    assert.equal(await max.inputValue(),'4');
+    await row.getByRole('button',{name:'최소 줄이기'}).click();
+    assert.equal(await min.inputValue(),'1','never under one');
+    for (let i=0;i<4;i++) await row.getByRole('button',{name:'최소 늘리기'}).click();
+    assert.deepEqual([await min.inputValue(),await max.inputValue()],['4','4'],'the least stops at the most');
+    await row.getByRole('button',{name:'최대 줄이기'}).click();
+    assert.equal(await max.inputValue(),'4','the most stops at the least');
+    await page.evaluate(()=>uxTestRuntime.flush());
+    assert.deepEqual(await page.evaluate(()=>[uxTestRuntime.t.backendSettings.card.image_min,uxTestRuntime.t.backendSettings.card.image_max]),[4,4]);
+    await page.evaluate(async()=>{uxTestRuntime.t.uiTab='dashboard';await uxTestRuntime.paint();uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
+    assert.deepEqual([await page.locator('#nx-min').inputValue(),await page.locator('#nx-max').inputValue()],['4','4'],'survives a repaint');
+    await page.locator('#nx-min').fill('1'); await page.locator('#nx-max').fill('3');
+    await page.evaluate(()=>uxTestRuntime.flush());
+  }
   const locationWeight = page.locator('#nx-location-tag-weight');
   assert.equal(await locationWeight.inputValue(), '1');
   for (const value of ['0.5', '0', '2', '1']) {

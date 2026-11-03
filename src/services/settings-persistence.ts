@@ -1,6 +1,7 @@
 import type { Settings } from '../core/types';
 import { deepcopy } from '../core/util/object';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { messageControlsOf } from '../domain/message-controls';
 import { ensureOmniHelperModule } from '../storage/omni-helper-module';
 import { ensureInlineTagModule } from '../storage/inline-tag-module';
 import { saveSettingsToStorage } from '../storage/settings-store';
@@ -18,7 +19,7 @@ function syncDisplay(snapshot: Settings): void {
   const card = snapshot.card;
   const folded = card?.persist_chat_images_folded === true;
   const scale = card?.inline_chat_scale_pct;
-  const controls = { enabled: card?.inline_msg_fan === true, userchat: card?.userchat === true };
+  const controls = messageControlsOf(card);
   const helper = card.omni_helper_prompt === true;
   if (helper !== helperEnabled) {
     helperEnabled = helper;

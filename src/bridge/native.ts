@@ -34,6 +34,7 @@ import {
   setVibePreviewUrl,
 } from '../services/context';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { messageControlsOf } from '../domain/message-controls';
 import { ensureOmniHelperModule } from '../storage/omni-helper-module';
 import { ensureInlineTagModule } from '../storage/inline-tag-module';
 import { migrateAppearanceToCharacters, migrateCharacterIdentity } from '../services/characters';
@@ -103,7 +104,7 @@ async function boot(): Promise<void> {
     dbg('boot.inline-tags', {message:String(err)}, 'warn');
   });
   if (getConfig().card?.persist_chat_images || getConfig().card?.inline_msg_fan) {
-    void ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, { enabled: getConfig().card?.inline_msg_fan === true, userchat: getConfig().card?.userchat === true }).catch((err: unknown) => {
+    void ensureInrayDisplayModule(getConfig().card?.persist_chat_images_folded === true, getConfig().card?.inline_chat_scale_pct, messageControlsOf(getConfig().card)).catch((err: unknown) => {
       dbg('boot.inray-display', { message: String((err as Error)?.message || err) }, 'warn');
     });
   }

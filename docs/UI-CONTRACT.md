@@ -351,6 +351,16 @@ select. When on, a boxed row `⚛️` `🔃` `🟥` `👨‍👩‍👧‍👦` 
 is appended to `.chattext` on character bubbles that pass
 `shouldMountMsgActions`, including unselected ones already in the DOM.
 The chip rows stay as they are.
+`card.inline_msg_fan_folded` (대시보드 「바로가기툴 접어두기」, default off) folds
+that row to `🟪`: the display regex puts a label with a hidden checkbox first,
+and CSS `:has()` shows the seven only while it is checked, so the browser opens
+it with no plugin round trip; Risu drawing the message again folds it again.
+`card.floating_tag_bar` (대시보드 「플로팅 태그」, default off) puts the same seven
+on a fixed `🟪` at the chat screen's right edge (`src/image-ui/tag-float.ts`),
+run through `__OMNI_MESSAGE_ACTION__` on the newest reply at the chat's bottom,
+else the reply in the middle of the screen. Its `🔢`, and 옴니 뷰어 태그's, open
+`− + 1~3 − +` and step the counts through `__OMNI_IMAGE_COUNTS__` (the chat's own
+serialized write) instead of opening 생성 옵션.
 The sixth chip is `refresh` (`🔃`). It abandons inline frames on that DOM
 bubble and restamps from linked cards / pending spinners. It does not unlink
 hashes and does not start a tagger job.

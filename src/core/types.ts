@@ -257,6 +257,10 @@ export interface CardSettings {
   inline_msg_actions?: 'off' | 'legacy' | 'compat' | boolean;
   /** Circle at message end; tap fans out tag/regen/stop/char/preset/refresh. */
   inline_msg_fan?: boolean;
+  /** 바로가기툴 접어두기: that row shows only 🟪 until it is pressed. */
+  inline_msg_fan_folded?: boolean;
+  /** 플로팅 태그: 🟪 on the chat screen's right edge, opening the message row for the reply on screen. */
+  floating_tag_bar?: boolean;
   /** Insert shot images into chat bubbles at LLM `line`. */
   inline_chat_images?: boolean;
   /** After a shot is ready, merge it into the saved Risu message. */

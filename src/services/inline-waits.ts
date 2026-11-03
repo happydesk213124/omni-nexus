@@ -8,6 +8,7 @@ import { dropInlineWait, dropInlineWaits, getInlineWait } from '../storage/inlin
 import { parkJobSpinners, readStoredMessageBody, writeWaitImages } from './chat-bake';
 import { dbg } from '../core/debug';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { messageControlsOf } from '../domain/message-controls';
 import { streamBlockBusy } from './stream-jobs';
 import { statedLocation, statedOutfits } from './stream-continuity';
 import { getConfig } from './context';
@@ -37,7 +38,7 @@ export async function parkInlineShots(body: Record<string, unknown>): Promise<Ap
   const ns = (Array.isArray(body.blocks) ? body.blocks : []).map(row => toInt((row as { n?: unknown } | null)?.n, 0)).filter(n => n > 0);
   if (!ns.length) return { ok: true, parked: 0 };
   const card = getConfig().card;
-  await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, { enabled: card.inline_msg_fan === true, userchat: card.userchat === true });
+  await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, messageControlsOf(card));
   return { ok: true, parked: ns.length, wait_ids: ns.map(n => `b${n}`) };
 }
 

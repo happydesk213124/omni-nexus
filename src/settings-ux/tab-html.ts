@@ -173,6 +173,8 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-image-webp-metadata', 'image_webp_metadata', true],
     ['nx-image-png-original', 'image_png_original', false],
     ['nx-image-png-bake', 'image_png_bake', false],
+    ['nx-floating-tag', 'floating_tag_bar', false],
+    ['nx-inline-msg-fan-fold', 'inline_msg_fan_folded', false],
     ['nx-auto-gen-char-limit-on', 'auto_gen_char_limit_enabled', false],
   ] as const) {
     out.querySelector<HTMLInputElement>('#' + id)?.toggleAttribute('checked', card[key] == null ? defaultOn : Boolean(card[key]));
