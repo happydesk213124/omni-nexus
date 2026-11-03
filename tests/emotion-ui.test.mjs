@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 const PNG = [137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,6,0,0,0,31,21,196,137,0,0,0,13,73,68,65,84,120,156,99,248,15,4,0,9,251,3,253,227,85,242,156,0,0,0,0,73,69,78,68,174,66,96,130];
 
 test('감정 에셋: its page saves settings, and a TTS card opens on its faces with the bot image and a make button', async () => {
-  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {ttsData,saveTtsData} from './src/storage/tts-store';import {viewerPrefs} from './src/storage/viewer-prefs';import {emotionData} from './src/storage/emotion-store';import {setSoundPage} from './src/sound-ui/page';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';Object.assign(window,{mountTts,ttsSettingsHtml,ttsData,saveTtsData,emotionData,viewerPrefs,setSoundPage,settingsUxCss,previewChrome});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+  const built = await build({ stdin: { contents: `import {mountTts,ttsSettingsHtml} from './src/tts-ui/mount';import {ttsData,saveTtsData} from './src/storage/tts-store';import {viewerPrefs} from './src/storage/viewer-prefs';import {emotionData} from './src/storage/emotion-store';import {setSoundPage,focusSoundPanel} from './src/sound-ui/page';import {settingsUxCss} from './src/settings-ux/styles';import {previewChrome} from './src/settings-ux/tab-html';Object.assign(window,{mountTts,ttsSettingsHtml,ttsData,saveTtsData,emotionData,viewerPrefs,setSoundPage,focusSoundPanel,settingsUxCss,previewChrome});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 420, height: 860 } }), errors = [];
@@ -144,6 +144,17 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     assert.equal(await page.locator('[data-sheet-links]').count(), 0);
     const [tab, link] = await Promise.all(['[data-emo-tab="faces"]', '#c-illustration-link'].map(s => page.locator(s).boundingBox()));
     assert.ok(Math.abs(tab.y - link.y) < 2 && link.x > tab.x, 'on the same line, after 감정 에셋: ' + JSON.stringify({ tab, link }));
+    // 옴니 뷰어's name over a line: the window comes up on that person's sheet, ahead of its 감정 에셋 view. Their faces
+    // are there all the same (the view once showed nobody).
+    await page.evaluate(async () => {
+      document.getElementById('character-dialog').close();
+      window.focusSoundPanel('tts-characters', '오미선', { sheet: { id: 't-misun', name: '오미선' } }); window.setSoundPage('people');
+      document.getElementById('nx-main').innerHTML = window.ttsSettingsHtml(); await window.mountTts();
+    });
+    await page.waitForFunction(() => document.getElementById('character-dialog').open && document.getElementById('c-name').value === '오미선');
+    await page.locator('[data-emo-tab="faces"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#emo-char-grid .emo-tile').length >= 15);
+    assert.equal(await page.locator('.emo-pic').first().getAttribute('data-face'), 'cry', 'her faces, the one her reply showed first');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
