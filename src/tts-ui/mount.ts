@@ -67,5 +67,7 @@ export async function mountTts(): Promise<void> {
   document.addEventListener('omnitts-library',refresh);
   await mountSound(root, tab, live); if(!live())return;
   await mountEmotion(root, live); if(!live())return;
+  // A sheet opened above (옴니 뷰어's name over a line) came up before 감정 에셋's view of it: told its card now.
+  characters.announce();
   if(ttsData().settings.enabled)promptInitialAudioActivation();
 }

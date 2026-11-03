@@ -41,6 +41,8 @@ export class TtsCharacters {
   private batch = false;
   private picked='';
   private openView='';
+  /** The card the sheet opened on and the view it opened in, as its 감정 에셋 view was told. */
+  private opened = { id: '', view: '' };
   private anchor='';
   private selected = new Set<string>();
   private references: CharacterRecord[] = [];
@@ -245,9 +247,16 @@ export class TtsCharacters {
     const main = form.querySelector<HTMLElement>('.character-main-fields'); if (main) main.style.gridTemplateColumns = role ? '1fr 1fr' : '';
     text('character-dialog-title', role ? `${TTS_ROLE_NAMES[role]} 카드 설정` : '캐릭터 음성 설정');
     el('delete-character').hidden = !character || !!role; dialog('character-dialog');
-    // The sheet's 감정 에셋 view (emotion-ui) follows the card it opens on.
-    document.dispatchEvent(new CustomEvent('omnitts-character-open', { detail: { id: character?.id || '', view: this.openView } })); this.openView = '';
+    this.opened = { id: character?.id || '', view: this.openView }; this.openView = '';
+    this.announce();
     text('character-save-status',character ? '수정하면 자동 저장됩니다.' : '이름을 입력하면 자동 저장됩니다.');
+  }
+  /**
+   * The sheet's 감정 에셋 view (emotion-ui) follows the card it is open on. Told again once that view is bound: a sheet
+   * 옴니 뷰어 opens is up before it, and its 감정 에셋 showed nobody.
+   */
+  announce(): void {
+    if (el<HTMLDialogElement>('character-dialog')?.open) document.dispatchEvent(new CustomEvent('omnitts-character-open', { detail: this.opened }));
   }
   /** The card whose voice is actually heard: a following bot role card sounds like the global one. */
   private effective(c: TtsCharacter): TtsCharacter { return (c.role && resolveTtsRole(c.role, ttsData().characters, c.scope)) || c; }
