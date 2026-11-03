@@ -498,6 +498,16 @@
       transition: transform 150ms ease-out;
     }
     .sw input:checked::after { transform: translateX(18px); }
+    /* 생성 장수: the floating viewer's − + 1~3 − + in one row, the numbers still typeable. */
+    .nx-count-row .row-text { min-width: 4.5em; }
+    .nx-count { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+    .nx-count button { min-width: 40px; height: 40px; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: inherit; font: 22px/1 system-ui, sans-serif; cursor: pointer; touch-action: manipulation; }
+    .nx-count button:active { transform: scale(.94); }
+    .nx-count-range { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; font-variant-numeric: tabular-nums; }
+    .nx-count-range input[type="number"] { width: 2.3em; min-height: 32px; padding: 2px 0; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+    .nx-count-range input[type="number"]:focus { background: var(--surface-2); outline: none; }
+    .nx-count-range input::-webkit-inner-spin-button, .nx-count-range input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    @media (max-width: 420px) { .nx-count { gap: 4px; } .nx-count button { min-width: 34px; height: 36px; font-size: 20px; } .nx-count-range { min-width: 48px; } }
     .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); }
     .seg button {
       flex: 1; min-height: 34px; border: 0; border-radius: 10px;
@@ -1160,6 +1170,7 @@
           <div class="stack">
             <label class="row"><span class="row-text"><b>Power ON</b></span><span class="sw"><input id="nx-power" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>플로팅 뷰어</b></span><span class="sw"><input id="nx-floating-viewer" type="checkbox" checked></span></label>
+            <label class="row" data-nx-help-id="nx-floating-tag"><span class="row-text"><b>플로팅 태그</b><small>오른쪽 🟪 · 누르면 메시지 버튼 줄</small></span><span class="sw"><input id="nx-floating-tag" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>디버그 패널</b></span><span class="sw"><input id="nx-debug-panel" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>Risu 설정 바로가기</b></span><span class="sw"><input id="nx-risu-settings-button" type="checkbox" checked></span></label>
             <div class="row" style="display:none"><span class="row-text"><b>상시 이미지 크기 (%)</b></span><input class="ctrl" id="nx-inline-pct" type="number" min="0" step="10" value="100"></div>
@@ -1200,6 +1211,7 @@
             <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked disabled></span></label>
             <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>채팅안에 바로가기툴 추가</b></span><span class="sw"><input id="nx-inline-msg-fan" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-inline-msg-fan-fold"><span class="row-text"><b>바로가기툴 접어두기</b><small>🟪를 눌러 펼침</small></span><span class="sw"><input id="nx-inline-msg-fan-fold" type="checkbox"></span></label>
             <div class="row"><span class="row-text"><b>선택된글 위치</b></span>
               <select class="ctrl" id="nx-inline-text-side"><option value="before" selected>글자 앞</option><option value="after">글자 뒤</option></select>
             </div>
@@ -1248,8 +1260,9 @@
         <div class="group">
           <h3>기본</h3>
           <div class="stack">
-            <div class="row"><span class="row-text"><b>Image Min</b></span><input class="ctrl" id="nx-min" type="number" min="1" max="6" value="3"></div>
-            <div class="row"><span class="row-text"><b>Image Max</b></span><input class="ctrl" id="nx-max" type="number" min="1" max="6" value="3"></div>
+            <div class="row nx-count-row"><span class="row-text"><b>생성 장수</b><small>최소 ~ 최대</small></span>
+              <span class="nx-count" role="group" aria-label="생성 장수"><button type="button" data-nx-count="min-down" title="최소 줄이기" aria-label="최소 줄이기">−</button><button type="button" data-nx-count="min-up" title="최소 늘리기" aria-label="최소 늘리기">+</button><span class="nx-count-range"><input id="nx-min" type="number" min="1" step="1" inputmode="numeric" value="1" aria-label="최소 장수">~<input id="nx-max" type="number" min="1" step="1" inputmode="numeric" value="3" aria-label="최대 장수"></span><button type="button" data-nx-count="max-down" title="최대 줄이기" aria-label="최대 줄이기">−</button><button type="button" data-nx-count="max-up" title="최대 늘리기" aria-label="최대 늘리기">+</button></span>
+            </div>
             <div class="row"><span class="row-text"><b>캐릭터 수 제한</b></span><input class="ctrl" id="nx-char-max" type="number" min="1" max="6" value="6"></div>
             <div class="row"><span class="row-text"><b>포함할 채팅수</b></span><input class="ctrl" id="nx-include-max" type="number" min="0" max="20" value="0"></div>
             <div class="row" hidden><span class="row-text"><b>Include Min</b></span><input class="ctrl" id="nx-include-min" type="number" min="0" max="20" value="0"></div>
@@ -2575,6 +2588,10 @@
     "title": "플로팅 뷰어",
     "body": "채팅 위에 이미지 창을 항상 띄워 둡니다. 끌어서 옮기고 모서리를 잡아 크기를 바꿀 수 있습니다. 캐릭터·프롬프트 수정 창이 열리면 잠시 숨겨집니다."
   },
+  "nx-floating-tag": {
+    "title": "플로팅 태그",
+    "body": "채팅 화면 오른쪽에 🟪 버튼을 띄웁니다. 누르면 옴니 뷰어의 태그 탭처럼 ⚛️ 태그 생성 · 🔃 전체 이미지 리롤 · 👨‍👩‍👧‍👦 캐릭터 · 🟥 중지 · 📚 프리셋 · ✒️ 작가 노트 · 🔢 생성 장수 줄이 펼쳐지고, 다시 누르거나 다른 곳을 누르면 접힙니다. 버튼은 채팅 맨 아래를 보고 있으면 최신 답장에, 위로 올려 읽고 있으면 화면 가운데 답장에 실행됩니다. 🔢는 아래 줄에서 − +로 최소·최대 장수를 바로 바꿉니다. 옴니 뷰어나 설정 창이 열려 있으면 숨겨집니다."
+  },
   "nx-overlay": {
     "title": "채팅 왼쪽 줄 오버레이",
     "body": "채팅 왼쪽 핀·스티키 이미지를 보여 줍니다. 꺼도 내부 동기화는 유지하고, 상시 이미지 0% + 핀을 화면 밖으로 치워 가려 둡니다(꺼서 통째로 뜯으면 렉이 나서). 메시지 클릭·말풍선 삽화는 그대로입니다."
@@ -2610,6 +2627,10 @@
   "nx-inline-msg-fan": {
     "title": "채팅안에 바로가기툴 추가",
     "body": "메시지 위·아래에 바로가기 버튼 줄을 붙입니다. ⚛️=이 메시지 태그 생성, 🔃=메시지 안 이미지 전체 리롤, 👨‍👩‍👧‍👦=캐릭터 설정 탭 열기, 🟥=진행 중 생성 중지, 📚=스타일 프리셋 탭 열기, ✒️=작가 노트 열기, 🔢=생성 장수 조절."
+  },
+  "nx-inline-msg-fan-fold": {
+    "title": "바로가기툴 접어두기",
+    "body": "채팅안에 바로가기툴 줄을 🟪 하나로 접어 둡니다. 🟪를 누르면 ⚛️ 🔃 👨‍👩‍👧‍👦 🟥 📚 ✒️ 🔢가 펼쳐지고, 다시 누르면 접힙니다. Risu가 그 메시지를 다시 그리면(수정·새로고침) 다시 접힌 채로 나옵니다. 이미 열린 채팅은 한 번 다시 그리면 적용됩니다."
   },
   "nx-inline-chat-scale": {
     "title": "이미지 채팅 배율 (%)",
@@ -2974,7 +2995,7 @@
     "title": "SDXL식 강조",
     "body": "켜면 NAI로 보내기 직전에 N::태그::·{태그} 강조를 SDXL식 (태그:가중치)·((태그))로 바꿔서 보냅니다. 저장된 프롬프트와 카드는 그대로 둡니다. ComfyUI 전송은 항상 변환됩니다."
   }
-}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-min":{"title":"Image Min","body":"한 메시지에서 최소 몇 장을 만들지입니다."},"nx-max":{"title":"Image Max","body":"한 메시지에서 최대 몇 장을 만들지입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"전처리(저능력 모델용)","body":"Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요."}});
+}, {"nx-gallery-fab":{"title":"갤러리 단추","body":"채팅 화면에 갤러리(탐색)를 여는 떠 있는 단추를 둡니다."},"nx-userchat":{"title":"유저 채팅에도","body":"유저가 쓴 말에도 이미지 생성·박제를 허용합니다. 「모든 메시지 이미지 생성」과 같이 쓰입니다."},"nx-include-min":{"title":"Include Min","body":"최근 문맥을 최소 몇 개까지 넣을지입니다. 0이면 하한을 두지 않습니다."},"nx-include-max":{"title":"포함할 채팅수","body":"최근 문맥을 최대 몇 개까지 넣을지입니다. 0이면 상한을 두지 않습니다."},"nx-char-max":{"title":"캐릭터 수 제한","body":"한 장에 char1부터 몇 명까지 넣을지입니다. 만화 페이지는 이 제한을 받지 않습니다."},"nx-min":{"title":"생성 장수","body":"한 메시지에서 만들 그림 수입니다. 왼쪽 − +는 최소, 오른쪽 − +는 최대이고 가운데 숫자를 눌러 바로 입력해도 됩니다. 최소는 1부터이고 최대를 넘지 않습니다. 플로팅 뷰어·채팅 바로가기툴·옴니 뷰어 태그·플로팅 태그의 🔢와 같은 값입니다."},"nx-person-tag-mode":{"title":"사람 태그 자동넣기","body":"성별 분리(1girl/1boy) / girls / people / 안 넣기."},"nx-preprocess":{"title":"전처리(저능력 모델용)","body":"Gemma 같은 소형 모델이 장면을 정리하기 쉽도록, 메인 태거에 설정한 모델을 한 번 더 호출합니다. 현재 메시지에서 인물·장소·행동·복장과 원문 줄 번호를 먼저 정리하고, 원문과 함께 최종 태깅에 참고시킵니다. 이미지 최소·최대 수를 따르되 부족한 장면을 지어내지는 않습니다. 호출 시간과 토큰이 추가되며 품질 향상은 보장되지 않습니다. 프롬프트 탭의 전처리 기본값 업데이트가 표시되면 해당 항목의 기본값을 눌러 적용하세요."}});
     const HELP_ALIAS = {
       "nx-stream-keywords-on": "nx-stream-keywords",
       "nx-stream-lines-on": "nx-stream-lines",
@@ -2988,7 +3009,8 @@
       "nx-comic-gen-ratio": "nx-comic-ratio",
       "nx-comic-author-note": "nx-comic-note",
       "nx-comic-cfg-rescale": "nx-comic-rescale",
-      "nx-comic-llm-batch": "nx-comic-batch"
+      "nx-comic-llm-batch": "nx-comic-batch",
+      "nx-max": "nx-min"
     };
     function helpKey(id) {
       return HELP_ALIAS[id] || (HELP[id] ? id : "");

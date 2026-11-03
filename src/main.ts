@@ -18,6 +18,7 @@ import { installTtsHost } from './tts-ui/host-chat';
 import { installInlineTags } from './services/inline-tagging';
 import { installWaitTaps } from './image-ui/wait-taps';
 import { installNoteExtras } from './image-ui/note-extras';
+import { installTagFloat } from './image-ui/tag-float';
 import { restorePendingShotAssets } from './storage/shot-character';
 import { installOmniViewer } from './viewer/omni-viewer';
 import { installQuickSetup } from './settings-ux/quick-setup';
@@ -29,6 +30,7 @@ void installTtsHost().catch(error => dbg('tts.boot.failed', { message: String(er
 void installInlineTags({ ready }).catch(error => dbg('inline-tags.boot', { message: String(error) }, 'warn'));
 installWaitTaps();
 installNoteExtras();
+installTagFloat();
 void installOmniViewer().catch(error => dbg('viewer.boot', { message: String(error) }, 'warn'));
 void installQuickSetup({ ready }).catch(error => dbg('quick-setup.boot', { message: String(error) }, 'warn'));
 // Shots saved but not registered when the app last closed (shot-character).

@@ -64,14 +64,15 @@ function afterExternalRules<T extends {comment: string; flag: string}>(script: T
 
 let displayTail:Promise<unknown>=Promise.resolve();
 const displayPending=new Map<string,Promise<boolean>>();
-export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: { enabled: boolean; userchat: boolean }): Promise<boolean> {
+type MessageControls = { enabled: boolean; userchat: boolean; folded?: boolean };
+export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: MessageControls): Promise<boolean> {
   const key=JSON.stringify([folded,scalePct,controls]);
   const existing=displayPending.get(key);if(existing)return existing;
   const pending=displayTail.then(()=>updateInrayDisplayModule(folded,scalePct,controls));
   displayPending.set(key,pending);displayTail=pending.catch(()=>false);
   void pending.finally(()=>displayPending.delete(key));return pending;
 }
-async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: { enabled: boolean; userchat: boolean }): Promise<boolean> {
+async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: MessageControls): Promise<boolean> {
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return false;
   const host = risuHost();
   if (!host?.getDatabase || !host.setDatabase) return false;
@@ -174,11 +175,14 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
     const pair = afterExternalRules(framedAssetDisplayRegexScript(folded,scalePct));
     const history = afterExternalRules(historyDisplayRegexScript(folded, scalePct));
     const paired = [history, pair,...(modules[idx]!.regex || []).filter(row=>scriptComment(row)!==pair.comment && scriptComment(row)!==history.comment)];
+    // A write that does not say how the row is (no controls) keeps it folded or not, as the module has it.
+    const shownRow = paired.find(row => scriptComment(row) === 'omni-message-controls-display') as { out?: unknown } | undefined;
+    const rowFolded = controls ? controls.folded === true : String(shownRow?.out ?? '').includes('data-omni-folded');
     const late = paired.filter(row => scriptComment(row) !== 'omni-message-controls-display').map(row => {
       const order = displayOrders[scriptComment(row)];
       return order === undefined ? row : { ...(row as Record<string, unknown>), ableFlag: true, flag: `g<order ${order}>` };
     });
-    late.push(messageControlsDisplayScript());
+    late.push(messageControlsDisplayScript(rowFolded));
     if(JSON.stringify(late)!==JSON.stringify(modules[idx]!.regex)) {
       modules[idx]={...modules[idx],regex:late};changed=true;
     }

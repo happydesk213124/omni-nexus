@@ -126,6 +126,11 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 /* 태그: the chat's own message controls (⚛️ 태그 생성 … 🔢 생성 장수) for the reply on stage, a row slid out over its tab. */
 [x-omni-vn] [data-vn-tagbar]{position:absolute;left:0;top:calc(38% + 84px);z-index:5;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100% - 16px);padding:6px;background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;translate:-105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-tagbar] button{width:40px;height:40px;min-width:0;padding:0;border:0;border-radius:10px;font-size:20px;letter-spacing:0;background:rgba(255,255,255,.08)}
+/* Its 🔢: − + 1~3 − + as the floating viewer's (the left pair the least, the right the most), a line of the row
+   itself, so it is under the buttons however they wrap and slides with them. */
+[x-omni-vn] [data-vn-counts]{display:none;flex-basis:100%;align-items:center;gap:6px;margin-top:2px;padding-top:6px;border-top:1px solid var(--line)}
+[x-omni-vn] [data-vn-counts] button{font-size:22px}
+[x-omni-vn] [data-vn-range]{min-width:54px;text-align:center;font:600 15px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#efe9da}
 /* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices. */
 [x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:2;pointer-events:none}
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
@@ -179,7 +184,9 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
   [x-omni-vn] [data-vn-menu]{left:16px;right:16px;bottom:15px;gap:1px}[x-omni-vn] [data-vn-menu] button{height:40px;min-width:40px;padding:0 8px;font-size:12.5px}[x-omni-vn] [data-vn-act="bgm"]{width:68px}
   [x-omni-vn] [data-vn-menu] [data-vn-act="first"],[x-omni-vn] [data-vn-menu] [data-vn-act="prev"],[x-omni-vn] [data-vn-menu] [data-vn-act="next"],[x-omni-vn] [data-vn-menu] [data-vn-act="last"]{min-width:40px;font-size:16px}[x-omni-vn] [data-vn-next]{bottom:62px}[x-omni-vn] [data-vn-voicewait]{bottom:58px}
   [x-omni-vn] [data-vn-act="strip"],[x-omni-vn] [data-vn-act="msgs"],[x-omni-vn] [data-vn-act="elems"],[x-omni-vn] [data-vn-act="tags"]{padding:16px 10px;font-size:12.5px}[x-omni-vn] [data-vn-act="elems"]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-act="eledit"]{right:42px;top:calc(38% + 96px)}[x-omni-vn] [data-vn-el] i{padding:8px 12px;font-size:12.5px}[x-omni-vn] [data-vn-msg]{padding:10px 11px}[x-omni-vn] [data-vn-dock] button{height:50px}[x-omni-vn] [data-vn-log]{bottom:62px}
-  [x-omni-vn] [data-vn-act="tags"],[x-omni-vn] [data-vn-tagbar]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-tagbar] button{width:44px;height:44px}[x-omni-vn] [data-vn-act="zoom"]{width:30px;height:30px}
+  [x-omni-vn] [data-vn-act="tags"],[x-omni-vn] [data-vn-tagbar]{top:calc(38% + 96px)}[x-omni-vn] [data-vn-tagbar] button{width:44px;height:44px}
+  /* Seven 44px buttons in one line on a 360px phone (at 4px apart the last, 🔢, went down alone). */
+  [x-omni-vn] [data-vn-tagbar]{gap:3px}[x-omni-vn] [data-vn-act="zoom"]{width:30px;height:30px}
   [x-omni-vn] [data-vn-cgchips]{bottom:120px}[x-omni-vn] [data-vn-cgchips] button{height:34px;padding:0 12px;font-size:12.5px}[x-omni-vn] [data-vn-rates]{bottom:66px}[x-omni-vn] [data-vn-rates] button{height:40px;min-width:52px}}
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
@@ -207,13 +214,17 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 export const CAST_CHIPS = 6;
 // 태그's row: the message controls' own kinds, each `m` + its kind (mtag, mregen …).
 const TAG_BAR = MESSAGE_CONTROL_KINDS.map(([kind, icon, label]) => `<button data-vn-act="m${kind}" type="button" title="${label}" aria-label="${label}">${icon}</button>`).join('');
+// Its 🔢 row: each step `c` + its name without the dash (cmindown …), the range between the pairs.
+export const COUNT_STEPS = [['cmindown', '−', '최소 줄이기'], ['cminup', '+', '최소 늘리기'], ['cmaxdown', '−', '최대 줄이기'], ['cmaxup', '+', '최대 늘리기']] as const;
+const countButton = ([act, glyph, label]: typeof COUNT_STEPS[number]) => `<button data-vn-act="${act}" type="button" title="${label}" aria-label="${label}">${glyph}</button>`;
+const COUNT_BAR = `${countButton(COUNT_STEPS[0])}${countButton(COUNT_STEPS[1])}<span data-vn-range></span>${countButton(COUNT_STEPS[2])}${countButton(COUNT_STEPS[3])}`;
 const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div>
 <div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
-<button data-vn-act="tags" type="button">태그</button><div data-vn-tagbar>${TAG_BAR}</div>
+<button data-vn-act="tags" type="button">태그</button><div data-vn-tagbar>${TAG_BAR}<div data-vn-counts>${COUNT_BAR}</div></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
 <button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
 <div data-vn-note></div><div data-vn-cgchips>${CHIPS}</div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
@@ -297,6 +308,8 @@ export interface StageState {
   rates?: boolean;
   /** 태그's row of message controls is out. */
   tags?: boolean;
+  /** Its 🔢 row is out under it, showing these counts ("1~3"). */
+  counts?: string;
   /** The reply on stage has pink slots and is not streaming: 전체 생성 shows. `pinkBusy`: they are being made. */
   pink?: boolean;
   pinkBusy?: boolean;
@@ -401,6 +414,7 @@ export function stageCss(s: StageState): string {
     s.rate !== undefined ? `[x-omni-vn] [data-vn-act="rate"]::after{content:"${Number(s.rate)}×"}@media (max-width:380px){[x-omni-vn] [data-vn-act="rate"]::after{content:"${Number(s.rate)}"}}` : '',
     s.rates ? '[x-omni-vn] [data-vn-rates]{display:flex}[x-omni-vn] [data-vn-menu] [data-vn-act="rate"]{color:var(--gold)}' : '',
     s.tags ? '[x-omni-vn] [data-vn-tagbar]{translate:0 0}[x-omni-vn] [data-vn-act="tags"]{opacity:0}' : '',
+    s.tags && s.counts ? `[x-omni-vn] [data-vn-counts]{display:flex}[x-omni-vn] [data-vn-tagbar] [data-vn-act="mcounts"]{background:rgba(227,194,122,.28)}[x-omni-vn] [data-vn-range]::after{content:${JSON.stringify(s.counts)}}` : '',
     s.pink ? `[x-omni-vn] [data-vn-act="pink"]{display:inline-flex}${s.pinkBusy ? '[x-omni-vn] [data-vn-act="pink"]{opacity:.7}[x-omni-vn] [data-vn-act="pink"]::before{border-color:rgba(236,72,153,.3);border-top-color:#ec4899;background:transparent;animation:vn-spin .8s linear infinite}' : ''}` : '',
   ].filter(Boolean).join('\n');
 }

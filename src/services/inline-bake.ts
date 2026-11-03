@@ -2,6 +2,7 @@ import { dbg } from '../core/debug';
 import { attachBakeToSpinner, messageHasBakeTokenForCard, removeJobSpinners, replaceSpinner, spinnerDimensions, stripBakeTokensExceptJobs } from '../domain/chat-bake';
 import { replaceInlineShotBlock, stripInlineCastBlocks, stripOpenInlineShotBlock, waitingInlineBlock } from '../domain/prompt/inline-shots';
 import { ensureInrayDisplayModule } from '../storage/inray-display-module';
+import { messageControlsOf } from '../domain/message-controls';
 import { getConfig } from './context';
 import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBatch } from './chat-bake';
 
@@ -23,7 +24,7 @@ import { rewriteMessageById, shotBakeToken, type jobChatTarget, type LineBakeBat
 export async function writeInlineGroupSlots(target: ReturnType<typeof jobChatTarget>, batches: LineBakeBatch[], final = false): Promise<{ written: boolean; unplaced: number }> {
   if (!batches.some(batch => batch.shots.length)) return { written: true, unplaced: 0 };
   const card = getConfig().card;
-  if (!final) await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, { enabled: card.inline_msg_fan === true, userchat: card.userchat === true });
+  if (!final) await ensureInrayDisplayModule(card.persist_chat_images_folded === true, card.inline_chat_scale_pct, messageControlsOf(card));
   const key = (jobId: string, shot: number) => `${jobId}_${shot}`;
   const tokens = new Map<string, string>();
   for (const batch of batches) for (const shot of batch.shots) {

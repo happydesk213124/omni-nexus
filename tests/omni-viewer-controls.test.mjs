@@ -65,6 +65,14 @@ async function viewerPage(browser, { width = 420, height = 860, mobile = false }
     window.__OMNI_SHOT_ACTION__ = async (...args) => { window.shotCalls.push(args); return true; };
     window.__OMNI_SHOT_TAGS_OPEN__ = () => true;
     window.__OMNI_MESSAGE_ACTION__ = async (...args) => { window.messageCalls.push(args); return true; };
+    // The chat's counts (message-runtime.js): a step by its rule, the counts read back.
+    window.countCalls = []; window.counts = { min: 1, max: 3 };
+    window.__OMNI_IMAGE_COUNTS__ = async kind => {
+      window.countCalls.push(kind ?? null);
+      const c = window.counts;
+      if (kind === 'max-up') c.max++; else if (kind === 'min-up' && c.min < c.max) c.min++; else if (kind === 'min-down' && c.min > 1) c.min--; else if (kind === 'max-down' && c.max > c.min) c.max--;
+      return { ...c };
+    };
   }, { png: PNG, tall: TALL, reply });
   await page.evaluate(() => { window.crypto.randomUUID = undefined; });
   await page.addScriptTag({ content: built.outputFiles[0].text });
@@ -145,7 +153,8 @@ test('옴니 뷰어 · 태그 under 메시지 slides out the message\'s own cont
     const out = async () => (await box('[data-vn-tagbar]')).x >= -1;
     assert.equal(await out(), false, 'tucked away at first');
     await tagsOut();
-    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tagbar] button')].map(b => b.textContent)), ['⚛️', '🔃', '👨‍👩‍👧‍👦', '🟥', '📚', '✒️', '🔢']);
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tagbar] > button')].map(b => b.textContent)), ['⚛️', '🔃', '👨‍👩‍👧‍👦', '🟥', '📚', '✒️', '🔢']);
+    assert.equal(await style('[data-vn-counts]', 'display'), 'none', 'its 🔢 line only once 🔢 is pressed');
     assert.equal(await style('[data-vn-act="tags"]', 'opacity'), '0', 'its tab lies under it');
     await tap('[data-vn-tagbar] [data-vn-act="mtag"]');
     await page.waitForFunction(() => window.messageCalls.length === 1);
@@ -176,6 +185,50 @@ test('옴니 뷰어 · 태그 under 메시지 slides out the message\'s own cont
     assert.equal(await style('[data-vn-act="pink"]', 'display'), 'none');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 · 태그\'s 🔢 opens − + 1~3 − + under its row (no settings window), steps the chat\'s own counts, and goes with the row', async () => {
+  for (const viewport of [{}, { width: 360, height: 740, mobile: true }]) {
+    const browser = await launch();
+    try {
+      const { page, errors, box, tap, style, tagsOut } = await viewerPage(browser, viewport);
+      const range = () => style('[data-vn-range]', 'content', '::after');
+      await tagsOut();
+      assert.equal(await style('[data-vn-counts]', 'display'), 'none', 'not until 🔢');
+      await tap('[data-vn-tagbar] [data-vn-act="mcounts"]');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-counts]')).display !== 'none');
+      assert.equal(await range(), '"1~3"');
+      assert.deepEqual(await page.evaluate(() => window.messageCalls), [], 'no window opened for it');
+      const bar = await box('[data-vn-tagbar]'), counts = await box('[data-vn-counts]'), frame = await box('');
+      const buttons = await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tagbar] > button')].map(b => b.getBoundingClientRect().toJSON()));
+      assert.equal(new Set(buttons.map(r => Math.round(r.top))).size, 1, 'the seven in one line');
+      assert.ok(counts.y >= Math.max(...buttons.map(r => r.bottom)), 'on the line under the buttons');
+      assert.ok(counts.x >= frame.x - 1 && counts.x + counts.width <= frame.x + frame.width && counts.y + counts.height <= bar.y + bar.height + 1, 'inside the row, inside the frame');
+      assert.ok(bar.x >= -1, '태그\'s row stays out');
+      await tap('[data-vn-counts] [data-vn-act="cmaxup"]');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-range]'), '::after').content === '"1~4"');
+      await tap('[data-vn-counts] [data-vn-act="cminup"]');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-range]'), '::after').content === '"2~4"');
+      assert.deepEqual(await page.evaluate(() => window.countCalls), [null, 'max-up', 'min-up']);
+      assert.ok((await box('[data-vn-tagbar]')).x >= -1, 'a step keeps both out');
+      // 🔢 again: only its row goes.
+      await tap('[data-vn-tagbar] [data-vn-act="mcounts"]');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-counts]')).display === 'none');
+      assert.ok((await box('[data-vn-tagbar]')).x >= -1);
+      // Open again, then a tap off: both away, and its buttons take no tap where they were.
+      await tap('[data-vn-tagbar] [data-vn-act="mcounts"]');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-counts]')).display !== 'none');
+      const where = await box('[data-vn-counts] [data-vn-act="cmaxup"]');
+      await page.mouse.click(300, 250);
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-counts]')).display === 'none');
+      await page.waitForTimeout(450);
+      const calls = (await page.evaluate(() => window.countCalls)).length;
+      await page.mouse.click(where.x + where.width / 2, where.y + where.height / 2);
+      await page.waitForTimeout(300);
+      assert.equal((await page.evaluate(() => window.countCalls)).length, calls, 'hidden, its + is pressed by nobody');
+      assert.deepEqual(errors, []);
+    } finally { await browser.close(); }
+  }
 });
 
 test('옴니 뷰어 · a picture shown big has its cast chips (c1·하쿠키), each that person\'s tags; folded, its + is inside it at the bottom-left and shows under the mouse', async () => {

@@ -9949,6 +9949,8 @@ const VENDOR_INLINE_SAVE_PATCH =
       inline_chat_text_side: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeInlineChatTextSide == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeInlineChatTextSide(N("nx-inline-text-side")) : (String(N("nx-inline-text-side") || "before") === "after" ? "after" : "before")),
       inline_msg_actions: (typeof globalThis.__INLAY_VIEWER_CORE__?.normalizeInlineMsgActions == "function" ? globalThis.__INLAY_VIEWER_CORE__.normalizeInlineMsgActions(N("nx-inline-msg-actions")) : String(N("nx-inline-msg-actions") || "off")),
       inline_msg_fan: ee("nx-inline-msg-fan"),
+      inline_msg_fan_folded: document.getElementById("nx-inline-msg-fan-fold") ? ee("nx-inline-msg-fan-fold") : t.backendSettings?.card?.inline_msg_fan_folded === true,
+      floating_tag_bar: document.getElementById("nx-floating-tag") ? ee("nx-floating-tag") : t.backendSettings?.card?.floating_tag_bar === true,
       inline_chat_scale_pct: Math.max(25, Math.min(200, Math.round(Ne(N("nx-inline-chat-scale"), 100)) || 100)),
       inline_chat_dom_radius: Math.max(3, Math.min(20, Math.round(Ne(N("nx-inline-dom-radius"), 4)) || 4)),
       progress_toast: ee("nx-progress-toast"),

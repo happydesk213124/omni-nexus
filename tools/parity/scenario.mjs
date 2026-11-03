@@ -144,6 +144,19 @@ export async function runScenario(N, handles) {
       saved:saved.image_webp_quality===73 && saved.nai_auto_upscale===true && saved.upscale_button_mode==='upscale' && saved.image_png_original===true && saved.image_png_bake===true && saved.image_webp_metadata===false,
       exported:exported.image_webp_quality===73 && exported.nai_auto_upscale===true && exported.upscale_button_mode==='upscale' && exported.image_png_original===true && exported.image_png_bake===true && exported.image_webp_metadata===false};
   });
+  // 플로팅 태그 and 바로가기툴 접어두기: off unless switched on, saved, exported.
+  await rec('settings.chat_tools', async () => {
+    const initial=(await get('/v1/settings')).settings.card;
+    await post('/v1/settings',{card:{floating_tag_bar:true,inline_msg_fan_folded:true}});
+    const saved=(await get('/v1/settings')).settings.card;
+    const exported=JSON.parse((await get('/v1/settings/export')).json).card;
+    await post('/v1/settings',{card:{floating_tag_bar:false,inline_msg_fan_folded:false}});
+    const restored=(await get('/v1/settings')).settings.card;
+    return {defaults:initial.floating_tag_bar===false && initial.inline_msg_fan_folded===false,
+      saved:saved.floating_tag_bar===true && saved.inline_msg_fan_folded===true,
+      exported:exported.floating_tag_bar===true && exported.inline_msg_fan_folded===true,
+      restored:restored.floating_tag_bar===false && restored.inline_msg_fan_folded===false};
+  });
   await rec('cards.upscale_missing', () => post('/v1/cards/not-existing/upscale', {}));
   await rec('cards.original_missing', () => post('/v1/cards/not-existing/original', {}));
   // 2.0 only: 설정 검색 → LLM한테 물어보기 refuses an empty question before calling any LLM.
