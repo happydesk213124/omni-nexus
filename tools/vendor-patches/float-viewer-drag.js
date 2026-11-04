@@ -77,12 +77,21 @@ async function nxFloatMaybeDrag(ev, kind, pointer=nxFloatPointer) {
   const pos=nxFloatEvPos(ev); if(!pos)return;
   nxFloatDragStarting=true;
   try {
-    const refs=omniDomScope();
-    try {
-      const buttons=await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
-      if((await Promise.all(buttons.map(button=>hitEl(button,pos.x,pos.y)))).some(Boolean))return;
-    } finally {await refs.close();}
-    await nxFloatPainting;
+    // A press on a button is the button's, never a drag: told from the layout read with no call, so the drag starts
+    // at once; asked of Risu (every button measured) only while no reading stands.
+    const known=nxFloatButtonAt(pos.x,pos.y);
+    if(known) return;
+    if(known===null) {
+      const refs=omniDomScope();
+      try {
+        const buttons=await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
+        if((await Promise.all(buttons.map(button=>hitEl(button,pos.x,pos.y)))).some(Boolean))return;
+      } finally {await refs.close();}
+      // With no layout read, a render under way may still move the frame: its bounds are waited for.
+      await nxFloatPainting;
+    }
+    // With one read, the drag starts now: a render still queued behind other work (a stream's) leaves the frame to the
+    // drag (nxFloatRender), and waiting for it lost the drag whenever the finger lifted first.
     const rect=nxFloatBounds || await nxFloatRoot.getBoundingClientRect();
     if(!pointer?.held || pointer!==nxFloatPointer || nxFloatBlocked())return;
     const geo=nxFloatGeo || {left:60,top:60,w:360,h:560};

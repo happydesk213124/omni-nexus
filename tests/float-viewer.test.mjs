@@ -48,6 +48,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
       async querySelector(q) { return wrap(this.n.querySelector(q)); }
       async querySelectorAll(q) {
         if(this.n.matches('.risu-chat'))stats.shotQueries++;
+        if(q==='[x-nx-float-btn]')stats.buttonQueries=(stats.buttonQueries||0)+1;
         const nodes=this.n.querySelectorAll(q);
         if(q==='.risu-chat' && window.fixture?.lazy) return {length:async()=>nodes.length,at:async i=>{stats.bubbleHandles++;return wrap(nodes[i]);}};
         return [...nodes].map(wrap);
@@ -57,7 +58,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
       async getProperty(key) { return this.n[key]; }
       async clientWidth() {return this.n.clientWidth;}
       async clientHeight() {return this.n.clientHeight;}
-      async getBoundingClientRect() { if(this.n.matches('.risu-chat'))stats.bubbleRects++;if(this.n.matches('[x-nx-float]'))stats.floatRects++;return this.n.getBoundingClientRect().toJSON(); }
+      async getBoundingClientRect() { if(this.n.matches('.risu-chat'))stats.bubbleRects++;if(this.n.matches('[x-nx-float]'))stats.floatRects++;if(this.n.closest?.('[x-nx-float]'))stats.viewerReads=(stats.viewerReads||0)+1;return this.n.getBoundingClientRect().toJSON(); }
       async setAttribute(k,v) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); this.n.setAttribute(k,v); }
       async getAttribute(k) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); return this.n.getAttribute(k); }
       async setStyle(k,v) { this.n.style[k]=v; }
@@ -508,6 +509,40 @@ test('mobile header drag updates immediately and stores geometry exactly once on
     await page.locator('body').dispatchEvent('pointerup',{clientX:x+80,clientY:y+60,pointerType:'touch'});
     await page.waitForFunction(()=>fixture.calls.filter(c=>c[0]==='geo').length===1);
     await page.evaluate(()=>fixture.api.dispose());assert.equal(await page.evaluate(()=>fixture.listeners.size),0);
+  }finally{await browser.close();}
+});
+
+test('a press or a tap on the floating viewer asks Risu nothing once its layout is read: the drag starts at once, a button runs at once',async()=>{
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage();await setup(page);
+    // Its buttons and handles are read a moment after it is drawn.
+    await page.waitForTimeout(400);
+    const stage=await page.locator('[x-nx-float-body]').boundingBox();
+    const x=stage.x+stage.width/2,y=stage.y+stage.height/2;
+    await page.evaluate(()=>{fixture.stats.viewerReads=0;fixture.stats.buttonQueries=0;});
+    await page.locator('body').dispatchEvent('pointerdown',{clientX:x,clientY:y,button:0});
+    await page.waitForFunction(()=>fixture.api.dragCount()===1);
+    assert.deepEqual(await page.evaluate(()=>[fixture.stats.viewerReads,fixture.stats.buttonQueries]),[0,0],'the drag began with no read of the viewer: a busy bridge cannot lose it');
+    for(let i=1;i<=10;i++)await page.locator('body').dispatchEvent('pointermove',{clientX:x-i*4,clientY:y+i*3});
+    await page.evaluate(()=>fixture.api.finishMove());
+    await page.locator('body').dispatchEvent('pointerup',{clientX:x-40,clientY:y+30});
+    await page.waitForFunction(()=>fixture.calls.filter(c=>c[0]==='geo').length===1);
+    // Moved, it is read again; a tap on 접기 then runs from that reading.
+    await page.waitForTimeout(400);
+    await page.evaluate(()=>{fixture.stats.buttonQueries=0;});
+    const fold=await page.locator('[x-nx-float-btn="fold"]').boundingBox();
+    await page.locator('body').dispatchEvent('click',{clientX:fold.x+fold.width/2,clientY:fold.y+fold.height/2,button:0});
+    await page.waitForFunction(()=>fixture.api.state().collapsed===true);
+    assert.equal(await page.evaluate(()=>fixture.stats.buttonQueries),0,'the button tapped is told from the reading, not by measuring every button');
+    // A press on a button is never a drag.
+    await page.waitForTimeout(400);
+    const unfold=await page.locator('[x-nx-float-btn="unfold"]').boundingBox();
+    await page.locator('body').dispatchEvent('pointerdown',{clientX:unfold.x+unfold.width/2,clientY:unfold.y+unfold.height/2,button:0});
+    await page.waitForTimeout(150);
+    assert.equal(await page.evaluate(()=>fixture.api.dragCount()),0,'a press on a button starts no drag');
+    await page.locator('body').dispatchEvent('pointerup',{clientX:unfold.x+unfold.width/2,clientY:unfold.y+unfold.height/2});
+    await page.evaluate(()=>fixture.api.dispose());
   }finally{await browser.close();}
 });
 
