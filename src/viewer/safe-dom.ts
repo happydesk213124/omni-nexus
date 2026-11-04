@@ -33,12 +33,7 @@ export async function centerIn(node: SafeElement): Promise<void> {
   if (typeof scroll === 'function') await quiet((() => { try { return scroll.call(node, scrollOptions()); } catch { return undefined; } })());
 }
 
-export async function unwrap<T>(list: SafeClassArray<T> | T[]): Promise<T[]> {
-  if (Array.isArray(list)) return list;
-  const n = await list.length(), out: T[] = [];
-  for (let i = 0; i < n; i++) { const item = await list.at(i); if (item) out.push(item); }
-  return out;
-}
+export { safeList as unwrap } from '../core/util/safe-list';
 
 /**
  * The row under `y` among a container's rows (in reading order, top to bottom):
