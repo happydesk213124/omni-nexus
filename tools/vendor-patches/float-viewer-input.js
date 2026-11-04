@@ -95,9 +95,8 @@ async function nxFloatBindInputs(h) {
     }
     nxFloatMoveDrag(e);void nxFloatEndDrag(kind==='pointercancel');
   },{capture:true}));
-  for (const kind of ['scroll', 'scrollend']) {
-    wait.push(nxFloatListen(h.body, kind, () => nxFloatScheduleScan(), {capture:true}));
-  }
+  wait.push(nxFloatListen(h.body, 'scroll', () => nxFloatScheduleScan(), {capture:true}));
+  wait.push(nxFloatListen(h.body, 'scrollend', () => nxFloatScrollEnded(), {capture:true}));
   await Promise.all(wait);
   nxFloatMoveListener = true;
 }

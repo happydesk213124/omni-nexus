@@ -22035,7 +22035,8 @@ let nxFloatFoldBtn = null, nxFloatResize = null, nxFloatFoldGrip = null, nxFloat
 let nxFloatIcon = null, nxFloatImgReroll = null, nxFloatCss = null, nxFloatButtons = [];
 let nxFloatDoc = null, nxFloatChatRoot = null, nxFloatMoveListener = null;
 let nxFloatCardId = null, nxFloatAsset = null, nxFloatGen = 0, nxFloatLastUrl = "";
-let nxFloatLastDomSrc = "", nxFloatCollapsed = null, nxFloatHidden = false;
+// nxFloatShownKey: the chat picture copied in (id|asset), '' while the pixels came from the card's file instead.
+let nxFloatShownKey = "", nxFloatCollapsed = null, nxFloatHidden = false;
 let nxFloatCompact = false, nxFloatCompactBtn = null;
 let nxFloatGeo = null, nxFloatIconGeo = null, nxFloatImage = null;
 let nxFloatEnsuring = null, nxFloatPainting = Promise.resolve(), nxFloatSelecting = 0;
@@ -22143,11 +22144,29 @@ async function nxFloatSetTarget(card, bubbleHtml, valid = () => true) {
     _floatPin: 1
   });
 }
+const NX_FLOAT_IMG_CSS = 'width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;';
 async function nxFloatPaintImg(url) {
   if (!nxFloatImage) return;
-  nxFloatLastUrl = String(url || '');
+  nxFloatLastUrl = String(url || ''); nxFloatShownKey = '';
   const safe = nxFloatLastUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  await nxFloatImage.setInnerHTML(safe ? '<img src="' + safe + '" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;" />' : '');
+  await nxFloatImage.setInnerHTML(safe ? '<img src="' + safe + '" style="' + NX_FLOAT_IMG_CSS + '" />' : '');
+}
+// The chat's own <img>, copied in: its src (a file, or image history's data URL) is never read nor written back, and
+// nothing is parsed or sanitized (크게보기 shows a chat picture the same way, inspect-surface.js).
+async function nxFloatPaintShot(shot) {
+  if (!nxFloatImage) return false;
+  const gen = nxFloatGen, img = await shot.node.querySelector('img');
+  if (!img) { shot.dead = true; return false; }
+  let copy = null;
+  try { copy = await img.cloneNode(false); } finally { await omniRelease(img); }
+  try {
+    if (gen !== nxFloatGen || !nxFloatImage) return false;
+    // Sent together and done by Risu in the order sent: the copy restyled, the old picture cleared, the copy put in.
+    // (A paint overtaken meanwhile is cleared by the next one, sent after it.)
+    await Promise.all([copy.setClassName(''), copy.setStyleAttribute(NX_FLOAT_IMG_CSS), nxFloatImage.setInnerHTML(''), nxFloatImage.appendChild(copy)]);
+    nxFloatLastUrl = 'shot:' + shot.key; nxFloatShownKey = shot.key;
+    return true;
+  } finally { await omniRelease(copy); }
 }
 async function nxFloatPixels(card) {
   // Blob-cache fallback only: the DOM probe paints first when it finds pixels.
@@ -22172,15 +22191,16 @@ async function nxFloatPixels(card) {
     } catch {}
   }
 }
-async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
+// shot: the chat's picture to copy (a row of nxFloatMeasureShots); without one the card's file is shown.
+async function nxFloatSelect(id, bubbleHtml = '', asset = null, shot = null) {
   const token = ++nxFloatSelecting, epoch = nxFloatEpoch;
   let card = nxFloatFind(id);
-  if (!card && !domSrc) return false;
+  if (!card && !shot) return false;
   const changed = nxFloatCardId !== id;
   if (changed) {
     ++nxFloatGen;
-    nxFloatLastDomSrc = '';
-    await nxFloatPaintImg('');
+    // A copy replaces the old picture itself; a card's file may take a while, and the old one must not stand for it.
+    if (!shot) await nxFloatPaintImg('');
   }
   if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
   nxFloatCardId = id;
@@ -22201,19 +22221,21 @@ async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
   if (index >= 0) t.viewerIndex = index;
   // The reading message target is independent of the displayed image.
   if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
-  if (domSrc) {
+  if (shot) {
     ++nxFloatGen;
-    nxFloatLastDomSrc = String(domSrc);
-    if (domSrc !== nxFloatLastUrl) await nxFloatPaintImg(domSrc);
+    if (shot.key === nxFloatShownKey || await nxFloatPaintShot(shot)) return true;
+    if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
+    // No <img> in it to copy: the card's file.
+    void nxFloatPixels(card).catch(e => nxFloatLog('pixels', String(e)));
   } else if (changed || !nxFloatLastUrl) {
     // Storage hydration must not hold the mount/visibility queue hostage.
     void nxFloatPixels(card).catch(e => nxFloatLog('pixels', String(e)));
   }
   return true;
 }
-async function nxFloatShowCardId(id, bubbleHtml, asset, domSrc) {
+async function nxFloatShowCardId(id) {
   if (!await nxFloatEnsure() || !id) return false;
-  return nxFloatSelect(id, bubbleHtml, asset, domSrc);
+  return nxFloatSelect(id);
 }
 async function nxFloatShowCard(id) { return nxFloatShowCardId(id); }
 async function nxFloatShowLatest() {
@@ -22239,6 +22261,8 @@ async function nxFloatClickPrepared(kind) {
     if (kind === "unfold") { await nxFloatSetCollapsed(false); return; }
     if (kind === "stop") { await omniFooterAction("stop", nxFloatKey); return; }
     if (kind === "single") { await nxFloatRerollOne(); return; }
+    // 인물 looks for the names of the message being read: which one that is, is asked now (no scroll asks it).
+    if(kind === "char") await nxFloatReadTarget().catch(() => null);
     if(kind === "char" || kind === "preset") {await omniFooterAction(kind,nxFloatKey);return;}
     if (kind === "full") {
       const card = nxFloatFind(nxFloatCardId);
@@ -22248,7 +22272,8 @@ async function nxFloatClickPrepared(kind) {
       return;
     }
     if (kind === "tag" || kind === "regen" || kind === "note") {
-      if(kind !== "note" || !omniFooterTargets.has(nxFloatKey))await nxFloatScan();
+      // The message being read, asked now: the scroll scans look for pictures only.
+      await nxFloatReadTarget();
       if (!omniFooterTargets.get(nxFloatKey)) {
         $e("화면에 보이는 채팅 메시지가 없습니다.");
         return;
@@ -22278,7 +22303,6 @@ async function nxFloatRerollOne() {
     if (epoch !== nxFloatEpoch || nxFloatCardId !== id) return;
     const nid = String(B?.card?.id || id);
     nxFloatSelectedCard = {...before,...B?.card,id:nid,message_index:target?.index};
-    nxFloatLastDomSrc = '';
     await nxFloatPaintImg('');
     await nxFloatSelect(nid);
     y("info", "float.reroll", `${String(id).slice(0, 8)}→${nid.slice(0, 8)}`);
@@ -22347,7 +22371,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatSession = scope.sessionId;
     nxFloatDirty = true;
     nxFloatStructureDirty = true; nxFloatReadingIndex = -1;
-    nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
+    nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatShownKey = ''; nxFloatLastUrl = '';
     nxFloatNavIds = []; nxFloatShotIndex = -1; nxFloatNavHold = null;
     omniFooterTargets.delete(nxFloatKey);
     await nxFloatPaintImg('');
@@ -22503,7 +22527,7 @@ async function nxFloatDispose(resetSession = true) {
   nxFloatFoldBtn = null; nxFloatResize = null; nxFloatFoldGrip = null; nxFloatFoldGrid = null;
   nxFloatIcon = null; nxFloatImgReroll = null;
   nxFloatCompactBtn = null;
-  nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
+  nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatShownKey = ''; nxFloatLastUrl = '';
   if (resetSession) { nxFloatSession = ''; nxFloatCompact = false; }
   omniFooterTargets.delete(nxFloatKey);
 }
@@ -22873,9 +22897,8 @@ async function nxFloatBindInputs(h) {
     }
     nxFloatMoveDrag(e);void nxFloatEndDrag(kind==='pointercancel');
   },{capture:true}));
-  for (const kind of ['scroll', 'scrollend']) {
-    wait.push(nxFloatListen(h.body, kind, () => nxFloatScheduleScan(), {capture:true}));
-  }
+  wait.push(nxFloatListen(h.body, 'scroll', () => nxFloatScheduleScan(), {capture:true}));
+  wait.push(nxFloatListen(h.body, 'scrollend', () => nxFloatScrollEnded(), {capture:true}));
   await Promise.all(wait);
   nxFloatMoveListener = true;
 }
@@ -22923,78 +22946,84 @@ function nxFloatHtmlAttr(html, name) {
   return (match?.[1] || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 
-// Keep the host's array lazy: unwrapping it would create a proxy per message.
-let nxFloatBubbleList = null, nxFloatBubbleCount = 0, nxFloatReadingSlot = -1;
-let nxFloatListParent = null, nxFloatScrollAt = null, nxFloatStaleChecked = false;
-const nxFloatBubbleCache = new Map(), nxFloatBubbleWatches = new Map();
+// Where the chat's pictures are, read once and kept: a scroll asks Risu only where the list is now.
+// Risu (DefaultChatScreen.svelte) scrolls .default-chat-screen; its message list (Chats.svelte, a div.flex-col-reverse)
+// moves inside it, each message in its own div[x-hashed] that Risu swaps for a new one when the message changes
+// (stream end, a bake, an edit). Read below the list's top, a picture's place holds while the chat scrolls and while
+// a reply grows at the list's foot, so a scan is one pass (where the screen, the list and the picture on show are)
+// and the rest is arithmetic. Every scan read the three messages around the middle before, a handle and a size each,
+// five waits in a row. The pictures are read again, all in one pass, when the list changed and holds another number
+// of them, when image history swaps one, or when the picture on show is not where it was read (older messages came
+// in above it, a message grew).
+let nxFloatListParent = null, nxFloatAnchor = null, nxFloatShots = null;
+let nxFloatShotsDirty = false, nxFloatShotsStale = true, nxFloatListWatch = null, nxFloatShotWatch = null;
+// Risu's sanitizer leaves a bake only its data- attributes; image history writes the picture it shows as x- ones.
+const NX_FLOAT_SHOT = '[data-inlay-inline-shot]:not([data-inlay-inline-shot^="pending_"]),[x-inlay-inline-shot]:not([x-inlay-inline-shot^="pending_"])';
+const NX_FLOAT_BUBBLE = '.risu-chat:has(' + NX_FLOAT_SHOT + ')';
 async function nxFloatArrayLength(rows) {
   return Array.isArray(rows) ? rows.length : Number(await rows?.length?.()) || 0;
 }
+function nxFloatDropShots() {
+  const shots = nxFloatShots; nxFloatShots = null;
+  if (shots) for (const row of shots.rows) void omniRelease(row.node);
+}
 async function nxFloatDropPosition() {
-  for (const { observer, node } of nxFloatBubbleWatches.values()) {
-    await observer.disconnect(); await omniRelease(observer); await omniRelease(node);
-  }
-  nxFloatBubbleWatches.clear(); nxFloatBubbleCache.clear();
-  await omniRelease(nxFloatBubbleList); nxFloatBubbleList = null;
+  for (const watch of [nxFloatListWatch, nxFloatShotWatch]) if (watch) { await watch.disconnect(); await omniRelease(watch); }
+  nxFloatListWatch = nxFloatShotWatch = null;
+  nxFloatDropShots();
+  await omniRelease(nxFloatAnchor); nxFloatAnchor = null;
   await omniRelease(nxFloatListParent); nxFloatListParent = null;
-  nxFloatBubbleCount = 0; nxFloatReadingSlot = -1; nxFloatScrollAt = null;
+  nxFloatShotsStale = true; nxFloatShotsDirty = false;
 }
-async function nxFloatBubbleAt(slot, refs) {
-  if (slot < 0 || slot >= nxFloatBubbleCount) return null;
-  return refs.own(Array.isArray(nxFloatBubbleList) ? nxFloatBubbleList[slot] : await nxFloatBubbleList.at(slot));
-}
-async function nxFloatRefreshPosition(h, refs) {
+// A scroll gesture's end counts the pictures again (two calls), so a list change the watch below missed is caught
+// by the time the reader stops on it.
+function nxFloatScrollEnded() { nxFloatShotsDirty = true; nxFloatScheduleScan(); }
+// The list Risu draws messages into, heard for messages coming and going, and below it for image history's swaps.
+async function nxFloatRefreshPosition(root) {
   await nxFloatDropPosition();
-  // Asked together with the list, so knowing the shape costs no extra round trip.
-  const [list, wrapped] = await Promise.all([h.root.querySelectorAll('.risu-chat'),
-    Promise.resolve(h.root.querySelector('[x-hashed] > .risu-chat')).catch(() => null)]);
-  nxFloatBubbleList = list; refs.own(wrapped);
-  nxFloatBubbleCount = await nxFloatArrayLength(nxFloatBubbleList);
-  const first = await nxFloatBubbleAt(0, refs);
-  nxFloatListParent = await first?.getParent?.();
+  // Asked together, so knowing the shape costs no extra round trip.
+  const [first, wrapped] = await Promise.all([root.querySelector('.risu-chat'),
+    Promise.resolve(root.querySelector('[x-hashed] > .risu-chat')).catch(() => null)]);
+  await omniRelease(wrapped);
+  let list = first ? await first.getParent?.() : null;
   // Risu (Chats.svelte) wraps each message in its own div[x-hashed] and swaps that
   // wrapper when the message changes (stream end, a bake). Watching the first
   // message's wrapper heard none of that; the list is the wrappers' parent.
-  if (wrapped && nxFloatListParent) {
-    const wrapper = nxFloatListParent;
-    nxFloatListParent = await wrapper.getParent?.();
+  if (wrapped && list) {
+    const wrapper = list;
+    list = await wrapper.getParent?.();
     await omniRelease(wrapper);
   }
-  // List membership changes are separate from mutations inside a message.
-  await nxFloatObserver?.disconnect();
-  await nxFloatObserver?.observe(h.root, {childList:true});
-  if (nxFloatListParent) await nxFloatObserver?.observe(nxFloatListParent, {childList:true});
+  nxFloatListParent = list || null;
+  // Messages straight in the scrolled screen (no list of their own): the screen stays put, so places are read
+  // against the first message, which scrolls with the rest.
+  let flat = false;
+  try { flat = !!list && !!await list.matches('.default-chat-screen'); } catch {}
+  if (flat) nxFloatAnchor = first; else await omniRelease(first);
   nxFloatStructureDirty = false;
-}
-async function nxFloatWatchBubbles(rows, refs) {
-  const slots = new Set(rows.map(row => row.slot));
-  for (const [slot, watch] of nxFloatBubbleWatches) if (!slots.has(slot)) {
-    nxFloatBubbleWatches.delete(slot); nxFloatBubbleCache.delete(slot);
-    await watch.observer.disconnect(); await omniRelease(watch.observer); await omniRelease(watch.node);
-  }
-  for (const row of rows) {
-    if (nxFloatBubbleWatches.has(row.slot)) continue;
-    const epoch = nxFloatEpoch;
-    const observer = await k.createMutationObserver(records => {
-      void omniRelease(records);
-      if (epoch !== nxFloatEpoch || nxFloatBubbleWatches.get(row.slot)?.observer !== observer) return;
-      nxFloatBubbleCache.delete(row.slot);
-      nxFloatScheduleScan();
-    });
-    try {
-      // PocketRisu wraps mutation targets as elements, which fails for text nodes.
-      await observer.observe(row.node, {childList:true,subtree:true,attributes:true,
-        attributeFilter:['src','style','class','data-inlay-inline-shot','x-inlay-inline-shot']});
-      nxFloatBubbleWatches.set(row.slot, {observer, node:refs.keep(row.node)});
-    } catch (error) { await observer.disconnect(); await omniRelease(observer); throw error; }
-  }
+  if (!list) return;
+  const epoch = nxFloatEpoch;
+  nxFloatListWatch = await k.createMutationObserver(records => {
+    void omniRelease(records);
+    if (epoch === nxFloatEpoch) { nxFloatShotsDirty = true; nxFloatScheduleScan(); }
+  });
+  nxFloatShotWatch = await k.createMutationObserver(records => {
+    void omniRelease(records);
+    if (epoch === nxFloatEpoch) { nxFloatShotsStale = true; nxFloatScheduleScan(); }
+  });
+  // A message added, swapped or removed is the list's own children; a reply's text growing inside one is not heard.
+  // Image history shows another picture by writing its x- attributes (image-history-runtime.js).
+  await Promise.all([nxFloatListWatch.observe(list, {childList: true}),
+    nxFloatShotWatch.observe(list, {subtree: true, attributes: true, attributeFilter: ['x-inlay-inline-shot', 'x-inray-asset']})]);
 }
 function nxFloatReadingGap(rect, y) { return Math.max(rect.top - y, y - rect.bottom, 0); }
-async function nxFloatLocateReading(y, read) {
-  const first = await read(0), last = await read(nxFloatBubbleCount - 1);
+// The message nearest the line y among `count` laid out in either order: a binary search reading only the rows it
+// looks at, so a chat of hundreds costs a handful of calls.
+async function nxFloatLocateReading(y, read, count) {
+  const [first, last] = await Promise.all([read(0), read(count - 1)]);
   if (!first || !last) return null;
   const forward = first.rect.top <= last.rect.top;
-  let lo = 0, hi = nxFloatBubbleCount - 1, best = first, gap = nxFloatReadingGap(first.rect, y);
+  let lo = 0, hi = count - 1, best = first, gap = nxFloatReadingGap(first.rect, y);
   for (let steps = 0; lo <= hi && steps < 24; steps++) {
     const mid = Math.floor((lo + hi) / 2), row = await read(mid);
     if (!row) break;
@@ -23006,40 +23035,59 @@ async function nxFloatLocateReading(y, read) {
   }
   return best;
 }
-async function nxFloatReadBubble(row, refs) {
-  const cached = nxFloatBubbleCache.get(row.slot);
-  if (cached && !cached.pending && cached.width === row.rect.width && cached.height === row.rect.height) return cached;
-  const html = await row.node.getOuterHTML();
-  const opening = html.slice(0, html.indexOf('>') + 1);
-  const index = Number(nxFloatHtmlAttr(opening, 'data-chat-index') || -1);
-  const hostId = nxFloatHtmlAttr(opening, 'data-chat-id');
-  // Only identity survives in the cache, never the whole message's HTML/text.
-  const bubbleHtml = '<div data-chat-index="' + index + '" data-chat-id="' + hostId.replace(/"/g, '&quot;') + '">';
-  const shots = [];
-  const nodes = await refs.all(await row.node.querySelectorAll('[x-inlay-inline-shot],[data-inlay-inline-shot]'));
-  for (const node of nodes) {
-    const rect = await node.getBoundingClientRect();
-    if (!rect.height) continue;
-    const shotHtml = await node.getOuterHTML(), head = shotHtml.slice(0, shotHtml.indexOf('>') + 1);
-    const id = nxFloatHtmlAttr(head, 'x-inlay-inline-shot') || nxFloatHtmlAttr(head, 'data-inlay-inline-shot');
-    if (!id || id.startsWith('pending_')) continue;
-    const image = refs.own(await node.querySelector('img'));
-    let src = '';
-    if (image) {
-      for (const key of ['currentSrc','src']) {
-        try { src = String(await image.getProperty?.(key) || ''); } catch {}
-        if (src) break;
-      }
-      if (!src) src = nxFloatHtmlAttr(await image.getOuterHTML(), 'src');
+// Only a message's identity is kept, never its HTML or text.
+function nxFloatBubbleTag(index, hostId) {
+  return '<div data-chat-index="' + index + '" data-chat-id="' + String(hostId || '').replace(/"/g, '&quot;') + '">';
+}
+const nxFloatRectOf = node => node ? Promise.resolve(node.getBoundingClientRect()).catch(() => null) : Promise.resolve(null);
+const nxFloatGone = r => !r || (!r.width && !r.height);
+// Every picture Risu has drawn, in one pass: where it is below the anchor, which picture it is, and the message it
+// is in (its number and id, which the viewer's actions and dots go by). Each one's tag is read off a shallow copy,
+// never its HTML: image history's picture is a data URL (image-history-runtime.js).
+async function nxFloatMeasureShots(root, anchor) {
+  const refs = omniDomScope();
+  try {
+    const [rawShots, rawBubbles] = await Promise.all([root.querySelectorAll(NX_FLOAT_SHOT), root.querySelectorAll(NX_FLOAT_BUBBLE)]);
+    const [nodes, bubbles] = await Promise.all([refs.all(rawShots), refs.all(rawBubbles)]);
+    const [at, rects, tags, bubbleRects, bubbleTags] = await Promise.all([nxFloatRectOf(anchor), Promise.all(nodes.map(nxFloatRectOf)),
+      Promise.all(nodes.map(omniOpeningTag)), Promise.all(bubbles.map(nxFloatRectOf)), Promise.all(bubbles.map(omniOpeningTag))]);
+    if (nxFloatGone(at)) return null;
+    const messages = bubbles.map((_, i) => ({index: Number(nxFloatHtmlAttr(bubbleTags[i], 'data-chat-index') || -1),
+      hostId: nxFloatHtmlAttr(bubbleTags[i], 'data-chat-id'), rect: bubbleRects[i], ids: []}));
+    const rows = [];
+    for (const [i, node] of nodes.entries()) {
+      const r = rects[i], head = tags[i] || '';
+      const id = nxFloatHtmlAttr(head, 'x-inlay-inline-shot') || nxFloatHtmlAttr(head, 'data-inlay-inline-shot');
+      // Laid out with no height (folded away, hidden), it has no place to be shown at.
+      if (!r?.height || !id || id.startsWith('pending_')) continue;
+      const middle = (r.top + r.bottom) / 2;
+      const message = messages.find(m => m.rect && middle >= m.rect.top && middle <= m.rect.bottom) || null;
+      message?.ids.push(id);
+      const asset = nxFloatHtmlAttr(head, 'x-inray-asset') || nxFloatHtmlAttr(head, 'data-inray-asset');
+      rows.push({node: refs.keep(node), id, asset, key: id + '|' + asset, message, top: r.top - at.top, bottom: r.bottom - at.top});
     }
-    src ||= nxFloatHtmlAttr(head, 'data-src') || nxFloatHtmlAttr(head, 'x-src')
-      || /url\(["']?([^"')]+)["']?\)/.exec(nxFloatHtmlAttr(head, 'style'))?.[1] || '';
-    shots.push({id,src,asset:nxFloatHtmlAttr(head,'x-inray-asset') || nxFloatHtmlAttr(head,'data-inray-asset'),
-      top:rect.top-row.rect.top,bottom:rect.bottom-row.rect.top});
+    return {rows, count: nodes.length, at};
+  } finally { await refs.close(); }
+}
+// The same pictures moved (a message above them grew, a line's control was shown or hidden): only where each one is
+// now is read, one call each in one pass. false when one is gone or hidden: they are all read again then.
+async function nxFloatReplaceShots(shots, anchor) {
+  const [at, rects] = await Promise.all([nxFloatRectOf(anchor), Promise.all(shots.rows.map(row => nxFloatRectOf(row.node)))]);
+  if (nxFloatGone(at) || rects.some(r => !r?.height)) return false;
+  shots.rows.forEach((row, i) => { row.top = rects[i].top - at.top; row.bottom = rects[i].bottom - at.top; });
+  shots.at = at;
+  return true;
+}
+function nxFloatNearest(rows, at, top, bottom, y) {
+  let best = null, distance = Infinity;
+  for (const row of rows) {
+    if (row.dead) continue;
+    const shotTop = at.top + row.top, shotBottom = at.top + row.bottom;
+    if (shotBottom <= top || shotTop >= bottom) continue;
+    const d = Math.abs((shotTop + shotBottom) / 2 - y);
+    if (d < distance) { best = row; distance = d; }
   }
-  const snapshot = {index,bubbleHtml,shots,width:row.rect.width,height:row.rect.height,pending:nodes.length>0 && !shots.length};
-  nxFloatBubbleCache.set(row.slot, snapshot);
-  return snapshot;
+  return best;
 }
 async function nxFloatReadPosition() {
   if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag) return;
@@ -23049,76 +23097,100 @@ async function nxFloatReadPosition() {
   omniPerf.viewerPasses++;
   const epoch = nxFloatEpoch, refs = omniDomScope();
   try {
-    const h = await nxFloatChat(); if (!h) return;
-    refs.own(h.root); refs.own(h.body);
-    const sr = await h.root.getBoundingClientRect(), vp = nxFloatViewport();
-    const top = Math.max(0,sr.top), bottom = Math.min(vp.h,sr.bottom), y = (top+bottom)/2;
-    if (nxFloatStructureDirty || !nxFloatBubbleList) await nxFloatRefreshPosition(h,refs);
-    const sampled = new Map();
-    const read = async slot => {
-      if (sampled.has(slot)) return sampled.get(slot);
-      const node = await nxFloatBubbleAt(slot,refs); if (!node) return null;
-      const row = {slot,node,rect:await node.getBoundingClientRect()}; sampled.set(slot,row); return row;
+    // The chat screen the viewer watches (nxFloatWatchChat); asked for only while it has none.
+    let root = nxFloatWatchRoot;
+    if (!root) { const h = await nxFloatChat(); if (!h) return; root = refs.own(h.root); refs.own(h.body); }
+    if (nxFloatStructureDirty || !nxFloatListParent) await nxFloatRefreshPosition(root);
+    const anchor = nxFloatAnchor || nxFloatListParent;
+    if (!anchor || epoch !== nxFloatEpoch) return;
+    let shots = nxFloatShotsStale ? null : nxFloatShots;
+    const shown = shots?.rows.find(row => row.key === nxFloatShownKey) || null, recount = !!shots && nxFloatShotsDirty;
+    nxFloatShotsDirty = false;
+    // One pass: the screen, the anchor, the picture on show (still where it was read?) and, once the list changed,
+    // how many pictures it holds now.
+    const [sr, at, shownAt, rawShots] = await Promise.all([nxFloatRectOf(root), nxFloatRectOf(anchor), nxFloatRectOf(shown?.node),
+      recount ? Promise.resolve(root.querySelectorAll(NX_FLOAT_SHOT)).catch(() => null) : null]);
+    const count = rawShots ? await nxFloatArrayLength(rawShots) : -1;
+    await omniRelease(rawShots);
+    if (epoch !== nxFloatEpoch) return;
+    // The screen was drawn anew (another chat): the viewer is mounted on it again; the list was swapped: read again.
+    if (nxFloatGone(sr)) { nxFloatStructureDirty = nxFloatDirty = true; void nxFloatEnsure().catch(() => {}); return; }
+    if (nxFloatGone(at)) { nxFloatStructureDirty = true; nxFloatScheduleScan(); return; }
+    const reread = async () => {
+      nxFloatDropShots();
+      const next = nxFloatShots = await nxFloatMeasureShots(root, anchor);
+      if (next) nxFloatShotsStale = false;
+      return next;
     };
-    let scroll = null;
-    try { const value = await h.root.getProperty?.('scrollTop'); if (value != null) scroll = Number(value); } catch {}
-    const jump = scroll != null && nxFloatScrollAt != null && Math.abs(scroll-nxFloatScrollAt) >= Math.max(240,(bottom-top)*.7);
-    nxFloatScrollAt = scroll;
-    let anchor = null;
-    if (!jump && nxFloatReadingSlot >= 0) {
-      // The three neighbours are read together: one round trip, not three.
-      for (const row of await Promise.all([nxFloatReadingSlot-1,nxFloatReadingSlot,nxFloatReadingSlot+1].map(read))) {
-        if (row && (!anchor || nxFloatReadingGap(row.rect,y)<nxFloatReadingGap(anchor.rect,y))) anchor = row;
-      }
-      // Short messages can cross several slots within a small pixel scroll.
-      if (anchor && nxFloatReadingGap(anchor.rect,y) > 0) anchor = null;
-    }
-    if (!anchor && nxFloatBubbleCount) anchor = await nxFloatLocateReading(y,read);
-    const rows = [];
-    if (anchor) {
-      nxFloatReadingSlot = anchor.slot;
-      for (const row of await Promise.all([anchor.slot-1,anchor.slot,anchor.slot+1].map(read))) if (row) rows.push(row);
-    }
-    // A row sized 0x0 was taken out of the page (a remount the list watch missed).
-    // Read the list again, once: a message that is merely hidden cannot loop it.
-    if (rows.some(row => !row.rect.width && !row.rect.height)) {
-      if (!nxFloatStaleChecked) { nxFloatStaleChecked = true; nxFloatStructureDirty = true; nxFloatScheduleScan(); return; }
-    } else nxFloatStaleChecked = false;
-    await nxFloatWatchBubbles(rows,refs);
-    let best = null, distance = Infinity, reading = null, readingGap = Infinity;
-    const visible = row => row.rect.height > 0 && row.rect.bottom > top && row.rect.top < bottom;
-    const snapshots = await Promise.all(rows.map(row => visible(row) ? nxFloatReadBubble(row,refs) : null));
-    for (const [index, row] of rows.entries()) {
-      if (epoch !== nxFloatEpoch) return;
-      if (!visible(row)) continue;
-      const snapshot = snapshots[index], gap = nxFloatReadingGap(row.rect,y);
-      if (gap < readingGap) { reading = snapshot; readingGap = gap; }
-      for (const shot of snapshot.shots) {
-        const shotTop = row.rect.top+shot.top, shotBottom = row.rect.top+shot.bottom;
-        if (shotBottom <= top || shotTop >= bottom || !shot.src) continue;
-        const d = Math.abs((shotTop+shotBottom)/2-y);
-        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml,ids:snapshot.shots.map(s => s.id)}; distance = d; }
-      }
-    }
-    if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
-    if (reading) {
-      nxFloatReadingIndex = reading.index;
-      await nxFloatSetTarget(null,reading.bubbleHtml,()=>epoch===nxFloatEpoch);
-    } else omniFooterTargets.delete(nxFloatKey);
+    // All read again when the list holds another number of pictures (or none was read yet); only where they are when
+    // the one on show moved, unless one of them is gone.
+    let fresh = false, now = at;
+    const moved = !!shown && (!shownAt?.height || Math.abs(shownAt.top - at.top - shown.top) > 2);
+    if (!shots || (count >= 0 && count !== shots.count)) { shots = await reread(); fresh = true; }
+    else if (moved) { if (!await nxFloatReplaceShots(shots, anchor)) shots = await reread(); fresh = true; }
+    if (epoch !== nxFloatEpoch) return;
+    if (!shots) { nxFloatStructureDirty = true; return; }
+    if (fresh) now = shots.at;
+    const vp = nxFloatViewport(), top = Math.max(0, sr.top), bottom = Math.min(vp.h, sr.bottom), y = (top + bottom) / 2;
+    let best = nxFloatNearest(shots.rows, now, top, bottom, y);
     // A local miss keeps the existing pixels without painting or a wider search.
-    if (!best) return;
+    if (!best || nxFloatBlocked()) return;
     // ‹ › or a double tap just chose a picture: the scroll it caused must not
     // swap it for a neighbour that ended up nearer the middle.
     if (nxFloatNavHold && Date.now() < nxFloatNavHold.until && best.id !== nxFloatNavHold.id) return;
     const ids = nxFloatNavIds.join('|');
-    if (best.id === nxFloatCardId && best.src === nxFloatLastDomSrc) {
-      nxFloatNavShots(best.ids);
+    if (best.id === nxFloatCardId && best.key === nxFloatShownKey) {
+      nxFloatNavShots(best.message?.ids);
       if (nxFloatNavIds.join('|') !== ids) await nxFloatApply();
       return;
     }
-    await nxFloatSelect(best.id,best.bubbleHtml,best.asset,best.src);
-    nxFloatNavShots(best.ids);
+    // Another picture to show: is it where the reading has it (one call; where they all are is read if not)?
+    if (!fresh) {
+      const [a, r] = await Promise.all([nxFloatRectOf(anchor), nxFloatRectOf(best.node)]);
+      if (epoch !== nxFloatEpoch) return;
+      if (nxFloatGone(a) || !r?.height || Math.abs(r.top - a.top - best.top) > 2) {
+        if (!await nxFloatReplaceShots(shots, anchor)) shots = await reread();
+        if (epoch !== nxFloatEpoch) return;
+        if (!shots) { nxFloatStructureDirty = true; return; }
+        best = nxFloatNearest(shots.rows, shots.at, top, bottom, y);
+        if (!best || (nxFloatNavHold && Date.now() < nxFloatNavHold.until && best.id !== nxFloatNavHold.id)) return;
+        if (best.id === nxFloatCardId && best.key === nxFloatShownKey) { nxFloatNavShots(best.message?.ids); return; }
+      }
+    }
+    const message = best.message;
+    if (!await nxFloatSelect(best.id, message ? nxFloatBubbleTag(message.index, message.hostId) : '', best.asset, best)) return;
+    nxFloatNavShots(message?.ids);
     await nxFloatApply();
+  } finally { await refs.close(); }
+}
+// The message at the chat's reading line, for an action that goes by it (태그·재생성·노트·인물, ‹ › from a message
+// with no picture): asked of Risu then, never on a scroll. Every scan found it before, the three messages around
+// the middle read each time.
+async function nxFloatReadTarget() {
+  const scope = await omniReadScope().catch(() => null);
+  if (!scope || scope.sessionId !== nxFloatSession) return null;
+  const epoch = nxFloatEpoch, refs = omniDomScope();
+  try {
+    const h = await nxFloatChat(); if (!h) return null;
+    refs.own(h.root); refs.own(h.body);
+    const [sr, list] = await Promise.all([h.root.getBoundingClientRect(), h.root.querySelectorAll('.risu-chat')]);
+    refs.own(list);
+    const count = await nxFloatArrayLength(list), vp = nxFloatViewport();
+    const y = (Math.max(0, sr.top) + Math.min(vp.h, sr.bottom)) / 2;
+    // Keep the host's array lazy: unwrapping it would create a proxy per message.
+    const read = async slot => {
+      if (slot < 0 || slot >= count) return null;
+      const node = refs.own(Array.isArray(list) ? list[slot] : await list.at(slot));
+      return node ? {slot, node, rect: await node.getBoundingClientRect()} : null;
+    };
+    const row = count ? await nxFloatLocateReading(y, read, count) : null;
+    if (epoch !== nxFloatEpoch) return null;
+    if (!row) { omniFooterTargets.delete(nxFloatKey); return null; }
+    const tag = await omniOpeningTag(row.node);
+    const index = Number(nxFloatHtmlAttr(tag, 'data-chat-index') || -1);
+    nxFloatReadingIndex = index;
+    await nxFloatSetTarget(null, nxFloatBubbleTag(index, nxFloatHtmlAttr(tag, 'data-chat-id')), () => epoch === nxFloatEpoch);
+    return omniFooterTargets.get(nxFloatKey) || null;
   } finally { await refs.close(); }
 }
 
@@ -23324,6 +23396,8 @@ async function nxFloatNavGo(dir) {
   try {
     const list = await nxFloatNavList();
     if (!list) return;
+    // No picture of the chat's on show: the step starts from the message being read, asked now (no scroll asks it).
+    if (!nxFloatNavWhere(list) && nxFloatShotIndex < 0) await nxFloatReadTarget().catch(() => null);
     const target = nxFloatNavStep(list, dir);
     if (!target) { await nxFloatApply(); return; }
     // The scan that follows the scroll must not snap back to a neighbour.

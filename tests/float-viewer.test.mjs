@@ -4,7 +4,10 @@ import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
 
 const streamSource=readFileSync(new URL('../tools/vendor-patches/stream-runtime.js',import.meta.url),'utf8');
-const streamHelpers=streamSource.slice(streamSource.indexOf('async function omniRelease'),streamSource.indexOf('let omniObserverWork'));
+const scrollSource=readFileSync(new URL('../tools/vendor-patches/scroll-runtime.js',import.meta.url),'utf8');
+// The opening-tag reader the viewer shares with the scroll holds (a shallow copy's HTML).
+const streamHelpers=streamSource.slice(streamSource.indexOf('async function omniRelease'),streamSource.indexOf('let omniObserverWork'))
+  +scrollSource.slice(scrollSource.indexOf('let omniShallowTags=true;'),scrollSource.indexOf('const OMNI_SLOT_ID'));
 const parts = ['style', '', 'render', 'input', 'position', 'drag', 'nav'];
 let runtime = parts.map(part => readFileSync(new URL(`../tools/vendor-patches/float-viewer${part ? '-'+part : ''}.js`,import.meta.url),'utf8')).join('\n');
 if(process.env.BREAK_FLOAT_INSPECT) runtime=runtime.replace('t.uiOpen || t._nxHostInspectOpen ||','t.uiOpen ||');
@@ -53,12 +56,15 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
         if(q==='.risu-chat' && window.fixture?.lazy) return {length:async()=>nodes.length,at:async i=>{stats.bubbleHandles++;return wrap(nodes[i]);}};
         return [...nodes].map(wrap);
       }
-      async getOuterHTML() { return this.n.outerHTML; }
+      async getOuterHTML() { if(this.n.isConnected&&this.n.closest?.('.risu-chat'))stats.chatHtml=(stats.chatHtml||0)+1;return this.n.outerHTML; }
+      async cloneNode(deep) { if(this.n.closest?.('.default-chat-screen'))stats.chatCopies=(stats.chatCopies||0)+1;return wrap(this.n.cloneNode(!!deep)); }
+      async matches(q) { return this.n.matches(q); }
+      async setClassName(v) { this.n.className=v; }
       async getParent() { return wrap(this.n.parentElement); }
       async getProperty(key) { return this.n[key]; }
       async clientWidth() {return this.n.clientWidth;}
       async clientHeight() {return this.n.clientHeight;}
-      async getBoundingClientRect() { if(this.n.matches('.risu-chat'))stats.bubbleRects++;if(this.n.matches('[x-nx-float]'))stats.floatRects++;if(this.n.closest?.('[x-nx-float]'))stats.viewerReads=(stats.viewerReads||0)+1;return this.n.getBoundingClientRect().toJSON(); }
+      async getBoundingClientRect() { if(this.n.isConnected&&this.n.closest?.('.default-chat-screen'))stats.chatRects=(stats.chatRects||0)+1;if(this.n.matches('.risu-chat'))stats.bubbleRects++;if(this.n.matches('[x-nx-float]'))stats.floatRects++;if(this.n.closest?.('[x-nx-float]'))stats.viewerReads=(stats.viewerReads||0)+1;return this.n.getBoundingClientRect().toJSON(); }
       async setAttribute(k,v) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); this.n.setAttribute(k,v); }
       async getAttribute(k) { if(!k.startsWith('x-')) throw Error('Unsafe attribute'); return this.n.getAttribute(k); }
       async setStyle(k,v) { this.n.style[k]=v; }
@@ -121,7 +127,7 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
     const api = new Function(...Object.keys(deps),runtime+inspectHarness+`;return {inspect:showStickyInspect,closeInspect:async()=>{inspectOpen=false;++t._inspectGen;return nxHideInspectQueued();},ensure:nxFloatEnsure,apply:nxFloatApply,show:nxFloatShow,hide:nxFloatHide,scan:nxFloatScan,select:nxFloatShowCard,dispose:nxFloatDispose,
       passes:()=>omniPerf.viewerPasses,
       state:()=>({id:nxFloatCardId,url:nxFloatLastUrl,idle:nxFloatIdle,collapsed:nxFloatCollapsed}),hovered:()=>nxFloatHovered,
-      target:()=>omniFooterTargets.get(nxFloatKey),dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove(),armIdle:nxFloatArmIdle};`)(...Object.values(deps));
+      target:()=>omniFooterTargets.get(nxFloatKey),readTarget:nxFloatReadTarget,dragCount:()=>nxFloatDrag?1:0,finishMove:()=>nxFloatPaintMove(),armIdle:nxFloatArmIdle};`)(...Object.values(deps));
     window.fixture = {api,t,calls,targets,listeners,stats,scope:v=>{scope={...scope,...v};},wrap};
   },{runtime:streamHelpers+countRuntime+runtimeSource,cacheGallery,inspectHarness,opts});
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
@@ -218,7 +224,8 @@ test('floating viewer survives coordinate-only host events, scroll, idle, settin
     assert.equal(await page.evaluate(()=>fixture.api.dragCount()),0,'chat press cannot drag the viewer');
     assert.equal(await page.locator('[x-nx-float-reroll]').count(),1,'initial image must retain reroll button');
     assert.equal(await page.evaluate(()=>fixture.api.state().id),'b','boot picks reading position');
-    const target=await page.evaluate(()=>fixture.api.target());
+    assert.equal(await page.evaluate(()=>fixture.api.target()),undefined,'a scan looks for pictures only: the message being read is asked when an action needs it');
+    const target=await page.evaluate(()=>fixture.api.readTarget());
     assert.equal(target.index,4); assert.equal(target.chatIndex,2,'chat index is not message index');
     await page.clock.install();
     await page.clock.pauseAt(new Date(Date.now()+1000));
@@ -298,11 +305,13 @@ test('floating position lookup stays bounded across a large jump and never searc
    screen.scrollTop=80000;
   });
   assert.ok(await page.evaluate(()=>!!fixture.retainedImage),'the previously displayed image must exist');
-  await page.evaluate(async()=>{fixture.stats.bubbleRects=0;fixture.stats.shotQueries=0;await fixture.api.scan();});
+  await page.evaluate(async()=>{fixture.stats.bubbleRects=0;fixture.stats.shotQueries=0;fixture.stats.chatHtml=0;await fixture.api.scan();});
   const stats=await page.evaluate(()=>({...fixture.stats}));
+  // One query finds the pictures drawn: no message is walked for them, whatever the chat's length.
   assert.ok(stats.bubbleRects<40,JSON.stringify(stats));
-  assert.ok(stats.bubbleHandles<40,JSON.stringify(stats));
+  assert.ok(!stats.bubbleHandles,JSON.stringify(stats));
   assert.ok(stats.shotQueries<=3,JSON.stringify(stats));
+  assert.ok(!stats.chatHtml,'no message\'s HTML is read: '+JSON.stringify(stats));
   assert.equal(await page.evaluate(()=>fixture.api.state().id),'b','missing nearby image must keep the previous selection');
   assert.equal(await page.evaluate(()=>document.querySelector('[x-nx-float-body] img')===fixture.retainedImage),true,'an image miss must not replace the displayed DOM image');
   assert.equal(await page.locator('[x-nx-float-empty]').count(),0);
@@ -312,20 +321,29 @@ test('floating position lookup stays bounded across a large jump and never searc
   await page.evaluate(()=>{document.querySelector('[data-chat-index="5"]').textContent='unrelated edit';});
   await page.clock.runFor(220);
   assert.equal(await page.evaluate(()=>fixture.api.passes()),before,'an unrelated message must not restart the viewer');
-  await page.evaluate(()=>{fixture.stats.shotQueries=0;const index=fixture.api.target().index;document.querySelector('[data-chat-index="'+index+'"]').innerHTML='<div x-inlay-inline-shot="a"><img style="width:60px;height:60px" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'/%3E"></div>';});
+  // The message being read changes as Risu changes one: a new node in its place, here with a picture.
+  await page.evaluate(async()=>{
+   const index=(await fixture.api.readTarget()).index,old=document.querySelector('[data-chat-index="'+index+'"]'),next=old.cloneNode(false);
+   next.innerHTML='<div x-inlay-inline-shot="a"><img style="width:60px;height:60px" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'/%3E"></div>';
+   fixture.stats.chatCopies=0;fixture.stats.chatHtml=0;old.replaceWith(next);
+  });
   await page.clock.runFor(200);
   await page.waitForFunction(()=>fixture.api.state().id==='a');
-  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),1,'only the changed nearby message is reread');
-  await page.evaluate(async()=>{fixture.stats.shotQueries=0;await fixture.api.scan();});
-  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),0,'unchanged neighboring image metadata is reused');
-  await page.evaluate(async()=>{document.querySelector('.default-chat-screen').scrollTop=80300;await fixture.api.scan();});
-  assert.equal(await page.evaluate(()=>fixture.api.target().index),806,'a moderate scroll must still track the message at the reading position');
+  const reread=await page.evaluate(()=>({...fixture.stats}));
+  assert.ok(reread.chatCopies<=6 && !reread.chatHtml,'a changed list has its pictures read again, each off a shallow copy: '+JSON.stringify(reread));
+  await page.evaluate(async()=>{fixture.stats.chatCopies=0;fixture.stats.shotQueries=0;await fixture.api.scan();});
+  assert.equal(await page.evaluate(()=>fixture.stats.chatCopies||0),0,'unchanged pictures are not read again');
+  // A scroll: where the screen, the list and the picture on show are, and nothing else.
+  await page.evaluate(async()=>{document.querySelector('.default-chat-screen').scrollTop=80300;fixture.stats.chatRects=0;fixture.stats.chatCopies=0;await fixture.api.scan();});
+  const scrolled=await page.evaluate(()=>({...fixture.stats}));
+  assert.ok(scrolled.chatRects<=3 && !scrolled.chatCopies,'a scroll reads three places: '+JSON.stringify(scrolled));
+  assert.equal(await page.evaluate(async()=>(await fixture.api.readTarget()).index),806,'a moderate scroll must still track the message at the reading position');
   await page.evaluate(async()=>{
    const screen=document.querySelector('.default-chat-screen');
    screen.style.display='flex';screen.style.flexDirection='column-reverse';
    for(const row of screen.querySelectorAll('.risu-chat'))row.style.flexShrink='0';
    screen.scrollTop=-60000;
-   fixture.stats.bubbleRects=0;await fixture.api.scan();
+   fixture.stats.bubbleRects=0;await fixture.api.readTarget();
   });
   const reverse=await page.evaluate(()=>({actual:fixture.api.target().index,
    expected:Number(document.elementFromPoint(600,350).closest('.risu-chat').dataset.chatIndex),rects:fixture.stats.bubbleRects}));
@@ -340,11 +358,13 @@ test('floating snapshots refresh when bubble layout changes without a message mu
  try {
   const page=await browser.newPage();await setup(page);
   assert.equal(await page.evaluate(()=>fixture.api.state().id),'b');
-  await page.evaluate(async()=>{fixture.stats.shotQueries=0;document.querySelector('style').textContent+=' .shot{height:520px}';await fixture.api.scan();});
+  await page.evaluate(async()=>{fixture.stats.chatCopies=0;document.querySelector('style').textContent+=' .shot{height:520px}';await fixture.api.scan();});
   assert.equal(await page.evaluate(()=>fixture.api.state().id),'a','external layout changes must not reuse old image positions');
-  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),1,'only the resized bubble is reread');
-  await page.evaluate(async()=>{fixture.stats.shotQueries=0;await fixture.api.scan();});
-  assert.equal(await page.evaluate(()=>fixture.stats.shotQueries),0);
+  // The picture on show was not where it was read: where the same pictures are now is read (no tag read again), and
+  // the new one's <img> is copied into the viewer.
+  assert.equal(await page.evaluate(()=>fixture.stats.chatCopies),1,'moved pictures are placed again, not read again');
+  await page.evaluate(async()=>{fixture.stats.chatCopies=0;await fixture.api.scan();});
+  assert.equal(await page.evaluate(()=>fixture.stats.chatCopies),0);
   await page.evaluate(()=>fixture.api.dispose());
  }finally{await browser.close();}
 });
@@ -775,7 +795,7 @@ test('the scroll a ‹ › press causes cannot swap the picture back; the hold g
 // [x-hashed] under one list; a message that changes (stream end, a bake) gets a new
 // wrapper and the old one is removed. The viewer has to hear that list, not the
 // first message's own wrapper.
-async function verifyWrappedList(page, runtimeSource = runtime, settleMs = 0) {
+async function verifyWrappedList(page, runtimeSource = runtime, {settleMs = 0, redo = true, fresh = true} = {}) {
   await setup(page, 1000, true, runtimeSource);
   const img = id => `<img src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27/%3E#${id}">`;
   const wrap = (i, shot) => `<div class="chat-message-container" x-hashed="h${i}${shot || ''}"><div class="risu-chat" data-chat-index="${i}" data-chat-id="m${i}" style="min-height:400px"><div class="chattext">text ${i}`
@@ -785,6 +805,16 @@ async function verifyWrappedList(page, runtimeSource = runtime, settleMs = 0) {
   await page.evaluate(() => new Promise(r => setTimeout(r, 20)));
   await page.evaluate(() => { document.querySelector('[x-inlay-inline-shot="old"]').scrollIntoView({block: 'center'}); return fixture.api.scan(); });
   assert.equal(await page.evaluate(() => fixture.api.state().id), 'old');
+  // The scroll's own end, heard and read, before the list changes.
+  await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+  await page.evaluate(() => fixture.api.scan());
+  // The message on screen is baked again, nothing scrolled: only the list's watch can tell the viewer.
+  if (redo) {
+    await page.evaluate(html => { const old = document.querySelector('[x-hashed="h3old"]'); old.insertAdjacentHTML('afterend', html); old.remove(); }, wrap(3, 'redo'));
+    await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
+    assert.equal(await page.evaluate(() => fixture.api.state().id), 'redo', 'the list\'s watch hears a message redrawn in a new wrapper');
+  }
+  if (!fresh) { await page.evaluate(() => fixture.api.dispose()); return; }
   // Message 4 is baked: Risu swaps its wrapper for a new one holding the picture.
   await page.evaluate(html => { const old = document.querySelector('[x-hashed="h4"]'); old.insertAdjacentHTML('afterend', html); old.remove(); }, wrap(4, 'fresh'));
   await page.evaluate(() => new Promise(r => setTimeout(r, 20)));
@@ -798,18 +828,18 @@ test('a message Risu redraws in a new wrapper (stream end, bake) is read again; 
   const browser = await chromium.launch({headless: true, ...(process.platform === 'win32' ? {channel: 'msedge'} : {})});
   try {
     const page = await browser.newPage(); await verifyWrappedList(page); await page.close();
-    const climb = "if (wrapped && nxFloatListParent) {";
+    const climb = "if (wrapped && list) {";
     const noClimb = runtime.replace(climb, 'if (false) {');
     assert.notEqual(noClimb, runtime);
     let p = await browser.newPage();
-    await assert.rejects(() => verifyWrappedList(p, noClimb), /a picture baked after the viewer opened/, 'watching the wrapper misses the swap');
+    await assert.rejects(() => verifyWrappedList(p, noClimb, {fresh: false}), /the list's watch hears a message redrawn/, 'watching the wrapper misses the swap');
     await p.close();
-    // The size check alone still recovers, a scan later.
-    p = await browser.newPage(); await verifyWrappedList(p, noClimb, 300); await p.close();
-    const neither = noClimb.replace('if (!nxFloatStaleChecked) {', 'if (false) {');
+    // The recount at a scroll's end alone still recovers, a scan later.
+    p = await browser.newPage(); await verifyWrappedList(p, noClimb, {settleMs: 300, redo: false}); await p.close();
+    const neither = noClimb.replace('function nxFloatScrollEnded() { nxFloatShotsDirty = true;', 'function nxFloatScrollEnded() {');
     assert.notEqual(neither, noClimb);
     p = await browser.newPage();
-    await assert.rejects(() => verifyWrappedList(p, neither, 300), /a picture baked after the viewer opened/, 'without either the stale list stays');
+    await assert.rejects(() => verifyWrappedList(p, neither, {settleMs: 300, redo: false}), /a picture baked after the viewer opened/, 'without either the stale list stays');
     await p.close();
   } finally { await browser.close(); }
 });
