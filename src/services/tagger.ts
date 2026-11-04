@@ -37,6 +37,7 @@ import {
   collectTriggeredLoreKeys,
   filledNamesForLoreExtra,
   keysOfLoreEntries,
+  loreEntryKeys,
   normalizeLoreExtraMode,
   taggerLoreSources,
 } from '../domain/lore/assemble';
@@ -256,6 +257,9 @@ function formatAppearanceInjectLine(
   return parts.length ? `${name} ← ${parts.join(' | ')}` : name;
 }
 
+/** A reference entry's trigger words shown with it, at most (a long key list is mostly topic words). */
+const LORE_TRIGGERS_SHOWN = 12;
+
 function collectLorePayload(
   request: TaggerArgs,
   card: Record<string, unknown>,
@@ -280,10 +284,13 @@ function collectLorePayload(
   const refBlocks: string[] = [];
   for (const entry of filtered) {
     const isExtra = isCharacterImageExtraLore(entry) || entry.always;
-    const content = cleanText(entry.content || '', isExtra ? 50000 : 1200);
+    const content = cleanText(entry.content || '', isExtra ? 50000 : TAGGER_LORE_CONTENT_LIMIT);
     if (!content) continue;
     const comment = cleanText(entry.comment || '', 200);
-    const block = comment ? `### ${comment}\n${content}` : content;
+    // A reference entry names the words that light it: the names among them are the aliases a new person is
+    // registered with (one left out, that person stayed "unknown" by it and was looked for again on every tag).
+    const triggers = isExtra ? '' : loreEntryKeys(entry).slice(0, LORE_TRIGGERS_SHOWN).join(', ');
+    const block = `${comment ? `### ${comment}\n` : ''}${triggers ? `Triggers: ${triggers}\n` : ''}${content}`;
     if (isExtra) extraBlocks.push(block);
     else if (!opts.extraOnly) refBlocks.push(block);
   }
@@ -301,7 +308,8 @@ function collectLorePayload(
   if (refBlocks.length) {
     loreParts.push(
       '## Reference Lorebook (trigger-matched only)\n'
-      + 'Naming/context only. Not lb-xnai. Do not copy lore prose into tags.\n\n'
+      + 'Naming/context only. Not lb-xnai. Do not copy lore prose into tags. '
+      + 'Triggers (reference): words that activate an entry; only names/nicknames among them may become new_characters aliases, never topic words.\n\n'
       + refBlocks.join('\n\n'),
     );
   }

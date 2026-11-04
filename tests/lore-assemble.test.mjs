@@ -55,3 +55,14 @@ test('assembleLorebookForTagger skips story lore sharing filled character trigge
   assert.ok(!comments.includes('세노이 설정'), 'character-keyed story lore skipped');
   assert.ok(comments.includes('성당'), 'unrelated place lore kept');
 });
+
+test("a filled person's entry is left out before the pick, so the pack still holds its count", () => {
+  const entries = [
+    { comment: '세노이 설정', key: '세노이', content: '추기경 세노이의 과거.' },
+    { comment: '성당', key: '성당', content: '대리석 복도.' },
+    { comment: '종탑', key: '종탑', content: '낡은 종.' },
+  ];
+  // 세노이 is hit most, and filled: picked first and then dropped, it left one of the two slots empty.
+  const out = assembleLorebookForTagger(entries, '세노이가 세노이를 부르며 성당의 종탑에 오른다', ['세노이'], 2, 1200, null, 'tags');
+  assert.deepEqual(out.map((e) => e.comment), ['성당', '종탑']);
+});

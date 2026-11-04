@@ -194,17 +194,30 @@ test('pictures and asset tags come only for the people of the lore the main tagg
   }
 });
 
-test("a lit entry past the lorebook pack's five brings no picture",async()=>{
+test("a lit entry past the lorebook pack's six brings no picture",async()=>{
   const {api,config}=await runtime();
-  const names=['Alice','Bella','Cora','Dana','Erin','Faye'];
+  const names=['Alice','Bella','Cora','Dana','Erin','Faye','Gina'];
   const bot={chaId:'bot',additionalAssets:names.map(name=>[`${name} default`,`${name.toLowerCase()}-asset`]),chats:[]};
   globalThis.risuai.getCharacter=async()=>bot;globalThis.risuai.readImage=async()=>PNG_NO_META;
   config.card.asset_nai_tags='inline';config.card.image_analysis_separate=false;api.setConfig(config);
-  // Five named twice, Faye once in passing: the pack takes the five, and so does the picture search.
-  const story=names.slice(0,5).map(name=>`${name} smiled. ${name} waved.`).join(' ')+' Faye passed by.';
+  // Six named twice, Gina once in passing: the pack takes the six, and so does the picture search.
+  const story=names.slice(0,6).map(name=>`${name} smiled. ${name} waved.`).join(' ')+' Gina passed by.';
   const lorebook=names.map(name=>({comment:name,content:`${name} is in town.`,key:name}));
   const {images}=await api.collectGenerationAssets({session_id:'',assistant_text:story,lorebook});
-  assert.deepEqual(images.map(image=>image.trigger.toLowerCase()).sort(),names.slice(0,5).map(name=>name.toLowerCase()));
+  assert.deepEqual(images.map(image=>image.trigger.toLowerCase()).sort(),names.slice(0,6).map(name=>name.toLowerCase()));
+});
+
+// The names among an entry's trigger words are the aliases a new person is registered with: one left out, that
+// person stayed unknown by it (the 이미지 분기 repeat). The rule keeps topic words out of the aliases.
+test("the lorebook pack names each entry's trigger words, as reference for aliases only",async()=>{
+  const {api,config}=await runtime();
+  config.card.asset_nai_tags='off';config.card.lorebook=true;api.setConfig(config);
+  const lorebook=[{comment:'Count One-Room (원룸 백작)',content:'A landlord of the District.',key:'원룸 백작, 구만석, 보증금, Count One-Room'}];
+  const messages=await api.buildTaggerMessages({session_id:'',assistant_text:'원룸 백작이 보증금을 셌다.',lorebook});
+  const lore=messages.map(message=>typeof message.content==='string'?message.content:'').find(text=>text.startsWith('# Reference: Lorebook'));
+  assert.ok(lore,'the pack is sent');
+  assert.ok(lore.includes('### Count One-Room (원룸 백작)\nTriggers: 원룸 백작, 구만석, 보증금, Count One-Room\nA landlord of the District.'),lore);
+  assert.ok(lore.includes('only names/nicknames among them may become new_characters aliases, never topic words'));
 });
 
 test('complete metadata stays text-only in both modes and both image routing settings',async()=>{
