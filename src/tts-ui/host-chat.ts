@@ -53,7 +53,7 @@ export async function installTtsHost(): Promise<void> {
   installed = true;
   // Read by every reply's lines (risu64 난독), not only once the viewer has opened.
   await loadViewerPrefs().catch(() => null);
-  let refreshViewer = async () => {}, flash = (_message: string) => {};
+  let flash = (_message: string) => {};
   const bindings = new Map<string,Binding>(); let timer: ReturnType<typeof setTimeout> | undefined, scanTask: Promise<void> | undefined, again = false, lastScope = '', lastPrefetch = '', disposed=false, inputEpoch=0, hovered='', bootAttempts=0;
   // Lines a module control is actually shown for; status panels other modules
   // turned into markup never get a control and so never join the playlist.
@@ -192,7 +192,6 @@ export async function installTtsHost(): Promise<void> {
       if (disposed || !active()) return;
       // A remounted chat screen (another bot or chat) gets its own watcher.
       await watchChat();
-      await refreshViewer();
       const context = await currentTtsContext().catch(()=>null); if(!context){bootstrap();return;} omniTts.setContext(context);
       if (context.scope !== lastScope) { lastScope = context.scope; lastPrefetch = ''; }
       const live = new Set<string>(), nearby: {distance:number;request:TtsRequest}[] = [];
@@ -391,6 +390,6 @@ export async function installTtsHost(): Promise<void> {
     } finally { await releaseHost(screen); }
   };
   await syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));
-  const viewer=await installTtsViewer(doc,revealInChat);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
+  const viewer=await installTtsViewer(doc,revealInChat);flash=viewer.flash;await requestScan();
   if(host.onUnload)await host.onUnload(async()=>{disposed=true;await syncNarrationRule().catch(()=>{});inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();unsubscribeUncovered();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
 }

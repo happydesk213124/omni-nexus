@@ -6,6 +6,7 @@ import { readingReply } from '../domain/viewer/reply-at';
 import { getConfig } from '../services/context';
 import { currentTtsContext } from '../services/tts-context';
 import { addChatCover, chatCovered, viewerCovering } from '../services/viewer-presence';
+import { watchChatScreen, type ChatScreen } from '../services/chat-screen-watch';
 import { chatView } from '../viewer/chat-screen';
 import { quiet, release, unwrap } from '../viewer/safe-dom';
 
@@ -16,7 +17,8 @@ import { quiet, release, unwrap } from '../viewer/safe-dom';
  * (__OMNI_MESSAGE_ACTION__, __OMNI_IMAGE_COUNTS__: tools/vendor-patches/message-runtime.js).
  *
  * The switch (대시보드 › 플로팅 태그) is read from memory once a second: off, nothing of it is in Risu's page and nothing
- * is read from it. On, the chat screen is looked for every other second, as the TTS window does. A tap costs no
+ * is read from it. On, it hears whether the chat screen is up, and its size, from the one check the TTS window and the
+ * floating viewer hear too (chat-screen-watch.ts); it looked every other second itself before. A tap costs no
  * call unless it is on a button: the buttons' rectangles are read when they show.
  */
 interface HostPoint { clientX: number; clientY: number }
@@ -54,7 +56,7 @@ const CSS = `[x-omni-tagfloat]{position:fixed;right:0;top:42%;z-index:2147483000
 @media (hover:hover){[x-omni-tagfloat] button:hover{background:rgba(255,255,255,.18)}}
 @media (max-width:400px){[x-omni-tagfloat] [data-tf-row] button{width:36px;height:36px;font-size:18px}}`;
 
-let installed = false, mounted = false, ticking = false, tick = 0;
+let installed = false, mounted = false, ticking = false, rerun = false, stopScreen: (() => void) | undefined;
 let doc: SafeDocument | null = null, root: SafeElement | null = null, style: SafeElement | null = null;
 let rangeEl: SafeElement | null = null, noteEl: SafeElement | null = null, clickId = '';
 let shown = false, inChat = false, screenSig = '', open = false, countsOpen = false, range = '', note = '', busy = '';
@@ -202,9 +204,11 @@ async function mount(): Promise<void> {
   written.clear(); written.set('shown', '0');
   clickId = await doc.addEventListener('click', (p: HostPoint) => onClick(p));
   mounted = true;
+  stopScreen = watchChatScreen(onScreen);
 }
 
 async function unmount(): Promise<void> {
+  stopScreen?.(); stopScreen = undefined;
   mounted = false; shown = false; inChat = false; screenSig = ''; open = false; countsOpen = false; note = ''; hits = []; areas = []; sliding = false;
   clearTimeout(noteTimer); clearTimeout(slideTimer);
   if (doc && clickId) await quiet(doc.removeEventListener('click', clickId));
@@ -215,15 +219,13 @@ async function unmount(): Promise<void> {
 }
 
 /** Whether the chat screen is up, and its size: a new size (a turned phone) means the buttons are read again. */
-async function lookForChat(): Promise<void> {
-  const screen = doc ? await doc.querySelector('.default-chat-screen') : null;
-  if (!screen) { inChat = false; return; }
-  try {
-    const r = await screen.getBoundingClientRect();
-    inChat = r.width > 0 && r.height > 0;
-    const sig = `${Math.round(r.width)}x${Math.round(r.height)}`;
+function onScreen(screen: ChatScreen): void {
+  inChat = screen.present;
+  if (screen.present) {
+    const sig = `${screen.width}x${screen.height}`;
     if (sig !== screenSig) { screenSig = sig; written.delete('measured'); }
-  } finally { await release(screen); }
+  }
+  run();
 }
 
 async function step(): Promise<void> {
@@ -231,11 +233,17 @@ async function step(): Promise<void> {
   if (!mounted) await mount();
   if (!mounted) return;
   const allowed = !viewerCovering() && hostAllows();
-  if (allowed && (tick++ % 2 === 0 || !inChat)) await lookForChat();
   const next = allowed && inChat;
   // Out of sight it folds: what it was over has moved on by the time it is back.
   if (next !== shown) { shown = next; if (!shown) { open = false; countsOpen = false; } await paint(); }
   else if (shown && !written.has('measured')) await measure();
+}
+
+/** A step now; asked for while one is under way, one more as it ends (what changed is not left for the next second). */
+function run(): void {
+  if (ticking) { rerun = true; return; }
+  ticking = true; rerun = false;
+  void step().catch(error => dbg('tagfloat.tick', { message: String(error) }, 'warn')).finally(() => { ticking = false; if (rerun) run(); });
 }
 
 export function installTagFloat(): void {
@@ -244,11 +252,8 @@ export function installTagFloat(): void {
   // 옴니 뷰어 asks the covers too once it is up; until then (or on a host without its button) this one answers.
   if (typeof Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__') !== 'function') Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', chatCovered);
   addChatCover(covered);
-  const timer = setInterval(() => {
-    if (ticking) return;
-    ticking = true;
-    void step().catch(error => dbg('tagfloat.tick', { message: String(error) }, 'warn')).finally(() => { ticking = false; });
-  }, 1000);
+  // The second's own step is dropped while one runs; only news of the chat screen waits for it.
+  const timer = setInterval(() => { if (!ticking) run(); }, 1000);
   // Node hosts (smoke, audit) boot the bundle and end when nothing is left to run: a held tick kept them up for hours.
   (timer as unknown as { unref?: () => void }).unref?.();
 }

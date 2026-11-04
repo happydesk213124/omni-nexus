@@ -31,11 +31,16 @@ import { createStreamSignalScanner } from '../domain/prompt/stream-signal';
 import { createStreamLineBatcher } from '../domain/prompt/stream-lines';
 import { inlineCastBlock, inlineShotBlocks, inlineShotLine, inlineShotTagged } from '../domain/prompt/inline-shots';
 import { addChatCover } from '../services/viewer-presence';
+import { checkChatScreenSoon, watchChatScreen } from '../services/chat-screen-watch';
 
 export function installUiContractGlobals(): void {
   Reflect.set(globalThis, '__OMNI_EXPORT__', { jsonParts });
   // The floating viewer says where it is (the frame it keeps), so a tap on it is no tap on the chat beneath.
   Reflect.set(globalThis, '__OMNI_CHAT_COVER__', addChatCover);
+  // Whether Risu's chat screen is up, from the one check everyone shares: the floating viewer hides while it is not
+  // (Risu's settings and its other pages are drawn in its place), and is laid out again when it moves or is drawn
+  // anew. A tap asks for a check soon.
+  Reflect.set(globalThis, '__OMNI_CHAT_SCREEN__', { watch: watchChatScreen, soon: checkChatScreenSoon });
   Reflect.set(globalThis, '__INLAY_VIEWER_CORE__', { ...viewerCore });
   Reflect.set(globalThis, '__INLAY_STREAM_KW__', {
     ...messageBody,

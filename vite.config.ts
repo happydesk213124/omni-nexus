@@ -7476,7 +7476,7 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
       if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
       invalidateOverlayLayoutCache();
       Promise.resolve().then(async () => {
-        let stayInRisu = !!t._viewerHiddenForRisuSettings;
+        let stayInRisu = !!t._viewerHiddenForRisuSettings || !!t._chatScreenGone;
         if (!stayInRisu) {
           try { stayInRisu = await isRisuSettingsOpen(); } catch { stayInRisu = !1; }
         }
@@ -7583,7 +7583,7 @@ const VENDOR_SETTINGS_WATCH_STICKY_PATCH = `        t.uiOpen = !1, t._hostReaper
         if (t.overlayUi) t.overlayUi._stickyEditorOpen = !1;
         xa({ silent: !0 }).catch(() => {});
         Promise.resolve().then(async () => {
-          let stayInRisu = !!t._viewerHiddenForRisuSettings;
+          let stayInRisu = !!t._viewerHiddenForRisuSettings || !!t._chatScreenGone;
           if (!stayInRisu) {
             try { stayInRisu = await isRisuSettingsOpen(); } catch { stayInRisu = !1; }
           }
@@ -16656,7 +16656,7 @@ const VENDOR_POINTER_SELECT_PATCH =
     return !0;
   }`;
 
-/** Hide floating image viewer only while Risu host settings (`.rs-setting-cont`) are open. */
+/** Hide the floating image viewer while Risu's chat screen is gone (its settings, its other pages). */
 const VENDOR_RISU_SETTINGS_HIDE_VIEWER_NEEDLE =
   `  async function restoreFloatingViewerAfterModal() {
     if (!t._viewerHiddenForModal) return;
@@ -16674,6 +16674,8 @@ const VENDOR_RISU_SETTINGS_HIDE_VIEWER_NEEDLE =
   function cornerFixedStyle(extra = []) {`;
 const VENDOR_RISU_SETTINGS_HIDE_VIEWER_PATCH =
   `  async function restoreFloatingViewerAfterModal() {
+    // Our settings are where the viewer is switched on or off.
+    syncChatScreenWatch();
     if (!t._viewerHiddenForModal) return;
     t._viewerHiddenForModal = !1;
     if (t._viewerHiddenForRisuSettings || t.uiOpen || t._hostChromeBlocked) return;
@@ -16683,6 +16685,7 @@ const VENDOR_RISU_SETTINGS_HIDE_VIEWER_PATCH =
   async function hideFloatingViewerForRisuSettings() {
     if (t._viewerHiddenForRisuSettings) return;
     t._viewerHiddenForRisuSettings = !0;
+    syncChatScreenWatch();
     if (t.overlayUi) t.overlayUi._lastThumbPct = null;
     try { await nxFloatHide(); } catch {}
     try { await Ht(); } catch {}
@@ -16690,6 +16693,7 @@ const VENDOR_RISU_SETTINGS_HIDE_VIEWER_PATCH =
   async function restoreFloatingViewerAfterRisuSettings() {
     if (!t._viewerHiddenForRisuSettings) return;
     t._viewerHiddenForRisuSettings = !1;
+    syncChatScreenWatch();
     if (t.overlayUi) t.overlayUi._lastThumbPct = null;
     if (t.uiOpen || t._hostChromeBlocked) {
       try { await Ht(); } catch {}
@@ -16709,30 +16713,46 @@ const VENDOR_RISU_SETTINGS_HIDE_VIEWER_PATCH =
       return !1;
     }
   }
-  async function syncFloatingViewerForRisuSettings() {
-    if (t.unloading || t._hostChromeBlocked) return;
-    try {
-      const open = await isRisuSettingsOpen();
-      if (open) {
-        await hideFloatingViewerForRisuSettings();
+  // Risu draws its settings, and its other pages, in place of the chat screen (App.svelte draws one or the other;
+  // our own settings are a frame over the page and leave it be). So the viewer hides while the chat screen is gone
+  // and comes back with it, told by the one check the TTS window and the 플로팅 태그 hear too
+  // (src/services/chat-screen-watch.ts). Heard while the viewer is on, or while it is still hidden for a page with no
+  // chat (so that it hears the chat come back, and lets the TTS window go); otherwise nothing is asked for it.
+  // It polled for Risu's settings itself before (every 3.2 s, every 0.4 s after a tap), and each time it found them
+  // closed it mounted the viewer again (nxFloatEnsure: the chat, its size, the session, the marker, ten calls or so).
+  // What that caught is told now: the chat screen moved or took another size (a turned phone), or was drawn anew.
+  function syncChatScreenWatch() {
+    const want = !t.unloading && (t.backendSettings?.card?.floating_viewer !== !1 || !!t._viewerHiddenForRisuSettings);
+    if (want === !!t._risuSettingsWatch) return;
+    if (!want) {
+      const stop = t._risuSettingsWatch;
+      t._risuSettingsWatch = null, t._chatScreenGone = !1;
+      stop();
+      return;
+    }
+    const watch = globalThis.__OMNI_CHAT_SCREEN__?.watch;
+    if (typeof watch != "function") return;
+    let heard = !1;
+    t._risuSettingsWatch = watch((screen) => {
+      const present = !!screen?.present, changed = heard && present && !t._chatScreenGone;
+      heard = !0, t._chatScreenGone = !present;
+      if (t.unloading) return;
+      // Our settings hide the viewer themselves, and when they close they look where they are (_chatScreenGone).
+      if (!present) {
+        if (!t._hostChromeBlocked) hideFloatingViewerForRisuSettings().catch(() => {});
         return;
       }
-      // Plugin fullscreen replaces .rs-setting-cont — keep the hide flag while Inlay settings stay open.
-      if (t.uiOpen) return;
-      await restoreFloatingViewerAfterRisuSettings();
-    } catch {
-    }
+      // Back from a page with no chat. Under our settings this only lets go of the hide; they bring the viewer
+      // back as they close.
+      if (t._viewerHiddenForRisuSettings) {
+        restoreFloatingViewerAfterRisuSettings().catch(() => {});
+        return;
+      }
+      if (changed && !nxFloatBlocked()) nxFloatEnsure().catch(() => {});
+    });
   }
   function startRisuSettingsViewerWatch() {
-    if (t._risuSettingsWatch) return;
-    t._risuSettingsWatch = setInterval(() => {
-      if (t.unloading) {
-        clearInterval(t._risuSettingsWatch), t._risuSettingsWatch = null;
-        return;
-      }
-      syncFloatingViewerForRisuSettings().catch(() => {
-      });
-    }, 400);
+    syncChatScreenWatch();
   }
   function cornerFixedStyle(extra = []) {`;
 
@@ -16760,7 +16780,7 @@ const VENDOR_RISU_SETTINGS_PAINT_PATCH =
 const VENDOR_RISU_SETTINGS_UNLOAD_NEEDLE =
   `t._hostWatch && clearInterval(t._hostWatch), t._settingsWatch && clearInterval(t._settingsWatch)`;
 const VENDOR_RISU_SETTINGS_UNLOAD_PATCH =
-  `t._hostWatch && clearInterval(t._hostWatch), t._settingsWatch && clearInterval(t._settingsWatch), t._risuSettingsWatch && clearInterval(t._risuSettingsWatch)`;
+  `t._hostWatch && clearInterval(t._hostWatch), t._settingsWatch && clearInterval(t._settingsWatch), typeof t._risuSettingsWatch == "function" && (t._risuSettingsWatch(), t._risuSettingsWatch = null)`;
 
 /** Third minimize mode: actions floating (tag/regen + preset); long-press expands. */
 const VENDOR_ACTIONS_HELP_NEEDLE =
