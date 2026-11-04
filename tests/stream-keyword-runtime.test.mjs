@@ -7,7 +7,7 @@ import {retirePercentPlacement} from '../tools/vendor-patches/runtime-rebuild.mj
 import {parseStreamKeywords} from '../.test-build/stream-keywords.mjs';
 import {createStreamSignalScanner} from '../.test-build/stream-signal.mjs';
 import {createStreamLineBatcher} from '../.test-build/stream-lines.mjs';
-import {inlineShotBlocks,inlineShotLine,inlineShotTagged} from '../.test-build/inline-shots.mjs';
+import {inlineCastBlock,inlineShotBlocks,inlineShotLine,inlineShotTagged} from '../.test-build/inline-shots.mjs';
 import {aggregateStreamLineProgress,progressToastView} from '../.test-build/viewer-core.mjs';
 const source=readFileSync('tools/vendor-patches/stream-keyword-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-lines-runtime.js','utf8')+'\n'+readFileSync('tools/vendor-patches/stream-inline-runtime.js','utf8');
 const replySource=readFileSync('tools/vendor-patches/reply-runtime.js','utf8');
@@ -21,7 +21,7 @@ function fixture(card={},syncProgressToast,readScope) {
   const context={t,console,Promise,Date:class extends Date {static now(){return now;}},Math,setTimeout:(fn,ms)=>{timerWrites++;timers.set(++seq,{fn,ms});return seq;},clearTimeout:id=>timers.delete(id),
     clearInterval:id=>timers.delete(id),ce:async id=>galleries.push(id),onSelectionChanged:async()=>{},Se:async()=>{},syncProgressToast,
     __INLAY_VIEWER_CORE__:{aggregateStreamLineProgress},
-    __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,inlineShotBlocks,inlineShotLine,inlineShotTagged,
+    __INLAY_STREAM_KW__:{parseStreamKeywords,analysisBody,findStreamSignal,createStreamLineBatcher,inlineCastBlock,inlineShotBlocks,inlineShotLine,inlineShotTagged,
       createStreamSignalScanner:()=>{const scanner=createStreamSignalScanner();return {scan:(...args)=>{scans++;return scanner.scan(...args);}};}},
     Z:async()=>{reads++;return readScope?readScope(scope,reads):scope;},k:{getCurrentCharacterIndex:async()=>0,getCurrentChatIndex:async()=>0,getChatFromIndex:async()=>chat},
     omniStreamOutput:()=>{},omniStreamScrollTrack:()=>{},omniStreamScrollEnd:()=>{},scheduleHashRelinkAfterReply:()=>{},D:async(_name,read)=>read(),w:value=>String(value),
@@ -40,7 +40,7 @@ function fixture(card={},syncProgressToast,readScope) {
     }};
   runInNewContext(source+'\n'+replySource+';this.api={onScriptOutput,onChatOutput,omniCommitStreamReply,omniKeywordScope,omniCancelKeywordRun};',context);
   const fire=async(ms=1000,elapsed=ms)=>{now+=elapsed;for(const [id,row]of [...timers])if(row.ms===ms){timers.delete(id);row.fn();}await tick();};
-  return {...context.api,t,scope,msg,prose,calls,polls,galleries,autoGenerations,sounds,jobStates,timers,fire,advance:ms=>now+=ms,scans:()=>scans,reads:()=>reads,timerWrites:()=>timerWrites,arg:()=>({char:{chaId:'c'},chat,messageIndex:1,characterIndex:0,chatIndex:0})};
+  return {...context.api,context,t,scope,msg,prose,calls,polls,galleries,autoGenerations,sounds,jobStates,timers,fire,advance:ms=>now+=ms,scans:()=>scans,reads:()=>reads,timerWrites:()=>timerWrites,arg:()=>({char:{chaId:'c'},chat,messageIndex:1,characterIndex:0,chatIndex:0})};
 }
 
 test('incoming chunks allocate only one scan timer and one idle timer per window',async()=>{
@@ -166,6 +166,46 @@ test('streaming tags ask where the reply goes once, as it starts: a block closed
   f.onScriptOutput(['First narrative line, long enough to depict.',shot(1),'Second line.'].join('\n'));await f.fire();await tick();
   assert.equal(f.calls.filter(c=>c.path.endsWith('/create')).length,1,'the block started mid-stream');
   assert.equal(f.reads(),1,'and nothing was asked again');
+});
+// The cast block registers the reply's new people; its shot blocks are told to leave them to it.
+const cast='[[inxc]]{"place":"room, indoor","new_characters":[{"name":"Mina","appearance":"short black hair"}]}[[/inxc]]';
+const casts=f=>f.calls.filter(c=>c.path==='/v1/inline-tags/cast');
+// Behind a long chat the address read came back after the stream: "not streaming", no address.
+const lateRead=scope=>({...scope,chat:{...scope.chat,isStreaming:false}});
+test('the cast block registers its people in the chat its request was read for, at once: no read of the chat, no wait for the message',async()=>{
+  const f=fixture({stream_inline_tags:true},undefined,lateRead);
+  f.context.__OMNI_INLINE_TAGS__={requestScope:()=>({sessionId:'s',characterId:'c',chatId:'room',charIndex:0,chatIndex:0})};
+  f.onScriptOutput([cast,'First narrative line, long enough to depict.'].join('\n'));await f.fire();await tick();await tick();
+  assert.equal(casts(f).length,1,'sent as it closed, though the address read said "not streaming"');
+  const body=casts(f)[0].body;
+  assert.deepEqual([body.session_id,body.character_id,body.chat_id,body.host_message_id],['s','c','room',''],'to the request\'s chat, without the message');
+  assert.match(body.body,/"Mina"/);
+  assert.equal(f.reads(),1,'the one read is the streaming tags\' own, as the reply starts');
+  // The reply ends: it is not sent again.
+  f.msg.data=[cast,'First narrative line, long enough to depict.',shot(1)].join('\n');
+  f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data);for(let i=0;i<6;i++)await tick();
+  assert.equal(casts(f).length,1,'once');
+});
+test('with no chat known yet, the cast waits for the reply\'s end and goes with its address, never dropped',async()=>{
+  const f=fixture({stream_inline_tags:true},undefined,lateRead);
+  const reply=[cast,'First narrative line, long enough to depict.',shot(1),'Second line.'];
+  f.onScriptOutput(reply.slice(0,2).join('\n'));await f.fire();await tick();await tick();
+  assert.equal(casts(f).length,0,'nowhere to send it yet');
+  f.onScriptOutput(reply.join('\n'));await f.fire();await tick();await tick();
+  assert.equal(casts(f).length,0,'still nowhere: nothing reads the chat for it');
+  f.msg.data=reply.join('\n');
+  f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data);for(let i=0;i<6;i++)await tick();
+  assert.equal(casts(f).length,1,'sent with the reply\'s end');
+  assert.deepEqual([casts(f)[0].body.character_id,casts(f)[0].body.chat_id,casts(f)[0].body.host_message_id],['c','room','m']);
+});
+test('a reply with a cast and no image block still registers its people as its run ends',async()=>{
+  const f=fixture({stream_inline_tags:true},undefined,lateRead);
+  const reply=[cast,'First narrative line, long enough to depict.','No pictures this time.'];
+  f.onScriptOutput(reply.join('\n'));await f.fire();await tick();await tick();
+  f.msg.data=reply.join('\n');
+  assert.equal(f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data),false,'no images: the run ends here');
+  for(let i=0;i<6;i++)await tick();
+  assert.equal(casts(f).length,1,'its cast went anyway');
 });
 test('a reply Risu ends without completion (an error or Stop) is committed as it stands, so its images bake',async()=>{
   const f=fixture({stream_inline_tags:true});

@@ -2,6 +2,7 @@ import { risuHost } from '../core/host';
 import type { TtsCharacter } from '../core/tts-types';
 import { serializeSessionStorage } from './chat-session-store';
 import { characterDirectory, directoryWarm } from './character-directory';
+import { forgetPrimedCharacter } from './primed-character';
 
 /**
  * A bot's TTS characters live in that bot's own lorebook, next to the
@@ -76,6 +77,7 @@ export function writeBotTtsCharacters(characterId: string, rows: readonly TtsCha
       content: JSON.stringify({ version: 1, characterId, characters: next }) };
     if (at < 0) entries.push(value); else entries[at] = value;
     await host.setCharacterToIndex(found.index, { ...found.char, globalLore: entries });
+    forgetPrimedCharacter();
     const saved = await readBotTtsCharacters(characterId);
     if (JSON.stringify(saved) !== JSON.stringify(next)) throw new Error('TTS 캐릭터 로어북 저장 확인에 실패했습니다.');
   });
