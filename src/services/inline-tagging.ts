@@ -15,6 +15,7 @@ import { auditCues, lastCueAudit } from './cue-audit';
 import { loadTaggerRoster } from './characters';
 import { getConfig } from './context';
 import { loadEmotionData } from '../storage/emotion-store';
+import { holdBot, readOpenBot, type Bot } from '../storage/current-bot';
 import { fetchHostLorebookEntries } from './lorefilter';
 import { getPrompt } from './settings';
 import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionRecentCast } from './session-author-note';
@@ -138,26 +139,43 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
   ].filter(Boolean).join('\n\n');
 }
 
-/** The chat open in Risu now, with its last replies (newest first). */
-async function liveScope(): Promise<InlineScope | null> {
+/** The chat open in Risu now, with its last replies (newest first), and the bot it was read off. */
+async function liveScope(): Promise<{ scope: InlineScope; bot: Bot } | null> {
   const host = risuHost();
-  if (!host?.getCurrentCharacterIndex || !host.getCharacterFromIndex) return null;
-  const charIndex = Number(await host.getCurrentCharacterIndex());
-  const character = await host.getCharacterFromIndex(charIndex) as { chaId?: unknown; id?: unknown; chatPage?: unknown; chats?: unknown } | null;
-  const chats = Array.isArray(character?.chats) ? character!.chats as Array<{ id?: unknown; chatId?: unknown; message?: unknown }> : [];
-  const chatIndex = Number(typeof host.getCurrentChatIndex === 'function' ? await host.getCurrentChatIndex() : character?.chatPage) || 0;
+  const [bot, rawChatIndex] = await Promise.all([readOpenBot(), typeof host?.getCurrentChatIndex === 'function' ? host.getCurrentChatIndex() : null]);
+  if (!bot) return null;
+  const character = bot.char as { name?: unknown; description?: unknown; desc?: unknown; personality?: unknown; chatPage?: unknown; chats?: unknown };
+  const chats = Array.isArray(character.chats) ? character.chats as Array<{ id?: unknown; chatId?: unknown; name?: unknown; message?: unknown }> : [];
+  const chatIndex = Number(rawChatIndex ?? character.chatPage) || 0;
   const chat = chats[chatIndex];
-  const characterId = cleanText(character?.chaId || character?.id, 200), chatId = cleanText(chat?.id || chat?.chatId, 200);
+  const characterId = cleanText(bot.id, 200), chatId = cleanText(chat?.id || chat?.chatId, 200);
   if (!characterId || !chatId) return null;
   const messages = Array.isArray(chat?.message) ? chat!.message as Array<{ role?: unknown; data?: unknown }> : [];
   const recent = messages.filter(m => m?.role === 'char').slice(-RECENT_REPLIES).reverse().map(m => String(m.data ?? ''));
-  return { sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, characterId, chatId, recent };
+  const sessionId = `risu_${sessionIdHash(`${characterId}|${chatId}`)}`;
+  requested = { at: Date.now(), scope: { sessionId, characterId, chatId, charIndex: bot.index, chatIndex,
+    characterName: String(character.name ?? ''), chatName: String(chat?.name ?? ''),
+    character: { name: String(character.name ?? ''), description: String(character.description ?? character.desc ?? ''), personality: String(character.personality ?? '') } } };
+  return { scope: { sessionId, characterId, chatId, recent }, bot };
 }
 
 let lastScope: InlineScope | null = null;
 let state = { key: '', text: '' };
 let refreshing: Promise<void> | null = null;
 const scopeKey = (scope: InlineScope) => JSON.stringify([cleanText(scope.sessionId, 200), cleanText(scope.characterId, 200), cleanText(scope.chatId, 200)]);
+/**
+ * The chat a chat request was last built for, as the streaming runtime's reply address needs it (ids, indices, the
+ * bot's name, description and personality, read for this very request): with it, finding the streaming reply reads
+ * only that chat, not the whole bot again (stream-keyword-runtime's omniCaptureKeywordTarget). Half an hour at most.
+ */
+interface RequestScope {
+  sessionId: string; characterId: string; chatId: string; charIndex: number; chatIndex: number; characterName: string; chatName: string;
+  character: { name: string; description: string; personality: string };
+}
+let requested: { at: number; scope: RequestScope } | null = null;
+function requestScope(): RequestScope | null {
+  return requested && Date.now() - requested.at < 30 * 60_000 ? requested.scope : null;
+}
 
 /**
  * Rebuilds the chat state, for the given chat or (null) the one open in Risu.
@@ -166,11 +184,14 @@ const scopeKey = (scope: InlineScope) => JSON.stringify([cleanText(scope.session
 export function refreshInlineTagState(scope: InlineScope | null = lastScope): Promise<void> {
   if (!inlineTagsOn()) return Promise.resolve();
   const task = (refreshing ?? Promise.resolve()).catch(() => {}).then(async () => {
-    const target = scope ?? await liveScope().catch(error => { dbg('inline-tags.chat', { message: String(error) }, 'warn'); return null; });
+    const live = scope ? null : await liveScope().catch(error => { dbg('inline-tags.chat', { message: String(error) }, 'warn'); return null; });
+    const target = scope ?? live?.scope;
     if (!target) return;
     lastScope = target;
     const key = scopeKey(target);
-    const text = await inlineTagState(target).catch(error => { dbg('inline-tags.state', { message: String(error) }, 'warn'); return ''; });
+    // The bot just read, held while the state is built: its rosters and this chat's note are read off it, with no
+    // directory of every bot and no second copy (each of them read the whole bot again before).
+    const text = await holdBot(live?.bot ?? null, () => inlineTagState(target)).catch(error => { dbg('inline-tags.state', { message: String(error) }, 'warn'); return ''; });
     if (lastScope && scopeKey(lastScope) === key) state = { key, text };
   });
   refreshing = task;
@@ -290,7 +311,7 @@ export async function installInlineTags(opts: { ready?: () => Promise<unknown> }
   if (installed) return;
   installed = true;
   if (opts.ready) settingsReady = opts.ready;
-  Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); }, status: inlineTagStatus, cues: lastCueAudit });
+  Reflect.set(globalThis, '__OMNI_INLINE_TAGS__', { scope: (scope: InlineScope) => { void refreshInlineTagState(scope); }, status: inlineTagStatus, cues: lastCueAudit, requestScope });
   const host = risuHost();
   if (typeof host?.addRisuReplacer !== 'function') { status.registered = 'no'; dbg('inline-tags.replacer', { message: 'unavailable on this Risu' }, 'warn'); return; }
   // Risu asks for the 'replacer' permission here; a refusal registers nothing and

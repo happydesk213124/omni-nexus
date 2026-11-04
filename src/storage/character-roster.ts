@@ -5,6 +5,7 @@ import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { serializeSessionStorage } from './chat-session-store';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 import { characterDirectory, directoryWarm } from './character-directory';
+import { forgetBots, openBotFor } from './current-bot';
 
 export const CHARACTER_ROSTER_LORE = 'omni.nexus.data.global';
 type Row = Record<string, unknown>;
@@ -164,6 +165,7 @@ export async function writeCharacterEntryKey(scope: string, key: string, value: 
     const entry = { ...(index >= 0 ? object(entries[index]) : {}), comment: CHARACTER_ROSTER_LORE, key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0, content };
     if (index < 0) entries.push(entry); else entries[index] = entry;
     await host.setCharacterToIndex(t.index, { ...char, globalLore: entries });
+    forgetBots();
     if (JSON.stringify((await readEntryData(t)).data[key]) !== JSON.stringify(value)) throw new Error('Character lore save verification failed');
   });
 }
@@ -172,10 +174,13 @@ export async function writeCharacterEntryKey(scope: string, key: string, value: 
  * disabled like the roster's (no key, never always active), so Risu never injects it.
  */
 export async function readCharacterLoreText(scope: string, comment: string): Promise<string | null> {
-  const t = await target(scope);
-  if (!t) return null;
-  const char = object(await risuHost()?.getCharacterFromIndex?.(t.index));
-  if (!char || String(char.chaId || char.id) !== t.id) throw new Error('Character moved during lore access');
+  // The open bot (or one a job holds): no directory of every bot, no second copy of it.
+  const open = await openBotFor(scope);
+  const t = open ? null : await target(scope);
+  if (!open && !t) return null;
+  const char = open ? open.char : object(await risuHost()?.getCharacterFromIndex?.(t!.index));
+  if (!open && (!char || String(char.chaId || char.id) !== t!.id)) throw new Error('Character moved during lore access');
+  if (!char) return null;
   const entry = (Array.isArray(char.globalLore) ? char.globalLore : []).find(v => object(v)?.comment === comment);
   return entry ? String(object(entry)?.content ?? '') : '';
 }
@@ -199,11 +204,18 @@ export async function writeCharacterLoreText(scope: string, comment: string, con
       if (index < 0) entries.push(entry); else entries[index] = entry;
     }
     await host.setCharacterToIndex(t.index, { ...char, globalLore: entries });
+    forgetBots();
   });
 }
 
 export async function readCharacterRoster(scope:string):Promise<CharacterRecord[]> {
   if(scope==='__global__') return (await readShared()).roster;
+  // The open bot (or one a job holds): no directory of every bot, no second copy of it.
+  const bot=await openBotFor(scope);
+  if(bot) {
+    const t={index:bot.index,id:bot.id,scope:unifiedSessionIdForCharacter(bot.id)};
+    return withBuffered(t,(entryData(bot.char,t).data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope})));
+  }
   const t=await target(scope);return t?(await read(t)).roster:[];
 }
 /**
@@ -283,6 +295,7 @@ export async function mutateCharacterRoster(scope:string,change:(rows:CharacterR
     const stored=(data.roster as unknown[]).map(value=>clean(object(value)||{}));
     if(data.characterId===t.id && JSON.stringify(stored)===JSON.stringify(next)) { bufferedRosters.delete(t.id); return; }
     await host.setCharacterToIndex(t.index,{...char,globalLore:rosterLore(char,t,data,next)});
+    forgetBots();
     // This write already holds every waiting change it was built on (reads include them).
     bufferedRosters.delete(t.id);
     if(JSON.stringify((await read(t)).roster.map(clean))!==JSON.stringify(next)) throw new Error('Character roster save verification failed');

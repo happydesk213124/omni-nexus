@@ -12,6 +12,7 @@
  */
 import { hostHas, risuHost } from '../core/host';
 import { sleep } from '../core/util/async';
+import { forgetBots } from '../storage/current-bot';
 import { clearCharRefHideIcon } from './char-ref-module';
 
 /** Longer than a Svelte flush / one frame so mount() finishes before the next write. */
@@ -40,10 +41,10 @@ async function remountCharacterCards(): Promise<boolean> {
   const char = asRecord(await getChar());
   if (!char) return false;
   const prev = Boolean(char.largePortrait);
-  await setChar({ ...char, largePortrait: !prev });
+  await setChar({ ...char, largePortrait: !prev });forgetBots();
   await sleep(REMOUNT_FLUSH_MS);
   const live = asRecord(await getChar()) || char;
-  await setChar({ ...live, largePortrait: prev });
+  await setChar({ ...live, largePortrait: prev });forgetBots();
   await sleep(REMOUNT_FLUSH_MS);
   return true;
 }
