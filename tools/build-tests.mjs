@@ -36,6 +36,7 @@ const MODULES = {
   // With the 옴니 뷰어 switch it pauses for: one copy of it, the test's and the watcher's.
   'chat-screen-watch': ['src/services/chat-screen-watch.ts', 'src/services/viewer-presence.ts'],
   'elements-live': 'src/viewer/elements-live.ts',
+  'elements-pop': 'src/viewer/elements-pop.ts',
   'explorer-selection': 'src/ui-contract/explorer-selection.ts',
   'gallery-zip': 'src/ui-contract/gallery-zip.ts',
   'unlink-match': 'src/domain/gallery/unlink-match.ts',

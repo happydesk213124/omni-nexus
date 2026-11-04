@@ -140,6 +140,23 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 /* 접기: a title bar over the sticker (26px: BAR_H in elements.ts), its name and ▾ (▸ folded); a tap folds, a drag moves. */
 [x-omni-vn] [x-vn-st-bar]{display:flex;align-items:center;gap:8px;min-width:120px;height:26px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-bottom-width:0;border-radius:8px 8px 0 0;background:rgba(10,9,17,.9);color:var(--gold);font:600 12px/24px system-ui,sans-serif;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 [x-omni-vn] [x-vn-st-bar]::after{content:"▾";margin-left:auto;color:#efe9da}
+/* 작동: a tile, dragged anywhere like a floating icon; a tap opens its element in the middle of the viewer. */
+[x-omni-vn] [data-vn-tile]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:56px;height:56px;padding:4px;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;background:rgba(10,9,17,.9);color:var(--gold);font:600 10px/1.2 system-ui,sans-serif;text-align:center;overflow:hidden;cursor:grab;box-shadow:0 4px 14px rgba(0,0,0,.45);user-select:none;-webkit-user-select:none}
+[x-omni-vn] [data-vn-tile] b{font-size:22px;line-height:1;font-weight:400}
+[x-omni-vn] [data-vn-tile] span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A finger must land on what it drags, and must not pan: the layer lets presses through, so a bar or a tile takes
+   them itself, or a phone takes the move under it for a scroll and the drag stops after a few pixels. */
+[x-omni-vn] [x-vn-st-bar],[x-omni-vn] [data-vn-tile]{pointer-events:auto;touch-action:none}
+/* 작동's popup frame: the stage dimmed around it and a spinner until the element stands there. The element is seen
+   through a hole in the viewer, which cuts the frame away with it: its outline and the dim around are left. An older
+   reply's comes as a copy in it (inert: its buttons are not Risu's there). */
+[x-omni-vn] [data-vn-pop]{display:none;position:absolute;left:50%;top:50%;width:64px;height:64px;transform:translate(-50%,-50%);z-index:6;box-sizing:border-box;border-radius:10px;outline:2px solid var(--gold);box-shadow:0 0 0 200vmax rgba(0,0,0,.38);pointer-events:none}
+[x-omni-vn] [data-vn-pop] [data-vn-spin]{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-13px 0 0 -13px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
+[x-omni-vn] [data-vn-pop][x-vn-pop="copy"]{width:auto;height:auto;max-width:calc(100% - 24px);max-height:80%;overflow:auto;overscroll-behavior:contain;padding:10px;background:rgba(10,9,17,.95);pointer-events:auto;touch-action:pan-y}
+[x-omni-vn] [data-vn-pop][x-vn-pop="copy"] *{pointer-events:none}
+[x-omni-vn] [data-vn-pop] [x-vn-pop-note]{margin-top:8px;font-size:11px;line-height:1.5;color:#a59cb6}
+[x-omni-vn] [data-vn-pop] [data-omnitts-tail],[x-omni-vn] [data-vn-pop] [data-omnitts-play]{display:none!important}
+[x-omni-vn] [data-vn-edit] [data-vn-wait]::before{content:"";display:inline-block;width:10px;height:10px;margin-right:7px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
 /* 편집's tabs: the reply, the bot's next message, the one after; one row, equal shares (a tap is told by its x). */
 [x-omni-vn] [data-vn-tabs]{display:flex;gap:4px;margin:8px 0 6px}
 [x-omni-vn] [data-vn-tabs] i{flex:1 1 0;min-width:0;text-align:center;font-style:normal;font-size:11px;padding:5px 2px;border-radius:8px;cursor:pointer;color:#e9e3d3;border:1px solid rgba(255,255,255,.2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -230,7 +247,7 @@ const countButton = ([act, glyph, label]: typeof COUNT_STEPS[number]) => `<butto
 const COUNT_BAR = `${countButton(COUNT_STEPS[0])}${countButton(COUNT_STEPS[1])}<span data-vn-range></span>${countButton(COUNT_STEPS[2])}${countButton(COUNT_STEPS[3])}`;
 const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
-export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div>
+export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b></div>
 <div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>

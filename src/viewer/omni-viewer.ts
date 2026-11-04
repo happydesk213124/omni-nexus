@@ -46,7 +46,7 @@ import { replyAt } from '../domain/viewer/reply-at';
 import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
-import { onSticker, choiceArmed, disarmChoice, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsRelayLive, elementsShown, elementsSyncLive, elementsUp, toggleEdit, toggleElements } from './elements';
+import { onSticker, choiceArmed, closeElementPop, disarmChoice, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsPopOpen, elementsRelayLive, elementsShown, elementsSyncLive, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
@@ -1960,6 +1960,8 @@ function onKey(event: { key?: unknown; repeat?: unknown }): void {
   }
   if (ratesOpen || tagsOpen) { if (key === 'Escape') void (ratesOpen ? toggleRates() : toggleTags()).catch(report); return; }
   if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
+  // 작동's popup: Escape folds it; the story's keys go on as ever.
+  if (key === 'Escape' && elementsPopOpen()) { void closeElementPop().catch(report); return; }
   // A photo shown big: ← → step through the story as ever (the photo folds away with the step); the other keys fold it.
   if ((cgView === 'show' || cgView === 'full') && key !== 'ArrowLeft' && key !== 'ArrowRight') { if (!held && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(key)) { cgView = leaveBig(); void restyle().then(() => cgView === 'open' ? measureCgControls() : undefined).catch(report); } return; }
   // Enter is a tap: a line still coming in completes first. The arrows go on at once.
@@ -2097,9 +2099,9 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null,
       charAfter: (index, n) => charIndexes().filter(i => i > index)[n - 1] ?? -1,
-      // What the fold keeps drawn: the bot's newest three, and the newest message.
+      // What the fold keeps drawn: the bot's newest three, and the newest message (작동 opens the chat's own there).
       drawn: index => index >= 0 && (charIndexes().slice(-FOLD_KEEP).includes(index) || index === (context?.messages.length ?? 0) - 1),
-      // A hole is cut through whatever is over the stage: none while a panel, the picture big or 크게보기 is up.
+      // No hole is cut through what is over the stage: 작동's popup waits while a panel, the picture big or 크게보기 is up.
       hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen,
       say: (text, ms) => sayShot(text, ms) });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
