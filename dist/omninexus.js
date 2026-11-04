@@ -5639,7 +5639,7 @@ function onScriptOutput(content) {
     // Streaming tags ask where the reply goes once, as it starts, while the bridge is quiet. Asked at its first
     // closed block instead, behind 옴니 뷰어 following the stream, the answer came back once the stream was over
     // ("not streaming"), and every block waited for the reply's end to start.
-    if (run.inlineMode && omniInlineAutogen(t.backendSettings?.card)) omniPrimeInlineTarget(run);
+    if (run.inlineMode && omniInlineAutogen(t.backendSettings?.card)) omniAskInlineTarget(run);
   }
   run.text=String(content || '');run.activeAt=Date.now();
   if(run.cancelled || run.committing)return content;
@@ -5889,24 +5889,46 @@ globalThis.__OMNI_TRACK_JOB__=omniTrackJob;
 function omniInlineAutogen(card) { return card?.stream_inline_autogen!==false; }
 // 「새 캐릭터를 맨 앞에 쓰기」: the reply's [[inxc]] block registers its new people the
 // moment it closes, before their first line. Nothing is drawn, so it runs even when
-// 「이미지 바로 생성」 is off.
-async function omniSendInlineCast(run, body) {
-  if(!run.target)run.target=omniCaptureKeywordTarget().catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
+// 「이미지 바로 생성」 is off. It goes to the reply's address, the one its shot blocks wait for too, and ahead of
+// them (their roster reads wait for its write: stream-continuity). It used to be marked sent before that address
+// was known: a lookup that came back after a long chat's stream had ended ("not streaming"), or a reply with no
+// picture (its run cancelled at the end while the cast still waited), dropped it for good, and its people never
+// registered. It is marked sent once sent; a try that failed goes once more with the reply's end.
+async function omniSendInlineCast(run, body, final) {
   const target=await run.target;
-  if(!target || run.cancelled || t.unloading)return;
+  // A reply that ended keeps its cast, even when its run is cancelled for having no picture.
+  if(!target || t.unloading || (run.cancelled && !final))return false;
   const scope=target.scope;
   const result=await K('/v1/inline-tags/cast',{method:'POST',body:{stream_id:run.streamId,session_id:scope.sessionId,character_id:scope.characterId,chat_id:scope.chatId,
     char_index:scope.charIndex,chat_index:scope.chatIndex,host_message_id:target.id,body:String(body||'').slice(0,12000)}});
   if(!result?.ok)throw Error(result?.error?.message || '새 캐릭터를 등록하지 못했습니다.');
+  return true;
 }
-/** The streaming reply's address, asked as it starts: the blocks it closes then start at once (see onScriptOutput). */
-function omniPrimeInlineTarget(run) {
+/** Once while streaming (with the address known) and once with the reply's end if not sent by then. */
+function omniTryInlineCast(run, final=false) {
+  if(run.castSent || run.castBusy || t.backendSettings?.card?.stream_inline_cast_first===false)return;
+  if(final ? run.castFinal : run.castTried)return;
+  const cast=globalThis.__INLAY_STREAM_KW__.inlineCastBlock?.(run.text,{live:!final});
+  if(!cast)return;
+  // While streaming it waits for the address with the shot blocks (asked here as well, as a closed block asks).
+  if(!final && !run.identity){omniAskInlineTarget(run);return;}
+  run.castBusy=true;
+  if(final)run.castFinal=true;else run.castTried=true;
+  void omniSendInlineCast(run,cast.body,final).then(sent=>{run.castSent=sent;})
+    .catch(error=>{y('warn','stream.inline.cast',String(error));})
+    .finally(()=>{run.castBusy=false;if(!run.castSent && run.outputComplete)omniTryInlineCast(run,true);});
+}
+/**
+ * The streaming reply's address, asked once at a time: as it starts (onScriptOutput), and again by a closed block
+ * while none is known. With it, the blocks waiting for it go.
+ */
+function omniAskInlineTarget(run) {
   if(run.target || run.identity)return;
   const target=omniCaptureKeywordTarget().catch(error=>{y('warn','stream.inline.target',String(error));return null;});
   run.target=target;
   void target.then(value=>{
     if(run.target!==target || run.cancelled || run.committing)return;
-    // Not marked streaming yet: the first closed block asks again.
+    // Not marked streaming yet: the next closed block asks again.
     if(!value){run.target=null;return;}
     run.identity=value;run.targetResolved=true;
     omniScanInlineRun(run);
@@ -5914,10 +5936,7 @@ function omniPrimeInlineTarget(run) {
 }
 function omniScanInlineRun(run, final=false) {
   const SK=globalThis.__INLAY_STREAM_KW__, card=t.backendSettings?.card;
-  if(!run.castSent && card?.stream_inline_cast_first!==false) {
-    const cast=SK.inlineCastBlock?.(run.text,{live:!final});
-    if(cast){run.castSent=true;void omniSendInlineCast(run,cast.body).catch(error=>{y('warn','stream.inline.cast',String(error));});}
-  }
+  omniTryInlineCast(run,final);
   // 「이미지 바로 생성」 off: nothing starts while streaming; completion parks every block.
   const parked=!omniInlineAutogen(card);
   if(parked && !final)return run;
@@ -5926,19 +5945,7 @@ function omniScanInlineRun(run, final=false) {
   // Reasoning is never a slot; while streaming, an unclosed <Thoughts> counts as reasoning.
   const fresh=SK.inlineShotBlocks(run.text,{live:!final}).filter(block=>!run.inlineSeen.has(block.n));
   if(!fresh.length)return run;
-  if(!final && !run.identity) {
-    if(!run.target) {
-      const target=omniCaptureKeywordTarget().catch(error=>{y('warn','stream.inline.target',String(error));return null;});
-      run.target=target;
-      void target.then(value=>{
-        if(run.target!==target || run.cancelled || run.committing)return;
-        if(!value){run.target=null;return;}
-        run.identity=value;run.targetResolved=true;
-        omniScanInlineRun(run);
-      });
-    }
-    return run;
-  }
+  if(!final && !run.identity){omniAskInlineTarget(run);return run;}
   for(const block of fresh) {
     // L numbers count prose only. A block before any prose waits for its line.
     const line=SK.inlineShotLine(run.text,block);

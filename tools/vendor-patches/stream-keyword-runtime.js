@@ -97,7 +97,7 @@ function onScriptOutput(content) {
     // Streaming tags ask where the reply goes once, as it starts, while the bridge is quiet. Asked at its first
     // closed block instead, behind 옴니 뷰어 following the stream, the answer came back once the stream was over
     // ("not streaming"), and every block waited for the reply's end to start.
-    if (run.inlineMode && omniInlineAutogen(t.backendSettings?.card)) omniPrimeInlineTarget(run);
+    if (run.inlineMode && omniInlineAutogen(t.backendSettings?.card)) omniAskInlineTarget(run);
   }
   run.text=String(content || '');run.activeAt=Date.now();
   if(run.cancelled || run.committing)return content;
