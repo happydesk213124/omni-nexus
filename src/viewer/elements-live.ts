@@ -33,8 +33,12 @@ export interface LiveEntry {
 
 /** Each further window of a kind, this much further down and right. */
 export const LIVE_STEP = 18;
-/** What keeps a fixed element from the screen, or from being drawn: undone on the element's way up. */
-const FREE = 'transform:none!important;perspective:none!important;filter:none!important;backdrop-filter:none!important;'
+/**
+ * What keeps a fixed element from the screen, or from being drawn: undone on the element's way up. The single
+ * transforms (translate, rotate, scale: what a newer Tailwind writes) hold fixed boxes as transform does.
+ */
+const FREE = 'transform:none!important;translate:none!important;rotate:none!important;scale:none!important;transform-style:flat!important;'
+  + 'perspective:none!important;filter:none!important;backdrop-filter:none!important;'
   + 'contain:none!important;will-change:auto!important;container-type:normal!important;content-visibility:visible!important;'
   + 'clip-path:none!important;mask:none!important;-webkit-mask:none!important;opacity:1!important';
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -49,7 +53,7 @@ export function liveTargets(index: number, selector: string, count: number): str
 /** The sheet: each element lifted to its window, what is around it freed, and the holes in the viewer. */
 export function liveCss(entries: readonly LiveEntry[], frame: Box): string {
   if (!entries.length) return '';
-  const out: string[] = [], around = new Set<string>(['body', 'body :has(.default-chat-screen)', '.default-chat-screen']), within = new Set<string>(), holes: string[] = [];
+  const out: string[] = [], around = new Set<string>(['html', 'body', 'body :has(.default-chat-screen)', '.default-chat-screen']), within = new Set<string>(), holes: string[] = [];
   for (const e of entries) {
     const message = `.risu-chat[data-chat-index="${e.index}"]`;
     for (const s of [`.default-chat-screen :has(${message})`, message, `${message} :has(${e.selector})`]) { around.add(s); within.add(s); }

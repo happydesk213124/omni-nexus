@@ -40,8 +40,10 @@ test('elements-live: what keeps a fixed box in is undone up to the page; z-index
   const lines = liveCss([entry()], frame).split('\n');
   const free = lines.find(l => l.includes('transform:none!important'));
   const stack = lines.find(l => l.includes('z-index:auto!important'));
-  assert.ok(free && free.startsWith(':is(body,body :has(.default-chat-screen),.default-chat-screen,'), free);
+  assert.ok(free && free.startsWith(':is(html,body,body :has(.default-chat-screen),.default-chat-screen,'), free);
   assert.match(free, /opacity:1!important/);
+  // The single transforms hold fixed boxes as transform does (a newer Tailwind writes them).
+  assert.match(free, /translate:none!important;rotate:none!important;scale:none!important;transform-style:flat!important/);
   assert.ok(stack && !/[(,]body[ ,)]/.test(stack.slice(0, stack.indexOf('{'))), stack);
   assert.ok(stack.includes('.default-chat-screen :has(.risu-chat[data-chat-index="6"])'), stack);
   assert.ok(stack.includes('.risu-chat[data-chat-index="6"] :has(.x-risu-status)'), stack);
