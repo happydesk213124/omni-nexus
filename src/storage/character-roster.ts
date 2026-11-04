@@ -5,6 +5,7 @@ import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { serializeSessionStorage } from './chat-session-store';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 import { characterDirectory, directoryWarm } from './character-directory';
+import { forgetPrimedCharacter, primedCharacter } from './primed-character';
 
 export const CHARACTER_ROSTER_LORE = 'omni.nexus.data.global';
 type Row = Record<string, unknown>;
@@ -164,6 +165,7 @@ export async function writeCharacterEntryKey(scope: string, key: string, value: 
     const entry = { ...(index >= 0 ? object(entries[index]) : {}), comment: CHARACTER_ROSTER_LORE, key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0, content };
     if (index < 0) entries.push(entry); else entries[index] = entry;
     await host.setCharacterToIndex(t.index, { ...char, globalLore: entries });
+    forgetPrimedCharacter();
     if (JSON.stringify((await readEntryData(t)).data[key]) !== JSON.stringify(value)) throw new Error('Character lore save verification failed');
   });
 }
@@ -199,11 +201,18 @@ export async function writeCharacterLoreText(scope: string, comment: string, con
       if (index < 0) entries.push(entry); else entries[index] = entry;
     }
     await host.setCharacterToIndex(t.index, { ...char, globalLore: entries });
+    forgetPrimedCharacter();
   });
 }
 
 export async function readCharacterRoster(scope:string):Promise<CharacterRecord[]> {
   if(scope==='__global__') return (await readShared()).roster;
+  // The chat request's own bot, read a moment ago: no directory of every bot, no second copy of it.
+  const hit=primedCharacter(scope);
+  if(hit) {
+    const t={index:hit.index,id:hit.id,scope:unifiedSessionIdForCharacter(hit.id)};
+    return withBuffered(t,(entryData(hit.char,t).data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope})));
+  }
   const t=await target(scope);return t?(await read(t)).roster:[];
 }
 /**
@@ -283,6 +292,7 @@ export async function mutateCharacterRoster(scope:string,change:(rows:CharacterR
     const stored=(data.roster as unknown[]).map(value=>clean(object(value)||{}));
     if(data.characterId===t.id && JSON.stringify(stored)===JSON.stringify(next)) { bufferedRosters.delete(t.id); return; }
     await host.setCharacterToIndex(t.index,{...char,globalLore:rosterLore(char,t,data,next)});
+    forgetPrimedCharacter();
     // This write already holds every waiting change it was built on (reads include them).
     bufferedRosters.delete(t.id);
     if(JSON.stringify((await read(t)).roster.map(clean))!==JSON.stringify(next)) throw new Error('Character roster save verification failed');

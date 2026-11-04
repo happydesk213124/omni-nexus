@@ -6,6 +6,7 @@ import { dbg } from '../core/debug';
 import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { hostHas, risuHost } from '../core/host';
 import { withRefilledModules } from '../storage/module-assets';
+import { primedCharacter } from '../storage/primed-character';
 import type { ApiResult, LoreEntry } from '../core/types';
 import { cleanText } from '../core/util/text.ts';
 import { normalizeAssetNaiTagsMode } from '../config/schema.ts';
@@ -413,7 +414,8 @@ export async function collectAssetNaiTags(
 
   let character: unknown;
   try {
-    character = await characterSource(opts.characterId);
+    // A chat request's own bot, read a moment ago: its assets without the directory of every bot or a second copy.
+    character = primedCharacter(String(opts.characterId || ''))?.char ?? await characterSource(opts.characterId);
   } catch (err) {
     dbg('asset-tags.getCharacter.fail', { message: String((err as Error)?.message || err) }, 'warn');
     return null;

@@ -9,6 +9,7 @@ import { storeShotBytes, readShotAssetBytes, type ShotAssetRow } from './shot-mo
 import { isShotAssetName, idFromShotAssetName, sessionFromShotAssetName } from '../domain/gallery/shot-assets';
 import { psGet, psRemove, psSet } from './device-store';
 import { bufferedRosterLore, bufferedRosterTargets } from './character-roster';
+import { forgetPrimedCharacter } from './primed-character';
 export { readShotAssetBytes };
 type Row=Record<string,unknown>;
 type Target={id:string;index:number};
@@ -93,6 +94,7 @@ async function writeCharacter(target: Target, rows: readonly PendingShot[]): Pro
     }
     const roster = bufferedRosterLore(char, target.id);
     if(adds.length || roster) await measureWrite('character','asset-register',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:[...assets,...adds],...(roster ? { globalLore: roster.globalLore } : {})} as never));
+    forgetPrimedCharacter();
     const verified=await read(target);
     for (const row of rows) if(!verified.assets.some(v=>Array.isArray(v)&&v[0]===row.name&&v[1]===row.path)) throw new Error('Image asset registration failed');
     if (roster) {
@@ -113,6 +115,7 @@ export async function putCharacterAssetRows(target: Target, rows: readonly Pendi
     const names=new Set(rows.map(row=>row.name));
     const kept=assets.filter(v=>!(Array.isArray(v)&&names.has(String(v[0]))));
     await measureWrite('character','asset-register',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:[...kept,...rows.map(row=>[row.name,row.path,row.name.split('.').pop() || 'png'])]} as never));
+    forgetPrimedCharacter();
     const verified=await read(target);
     for (const row of rows) if(!verified.assets.some(v=>Array.isArray(v)&&v[0]===row.name&&v[1]===row.path)) throw new Error('Image asset registration failed');
   });
@@ -127,6 +130,7 @@ export async function removeCharacterAssetRows(target: Target, names: readonly s
     const kept=assets.filter(v=>!(Array.isArray(v)&&drop.has(String(v[0]))));
     if(kept.length===assets.length) return;
     await measureWrite('character','asset-remove',()=>host.setCharacterToIndex!(index,{...char,additionalAssets:kept} as never));
+    forgetPrimedCharacter();
     const verified=await read(target);
     if(verified.assets.some(v=>Array.isArray(v)&&drop.has(String(v[0])))) throw new Error('Image asset removal failed');
   });
@@ -267,7 +271,7 @@ export async function dropShotAsset(id:string):Promise<boolean> {
   if(!Array.isArray(row.char.additionalAssets) || !row.char.additionalAssets.some(v=>Array.isArray(v)&&isShotAssetName(v[0])&&idFromShotAssetName(String(v[0]))===id)) return;
   const {host,index,char,assets}=await read(target);
   const kept=assets.filter(v=>!Array.isArray(v)||!isShotAssetName(v[0])||idFromShotAssetName(String(v[0]))!==id);
-  if(kept.length!==assets.length) {await host.setCharacterToIndex!(index,{...char,additionalAssets:kept} as never);invalidateShotListing(target.id);changed=true;}
+  if(kept.length!==assets.length) {await host.setCharacterToIndex!(index,{...char,additionalAssets:kept} as never);forgetPrimedCharacter();invalidateShotListing(target.id);changed=true;}
  });
  return changed;
 }

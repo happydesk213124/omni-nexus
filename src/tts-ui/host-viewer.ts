@@ -239,11 +239,20 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
     const volume=actions.get('volume');if(allowed()&&volume&&['ArrowLeft','ArrowRight'].includes(e.key)&&await volume.node.matches(':focus'))await updateTtsSettings({volume:ttsData().settings.volume+(e.key==='ArrowRight'?.05:-.05)});
   }))});
   drag=await bindTtsDrag(doc,viewer,()=>allowed()&&ttsData().settings.enabled&&ttsData().settings.viewer,paint,()=>!ttsData().settings.minimized&&bgmOpen()?BGM_H:0);
-  const refreshVisibility = async () => {
-    const chat = await doc.querySelector('.default-chat-screen');
-    const rect = chat ? await chat.getBoundingClientRect() : null;
-    await releaseHost(chat);
+  // The chat screen is kept from check to check, so a check is one call (its size). It is looked up again only once
+  // that size is gone: the screen left the page or was put back anew. A check already on its way is shared.
+  let chatScreen: SafeElement | null = null, looking: Promise<void> | null = null;
+  const lookAtChat = async () => {
+    let rect = chatScreen ? await chatScreen.getBoundingClientRect().catch(() => null) : null;
+    if (!rect || !(rect.width > 0 && rect.height > 0)) {
+      const old = chatScreen; chatScreen = null; await releaseHost(old);
+      chatScreen = disposed ? null : await doc.querySelector('.default-chat-screen');
+      rect = chatScreen ? await chatScreen.getBoundingClientRect() : null;
+    }
     inChat = !!rect && rect.width > 0 && rect.height > 0;
+  };
+  const refreshVisibility = async () => {
+    await (looking ??= lookAtChat().finally(() => { looking = null; }));
     if(!allowed()&&drag?.busy)await drag.cancel();
     lastAllowed = allowed(); await paint();
   };
@@ -254,14 +263,15 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   await refreshVisibility();
   let ticking=false;
   // The chat watcher cannot see its own screen leave the page, so check once a
-  // second (never during a drag) whether the chat is still on screen.
+  // second (never during a drag) whether the chat is still on screen. Only with TTS on:
+  // off, nothing of this window shows, and the check asked Risu three times a second for nothing.
   let checking=false,tick=0;
-  const interval=setInterval(()=>{if(++tick%2===0&&!checking&&!drag?.busy&&!painting&&!viewerCovering()){checking=true;void refreshVisibility().catch(()=>{}).finally(()=>{checking=false;});}const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
+  const interval=setInterval(()=>{if(++tick%2===0&&ttsData().settings.enabled&&!checking&&!drag?.busy&&!painting&&!viewerCovering()){checking=true;void refreshVisibility().catch(()=>{}).finally(()=>{checking=false;});}const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
   // BGM time, once a second while the bar is open and music plays (never during a drag).
   const bgmTick=setInterval(()=>{if(!allowed()||painting||drag?.busy||ttsData().settings.minimized||!bgmOpen()||!omniSound.player.bgmPlaying)return;void paintBgmTime().catch(()=>{});},1000);
   const flash=(message:string)=>{
     notice=message.slice(0,240);noticeUntil=Date.now()+5000;clearTimeout(noticeTimer);
     noticeTimer=setTimeout(()=>{noticeUntil=0;render();},5100);render();
   };
-  return {refresh:refreshVisibility,flash,dispose:async()=>{disposed=true;unsubscribeUncovered();clearTimeout(noticeTimer);clickEpoch++;clearInterval(interval);clearInterval(bgmTick);unsubscribeRuntime();unsubscribeSettings();unsubscribeSound();omniSound.player.onChange=soundChange;await drag?.dispose();for(const e of events)await doc.removeEventListener(e.type,e.id);for(const a of actions.values())await releaseHost(a.node);actions.clear();await releaseHost(listViewport);if(Reflect.get(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__')===refreshSignal)Reflect.deleteProperty(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__');await viewer.remove();await toast.remove();await releaseHost(viewer);await releaseHost(toast);}};
+  return {refresh:refreshVisibility,flash,dispose:async()=>{disposed=true;await releaseHost(chatScreen);chatScreen=null;unsubscribeUncovered();clearTimeout(noticeTimer);clickEpoch++;clearInterval(interval);clearInterval(bgmTick);unsubscribeRuntime();unsubscribeSettings();unsubscribeSound();omniSound.player.onChange=soundChange;await drag?.dispose();for(const e of events)await doc.removeEventListener(e.type,e.id);for(const a of actions.values())await releaseHost(a.node);actions.clear();await releaseHost(listViewport);if(Reflect.get(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__')===refreshSignal)Reflect.deleteProperty(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__');await viewer.remove();await toast.remove();await releaseHost(viewer);await releaseHost(toast);}};
 }
