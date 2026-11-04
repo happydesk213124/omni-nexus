@@ -2091,7 +2091,8 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     await release(css); await release(body);
     [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl, ratesEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]', '[data-vn-rates]'].map(s => root!.querySelector(s)));
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
-      reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null });
+      reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null,
+      charAfter: (index, n) => charIndexes().filter(i => i > index)[n - 1] ?? -1 });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;

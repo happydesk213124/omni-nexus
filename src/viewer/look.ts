@@ -137,6 +137,13 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:3;pointer-events:none}
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
 [x-omni-vn] [x-vn-st] summary{pointer-events:auto;cursor:pointer}
+/* 접기: a title bar over the sticker (26px: BAR_H in elements.ts), its name and ▾ (▸ folded); a tap folds, a drag moves. */
+[x-omni-vn] [x-vn-st-bar]{display:flex;align-items:center;gap:8px;min-width:120px;height:26px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-bottom-width:0;border-radius:8px 8px 0 0;background:rgba(10,9,17,.9);color:var(--gold);font:600 12px/24px system-ui,sans-serif;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+[x-omni-vn] [x-vn-st-bar]::after{content:"▾";margin-left:auto;color:#efe9da}
+/* 편집's tabs: the reply, the bot's next message, the one after; one row, equal shares (a tap is told by its x). */
+[x-omni-vn] [data-vn-tabs]{display:flex;gap:4px;margin:8px 0 6px}
+[x-omni-vn] [data-vn-tabs] i{flex:1 1 0;min-width:0;text-align:center;font-style:normal;font-size:11px;padding:5px 2px;border-radius:8px;cursor:pointer;color:#e9e3d3;border:1px solid rgba(255,255,255,.2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[x-omni-vn] [data-vn-tabs] i[data-on]{color:#1a1408;background:var(--gold);border-color:var(--gold)}
 [x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
 /* ✎ 편집 stands right by 요소 (left of its tab), where the hand already is; above the panel it opens. */
 [x-omni-vn] [data-vn-act="eledit"]{position:absolute;right:34px;top:calc(38% + 84px);z-index:8;visibility:hidden}

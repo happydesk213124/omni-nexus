@@ -2,7 +2,7 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { compactHash } from '../domain/tts/segment';
 import { findElementKinds, type ElementKind } from '../domain/viewer/elements';
-import { elementRules, saveElementRules, type ElementRule, type ElementRules } from '../storage/viewer-elements';
+import { elementRules, saveElementRules, type ElementFrom, type ElementRule, type ElementRules } from '../storage/viewer-elements';
 import { saveViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { quiet, release, rowAt, unwrap } from './safe-dom';
 
@@ -13,6 +13,9 @@ import { quiet, release, rowAt, unwrap } from './safe-dom';
  * dragged it, shown with 요소 on, or always; a choice is offered at the end of the
  * newest reply, and choosing it twice sends it as the user's message.
  *
+ * A kind is found in the reply on stage, or in the bot's message 1 or 2 after it (편집's tabs: a bot that sends its
+ * status panel in a message of its own). With 접기 a sticker has a title bar: a tap folds it, a drag moves it.
+ *
  * Nothing here runs for a bot with nothing registered: the reply's HTML is read once,
  * and only when there is something to find or 편집 is open.
  */
@@ -22,12 +25,17 @@ export interface ElementsHost {
   frame: () => { left: number; top: number; width: number; height: number };
   /** The reply on stage: its chat index and its bot. null while streaming, or with none. */
   reply: () => { index: number; bot: string } | null;
+  /** The bot's `n`th message after `index` (the reader's are passed over), or -1. */
+  charAfter: (index: number, n: number) => number;
   atEnd: () => boolean;
   restyle: () => Promise<void>;
 }
 interface HostPoint { clientX: number; clientY: number }
 interface Sticker { key: string; el: SafeElement; r: DOMRect | null }
 interface Row { sig: string; label: string; count: number; text: string }
+const TABS = ['이 답장', '다음 메시지 1', '다음 메시지 2'] as const;
+/** A sticker's title bar, as tall as the stage's style draws it (before its scale). */
+const BAR_H = 26;
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const keyOf = (sig: string) => compactHash(sig).slice(0, 10);
@@ -36,13 +44,18 @@ const report = (what: string) => (error: unknown) => dbg(what, { message: String
 const MAX_OPTIONS = 8;
 
 let host: ElementsHost | null = null, layer: SafeElement | null = null, choicesEl: SafeElement | null = null, panel: SafeElement | null = null;
-let showing = false, editing = false, bot = '', rules: ElementRules = {}, kinds: ElementKind[] = [], rows: Row[] = [];
+let showing = false, editing = false, bot = '', rules: ElementRules = {}, rows: Row[] = [];
+/** The kinds each message holds (the reply, the bot's next one, the one after), read once per reply when asked. */
+const kindsAt = new Map<ElementFrom, ElementKind[]>();
 const stickers = new Map<string, Sticker>();
 let options: string[] = [], choicesOn = false, chosen = -1, choicesRect: DOMRect | null = null, panelRect: DOMRect | null = null;
+/** 편집's tab, and where its row of tabs is (the tabs share it evenly: no rect of each). */
+let tab: ElementFrom = 0, tabsRect: DOMRect | null = null;
 
 export async function elementsOpen(h: ElementsHost): Promise<void> {
   // 요소 stays as it was left, as AUTO and VOICE do (any bot, any chat); 편집 always starts closed.
-  host = h; showing = viewerPrefs().elements; editing = false; kinds = []; rows = []; options = []; choicesOn = false; chosen = -1; choicesRect = null; panelRect = null;
+  host = h; showing = viewerPrefs().elements; editing = false; rows = []; options = []; choicesOn = false; chosen = -1; choicesRect = null; panelRect = null;
+  tab = 0; tabsRect = null; kindsAt.clear();
   stickers.clear();
   const root = h.root();
   if (root) [layer, choicesEl, panel] = await Promise.all(['[data-vn-stickers]', '[data-vn-choices]', '[data-vn-edit]'].map(s => root.querySelector(s)));
@@ -82,6 +95,8 @@ export function elementsCss(): string {
     if (!r) continue;
     if (editing) out.push(`[x-omni-vn] [x-vn-st="${s.key}"]{display:block;outline:2px dashed var(--gold);outline-offset:4px${r.hidden ? ';opacity:.35' : ''}}`);
     else if (!r.hidden && (showing || r.always)) out.push(`[x-omni-vn] [x-vn-st="${s.key}"]{display:block}`);
+    // Folded, only its bar stays (in 편집 it is always open: what is placed is seen).
+    if (r.fold && r.folded && !editing) out.push(`[x-omni-vn] [x-vn-st="${s.key}"] [x-vn-st-body]{display:none}[x-omni-vn] [x-vn-st="${s.key}"] [x-vn-st-bar]{border-radius:8px;border-bottom-width:1px}[x-omni-vn] [x-vn-st="${s.key}"] [x-vn-st-bar]::after{content:"▸"}`);
   }
   if (choicesOn) out.push('[x-omni-vn] [data-vn-choices]{display:flex}[x-omni-vn] [data-vn-end]{display:none}');
   return out.join('\n');
@@ -89,7 +104,7 @@ export function elementsCss(): string {
 
 /** The bot's elements in this reply, read once through the bridge and parsed here. */
 async function readKinds(doc: SafeDocument, index: number): Promise<ElementKind[]> {
-  if (typeof DOMParser === 'undefined') return [];
+  if (typeof DOMParser === 'undefined' || index < 0) return [];
   const body = await doc.querySelector(`.risu-chat[data-chat-index="${index}"] .chattext`);
   if (!body) return [];
   let html = '';
@@ -98,18 +113,39 @@ async function readKinds(doc: SafeDocument, index: number): Promise<ElementKind[
   return parsed ? findElementKinds(parsed) : [];
 }
 const place = (r: ElementRule) => `left:${r.x}%;top:${r.y}%;transform:scale(${r.scale})`;
-/** A registered kind's elements, cloned into one sticker where the reader put it. */
+/** The message a kind is found in: the reply on stage, or the bot's message 1 or 2 after it (-1: there is none). */
+function sourceIndex(from: ElementFrom): number {
+  const reply = host?.reply();
+  if (!host || !reply) return -1;
+  return from === 0 ? reply.index : host.charAfter(reply.index, from);
+}
+async function kindsOf(doc: SafeDocument, from: ElementFrom): Promise<ElementKind[]> {
+  let found = kindsAt.get(from);
+  if (!found) { found = await readKinds(doc, sourceIndex(from)); kindsAt.set(from, found); }
+  return found;
+}
+/**
+ * A registered kind's elements, cloned into one sticker where the reader put it: its body a .chattext (the bot's
+ * chat CSS reaches what sits in one, so the clone looks as it does in the chat), its bar over it with 접기.
+ */
 async function putSticker(doc: SafeDocument, index: number, kind: ElementKind, rule: ElementRule): Promise<void> {
   if (!layer) return;
   const nodes = await unwrap(await doc.querySelectorAll(`.risu-chat[data-chat-index="${index}"] .chattext ${kind.selector}`));
   try {
     if (!nodes.length) return;
-    const wrap = await doc.createElement('div'), key = keyOf(kind.sig);
+    const wrap = await doc.createElement('div'), body = await doc.createElement('div'), key = keyOf(kind.sig);
     await wrap.setAttribute('x-vn-st', key);
-    // The bot's chat CSS reaches what sits in a .chattext: the clone looks as it does in the chat.
-    await quiet(wrap.setClassName('chattext'));
     await wrap.setStyleAttribute(place(rule));
-    for (const node of nodes.slice(0, 6)) { const copy = await node.cloneNode(true); await wrap.appendChild(copy); await release(copy); }
+    if (rule.fold) {
+      const bar = await doc.createElement('div');
+      await bar.setAttribute('x-vn-st-bar', '1');
+      await bar.setTextContent(kind.label);
+      await wrap.appendChild(bar); await release(bar);
+    }
+    await body.setAttribute('x-vn-st-body', '1');
+    await quiet(body.setClassName('chattext'));
+    for (const node of nodes.slice(0, 6)) { const copy = await node.cloneNode(true); await body.appendChild(copy); await release(copy); }
+    await wrap.appendChild(body); await release(body);
     await layer.appendChild(wrap);
     stickers.set(kind.sig, { key, el: wrap, r: null });
   } finally { for (const node of nodes) await release(node); }
@@ -117,19 +153,29 @@ async function putSticker(doc: SafeDocument, index: number, kind: ElementKind, r
 /** After a reply loads: its stickers put up and its choices gathered (or nothing, with nothing registered). */
 export async function elementsForReply(): Promise<void> {
   for (const s of stickers.values()) { await quiet(s.el.remove()); await release(s.el); }
-  stickers.clear(); kinds = []; options = []; choicesOn = false; chosen = -1; choicesRect = null;
+  stickers.clear(); kindsAt.clear(); options = []; choicesOn = false; chosen = -1; choicesRect = null;
   await arm(null);
   const h = host, doc = h?.doc(), reply = h?.reply();
   if (h && doc && reply) {
     if (reply.bot !== bot) { bot = reply.bot; rules = await elementRules(bot); }
     if (editing || Object.keys(rules).length) {
-      kinds = await readKinds(doc, reply.index);
-      for (const kind of kinds) { const rule = rules[kind.sig]; if (rule?.role === 'sticker') await putSticker(doc, reply.index, kind, rule); }
-      options = kinds.filter(k => rules[k.sig]?.role === 'choice').flatMap(k => k.options).slice(0, MAX_OPTIONS);
+      if (editing) await kindsOf(doc, tab);
+      for (const [sig, rule] of Object.entries(rules)) {
+        const kind = (await kindsOf(doc, rule.from)).find(k => k.sig === sig);
+        if (!kind) continue;
+        if (rule.role === 'sticker') await putSticker(doc, sourceIndex(rule.from), kind, rule);
+        else options.push(...kind.options);
+      }
+      options = options.slice(0, MAX_OPTIONS);
     }
   }
   if (editing) { await paintPanel(); setTimeout(() => void measureEditing().catch(() => {}), 120); }
-  else if (stickers.size) setTimeout(() => void measureStickers().catch(() => {}), 120);
+  else if (stickers.size) {
+    // What shows them is the stage's style text: the line it was written for may already be out (a reply opened
+    // where the reader left it, its stickers put up after), and nothing writes it again until the next line.
+    await host?.restyle();
+    setTimeout(() => void measureStickers().catch(() => {}), 120);
+  }
 }
 
 /**
@@ -191,26 +237,50 @@ async function arm(choice: string | null): Promise<void> {
   await risu.addRisuScriptHandler('input', withChoice);
 }
 
-/** The 편집 list: the reply's kinds, then registered kinds this reply lacks (so they can be let go). */
+/**
+ * The 편집 list: the tabs (the reply, the bot's next message, the one after), then the kinds of the tab's message,
+ * then kinds registered from that tab which this message lacks (so they can be let go). The tabs are a <nav>, not a
+ * <div>: a row's chips are found by its place among the divs.
+ */
 async function paintPanel(): Promise<void> {
   if (!panel) return;
-  rows = kinds.map(k => ({ sig: k.sig, label: k.label, count: k.count, text: k.text }));
-  for (const sig of Object.keys(rules)) if (!rows.some(r => r.sig === sig)) rows.push({ sig, label: sig.replace(/^[a-z0-9]+/, '').replace(/^[.#]/, '').replace(/x-risu-/g, '') || sig, count: 0, text: '이 답장에는 없음' });
+  const here = kindsAt.get(tab) ?? [], none = sourceIndex(tab) < 0;
+  rows = here.map(k => ({ sig: k.sig, label: k.label, count: k.count, text: k.text }));
+  for (const [sig, rule] of Object.entries(rules)) if (rule.from === tab && !rows.some(r => r.sig === sig)) rows.push({ sig, label: sig.replace(/^[a-z0-9]+/, '').replace(/^[.#]/, '').replace(/x-risu-/g, '') || sig, count: 0, text: '이 메시지에는 없음' });
   const chip = (label: string, on: boolean) => `<i${on ? ' data-on' : ''}>${label}</i>`;
-  await panel.setInnerHTML(`<h4>요소 편집</h4><small data-vn-hint>스티커는 끌어서 옮겨요. 선택지는 최신 답장의 마지막 줄에서 떠요.</small>${rows.map(row => {
+  const tabs = `<nav data-vn-tabs>${TABS.map((name, i) => `<i${i === tab ? ' data-on' : ''}>${name}</i>`).join('')}</nav>`;
+  const empty = none ? '이 답장 뒤에 봇 메시지가 없어요.' : '이 메시지에는 고를 요소가 없어요. (Omni가 만든 것은 빼요)';
+  await panel.setInnerHTML(`<h4>요소 편집</h4>${tabs}<small data-vn-hint>스티커는 끌어서 옮겨요. 접기를 켜면 제목줄로 접고 옮겨요. 선택지는 최신 답장의 마지막 줄에서 떠요.</small>${rows.map(row => {
     const r = rules[row.sig];
-    const more = r?.role === 'sticker' ? chip('📌 항상', r.always) + chip('숨김', r.hidden) + chip(`크기 ${Math.round(r.scale * 100)}%`, false) : '';
+    const more = r?.role === 'sticker' ? chip('📌 항상', r.always) + chip('숨김', r.hidden) + chip(`크기 ${Math.round(r.scale * 100)}%`, false) + chip('접기', r.fold) : '';
     return `<div data-vn-el><b>${esc(row.label)}</b>${row.count > 1 ? `<small>×${row.count}</small>` : ''}<span>${esc(row.text)}</span><p>${chip('스티커', r?.role === 'sticker')}${chip('선택지', r?.role === 'choice')}${more}</p></div>`;
-  }).join('') || '<small data-vn-hint>이 답장에는 고를 요소가 없어요. (Omni가 만든 것은 빼요)</small>'}`);
+  }).join('') || `<small data-vn-hint>${empty}</small>`}`);
 }
 async function measureEditing(): Promise<void> {
   if (!editing) return;
-  if (panel) panelRect = await panel.getBoundingClientRect();
+  if (panel) {
+    const tabsEl = await panel.querySelector('[data-vn-tabs]');
+    try { [panelRect, tabsRect] = await Promise.all([panel.getBoundingClientRect(), tabsEl ? tabsEl.getBoundingClientRect() : null]); } finally { await release(tabsEl); }
+  }
   for (const s of stickers.values()) s.r = await s.el.getBoundingClientRect();
 }
-/** A tap on the 편집 list: the row by a binary search, then which of its few chips. */
+/** Another tab: the kinds of its message (read once per reply), the list drawn again. */
+async function openTab(next: ElementFrom): Promise<void> {
+  const doc = host?.doc();
+  if (!doc || next === tab) return;
+  tab = next;
+  await kindsOf(doc, tab);
+  await paintPanel();
+  await measureEditing();
+}
+/** A tap on the 편집 list: a tab by where it falls in their row, else the row by a binary search, then its chip. */
 async function panelTap(p: HostPoint): Promise<void> {
   if (!panel || !host) return;
+  if (tabsRect && inside(p, tabsRect)) {
+    const i = Math.floor((p.clientX - tabsRect.left) / Math.max(1, tabsRect.width / TABS.length));
+    await openTab(Math.min(TABS.length - 1, Math.max(0, i)) as ElementFrom);
+    return;
+  }
   const at = await rowAt(panel, '[data-vn-el]', p.clientY), row = rows[at];
   if (!row) return;
   const chips = await unwrap(await panel.querySelectorAll(`[data-vn-el]:nth-of-type(${at + 1}) i`));
@@ -218,12 +288,14 @@ async function panelTap(p: HostPoint): Promise<void> {
   for (let i = 0; i < chips.length; i++) { if (which < 0 && inside(p, await chips[i]!.getBoundingClientRect())) which = i; await release(chips[i]); }
   if (which < 0) return;
   const r = rules[row.sig], stickersNow = Object.values(rules).filter(x => x.role === 'sticker').length;
-  if (which === 0) { if (r?.role === 'sticker') delete rules[row.sig]; else rules[row.sig] = { role: 'sticker', x: 4, y: Math.min(70, 12 + stickersNow * 14), scale: 1, hidden: false, always: false }; }
-  else if (which === 1) { if (r?.role === 'choice') delete rules[row.sig]; else rules[row.sig] = { role: 'choice', x: 4, y: 12, scale: 1, hidden: false, always: false }; }
+  const fresh = { x: 4, scale: 1, hidden: false, always: false, from: tab, fold: false, folded: false };
+  if (which === 0) { if (r?.role === 'sticker') delete rules[row.sig]; else rules[row.sig] = { ...fresh, role: 'sticker', y: Math.min(70, 12 + stickersNow * 14) }; }
+  else if (which === 1) { if (r?.role === 'choice') delete rules[row.sig]; else rules[row.sig] = { ...fresh, role: 'choice', y: 12 }; }
   else if (r?.role === 'sticker') {
     if (which === 2) r.always = !r.always;
     else if (which === 3) r.hidden = !r.hidden;
-    else r.scale = r.scale > 0.9 ? 0.8 : r.scale > 0.7 ? 0.6 : 1;
+    else if (which === 4) r.scale = r.scale > 0.9 ? 0.8 : r.scale > 0.7 ? 0.6 : 1;
+    else if (which === 5) { r.fold = !r.fold; r.folded = false; }
   }
   await saveElementRules(bot, rules);
   await elementsForReply();
@@ -231,6 +303,15 @@ async function panelTap(p: HostPoint): Promise<void> {
   await host.restyle();
 }
 
+/** A tap on a title bar: folded or open again, kept for the bot, its size read again. */
+async function toggleFolded(sig: string): Promise<void> {
+  const r = rules[sig];
+  if (!r?.fold) return;
+  r.folded = !r.folded;
+  await host?.restyle();
+  await measureStickers();
+  await saveElementRules(bot, rules);
+}
 export async function toggleElements(): Promise<void> {
   showing = !showing;
   void saveViewerPrefs({ elements: showing }).catch(() => {});
@@ -274,21 +355,42 @@ async function endDrag(): Promise<void> {
   const doc = host?.doc();
   if (id && doc) { const resolved = await id.catch(() => ''); if (resolved) await quiet(doc.removeEventListener('pointermove', resolved)); }
 }
-/** In 편집 every press is 편집's (no swipe, no line completed); one on a sticker drags it. */
-export function elementsDown(p: HostPoint, onControl: boolean): boolean {
-  if (!editing) return false;
-  if (onControl || !host || (panelRect && inside(p, panelRect))) return true;
-  const frame = host.frame(), doc = host.doc();
+/** The sticker whose title bar is under the point (with 접기 on; as tall as its scale makes it). */
+function barAt(p: HostPoint): string {
   for (const [sig, s] of stickers) {
-    if (!s.r || !inside(p, s.r) || !doc) continue;
-    drag = { sig, x0: p.clientX, y0: p.clientY, left: s.r.left - frame.left, top: s.r.top - frame.top, dx: 0, dy: 0, painted: '' };
-    moveId = doc.addEventListener('pointermove', (e: HostPoint) => onMove(e));
+    const r = rules[sig];
+    if (r?.fold && s.r && inside(p, s.r) && p.clientY <= s.r.top + BAR_H * r.scale) return sig;
+  }
+  return '';
+}
+function startDrag(sig: string, p: HostPoint): void {
+  const s = stickers.get(sig), doc = host?.doc();
+  if (!s?.r || !host || !doc) return;
+  const frame = host.frame();
+  drag = { sig, x0: p.clientX, y0: p.clientY, left: s.r.left - frame.left, top: s.r.top - frame.top, dx: 0, dy: 0, painted: '' };
+  moveId = doc.addEventListener('pointermove', (e: HostPoint) => onMove(e));
+}
+/**
+ * In 편집 every press is 편집's (no swipe, no line completed); one on a sticker drags it. Outside it, a press on a
+ * sticker's title bar drags it (and taps fold it, elementsClick); any other press is the stage's.
+ */
+export function elementsDown(p: HostPoint, onControl: boolean): boolean {
+  if (!editing) {
+    const sig = onControl ? '' : barAt(p);
+    if (!sig) return false;
+    startDrag(sig, p);
+    return true;
+  }
+  if (onControl || !host || (panelRect && inside(p, panelRect))) return true;
+  for (const [sig, s] of stickers) {
+    if (!s.r || !inside(p, s.r)) continue;
+    startDrag(sig, p);
     break;
   }
   return true;
 }
 export function elementsUp(p: HostPoint): boolean {
-  if (!editing) return false;
+  if (!editing && !drag) return false;
   const d = drag;
   drag = null;
   if (!d || !host) return true;
@@ -312,12 +414,14 @@ export function elementsUp(p: HostPoint): boolean {
  * chips; the click a drag ends with is nothing), and choices take theirs.
  */
 export function elementsClick(p: HostPoint, onControl: boolean): boolean {
+  if (!onControl && Date.now() < dragUntil) { dragUntil = 0; return true; }
   if (editing) {
     if (onControl) return false;
-    if (Date.now() < dragUntil) { dragUntil = 0; return true; }
     if (panelRect && inside(p, panelRect)) void panelTap(p).catch(report('viewer.elements'));
     return true;
   }
+  const bar = onControl ? '' : barAt(p);
+  if (bar) { void toggleFolded(bar).catch(report('viewer.sticker')); return true; }
   if (!onControl) for (const s of stickers.values()) if (s.r && inside(p, s.r)) {
     setTimeout(() => void measureStickers().catch(() => {}), 200);
     return true;
