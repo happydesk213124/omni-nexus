@@ -1,6 +1,6 @@
 import { analysisBody } from '../domain/prompt/message-body';
 import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-lines';
-import { TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
+import { TAGGER_LORE_CONTENT_LIMIT, TAGGER_LORE_LIMIT, TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 import { comicNaturalInstruction } from '../domain/comic/natural';
 import { comicCloseupCharacterInstruction } from '../domain/comic/caption';
@@ -36,7 +36,9 @@ import {
   assembleLorebookForTagger,
   collectTriggeredLoreKeys,
   filledNamesForLoreExtra,
+  keysOfLoreEntries,
   normalizeLoreExtraMode,
+  taggerLoreSources,
 } from '../domain/lore/assemble';
 import { isCharacterImageExtraLore } from '../domain/lore/extra';
 import type { LlmContentPart, LlmMessage } from '../providers/llm/transform';
@@ -130,10 +132,14 @@ export function assetTriggerPoolForRequest(request: TaggerArgs): string[] {
   ].map((k) => cleanText(k, 200)).filter(Boolean);
 }
 
-/** Collect asset NAI tags when mode is not off; null if off / empty. */
+/**
+ * Collect asset NAI tags when mode is not off; null if off / empty. `triggerKeys` says whose to look for: the reply
+ * tagger's own pick (`taggerAssetTriggers`); without it, every lit lore key (the streaming chat state, which has no
+ * lorebook pack to follow).
+ */
 export async function collectAssetTagsForTagger(
   request: TaggerArgs,
-  opts: { withPreviews?: boolean } = {},
+  opts: { withPreviews?: boolean; triggerKeys?: readonly string[] } = {},
 ) {
   const card = deepMerge(getConfig().card, (request.card as Record<string, unknown>) || {});
   if (normalizeAssetNaiTagsMode(card.asset_nai_tags) === 'off') return null;
@@ -148,7 +154,7 @@ export async function collectAssetTagsForTagger(
       cleanText(request.character_id || '', 200),
       sourceSessionIds,
     );
-    return await collectAssetNaiTags(assetTriggerPoolForRequest(request), {
+    return await collectAssetNaiTags(opts.triggerKeys ? [...opts.triggerKeys] : assetTriggerPoolForRequest(request), {
       withPreviews: opts.withPreviews === true,
       characterId: cleanText(request.character_id, 200),
       roster,
@@ -162,9 +168,40 @@ export async function collectAssetTagsForTagger(
   }
 }
 
-/** Both generation modes search the same references, including unregistered people. */
-export async function collectGenerationAssets(request: TaggerArgs) {
-  const collected = await collectAssetTagsForTagger(request, { withPreviews: false });
+/** The reply as the tagger reads it, the share its lorebook pack is matched on. */
+function taggerReferenceText(request: TaggerArgs): string {
+  return cleanText(analysisBody(stripBakeTokens(request.assistant_text)), streamLineRange(request) ? Number.MAX_SAFE_INTEGER : TAGGER_MESSAGE_LIMIT)
+    .slice(0, TAGGER_REFERENCE_LIMIT);
+}
+
+/**
+ * Whose pictures and asset tags the reply tagger may be brought: the people of the lore entries it is given (its
+ * lorebook pack's own pick, whether or not the pack is sent). Every lit lore key went before: an entry it was not
+ * given (hit once among many, or only in what it never reads, a reply's thoughts) named someone it knew nothing
+ * about, so their picture came back unused (with 이미지 분기, an image-model call), and on every tag of the reply,
+ * since they were never registered. A request with no lorebook has only the keys it carries.
+ */
+async function taggerAssetTriggers(request: TaggerArgs, given: { roster?: CharacterRecord[]; referenceText?: string }): Promise<string[]> {
+  const lorebook = Array.isArray(request.lorebook) ? request.lorebook : [];
+  if (!lorebook.length) return assetTriggerPoolForRequest(request);
+  const roster = given.roster ?? await loadTaggerRoster({
+    sessionId: cleanText(request.session_id, 200),
+    unifiedSessionId: cleanText(request.unified_session_id || '', 200),
+    characterId: cleanText(request.character_id || '', 200),
+    sourceSessionIds: request.source_session_ids ?? [],
+  });
+  const sources = taggerLoreSources(lorebook, given.referenceText ?? taggerReferenceText(request), filledNamesForLoreExtra(roster),
+    TAGGER_LORE_LIMIT, TAGGER_LORE_CONTENT_LIMIT);
+  return keysOfLoreEntries(sources).map((k) => cleanText(k, 200)).filter(Boolean);
+}
+
+/**
+ * Both generation modes search the same references, including unregistered people: the people of the lore the
+ * tagger is given (taggerAssetTriggers). `given`: what the tagger already read (its roster, its reference text).
+ */
+export async function collectGenerationAssets(request: TaggerArgs, given: { roster?: CharacterRecord[]; referenceText?: string } = {}) {
+  const pool = await taggerAssetTriggers(request, given);
+  const collected = await collectAssetTagsForTagger(request, { withPreviews: false, triggerKeys: pool });
   if (!collected?.block) setLastAssetWeightMap(new Map());
   const covered = new Set<string>();
   for (const group of collected?.packed.groups || []) {
@@ -173,8 +210,9 @@ export async function collectGenerationAssets(request: TaggerArgs) {
   }
   const roster = await rosterForSession(request.session_id || '', request.unified_session_id || '',
     request.character_id || '', request.source_session_ids || []);
-  const missing = assetTriggerPoolForRequest(request).filter(key => !covered.has(compactAssetKey(key, 200)));
+  const missing = pool.filter(key => !covered.has(compactAssetKey(key, 200)));
   const images = await collectBestLookAssets(missing, { roster, characterId: request.character_id });
+  dbg('asset-tags.pool', { message: pool.join(', ').slice(0, 300), keys: pool.length, images: images.map(i => `${i.trigger}→${i.name}`) });
   return { collected, images };
 }
 
@@ -233,8 +271,8 @@ function collectLorePayload(
     request.lorebook || [],
     assistant,
     filledNames,
-    5,
-    1200,
+    TAGGER_LORE_LIMIT,
+    TAGGER_LORE_CONTENT_LIMIT,
     triggerKeys,
     loreExtraMode,
   );
@@ -593,7 +631,7 @@ export async function buildTaggerMessages(
   pushReferenceUser(messages, 'Characters in this message', appearancePayload(card, assistant, sessionId, rosterEarly));
 
   if (!opts.skipAssetInject && assetMode !== 'off') {
-    const { collected, images } = await collectGenerationAssets(request);
+    const { collected, images } = await collectGenerationAssets(request, { roster: rosterEarly, referenceText });
     if (collected?.block) pushReferenceUser(messages, 'NovelAI asset tags', collected.block);
     if (assetMode === 'inline') {
       messages.push(...await characterImageInput(images, card.image_analysis_separate === true, {

@@ -216,7 +216,7 @@ export function assembleLorebookForTagger(
   // All lb-xnai.lb.extra entries (UI may already have pre-trimmed copies).
   const extras = mode === 'off' ? [] : list.filter((e) => isCharacterImageExtraLore(e));
   const others = list.filter((e) => !isCharacterImageExtraLore(e));
-  const matched = filterLorebookByMessage(others, message, limit, contentLimit);
+  const packed = packedLoreRows(others, message, filledNames, limit, contentLimit);
   const triggeredKeys = Array.isArray(triggerKeysOverride) && triggerKeysOverride.length
     ? triggerKeysOverride.map((k) => cleanText(k, 200)).filter(Boolean)
     : collectTriggeredLoreKeys(others, message);
@@ -250,13 +250,55 @@ export function assembleLorebookForTagger(
       }
     }
   }
-  for (const entry of matched) {
-    // Filled character name/alias as lore key → skip (looks already on roster; burns tokens).
-    if (loreEntrySharesCharacterTrigger(entry, filledNames)) continue;
-    // Belt-and-suspenders: never let a normal lore slot carry the full dump.
-    const content = cleanText(entry.content || entry.data || '', contentLimit);
-    if (isUntrimmedCharacterImageTagDump(content, [])) continue;
-    out.push(entry);
+  for (const { shown } of packed) out.push(shown);
+  return out;
+}
+
+/**
+ * The normal entries of the tagger's pack, each with the entry it came from: the most hit `limit`, then a filled
+ * character's entry left out (its name or alias as a key: the looks are on the roster already, and the lore only
+ * burns tokens), and never a whole lb-xnai dump in a normal slot.
+ */
+function packedLoreRows(
+  others: LoreEntry[],
+  message: unknown,
+  filledNames: readonly string[],
+  limit: number,
+  contentLimit: number,
+): Array<{ entry: LoreEntry; shown: LoreEntry }> {
+  return rankLoreByMessage(others, message, limit, contentLimit).filter(({ shown }) =>
+    !loreEntrySharesCharacterTrigger(shown, filledNames)
+    && !isUntrimmedCharacterImageTagDump(cleanText(shown.content || shown.data || '', contentLimit), []));
+}
+
+/**
+ * The entries behind the main tagger's lorebook pack, as given (every key on them, the second ones too): what
+ * `assembleLorebookForTagger` puts in its normal slots, the lb-xnai pack aside. The people a picture or asset tags
+ * are brought for come from these alone: a lit entry the tagger is not given (hit once among many, or only in text
+ * it never reads) names someone it knows nothing about, and what was read for them came back unused, every time.
+ */
+export function taggerLoreSources(
+  entries: LoreEntry[] | null | undefined,
+  message: unknown,
+  filledNames: readonly string[] = [],
+  limit = 5,
+  contentLimit = 1200,
+): LoreEntry[] {
+  const others = (Array.isArray(entries) ? entries : []).filter((e) => !isCharacterImageExtraLore(e));
+  return packedLoreRows(others, message, filledNames, limit, contentLimit).map(({ entry }) => entry);
+}
+
+/** Every key of these entries, each once. */
+export function keysOfLoreEntries(entries: readonly LoreEntry[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    for (const key of loreEntryKeys(entry)) {
+      const nk = normalizeAlias(key);
+      if (!nk || seen.has(nk)) continue;
+      seen.add(nk);
+      out.push(key);
+    }
   }
   return out;
 }
@@ -268,10 +310,19 @@ export function filterLorebookByMessage(
   limit = 5,
   contentLimit = 1200,
 ): LoreEntry[] {
+  return rankLoreByMessage(entries, message, limit, contentLimit).map(({ shown }) => shown);
+}
+
+function rankLoreByMessage(
+  entries: LoreEntry[] | null | undefined,
+  message: unknown,
+  limit: number,
+  contentLimit: number,
+): Array<{ entry: LoreEntry; shown: LoreEntry }> {
   const hay = cleanText(message).toLowerCase();
   const hayCompact = compactText(message);
   if (!hay) return [];
-  const scored: Array<{ comment: string; content: string; key: string; hits: number }> = [];
+  const scored: Array<{ entry: LoreEntry; comment: string; content: string; key: string; hits: number }> = [];
   for (const entry of entries || []) {
     if (typeof entry !== 'object') continue;
     if (isCharacterImageExtraLore(entry)) continue;
@@ -286,6 +337,7 @@ export function filterLorebookByMessage(
     for (const key of keys) hits += loreKeyHitsMessage(key, hay, hayCompact);
     if (hits <= 0) continue;
     scored.push({
+      entry,
       comment: cleanText(entry.comment || entry.name || '', 200),
       content,
       key: keyRaw,
@@ -293,5 +345,5 @@ export function filterLorebookByMessage(
     });
   }
   scored.sort((a, b) => b.hits - a.hits || String(a.comment).localeCompare(String(b.comment)));
-  return scored.slice(0, Math.max(1, limit)).map(({ hits, ...rest }) => rest);
+  return scored.slice(0, Math.max(1, limit)).map(({ entry, comment, content, key }) => ({ entry, shown: { comment, content, key } }));
 }
