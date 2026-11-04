@@ -4623,17 +4623,25 @@ const VENDOR_STICKY_NX_ACTIVATE_PATCH = `  function scheduleStickySync(forceFull
       return "";
     }
   }
-  /** Unwrap SafeDOM NodeList → plain array (same helper pattern as inline inject). */
+  // A SafeDOM list as a plain array, its items asked for together (src/core/util/safe-list.ts, which this closure
+  // cannot import). Risu's own unwarpSafeArray asks for the length and then each item in turn, a round trip each:
+  // n + 1 waits for a list of n. Together they are two waits; a long list goes in waves of 64.
   async function nxUnwrapSafeNodes(raw) {
     if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
     try {
-      if (typeof k?.unwarpSafeArray == "function") {
-        const u = await k.unwarpSafeArray(raw);
-        return Array.isArray(u) ? u : u ? [u] : [];
+      if (typeof raw.at == "function" && typeof raw.length == "function") {
+        const n = Number(await raw.length()) || 0, out = [];
+        for (let start = 0; start < n; start += 64) {
+          const wave = await Promise.all(Array.from({ length: Math.min(64, n - start) }, (_, i) => raw.at(start + i)));
+          for (const item of wave) if (item !== undefined && item !== null) out.push(item);
+        }
+        return out;
       }
     } catch {
+      return [];
     }
-    return Array.isArray(raw) ? raw : raw && typeof raw.length == "number" ? Array.from(raw) : raw ? [raw] : [];
+    return raw && typeof raw.length == "number" ? Array.from(raw) : [raw];
   }
   function nxScheduleStickyScrollSnap(why) {
     t._stickyActivateGen = (Number(t._stickyActivateGen) || 0) + 1;

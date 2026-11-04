@@ -32,6 +32,7 @@ const MODULES = {
   'viewer-core': 'src/ui-contract/viewer-core.ts',
   'inline-chat': 'src/domain/inline-chat.ts',
   'object-util': 'src/core/util/object.ts',
+  'safe-list': 'src/core/util/safe-list.ts',
   'explorer-selection': 'src/ui-contract/explorer-selection.ts',
   'gallery-zip': 'src/ui-contract/gallery-zip.ts',
   'unlink-match': 'src/domain/gallery/unlink-match.ts',
