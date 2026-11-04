@@ -46,7 +46,7 @@ import { replyAt } from '../domain/viewer/reply-at';
 import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
 import { BACKGROUND_BOX, PICTURE_BOX, screenImage, SPRITE_BOX } from './shrink';
 import { imageAssetRef } from '../storage/stores';
-import { onSticker, choiceArmed, disarmChoice, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsShown, elementsUp, toggleEdit, toggleElements } from './elements';
+import { onSticker, choiceArmed, disarmChoice, elementsAtEnd, elementsClick, elementsClose, elementsCss, elementsDown, elementsEditing, elementsForReply, elementsOpen, elementsRelayLive, elementsShown, elementsSyncLive, elementsUp, toggleEdit, toggleElements } from './elements';
 
 /**
  * 옴니 뷰어: the newest reply as a visual novel over the chat (Risu's own input stays
@@ -160,6 +160,8 @@ async function measure(): Promise<void> {
   rect = next;
   controls = await measureActs('[data-vn-act]', ACTS);
   boxRect = box ? await box.getBoundingClientRect() : null;
+  // The frame moved or took another size: 작동's windows (placed in it) and their holes go with it.
+  void elementsRelayLive().catch(() => {});
 }
 async function measureActs(selector: string, names: readonly string[]): Promise<Array<{ act: string; r: DOMRect }>> {
   if (!root) return [];
@@ -1859,6 +1861,8 @@ function onClick(p: HostPoint): void {
 async function writeStage(s: StageState): Promise<void> {
   busyShown = !!s.busy;
   await dyn?.setTextContent(`${stageCss(s)}\n${elementsCss()}`);
+  // 작동's windows go with what is over the stage (a panel opened, the picture big): written only when it changed.
+  void elementsSyncLive().catch(() => {});
   // 전체 생성 comes and goes with the reply's pink slots: where it stands is read once it shows.
   if (!!s.pink !== pinkShown) { pinkShown = !!s.pink; if (pinkShown) void remeasure('pink').catch(() => {}); }
   // 배속 is as wide as the figure this style draws in it (on a phone it has no width of its own): read again when it changes.
@@ -2092,7 +2096,12 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl, ratesEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]', '[data-vn-rates]'].map(s => root!.querySelector(s)));
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null,
-      charAfter: (index, n) => charIndexes().filter(i => i > index)[n - 1] ?? -1 });
+      charAfter: (index, n) => charIndexes().filter(i => i > index)[n - 1] ?? -1,
+      // What the fold keeps drawn: the bot's newest three, and the newest message.
+      drawn: index => index >= 0 && (charIndexes().slice(-FOLD_KEEP).includes(index) || index === (context?.messages.length ?? 0) - 1),
+      // A hole is cut through whatever is over the stage: none while a panel, the picture big or 크게보기 is up.
+      hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen,
+      say: (text, ms) => sayShot(text, ms) });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
     ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
