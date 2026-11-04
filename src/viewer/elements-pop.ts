@@ -1,18 +1,18 @@
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import type { ElementRule } from '../storage/viewer-elements';
-import { LIVE_STEP, liveCss, type Box, type LiveEntry } from './elements-live';
+import { liveCss, type Box, type LiveEntry } from './elements-live';
 import { quiet, release, unwrap } from './safe-dom';
 
 /**
- * 작동's popup: a tap on a tile opens the kind's element in the middle of 옴니 뷰어 (its frame, not the window), the
+ * 작동's popup: a tap on a tile shows the kind's element in the middle of 옴니 뷰어 (its frame, not the window), the
  * stage dimmed around it. In a message drawn behind the viewer (the bot's newest three) it is the chat's own element,
- * lifted in place by one style sheet and seen through a hole cut in the viewer (elements-live.ts), so its buttons are
- * Risu's; in an older one it is a copy. elements.ts tells the taps: in it, the element's; anywhere else, a fold.
+ * where Risu drew it: the chat behind is scrolled until it stands in the middle, and a hole is cut in the viewer
+ * where it is (elements-live.ts), so its buttons are Risu's. In an older message it is a copy. elements.ts tells the
+ * taps: in it, the element's; anywhere else, a fold.
  *
- * Optimistic: the tap's first write dims the stage and turns a spinner where it opens. The element follows as soon
- * as its size is read, its hole cut where it will stand in the same write that lifts it; then it is read where it
- * really went and set right. The spinner sits in the frame, which the hole cuts away with the element's coming.
+ * Optimistic: the tap's first write dims the stage and turns a spinner in the middle; the element shows through its
+ * hole once it is scrolled there and read where it is. The spinner sits in the frame, which the hole cuts away.
  */
 export interface PopHost {
   doc: () => SafeDocument | null;
@@ -21,6 +21,8 @@ export interface PopHost {
   drawn: (index: number) => boolean;
   /** Something of the viewer's is over the stage (a panel, the picture big, 크게보기): the popup waits under it. */
   hideLive: () => boolean;
+  /** The element named so scrolled to the middle of the chat behind the viewer (Risu's page put back, if pushed). */
+  centre: (target: string) => Promise<void>;
   say: (text: string, ms: number) => void;
   restyle: () => Promise<void>;
 }
@@ -33,13 +35,11 @@ let host: PopHost | null = null, frameEl: SafeElement | null = null;
 let sig = '', mode: '' | 'wait' | 'live' | 'copy' = '', rule: ElementRule | null = null, tile: PopTile | null = null;
 /** Each opening and each close counts: a read that comes back after another tap does nothing. */
 let turn = 0;
-/** Its size as the chat drew it (read before it is lifted), where each window is, all of them together, the frame's style. */
-let natural = { width: 0, height: 0 }, rects: Array<Box | null> = [], rect: Box | null = null, framed = '';
 /**
- * How far it is put from the middle to stand in the middle: a box of Risu's page around it that holds fixed boxes
- * (one the sheet cannot free), or a zoom, moves it, and it is put back by as much. Kept for the next opening.
+ * How tall the chat's bar under the viewer is (left out of the middle), where each window is, all of them together,
+ * and the frame's style.
  */
-let nudge = { x: 0, y: 0 };
+let below = 0, rects: Array<Box | null> = [], rect: Box | null = null, framed = '';
 /** The sheet that lifts it (made the first time), what it says, its writes one at a time, and which viewer they are for. */
 let sheet: SafeElement | null = null, sheetText = '', writes: Promise<void> = Promise.resolve(), epoch = 0, warned = false;
 let later: Array<ReturnType<typeof setTimeout>> = [];
@@ -49,7 +49,7 @@ const round = (n: number) => Math.round(n * 10) / 10;
 const SPINNER = '<b data-vn-spin></b>';
 
 export function popAttach(h: PopHost, el: SafeElement | null): void {
-  host = h; frameEl = el; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null; framed = ''; sheetText = ''; warned = false; nudge = { x: 0, y: 0 };
+  host = h; frameEl = el; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null; framed = ''; sheetText = ''; warned = false; below = 0;
 }
 export async function popDetach(): Promise<void> {
   // A write asked for before the close is dropped; one under way finishes first, so the sheet it made comes down too.
@@ -79,15 +79,19 @@ export async function popOpen(nextSig: string, nextTile: PopTile, nextRule: Elem
   // What tells is its size: a message folded away behind the viewer has none (and comes as a copy). drawn() only
   // spares that read for the messages the fold is known to hide.
   if (h.drawn(nextTile.index)) {
-    // Its size as the chat draws it, before it is lifted: the window keeps its width, and its hole is cut at once.
-    const first = await doc.querySelector(nextTile.targets[0]!);
-    let box: Box | null = null;
-    try { box = first ? await first.getBoundingClientRect() : null; } finally { await release(first); }
+    // Drawn, and how tall the chat's bar is under the viewer (the chat screen's foot against the frame's).
+    const [first, screen] = await Promise.all([doc.querySelector(nextTile.targets[0]!), doc.querySelector('.default-chat-screen')]);
+    let box: Box | null = null, chat: Box | null = null;
+    try { [box, chat] = await Promise.all([first ? first.getBoundingClientRect() : null, screen ? screen.getBoundingClientRect() : null]); } finally { await release(first); await release(screen); }
     if (mine !== turn) return;
     if (box && box.width > 0 && box.height > 0) {
-      natural = { width: box.width, height: box.height }; mode = 'live';
-      rects = standing();
-      await placeFrame();
+      const f = h.frame();
+      below = chat ? Math.max(0, chat.top + chat.height - (f.top + f.height)) : 0;
+      mode = 'live';
+      // The room and the margin first (no hole yet), then the scroll into the middle, then the hole where it is.
+      await popSync();
+      await h.centre(nextTile.targets[0]!);
+      if (mine !== turn) return;
       await popRelay();
       warnClickToEdit();
       return;
@@ -114,22 +118,10 @@ export function popTapped(): void {
   for (const ms of [200, 900]) later.push(setTimeout(() => void popRelay().catch(report('viewer.pop')), ms));
 }
 
-const middle = (f: Box) => ({ x: f.left + f.width / 2, y: f.top + f.height / 2 });
-/** Where the window is put: the middle of the frame (and the nudge), as wide as the chat drew it if that fits. */
+/** The element as the sheet has it: its windows, its 크기, the bar left out of the middle, its holes. */
 function entry(): LiveEntry | null {
   if (!host || !tile || !rule || mode !== 'live' || !popSeen()) return null;
-  const f = host.frame(), s = rule.scale, m = middle(f);
-  return {
-    index: tile.index, selector: tile.selector, targets: tile.targets, scale: s, cx: m.x + nudge.x, cy: m.y + nudge.y,
-    width: Math.max(60, Math.min(natural.width, (f.width - 24) / s)), maxHeight: f.height * 0.8 / s, rects,
-  };
-}
-/** Where each window will stand, before it is read: its own size (taller than allowed, cut), in the middle. */
-function standing(): Box[] {
-  const e = entry(), f = host?.frame();
-  if (!e || !f) return [];
-  const w = e.width * e.scale, h = Math.min(natural.height, e.maxHeight) * e.scale, m = middle(f);
-  return e.targets.map((_, k) => ({ left: m.x + k * LIVE_STEP - w / 2, top: m.y + k * LIVE_STEP - h / 2, width: w, height: h }));
+  return { targets: tile.targets, scale: rule.scale, below, rects };
 }
 function union(boxes: Array<Box | null>): Box | null {
   const real = boxes.filter((b): b is Box => !!b && b.width > 0 && b.height > 0);
@@ -159,29 +151,16 @@ export async function popRelay(): Promise<void> {
     if (mine === turn) rect = now;
     return;
   }
-  for (let pass = 0; pass < 3; pass++) {
-    const doc = host?.doc(), t = tile, f = host?.frame(), mine = turn;
-    if (!doc || !t || !f || !entry()) return;
-    const read = await Promise.all(t.targets.map(async target => {
-      const node = await doc.querySelector(target);
-      try { return node ? await node.getBoundingClientRect() : null; } finally { await release(node); }
-    }));
-    if (mine !== turn || mode !== 'live') return;
-    rects = read.map(b => b && b.width > 0 && b.height > 0 ? { left: b.left, top: b.top, width: b.width, height: b.height } : null);
-    // Where it went, against the frame's middle where it was put: astray, it is put again by as much (its hole and
-    // frame with it at once) and read again; twice at most (a zoom takes two to come near).
-    const first = rects[0], m = middle(f);
-    const ex = first ? first.left + first.width / 2 - m.x : 0, ey = first ? first.top + first.height / 2 - m.y : 0;
-    const astray = Math.abs(ex) > 1.5 || Math.abs(ey) > 1.5;
-    if (astray && pass < 2) {
-      nudge = { x: nudge.x - ex, y: nudge.y - ey };
-      rects = rects.map(b => b && { left: b.left - ex, top: b.top - ey, width: b.width, height: b.height });
-      dbg('viewer.pop.astray', { pass, ex: Math.round(ex), ey: Math.round(ey), nudge: { x: Math.round(nudge.x), y: Math.round(nudge.y) }, frame: f, at: first });
-    } else if (astray) dbg('viewer.pop.off', { ex: Math.round(ex), ey: Math.round(ey), frame: f, at: first }, 'warn');
-    await placeFrame();
-    await popSync();
-    if (!astray || pass >= 2) return;
-  }
+  const doc = host?.doc(), t = tile, mine = turn;
+  if (!doc || !t || !entry()) return;
+  const read = await Promise.all(t.targets.map(async target => {
+    const node = await doc.querySelector(target);
+    try { return node ? await node.getBoundingClientRect() : null; } finally { await release(node); }
+  }));
+  if (mine !== turn || mode !== 'live') return;
+  rects = read.map(b => b && b.width > 0 && b.height > 0 ? { left: b.left, top: b.top, width: b.width, height: b.height } : null);
+  await placeFrame();
+  await popSync();
 }
 /** An older reply's: a copy in the frame (its buttons not Risu's there), said so under it. */
 async function fillCopy(doc: SafeDocument, mine: number): Promise<void> {

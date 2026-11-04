@@ -32,6 +32,16 @@ export async function centerIn(node: SafeElement): Promise<void> {
   const scroll = Reflect.get(node, 'scrollIntoView');
   if (typeof scroll === 'function') await quiet((() => { try { return scroll.call(node, scrollOptions()); } catch { return undefined; } })());
 }
+/**
+ * Scrolls a node to the middle of its list at once (작동's element), the middle even where the engine cannot keep the
+ * scroll to the list: the page it may push then is put back by the caller.
+ */
+export async function centreNow(node: SafeElement): Promise<void> {
+  const scroll = Reflect.get(node, 'scrollIntoView');
+  scrollOptions();
+  const options = { block: 'center', inline: 'nearest', behavior: 'instant', ...(listOnly ? { container: 'nearest' } : {}) } as unknown as ScrollIntoViewOptions;
+  if (typeof scroll === 'function') await quiet((() => { try { return scroll.call(node, options); } catch { return undefined; } })());
+}
 
 export { safeList as unwrap } from '../core/util/safe-list';
 

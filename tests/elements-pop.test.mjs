@@ -15,18 +15,22 @@ function node(rect = { left: 110, top: 370, width: 180, height: 60 }) {
   };
   return el;
 }
+// The chat screen 90 px taller than the frame (Risu's bar under the viewer); every element of the chat where it is.
 const doc = {
-  async querySelector() { return later(node()); },
+  async querySelector(selector) { return later(selector === '.default-chat-screen' ? node({ left: 0, top: 0, width: 400, height: 890 }) : node()); },
   async querySelectorAll() { return later([]); },
   async createElement(tag) { const el = node(); if (tag === 'style') made.push(el); return later(el); },
 };
-const host = { doc: () => doc, frame: () => ({ left: 0, top: 0, width: 400, height: 800 }), drawn: () => true, hideLive: () => false, say() {}, restyle: () => later() };
+// `centred`: what the popup asked the chat to scroll to the middle, and what its sheet said by then.
+const centred = [];
+const host = { doc: () => doc, frame: () => ({ left: 0, top: 0, width: 400, height: 800 }), drawn: () => true, hideLive: () => false, say() {}, restyle: () => later(),
+  async centre(target) { centred.push({ target, sheet: made[0]?.text ?? '' }); await later(); } };
 const tile = { index: 6, selector: '.x-risu-status', targets: ['.risu-chat[data-chat-index="6"] .chattext .x-risu-status'] };
 const rule = { role: 'live', x: 4, y: 12, scale: 1, hidden: false, always: false, from: 0, fold: false, folded: false };
 const { popAttach, popClose, popDetach, popOpen, popOpenSig, popSync } = await import('../.test-build/elements-pop.mjs');
 
-test('elements-pop: the stage restyling every turn while it opens, one sheet is made, and it says where the element stands', async () => {
-  made.length = 0;
+test('elements-pop: the stage restyling every turn while it opens, one sheet is made: the room and the margin before the scroll, then the hole', async () => {
+  made.length = 0; centred.length = 0;
   popAttach(host, node());
   const opening = popOpen('sig', tile, rule);
   let restyling = true;
@@ -38,8 +42,12 @@ test('elements-pop: the stage restyling every turn while it opens, one sheet is 
   await popSync();
   assert.equal(popOpenSig(), 'sig');
   assert.equal(made.length, 1, 'one sheet: writes go one at a time, so none finds no sheet while another makes one');
-  assert.match(made[0].text, /left:200px!important;top:400px!important/, 'in the middle of the frame');
-  assert.match(made[0].text, /clip-path:path\(evenodd/, 'a hole cut where it stands');
+  // Scrolled to the middle once, the list's room and the bar's margin (90) already written; the hole after, where it is.
+  assert.deepEqual(centred.map(c => c.target), [tile.targets[0]]);
+  assert.match(centred[0].sheet, /padding-block:50vh!important/);
+  assert.match(centred[0].sheet, /scroll-margin-bottom:90px!important/);
+  assert.doesNotMatch(centred[0].sheet, /clip-path/, 'no hole before it is there');
+  assert.match(made[0].text, /clip-path:path\(evenodd,"M0 0H400V800H0ZM110 370h180v60h-180Z"\)/, 'a hole where it is');
   await popClose(false);
   assert.equal(made[0].text, '', 'folded: back in its message');
   await popDetach();
