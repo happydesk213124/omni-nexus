@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LIVE_STEP, liveCss, liveTargets } from '../.test-build/elements-live.mjs';
+import { liveCss, liveTargets } from '../.test-build/elements-live.mjs';
 
 // 작동's sheet is pure text from where each window is; the browser test proves it works on a page, this pins its shape.
 const frame = { left: 10, top: 20, width: 300, height: 500 };
 const entry = (over = {}) => ({
-  index: 6, selector: '.x-risu-status', targets: liveTargets(6, '.x-risu-status', 2),
-  cx: 160, cy: 270, width: 180, maxHeight: 300, scale: 1,
+  targets: liveTargets(6, '.x-risu-status', 2), scale: 1, below: 90,
   rects: [{ left: 30, top: 60, width: 180, height: 60 }, null], ...over,
 });
 
@@ -20,45 +19,27 @@ test('elements-live: a kind held once is named by its message and selector; held
   assert.equal(liveTargets(2, 'div.card', 9).length, 6);
 });
 
-test('elements-live: nothing lifted writes nothing', () => {
+test('elements-live: nothing open writes nothing', () => {
   assert.equal(liveCss([], frame), '');
 });
 
-test('elements-live: each window centred where it goes by its own size, the next a step on; a hole only where a window is known, in the frame\'s own terms', () => {
+test('elements-live: never lifted out of its place; the list has room to scroll it to the middle, the bar under the viewer left out', () => {
   const css = liveCss([entry()], frame);
   const [first, second] = liveTargets(6, '.x-risu-status', 2);
-  assert.match(css, new RegExp(`${escape(first)}\\{position:fixed!important;left:160px!important;top:270px!important;`));
-  assert.match(css, new RegExp(`${escape(second)}\\{position:fixed!important;left:${160 + LIVE_STEP}px!important;top:${270 + LIVE_STEP}px!important;`));
-  assert.match(css, /width:180px!important;max-width:none!important;max-height:300px!important;overflow:auto!important/);
-  assert.equal(css.split('transform:translate(-50%,-50%) scale(1)!important;transform-origin:50% 50%!important').length - 1, 2);
+  assert.doesNotMatch(css, /position:fixed|transform:none|z-index/, 'nothing of Risu\'s page is changed to lift it');
+  assert.ok(css.includes('.default-chat-screen > .flex-col-reverse{padding-block:50vh!important}'), css);
+  assert.ok(css.includes(`:is(${first},${second}){scroll-margin-bottom:90px!important}`), css);
+});
+
+test('elements-live: a hole where each window is, in the frame\'s own terms; one not read cuts none', () => {
+  const css = liveCss([entry()], frame);
   // The frame, then the one window read (at 30,60 on the screen: 20,40 in the frame); the unread one cuts no hole.
   assert.ok(css.includes('[x-omni-vn]{clip-path:path(evenodd,"M0 0H300V500H0ZM20 40h180v60h-180Z")!important}'), css);
   assert.equal(css.split('h180v60h-180Z').length - 1, 1);
+  assert.doesNotMatch(liveCss([entry({ rects: [null, null] })], frame), /clip-path:path/, 'none read: the viewer stays whole');
 });
 
-test('elements-live: what keeps a fixed box in is undone up to the page; z-index and isolation only inside the chat screen', () => {
-  const lines = liveCss([entry()], frame).split('\n');
-  const free = lines.find(l => l.includes('transform:none!important'));
-  const stack = lines.find(l => l.includes('z-index:auto!important'));
-  assert.ok(free && free.startsWith(':is(html,body,body :has(.default-chat-screen),.default-chat-screen,'), free);
-  assert.match(free, /opacity:1!important/);
-  // The single transforms hold fixed boxes as transform does (a newer Tailwind writes them).
-  assert.match(free, /translate:none!important;rotate:none!important;scale:none!important;transform-style:flat!important/);
-  assert.ok(stack && !/[(,]body[ ,)]/.test(stack.slice(0, stack.indexOf('{'))), stack);
-  assert.ok(stack.includes('.default-chat-screen :has(.risu-chat[data-chat-index="6"])'), stack);
-  assert.ok(stack.includes('.risu-chat[data-chat-index="6"] :has(.x-risu-status)'), stack);
+test('elements-live: its 크기 in place, about its middle (the chat\'s layout as it was)', () => {
+  assert.match(liveCss([entry({ scale: 0.8 })], frame), /scroll-margin-bottom:90px!important;transform:scale\(0\.8\)!important;transform-origin:50% 50%!important\}/);
+  assert.doesNotMatch(liveCss([entry()], frame), /transform:scale/, 'at its own size, nothing');
 });
-
-test('elements-live: no window known yet, the viewer stays whole; its scale goes with each window', () => {
-  const css = liveCss([entry({ rects: [null, null], scale: 0.8 })], frame);
-  assert.doesNotMatch(css, /clip-path:path/);
-  assert.equal(css.split('transform:translate(-50%,-50%) scale(0.8)!important').length - 1, 2);
-});
-
-test('elements-live: an element with no background of its own gets Risu\'s, at no weight (any rule of the bot\'s wins)', () => {
-  const css = liveCss([entry()], frame);
-  const [first, second] = liveTargets(6, '.x-risu-status', 2);
-  assert.ok(css.includes(`:where(${first},${second}){background-color:var(--risu-theme-bgcolor,#282a36)}`), css);
-});
-
-function escape(text) { return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }

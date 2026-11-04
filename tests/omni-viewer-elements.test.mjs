@@ -190,10 +190,11 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
   } finally { await browser.close(); }
 });
 
-// 작동: a tile on the stage; a tap opens the chat's own panel in the middle of the viewer, lifted in its message and
-// seen through a hole, so that its button is Risu's (Risu takes a button's click on the message: here a capture
-// listener stands for it, and draws the message anew with the result, as Risu does). The chat screen here makes a
-// stacking context of its own (fixed, z-index 30): a window over the viewer by z-index could never be, a hole can.
+// 작동: a tile on the stage; a tap shows the chat's own panel in the middle of the viewer: the chat behind is scrolled
+// until it stands there, where Risu drew it, and it is seen through a hole, so that its button is Risu's (Risu takes a
+// button's click on the message: here a capture listener stands for it, and draws the message anew with the result,
+// as Risu does). The chat screen here makes a stacking context of its own (fixed, z-index 30): a window over the
+// viewer by z-index could never be, a hole can.
 const savedRule = page => page.evaluate(async () => { const raw = await window.risuai.pluginStorage.getItem('omniviewer.elements'); const all = typeof raw === 'string' ? JSON.parse(raw) : raw || {}; return Object.values(all.bot || {}); });
 test('요소 작동: a tile of its own (never a sticker as well); a tap opens the chat\'s own panel in the viewer\'s middle, its button Risu\'s; a tap elsewhere folds it; an older reply opens a copy', async () => {
   const oldPanel = '<p>전날 밤은 조용했다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#353">HP 9</div>';
@@ -209,8 +210,14 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
         setTimeout(() => { text.innerHTML = text.innerHTML.replace('HP 3', 'HP 2'); }, 60);
       }, true);
     });
-    const panelNow = () => document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status');
-    const lifted = () => page.evaluate(src => getComputedStyle(new Function(`return (${src})()`)()).position === 'fixed', panelNow.toString());
+    // Seen: the point at its middle is the chat's panel itself (through the viewer's hole), where Risu drew it.
+    const seen = () => page.evaluate(() => {
+      const n = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status');
+      if (!n) return false;
+      const r = n.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!at && n.contains(at);
+    });
+    const holeCut = () => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '');
     const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
     const lit = label => chip('status', label).evaluate(el => el.hasAttribute('data-on'));
     const tileBox = () => page.locator('[x-omni-vn] [data-vn-tile]').boundingBox();
@@ -244,10 +251,10 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     assert.deepEqual((await savedRule(page)).map(r => r.role), ['live']);
     await press('eledit');
     await page.waitForTimeout(400);
-    // A tile on the stage, as small as an icon; nothing lifted yet, no hole.
+    // A tile on the stage, as small as an icon; nothing seen through yet, no hole.
     const tile = await tileBox();
     assert.ok(tile && tile.width <= 64 && tile.height <= 64, `a tile, not a bar: ${JSON.stringify(tile)}`);
-    assert.equal(await lifted(), false);
+    assert.equal(await seen(), false);
     assert.equal(await popShown(), false);
     // Tapped: the stage dims at once, a spinner where it opens, while the panel is read (slow here: 0.6 s a read)...
     const before = await text();
@@ -256,31 +263,33 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     await page.waitForTimeout(250);
     assert.equal(await popShown(), true, 'dimmed at once');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-pop] [data-vn-spin]')).display), 'block', 'its spinner');
-    assert.equal(await lifted(), false, 'the panel still being read');
+    assert.equal(await seen(), false, 'no hole while it is read');
     await page.evaluate(() => { window.slowQuery = 0; });
-    // ...then the panel in the middle of the viewer, through a hole, the stage dimmed around it; one sheet.
-    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
-    assert.equal(await lifted(), true);
+    // ...then the chat scrolled until the panel stands in the viewer's middle (the bar under it left out), where Risu
+    // drew it, never lifted out; seen through a hole there, the stage dimmed around it; one sheet.
+    await page.waitForFunction(holeCut);
+    assert.equal(await seen(), true);
+    assert.equal(await isFixed(6), false, 'never lifted out of its place');
     assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style="live"]').length), 1, 'one live sheet');
-    const seen = await page.evaluate(() => {
+    const middle = await page.evaluate(() => {
       const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
-      const at = document.elementFromPoint(r.left + r.width / 2, r.top + 8);
-      return { dx: Math.round(r.left + r.width / 2 - (v.left + v.width / 2)), dy: Math.round(r.top + r.height / 2 - (v.top + v.height / 2)), inChat: !!at?.closest('.risu-chat[data-chat-index="6"] .x-risu-status'), inViewer: !!at?.closest('[x-omni-vn]') };
+      return Math.round(r.top + r.height / 2 - (v.top + v.height / 2));
     });
-    assert.ok(Math.abs(seen.dx) <= 2 && Math.abs(seen.dy) <= 2, `in the viewer's middle: ${JSON.stringify(seen)}`);
-    assert.deepEqual([seen.inChat, seen.inViewer], [true, false], 'the chat\'s own panel, through the hole');
+    assert.ok(Math.abs(middle) <= 2, `in the viewer's middle, up and down: ${middle}`);
     assert.equal(await popShown(), true);
-    // Its button is Risu's, and the story stays; Risu draws the message anew, and the new panel is lifted by itself.
+    // Its button is Risu's, and the story stays; Risu draws the message anew, and the new panel is seen in its place.
     const button = await page.locator('.risu-chat[data-chat-index="6"] [risu-btn="hit"]').boundingBox();
     await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2);
     await page.waitForFunction(() => (window.risuClicks || []).includes('hit'));
     await page.waitForFunction(() => /HP 2/.test(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')?.textContent || ''));
-    assert.equal(await lifted(), true, 'drawn anew, still open');
+    await page.waitForTimeout(400);
+    assert.equal(await seen(), true, 'drawn anew, still seen through its hole');
     assert.equal(await text(), before, 'the tap moved no story on');
     // A tap anywhere else folds it, and is only that.
     const frame = await page.locator('[x-omni-vn]').boundingBox(), pop = await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect().toJSON());
     await page.mouse.click(frame.x + frame.width / 2, pop.top - 40);
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    assert.equal(await seen(), false);
     assert.equal(await popShown(), false);
     assert.doesNotMatch(await page.evaluate(() => document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''), /clip-path/);
     assert.equal(await text(), before, 'the folding tap moved no story on');
@@ -293,36 +302,34 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     for (let i = 0; i < 30 && (await savedRule(page))[0]?.y === was.y; i++) await page.waitForTimeout(100);
     assert.notEqual((await savedRule(page))[0].y, was.y, 'its place kept');
     await page.waitForTimeout(300);
-    assert.equal(await lifted(), false, 'the drag opened nothing');
+    assert.equal(await seen(), false, 'the drag opened nothing');
     // A button of the viewer's folds it and does its own: 기록 opens.
     await tapTile();
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position === 'fixed');
+    await page.waitForFunction(holeCut);
     await press('log');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display !== 'none');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
     await press('log');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'none');
-    assert.equal(await isFixed(6), false, 'folded for good: closing 기록 does not open it again');
+    await page.waitForTimeout(300);
+    assert.equal(await seen(), false, 'folded for good: closing 기록 does not open it again');
     // Escape folds it too.
     await tapTile();
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position === 'fixed');
+    await page.waitForFunction(holeCut);
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
-    // A box of Risu's page that holds fixed boxes, one the sheet cannot free (an inline !important transform): the
-    // panel goes astray, is read where it went, and is put back in the middle, its hole with it.
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    // A box of Risu's page around it moved (an inline !important transform on the list): it is scrolled to the
+    // middle all the same, and seen through its hole there.
     await page.evaluate(() => document.querySelector('.flex-col-reverse').style.setProperty('transform', 'translate(12px, 30px)', 'important'));
     await tapTile();
-    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    await page.waitForFunction(holeCut);
     await page.waitForFunction(() => {
       const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
-      return Math.abs(r.left + r.width / 2 - (v.left + v.width / 2)) <= 2 && Math.abs(r.top + r.height / 2 - (v.top + v.height / 2)) <= 2;
+      return Math.abs(r.top + r.height / 2 - (v.top + v.height / 2)) <= 2;
     });
-    assert.equal(await page.evaluate(() => {
-      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + 8);
-      return !!at?.closest('.risu-chat[data-chat-index="6"] .x-risu-status');
-    }), true, 'through its hole, where it stands now');
+    assert.equal(await seen(), true, 'through its hole, where it stands now');
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
     await page.evaluate(() => document.querySelector('.flex-col-reverse').style.removeProperty('transform'));
     // An older reply, folded away behind the viewer: its tile opens a copy (its buttons are not Risu's there), said so.
     for (let i = 0; i < 10 && !/전날 밤은 조용했다/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
@@ -337,6 +344,7 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     await page.waitForFunction(() => !document.querySelector('[x-omni-vn]'));
     assert.equal(await isFixed(6), false);
     assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style]').length), 0);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.flex-col-reverse')).paddingTop), '0px', 'the room made in the list gone with it');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
@@ -397,27 +405,39 @@ test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, i
   } finally { await browser.close(); }
 });
 
-// The reader's message has its own panel (다음 유저 메시지), and the bot's status panel comes in the reply or in the
-// message after it: registered as 작동 from both tabs and grouped, it is one tile opening the newest one there is.
-test('요소: 다음 유저 메시지 finds the reader\'s panel; one panel from two tabs, grouped on 그룹화, opens only the newest there is, and 분리 lets one go', async () => {
+// The reader's message has its own panel (다음 유저 메시지), and the bot's panels come in the reply or in the message
+// after it: each registered as 작동 from both tabs, picked with 선택 and grouped twice (A, B); a group is one tile
+// opening the newest one there is.
+test('요소: 다음 유저 메시지 finds the reader\'s panel; 선택 picks tiles, 그룹화 makes group A then B, each opens only the newest there is; 분리 lets go', async () => {
+  const card = label => `<div class="x-risu-card" style="width:150px;height:44px;background:#533">${label}</div>`;
   const chat = [
     { role: 'char', chatId: 'a0', data: '전날 밤은 조용했다.' }, { role: 'user', data: '안녕' },
     { role: 'char', chatId: 'a2', data: '바람이 불었다.' }, { role: 'user', data: '가자' },
     { role: 'char', chatId: 'a4', data: reply }, { role: 'user', data: '(나의 상태)' },
     { role: 'char', chatId: 'a6', data: '상태가 갱신되었다.' },
   ];
-  const html = i => i === 4 ? replyHtml
+  const html = i => i === 4 ? replyHtml + card('카드 4')
     : i === 5 ? '<p>(나의 상태)</p><div class="x-risu-mine" style="width:150px;height:40px;background:#535">나 HP 7</div>'
-    : i === 6 ? '<p>상태가 갱신되었다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#355">HP 1 갱신</div>'
+    : i === 6 ? '<p>상태가 갱신되었다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#355">HP 1 갱신</div>' + card('카드 6')
     : `<p>${chat[i].data}</p>`;
   const { browser, page, errors, open, press, tapChip } = await openViewerPage({ messages: chat, html });
   try {
     const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
     const tabAt = async i => { const b = await page.locator('[x-omni-vn] [data-vn-tabs] i').nth(i).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(400); };
-    const fixedIn = () => page.evaluate(() => [...document.querySelectorAll('.risu-chat .x-risu-status')].filter(n => getComputedStyle(n).position === 'fixed').map(n => Number(n.closest('.risu-chat').dataset.chatIndex)));
-    const drag = async (from, to) => { await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 }); await page.mouse.move(to.x, to.y, { steps: 4 }); await page.mouse.up(); };
+    // What the popup shows: the chat's element at its frame's middle, through the hole ("message:kind").
+    const seenIn = () => page.evaluate(() => {
+      const f = document.querySelector('[x-omni-vn] [data-vn-pop]');
+      if (!f || getComputedStyle(f).display === 'none') return '';
+      const r = f.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), chat = at?.closest('.risu-chat');
+      return chat ? `${chat.dataset.chatIndex}:${at.closest('.x-risu-status') ? 'status' : at.closest('.x-risu-card') ? 'card' : '?'}` : '';
+    });
     const centre = async locator => { const b = await locator.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
-    const statusTiles = () => page.locator('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])', { hasText: 'status' });
+    const tap = async locator => { const c = await centre(locator); await page.mouse.click(c.x, c.y); await page.waitForTimeout(150); };
+    const tiles = label => page.locator('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])', { hasText: label });
+    const button = name => page.locator(`[x-omni-vn] [data-vn-gb="${name}"]`);
+    const badges = letter => page.evaluate(l => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group]) i')].filter(i => i.textContent === l).length, letter);
+    const opened = async () => { await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '')); return seenIn(); };
+    const fold = async () => { await page.keyboard.press('Escape'); await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '')); };
     await open();
     await page.waitForFunction(() => /갱신되었다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await page.keyboard.press('ArrowLeft');
@@ -427,63 +447,81 @@ test('요소: 다음 유저 메시지 finds the reader\'s panel; one panel from 
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
     await page.waitForTimeout(400);
-    // The reply's status panel, 작동.
+    // 이 답장: the status panel and the card, 작동.
     await tapChip('status', '작동');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 1);
+    await page.waitForTimeout(300);
+    await tapChip('card', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 2);
     // 다음 유저 메시지: the reader's own panel, as a sticker from that message.
     await tabAt(1);
     await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-el] b')].map(b => b.textContent).join() === 'mine');
     await tapChip('mine', '스티커');
     await page.waitForFunction(() => /나 HP 7/.test(document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]')?.textContent || ''));
-    // 다음 메시지 1: the same status panel, registered again from there (a rule of its own), 작동.
+    // 다음 메시지 1: the same two, registered again from there (rules of their own), 작동.
     await tabAt(2);
     await page.waitForFunction(() => /갱신/.test(document.querySelector('[x-omni-vn] [data-vn-el] span')?.textContent || ''));
     await tapChip('status', '작동');
-    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 3);
+    await page.waitForTimeout(300);
+    await tapChip('card', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 4);
     await page.waitForTimeout(500);
-    // Both let go on 그룹화: each joins the group (🔗) and goes back where it was.
-    const group = await centre(page.locator('[x-omni-vn] [data-vn-drop="group"]'));
-    for (let k = 0; k < 2; k++) {
-      await drag(await centre(statusTiles().nth(k)), group);
-      await page.waitForFunction(n => [...document.querySelectorAll('[x-omni-vn] [data-vn-tile]')].filter(t => t.textContent.includes('🔗')).length === n, k + 1);
-      await page.waitForTimeout(500);
-    }
+    // 선택 on, the two status tiles picked (✓), 그룹화: group A. The two cards picked, 그룹화: group B.
+    await tap(button('select'));
+    await page.waitForFunction(() => /data-vn-gb="select"\]\{color:#1a1408/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    await tap(tiles('status').nth(0));
+    await tap(tiles('status').nth(1));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tile]')].filter(t => getComputedStyle(t, '::after').content.includes('✓')).length === 2);
+    await tap(button('group'));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile] i')].filter(i => i.textContent === 'A').length === 2);
+    await page.waitForTimeout(400);
+    await tap(tiles('card').nth(0));
+    await tap(tiles('card').nth(1));
+    await tap(button('group'));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile] i')].filter(i => i.textContent === 'B').length === 2);
+    for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 4; i++) await page.waitForTimeout(100);
     let saved = await savedRule(page);
-    assert.deepEqual(saved.filter(r => r.role === 'live').map(r => [r.from, r.group]).sort(), [[0, true], [1, true]], 'one panel from two tabs, both in the group');
-    assert.equal(new Set(saved.filter(r => r.group).map(r => `${r.gx},${r.gy}`)).size, 1, 'one place for the group');
+    assert.deepEqual(saved.filter(r => r.role === 'live').map(r => [r.group, r.from]).sort(), [['A', 0], ['A', 1], ['B', 0], ['B', 1]], 'each panel from two tabs, a group each');
+    for (const g of ['A', 'B']) assert.equal(new Set(saved.filter(r => r.group === g).map(r => `${r.gx},${r.gy}`)).size, 1, `one place for group ${g}`);
     await press('eledit');
     await page.waitForTimeout(500);
-    // Out of 편집: one tile for the group (both present: 2), the reader's sticker as it was.
-    assert.equal(await statusTiles().count(), 0);
-    assert.match(await page.locator('[x-omni-vn] [data-vn-tile][data-vn-group]').textContent(), /status.*2/);
+    // Out of 편집: a tile per group, no member tile, the reader's sticker as it was.
+    assert.equal(await tiles('status').count() + await tiles('card').count(), 0);
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-group]')].map(t => t.getAttribute('data-vn-group')).sort()), ['A', 'B']);
     assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]')?.textContent || ''), /나 HP 7/);
-    // It opens only the newest there is: the bot's next message's (6), not the reply's (4).
+    // Each opens only the newest there is: the bot's next message's (6), not the reply's (4).
     const before = await text();
-    await page.mouse.click(...Object.values(await centre(page.locator('[x-omni-vn] [data-vn-group]'))));
-    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
-    assert.deepEqual(await fixedIn(), [6]);
+    await tap(page.locator('[x-omni-vn] [data-vn-group="A"]'));
+    assert.equal(await opened(), '6:status');
     assert.equal(await text(), before);
-    await page.keyboard.press('Escape');
-    await page.waitForFunction(() => ![...document.querySelectorAll('.risu-chat .x-risu-status')].some(n => getComputedStyle(n).position === 'fixed'));
-    // On the reply before (2): no panel in it, its next message (4) has one: only that one is there, and it opens.
-    await page.keyboard.press('ArrowLeft');
+    await fold();
+    await tap(page.locator('[x-omni-vn] [data-vn-group="B"]'));
+    assert.equal(await opened(), '6:card');
+    await fold();
+    // On the reply before (2): none in it, its next message (4) has both: only those are there, and they open.
     for (let i = 0; i < 10 && !/바람이 불었다/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
-    await page.waitForFunction(() => /1/.test(document.querySelector('[x-omni-vn] [data-vn-group] i')?.textContent || ''));
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-group]').length === 2);
     await page.waitForTimeout(300);
-    await page.mouse.click(...Object.values(await centre(page.locator('[x-omni-vn] [data-vn-group]'))));
-    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
-    assert.deepEqual(await fixedIn(), [4]);
-    await page.keyboard.press('Escape');
-    // 분리: in 편집 the members are tiles again; one let go on 분리 leaves the group.
+    await tap(page.locator('[x-omni-vn] [data-vn-group="A"]'));
+    assert.equal(await opened(), '4:status');
+    await fold();
+    await tap(page.locator('[x-omni-vn] [data-vn-group="B"]'));
+    assert.equal(await opened(), '4:card');
+    await fold();
+    // 분리: in 편집 the members are tiles again; 선택, one of A's picked, 분리: A left with one is no group; B stays.
     for (let i = 0; i < 10 && !/늦었지/.test(await text()); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(350); }
     await press('eledit');
-    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])').length === 4);
     await page.waitForTimeout(500);
-    await drag(await centre(statusTiles().nth(0)), await centre(page.locator('[x-omni-vn] [data-vn-drop="split"]')));
-    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tile]')].filter(t => t.textContent.includes('🔗')).length === 1);
-    for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 1; i++) await page.waitForTimeout(100);
+    await tap(button('select'));
+    await tap(tiles('status').nth(0));
+    await tap(button('split'));
+    await page.waitForFunction(() => ![...document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile] i')].some(i => i.textContent === 'A'));
+    assert.equal(await badges('B'), 2);
+    for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 2; i++) await page.waitForTimeout(100);
     saved = await savedRule(page);
-    assert.equal(saved.filter(r => r.group).length, 1, 'one let go, one still in it');
+    assert.deepEqual(saved.filter(r => r.role === 'live').map(r => r.group).sort(), ['', '', 'B', 'B'], 'A undone, B as it was');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
