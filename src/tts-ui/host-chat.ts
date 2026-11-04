@@ -29,6 +29,8 @@ function soundCues(): TtsSoundCues | undefined {
   return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [] } : undefined;
 }
 const soundOn = () => !!soundCues();
+/** Messages a scan reads at once: their calls cross the bridge back to back, a wave never holding Risu long. */
+const SCAN_WAVE = 8;
 function requests(context: TtsChatContext, index: number): TtsRequest[] {
   const message = context.messages[index]; if (!message || message.role !== 'char') return [];
   const source = String(message.data || '');
@@ -201,11 +203,14 @@ export async function installTtsHost(): Promise<void> {
       const unsettled = new Set<TtsRequest>();
       anchored.clear();
       let lines = 0;
-      for (const chat of await safeArray(await doc.querySelectorAll('.risu-chat'))) {
+      // A message's reads go together, and messages a wave at a time: one after another, every call waited for the
+      // last, a scan of a long chat waited over a thousand times (each line's binding, fold and size in turn).
+      const readChat = async (chat: SafeElement): Promise<void> => {
         try {
-          const nodes = ttsData().settings.enabled ? await safeArray(await chat.querySelectorAll('[data-omnitts-kind]')) : [];
-          const sounds = soundOn() ? await safeArray(await chat.querySelectorAll('[data-omni-bgm],[data-omni-sfx]')) : [];
-          if (!nodes.length && !sounds.length) continue;
+          const [rawNodes, rawSounds] = await Promise.all([ttsData().settings.enabled ? chat.querySelectorAll('[data-omnitts-kind]') : null,
+            soundOn() ? chat.querySelectorAll('[data-omni-bgm],[data-omni-sfx]') : null]);
+          const [nodes, sounds] = await Promise.all([safeArray(rawNodes), safeArray(rawSounds)]);
+          if (!nodes.length && !sounds.length) return;
           lines += nodes.length;
           // One read per message: the rendered line text identifies each control,
           // so the module never has to stamp ids into another module's input.
@@ -220,34 +225,33 @@ export async function installTtsHost(): Promise<void> {
           // Sound buttons pair with the message's cues in order, each kind on its own.
           const cuesOf = (kind: 'bgm' | 'sfx') => list.filter(r => r.segment.kind === kind);
           const order = { bgm: 0, sfx: 0 };
-          for (const node of sounds) {
-            const kind = await node.matches('[data-omni-bgm]') ? 'bgm' : 'sfx';
-            live.add(await bindSound(node, cuesOf(kind)[order[kind]++], index));
-          }
-          if (!nodes.length) continue;
+          const kinds = await Promise.all(sounds.map(node => node.matches('[data-omni-bgm]')));
+          const cues = kinds.map(bgm => { const kind = bgm ? 'bgm' : 'sfx'; return cuesOf(kind)[order[kind]++]; });
+          for (const key of await Promise.all(sounds.map((node, j) => bindSound(node, cues[j], index)))) live.add(key);
+          if (!nodes.length) return;
           const matches = matchTtsAnchors(ttsAnchorTexts(html), list.map(r => r.segment));
-          const shown: TtsRequest[] = [];
-          for (let j=0;j<nodes.length;j++) {
-            const key = await bind(nodes[j]!, false), b = bindings.get(key)!, request = list[matches[j] ?? -1];
+          const shown = new Set<TtsRequest>();
+          await Promise.all(nodes.map(async (node, j) => {
+            const key = await bind(node, false), b = bindings.get(key)!, request = list[matches[j] ?? -1];
             live.add(key);
             b.message = index; b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.source = request?.sourceKey || ''; b.narration = request?.segment.kind === 'narration';
             b.dead = !request;
             await syncVisibility(b);
-            if (!request || b.hidden) continue;
+            if (!request || b.hidden) return;
             // A line inside a folded <details> is not on screen and stays out of
             // the list. Our absolutely placed control still reports a box there,
             // so ask about the fold itself; a zero box covers other hidden panes.
-            if (await b.node.matches('details:not([open]) > :not(summary), details:not([open]) > :not(summary) *')) continue;
-            const rect = await b.node.getBoundingClientRect();
-            if (!rect.width || !rect.height) continue;
-            shown.push(request);
+            const [folded, rect] = await Promise.all([b.node.matches('details:not([open]) > :not(summary), details:not([open]) > :not(summary) *'), b.node.getBoundingClientRect()]);
+            if (folded || !rect.width || !rect.height) return;
+            shown.add(request);
             nearby.push({distance:Math.abs(rect.top+rect.height/2-height/2),request});
-          }
+          }));
           // Cues keep their place among the lines that are on screen.
-          const visible = new Set(shown);
-          if (shown.length) anchored.set(index, list.filter(r => visible.has(r) || isSoundSegment(r.segment)));
+          if (shown.size) anchored.set(index, list.filter(r => shown.has(r) || isSoundSegment(r.segment)));
         } finally { await releaseHost(chat); }
-      }
+      };
+      const chats = await safeArray(await doc.querySelectorAll('.risu-chat'));
+      for (let at = 0; at < chats.length; at += SCAN_WAVE) await Promise.all(chats.slice(at, at + SCAN_WAVE).map(readChat));
       // The effects on screen are matched and cut ahead, all unknown parts in one request.
       const effects = [...perMessage.values()].flat().filter(r => r.segment.kind === 'sfx');
       if (effects.length) void omniSound.prepareEffects(effects.map(r => ({ text: r.segment.text, context: r.segment.context || '' }))).catch(error => console.warn('OmniSound prepare', error));
@@ -298,7 +302,8 @@ export async function installTtsHost(): Promise<void> {
   const watchChat = async () => {
     const screen = await doc.querySelector('.default-chat-screen:not([x-omnitts-watched])');
     if (!screen) return;
-    try { await screen.setAttribute('x-omnitts-watched','1'); const watcher = await host.createMutationObserver!(onChange); await watcher.observe(screen,{childList:true,subtree:true}); watchers.push(watcher); }
+    // A <details> opened or folded changes no node, only its `open`: heard here, so no tap has to ask for a scan.
+    try { await screen.setAttribute('x-omnitts-watched','1'); const watcher = await host.createMutationObserver!(onChange); await watcher.observe(screen,{childList:true,subtree:true,attributes:true,attributeFilter:['open']}); watchers.push(watcher); }
     finally { await releaseHost(screen); }
   };
   await watchChat();
@@ -318,9 +323,8 @@ export async function installTtsHost(): Promise<void> {
   };
   await listen('click',e=>{
     if(viewerCovering())return;
-    // Opening or folding a <details> changes no DOM nodes, so no mutation
-    // arrives. A chat click may have done it: re-check which lines are on screen.
-    void (async()=>{const viewer=await doc.querySelector('[x-omnitts-viewer]');try{if(!viewer||!await hitHost(viewer,e))schedule(150);}finally{await releaseHost(viewer);}})().catch(()=>{});
+    // Every tap asked for a whole chat scan (for a <details> it might have folded), a tap on the floating viewer
+    // too, right as the viewer asked Risu for its own work; the watcher hears a fold itself now.
     const epoch=++inputEpoch;
     void findHit(e,false).then(row=>{if(epoch===inputEpoch&&row&&(row.illustration||ttsData().settings.clickPlay))return row.play();}).catch(report);
   });
@@ -328,8 +332,20 @@ export async function installTtsHost(): Promise<void> {
     if(!ttsData().settings.hoverPlay||viewerCovering())return;const epoch=++inputEpoch;
     void findHit(e,true).then(row=>{if(epoch!==inputEpoch)return;if(!row){hovered='';return;}if(hovered!==row.key){hovered=row.key;return row.play();}}).catch(report);
   });
-  await listen('scroll',()=>schedule(),{capture:true,passive:true});
-  const unsubscribe=subscribeTts(()=>{void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));lastPrefetch='';bootAttempts=0;schedule();});
+  // A scroll is read once it stops: a scan every 0.4 s while it lasted read every message on screen, its calls queued
+  // with the scroll's own frames. (A scan due for another reason waits for the stop too.)
+  await listen('scroll',()=>{if(timer){clearTimeout(timer);timer=undefined;}schedule(300);},{capture:true,passive:true});
+  // The TTS window's own place, panel, folding, volume and speed change no line, binding or prefetch: the window
+  // repaints for them itself (host-viewer.ts listens too). Each of them (every drag of the window, every step of its
+  // volume) read the whole chat again before.
+  const windowOnly=new Set<string>(['viewerAnchor','panel','minimized','viewer','volume','rate','rates','toast','characterFilter','characterFolder']);
+  const linesKey=()=>{const d=ttsData();return JSON.stringify([Object.entries(d.settings).filter(([key])=>!windowOnly.has(key)),d.characters,d.voices.length]);};
+  let lastLinesKey=linesKey();
+  const unsubscribe=subscribeTts(()=>{
+    void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));
+    const key=linesKey();if(key===lastLinesKey)return;lastLinesKey=key;
+    lastPrefetch='';bootAttempts=0;schedule();
+  });
   const unsubscribeSound=subscribeSound(()=>{bootAttempts=0;schedule();});
   const unsubscribeState=omniTts.subscribe(()=>{void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
   // The viewer closed: the chat as it is now, and the line playing marked.
