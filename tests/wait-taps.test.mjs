@@ -14,9 +14,11 @@ const built = await build({ stdin: { contents: "export * from './src/image-ui/wa
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 
 function node(html, box, parent = null, classes = []) {
-  return { html, box, parent, classes,
+  return { html, box, parent, classes, slots: [],
     async getOuterHTML() { return this.html; }, async getParent() { return this.parent; },
     async matches(selector) { return selector === '.risu-chat' && this.classes.includes('risu-chat'); },
+    // A message's own slots: the only ones asked about once the message under the tap is known.
+    async querySelectorAll() { globalThis.slotLookups = (globalThis.slotLookups || 0) + 1; return this.slots; },
     async getBoundingClientRect() { return this.box; } };
 }
 
@@ -26,9 +28,10 @@ test('a double tap on a pink slot generates that slot in its message; a single t
   const chat = node('<div class="risu-chat" data-chat-index="2" data-chat-id="m2">…</div>', { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500 }, null, ['risu-chat']);
   const wrap = node('<div class="x-risu-wrap">', { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500 }, chat);
   const slot = node('<div class="omni-spinner" data-inray-wait="w123" data-inray-preview-slot="wait_w123" role="button">', { left: 100, top: 100, right: 300, bottom: 400, width: 200, height: 300 }, wrap);
+  chat.slots = [slot];
   let queries = 0;
   const doc = {
-    async querySelectorAll() { queries++; return [slot]; },
+    async querySelectorAll(selector) { queries++; assert.equal(selector, '.risu-chat', 'the chat is asked for its messages only'); return [chat]; },
     async addEventListener(type, fn) { const id = 'l' + (listeners.size + 1); listeners.set(id, { type, fn }); return id; },
     async removeEventListener(_type, id) { listeners.delete(id); },
   };
@@ -56,7 +59,10 @@ test('a double tap on a pink slot generates that slot in its message; a single t
   await api.dropInlineWait('w123');
   await api.syncWaitTaps();
   assert.equal(listeners.size, 0, 'the last slot drawn: the listener goes away');
-  assert.equal(queries, 5, 'slots are looked up only on a click, once per click');
+  // Five taps, of which two followed another at its place: a single tap (a scroll start, a picture's first tap)
+  // asks Risu nothing.
+  assert.equal(queries, 2, 'slots are looked up only for a second tap at the first one\'s place');
+  assert.equal(globalThis.slotLookups, 2, 'and only in the message under it');
   // A waiting block lives in the message, from this session or an earlier one: with
   // streaming tags on, clicks are watched from the start, store or no store.
   api.getConfig().card.stream_inline_tags = true;
@@ -77,9 +83,10 @@ test('a press held 1.5 s on a pink slot makes every pink slot of its message; a 
   globalThis.generated = []; globalThis.tracked = []; globalThis.bulk = [];
   const chat = node('<div class="risu-chat" data-chat-index="2">', { left: 0, top: 0, right: 500, bottom: 500, width: 500, height: 500 }, null, ['risu-chat']);
   const slot = node('<div class="omni-spinner" data-inray-wait="w123" role="button">', { left: 100, top: 100, right: 300, bottom: 400, width: 200, height: 300 }, chat);
+  chat.slots = [slot];
   let looks = 0;
   const doc = {
-    async querySelectorAll() { looks++; return [slot]; },
+    async querySelectorAll() { looks++; return [chat]; },
     async querySelector(selector) { return selector === 'body' ? { async appendChild(n) { n.attached = true; } } : null; },
     async createElement() { const n = { text: '', removed: false, async setAttribute() {}, async setStyleAttribute(css) { n.css = css; }, async setTextContent(t) { n.text = t; n.texts.push(t); }, async remove() { n.removed = true; }, texts: [] }; toasts.push(n); return n; },
     async addEventListener(type, fn) { const id = 'p' + (listeners.size + 1); listeners.set(id, { type, fn }); return id; },

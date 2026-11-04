@@ -89,16 +89,17 @@ test('SafeDOM: with TTS on, a scrolling chat asks Risu nothing; stopped, the rea
     await page.waitForTimeout(500);
     const changed=await calls();
     assert.equal(changed['api.getCharacter'],1,'the chat read once, for the message that changed');
-    assert.equal(changed.getOuterHTML,61,'every message read once, the changed one again as drawn now');
+    assert.equal(changed.getOuterHTML,1,'only the message drawn anew is read, once');
     assert.ok((changed.getAttribute||0)<=LINES+2,`the unchanged messages\' controls are not asked about (${changed.getAttribute})`);
-    // A tap in the chat (it may have folded a <details>): a scan, nothing drawn anew, no read of the chat.
+    // A tap in the chat on a message with no <details> (one could fold, and is gone through again): no scan at all.
     await reset();
     const where=await page.locator('.risu-chat[data-chat-index="20"] p').first().boundingBox();
     await page.mouse.click(where.x+5,where.y+5);
     await page.waitForTimeout(700);
     const tapped=await calls();
     assert.equal(tapped['api.getCharacter']||0,0,'nothing changed: the chat is not read');
-    assert.ok((tapped.getOuterHTML||0)>=MESSAGES,'the scan ran');
+    assert.equal(tapped.getOuterHTML||0,0,'and no message');
+    assert.ok(sum(tapped)<=24,`a tap is its message's few controls (${sum(tapped)}: ${JSON.stringify(tapped)})`);
 
     // TTS and BGM·효과음 both off: the scroll is not listened to at all.
     await page.evaluate(async()=>{await window.updateTtsSettings({enabled:false});});

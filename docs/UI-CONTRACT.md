@@ -785,7 +785,13 @@ hidden-frame timers or waiting for each bridge response. Outstanding writes
 are bounded at 16; a stalled bridge coalesces overflow into the latest position,
 and release drains the writes before committing/saving geometry once;
 unrelated image-hover work is suspended during the drag. Unchanged chrome does
-not rewrite styles/text, and concurrent render requests coalesce. Collapse is
+not rewrite styles/text, and concurrent render requests coalesce. The frame it
+keeps is registered through `globalThis.__OMNI_CHAT_COVER__` (the plugin's
+`addChatCover`), so a tap on the viewer is no tap on the chat beneath for the TTS
+line buttons, the pink slots or the message-select gesture (the TTS window and
+the 플로팅 태그 register theirs the same way). The reading-position lookup reads
+messages' and shots' tags from shallow copies and a picture's `src` only for the
+shot it chooses (a message's HTML carries its pictures as base64). Collapse is
 painted before its serialized background save. Fullscreen is the rightmost
 header control, immediately preceded by collapse; chat controls use reroll,
 pin, collapse, fullscreen, with spacing before collapse.
