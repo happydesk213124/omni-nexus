@@ -79,16 +79,19 @@ const TAG_BAR = new Set<string>(TAG_ACTS);
 // Its 🔢's row under it (look.ts), in its order.
 const COUNT_ACTS = COUNT_STEPS.map(([act]) => act);
 const COUNT_BAR = new Set<string>(COUNT_ACTS);
-// Behind the viewer only the newest messages stay laid out: Risu's re-render costs less. The newest three of the
-// bot's (role char), whatever the reader typed between them: a status panel a bot sends in a message of its own stays
-// drawn with its reply (요소's 다음 메시지), and only a drawn element can be lifted (작동). The newest message stays
-// too, whatever it is: a reply streaming in is not among the messages read yet, and a reply is read as drawn
-// (innerText, which reads the bot-hidden lines too once nothing is drawn). Before the chat is read, the newest three.
+// Behind the viewer only the newest messages stay laid out: Risu's re-render costs less. From the bot's third newest
+// (role char) on, the reader's messages between them too: a status panel a bot sends in a message of its own stays
+// drawn with its reply (요소's 다음 메시지), so does the reader's own (다음 유저 메시지), and only a drawn element can
+// be lifted (작동). The newest message stays too, whatever it is: a reply streaming in is not among the messages read
+// yet, and a reply is read as drawn (innerText, which reads the bot-hidden lines too once nothing is drawn). Before the
+// chat is read, the newest three.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
 const FOLD_KEEP = 3;
+/** The first message the fold keeps drawn (the bot's third newest), -1 before the chat is read. */
+const foldFrom = (): number => { const chars = charIndexes(); return chars.length ? chars[Math.max(0, chars.length - FOLD_KEEP)]! : -1; };
 const foldCss = (hideOmni: boolean) => {
-  const keep = charIndexes().slice(-FOLD_KEEP);
+  const from = foldFrom(), keep = from < 0 ? [] : Array.from({ length: (context?.messages.length ?? 0) - from }, (_, k) => from + k);
   const chat = keep.length
     ? `${LIST} > .chat-message-container:nth-child(n+2):not(:has(> .risu-chat:is(${keep.map(i => `[data-chat-index="${i}"]`).join(',')}))){display:none!important}`
     : `${LIST} > .chat-message-container:nth-child(n+${FOLD_KEEP + 1}){display:none!important}`;
@@ -2099,8 +2102,13 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null,
       charAfter: (index, n) => charIndexes().filter(i => i > index)[n - 1] ?? -1,
-      // What the fold keeps drawn: the bot's newest three, and the newest message (작동 opens the chat's own there).
-      drawn: index => index >= 0 && (charIndexes().slice(-FOLD_KEEP).includes(index) || index === (context?.messages.length ?? 0) - 1),
+      userAfter: index => {
+        const all = context?.messages ?? [];
+        for (let i = index + 1; i < all.length; i++) { if (all[i]?.role === 'char') return -1; if (all[i]?.role === 'user') return i; }
+        return -1;
+      },
+      // What the fold keeps drawn: from the bot's third newest on, and the newest message (작동 opens the chat's own there).
+      drawn: index => { const from = foldFrom(); return index >= 0 && ((from >= 0 && index >= from) || index === (context?.messages.length ?? 0) - 1); },
       // No hole is cut through what is over the stage: 작동's popup waits while a panel, the picture big or 크게보기 is up.
       hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen,
       say: (text, ms) => sayShot(text, ms) });

@@ -144,6 +144,14 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-tile]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:56px;height:56px;padding:4px;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;background:rgba(10,9,17,.9);color:var(--gold);font:600 10px/1.2 system-ui,sans-serif;text-align:center;overflow:hidden;cursor:grab;box-shadow:0 4px 14px rgba(0,0,0,.45);user-select:none;-webkit-user-select:none}
 [x-omni-vn] [data-vn-tile] b{font-size:22px;line-height:1;font-weight:400}
 [x-omni-vn] [data-vn-tile] span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A tile's corner: 🔗 on a grouped one in 편집, how many are present on the group's own. */
+[x-omni-vn] [data-vn-tile]{position:relative}
+[x-omni-vn] [data-vn-tile] i{position:absolute;right:3px;top:3px;min-width:16px;height:16px;padding:0 3px;box-sizing:border-box;border-radius:8px;background:rgba(227,194,122,.92);color:#1a1408;font:700 9px/16px system-ui,sans-serif;font-style:normal;text-align:center}
+/* 편집's 그룹화 and 분리 at the top, between the bar and the panel: a 작동 tile let go on one joins or leaves the group
+   (told by where it is let go: they take no press). */
+[x-omni-vn] [data-vn-drops]{display:none;position:absolute;left:12px;top:52px;z-index:6;gap:8px;pointer-events:none}
+[x-omni-vn] [data-vn-drop]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:64px;height:46px;box-sizing:border-box;border:1px dashed var(--gold);border-radius:12px;background:rgba(10,9,17,.88);color:var(--gold);font:600 10px/1.2 system-ui,sans-serif}
+[x-omni-vn] [data-vn-drop] b{font-size:16px;line-height:1;font-weight:400}
 /* A finger must land on what it drags, and must not pan: the layer lets presses through, so a bar or a tile takes
    them itself, or a phone takes the move under it for a scroll and the drag stops after a few pixels. */
 [x-omni-vn] [x-vn-st-bar],[x-omni-vn] [data-vn-tile]{pointer-events:auto;touch-action:none}
@@ -159,7 +167,7 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-edit] [data-vn-wait]::before{content:"";display:inline-block;width:10px;height:10px;margin-right:7px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
 /* 편집's tabs: the reply, the bot's next message, the one after; one row, equal shares (a tap is told by its x). */
 [x-omni-vn] [data-vn-tabs]{display:flex;gap:4px;margin:8px 0 6px}
-[x-omni-vn] [data-vn-tabs] i{flex:1 1 0;min-width:0;text-align:center;font-style:normal;font-size:11px;padding:5px 2px;border-radius:8px;cursor:pointer;color:#e9e3d3;border:1px solid rgba(255,255,255,.2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[x-omni-vn] [data-vn-tabs] i{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;text-align:center;font-style:normal;font-size:10.5px;line-height:1.25;padding:5px 2px;border-radius:8px;cursor:pointer;color:#e9e3d3;border:1px solid rgba(255,255,255,.2);word-break:keep-all;overflow:hidden}
 [x-omni-vn] [data-vn-tabs] i[data-on]{color:#1a1408;background:var(--gold);border-color:var(--gold)}
 [x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
 /* ✎ 편집 stands right by 요소 (left of its tab), where the hand already is; above the panel it opens. */
@@ -247,7 +255,7 @@ const countButton = ([act, glyph, label]: typeof COUNT_STEPS[number]) => `<butto
 const COUNT_BAR = `${countButton(COUNT_STEPS[0])}${countButton(COUNT_STEPS[1])}<span data-vn-range></span>${countButton(COUNT_STEPS[2])}${countButton(COUNT_STEPS[3])}`;
 const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
-export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b></div>
+export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b></div><div data-vn-drops><div data-vn-drop="group"><b>🔗</b><span>그룹화</span></div><div data-vn-drop="split"><b>✂️</b><span>분리</span></div></div>
 <div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
