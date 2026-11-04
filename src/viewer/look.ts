@@ -132,8 +132,9 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-counts]{display:none;position:absolute;left:0;top:calc(100% + 6px);align-items:center;gap:6px;width:max-content;padding:6px;background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;animation:vn-counts-in .18s ease-out}
 [x-omni-vn] [data-vn-counts] button{font-size:22px}
 [x-omni-vn] [data-vn-range]{min-width:54px;text-align:center;font:600 15px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#efe9da}
-/* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices. */
-[x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:2;pointer-events:none}
+/* 요소: a bot's own elements as stickers (inert: their buttons are the chat's, not the stage's), 편집, the end's choices.
+   Over the people (the one speaking stands at 3 too, painted before; at 2 a sticker went under them), under the box. */
+[x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:3;pointer-events:none}
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
 [x-omni-vn] [x-vn-st] summary{pointer-events:auto;cursor:pointer}
 [x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
