@@ -33,6 +33,9 @@ async function nxFloatBindInputs(h) {
   // Independent listeners register together instead of one round trip each.
   const wait = [];
   wait.push(nxFloatListen(h.body, 'click', async e => {
+    // Risu's settings open with a click (and close with one), drawn in place of the chat: the chat screen is
+    // checked soon after any click, so the viewer goes and comes back without waiting out the second.
+    globalThis.__OMNI_CHAT_SCREEN__?.soon?.();
     const pos = nxFloatEvPos(e);
     if (!pos || Date.now()<nxFloatSuppressClick || !await nxFloatHitSurface(pos.x,pos.y)) return;
     // The tap that only woke the faded controls still counts as a double tap's first.
@@ -57,8 +60,6 @@ async function nxFloatBindInputs(h) {
     } finally {await refs.close();}
   }));
   wait.push(nxFloatListen(h.body, 'pointerdown', async e => {
-    // A tap may open Risu settings; their watcher polls quickly right after one.
-    t._hostTapAt = Date.now();
     const pos = nxFloatEvPos(e);
     const pointer=nxFloatPointer={held:true,pos};
     const slack=12,near=nxFloatBounds&&{left:nxFloatBounds.left-slack,right:nxFloatBounds.right+slack,top:nxFloatBounds.top-slack,bottom:nxFloatBounds.bottom+slack,width:nxFloatBounds.width,height:nxFloatBounds.height};

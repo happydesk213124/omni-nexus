@@ -38,14 +38,7 @@ export function repairHostTraffic(source) {
   replace('b = await fe(n, "scroll", u, !0), C = await fe(e, "scroll", u, !0)',
     'b = null, C = await fe(e, "scroll", u, !0)');
 
-  // 5. Risu settings were polled every 400ms (two host calls each time). They
-  //    open with a tap, so poll while open or right after a tap, else every 3.2s.
-  replace('    t._risuSettingsWatch = setInterval(() => {\n      if (t.unloading) {\n        clearInterval(t._risuSettingsWatch), t._risuSettingsWatch = null;\n        return;\n      }\n      syncFloatingViewerForRisuSettings().catch(() => {\n      });\n    }, 400);',
-    '    let tick = 0;\n    t._risuSettingsWatch = setInterval(() => {\n      if (t.unloading) {\n        clearInterval(t._risuSettingsWatch), t._risuSettingsWatch = null;\n        return;\n      }\n' +
-    '      tick++;\n      const tapped = Date.now() - (Number(t._hostTapAt) || 0) < 1600;\n      if (!t._viewerHiddenForRisuSettings && !tapped && tick % 8) return;\n' +
-    '      syncFloatingViewerForRisuSettings().catch(() => {\n      });\n    }, 400);');
-
-  // 6. Session bookkeeping. A failed character/chat read used to invent ids
+  // 5. Session bookkeeping. A failed character/chat read used to invent ids
   //    (char_<index>, chat_<index>): a fake session switch that cleared the
   //    selection and reloaded the gallery. A click selection also writes the live
   //    chat into lastScope, so the unified UI session is compared on its own.
@@ -60,7 +53,7 @@ export function repairHostTraffic(source) {
   replace('    return t.pendingSessionId = "", t.pendingSessionCount = 0, t.lastScope = C, C;\n  }',
     '    return t.pendingSessionId = "", t.pendingSessionCount = 0, t._uiSessionId = b, t.lastScope = C, C;\n  }');
 
-  // 7. The scope check ran Z() (whole character + chat) on every throttled
+  // 6. The scope check ran Z() (whole character + chat) on every throttled
   //    pointer move and scroll. The UI session is per character, so an unchanged
   //    character index means nothing to re-read.
   replace('    if (t._nxScopeFromScroll && typeof nxScrollDbg == "function") nxScrollDbg("scopeCheck", "Z() host index (from scroll)");\n    Z().catch(() => {});\n  }',

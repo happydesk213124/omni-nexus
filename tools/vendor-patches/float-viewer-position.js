@@ -57,7 +57,8 @@ async function nxFloatRefreshPosition(root) {
   const epoch = nxFloatEpoch;
   nxFloatListWatch = await k.createMutationObserver(records => {
     void omniRelease(records);
-    if (epoch === nxFloatEpoch) { nxFloatShotsDirty = true; nxFloatScheduleScan(); }
+    // Messages swapped may be another chat's: its two indices are read again, not taken from the last second.
+    if (epoch === nxFloatEpoch) { nxFloatShotsDirty = true; omniScope.at = 0; nxFloatScheduleScan(); }
   });
   nxFloatShotWatch = await k.createMutationObserver(records => {
     void omniRelease(records);
@@ -145,7 +146,10 @@ async function nxFloatReadPosition() {
   if (!nxFloatRoot || nxFloatBlocked() || nxFloatHidden || nxFloatDrag) return;
   nxFloatDirty = false;
   const scope = await omniReadScope();
-  if (!scope || scope.sessionId !== nxFloatSession) return;
+  if (!scope) return;
+  // Another chat on the screen: the viewer is mounted on it afresh (its session, its pictures). A check of Risu's
+  // settings every 3.2 s did that once, as it mounted the viewer again each time.
+  if (scope.sessionId !== nxFloatSession) { if (scope.sessionId) void nxFloatEnsure().catch(() => {}); return; }
   omniPerf.viewerPasses++;
   const epoch = nxFloatEpoch, refs = omniDomScope();
   try {
