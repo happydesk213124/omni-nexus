@@ -20,7 +20,7 @@
 const nxFloatKey = -1;
 let nxFloatRoot = null, nxFloatHead = null, nxFloatStage = null, nxFloatBar = null;
 let nxFloatFoldBtn = null, nxFloatResize = null, nxFloatFoldGrip = null, nxFloatFoldGrid = null;
-let nxFloatIcon = null, nxFloatImgReroll = null, nxFloatCss = null;
+let nxFloatIcon = null, nxFloatImgReroll = null, nxFloatCss = null, nxFloatButtons = [];
 let nxFloatDoc = null, nxFloatChatRoot = null, nxFloatMoveListener = null;
 let nxFloatCardId = null, nxFloatAsset = null, nxFloatGen = 0, nxFloatLastUrl = "";
 let nxFloatLastDomSrc = "", nxFloatCollapsed = null, nxFloatHidden = false;
@@ -104,6 +104,10 @@ globalThis.__OMNI_SHOT_ACTION__ = async (act, cardId, who) => {
 globalThis.__OMNI_SHOT_TAGS_OPEN__ = () => !!t.cardTagUi;
 // Closed from 옴니 뷰어: left open under the viewer, it holds every chat button and the floating viewer.
 globalThis.__OMNI_INSPECT_CLOSE__ = async () => { if (t._nxHostInspectOpen && typeof t._nxInspectCloser == "function") await t._nxInspectCloser(); };
+// A tap on the floating viewer (folding it, its arrows, its picture) is the viewer's, not the chat's beneath: TTS
+// lines, pink slots and message gestures each hit-tested the chat under it, and TTS scanned the chat for it. Told
+// from the frame the viewer keeps (nxFloatBounds), with no call.
+globalThis.__OMNI_CHAT_COVER__?.((x, y) => { try { return !!nxFloatRoot && !nxFloatHidden && nxFloatContains(nxFloatBounds, x, y); } catch { return false; } });
 function nxNotifyTtsVisibility() {
   const refresh = globalThis.__OMNI_TTS_REFRESH_VISIBILITY__;
   if (typeof refresh === 'function') refresh();
@@ -396,6 +400,9 @@ async function nxFloatMountTimed(mark) {
     nxFloatRoot = root; nxFloatHead = head; nxFloatStage = stage; nxFloatBar = bar;
     nxFloatResize = resize; nxFloatFoldGrip = foldGrip; nxFloatFoldGrid = foldGrid;
     nxFloatIcon = icon; nxFloatImgReroll = reroll;
+    // Every button's handle is kept: where each one is gets read once the layout changes (nxFloatMeasureHits), and a
+    // press or a tap is told from that with no call.
+    nxFloatButtons = [{kind: 'single', node: reroll}];
     nxFloatNav = {main: navMain, info: navInfo, dots: navDots, count: navCount, fold: navFold, foldCount: navFoldCount, edges: null};
     // Event routing is attached once to the host after all controls exist.
     const wireBtns = async (pairs, host) => {
@@ -410,9 +417,8 @@ async function nxFloatMountTimed(mark) {
         await host.appendChild(b);
         if (kind === "fold") nxFloatFoldBtn = b;
         if (kind === "compact" && host === foldGrip) nxFloatCompactBtn = b;
+        nxFloatButtons.push({kind, node: b});
       }
-      // Handles are released together once the row is in order.
-      await Promise.all(nodes.filter(b=>b!==nxFloatFoldBtn && b!==nxFloatCompactBtn).map(omniRelease));
     };
     await Promise.all([
       wireBtns(NX_FLOAT_HEAD_L,spanL),wireBtns(NX_FLOAT_HEAD_R,spanR),
@@ -469,7 +475,8 @@ async function nxFloatDispose(resetSession = true) {
   nxFloatIdleTimer = 0; nxFloatIdle = false; nxFloatHovered = false;
   await nxFloatPainting.catch(() => {});
   try { await nxFloatRoot?.remove(); await nxFloatCss?.remove(); } catch {}
-  for(const ref of new Set([nxFloatCss,nxFloatRoot,nxFloatImage,nxFloatCounts,nxFloatHead,nxFloatStage,nxFloatBar,nxFloatFoldBtn,nxFloatResize,nxFloatFoldGrip,nxFloatFoldGrid,nxFloatIcon,nxFloatImgReroll,nxFloatCompactBtn]))await omniRelease(ref);
+  for(const ref of new Set([nxFloatCss,nxFloatRoot,nxFloatImage,nxFloatCounts,nxFloatHead,nxFloatStage,nxFloatBar,nxFloatFoldBtn,nxFloatResize,nxFloatFoldGrip,nxFloatFoldGrid,nxFloatIcon,nxFloatImgReroll,nxFloatCompactBtn,...nxFloatButtons.map(b=>b.node)]))await omniRelease(ref);
+  clearTimeout(nxFloatHitTimer); nxFloatButtons = []; nxFloatHitCache = null; nxFloatHitKey = '';
   nxFloatReadingIndex=-1;nxFloatStructureDirty=true;
   nxFloatBounds = null;
   nxFloatCss = null; nxFloatRoot = null; nxFloatImage = null;

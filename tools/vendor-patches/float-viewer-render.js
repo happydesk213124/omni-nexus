@@ -55,10 +55,51 @@ function nxFloatApply() {
   if (!nxFloatRenderPending) {
     nxFloatRenderPending = nxFloatPainting.catch(()=>{}).then(async()=>{
       while (nxFloatRenderDirty) { nxFloatRenderDirty = false; await nxFloatRender(); }
-    }).finally(()=>{nxFloatRenderPending=null;});
+    }).finally(()=>{nxFloatRenderPending=null;nxFloatScheduleHits();});
     nxFloatPainting = nxFloatRenderPending;
   }
   return nxFloatRenderPending;
+}
+// Where the viewer's buttons and handles are, read once its layout changes, never at a press: a press or a tap on it
+// is told from this with no call. Each press measured every one of its 26-31 buttons before, a round trip each,
+// some 50 before a drag could start (on a busy bridge the finger was up first and the drag never began), and a tap
+// measured them all again. The idle fade moves nothing, so it is left out of the layout's key. Until the new layout
+// is read (or with none read yet) a press asks Risu as before.
+let nxFloatHitCache = null, nxFloatHitKey = '', nxFloatHitMeasuring = null, nxFloatHitTimer = 0;
+// Read a moment after the last render of a burst, out of the way of a mount's own calls.
+function nxFloatScheduleHits() {
+  clearTimeout(nxFloatHitTimer);
+  nxFloatHitTimer = setTimeout(() => { nxFloatHitTimer = 0; void nxFloatMeasureHits().catch(() => {}); }, 120);
+}
+function nxFloatLayoutKey() {
+  if (!nxFloatRoot || nxFloatHidden || nxFloatBlocked()) return '';
+  const collapsed = !!nxFloatCollapsed, mode = nxFloatMode();
+  // ‹ › show or not (a count's width shifts them a few px only: no new reading for each picture).
+  return JSON.stringify([nxFloatRootCss({ collapsed, compact: nxFloatCompact, iconfold: !nxFloatCompact && mode === 'bubble' && collapsed, idle: false }),
+    mode, nxFloatCountsOpen, nxFloatNavIds.length > 1, nxFloatViewportSize.w, nxFloatViewportSize.h]);
+}
+function nxFloatHitsFresh() { const key = nxFloatLayoutKey(); return !!key && !!nxFloatHitCache && nxFloatHitKey === key; }
+function nxFloatBox(r) { return r && r.width > 0 && r.height > 0 ? {left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height} : null; }
+function nxFloatMeasureHits() {
+  const key = nxFloatLayoutKey();
+  if (!key || nxFloatDrag || (nxFloatHitCache && nxFloatHitKey === key)) return Promise.resolve();
+  if (nxFloatHitMeasuring) return nxFloatHitMeasuring;
+  nxFloatHitMeasuring = (async () => {
+    const box = node => node ? Promise.resolve(node.getBoundingClientRect()).then(nxFloatBox, () => null) : Promise.resolve(null);
+    const buttons = nxFloatButtons.slice(), handles = [nxFloatResize, nxFloatIcon, nxFloatHead, nxFloatFoldGrip, nxFloatStage];
+    // All asked at once: one pass of the bridge, not one wait per button.
+    const [rects, handleRects] = await Promise.all([Promise.all(buttons.map(b => box(b.node))), Promise.all(handles.map(box))]);
+    // Laid out anew meanwhile (or moved): this reading is of no layout that still stands.
+    if (key !== nxFloatLayoutKey() || nxFloatDrag) return;
+    nxFloatHitCache = {buttons: buttons.map((b, i) => ({kind: b.kind, r: rects[i]})).filter(b => b.r), handles: {resize: handleRects[0], icon: handleRects[1], head: handleRects[2], foldGrip: handleRects[3], stage: handleRects[4]}};
+    nxFloatHitKey = key;
+  })().finally(() => { nxFloatHitMeasuring = null; });
+  return nxFloatHitMeasuring;
+}
+/** The button under a point, from the layout read: its kind, '' for none; null when no reading stands. */
+function nxFloatButtonAt(x, y) {
+  if (!nxFloatHitsFresh()) return null;
+  return nxFloatHitCache.buttons.find(b => nxFloatContains(b.r, x, y))?.kind || '';
 }
 async function nxFloatRender() {
   if (!nxFloatRoot || nxFloatDrag) return;
@@ -75,6 +116,9 @@ async function nxFloatRender() {
     await nxFloatRoot.setAttribute('x-nx-float-overlay',overlay?'true':'false');
     nxFloatOverlayCache.set(nxFloatRoot,overlay);
   }
+  // A drag that began while this render waited owns the frame now: writing it would wipe the drag's transform and
+  // the viewer would jump back for a moment (the drop renders it again).
+  if (nxFloatDrag) return;
   const changed = nxFloatStyleCache.get(nxFloatRoot) !== css;
   await nxFloatStyle(nxFloatRoot,css);
   await nxFloatPaintChrome();
@@ -94,7 +138,8 @@ async function nxFloatToggleCounts() {
       const node=await H(nxFloatDoc,kind==='range'?'span':'button',{text:kind==='range'?'':kind.endsWith('up')?'+':'−'});
       await node.setAttribute(kind==='range'?'x-omni-count-value':'x-nx-float-btn',kind);
       await nxFloatCounts.appendChild(node);
-      await omniRelease(node);
+      // A button is kept for the layout reading (nxFloatMeasureHits); the number between them is let go.
+      if (kind === 'range') await omniRelease(node); else nxFloatButtons.push({kind, node});
     }
     await nxFloatRoot.appendChild(nxFloatCounts);
   }

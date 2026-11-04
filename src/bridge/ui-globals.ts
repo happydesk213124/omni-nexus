@@ -30,9 +30,12 @@ import * as streamKeywords from '../domain/prompt/stream-keywords';
 import { createStreamSignalScanner } from '../domain/prompt/stream-signal';
 import { createStreamLineBatcher } from '../domain/prompt/stream-lines';
 import { inlineCastBlock, inlineShotBlocks, inlineShotLine, inlineShotTagged } from '../domain/prompt/inline-shots';
+import { addChatCover } from '../services/viewer-presence';
 
 export function installUiContractGlobals(): void {
   Reflect.set(globalThis, '__OMNI_EXPORT__', { jsonParts });
+  // The floating viewer says where it is (the frame it keeps), so a tap on it is no tap on the chat beneath.
+  Reflect.set(globalThis, '__OMNI_CHAT_COVER__', addChatCover);
   Reflect.set(globalThis, '__INLAY_VIEWER_CORE__', { ...viewerCore });
   Reflect.set(globalThis, '__INLAY_STREAM_KW__', {
     ...messageBody,

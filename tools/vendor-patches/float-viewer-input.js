@@ -38,6 +38,14 @@ async function nxFloatBindInputs(h) {
     // The tap that only woke the faded controls still counts as a double tap's first.
     const doubled=nxFloatDoubleTap(pos);
     if(nxFloatTouchReveal){nxFloatTouchReveal=false;return;}
+    // The button under the tap, from the layout read (no call); asked of Risu only while none stands.
+    const known=nxFloatButtonAt(pos.x,pos.y);
+    if(known!==null){
+      if(known){nxFloatLastTap=null;await nxFloatClick(known);return;}
+      // Two taps on the picture: the chat goes to where it is.
+      if(doubled && !nxFloatCollapsed && !nxFloatCompact && nxFloatStage && nxFloatContains(nxFloatHitCache.handles.stage,pos.x,pos.y))await nxFloatRevealCurrent();
+      return;
+    }
     const refs=omniDomScope();
     try {
     const buttons = await refs.all(await nxFloatRoot.querySelectorAll('[x-nx-float-btn]'));
@@ -59,10 +67,14 @@ async function nxFloatBindInputs(h) {
       nxFloatTouchReveal=nxFloatIdle;nxFloatHovered=false;nxFloatNudgeIdle();
     }
     const handles=[[nxFloatResize,'resize'],[nxFloatIcon,'bubble-move'],[nxFloatHead,'move'],[nxFloatFoldGrip,'move'],[nxFloatStage,'move']];
-    const hits=await Promise.all(handles.map(([handle])=>hitEl(handle,pos.x,pos.y)));
+    // Which handle, from the layout read (no call; the drag starts at once); asked of Risu only while none stands.
+    const cached=nxFloatHitsFresh()?nxFloatHitCache.handles:null;
+    const hits=cached?[cached.resize,cached.icon,cached.head,cached.foldGrip,cached.stage].map(r=>nxFloatContains(r,pos.x,pos.y)):await Promise.all(handles.map(([handle])=>hitEl(handle,pos.x,pos.y)));
     // Just outside the frame (a fast grab that misses by a few px) still moves it.
     const outside=!nxFloatContains(nxFloatBounds,pos.x,pos.y);
-    const found=handles[hits.indexOf(true)] || (outside ? [null, nxFloatIcon && await hitEl(nxFloatIcon,Math.min(Math.max(pos.x,nxFloatBounds.left),nxFloatBounds.right),Math.min(Math.max(pos.y,nxFloatBounds.top),nxFloatBounds.bottom)) ? 'bubble-move' : 'move'] : undefined);
+    const edgeX=Math.min(Math.max(pos.x,nxFloatBounds.left),nxFloatBounds.right),edgeY=Math.min(Math.max(pos.y,nxFloatBounds.top),nxFloatBounds.bottom);
+    const onIcon=()=>cached?nxFloatContains(cached.icon,edgeX,edgeY):!!nxFloatIcon&&hitEl(nxFloatIcon,edgeX,edgeY);
+    const found=handles[hits.indexOf(true)] || (outside ? [null, await onIcon() ? 'bubble-move' : 'move'] : undefined);
     if(found)await nxFloatMaybeDrag(e,found[1],pointer);
   }));
   wait.push(nxFloatListen(h.body, 'pointermove', e => {
