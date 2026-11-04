@@ -255,9 +255,10 @@ export function assembleLorebookForTagger(
 }
 
 /**
- * The normal entries of the tagger's pack, each with the entry it came from: the most hit `limit`, then a filled
- * character's entry left out (its name or alias as a key: the looks are on the roster already, and the lore only
- * burns tokens), and never a whole lb-xnai dump in a normal slot.
+ * The normal entries of the tagger's pack, each with the entry it came from: the most hit `limit` of those left
+ * once a filled character's entry is out (its name or alias as a key: the looks are on the roster already, and the
+ * lore only burns tokens), and never a whole lb-xnai dump in a normal slot. Left out after the pick, a filled
+ * person's entry took a slot and left it empty (five picked, two of them registered people: three sent).
  */
 function packedLoreRows(
   others: LoreEntry[],
@@ -266,9 +267,10 @@ function packedLoreRows(
   limit: number,
   contentLimit: number,
 ): Array<{ entry: LoreEntry; shown: LoreEntry }> {
-  return rankLoreByMessage(others, message, limit, contentLimit).filter(({ shown }) =>
+  return rankLoreByMessage(others, message, Number.MAX_SAFE_INTEGER, contentLimit).filter(({ shown }) =>
     !loreEntrySharesCharacterTrigger(shown, filledNames)
-    && !isUntrimmedCharacterImageTagDump(cleanText(shown.content || shown.data || '', contentLimit), []));
+    && !isUntrimmedCharacterImageTagDump(cleanText(shown.content || shown.data || '', contentLimit), []))
+    .slice(0, Math.max(1, limit));
 }
 
 /**
