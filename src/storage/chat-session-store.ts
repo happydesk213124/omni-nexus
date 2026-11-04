@@ -3,6 +3,7 @@ import { CARD_PACK_KEY, SESSION_AUTHOR_NOTE_KEY, STORE_KEY, ROOM_INDEX_KEY } fro
 import { cleanText, sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import type { KvApi } from './device-store';
 import { characterDirectory, directoryWarm } from './character-directory';
+import { forgetBots, openBotFor } from './current-bot';
 
 export const SESSION_LORE_NAME = 'omni.nexus.data';
 type RecordValue = Record<string, unknown>;
@@ -86,7 +87,7 @@ async function writeRecord(target: Target, key: string, value: unknown): Promise
   const index = lore.findIndex(e => object(e)?.comment === SESSION_LORE_NAME);
   if (index < 0) lore.push(entry);
   else lore[index] = { ...object(lore[index]), ...entry };
-  await risuHost()!.setChatToIndex!(target.character, target.chat, { ...chat, localLore: lore });
+  await risuHost()!.setChatToIndex!(target.character, target.chat, { ...chat, localLore: lore });forgetBots();
   const verified = payload(await readChat(target), target);
   if (JSON.stringify(verified.records[key]) !== JSON.stringify(value)) throw new Error('Chat session write verification failed');
 }
@@ -333,16 +334,23 @@ function noteLore(chat: RecordValue, note: unknown): unknown[] {
 /** Dedicated note entry: intentionally never consult the legacy plugin key. */
 /** The bot a note session belongs to (its chat's character), or "" when none is known. */
 export async function characterIdForNoteSession(sid:string):Promise<string> {
+  // The open bot (or one a job holds) owns it: no directory of every bot.
+  const open=await openBotFor(sid);
+  if(open?.chats.has(sid)) return open.id;
   const warm=directoryWarm();
   const target=(await targets()).find(t=>t.sid===sid) || (warm ? (await targets(true)).find(t=>t.sid===sid) : undefined);
   return target?.characterId || '';
 }
 export async function readChatNote(sid:string):Promise<unknown> {
   return serializeSessionStorage(async()=> {
-    const warm=directoryWarm();
-    const target=(await targets()).find(t=>t.sid===sid) || (warm ? (await targets(true)).find(t=>t.sid===sid) : undefined);
     const waiting=pendingNotes.get(sid)?.patch;
     const hasWaiting=!!waiting && Object.keys(waiting).length>0;
+    // The open bot's chat comes with the bot as read: no directory of every bot, no second copy, no chat read.
+    const open=await openBotFor(sid), at=open?.chats.get(sid);
+    const own=open && at!==undefined ? object((open.char.chats as unknown[])[at]) : null;
+    if(own) { const stored=notePayload(own); return hasWaiting ? { ...(object(stored) ?? {}), ...waiting } : stored; }
+    const warm=directoryWarm();
+    const target=(await targets()).find(t=>t.sid===sid) || (warm ? (await targets(true)).find(t=>t.sid===sid) : undefined);
     if(!target) return hasWaiting ? { ...waiting } : null;
     const stored=notePayload(await readChat(target));
     return hasWaiting ? { ...(object(stored) ?? {}), ...waiting } : stored;
@@ -372,7 +380,7 @@ function writeNote(sid:string,note:unknown):Promise<unknown> {
     // never replay a stale location or erase a concurrent note edit.
     note = { ...previous, ...object(note) };
     if (JSON.stringify(previous) === JSON.stringify(note)) return note;
-    await risuHost()!.setChatToIndex!(target.character,target.chat,{...chat,localLore:noteLore(chat,note)});
+    await risuHost()!.setChatToIndex!(target.character,target.chat,{...chat,localLore:noteLore(chat,note)});forgetBots();
     if(JSON.stringify(notePayload(await readChat(target)))!==JSON.stringify(note))throw new Error('Author note verification failed');
     return note;
   });

@@ -32,6 +32,7 @@ import { closeSoundWindow, focusSoundPanel, setSoundPage, soundWindowOpen, takeS
 import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
 import { replyPlace } from '../storage/viewer-places';
+import { botFrom, holdBot } from '../storage/current-bot';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
@@ -179,7 +180,16 @@ async function readChat(ctx?: TtsChatContext): Promise<void> {
   shownText.clear(); clockCache.clear();
   const index = Number(await Promise.resolve(risuHost()?.getCurrentCharacterIndex?.()).catch(() => NaN));
   bot = Number.isInteger(index) && index >= 0 && context.characterId ? { id: context.characterId, index, character: context.character } : await currentEmotionBot().catch(() => null);
-  if (bot) await refreshCostumeNames(bot.id, context.rosterScope);
+  // The bot just read stands for every read of it while the costume names are worked out (the rosters they read).
+  const read = bot, rosterScope = context.rosterScope;
+  if (read) await withViewerBot(() => refreshCostumeNames(read.id, rosterScope));
+}
+/**
+ * The viewer works off the chat as it read it (refreshed at a stream's end, a bake, 최신): reads of that bot meanwhile
+ * (its rosters, this chat's note) are answered by the same read, not Risu again. A write of ours lets go at once.
+ */
+function withViewerBot<T>(job: () => Promise<T>): Promise<T> {
+  return holdBot(bot ? botFrom(bot.character, bot.index) : null, job);
 }
 /** A cue that named a costume by its name (하린_melony_form): that person in that costume (costume-cue.ts). */
 const named = (segments: TtsSegment[]): TtsSegment[] => context && bot ? namedCostumes(segments, costumesOf(context.rosterScope, bot.id)) : segments;
@@ -301,7 +311,8 @@ async function readPlace(said = ''): Promise<string> {
   if (written) return written;
   // Picked from its text, when a way to pick is set: the chat's place is not this reply's.
   if (placeEngine(viewerPrefs().bgPick)) return '';
-  const note = await getSessionAuthorNote(chatNoteSessionId(context.sessionId, { character_id: context.characterId, chat_id: context.chatId })).catch(() => null) as { location?: unknown } | null;
+  const ctx = context;
+  const note = await withViewerBot(() => getSessionAuthorNote(chatNoteSessionId(ctx.sessionId, { character_id: ctx.characterId, chat_id: ctx.chatId }))).catch(() => null) as { location?: unknown } | null;
   return typeof note?.location === 'string' ? note.location : '';
 }
 async function stagePlace(): Promise<void> {

@@ -1,5 +1,6 @@
 import { risuHost } from '../core/host';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
+import { openBotFor } from '../storage/current-bot';
 
 type Row = Record<string, unknown>;
 const object = (v: unknown): Row | null => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Row : null;
@@ -35,6 +36,9 @@ export async function characterSource(characterId = ''): Promise<Record<string, 
     const value = await host?.getCharacter?.();
     return value && typeof value === 'object' ? value as Record<string, unknown> : null;
   }
+  // The open bot (or one a job holds): no directory of every bot first.
+  const open = await openBotFor(characterId);
+  if (open) return open.char;
   const one = await byIndex(characterId);
   if (one !== undefined) return one;
   const db = await host?.getDatabase?.(['characters']);

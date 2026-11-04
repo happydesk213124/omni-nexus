@@ -559,3 +559,20 @@ test('a cast that failed goes once more with the reply\'s end, and never again o
   f.omniCommitStreamReply(f.arg(),f.msg,f.msg.data+' ');await settle();
   assert.equal(casts(f).length,2,'and never after it went');
 });
+test('with the chat request\'s own scope, the reply\'s address reads only the open chat, never the whole bot',async()=>{
+  const f=fixture({stream_inline_tags:true});
+  const sent={sessionId:'s',characterId:'c',chatId:'room',charIndex:0,chatIndex:0,characterName:'Harin',chatName:'room',
+    character:{name:'Harin',description:'as the request read her',personality:'calm'}};
+  f.context.__OMNI_INLINE_TAGS__={requestScope:()=>sent};
+  f.onScriptOutput(['First narrative line, long enough to depict.',shot(1),'Second line.'].join('\n'));await f.fire();await settle();
+  assert.equal(f.reads(),0,'no whole read of the bot (Z)');
+  const job=f.calls.find(c=>c.path.endsWith('/create'));
+  assert.ok(job,'the block started mid-stream');
+  assert.deepEqual([job.body.character_id,job.body.chat_id,job.body.host_message_id],['c','room','m']);
+  assert.equal(job.body.character_description,'as the request read her','the bot as the request read it');
+  // Another chat open by now: the request's scope is not it, so the whole read stands as before.
+  const g=fixture({stream_inline_tags:true});
+  g.context.__OMNI_INLINE_TAGS__={requestScope:()=>({...sent,chatIndex:3})};
+  g.onScriptOutput(['First narrative line, long enough to depict.',shot(1),'Second line.'].join('\n'));await g.fire();await settle();
+  assert.equal(g.reads(),1);
+});

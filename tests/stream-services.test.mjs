@@ -1282,3 +1282,22 @@ test('comic ratio 100%: the tagger is told every shot is a comic, as at 0% every
   card.comic_gen_ratio = 0;
   assert.match(await f.api.inlineTagRules(), /Comic ratio is 0%\. Every shot MUST be `illustration`/);
 });
+
+test('a chat request reads its bot once: its rosters and this chat\'s note come off that read, with no directory of every bot',async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,costume:true});
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();
+  await f.api.upsertCharacter('c',{name:'하나',appearance:'1girl, blue hair',attire:'school uniform'});
+  // Past the directory's own two-second reuse (the write above read it): a directory read would show.
+  await new Promise(r=>setTimeout(r,2100));
+  const counts={directory:0,getCharacterFromIndex:0,getCharacter:0,getChatFromIndex:0};
+  const real={getDatabase:risuai.getDatabase,getCharacterFromIndex:risuai.getCharacterFromIndex,getCharacter:risuai.getCharacter,getChatFromIndex:risuai.getChatFromIndex};
+  risuai.getDatabase=async(only,...rest)=>{if(!Array.isArray(only)||only.includes('characters'))counts.directory++;return real.getDatabase(only,...rest);};
+  for(const name of ['getCharacterFromIndex','getCharacter','getChatFromIndex'])risuai[name]=async(...args)=>{counts[name]++;return real[name](...args);};
+  try {
+    const sent=await replacer([{role:'system',content:'main'},{role:'user',content:'go'}],'model');
+    const state=sent.find(m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK))?.content ?? '';
+    assert.match(state,/- 하나/,'the chat\'s people reached the request');
+    assert.deepEqual(counts,{directory:0,getCharacterFromIndex:1,getCharacter:0,getChatFromIndex:0},'one read of the bot, nothing else of it');
+  } finally { Object.assign(risuai,real); }
+});

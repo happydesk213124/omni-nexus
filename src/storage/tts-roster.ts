@@ -1,6 +1,7 @@
 import { risuHost } from '../core/host';
 import type { TtsCharacter } from '../core/tts-types';
 import { serializeSessionStorage } from './chat-session-store';
+import { forgetBots } from './current-bot';
 import { characterDirectory, directoryWarm } from './character-directory';
 
 /**
@@ -75,7 +76,7 @@ export function writeBotTtsCharacters(characterId: string, rows: readonly TtsCha
     const value = { ...(at >= 0 ? object(entries[at]) : {}), comment: TTS_ROSTER_LORE, key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0,
       content: JSON.stringify({ version: 1, characterId, characters: next }) };
     if (at < 0) entries.push(value); else entries[at] = value;
-    await host.setCharacterToIndex(found.index, { ...found.char, globalLore: entries });
+    await host.setCharacterToIndex(found.index, { ...found.char, globalLore: entries });forgetBots();
     const saved = await readBotTtsCharacters(characterId);
     if (JSON.stringify(saved) !== JSON.stringify(next)) throw new Error('TTS 캐릭터 로어북 저장 확인에 실패했습니다.');
   });

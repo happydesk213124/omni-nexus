@@ -17,6 +17,20 @@ function omniKeywordIdentity(scope, index) {
   return id && isSelectedCharRole(msg.role) ? {scope, index, id:String(id), role:msg.role} : null;
 }
 async function omniCaptureKeywordTarget() {
+  // The chat request this reply streams for read its bot a moment ago (inline-tagging's requestScope: ids, indices,
+  // name, description): with it only the open chat is read here. Z() read the whole bot (every chat of it) and that
+  // chat again, and in a long chat came back after the stream had ended, its blocks then waiting for the reply's end.
+  const sent = globalThis.__OMNI_INLINE_TAGS__?.requestScope?.();
+  if (sent) {
+    const [ci, ti] = (await Promise.all([k.getCurrentCharacterIndex(), k.getCurrentChatIndex()])).map(Number);
+    if (ci === sent.charIndex && ti === sent.chatIndex) {
+      const chat = await k.getChatFromIndex(ci, ti);
+      if (chat && String(chat.id || chat.chatId || '') === sent.chatId) {
+        if (!(chat.isStreaming || chat.is_streaming)) return null;
+        return omniKeywordIdentity({...sent, chat}, (chat.message?.length || 0)-1);
+      }
+    }
+  }
   const scope = await Z({useOverride:false});
   if (!scope || !(scope.chat?.isStreaming || scope.chat?.is_streaming) || scope.chatIndex === 'unified') return null;
   const current = await Promise.all([k.getCurrentCharacterIndex(), k.getCurrentChatIndex()]);
