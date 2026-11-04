@@ -13,7 +13,7 @@ import { settledWhileStreaming } from '../domain/tts/streaming';
 import { revealSegments } from '../domain/tts/base64-words';
 import { namedCostumes } from '../domain/tts/costume-cue';
 import { costumesOf, refreshCostumeNames } from '../services/costume-names';
-import { loadViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
+import { loadViewerPrefs, subscribeViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { TTS_NARRATION_OFF_CSS } from '../domain/tts/module';
 import { illustrationTtsRequests } from '../services/tts-illustration';
 import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
@@ -21,7 +21,7 @@ import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type H
 import { withTtsAudio } from './activation';
 import { installTtsViewer } from './host-viewer';
 
-interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; styled?: boolean; state?: string; sound?: boolean; effect?: boolean }
+interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:SafeElement;play:()=>Promise<void>}[]; message: number; messageId: string; line: string; source: string; illustration: boolean; narration: boolean; dead?: boolean; hidden?: boolean; styled?: boolean; state?: string; sound?: boolean; effect?: boolean; request?: TtsRequest; shown?: boolean }
 /** BGM markers and effect words become rows of their own while that sound is on. */
 function soundCues(): TtsSoundCues | undefined {
   if (!soundReady()) return undefined;
@@ -185,69 +185,172 @@ export async function installTtsHost(): Promise<void> {
     bindings.set(key,b);
     return key;
   };
+  // What each message was when last gone through: its HTML as drawn (the ids our controls were stamped with are in
+  // it, the playing marks left out), the controls in it and the lines it showed. Drawn the same again it is not gone
+  // through again: every control in it is still ours. Gone through anew after a minute even so (costume names, read
+  // later, change what its lines are), and at once when a setting that shapes its lines changes.
+  type Drawn = { html: string; keys: string[]; lines: number; list: TtsRequest[]; shown?: TtsRequest[]; unsettled: TtsRequest[]; at: number };
+  const drawn = new Map<number, Drawn>();
+  const DRAWN_MS = 60_000;
+  const asDrawn = (html: string) => html.replace(/ x-omnitts-state="[^"]*"/g, '');
+  const replyStreaming = () => { const live = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__'); return typeof live === 'function' && live() === true; };
+  // The messages with lines shown, in their order: the reader is placed among them between scans.
+  let rows: { index: number; node: SafeElement }[] = [];
+  let unsettledNow = new Set<TtsRequest>();
+  /**
+   * Who is being read and what is voiced ahead: the lines nearest the middle of the screen. The message across the
+   * middle is found by halving (a few reads), and only its lines and its neighbours' are measured; further messages,
+   * walked out to until there are lines enough to voice ahead, place their lines by where they fall in their box.
+   * Every line on screen was measured before, several calls each.
+   */
+  const nearest = async (): Promise<{ list: TtsRequest[]; ahead: TtsRequest[] }> => {
+    if (!rows.length) return { list: [], ahead: [] };
+    const middle = (await doc.clientHeight()) / 2;
+    const box = (i: number) => rows[i]!.node.getBoundingClientRect().catch(() => null);
+    let lo = 0, hi = rows.length - 1, at = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1, r = await box(mid);
+      if (!r?.height || r.bottom < middle) lo = mid + 1;
+      else if (r.top > middle) hi = mid - 1;
+      else { at = mid; break; }
+    }
+    if (at < 0) at = Math.min(lo, rows.length - 1);
+    const linesOf = (index: number) => [...bindings.values()].filter(b => b.message === index && b.shown && !b.hidden && b.request);
+    const near: { distance: number; request: TtsRequest; index: number }[] = [];
+    const add = (b: Binding, y: number) => near.push({ distance: Math.abs(y - middle), request: b.request!, index: b.message });
+    for (let i = Math.max(0, at - 1); i <= Math.min(rows.length - 1, at + 1); i++) for (const b of linesOf(rows[i]!.index)) {
+      const r = await b.node.getBoundingClientRect().catch(() => null);
+      if (r?.width && r.height) add(b, r.top + r.height / 2);
+    }
+    const want = ttsData().settings.prefetch;
+    for (let d = 2; near.length < want && (at - d >= 0 || at + d < rows.length); d++) for (const i of [at - d, at + d]) {
+      if (i < 0 || i >= rows.length) continue;
+      const r = await box(i), lines = linesOf(rows[i]!.index);
+      if (r?.height) lines.forEach((b, j) => add(b, r.top + r.height * (j + .5) / lines.length));
+    }
+    near.sort((a, b) => a.distance - b.distance);
+    return { list: near[0] ? anchored.get(near[0].index) || [] : [], ahead: near.filter(row => !unsettledNow.has(row.request)).slice(0, want).map(row => row.request) };
+  };
+  const voiceAhead = (ahead: TtsRequest[]) => {
+    const fingerprint = JSON.stringify([lastScope, ahead.map(r => [r.messageId, r.segment.id, r.segment.text])]);
+    // 옴니 뷰어 open over the chat voices what is read there; asking here would cancel that for lines hidden behind it.
+    if (viewerCovering()) lastPrefetch = '';
+    else if (fingerprint !== lastPrefetch) { lastPrefetch = fingerprint; void omniTts.prefetch(ahead); }
+  };
+  /**
+   * A scroll draws no line and takes none away; only what sits in the middle of the screen changes. So nothing is
+   * asked of Risu while the chat scrolls (a full scan every 0.4 s was thousands of calls a second, all on the thread
+   * that scrolls), and once it has stopped for a moment the reader is placed again among the last scan's messages.
+   */
+  const SETTLE_MS = 300;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  const settle = async () => {
+    if (disposed || !ttsData().settings.enabled || viewerCovering() || !rows.length) return;
+    if (dragging() || scrollHeld() || scanTask) { onScroll(); return; }
+    const { list, ahead } = await nearest();
+    omniTts.reading(list);
+    voiceAhead(ahead);
+  };
+  const onScroll = () => { clearTimeout(settleTimer); settleTimer = setTimeout(() => void settle().catch(() => {}), SETTLE_MS); };
   const scanOnce = async () => {
     try {
       if (disposed || !active()) return;
       // A remounted chat screen (another bot or chat) gets its own watcher.
       await watchChat();
       await refreshViewer();
-      const context = await currentTtsContext().catch(()=>null); if(!context){bootstrap();return;} omniTts.setContext(context);
-      if (context.scope !== lastScope) { lastScope = context.scope; lastPrefetch = ''; }
-      const live = new Set<string>(), nearby: {distance:number;request:TtsRequest}[] = [];
-      const height = await doc.clientHeight();
-      const perMessage = new Map<number,TtsRequest[]>();
-      // The reply being written: only its finished lines may be voiced ahead.
-      const streamingIndex = context.chat.isStreaming === true ? context.messages.length - 1 : -1;
-      const unsettled = new Set<TtsRequest>();
+      const tts = ttsData().settings.enabled, sound = soundOn();
+      // The chat itself (the whole character) is read only for a message drawn anew: a scan that finds every message
+      // as it was reads their HTML and nothing more.
+      let context: TtsChatContext | null = null;
+      const readContext = async (): Promise<TtsChatContext | null> => {
+        if (context) return context;
+        context = await currentTtsContext().catch(() => null);
+        if (!context) return null;
+        omniTts.setContext(context);
+        if (context.scope !== lastScope) { lastScope = context.scope; lastPrefetch = ''; }
+        return context;
+      };
+      // One read per message: its HTML says whether it changed and, when it did, which line each control is.
+      const found: { node: SafeElement; html: string; index: number }[] = [];
+      for (const node of await safeArray(await doc.querySelectorAll('.risu-chat'))) {
+        const html = await node.getOuterHTML().catch(() => '');
+        found.push({ node, html, index: Number(/\bdata-chat-index="(-?\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? NaN) });
+      }
+      const live = new Set<string>(), perMessage = new Map<number,TtsRequest[]>(), nextRows: typeof rows = [], unsettled = new Set<TtsRequest>();
+      const streamingNow = replyStreaming();
+      let lines = 0, failed = false;
       anchored.clear();
-      let lines = 0;
-      for (const chat of await safeArray(await doc.querySelectorAll('.risu-chat'))) {
-        try {
-          const nodes = ttsData().settings.enabled ? await safeArray(await chat.querySelectorAll('[data-omnitts-kind]')) : [];
-          const sounds = soundOn() ? await safeArray(await chat.querySelectorAll('[data-omni-bgm],[data-omni-sfx]')) : [];
-          if (!nodes.length && !sounds.length) continue;
-          lines += nodes.length;
-          // One read per message: the rendered line text identifies each control,
-          // so the module never has to stamp ids into another module's input.
-          const html = await chat.getOuterHTML();
-          const index = Number(/\bdata-chat-index="(-?\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? NaN);
-          const list = Number.isInteger(index) ? perMessage.get(index) ?? requests(context,index) : [];
-          if (Number.isInteger(index)) perMessage.set(index,list);
-          if (index === streamingIndex) {
-            const settled = new Set(settledWhileStreaming(list, String(context.messages[index]?.data ?? '')));
-            for (const request of list) if (!settled.has(request)) unsettled.add(request);
+      try {
+        for (const { node: chat, html, index } of found) {
+          const known = Number.isInteger(index) ? drawn.get(index) : undefined;
+          if (known && known.html === asDrawn(html) && Date.now() - known.at < DRAWN_MS) {
+            for (const key of known.keys) live.add(key);
+            lines += known.lines; perMessage.set(index, known.list);
+            if (streamingNow) known.unsettled.forEach(request => unsettled.add(request));
+            if (known.shown) { anchored.set(index, known.shown); nextRows.push({ index, node: chat }); }
+            continue;
           }
+          const nodes = tts ? await safeArray(await chat.querySelectorAll('[data-omnitts-kind]')) : [];
+          const sounds = sound ? await safeArray(await chat.querySelectorAll('[data-omni-bgm],[data-omni-sfx]')) : [];
+          if (!nodes.length && !sounds.length) {
+            if (Number.isInteger(index)) drawn.set(index, { html: asDrawn(html), keys: [], lines: 0, list: [], unsettled: [], at: Date.now() });
+            continue;
+          }
+          const ctx = await readContext();
+          if (!ctx) { failed = true; for (const node of [...nodes, ...sounds]) await releaseHost(node); break; }
+          lines += nodes.length;
+          const list = Number.isInteger(index) ? requests(ctx, index) : [];
+          if (Number.isInteger(index)) perMessage.set(index, list);
+          // The reply being written: only its finished lines may be voiced ahead.
+          const mine: TtsRequest[] = [];
+          if (ctx.chat.isStreaming === true && index === ctx.messages.length - 1) {
+            const settled = new Set(settledWhileStreaming(list, String(ctx.messages[index]?.data ?? '')));
+            for (const request of list) if (!settled.has(request)) { unsettled.add(request); mine.push(request); }
+          }
+          const keys: string[] = [];
           // Sound buttons pair with the message's cues in order, each kind on its own.
           const cuesOf = (kind: 'bgm' | 'sfx') => list.filter(r => r.segment.kind === kind);
           const order = { bgm: 0, sfx: 0 };
           for (const node of sounds) {
             const kind = await node.matches('[data-omni-bgm]') ? 'bgm' : 'sfx';
-            live.add(await bindSound(node, cuesOf(kind)[order[kind]++], index));
+            const key = await bindSound(node, cuesOf(kind)[order[kind]++], index);
+            live.add(key); keys.push(key);
           }
-          if (!nodes.length) continue;
-          const matches = matchTtsAnchors(ttsAnchorTexts(html), list.map(r => r.segment));
-          const shown: TtsRequest[] = [];
-          for (let j=0;j<nodes.length;j++) {
-            const key = await bind(nodes[j]!, false), b = bindings.get(key)!, request = list[matches[j] ?? -1];
-            live.add(key);
-            b.message = index; b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.source = request?.sourceKey || ''; b.narration = request?.segment.kind === 'narration';
-            b.dead = !request;
-            await syncVisibility(b);
-            if (!request || b.hidden) continue;
-            // A line inside a folded <details> is not on screen and stays out of
-            // the list. Our absolutely placed control still reports a box there,
-            // so ask about the fold itself; a zero box covers other hidden panes.
-            if (await b.node.matches('details:not([open]) > :not(summary), details:not([open]) > :not(summary) *')) continue;
-            const rect = await b.node.getBoundingClientRect();
-            if (!rect.width || !rect.height) continue;
-            shown.push(request);
-            nearby.push({distance:Math.abs(rect.top+rect.height/2-height/2),request});
+          let shownList: TtsRequest[] | undefined;
+          if (nodes.length) {
+            const matches = matchTtsAnchors(ttsAnchorTexts(html), list.map(r => r.segment));
+            const shown: TtsRequest[] = [];
+            for (let j=0;j<nodes.length;j++) {
+              const key = await bind(nodes[j]!, false), b = bindings.get(key)!, request = list[matches[j] ?? -1];
+              live.add(key); keys.push(key);
+              b.message = index; b.messageId = request?.messageId || ''; b.line = request?.segment.id || ''; b.source = request?.sourceKey || ''; b.narration = request?.segment.kind === 'narration';
+              b.dead = !request; b.request = request; b.shown = false;
+              await syncVisibility(b);
+              if (!request || b.hidden) continue;
+              // A line inside a folded <details> is not on screen and stays out of
+              // the list. Our absolutely placed control still reports a box there,
+              // so ask about the fold itself; a zero box covers other hidden panes.
+              if (await b.node.matches('details:not([open]) > :not(summary), details:not([open]) > :not(summary) *')) continue;
+              const rect = await b.node.getBoundingClientRect();
+              if (!rect.width || !rect.height) continue;
+              b.shown = true; shown.push(request);
+            }
+            // Cues keep their place among the lines that are on screen.
+            const visible = new Set(shown);
+            if (shown.length) { shownList = list.filter(r => visible.has(r) || isSoundSegment(r.segment)); anchored.set(index, shownList); nextRows.push({ index, node: chat }); }
           }
-          // Cues keep their place among the lines that are on screen.
-          const visible = new Set(shown);
-          if (shown.length) anchored.set(index, list.filter(r => visible.has(r) || isSoundSegment(r.segment)));
-        } finally { await releaseHost(chat); }
+          // As it is drawn now, with our ids stamped in it: how it is known next time.
+          if (Number.isInteger(index)) drawn.set(index, { html: asDrawn(await chat.getOuterHTML().catch(() => '')), keys, lines: nodes.length, list, shown: shownList, unsettled: mine, at: Date.now() });
+        }
+      } finally {
+        // Only the messages the reader is placed among are kept; the rest go back, and so do the last scan's.
+        const kept = new Set(nextRows.map(row => row.node));
+        for (const { node } of found) if (!kept.has(node)) await releaseHost(node);
+        const old = failed ? nextRows : rows;
+        if (!failed) rows = nextRows;
+        for (const row of old) await releaseHost(row.node);
       }
+      if (failed) { bootstrap(); return; }
       // The effects on screen are matched and cut ahead, all unknown parts in one request.
       const effects = [...perMessage.values()].flat().filter(r => r.segment.kind === 'sfx');
       if (effects.length) void omniSound.prepareEffects(effects.map(r => ({ text: r.segment.text, context: r.segment.context || '' }))).catch(error => console.warn('OmniSound prepare', error));
@@ -256,24 +359,22 @@ export async function installTtsHost(): Promise<void> {
       if (cues.length) omniSound.prefetchBgmForTags(cues.map(r => r.segment.tags!));
       for (const node of await safeArray(await doc.querySelectorAll('[data-omnitts-image] [data-omnitts-play],[x-omnitts-image] [x-omnitts-play]'))) live.add(await bind(node, true));
       for (const [key,b] of bindings) if (!live.has(key)) { await releaseHost(b.node);for (const chip of b.chips) await releaseHost(chip.node); bindings.delete(key); }
-      nearby.sort((a,b)=>a.distance-b.distance);
-      const reading=nearby[0]?.request;
-      let readingList=reading?anchored.get([...anchored.entries()].find(([,list])=>list.includes(reading))?.[0] ?? -1)||[]:[];
+      for (const index of [...drawn.keys()]) if (!found.some(row => row.index === index)) drawn.delete(index);
+      unsettledNow = unsettled;
+      let { list: readingList, ahead } = await nearest();
       if(!lines){
         // A freshly installed display module may not have re-rendered Risu's
-        // existing messages yet. The viewer can still read the original reply.
-        const chat=await doc.querySelector('.default-chat-screen');
-        try{if(chat&&await chat.clientHeight()>0){let index=context.messages.length-1;while(index>=0&&context.messages[index].role!=='char')index--;readingList=requests(context,index);}}finally{await releaseHost(chat);}
+        // existing messages yet. The viewer can still read the original reply
+        // (only with TTS on: BGM·효과음 alone reads no line and needs no chat read for it).
+        const ctx = tts ? await readContext() : null;
+        const chat = ctx ? await doc.querySelector('.default-chat-screen') : null;
+        try{if(ctx&&chat&&await chat.clientHeight()>0){let index=ctx.messages.length-1;while(index>=0&&ctx.messages[index].role!=='char')index--;readingList=requests(ctx,index);}}finally{await releaseHost(chat);}
         bootstrap();
       }else bootAttempts=8;
-      if (ttsData().settings.enabled) omniTts.reading(readingList);
+      if (tts) omniTts.reading(readingList);
       await syncState();
       // The line still being written changes with every chunk: it is made once, after the reply ends.
-      const selected = nearby.filter(row=>!unsettled.has(row.request)).slice(0,ttsData().settings.prefetch).map(row=>row.request);
-      const fingerprint=JSON.stringify([context.scope,selected.map(r=>[r.messageId,r.segment.id,r.segment.text])]);
-      // 옴니 뷰어 open over the chat voices what is read there; asking here would cancel that for lines hidden behind it.
-      if (viewerCovering()) lastPrefetch='';
-      else if (fingerprint !== lastPrefetch) { lastPrefetch=fingerprint; void omniTts.prefetch(selected); }
+      voiceAhead(ahead);
     } catch (error) { if (ttsData().settings.enabled) console.warn('OmniTTS chat scan',error); }
   };
   const requestScan = (): Promise<void> => {
@@ -328,9 +429,20 @@ export async function installTtsHost(): Promise<void> {
     if(!ttsData().settings.hoverPlay||viewerCovering())return;const epoch=++inputEpoch;
     void findHit(e,true).then(row=>{if(epoch!==inputEpoch)return;if(!row){hovered='';return;}if(hovered!==row.key){hovered=row.key;return row.play();}}).catch(report);
   });
-  await listen('scroll',()=>schedule(),{capture:true,passive:true});
-  const unsubscribe=subscribeTts(()=>{void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));lastPrefetch='';bootAttempts=0;schedule();});
-  const unsubscribeSound=subscribeSound(()=>{bootAttempts=0;schedule();});
+  // The scroll is listened to only while TTS or BGM·효과음 is on: off, Risu forwarded every scroll event for nothing.
+  let scrollId = '', scrollTail: Promise<void> = Promise.resolve();
+  const syncScrollWatch = (): Promise<void> => scrollTail = scrollTail.catch(() => {}).then(async () => {
+    const want = !disposed && active();
+    if (want === !!scrollId) return;
+    if (want) { scrollId = await doc.addEventListener('scroll', onScroll, { capture: true, passive: true }); return; }
+    const id = scrollId; scrollId = ''; clearTimeout(settleTimer);
+    await doc.removeEventListener('scroll', id, { capture: true });
+  });
+  await syncScrollWatch();
+  // A setting that shapes the lines (TTS, BGM·효과음, 옴니 뷰어's risu64) makes every message gone through again.
+  const unsubscribe=subscribeTts(()=>{drawn.clear();void syncScrollWatch().catch(()=>{});void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));lastPrefetch='';bootAttempts=0;schedule();});
+  const unsubscribeSound=subscribeSound(()=>{drawn.clear();void syncScrollWatch().catch(()=>{});bootAttempts=0;schedule();});
+  const unsubscribePrefs=subscribeViewerPrefs(()=>{drawn.clear();schedule();});
   const unsubscribeState=omniTts.subscribe(()=>{void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
   // The viewer closed: the chat as it is now, and the line playing marked.
   const unsubscribeUncovered=onViewerUncovered(()=>{lastPrefetch='';if(behind){behind=false;schedule(0);}void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
@@ -376,5 +488,5 @@ export async function installTtsHost(): Promise<void> {
   };
   await syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));
   const viewer=await installTtsViewer(doc,revealInChat);refreshViewer=viewer.refresh;flash=viewer.flash;await requestScan();
-  if(host.onUnload)await host.onUnload(async()=>{disposed=true;await syncNarrationRule().catch(()=>{});inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();unsubscribeUncovered();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
+  if(host.onUnload)await host.onUnload(async()=>{disposed=true;await syncNarrationRule().catch(()=>{});inputEpoch++;installed=false;clearTimeout(timer);clearTimeout(settleTimer);await syncScrollWatch().catch(()=>{});for(const row of rows.splice(0))await releaseHost(row.node);drawn.clear();unsubscribe();unsubscribeSound();unsubscribePrefs();unsubscribeState();unsubscribeUncovered();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
 }

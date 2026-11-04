@@ -140,7 +140,7 @@ main.ts                     entry: builds the bridge, publishes globals
 | 박제 후 읽기 | `src/services/tts.ts` (`card.tts_*`) |
 | TTS 채팅 재생 버튼 (OmniTTS 모듈) | `src/domain/tts/module.ts` — display regexes only, all ordered after every other module; never edit the reply before other modules see it. Controls are zero-width so wrapping never changes |
 | 플로팅 태그 (🟪, 대시보드) · 말풍선 바로가기툴 접어두기 | 막대 `src/image-ui/tag-float.ts` (어느 답장인지 `src/domain/viewer/reply-at.ts`, 채팅 화면 읽기 `src/viewer/chat-screen.ts`, 아래 채팅으로 안 넘기기 `src/services/viewer-presence.ts`), 접기 `src/domain/message-controls.ts` (`messageControlsOf`), 🔢 줄 `tools/vendor-patches/message-runtime.js` (`__OMNI_IMAGE_COUNTS__`), 설정창 한 줄 생성 장수 `src/settings-ux/count-steppers.ts` |
-| TTS 버튼 ↔ 원문 줄 연결 | `src/domain/tts/anchors.ts` (rendered line text → parsed segment), `src/tts-ui/host-chat.ts` (bind, dead/narration/playing attributes) |
+| TTS 버튼 ↔ 원문 줄 연결 | `src/domain/tts/anchors.ts` (rendered line text → parsed segment), `src/tts-ui/host-chat.ts` (bind, dead/narration/playing attributes). 스캔은 채팅이 바뀔 때만(메시지 HTML이 그대로면 그 메시지는 건너뜀, 바뀐 게 있을 때만 캐릭터를 읽음); 스크롤은 멈춘 뒤 `nearest`로 화면 가운데 메시지만 반씩 찾아 읽는 줄을 맞춤. 스크롤 감시는 TTS나 BGM·효과음이 켜져 있을 때만 (`tests/tts-scroll.test.mjs`) |
 | TTS 설정 도움말 | `src/tts-ui/help.ts` — keyed by control id, served through `previewHelp` |
 | 캐릭터 LLM 명령수정 / 헤더 참고 | `src/char-command/` — `mount.ts`, `src/domain/character/command-edit.ts` |
 | 이 세션 작가 노트 | `src/services/session-author-note.ts`, tagger inject in `src/services/tagger.ts` |
