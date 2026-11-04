@@ -470,7 +470,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     const tapChip = async (row, label) => { const b = await chip(row, label).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
     await tapChip('status', '스티커');
     await page.waitForFunction(() => { const st = document.querySelector('[x-omni-vn] [x-vn-st]'); return !!st?.querySelector('.x-risu-status') && getComputedStyle(st).display === 'block'; });
-    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st]').className), 'chattext', "inside a .chattext the bot's chat CSS still reaches it");
+    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]').className), 'chattext', "inside a .chattext the bot's chat CSS still reaches it");
     // Dragged in 편집, it stays where it was put (a share of the frame, so any screen keeps it).
     await page.waitForTimeout(300);
     const sticker = await page.locator('[x-omni-vn] [x-vn-st]').boundingBox();
