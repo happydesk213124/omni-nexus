@@ -3,14 +3,14 @@ import { characterSource } from './character-source';
  * Collect NovelAI tags from Risu character additionalAssets and active module assets.
  */
 import { dbg } from '../core/debug';
-import { TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
+import { TAGGER_LORE_CONTENT_LIMIT, TAGGER_LORE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { hostHas, risuHost } from '../core/host';
 import { withRefilledModules } from '../storage/module-assets';
 import type { ApiResult, LoreEntry } from '../core/types';
 import { cleanText } from '../core/util/text.ts';
 import { normalizeAssetNaiTagsMode } from '../config/schema.ts';
 import type { CharacterInput } from '../domain/character/identity.ts';
-import { collectTriggeredLoreKeys, explainTriggeredLoreEntries } from '../domain/lore/assemble';
+import { collectTriggeredLoreKeys, explainTriggeredLoreEntries, filledNamesForLoreExtra, keysOfLoreEntries, taggerLoreSources } from '../domain/lore/assemble';
 import {
   formatAssetTagsInjectBlock,
   mergeWeightMaps,
@@ -580,13 +580,16 @@ export async function probeAssetNaiTags(body: Record<string, unknown> = {}): Pro
     lorefilterInfo = { applied: false, reason: 'empty_lorebook', character_id: cid || undefined };
   }
 
-  // Match job path: triggers come from the (possibly filtered) lorebook only.
+  // Match job path: triggers come from the (possibly filtered) lorebook only, and of what lit, only the entries the
+  // main tagger is given (its lorebook pack's pick): the rest name people it knows nothing about.
   const backendKeys = collectTriggeredLoreKeys(lorebook, message);
   const loreFired = explainTriggeredLoreEntries(lorebook, message);
   const relatedGroups = loreFired.map((e) => e.keys);
-  const triggerPool = [...backendKeys];
-  const matchTriggersAll = assetMatchTriggers(triggerPool);
   const roster = Array.isArray(body.roster) ? (body.roster as CharacterInput[]) : null;
+  const taggerLore = taggerLoreSources(lorebook, message, filledNamesForLoreExtra(roster), TAGGER_LORE_LIMIT, TAGGER_LORE_CONTENT_LIMIT);
+  const taggerLoreNames = taggerLore.map((e) => cleanText(e.comment || e.name || '', 200) || '(no comment)');
+  const triggerPool = lorebook.length ? keysOfLoreEntries(taggerLore) : [...backendKeys];
+  const matchTriggersAll = assetMatchTriggers(triggerPool);
   const matchTriggers = filterAssetTriggersForUnfilledLooks(triggerPool, roster, {
     preferFilledLooks: !!card?.unified_chat_priority,
   });
@@ -622,6 +625,10 @@ export async function probeAssetNaiTags(body: Record<string, unknown> = {}): Pro
     /** Client keys before filter (may include entries lorefilter dropped). */
     lore_trigger_keys_ui_raw: uiKeysRaw,
     lore_trigger_keys_backend: backendKeys,
+    /** The lore the main tagger is given (its pack's pick): only these entries' keys look for pictures and asset tags. */
+    tagger_lore_entries: taggerLoreNames,
+    /** Lit, and not given to the tagger (fewer hits than the pack's pick, or a filled person's): their keys look for nothing. */
+    lit_not_given: loreFired.map((e) => e.comment || '(no comment)').filter((name) => !taggerLoreNames.includes(name)),
     asset_match_triggers_all: matchTriggersAll,
     asset_match_triggers: matchTriggers,
     roster_incomplete_names: rosterIncomplete,

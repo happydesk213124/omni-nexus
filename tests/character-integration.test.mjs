@@ -171,6 +171,42 @@ test('inline main builder supplements incomplete metadata with images',async()=>
   }
 });
 
+// A picture (with 이미지 분기, an image-model call) is read only for someone the main tagger is told about: the
+// people of the lore entries it is given. A lit entry it is not given named someone it knew nothing about, and the
+// picture came back unused on every tag of the reply (a bot's jester asset, keyed `hrlq`, lit by a reply's thoughts).
+test('pictures and asset tags come only for the people of the lore the main tagger is given',async()=>{
+  for(const separate of [true,false]) {
+    const {api,host,config}=await runtime();
+    const bot={chaId:'bot',additionalAssets:[['Alice default','alice-asset'],['hrlq default','hrlq-asset']],chats:[]};
+    globalThis.risuai.getCharacter=async()=>bot;globalThis.risuai.readImage=async()=>PNG_NO_META;
+    config.card.asset_nai_tags='inline';config.card.image_analysis_separate=separate;api.setConfig(config);
+    host.setLlmReply(JSON.stringify({gender:'girl',hair_color:'blue hair',hair_style:'braid',eye_color:'blue eyes',appearance:'girl'}));
+    // The jester's entry lit only in the reply's thoughts, as the job reads the raw reply: the tagger reads past them.
+    const lorebook=[{comment:'Alice',content:'Alice keeps the forge.',key:'Alice'},{comment:'Harlequin',content:'A clown in a jester cap.',key:'Harlequin, hrlq'}];
+    const request={session_id:'',assistant_text:'<thoughts>hrlq waits outside.</thoughts>\nAlice lifted the hammer.',lorebook,lore_trigger_keys:['Alice','Harlequin','hrlq']};
+    const {images}=await api.collectGenerationAssets(request);
+    assert.deepEqual(images.map(image=>image.trigger.toLowerCase()),['alice'],'only the person of the lore the tagger is given');
+    const before=host.llmRequests.length;
+    const messages=JSON.stringify(await api.buildTaggerMessages(request));
+    assert.match(messages,/Character reference: alice; asset: Alice default/i);
+    assert.doesNotMatch(messages,/hrlq/,'nothing of the jester reaches the tagger');
+    assert.equal(host.llmRequests.length-before,separate?1:0,"with 이미지 분기, one image-model call: Alice's");
+  }
+});
+
+test("a lit entry past the lorebook pack's five brings no picture",async()=>{
+  const {api,config}=await runtime();
+  const names=['Alice','Bella','Cora','Dana','Erin','Faye'];
+  const bot={chaId:'bot',additionalAssets:names.map(name=>[`${name} default`,`${name.toLowerCase()}-asset`]),chats:[]};
+  globalThis.risuai.getCharacter=async()=>bot;globalThis.risuai.readImage=async()=>PNG_NO_META;
+  config.card.asset_nai_tags='inline';config.card.image_analysis_separate=false;api.setConfig(config);
+  // Five named twice, Faye once in passing: the pack takes the five, and so does the picture search.
+  const story=names.slice(0,5).map(name=>`${name} smiled. ${name} waved.`).join(' ')+' Faye passed by.';
+  const lorebook=names.map(name=>({comment:name,content:`${name} is in town.`,key:name}));
+  const {images}=await api.collectGenerationAssets({session_id:'',assistant_text:story,lorebook});
+  assert.deepEqual(images.map(image=>image.trigger.toLowerCase()).sort(),names.slice(0,5).map(name=>name.toLowerCase()));
+});
+
 test('complete metadata stays text-only in both modes and both image routing settings',async()=>{
  for(const mode of ['inline','prepass']) for(const separate of [false,true]) {
   const {api,host,config}=await runtime();
