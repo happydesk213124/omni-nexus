@@ -79,24 +79,18 @@ const TAG_BAR = new Set<string>(TAG_ACTS);
 // Its 🔢's row under it (look.ts), in its order.
 const COUNT_ACTS = COUNT_STEPS.map(([act]) => act);
 const COUNT_BAR = new Set<string>(COUNT_ACTS);
-// Behind the viewer only the newest messages stay laid out: Risu's re-render costs less. From the bot's third newest
-// (role char) on, the reader's messages between them too: a status panel a bot sends in a message of its own stays
-// drawn with its reply (요소's 다음 메시지), so does the reader's own (다음 유저 메시지), and only a drawn element can
-// be lifted (작동). The newest message stays too, whatever it is: a reply streaming in is not among the messages read
-// yet, and a reply is read as drawn (innerText, which reads the bot-hidden lines too once nothing is drawn). Before the
-// chat is read, the newest three.
+// Behind the viewer only the newest messages stay laid out: Risu's re-render costs less. The newest six by their place
+// in the list (newest first), whoever wrote them: the bot's reply, its status message, the reader's. The browser tells
+// the place itself, so a message come in, a reroll or a delete the viewer never heard of (no stream: it reads the chat
+// again only at a stream's end, 최신, a bake) is followed at once; numbered by the chat as read, the fold stayed where it
+// was until the viewer was opened again. Only a drawn element is seen through (작동): an older one opens as a copy.
+// A reply is read as drawn (innerText, which reads the bot-hidden lines too once nothing is drawn): the one streaming
+// in is the newest, always kept.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
-const FOLD_KEEP = 3;
-/** The first message the fold keeps drawn (the bot's third newest), -1 before the chat is read. */
-const foldFrom = (): number => { const chars = charIndexes(); return chars.length ? chars[Math.max(0, chars.length - FOLD_KEEP)]! : -1; };
-const foldCss = (hideOmni: boolean) => {
-  const from = foldFrom(), keep = from < 0 ? [] : Array.from({ length: (context?.messages.length ?? 0) - from }, (_, k) => from + k);
-  const chat = keep.length
-    ? `${LIST} > .chat-message-container:nth-child(n+2):not(:has(> .risu-chat:is(${keep.map(i => `[data-chat-index="${i}"]`).join(',')}))){display:none!important}`
-    : `${LIST} > .chat-message-container:nth-child(n+${FOLD_KEEP + 1}){display:none!important}`;
-  return `${chat}[x-omnitts-viewer],[x-nx-float],[x-omni-tagfloat]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
-};
+const FOLD_KEEP = 6;
+const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-child(n+${FOLD_KEEP + 1}){display:none!important}`
+  + `[x-omnitts-viewer],[x-nx-float],[x-omni-tagfloat]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
 let foldShown = '';
 /** The fold as the chat now is (its newest char messages, 크게보기 or not): written only when it changed. */
 async function syncFold(): Promise<void> {
@@ -2107,8 +2101,9 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
         for (let i = index + 1; i < all.length; i++) { if (all[i]?.role === 'char') return -1; if (all[i]?.role === 'user') return i; }
         return -1;
       },
-      // What the fold keeps drawn: from the bot's third newest on, and the newest message (작동 opens the chat's own there).
-      drawn: index => { const from = foldFrom(); return index >= 0 && ((from >= 0 && index >= from) || index === (context?.messages.length ?? 0) - 1); },
+      // What the fold keeps drawn, as far as the chat read knows (작동 opens the chat's own there): the newest six. A
+      // message come in since moves one out unknown here, and is told by its size (none: a copy).
+      drawn: index => index >= 0 && index >= (context?.messages.length ?? 0) - FOLD_KEEP,
       // 작동's element scrolled to the middle of the chat behind (only the chat, where the engine can say so); a scroll
       // the chat is too short for pushes Risu's page instead, and that is put back.
       centre: async target => {
