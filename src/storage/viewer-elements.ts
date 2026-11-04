@@ -8,13 +8,16 @@ import { psGet, psSet } from './device-store';
  */
 export const VIEWER_ELEMENTS_KEY = 'omniviewer.elements';
 /**
+ * role: a sticker (a copy, placed on the stage), 작동 (live: a tile on the stage; a tap opens the chat's own element in
+ * the middle, its buttons Risu's), or a choice. One of them: a kind is never a sticker and 작동 at once.
  * from: where the kind is found, against the reply on stage: the reply itself (0), or the bot's message 1 or 2 after
- * it (a status panel a bot sends in a message of its own). fold: a title bar over it, which folds it (folded) and
- * moves it. live (작동): the chat's own element shown, its buttons Risu's, in place of a copy. Rules stored before
- * these read as 0 and off.
+ * it (a status panel a bot sends in a message of its own). fold (a sticker's): a title bar over it, which folds it
+ * (folded) and moves it. Rules stored before these read as 0 and off; one stored as a sticker with live on (the first
+ * build of 작동) reads as 작동.
  */
 export type ElementFrom = 0 | 1 | 2;
-export interface ElementRule { role: 'sticker' | 'choice'; x: number; y: number; scale: number; hidden: boolean; always: boolean; from: ElementFrom; fold: boolean; folded: boolean; live: boolean }
+export type ElementRole = 'sticker' | 'live' | 'choice';
+export interface ElementRule { role: ElementRole; x: number; y: number; scale: number; hidden: boolean; always: boolean; from: ElementFrom; fold: boolean; folded: boolean }
 export type ElementRules = Record<string, ElementRule>;
 let cache: Record<string, ElementRules> | undefined;
 
@@ -25,11 +28,12 @@ async function load(): Promise<Record<string, ElementRules>> {
   return cache;
 }
 const num = (v: unknown, fallback: number, lo: number, hi: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback; };
-function clean(rule: Partial<ElementRule> | undefined): ElementRule | null {
-  if (!rule || (rule.role !== 'sticker' && rule.role !== 'choice')) return null;
+function clean(rule: (Partial<ElementRule> & { live?: unknown }) | undefined): ElementRule | null {
+  const role = rule?.role === 'sticker' && rule.live === true ? 'live' : rule?.role;
+  if (!rule || (role !== 'sticker' && role !== 'live' && role !== 'choice')) return null;
   return {
-    role: rule.role, x: num(rule.x, 4, 0, 96), y: num(rule.y, 12, 0, 96), scale: num(rule.scale, 1, 0.4, 1.5), hidden: rule.hidden === true, always: rule.always === true,
-    from: rule.from === 1 || rule.from === 2 ? rule.from : 0, fold: rule.fold === true, folded: rule.folded === true, live: rule.live === true,
+    role, x: num(rule.x, 4, 0, 96), y: num(rule.y, 12, 0, 96), scale: num(rule.scale, 1, 0.4, 1.5), hidden: rule.hidden === true, always: rule.always === true,
+    from: rule.from === 1 || rule.from === 2 ? rule.from : 0, fold: rule.fold === true, folded: rule.folded === true,
   };
 }
 /** The bot's registered kinds, by signature; a stored row that is not a rule is left out. */

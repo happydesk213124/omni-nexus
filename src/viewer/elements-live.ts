@@ -1,8 +1,9 @@
 /**
- * 요소's 작동: the chat's own element shown where the reader put it, its buttons Risu's. Risu takes a button's click
- * on the message itself (Chat.svelte: `.risu-chat`'s onclickcapture finds `[risu-trigger],[risu-btn]`), so the
- * element must stay in its message: it is lifted in place by one style sheet (position:fixed where its window is),
- * and seen through a hole cut in the viewer (clip-path), the viewer standing over the chat as it always does.
+ * 요소's 작동: the chat's own element opened in the middle of the stage, its buttons Risu's. Risu takes a button's
+ * click on the message itself (Chat.svelte: `.risu-chat`'s onclickcapture finds `[risu-trigger],[risu-btn]`), so the
+ * element must stay in its message: it is lifted in place by one style sheet (position:fixed, centred on the stage's
+ * middle by its own size, so its height need not be read first), and seen through a hole cut in the viewer
+ * (clip-path), the viewer standing over the chat as it always does.
  *
  * Why a hole and not a z-index over the viewer: whatever in Risu's page around the chat makes a stacking context
  * (a fixed or a positioned and z-indexed box, an opacity) would keep the element under the viewer, and those cannot
@@ -20,13 +21,13 @@ export interface LiveEntry {
   selector: string;
   /** One selector per window (a kind the message holds more than once: each its own, by its place among siblings). */
   targets: string[];
-  /** The first window's place on the screen (the rest step down and right from it), its width and its tallest. */
-  left: number;
-  top: number;
+  /** Where the first window's middle is on the screen (the rest step down and right from it), its width and its tallest. */
+  cx: number;
+  cy: number;
   width: number;
   maxHeight: number;
   scale: number;
-  /** Where each window was read to be (the holes), null before it is read. */
+  /** Where each window is (the holes): read where it went, or before that where it will stand; null, none. */
   rects: Array<Box | null>;
 }
 
@@ -53,16 +54,21 @@ export function liveCss(entries: readonly LiveEntry[], frame: Box): string {
     const message = `.risu-chat[data-chat-index="${e.index}"]`;
     for (const s of [`.default-chat-screen :has(${message})`, message, `${message} :has(${e.selector})`]) { around.add(s); within.add(s); }
     e.targets.forEach((target, k) => {
-      const left = e.left + k * LIVE_STEP, top = e.top + k * LIVE_STEP;
+      const left = e.cx + k * LIVE_STEP, top = e.cy + k * LIVE_STEP;
       out.push(`${target}{position:fixed!important;left:${round(left)}px!important;top:${round(top)}px!important;right:auto!important;bottom:auto!important;`
-        + `width:${round(e.width)}px!important;max-width:none!important;max-height:${round(e.maxHeight)}px!important;overflow:auto!important;margin:0!important;`
-        + `box-sizing:border-box!important;z-index:2147483000!important;transform:scale(${e.scale})!important;transform-origin:0 0!important;visibility:visible!important;pointer-events:auto!important}`);
+        // A scroll inside it stays its own: at its end it does not go on into the chat behind.
+        + `width:${round(e.width)}px!important;max-width:none!important;max-height:${round(e.maxHeight)}px!important;overflow:auto!important;overscroll-behavior:contain!important;margin:0!important;`
+        + `box-sizing:border-box!important;z-index:2147483000!important;transform:translate(-50%,-50%) scale(${e.scale})!important;transform-origin:50% 50%!important;`
+        + 'visibility:visible!important;pointer-events:auto!important}');
       const r = e.rects[k];
       if (r && r.width > 0 && r.height > 0) {
         const x = round(r.left - frame.left), y = round(r.top - frame.top), w = round(r.width), h = round(r.height);
         holes.push(`M${x} ${y}h${w}v${h}h${-w}Z`);
       }
     });
+    // An element with no background of its own would show the chat behind it through the hole: Risu's own colour,
+    // under any the bot gives it (:where weighs nothing, so the bot's rule wins).
+    out.push(`:where(${e.targets.join(',')}){background-color:var(--risu-theme-bgcolor,#282a36)}`);
   }
   // Inside the chat the lifted element stands over its neighbours: no box on its way up keeps it among them.
   out.unshift(`:is(${[...within].join(',')}){z-index:auto!important;isolation:auto!important}`);

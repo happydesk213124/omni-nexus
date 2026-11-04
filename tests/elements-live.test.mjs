@@ -6,7 +6,7 @@ import { LIVE_STEP, liveCss, liveTargets } from '../.test-build/elements-live.mj
 const frame = { left: 10, top: 20, width: 300, height: 500 };
 const entry = (over = {}) => ({
   index: 6, selector: '.x-risu-status', targets: liveTargets(6, '.x-risu-status', 2),
-  left: 30, top: 60, width: 180, maxHeight: 300, scale: 1,
+  cx: 160, cy: 270, width: 180, maxHeight: 300, scale: 1,
   rects: [{ left: 30, top: 60, width: 180, height: 60 }, null], ...over,
 });
 
@@ -24,12 +24,13 @@ test('elements-live: nothing lifted writes nothing', () => {
   assert.equal(liveCss([], frame), '');
 });
 
-test('elements-live: each window where it goes, the next a step on; a hole only where a window was read, in the frame\'s own terms', () => {
+test('elements-live: each window centred where it goes by its own size, the next a step on; a hole only where a window is known, in the frame\'s own terms', () => {
   const css = liveCss([entry()], frame);
   const [first, second] = liveTargets(6, '.x-risu-status', 2);
-  assert.match(css, new RegExp(`${escape(first)}\\{position:fixed!important;left:30px!important;top:60px!important;`));
-  assert.match(css, new RegExp(`${escape(second)}\\{position:fixed!important;left:${30 + LIVE_STEP}px!important;top:${60 + LIVE_STEP}px!important;`));
+  assert.match(css, new RegExp(`${escape(first)}\\{position:fixed!important;left:160px!important;top:270px!important;`));
+  assert.match(css, new RegExp(`${escape(second)}\\{position:fixed!important;left:${160 + LIVE_STEP}px!important;top:${270 + LIVE_STEP}px!important;`));
   assert.match(css, /width:180px!important;max-width:none!important;max-height:300px!important;overflow:auto!important/);
+  assert.equal(css.split('transform:translate(-50%,-50%) scale(1)!important;transform-origin:50% 50%!important').length - 1, 2);
   // The frame, then the one window read (at 30,60 on the screen: 20,40 in the frame); the unread one cuts no hole.
   assert.ok(css.includes('[x-omni-vn]{clip-path:path(evenodd,"M0 0H300V500H0ZM20 40h180v60h-180Z")!important}'), css);
   assert.equal(css.split('h180v60h-180Z').length - 1, 1);
@@ -46,10 +47,16 @@ test('elements-live: what keeps a fixed box in is undone up to the page; z-index
   assert.ok(stack.includes('.risu-chat[data-chat-index="6"] :has(.x-risu-status)'), stack);
 });
 
-test('elements-live: no window read yet, the viewer stays whole; its scale goes with each window', () => {
+test('elements-live: no window known yet, the viewer stays whole; its scale goes with each window', () => {
   const css = liveCss([entry({ rects: [null, null], scale: 0.8 })], frame);
   assert.doesNotMatch(css, /clip-path:path/);
-  assert.equal(css.split('transform:scale(0.8)!important').length - 1, 2);
+  assert.equal(css.split('transform:translate(-50%,-50%) scale(0.8)!important').length - 1, 2);
+});
+
+test('elements-live: an element with no background of its own gets Risu\'s, at no weight (any rule of the bot\'s wins)', () => {
+  const css = liveCss([entry()], frame);
+  const [first, second] = liveTargets(6, '.x-risu-status', 2);
+  assert.ok(css.includes(`:where(${first},${second}){background-color:var(--risu-theme-bgcolor,#282a36)}`), css);
 });
 
 function escape(text) { return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
