@@ -184,3 +184,78 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+// 작동: the chat's own panel, lifted in its message and seen through a hole in the viewer, so that its button is
+// Risu's (Risu takes a button's click on the message: here a capture listener stands for it, and draws the message
+// anew with the result, as Risu does). The chat screen here makes a stacking context of its own (fixed, z-index 30):
+// a window over the viewer by z-index could never be, a hole can.
+test('요소 작동: the chat\'s own panel through a hole in the viewer, its button Risu\'s; a panel over the stage, 편집 and an old reply bring it back as it was', async () => {
+  const oldPanel = '<p>전날 밤은 조용했다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#353">HP 9</div>';
+  const nowPanel = replyHtml.replace('HP 3 <span>MP 2</span>', 'HP 3 <button risu-btn="hit" style="width:70px;height:32px">맞기</button>');
+  const { browser, page, errors, open, press, tapChip } = await openViewerPage({ messages: MESSAGES, html: i => i === 0 ? oldPanel : i === 6 ? nowPanel : `<p>${MESSAGES[i].data}</p>` });
+  try {
+    await page.evaluate(() => {
+      document.addEventListener('click', e => {
+        const chat = e.target.closest?.('.risu-chat'), button = e.target.closest?.('[risu-btn]');
+        if (!chat || !button) return;
+        window.risuClicks = (window.risuClicks || []).concat(button.getAttribute('risu-btn'));
+        const text = chat.querySelector('.chattext');
+        setTimeout(() => { text.innerHTML = text.innerHTML.replace('HP 3', 'HP 2'); }, 60);
+      }, true);
+    });
+    const panelNow = () => document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status');
+    const lifted = () => page.evaluate(src => getComputedStyle(new Function(`return (${src})()`)()).position === 'fixed', panelNow.toString());
+    const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
+    await open();
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
+    await page.waitForTimeout(400);
+    await tapChip('status', '스티커');
+    await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-el] i[data-on]'));
+    await page.waitForTimeout(400);
+    await tapChip('status', '작동');
+    await page.waitForTimeout(400);
+    await press('eledit');
+    // Lifted where its window is, and the viewer has a hole there: the point over it is the chat's element.
+    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    assert.equal(await lifted(), true);
+    // One sheet: the stage's restyle and the relay write together, and each must not make its own.
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style="live"]').length), 1, 'one live sheet');
+    const seen = await page.evaluate(() => {
+      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), at = document.elementFromPoint(r.left + 8, r.top + 8);
+      return { inChat: !!at?.closest('.risu-chat[data-chat-index="6"] .x-risu-status'), inViewer: !!at?.closest('[x-omni-vn]'), copies: document.querySelectorAll('[x-omni-vn] [x-vn-st-body]').length };
+    });
+    assert.deepEqual(seen, { inChat: true, inViewer: false, copies: 0 }, 'the chat\'s own panel, no copy');
+    // Its button is Risu's, and the story stays; Risu draws the message anew, and the new panel is lifted by itself.
+    const before = await text();
+    const button = await page.locator('.risu-chat[data-chat-index="6"] [risu-btn="hit"]').boundingBox();
+    await page.mouse.click(button.x + button.width / 2, button.y + button.height / 2);
+    await page.waitForFunction(() => (window.risuClicks || []).includes('hit'));
+    await page.waitForFunction(() => /HP 2/.test(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')?.textContent || ''));
+    assert.equal(await lifted(), true, 'drawn anew, still lifted');
+    assert.equal(await text(), before, 'the tap moved no story on');
+    // 기록 over the stage: no hole through it, the panel back in its message; closed, the window is back.
+    await press('log');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    assert.doesNotMatch(await page.evaluate(() => document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''), /clip-path/);
+    await press('log');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position === 'fixed');
+    // 편집: a copy, to be seen and placed; the chat's own in its place.
+    await press('eledit');
+    await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body] .x-risu-status') && getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    await press('eledit');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position === 'fixed');
+    // An old reply, folded away behind the viewer: its panel comes as a copy.
+    for (let i = 0; i < 10 && !/전날 밤은 조용했다/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
+    await page.waitForFunction(() => /HP 9/.test(document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]')?.textContent || ''));
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="0"] .x-risu-status')).position), 'static');
+    // Closed: the chat as it was, none of the viewer's sheets left.
+    await press('close');
+    await page.waitForFunction(() => !document.querySelector('[x-omni-vn]'));
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position), 'static');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style]').length), 0);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
