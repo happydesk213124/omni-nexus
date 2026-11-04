@@ -1,8 +1,12 @@
 import { safeArray, releaseHost, type HostPoint } from './host-utils';
 import { updateTtsSettings } from '../storage/tts-store';
 
-/** headerOffset: height of a bar shown above the header; the stored anchor is the header's top. */
-export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()=>boolean,refresh:()=>Promise<void>,headerOffset:()=>number=()=>0) {
+/**
+ * headerOffset: height of a bar shown above the header; the stored anchor is the header's top. near: whether a press
+ * may be on the window at all (from the box it keeps): one that is not asks Risu nothing, where every press on the
+ * page read the header and its box before.
+ */
+export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()=>boolean,refresh:()=>Promise<void>,headerOffset:()=>number=()=>0,near:(x:number,y:number)=>boolean=()=>true) {
   let held=false,start:HostPoint|undefined,latest:HostPoint|undefined;
   let drag:{rect:DOMRect;w:number;h:number;left:number;top:number;moved:boolean}|undefined;
   let starting:Promise<void>|undefined,ending:Promise<void>|undefined,dirty=false,suppress=0;
@@ -44,7 +48,7 @@ export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()
   })().finally(()=>{ending=undefined;});
   const listen=async(type:string,fn:(e:HostPoint)=>void)=>listeners.push({type,id:await doc.addEventListener(type,fn,{capture:true,passive:true})});
   await listen('pointerdown',e=>{
-    if(!allowed()||e.button!==0||starting||drag||ending)return;
+    if(!allowed()||e.button!==0||starting||drag||ending||!near(e.clientX,e.clientY))return;
     held=true;start=e;latest=e;
     starting=(async()=>{
       const header=await viewer.querySelector('[data-tts-header]');

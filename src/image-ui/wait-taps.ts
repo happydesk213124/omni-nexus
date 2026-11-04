@@ -4,7 +4,9 @@ import { generateAllInlineWaits, generateInlineWait, type BulkWaitProgress } fro
 import { currentTtsContext } from '../services/tts-context';
 import { getConfig } from '../services/context';
 import { inlineWaitCount, subscribeInlineWaits } from '../storage/inline-wait-store';
-import { hitHost, releaseHost, safeArray, type HostPoint } from '../tts-ui/host-utils';
+import { chatCovered } from '../services/viewer-presence';
+import { nearestRow } from '../viewer/safe-dom';
+import { chatIndexOf, hitHost, itemsOf, openingTag, releaseHost, type HostPoint } from '../tts-ui/host-utils';
 
 /**
  * Pink waiting slots (streaming tags): a double tap generates that slot. Chat clicks are
@@ -15,6 +17,8 @@ import { hitHost, releaseHost, safeArray, type HostPoint } from '../tts-ui/host-
 let installed = false;
 /** Two taps on the same slot within this long count as one double tap. */
 export const DOUBLE_TAP_MS = 450;
+/** And this near each other: a finger's second tap lands a little off its first. */
+export const DOUBLE_TAP_PX = 28;
 /** A press held this long on a pink slot makes every pink slot of its message. */
 export const LONG_PRESS_MS = 1500;
 /**
@@ -65,28 +69,28 @@ export function installWaitTaps(): void {
   let doc: SafeDocument | null = null, busy = false, syncing: Promise<void> | null = null;
   let listeners: Array<[string, string]> = [];
 
+  // Only for a second tap or a held press (see tap): the message under the point is found first, by halving (a few
+  // calls, however long the chat; Risu draws its newest message first in the page), then only its slots are asked.
+  // Every slot of the chat was measured before, one after another: a hundred calls with a hundred pictures left
+  // waiting, on the second tap of every picture opened full screen. Only tags are read, through shallow copies: a
+  // spinner holds its preview and a message every picture in it as base64, megabytes for an id and a number.
   const slotAt = async (event: HostPoint, selector = '[data-inray-wait],[data-inray-spinner]'): Promise<{ id: string; index: number } | null> => {
-    // A spinner whose job ended without it (kept shot) is tapped like a pink slot.
-    const nodes = await safeArray(await doc!.querySelectorAll(selector));
-    const owned: unknown[] = [...nodes];
+    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null;
+    const message = await nearestRow(doc!, '.risu-chat', event.clientY, 'auto');
+    if (!message) return null;
+    const owned: unknown[] = [message];
     try {
+      const box = await message.getBoundingClientRect();
+      if (event.clientY < box.top || event.clientY > box.bottom) return null;
+      // A spinner whose job ended without it (kept shot) is tapped like a pink slot.
+      const nodes = await itemsOf(await message.querySelectorAll(selector));
+      owned.push(...nodes);
       let hit: SafeElement | undefined;
       for (const node of nodes) if (await hitHost(node, event)) { hit = node; break; }
       if (!hit) return null;
-      const id = /\bdata-inray-(?:wait|spinner)="([a-zA-Z0-9_-]{1,64})"/.exec(String(await hit.getOuterHTML()).split('>')[0] || '')?.[1];
-      if (!id) return null;
-      // The slot's message: only the matching wrapper's opening tag is read.
-      let parent = await hit.getParent();
-      for (let depth = 0; parent && depth < 16; depth++) {
-        owned.push(parent);
-        if (await parent.matches('.risu-chat')) {
-          const html = await parent.getOuterHTML();
-          const index = Number(/\bdata-chat-index="(\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? NaN);
-          return Number.isInteger(index) ? { id, index } : null;
-        }
-        parent = await parent.getParent();
-      }
-      return null;
+      const id = /\bdata-inray-(?:wait|spinner)="([a-zA-Z0-9_-]{1,64})"/.exec(await openingTag(hit))?.[1];
+      const index = chatIndexOf(await openingTag(message));
+      return id && Number.isInteger(index) && index >= 0 ? { id, index } : null;
     } finally { for (const item of owned) await releaseHost(item); }
   };
 
@@ -114,15 +118,17 @@ export function installWaitTaps(): void {
     await releaseHost(node);
   });
 
-  // A double tap on one slot makes it; a single tap (scrolling, a stray touch) never spends a request.
-  let last = { key: '', at: 0 }, ignoreClickUntil = 0;
+  // A double tap on one slot makes it; a single tap (scrolling, a stray touch) never spends a request, nor a call:
+  // only a tap that follows another at its place within DOUBLE_TAP_MS looks for a slot under it. Every tap looked
+  // before, each pink slot of the chat measured in turn, a double tap that opens a picture full screen too.
+  let last = { x: NaN, y: NaN, at: 0 }, ignoreClickUntil = 0;
   const tap = async (event: HostPoint) => {
     if (busy || Date.now() < ignoreClickUntil) return;
+    const now = Date.now();
+    if (!(now - last.at <= DOUBLE_TAP_MS && Math.hypot(event.clientX - last.x, event.clientY - last.y) <= DOUBLE_TAP_PX)) { last = { x: event.clientX, y: event.clientY, at: now }; return; }
+    last = { x: NaN, y: NaN, at: 0 };
     const slot = await slotAt(event);
     if (!slot) return;
-    const key = `${slot.index}:${slot.id}`, now = Date.now();
-    if (last.key !== key || now - last.at > DOUBLE_TAP_MS) { last = { key, at: now }; return; }
-    last = { key: '', at: 0 };
     busy = true;
     try {
       const target = await messageTarget(slot.index);
@@ -183,8 +189,9 @@ export function installWaitTaps(): void {
       doc ||= await host.getRootDocument();
       if (!doc) return;
       const report = (name: string) => (error: unknown) => dbg(name, { message: String(error) }, 'warn');
-      // 옴니 뷰어 lies over the chat: its taps are not taps on a pink slot beneath.
-      const underViewer = (event: HostPoint) => { const covers = Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__'); return typeof covers === 'function' && !!covers(event.clientX, event.clientY); };
+      // 옴니 뷰어 lies over the chat, and so do the TTS window, the floating viewer and the 플로팅 태그: their taps are
+      // not taps on a pink slot beneath.
+      const underViewer = (event: HostPoint) => { const covers = Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__'); return (typeof covers === 'function' && !!covers(event.clientX, event.clientY)) || chatCovered(event.clientX, event.clientY); };
       await listen('click', event => { if (!underViewer(event)) void tap(event).catch(report('wait.tap')); });
       await listen('pointerdown', event => { if (!underViewer(event)) down(event); });
       await listen('pointerup', lift);

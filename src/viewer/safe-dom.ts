@@ -61,13 +61,17 @@ export async function rowAt(container: SafeElement, selector: string, y: number)
 
 /**
  * The row at `y`, or the nearest when `y` falls between rows, among rows drawn top to
- * bottom or bottom to top (`upward`: a column-reverse list, as Risu's chat, newest first).
- * A binary search, a few calls for hundreds. The node is the caller's to release; null
- * when there are no rows.
+ * bottom or bottom to top (`upward`: a column-reverse list, as Risu's chat, newest first;
+ * 'auto': told from the first row and the last). A binary search, a few calls for
+ * hundreds. The node is the caller's to release; null when there are no rows.
  */
-export async function nearestRow(container: SafeElement | SafeDocument, selector: string, y: number, upward = false): Promise<SafeElement | null> {
+export async function nearestRow(container: SafeElement | SafeDocument, selector: string, y: number, upward: boolean | 'auto' = false): Promise<SafeElement | null> {
   const list = await container.querySelectorAll(selector) as SafeClassArray<SafeElement> | SafeElement[];
   const n = Array.isArray(list) ? list.length : await list.length();
+  if (upward === 'auto') {
+    const ends = await Promise.all([0, n - 1].map(async i => { const node = Array.isArray(list) ? list[i] : await list.at(i); try { return node ? await node.getBoundingClientRect() : null; } finally { if (!Array.isArray(list)) await release(node); } }));
+    upward = !!ends[0] && !!ends[1] && ends[0].top > ends[1].top;
+  }
   let lo = 0, hi = n - 1, best: SafeElement | null = null, gapOfBest = Infinity;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1, node = Array.isArray(list) ? list[mid] : await list.at(mid);
@@ -79,5 +83,7 @@ export async function nearestRow(container: SafeElement | SafeDocument, selector
     // Above this row: earlier in a list drawn downward, later in one drawn upward.
     if ((y < r.top) !== upward) hi = mid - 1; else lo = mid + 1;
   }
+  // The list itself goes back too (Risu holds what it hands out until then); the row kept is its own.
+  if (!Array.isArray(list)) await release(list);
   return best;
 }

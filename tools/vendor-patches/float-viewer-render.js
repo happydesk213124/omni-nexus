@@ -75,6 +75,9 @@ async function nxFloatRender() {
     await nxFloatRoot.setAttribute('x-nx-float-overlay',overlay?'true':'false');
     nxFloatOverlayCache.set(nxFloatRoot,overlay);
   }
+  // A drag that began while this render waited owns the frame now: writing it would wipe the drag's transform, and
+  // the viewer would jump back for a moment (the drop renders it again).
+  if (nxFloatDrag) return;
   const changed = nxFloatStyleCache.get(nxFloatRoot) !== css;
   await nxFloatStyle(nxFloatRoot,css);
   await nxFloatPaintChrome();

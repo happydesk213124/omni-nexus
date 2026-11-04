@@ -8,7 +8,7 @@ import type { TtsSegment } from '../core/tts-types';
 import { omniSound } from '../services/sound-runtime';
 import { soundData, updateSoundSettings, subscribeSound } from '../storage/sound-store';
 import { currentTtsContext } from '../services/tts-context';
-import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
+import { addChatCover, onViewerUncovered, viewerCovering } from '../services/viewer-presence';
 import { focusSoundPanel, setSoundPage } from '../sound-ui/page';
 import { parseTtsMessage } from '../domain/tts/segment';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
@@ -39,6 +39,15 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   // neither its change event nor its value, so it is a list of rows like ☷.
   let bgmPicking = false, bgmGuessing = false;
   const act = (f:()=>unknown) => { try { Promise.resolve(f()).catch(error=>omniTts.report(error)); } catch(error) { omniTts.report(error); } };
+  // Where the window is, read whenever its frame or its content was written (and when the chat screen changes size):
+  // a press anywhere else is told off it with no call, and the chat's own taps leave it alone (its cover). Every tap
+  // and press on the page asked Risu for its box before, three or four times over.
+  let frameRect:{left:number;top:number;right:number;bottom:number}|null=null;
+  const measureFrame=async()=>{const r=await viewer.getBoundingClientRect().catch(()=>null);frameRect=r&&r.width>0&&r.height>0?{left:r.left,top:r.top,right:r.right,bottom:r.bottom}:null;};
+  const onFrame=(x:number,y:number,slack=0)=>!!frameRect&&Number.isFinite(x)&&Number.isFinite(y)&&x>=frameRect.left-slack&&x<=frameRect.right+slack&&y>=frameRect.top-slack&&y<=frameRect.bottom+slack;
+  // A press this near is asked about for real: the box kept may be a step behind.
+  const NEAR=24;
+  const removeCover=addChatCover((x,y)=>!drag?.busy&&onFrame(x,y));
   const control = (id:string,label:string,title:string,active=false) => `<button data-tts-control="${id}" title="${title}" aria-label="${title}" style="backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none;text-shadow:none;transition:none;color:#eee;background:${active?'#7132f599':'#11182780'};border:1px solid #ffffff18;border-radius:8px;min-width:36px;min-height:36px;padding:5px;cursor:pointer">${label}</button>`;
   const paint=async()=>{
     if(disposed)return;
@@ -58,14 +67,15 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       const placement=s.viewerAnchor?`right:min(${Math.max(8,s.viewerAnchor.right)}px,calc(100vw - ${s.minimized?46:310}px));top:min(${Math.max(8,s.viewerAnchor.top-bgmLift)}px,calc(100dvh - 64px));max-height:calc(100dvh - min(${Math.max(8,s.viewerAnchor.top-bgmLift)}px,calc(100dvh - 64px)) - 8px)`:'right:16px;bottom:16px;max-height:80vh';
       const visible=s.enabled&&s.viewer&&allowed();
       const frame=`position:fixed;${placement};z-index:2147483100;will-change:transform;contain:layout style;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.82);color:#eee;text-shadow:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none;user-select:none;-webkit-user-select:none;font:12px/1.5 sans-serif;display:${visible?'block':'none'}`;
-      if(frame!==frameSignature){frameSignature=frame;await viewer.setStyleAttribute(frame);}
+      let framed=false;
+      if(frame!==frameSignature){frameSignature=frame;await viewer.setStyleAttribute(frame);framed=true;}
       // Out of sight nothing inside is drawn: it is drawn afresh, once, when it shows again.
-      if(!visible){signature='';stateSignature='';return;}
+      if(!visible){signature='';stateSignature='';frameRect=null;return;}
       // Playback state is painted in place below: re-rendering would reset the list scroll.
       const picking=bgmPicking&&bgmOpen()&&!s.minimized;
       // 캐시 작업 lives under 배속·볼륨 now: a panel left open on it opens there.
       const shownPanel=s.panel==='cache'?'audio':s.panel;
-      const next=JSON.stringify([bgmOpen()&&!s.minimized?bgmState():null,picking?soundData().bgm.map(item=>[item.key,item.name,item.folder]):null,s.minimized,s.panel,s.narration,s.continuous,s.rate,s.volume,s.rates,omniTts.list.map(r=>[r.messageId,r.segment.id,r.segment.text]),shownPanel==='audio'?[q,omniTts.cache.count,omniTts.cache.bytes]:null]); if(next===signature){await paintState();return;} signature=next;stateSignature='';currentLine=-1;
+      const next=JSON.stringify([bgmOpen()&&!s.minimized?bgmState():null,picking?soundData().bgm.map(item=>[item.key,item.name,item.folder]):null,s.minimized,s.panel,s.narration,s.continuous,s.rate,s.volume,s.rates,omniTts.list.map(r=>[r.messageId,r.segment.id,r.segment.text]),shownPanel==='audio'?[q,omniTts.cache.count,omniTts.cache.bytes]:null]); if(next===signature){if(framed||!frameRect)await measureFrame();await paintState();return;} signature=next;stateSignature='';currentLine=-1;
       for(const action of actions.values())await releaseHost(action.node);actions.clear();
       await releaseHost(listViewport); listViewport = undefined;
       const header=`<div data-tts-header="1" style="display:flex;gap:3px;align-items:center;cursor:grab;touch-action:none;user-select:none;padding:${s.minimized?'0':'4px'}">${s.minimized?'':`<span data-tts-state="1" style="width:16px;text-align:center">${stateIcon(state)}</span>${control('narration','▤','나레이션 읽기',s.narration)}${control('audio',`${s.rate}×`,'배속·볼륨',shownPanel==='audio'&&!picking)}${control('people','👨‍👩‍👧‍👦','이 메시지의 TTS 캐릭터')}${control('list','☷','현재 메시지 음성 목록',s.panel==='list'&&!picking)}<span style="flex:1;display:flex;justify-content:center">${control('bgm','♪','BGM',bgmOpen())}</span>${control('settings','⚙','TTS 설정')}`}${control('minimize',s.minimized?'+':'−',s.minimized?'펼치기':'최소화')}</div>`;
@@ -79,6 +89,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       // Panels open below them, so toggling one never moves the player.
       const content=s.minimized?'':`<div style="padding:4px 9px 9px"><div data-tts-current="1" style="height:22px;line-height:22px;overflow:hidden">${current?lineHtml(current.segment):''}</div><div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:6px">${control('continuous','↪','다음 구간 이어 읽기',s.continuous)}${control('locate','⌖','목록에서 지금 줄 찾기')}${control('previous','|◀','이전')}${control('play','▶','재생·일시정지')}${control('next','▶|','다음')}${control('regenerate','↻','이 줄 음성 다시 만들기')}${control('stop','■','정지')}</div><div style="display:flex;align-items:center;gap:6px;margin-top:7px"><small data-tts-time="1" style="min-width:58px">0:00</small><button data-tts-control="seek" aria-label="재생 위치" style="flex:1;border:1px solid #ffffff24;background:#283043;height:12px;border-radius:6px"></button></div>${panel?`<div style="border-top:1px solid #ffffff24;margin-top:8px;padding-top:7px;overflow:hidden">${panel}</div>`:''}</div>`;
       await viewer.setInnerHTML((bgmLift?bgmBar():'')+header+content);
+      await measureFrame();
       listViewport = await viewer.querySelector('[data-tts-list-scroll]') || undefined;
       const bind=async(id:string,callback:()=>unknown)=>{const node=await viewer.querySelector(`[data-tts-control="${id}"]`);if(node)actions.set(id,{node,run:callback});};
       await bind('minimize',async()=>{const rect=await viewer.getBoundingClientRect(),width=await doc.clientWidth();await updateTtsSettings({minimized:!ttsData().settings.minimized,viewerAnchor:ttsData().settings.viewerAnchor||{right:Math.max(8,width-rect.right),top:rect.top+(bgmOpen()?BGM_H:0)}});});
@@ -217,8 +228,10 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   const unsubscribeRuntime=omniTts.subscribe(render),unsubscribeSettings=subscribeTts(render),unsubscribeSound=subscribeSound(render);
   const soundChange=omniSound.player.onChange;omniSound.player.onChange=()=>{soundChange();render();};
   await paint();
+  // Far from the box kept, a press is no press on the window; near it (or with no box yet) it is asked for real.
+  const away=(e:HostPoint)=>!!frameRect&&!onFrame(e.clientX,e.clientY,NEAR);
   const hit=async(e:HostPoint)=>{
-    if(!allowed()||!ttsData().settings.enabled||!ttsData().settings.viewer||drag?.suppressClick||!await hitHost(viewer,e))return;
+    if(!allowed()||!ttsData().settings.enabled||!ttsData().settings.viewer||drag?.suppressClick||away(e)||!await hitHost(viewer,e))return;
     const insideList = listViewport ? await hitHost(listViewport,e) : false;
     const rows=[...actions.entries()],hits=await Promise.all(rows.map(([id,a])=>id.startsWith('line-')&&!insideList?false:hitHost(a.node,e)));
     return rows[hits.indexOf(true)];
@@ -228,7 +241,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
     const epoch=++clickEpoch;act(async()=>{const row=await hit(e);if(epoch===clickEpoch&&row&&!drag?.busy)await row[1].run();});
   })});
   events.push({type:'pointerdown',id:await doc.addEventListener('pointerdown',(e:HostPoint)=>act(async()=>{
-    if(!allowed()||drag?.busy||!await hitHost(viewer,e))return;
+    if(!allowed()||drag?.busy||away(e)||!await hitHost(viewer,e))return;
     const sliders=(['volume','seek','bgm-seek','bgm-volume','bgm-duck'] as const).flatMap(id=>{const a=actions.get(id);return a?[[id,a] as const]:[];});
     const hits=await Promise.all(sliders.map(([,a])=>hitHost(a.node,e))),row=sliders[hits.indexOf(true)];if(!row)return;
     const rect=await row[1].node.getBoundingClientRect(),fraction=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
@@ -238,10 +251,10 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   events.push({type:'keydown',id:await doc.addEventListener('keydown',(e:{key:string})=>act(async()=>{
     const volume=actions.get('volume');if(allowed()&&volume&&['ArrowLeft','ArrowRight'].includes(e.key)&&await volume.node.matches(':focus'))await updateTtsSettings({volume:ttsData().settings.volume+(e.key==='ArrowRight'?.05:-.05)});
   }))});
-  drag=await bindTtsDrag(doc,viewer,()=>allowed()&&ttsData().settings.enabled&&ttsData().settings.viewer,paint,()=>!ttsData().settings.minimized&&bgmOpen()?BGM_H:0);
+  drag=await bindTtsDrag(doc,viewer,()=>allowed()&&ttsData().settings.enabled&&ttsData().settings.viewer,paint,()=>!ttsData().settings.minimized&&bgmOpen()?BGM_H:0,(x,y)=>!frameRect||onFrame(x,y,NEAR));
   // The chat screen is kept from check to check, so a check is one call (its size). It is looked up again only once
   // that size is gone: the screen left the page or was put back anew. A check already on its way is shared.
-  let chatScreen: SafeElement | null = null, looking: Promise<void> | null = null;
+  let chatScreen: SafeElement | null = null, looking: Promise<void> | null = null, screenSize = '';
   const lookAtChat = async () => {
     let rect = chatScreen ? await chatScreen.getBoundingClientRect().catch(() => null) : null;
     if (!rect || !(rect.width > 0 && rect.height > 0)) {
@@ -250,6 +263,9 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       rect = chatScreen ? await chatScreen.getBoundingClientRect() : null;
     }
     inChat = !!rect && rect.width > 0 && rect.height > 0;
+    // A turned phone or a keyboard moves a window placed against the screen's edges: its box is read again.
+    const size = rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : '';
+    if (size !== screenSize) { screenSize = size; if (frameRect) await measureFrame(); }
   };
   const refreshVisibility = async () => {
     await (looking ??= lookAtChat().finally(() => { looking = null; }));
@@ -273,5 +289,5 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
     notice=message.slice(0,240);noticeUntil=Date.now()+5000;clearTimeout(noticeTimer);
     noticeTimer=setTimeout(()=>{noticeUntil=0;render();},5100);render();
   };
-  return {refresh:refreshVisibility,flash,dispose:async()=>{disposed=true;await releaseHost(chatScreen);chatScreen=null;unsubscribeUncovered();clearTimeout(noticeTimer);clickEpoch++;clearInterval(interval);clearInterval(bgmTick);unsubscribeRuntime();unsubscribeSettings();unsubscribeSound();omniSound.player.onChange=soundChange;await drag?.dispose();for(const e of events)await doc.removeEventListener(e.type,e.id);for(const a of actions.values())await releaseHost(a.node);actions.clear();await releaseHost(listViewport);if(Reflect.get(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__')===refreshSignal)Reflect.deleteProperty(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__');await viewer.remove();await toast.remove();await releaseHost(viewer);await releaseHost(toast);}};
+  return {refresh:refreshVisibility,flash,dispose:async()=>{disposed=true;removeCover();frameRect=null;await releaseHost(chatScreen);chatScreen=null;unsubscribeUncovered();clearTimeout(noticeTimer);clickEpoch++;clearInterval(interval);clearInterval(bgmTick);unsubscribeRuntime();unsubscribeSettings();unsubscribeSound();omniSound.player.onChange=soundChange;await drag?.dispose();for(const e of events)await doc.removeEventListener(e.type,e.id);for(const a of actions.values())await releaseHost(a.node);actions.clear();await releaseHost(listViewport);if(Reflect.get(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__')===refreshSignal)Reflect.deleteProperty(globalThis,'__OMNI_TTS_REFRESH_VISIBILITY__');await viewer.remove();await toast.remove();await releaseHost(viewer);await releaseHost(toast);}};
 }

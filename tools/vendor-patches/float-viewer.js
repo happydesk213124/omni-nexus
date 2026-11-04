@@ -104,6 +104,10 @@ globalThis.__OMNI_SHOT_ACTION__ = async (act, cardId, who) => {
 globalThis.__OMNI_SHOT_TAGS_OPEN__ = () => !!t.cardTagUi;
 // Closed from 옴니 뷰어: left open under the viewer, it holds every chat button and the floating viewer.
 globalThis.__OMNI_INSPECT_CLOSE__ = async () => { if (t._nxHostInspectOpen && typeof t._nxInspectCloser == "function") await t._nxInspectCloser(); };
+// A tap on the floating viewer (folding it, its arrows, its picture) is the viewer's, not the chat's beneath: TTS
+// lines, pink slots and message gestures each hit-tested the chat under it, all at once. Told from the frame the
+// viewer keeps (nxFloatBounds), with no call.
+globalThis.__OMNI_CHAT_COVER__?.((x, y) => { try { return !!nxFloatRoot && !nxFloatHidden && nxFloatContains(nxFloatBounds, x, y); } catch { return false; } });
 function nxNotifyTtsVisibility() {
   const refresh = globalThis.__OMNI_TTS_REFRESH_VISIBILITY__;
   if (typeof refresh === 'function') refresh();
