@@ -11,45 +11,15 @@ globalThis.__OMNI_TRACK_JOB__=omniTrackJob;
 function omniInlineAutogen(card) { return card?.stream_inline_autogen!==false; }
 // 「새 캐릭터를 맨 앞에 쓰기」: the reply's [[inxc]] block registers its new people the
 // moment it closes, before their first line. Nothing is drawn, so it runs even when
-// 「이미지 바로 생성」 is off. Registering needs the chat, never the message: the chat is the one
-// this reply's request was read for (inline-tagging), so it goes at once with no read of the
-// chat. The message's address rides along when known (it orders the reply's blocks behind it).
-// It used to wait for that address, from a read of the whole character and chat that, coming
-// back after a long chat's stream had ended, said "not streaming": the block was dropped and
-// never sent again, and its people never registered (the shot blocks leave them to it).
-// With no chat to send it to yet it now waits for the reply's end, whose completion has one.
-async function omniInlineCastWhere(run, final) {
-  if(run.identity)return run.identity;
-  const sent=globalThis.__OMNI_INLINE_TAGS__?.requestScope?.();
-  if(sent) {
-    const current=await Promise.all([k.getCurrentCharacterIndex(),k.getCurrentChatIndex()]).catch(()=>null);
-    if(current && Number(current[0])===sent.charIndex && Number(current[1])===sent.chatIndex)return {scope:sent,id:''};
-  }
-  return final && run.target ? Promise.resolve(run.target).catch(()=>null) : null;
-}
-async function omniSendInlineCast(run, body, final) {
-  const where=await omniInlineCastWhere(run,final);
-  if(!where || t.unloading)return false;
-  const scope=where.scope;
+// 「이미지 바로 생성」 is off.
+async function omniSendInlineCast(run, body) {
+  if(!run.target)run.target=omniCaptureKeywordTarget().catch(()=>null).then(value=>{run.identity=value;run.targetResolved=true;return value;});
+  const target=await run.target;
+  if(!target || run.cancelled || t.unloading)return;
+  const scope=target.scope;
   const result=await K('/v1/inline-tags/cast',{method:'POST',body:{stream_id:run.streamId,session_id:scope.sessionId,character_id:scope.characterId,chat_id:scope.chatId,
-    char_index:scope.charIndex,chat_index:scope.chatIndex,host_message_id:where.id || '',body:String(body||'').slice(0,12000)}});
+    char_index:scope.charIndex,chat_index:scope.chatIndex,host_message_id:target.id,body:String(body||'').slice(0,12000)}});
   if(!result?.ok)throw Error(result?.error?.message || '새 캐릭터를 등록하지 못했습니다.');
-  return true;
-}
-/**
- * Tried as the block closes, again once the reply's address is known (never by reading for it), and with the
- * reply's end, once more if a try was still on its way then. Sent once; a run ended without images (a cast
- * alone) still sends it.
- */
-function omniTryInlineCast(run, final=false) {
-  if(run.castSent || run.castBusy || t.backendSettings?.card?.stream_inline_cast_first===false)return;
-  if(run.castTried && !run.identity && !final)return;
-  const cast=globalThis.__INLAY_STREAM_KW__.inlineCastBlock?.(run.text,{live:!final});
-  if(!cast)return;
-  run.castBusy=true;run.castTried=true;
-  void omniSendInlineCast(run,cast.body,final).then(sent=>{run.castSent=sent;})
-    .catch(error=>{run.castSent=true;y('warn','stream.inline.cast',String(error));})
-    .finally(()=>{run.castBusy=false;if(!run.castSent && run.outputComplete && !run.castLast){run.castLast=true;omniTryInlineCast(run,true);}});
 }
 /** The streaming reply's address, asked as it starts: the blocks it closes then start at once (see onScriptOutput). */
 function omniPrimeInlineTarget(run) {
@@ -66,7 +36,10 @@ function omniPrimeInlineTarget(run) {
 }
 function omniScanInlineRun(run, final=false) {
   const SK=globalThis.__INLAY_STREAM_KW__, card=t.backendSettings?.card;
-  omniTryInlineCast(run,final);
+  if(!run.castSent && card?.stream_inline_cast_first!==false) {
+    const cast=SK.inlineCastBlock?.(run.text,{live:!final});
+    if(cast){run.castSent=true;void omniSendInlineCast(run,cast.body).catch(error=>{y('warn','stream.inline.cast',String(error));});}
+  }
   // 「이미지 바로 생성」 off: nothing starts while streaming; completion parks every block.
   const parked=!omniInlineAutogen(card);
   if(parked && !final)return run;

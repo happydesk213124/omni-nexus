@@ -19,10 +19,6 @@ interface Names { tts: Map<string, string[]>; people: Map<string, string[] | nul
 const known = new Map<string, { at: number; names: Names; reading?: Promise<void> }>();
 let reads = 0;
 const latest = new Map<string, number>();
-// Told when a read came back with names other than those held: lines already split may split otherwise now.
-const listeners = new Set<() => void>();
-export function onCostumeNames(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
-const signature = (names: Names) => JSON.stringify([[...names.tts].sort(), [...names.people].sort()]);
 
 async function readNames(botId: string, rosterScope: string): Promise<Names> {
   const people = [...await listCharacters(GLOBAL_SCOPE).catch(() => []), ...await listCharacters(unifiedSessionIdForCharacter(botId)).catch(() => [])];
@@ -45,13 +41,9 @@ export function refreshCostumeNames(botId: string, rosterScope: string, now = fa
   if (!botId) return Promise.resolve();
   if (held?.reading && !now) return held.reading;
   if (held && !now && Date.now() - held.at < FRESH_MS) return Promise.resolve();
-  const names = held?.names ?? { tts: new Map(), people: new Map() }, mine = ++reads, before = signature(names);
+  const names = held?.names ?? { tts: new Map(), people: new Map() }, mine = ++reads;
   latest.set(botId, mine);
-  const keep = (read: Names) => {
-    if (latest.get(botId) !== mine) return;
-    known.set(botId, { at: Date.now(), names: read });
-    if (signature(read) !== before) for (const fn of listeners) { try { fn(); } catch { /* a listener's own trouble */ } }
-  };
+  const keep = (read: Names) => { if (latest.get(botId) === mine) known.set(botId, { at: Date.now(), names: read }); };
   // A failed read keeps the names it had and is not asked again until they would be stale.
   const reading = readNames(botId, rosterScope).then(keep, () => keep(names));
   known.set(botId, { at: held?.at ?? 0, names, reading });

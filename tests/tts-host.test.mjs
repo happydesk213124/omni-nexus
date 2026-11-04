@@ -19,8 +19,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
       class Safe {
         constructor(node){this.node=node;this.listeners=new Map();}
         async querySelector(s){const n=this.node.querySelector(s);return n?new Safe(n):null;}
-        // A scan asks which messages to go through: counted, as what a drag or a scroll hold must hold back.
-        async querySelectorAll(s){if(/risu-chat/.test(s))window.chatQueries=(window.chatQueries||0)+1;return [...this.node.querySelectorAll(s)].map(n=>new Safe(n));}
+        async querySelectorAll(s){return [...this.node.querySelectorAll(s)].map(n=>new Safe(n));}
         async getParent(){return this.node.parentElement?new Safe(this.node.parentElement):null;}
         async matches(s){return this.node.nodeType===1&&this.node.matches(s);}
         async getAttribute(k){if(!k.startsWith('x-'))throw Error('Forbidden attribute read '+k);return this.node.getAttribute(k);}
@@ -303,18 +302,18 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.waitForFunction(()=>window.omniTts.list.length===4,undefined,{timeout:4000});
     // No chat scan competes with a viewer drag; the change is picked up on drop.
     await page.waitForTimeout(600);
-    await page.evaluate(()=>{window.__OMNI_VIEWER_DRAGGING__=true;window.chatQueries=0;const p=document.createElement('p');p.textContent='드래그 중 추가';document.querySelector('.default-chat-screen').append(p);});
+    await page.evaluate(()=>{window.__OMNI_VIEWER_DRAGGING__=true;window.outerReads=0;const p=document.createElement('p');p.textContent='드래그 중 추가';document.querySelector('.default-chat-screen').append(p);});
     await page.waitForTimeout(700);
-    assert.equal(await page.evaluate(()=>window.chatQueries),0,'chat changes during a drag wait');
+    assert.equal(await page.evaluate(()=>window.outerReads),0,'chat changes during a drag wait');
     await page.evaluate(()=>{window.__OMNI_VIEWER_DRAGGING__=false;});
-    await page.waitForFunction(()=>window.chatQueries>0,undefined,{timeout:3000});
+    await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
     // Nor with a scroll hold putting the view back; it is read once the hold ends.
     await page.waitForTimeout(600);
-    await page.evaluate(()=>{window.scrollHeld=true;window.__OMNI_SCROLL_BUSY__=()=>window.scrollHeld;window.chatQueries=0;const p=document.createElement('p');p.textContent='스크롤 붙잡는 중 추가';document.querySelector('.default-chat-screen').append(p);});
+    await page.evaluate(()=>{window.scrollHeld=true;window.__OMNI_SCROLL_BUSY__=()=>window.scrollHeld;window.outerReads=0;const p=document.createElement('p');p.textContent='스크롤 붙잡는 중 추가';document.querySelector('.default-chat-screen').append(p);});
     await page.waitForTimeout(700);
-    assert.equal(await page.evaluate(()=>window.chatQueries),0,'chat changes during a scroll hold wait');
+    assert.equal(await page.evaluate(()=>window.outerReads),0,'chat changes during a scroll hold wait');
     await page.evaluate(()=>{window.scrollHeld=false;});
-    await page.waitForFunction(()=>window.chatQueries>0,undefined,{timeout:3000});
+    await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
     await page.evaluate(()=>{document.querySelector('.default-chat-screen').remove();});
     await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');
     await page.evaluate(()=>window.updateTtsSettings({enabled:false}));await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none',undefined,{timeout:12000});

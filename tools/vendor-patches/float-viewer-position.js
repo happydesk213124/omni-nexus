@@ -65,30 +65,6 @@ async function nxFloatWatchBubbles(rows, refs) {
   }
 }
 function nxFloatReadingGap(rect, y) { return Math.max(rect.top - y, y - rect.bottom, 0); }
-// A node's own tag, from a shallow copy: a message's or a picture's HTML carries its pictures as base64, megabytes for
-// an id or a number off the tag, and was read for each message and each picture near the middle. A host without
-// cloneNode: the HTML, cut.
-async function nxFloatOwnTag(node) {
-  if (typeof node?.cloneNode === 'function') {
-    try { const copy = await node.cloneNode(false); try { return String(await copy.getOuterHTML() || ''); } finally { await omniRelease(copy); } } catch {}
-  }
-  const html = String(await node.getOuterHTML() || '');
-  return html.slice(0, html.indexOf('>') + 1);
-}
-// The picture a shot shows: read for the one chosen, never for each one near the middle (its src is its base64).
-// `image`: its <img>, when this pass read the message and has it at hand.
-async function nxFloatShotSrc(bubble, id, refs, image = null) {
-  if (!image) {
-    if (!/^[\w-]+$/.test(String(id || ''))) return '';
-    image = refs.own(await bubble.querySelector('[x-inlay-inline-shot="' + id + '"] img,[data-inlay-inline-shot="' + id + '"] img'));
-  }
-  if (!image) return '';
-  for (const key of ['currentSrc','src']) {
-    try { const src = String(await image.getProperty?.(key) || ''); if (src) return src; } catch {}
-  }
-  return nxFloatHtmlAttr(await image.getOuterHTML(), 'src');
-}
-let nxFloatSnapshots = 0, nxFloatShownSnapshot = '';
 async function nxFloatLocateReading(y, read) {
   const first = await read(0), last = await read(nxFloatBubbleCount - 1);
   if (!first || !last) return null;
@@ -105,10 +81,11 @@ async function nxFloatLocateReading(y, read) {
   }
   return best;
 }
-async function nxFloatReadBubble(row, refs, images = null) {
+async function nxFloatReadBubble(row, refs) {
   const cached = nxFloatBubbleCache.get(row.slot);
   if (cached && !cached.pending && cached.width === row.rect.width && cached.height === row.rect.height) return cached;
-  const opening = await nxFloatOwnTag(row.node);
+  const html = await row.node.getOuterHTML();
+  const opening = html.slice(0, html.indexOf('>') + 1);
   const index = Number(nxFloatHtmlAttr(opening, 'data-chat-index') || -1);
   const hostId = nxFloatHtmlAttr(opening, 'data-chat-id');
   // Only identity survives in the cache, never the whole message's HTML/text.
@@ -118,20 +95,24 @@ async function nxFloatReadBubble(row, refs, images = null) {
   for (const node of nodes) {
     const rect = await node.getBoundingClientRect();
     if (!rect.height) continue;
-    const head = await nxFloatOwnTag(node);
+    const shotHtml = await node.getOuterHTML(), head = shotHtml.slice(0, shotHtml.indexOf('>') + 1);
     const id = nxFloatHtmlAttr(head, 'x-inlay-inline-shot') || nxFloatHtmlAttr(head, 'data-inlay-inline-shot');
     if (!id || id.startsWith('pending_')) continue;
-    // Whether it shows a picture is enough here; which picture, only for the one chosen (nxFloatShotSrc).
     const image = refs.own(await node.querySelector('img'));
-    const src = image ? '' : nxFloatHtmlAttr(head, 'data-src') || nxFloatHtmlAttr(head, 'x-src')
+    let src = '';
+    if (image) {
+      for (const key of ['currentSrc','src']) {
+        try { src = String(await image.getProperty?.(key) || ''); } catch {}
+        if (src) break;
+      }
+      if (!src) src = nxFloatHtmlAttr(await image.getOuterHTML(), 'src');
+    }
+    src ||= nxFloatHtmlAttr(head, 'data-src') || nxFloatHtmlAttr(head, 'x-src')
       || /url\(["']?([^"')]+)["']?\)/.exec(nxFloatHtmlAttr(head, 'style'))?.[1] || '';
-    shots.push({id,src,pictured:!!image || !!src,asset:nxFloatHtmlAttr(head,'x-inray-asset') || nxFloatHtmlAttr(head,'data-inray-asset'),
-      top:rect.top-row.rect.top,bottom:rect.bottom-row.rect.top,image});
+    shots.push({id,src,asset:nxFloatHtmlAttr(head,'x-inray-asset') || nxFloatHtmlAttr(head,'data-inray-asset'),
+      top:rect.top-row.rect.top,bottom:rect.bottom-row.rect.top});
   }
-  const version = ++nxFloatSnapshots;
-  // The <img> handles last only this pass (refs lets them go): kept aside for it, never in the cached snapshot.
-  for (const shot of shots) { if (shot.image && images) images.set(shot.id + '|' + version, shot.image); delete shot.image; }
-  const snapshot = {index,bubbleHtml,shots,width:row.rect.width,height:row.rect.height,pending:nodes.length>0 && !shots.length,version};
+  const snapshot = {index,bubbleHtml,shots,width:row.rect.width,height:row.rect.height,pending:nodes.length>0 && !shots.length};
   nxFloatBubbleCache.set(row.slot, snapshot);
   return snapshot;
 }
@@ -181,8 +162,7 @@ async function nxFloatReadPosition() {
     await nxFloatWatchBubbles(rows,refs);
     let best = null, distance = Infinity, reading = null, readingGap = Infinity;
     const visible = row => row.rect.height > 0 && row.rect.bottom > top && row.rect.top < bottom;
-    const images = new Map();
-    const snapshots = await Promise.all(rows.map(row => visible(row) ? nxFloatReadBubble(row,refs,images) : null));
+    const snapshots = await Promise.all(rows.map(row => visible(row) ? nxFloatReadBubble(row,refs) : null));
     for (const [index, row] of rows.entries()) {
       if (epoch !== nxFloatEpoch) return;
       if (!visible(row)) continue;
@@ -190,9 +170,9 @@ async function nxFloatReadPosition() {
       if (gap < readingGap) { reading = snapshot; readingGap = gap; }
       for (const shot of snapshot.shots) {
         const shotTop = row.rect.top+shot.top, shotBottom = row.rect.top+shot.bottom;
-        if (shotBottom <= top || shotTop >= bottom || !shot.pictured) continue;
+        if (shotBottom <= top || shotTop >= bottom || !shot.src) continue;
         const d = Math.abs((shotTop+shotBottom)/2-y);
-        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml,ids:snapshot.shots.map(s => s.id),node:row.node,shown:shot.id + '|' + snapshot.version}; distance = d; }
+        if (d < distance) { best = {...shot,bubbleHtml:snapshot.bubbleHtml,ids:snapshot.shots.map(s => s.id)}; distance = d; }
       }
     }
     if (epoch !== nxFloatEpoch || nxFloatBlocked()) return;
@@ -206,15 +186,6 @@ async function nxFloatReadPosition() {
     // swap it for a neighbour that ended up nearer the middle.
     if (nxFloatNavHold && Date.now() < nxFloatNavHold.until && best.id !== nxFloatNavHold.id) return;
     const ids = nxFloatNavIds.join('|');
-    // The picture shown, from the message as it was read then: its src is not read again.
-    if (best.id === nxFloatCardId && best.shown === nxFloatShownSnapshot) {
-      nxFloatNavShots(best.ids);
-      if (nxFloatNavIds.join('|') !== ids) await nxFloatApply();
-      return;
-    }
-    if (!best.src) best.src = await nxFloatShotSrc(best.node, best.id, refs, images.get(best.shown) || null);
-    if (epoch !== nxFloatEpoch || nxFloatBlocked() || !best.src) return;
-    nxFloatShownSnapshot = best.shown;
     if (best.id === nxFloatCardId && best.src === nxFloatLastDomSrc) {
       nxFloatNavShots(best.ids);
       if (nxFloatNavIds.join('|') !== ids) await nxFloatApply();

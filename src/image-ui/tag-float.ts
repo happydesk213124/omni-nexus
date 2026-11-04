@@ -251,7 +251,4 @@ export function installTagFloat(): void {
   }, 1000);
   // Node hosts (smoke, audit) boot the bundle and end when nothing is left to run: a held tick kept them up for hours.
   (timer as unknown as { unref?: () => void }).unref?.();
-  // A plugin reloaded starts its own: this one's tick, button and listener go, or each reload would add a tick.
-  const host = risuHost();
-  if (typeof host?.onUnload === 'function') void Promise.resolve(host.onUnload(async () => { clearInterval(timer); installed = false; await unmount(); })).catch(() => {});
 }

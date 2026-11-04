@@ -1,5 +1,4 @@
 import { nearestRow, release, unwrap } from './safe-dom';
-import { openingTag } from '../tts-ui/host-utils';
 
 /** Risu's chat list: newest message first in the page, drawn bottom up. */
 export const CHAT_LIST = '.default-chat-screen > .flex-col-reverse';
@@ -13,10 +12,9 @@ export async function chatArea(screen: SafeElement): Promise<{ left: number; top
   return { left: Math.round(s.left), top: Math.round(s.top), width: Math.round(s.width), height: Math.max(160, Math.round(s.height - below)) };
 }
 
-// Risu lets a plugin read only its own x- attributes: a message's number is read off its row's own tag, from a
-// shallow copy (the row's HTML carries every picture in it as base64).
+// Risu lets a plugin read only its own x- attributes: a message's number is read off its row's own tag.
 async function chatIndexOf(row: SafeElement): Promise<number> {
-  const html = await openingTag(row);
+  const html = String(await row.getOuterHTML() ?? '');
   return Number(/\bdata-chat-index="(\d+)"/.exec(html.slice(0, html.indexOf('>') + 1))?.[1] ?? -1);
 }
 
