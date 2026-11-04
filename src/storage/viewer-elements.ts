@@ -12,8 +12,9 @@ export const VIEWER_ELEMENTS_KEY = 'omniviewer.elements';
  * the middle, its buttons Risu's), or a choice. One of them: a kind is never a sticker and 작동 at once.
  * from: where the kind is found, against the reply on stage: the reply itself (0), the bot's message 1 or 2 after it
  * (a status panel a bot sends in a message of its own), or the reader's message after it (3). fold (a sticker's): a
- * title bar over it, which folds it (folded) and moves it. group (a 작동's): the letter of its group ('' none), the
- * places one panel may come from, shown as one tile at the group's gx, gy (it opens the one in the newest message).
+ * title bar over it, which folds it (folded) and moves it. group (a sticker's or a 작동's, never a choice's): the letter
+ * of its group ('' none), the places one panel may come from, shown as one at the group's gx, gy: the one in the
+ * newest message (a group is of stickers or of 작동, never both).
  * Rules stored before these read as 0 and off; one stored as a sticker with live on (the first build of 작동) reads as
  * 작동, and one grouped by the first build of groups (one group, on or off) as group A.
  *
@@ -39,7 +40,7 @@ function clean(rule: (Omit<Partial<ElementRule>, 'group'> & { live?: unknown; gr
   const role = rule?.role === 'sticker' && rule.live === true ? 'live' : rule?.role;
   if (!rule || (role !== 'sticker' && role !== 'live' && role !== 'choice')) return null;
   const x = num(rule.x, 4, 0, 96), y = num(rule.y, 12, 0, 96), g = rule.group;
-  const group = role !== 'live' ? '' : typeof g === 'string' && g.length === 1 && GROUP_LETTERS.includes(g) ? g : g === true ? 'A' : '';
+  const group = role === 'choice' ? '' : typeof g === 'string' && g.length === 1 && GROUP_LETTERS.includes(g) ? g : g === true && role === 'live' ? 'A' : '';
   return {
     role, x, y, scale: num(rule.scale, 1, 0.4, 1.5), hidden: rule.hidden === true, always: rule.always === true,
     from: rule.from === 1 || rule.from === 2 || rule.from === 3 ? rule.from : 0, fold: rule.fold === true, folded: rule.folded === true,
