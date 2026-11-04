@@ -2,7 +2,7 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { compactHash } from '../domain/tts/segment';
 import { findElementKinds, type ElementKind } from '../domain/viewer/elements';
-import { elementRules, saveElementRules, type ElementFrom, type ElementRole, type ElementRule, type ElementRules } from '../storage/viewer-elements';
+import { elementKey, elementRules, elementSig, saveElementRules, type ElementFrom, type ElementRole, type ElementRule, type ElementRules } from '../storage/viewer-elements';
 import { saveViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { liveTargets } from './elements-live';
 import { popAt, popAttach, popClose, popCss, popDetach, popOpen, popOpenSig, popRelay, popSeen, popSync, popTapped, type PopHost, type PopTile } from './elements-pop';
@@ -19,8 +19,12 @@ import { quiet, release, rowAt, unwrap } from './safe-dom';
  * tap opens the element in the middle of the viewer, its buttons Risu's, and a tap anywhere else folds it
  * (elements-pop.ts).
  *
- * A kind is found in the reply on stage, or in the bot's message 1 or 2 after it (편집's tabs: a bot that sends its
- * status panel in a message of its own). With 접기 a sticker has a title bar: a tap folds it, a drag moves it.
+ * A kind is found in the reply on stage, in the reader's message after it, or in the bot's message 1 or 2 after it
+ * (편집's tabs: a bot that sends its status panel in a message of its own). With 접기 a sticker has a title bar: a
+ * tap folds it, a drag moves it.
+ *
+ * 작동 tiles can be grouped (편집's 그룹화 and 분리 tiles, dropped on): the places one panel may come from. Out of 편집
+ * the group is one tile, and it opens the one of them in the newest message (those absent are passed over).
  *
  * Optimistic: a tap shows what it did with its first write (편집's chip lit, the panel in, the popup's dim); the
  * stage and the save catch up after, a spinner turning meanwhile.
@@ -34,14 +38,27 @@ export interface ElementsHost extends PopHost {
   reply: () => { index: number; bot: string } | null;
   /** The bot's `n`th message after `index` (the reader's are passed over), or -1. */
   charAfter: (index: number, n: number) => number;
+  /** The reader's message right after `index`, before the bot's next one, or -1. */
+  userAfter: (index: number) => number;
   atEnd: () => boolean;
 }
 interface HostPoint { clientX: number; clientY: number }
-/** A sticker (a copy) or a 작동 tile (its element found by `tile` when it opens), on the stage. */
-interface Sticker { key: string; el: SafeElement; r: DOMRect | null; tile?: PopTile }
+/** A grouped 작동 tile's kind, found where its rule says: the message, its element, its rule. */
+interface Member { sig: string; tile: PopTile; rule: ElementRule }
+/**
+ * A sticker (a copy), a 작동 tile (its element found by `tile` when it opens), or the group's one tile (its members
+ * found in this reply's messages), on the stage.
+ */
+interface Sticker { key: string; el: SafeElement; r: DOMRect | null; tile?: PopTile; members?: Member[] }
 interface Row { sig: string; label: string; count: number; text: string }
 type ChipId = ElementRole | 'always' | 'hidden' | 'scale' | 'fold';
-const TABS = ['이 답장', '다음 메시지 1', '다음 메시지 2'] as const;
+/** 편집's tabs, in the chat's order: the reply, the reader's message after it, the bot's next two. */
+const TABS = ['이 답장', '다음 유저 메시지', '다음 메시지 1', '다음 메시지 2'] as const;
+const TAB_FROM: readonly ElementFrom[] = [0, 3, 1, 2];
+/** The group's tile on the stage (no kind has this signature). */
+const GROUP = '@group';
+/** The newest of the members present: the one the group's tile opens. */
+const newest = (members: readonly Member[]): Member | undefined => members.reduce<Member | undefined>((best, m) => !best || m.tile.index > best.tile.index ? m : best, undefined);
 /** A sticker's title bar, as tall as the stage's style draws it (before its scale). */
 const BAR_H = 26;
 
@@ -60,17 +77,20 @@ let options: string[] = [], choicesOn = false, chosen = -1, choicesRect: DOMRect
 /** 편집's tab, and where its row of tabs is (the tabs share it evenly: no rect of each). */
 let tab: ElementFrom = 0, tabsRect: DOMRect | null = null;
 /**
- * 편집's chips as the list was drawn (each row's ids) and where each is, read once after it is drawn, with the list's
- * top then: a tap is told from them and one read of where the top is now (the list may have scrolled since).
+ * 편집's chips as the list was drawn (each row's ids) and where each is, read once after it is drawn, with where the
+ * list's title was then: a tap is told from them and one read of where the title is now (the list may have scrolled
+ * since, or the panel still been sliding in when it was read).
  */
-let painted: ChipId[][] = [], chipRects: Array<{ row: number; chip: number; r: DOMRect }> = [], chipsTop = 0;
+let painted: ChipId[][] = [], chipRects: Array<{ row: number; chip: number; r: DOMRect }> = [], chipsAt = { left: 0, top: 0 };
 /** 편집 catching up with a tap (the stage, the save): its spinner turns while any is under way. */
 let busy = 0, rebuilding: Promise<void> | null = null, rebuildAgain = false;
+/** 편집's 그룹화 and 분리 tiles: where each is (read with the list), and which a dragged tile is over now (lit). */
+let drops: { group: DOMRect | null; split: DOMRect | null } = { group: null, split: null }, dropOver: '' | 'group' | 'split' = '';
 
 export async function elementsOpen(h: ElementsHost): Promise<void> {
   // 요소 stays as it was left, as AUTO and VOICE do (any bot, any chat); 편집 always starts closed.
   host = h; showing = viewerPrefs().elements; editing = false; rows = []; options = []; choicesOn = false; chosen = -1; choicesRect = null; panelRect = null;
-  tab = 0; tabsRect = null; kindsAt.clear(); painted = []; chipRects = []; busy = 0;
+  tab = 0; tabsRect = null; kindsAt.clear(); painted = []; chipRects = []; busy = 0; drops = { group: null, split: null }; dropOver = '';
   stickers.clear();
   const root = h.root();
   let pop: SafeElement | null = null;
@@ -95,7 +115,12 @@ export const elementsEditing = (): boolean => editing;
 export const elementsPopOpen = (): boolean => popSeen();
 export const closeElementPop = (): Promise<void> => popClose();
 
-const shown = (sig: string): boolean => { const r = rules[sig]; return !!r && (editing || (!r.hidden && (showing || r.always))); };
+const shown = (sig: string): boolean => {
+  // The group's tile: out of 편집 (there each member is its own tile), with a member on show.
+  if (sig === GROUP) return !editing && (stickers.get(GROUP)?.members ?? []).some(m => showing || m.rule.always);
+  const r = rules[sig];
+  return !!r && (editing || (!r.hidden && (showing || r.always)));
+};
 /**
  * Where each sticker and tile on show is: a tap there is its own (a sticker's <details> folds, by the browser
  * itself), never a step of the story. Read again after such a tap, since a fold changes its size; read together.
@@ -122,11 +147,18 @@ export function elementsCss(): string {
   // A finger must land on what it drags (the layer lets presses through) and must not pan, or a phone takes the
   // move for a scroll and the drag stops: in 편집 a sticker takes the press, none of what is in it (a link in a copy).
   if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{right:calc(min(84%,330px) + 8px);color:#1a1408;background:var(--gold)}[x-omni-vn] [x-vn-st] summary{pointer-events:none}'
-    + '[x-omni-vn] [x-vn-st]{pointer-events:auto;touch-action:none;cursor:grab}[x-omni-vn] [x-vn-st] *{pointer-events:none}');
+    + '[x-omni-vn] [x-vn-st]{pointer-events:auto;touch-action:none;cursor:grab}[x-omni-vn] [x-vn-st] *{pointer-events:none}'
+    // 그룹화 and 분리 at the top, the one a dragged tile is over lit.
+    + `[x-omni-vn] [data-vn-drops]{display:flex}${dropOver ? `[x-omni-vn] [data-vn-drop="${dropOver}"]{color:#1a1408;background:var(--gold);border-style:solid}` : ''}`);
   // 편집 catching up with a tap: a spinner by its title until the stage and the save are done.
   if (busy) out.push('[x-omni-vn] [data-vn-edit] h4::after{content:"";display:inline-block;width:10px;height:10px;margin-left:8px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}');
   const open = popOpenSig();
   for (const [sig, s] of stickers) {
+    if (sig === GROUP) {
+      if (shown(GROUP)) out.push(`[x-omni-vn] [x-vn-st="${s.key}"]{display:block}`);
+      if (open === GROUP) out.push(`[x-omni-vn] [x-vn-st="${s.key}"] [data-vn-tile]{color:#1a1408;background:var(--gold)}`);
+      continue;
+    }
     const r = rules[sig];
     if (!r) continue;
     if (editing) out.push(`[x-omni-vn] [x-vn-st="${s.key}"]{display:block;outline:2px dashed var(--gold);outline-offset:4px${r.hidden ? ';opacity:.35' : ''}}`);
@@ -154,11 +186,14 @@ async function readKinds(doc: SafeDocument, index: number): Promise<ElementKind[
 /** A tile keeps its own size: 크기 is its popup's. */
 const scaleOf = (r: ElementRule) => r.role === 'live' ? 1 : r.scale;
 const place = (r: ElementRule) => `left:${r.x}%;top:${r.y}%;transform:scale(${scaleOf(r)})`;
-/** The message a kind is found in: the reply on stage, or the bot's message 1 or 2 after it (-1: there is none). */
+/**
+ * The message a kind is found in: the reply on stage, the reader's message after it (3), or the bot's message 1 or 2
+ * after it (-1: there is none).
+ */
 function sourceIndex(from: ElementFrom): number {
   const reply = host?.reply();
   if (!host || !reply) return -1;
-  return from === 0 ? reply.index : host.charAfter(reply.index, from);
+  return from === 0 ? reply.index : from === 3 ? host.userAfter(reply.index) : host.charAfter(reply.index, from);
 }
 async function kindsOf(doc: SafeDocument, from: ElementFrom): Promise<ElementKind[]> {
   let found = kindsAt.get(from);
@@ -172,26 +207,42 @@ async function putBar(doc: SafeDocument, wrap: SafeElement, label: string): Prom
   await bar.setTextContent(label);
   await wrap.appendChild(bar); await release(bar);
 }
-/** 작동: a tile where the reader put it, the kind's name on it; its element is found when it opens (elements-pop.ts). */
-async function putTile(doc: SafeDocument, index: number, kind: ElementKind, rule: ElementRule): Promise<void> {
+/**
+ * 작동: a tile where the reader put it, the kind's name on it; its element is found when it opens (elements-pop.ts).
+ * In 편집 a grouped one shows 🔗 (there each member is its own tile, to be dropped on 분리).
+ */
+async function putTile(doc: SafeDocument, ruleKey: string, index: number, kind: ElementKind, rule: ElementRule): Promise<void> {
   if (!layer) return;
-  const wrap = await doc.createElement('div'), key = keyOf(kind.sig);
+  const wrap = await doc.createElement('div'), key = keyOf(ruleKey);
   await wrap.setAttribute('x-vn-st', key);
   await wrap.setStyleAttribute(place(rule));
-  await wrap.setInnerHTML(`<div data-vn-tile><b>📋</b><span>${esc(kind.label)}</span></div>`);
+  await wrap.setInnerHTML(`<div data-vn-tile><b>📋</b><span>${esc(kind.label)}</span>${rule.group ? '<i>🔗</i>' : ''}</div>`);
   await layer.appendChild(wrap);
-  stickers.set(kind.sig, { key, el: wrap, r: null, tile: { index, selector: kind.selector, targets: liveTargets(index, kind.selector, kind.count) } });
+  stickers.set(ruleKey, { key, el: wrap, r: null, tile: tileOf(index, kind) });
+}
+const tileOf = (index: number, kind: ElementKind): PopTile => ({ index, selector: kind.selector, targets: liveTargets(index, kind.selector, kind.count) });
+/** Where the group's tile stands: its place, which every member keeps (the first one's, should they differ). */
+const groupPlace = (members: readonly Member[]) => `left:${members[0]!.rule.gx}%;top:${members[0]!.rule.gy}%;transform:scale(1)`;
+/** The group's one tile: the name of the one it opens (the newest present), and how many of them are present. */
+async function putGroup(doc: SafeDocument, members: Member[], labels: ReadonlyMap<string, string>): Promise<void> {
+  if (!layer || !members.length) return;
+  const wrap = await doc.createElement('div'), key = keyOf(GROUP), lead = newest(members)!;
+  await wrap.setAttribute('x-vn-st', key);
+  await wrap.setStyleAttribute(groupPlace(members));
+  await wrap.setInnerHTML(`<div data-vn-tile data-vn-group><b>🗂️</b><span>${esc(labels.get(lead.sig) ?? '그룹')}</span><i>${members.length}</i></div>`);
+  await layer.appendChild(wrap);
+  stickers.set(GROUP, { key, el: wrap, r: null, members });
 }
 /**
  * A registered kind's elements, cloned into one sticker where the reader put it: its body a .chattext (the bot's
  * chat CSS reaches what sits in one, so the clone looks as it does in the chat), its bar over it with 접기.
  */
-async function putSticker(doc: SafeDocument, index: number, kind: ElementKind, rule: ElementRule): Promise<void> {
+async function putSticker(doc: SafeDocument, ruleKey: string, index: number, kind: ElementKind, rule: ElementRule): Promise<void> {
   if (!layer) return;
   const nodes = await unwrap(await doc.querySelectorAll(`.risu-chat[data-chat-index="${index}"] .chattext ${kind.selector}`));
   try {
     if (!nodes.length) return;
-    const wrap = await doc.createElement('div'), body = await doc.createElement('div'), key = keyOf(kind.sig);
+    const wrap = await doc.createElement('div'), body = await doc.createElement('div'), key = keyOf(ruleKey);
     await wrap.setAttribute('x-vn-st', key);
     await wrap.setStyleAttribute(place(rule));
     if (rule.fold) await putBar(doc, wrap, kind.label);
@@ -200,7 +251,7 @@ async function putSticker(doc: SafeDocument, index: number, kind: ElementKind, r
     for (const node of nodes.slice(0, 6)) { const copy = await node.cloneNode(true); await body.appendChild(copy); await release(copy); }
     await wrap.appendChild(body); await release(body);
     await layer.appendChild(wrap);
-    stickers.set(kind.sig, { key, el: wrap, r: null });
+    stickers.set(ruleKey, { key, el: wrap, r: null });
   } finally { for (const node of nodes) await release(node); }
 }
 /** After a reply loads: its stickers and tiles put up and its choices gathered (or nothing, with nothing registered). */
@@ -223,12 +274,20 @@ async function putUp(): Promise<void> {
     if (reply.bot !== bot) { bot = reply.bot; rules = await elementRules(bot); }
     if (editing || Object.keys(rules).length) {
       if (editing) await kindsOf(doc, tab);
-      for (const [sig, rule] of Object.entries(rules)) {
-        const kind = (await kindsOf(doc, rule.from)).find(k => k.sig === sig);
+      // Out of 편집 the group's members are found, not put up: the group is one tile (those absent, or hidden, out).
+      const members: Member[] = [], labels = new Map<string, string>();
+      for (const [key, rule] of Object.entries(rules)) {
+        const sig = elementSig(key), kind = (await kindsOf(doc, rule.from)).find(k => k.sig === sig);
         if (!kind) continue;
         if (rule.role === 'choice') { options.push(...kind.options); continue; }
-        await (rule.role === 'live' ? putTile : putSticker)(doc, sourceIndex(rule.from), kind, rule);
+        const index = sourceIndex(rule.from);
+        if (rule.role === 'live' && rule.group && !editing) {
+          if (!rule.hidden) { members.push({ sig: key, tile: tileOf(index, kind), rule }); labels.set(key, kind.label); }
+          continue;
+        }
+        await (rule.role === 'live' ? putTile : putSticker)(doc, key, index, kind, rule);
       }
+      await putGroup(doc, members, labels);
       options = options.slice(0, MAX_OPTIONS);
     }
   }
@@ -313,46 +372,57 @@ function chipsOf(r: ElementRule | undefined): Array<{ id: ChipId; label: string;
   if (r?.role === 'sticker') out.push({ id: 'fold', label: '접기', on: r.fold });
   return out;
 }
-const HINT = '스티커는 끌어서 옮기고, 접기를 켜면 제목줄로 접어요. 작동은 타일이 되고, 누르면 진짜 요소가 뷰어 가운데에 열려요(버튼이 눌려요). 선택지는 최신 답장 끝에서 떠요.';
+const HINT = '스티커는 끌어서 옮겨요(접기: 제목줄). 작동은 타일, 누르면 진짜 요소가 가운데 열려요. 위 그룹화에 놓으면 묶여 최신 것 하나만. 선택지는 최신 답장 끝에.';
+/** The rule of a kind in the tab open now (one panel may be registered from each tab). */
+const ruleHere = (sig: string): ElementRule | undefined => rules[elementKey(sig, tab)];
 async function paintPanel(): Promise<void> {
   if (!panel) return;
   const here = kindsAt.get(tab), none = sourceIndex(tab) < 0;
   rows = (here ?? []).map(k => ({ sig: k.sig, label: k.label, count: k.count, text: k.text }));
-  if (here) for (const [sig, rule] of Object.entries(rules)) if (rule.from === tab && !rows.some(r => r.sig === sig)) rows.push({ sig, label: sig.replace(/^[a-z0-9]+/, '').replace(/^[.#]/, '').replace(/x-risu-/g, '') || sig, count: 0, text: '이 메시지에는 없음' });
-  painted = rows.map(row => chipsOf(rules[row.sig]).map(c => c.id));
+  if (here) for (const [key, rule] of Object.entries(rules)) {
+    const sig = elementSig(key);
+    if (rule.from === tab && !rows.some(r => r.sig === sig)) rows.push({ sig, label: sig.replace(/^[a-z0-9]+/, '').replace(/^[.#]/, '').replace(/x-risu-/g, '') || sig, count: 0, text: '이 메시지에는 없음' });
+  }
+  painted = rows.map(row => chipsOf(ruleHere(row.sig)).map(c => c.id));
   chipRects = [];
-  const tabs = `<nav data-vn-tabs>${TABS.map((name, i) => `<i${i === tab ? ' data-on' : ''}>${name}</i>`).join('')}</nav>`;
-  const empty = none ? '이 답장 뒤에 봇 메시지가 없어요.' : '이 메시지에는 고를 요소가 없어요. (Omni가 만든 것은 빼요)';
+  const tabs = `<nav data-vn-tabs>${TABS.map((name, i) => `<i${TAB_FROM[i] === tab ? ' data-on' : ''}>${name}</i>`).join('')}</nav>`;
+  const empty = none ? `이 답장 뒤에 ${tab === 3 ? '유저' : '봇'} 메시지가 없어요.` : '이 메시지에는 고를 요소가 없어요. (Omni가 만든 것은 빼요)';
   // Its message not read yet: a spinner where its kinds will be.
   const list = !here && !none ? '<small data-vn-hint data-vn-wait>요소를 읽는 중…</small>' : rows.map(row => {
-    const chips = chipsOf(rules[row.sig]).map(c => `<i${c.on ? ' data-on' : ''}>${c.label}</i>`).join('');
-    return `<div data-vn-el><b>${esc(row.label)}</b>${row.count > 1 ? `<small>×${row.count}</small>` : ''}<span>${esc(row.text)}</span><p>${chips}</p></div>`;
+    const r = ruleHere(row.sig), chips = chipsOf(r).map(c => `<i${c.on ? ' data-on' : ''}>${c.label}</i>`).join('');
+    return `<div data-vn-el><b>${esc(row.label)}</b>${r?.group ? '<small>🔗 그룹</small>' : ''}${row.count > 1 ? `<small>×${row.count}</small>` : ''}<span>${esc(row.text)}</span><p>${chips}</p></div>`;
   }).join('') || `<small data-vn-hint>${empty}</small>`;
   await panel.setInnerHTML(`<h4>요소 편집</h4>${tabs}<small data-vn-hint>${HINT}</small>${list}`);
 }
 /** Where 편집's panel, its tabs and every chip are, read together once it is drawn: a tap then reads one place. */
 async function measureEditing(): Promise<void> {
   if (!editing) return;
-  if (panel) {
+  const root = host?.root();
+  if (panel && root) {
     const drawn = painted;
-    const [tabsEl, head, chips] = await Promise.all([panel.querySelector('[data-vn-tabs]'), panel.querySelector('h4'), panel.querySelectorAll('[data-vn-el] i').then(list => unwrap(list))]);
+    const [tabsEl, head, group, split, chips] = await Promise.all([panel.querySelector('[data-vn-tabs]'), panel.querySelector('h4'),
+      root.querySelector('[data-vn-drop="group"]'), root.querySelector('[data-vn-drop="split"]'), panel.querySelectorAll('[data-vn-el] i').then(list => unwrap(list))]);
     try {
-      const read = await Promise.all([panel, tabsEl, head, ...chips].map(el => el ? el.getBoundingClientRect() : Promise.resolve(null)));
+      const read = await Promise.all([panel, tabsEl, head, group, split, ...chips].map(el => el ? el.getBoundingClientRect() : Promise.resolve(null)));
+      drops = { group: read[3] ?? null, split: read[4] ?? null };
       // Drawn again meanwhile: what was read is another list's.
       if (drawn === painted) {
-        panelRect = read[0] ?? null; tabsRect = read[1] ?? null; chipsTop = read[2]?.top ?? 0;
+        panelRect = read[0] ?? null; tabsRect = read[1] ?? null; chipsAt = { left: read[2]?.left ?? 0, top: read[2]?.top ?? 0 };
         chipRects = [];
-        let k = 3;
+        let k = 5;
         drawn.forEach((ids, row) => ids.forEach((_, chip) => { const r = read[k++]; if (r) chipRects.push({ row, chip, r }); }));
       }
-    } finally { for (const el of [tabsEl, head, ...chips]) await release(el); }
+    } finally { for (const el of [tabsEl, head, group, split, ...chips]) await release(el); }
   }
   await measureStickers();
 }
-/** How far 편집's list has scrolled since its chips were read: where its title is now (one read). */
-async function panelScrolled(): Promise<number> {
+/** How far 편집's list has moved since its chips were read (scrolled, or the panel slid on): where its title is now. */
+async function panelMoved(): Promise<{ dx: number; dy: number }> {
   const head = await panel?.querySelector('h4');
-  try { return head ? (await head.getBoundingClientRect()).top - chipsTop : 0; } finally { await release(head); }
+  try {
+    const now = head ? await head.getBoundingClientRect() : null;
+    return now ? { dx: now.left - chipsAt.left, dy: now.top - chipsAt.top } : { dx: 0, dy: 0 };
+  } finally { await release(head); }
 }
 /** Another tab: lit at once (its list to come, the spinner turning, unless read already); its message read once per reply. */
 async function openTab(next: ElementFrom): Promise<void> {
@@ -370,10 +440,10 @@ async function openTab(next: ElementFrom): Promise<void> {
 async function panelTap(p: HostPoint): Promise<void> {
   if (!panel || !host) return;
   if (!chipRects.length) await measureEditing();
-  const dy = await panelScrolled(), at = (r: DOMRect) => inside(p, { left: r.left, top: r.top + dy, width: r.width, height: r.height });
+  const { dx, dy } = await panelMoved(), at = (r: DOMRect) => inside(p, { left: r.left + dx, top: r.top + dy, width: r.width, height: r.height });
   if (tabsRect && at(tabsRect)) {
-    const i = Math.floor((p.clientX - tabsRect.left) / Math.max(1, tabsRect.width / TABS.length));
-    await openTab(Math.min(TABS.length - 1, Math.max(0, i)) as ElementFrom);
+    const i = Math.floor((p.clientX - tabsRect.left - dx) / Math.max(1, tabsRect.width / TABS.length));
+    await openTab(TAB_FROM[Math.min(TABS.length - 1, Math.max(0, i))]!);
     return;
   }
   const hit = chipRects.find(c => at(c.r)), row = hit && rows[hit.row], id = hit && painted[hit.row]?.[hit.chip];
@@ -385,11 +455,15 @@ async function panelTap(p: HostPoint): Promise<void> {
 }
 /** A chip's change to the rules: what a kind is (one of the three: a sticker made 작동 keeps its place), or an option. */
 function applyChip(sig: string, id: ChipId): void {
-  const r = rules[sig], placed = Object.values(rules).filter(x => x.role !== 'choice').length;
+  const key = elementKey(sig, tab), r = rules[key], placed = Object.values(rules).filter(x => x.role !== 'choice').length;
   if (id === 'sticker' || id === 'live' || id === 'choice') {
-    if (r?.role === id) delete rules[sig];
-    else if (r && r.role !== 'choice' && id !== 'choice') r.role = id;
-    else rules[sig] = { role: id, x: 4, y: id === 'choice' ? 12 : Math.min(70, 12 + placed * 14), scale: 1, hidden: false, always: false, from: tab, fold: false, folded: false };
+    if (r?.role === id) delete rules[key];
+    // A sticker made 작동 or back keeps its place and size; only a 작동 is in the group.
+    else if (r && r.role !== 'choice' && id !== 'choice') { r.role = id; if (id !== 'live') r.group = false; }
+    else {
+      const y = id === 'choice' ? 12 : Math.min(70, 12 + placed * 14);
+      rules[key] = { role: id, x: 4, y, scale: 1, hidden: false, always: false, from: tab, fold: false, folded: false, group: false, gx: 4, gy: y };
+    }
     return;
   }
   if (!r || r.role === 'choice') return;
@@ -468,10 +542,31 @@ function onMove(p: HostPoint): void {
   moveTimer = setTimeout(() => { moveTimer = undefined; void paintDrag().catch(() => {}); }, 32);
 }
 async function paintDrag(): Promise<void> {
-  const d = drag, s = d && stickers.get(d.sig), r = d && rules[d.sig];
-  if (!d || !s || !r) return;
-  const style = `left:${Math.round(d.left + d.dx)}px;top:${Math.round(d.top + d.dy)}px;transform:scale(${scaleOf(r)})`;
+  const d = drag, s = d && stickers.get(d.sig);
+  if (!d || !s) return;
+  const r = rules[d.sig], style = `left:${Math.round(d.left + d.dx)}px;top:${Math.round(d.top + d.dy)}px;transform:scale(${r ? scaleOf(r) : 1})`;
   if (style !== d.painted) { d.painted = style; await s.el.setStyleAttribute(style); }
+  // In 편집 the 그룹화 or 분리 tile under the finger lights (written only when that changes).
+  if (editing) { const over = dropAt({ clientX: d.x0 + d.dx, clientY: d.y0 + d.dy }); if (over !== dropOver) { dropOver = over; await host?.restyle(); } }
+}
+/** 편집's 그룹화 or 분리 tile under the point, if either. */
+const dropAt = (p: HostPoint): '' | 'group' | 'split' => drops.group && inside(p, drops.group) ? 'group' : drops.split && inside(p, drops.split) ? 'split' : '';
+/**
+ * A tile let go on 그룹화 joins the group (at the group's place; the first one's own place makes it), on 분리 leaves
+ * it; either way it goes back where it was at once, and the stage and the save catch up.
+ */
+async function dropOn(target: 'group' | 'split', r: ElementRule, s: Sticker): Promise<void> {
+  await s.el.setStyleAttribute(place(r));
+  if (r.role !== 'live') { host?.say('작동 타일만 묶을 수 있어요.', 2500); await host?.restyle(); return; }
+  if (target === 'group' && !r.group) {
+    const lead = Object.values(rules).find(x => x.role === 'live' && x.group);
+    r.group = true; r.gx = lead ? lead.gx : r.x; r.gy = lead ? lead.gy : r.y;
+    host?.say('그룹에 넣었어요. 편집을 닫으면 한 타일이 되고, 가장 최근 메시지의 것이 열려요.', 3000);
+  } else if (target === 'split' && r.group) {
+    r.group = false;
+    host?.say('그룹에서 뺐어요.', 2000);
+  } else { await host?.restyle(); return; }
+  await rebuildSoon();
 }
 async function endDrag(): Promise<void> {
   clearTimeout(moveTimer); moveTimer = undefined;
@@ -487,15 +582,18 @@ function barAt(p: HostPoint): string {
   }
   return '';
 }
-/** The 작동 tile under the point. */
+/** The 작동 tile (or the group's) under the point. */
 function tileAt(p: HostPoint): string {
-  for (const [sig, s] of stickers) if (s.tile && s.r && inside(p, s.r)) return sig;
+  for (const [sig, s] of stickers) if ((s.tile || s.members) && s.r && inside(p, s.r)) return sig;
   return '';
 }
-/** A tile tapped: its element opens in the middle (on show, out of 편집). */
+/** A tile tapped: its element opens in the middle (on show, out of 편집); the group's, its newest member's. */
 async function openTile(sig: string): Promise<void> {
-  const s = stickers.get(sig), r = rules[sig];
-  if (!s?.tile || r?.role !== 'live' || editing || !shown(sig)) return;
+  if (editing || !shown(sig)) return;
+  const s = stickers.get(sig);
+  if (sig === GROUP) { const m = newest(s?.members ?? []); if (m) await popOpen(GROUP, m.tile, m.rule); return; }
+  const r = rules[sig];
+  if (!s?.tile || r?.role !== 'live') return;
   await popOpen(sig, s.tile, r);
 }
 function startDrag(sig: string, p: HostPoint): void {
@@ -533,14 +631,24 @@ export function elementsUp(p: HostPoint): boolean {
   if (Number.isFinite(p?.clientX)) { d.dx = p.clientX - d.x0; d.dy = p.clientY - d.y0; }
   // A finger wobbles further than a mouse: under this a press was a tap (a tile opens, a bar folds).
   const frame = host.frame(), r = rules[d.sig], s = stickers.get(d.sig), moved = Math.hypot(d.dx, d.dy) >= 8;
+  // In 편집, let go on 그룹화 or 분리: that, not a move.
+  const target = editing && moved ? dropAt({ clientX: d.x0 + d.dx, clientY: d.y0 + d.dy }) : '', lit = dropOver;
+  dropOver = '';
   // The click this release brings is no tap; the next one is.
   if (moved) dragUntil = Date.now() + 250;
   void (async () => {
     await endDrag();
-    if (!r || !s || !moved) return;
-    r.x = Math.min(96, Math.max(0, Math.round((d.left + d.dx) / Math.max(1, frame.width) * 1000) / 10));
-    r.y = Math.min(96, Math.max(0, Math.round((d.top + d.dy) / Math.max(1, frame.height) * 1000) / 10));
-    await s.el.setStyleAttribute(place(r));
+    if (!s || !moved) { if (lit) await host?.restyle(); return; }
+    const x = Math.min(96, Math.max(0, Math.round((d.left + d.dx) / Math.max(1, frame.width) * 1000) / 10));
+    const y = Math.min(96, Math.max(0, Math.round((d.top + d.dy) / Math.max(1, frame.height) * 1000) / 10));
+    if (d.sig === GROUP) {
+      // The group's place is every member's, those absent here too.
+      for (const rule of Object.values(rules)) if (rule.role === 'live' && rule.group) { rule.gx = x; rule.gy = y; }
+      await s.el.setStyleAttribute(`left:${x}%;top:${y}%;transform:scale(1)`);
+    } else if (!r) return;
+    else if (target) { await dropOn(target, r, s); return; }
+    else { r.x = x; r.y = y; await s.el.setStyleAttribute(place(r)); }
+    if (lit) await host?.restyle();
     await measureStickers();
     await saveElementRules(bot, rules);
   })().catch(report('viewer.sticker'));
@@ -555,6 +663,10 @@ export function elementsClick(p: HostPoint, onControl: boolean): boolean {
   if (editing) {
     if (onControl) return false;
     if (panelRect && inside(p, panelRect)) void panelTap(p).catch(report('viewer.elements'));
+    else {
+      const target = dropAt(p);
+      if (target) host?.say(target === 'group' ? '작동 타일을 여기로 끌어다 놓으면 묶여요.' : '묶인 작동 타일을 여기로 끌어다 놓으면 풀려요.', 2500);
+    }
     return true;
   }
   // The popup up: a tap in it is the element's (Risu takes its buttons); one on its tile folds it, on another tile

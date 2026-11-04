@@ -85,11 +85,11 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /\[data-vn-clock\]::after\{content:"배경: 장소 없음"\}/);
     // The counter is drawn by the scene's style text (::after), costing no call of its own.
     assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
-    // Behind it only the bot's newest messages stay laid out (its three newest; this chat has two of the bot's, 0 and 2),
-    // and the newest of any: the reader's message (1) and the rest are folded away.
+    // Behind it only the newest messages stay laid out: from the bot's third newest on (this chat has two of the bot's,
+    // 0 and 2), the reader's between them too (1: its own panel can be 요소), and the newest of any.
     await page.waitForFunction(() => /:has\(/.test(document.querySelector('[x-omni-vn-style="fold"]')?.textContent || ''));
     const laidOut = await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').map(n => Number(n.querySelector('.risu-chat').dataset.chatIndex)));
-    assert.deepEqual([...new Set(laidOut)].sort(), [0, 2], `only the bot's newest messages stay laid out behind it: ${laidOut}`);
+    assert.deepEqual([...new Set(laidOut)].sort(), [0, 1, 2], `only the newest messages stay laid out behind it: ${laidOut}`);
     // A tap while the letters still come in only completes them: each tap waits for its line to be whole (its arrow shows then).
     const lineDone = () => page.waitForFunction(() => { const cue = document.querySelector('[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]'); return !cue || getComputedStyle(cue).opacity !== '0'; });
     const tap = async expected => {
@@ -467,7 +467,8 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length === 3);
     await page.waitForTimeout(500);
     const chip = (row, label) => page.locator(`[x-omni-vn] [data-vn-el]:has(b:text-is("${row}")) i`, { hasText: label });
-    const tapChip = async (row, label) => { const b = await chip(row, label).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
+    // As a reader would: scrolled into sight in the panel first (a tall list scrolls), then tapped where it is.
+    const tapChip = async (row, label) => { const c = chip(row, label); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
     await tapChip('status', '스티커');
     await page.waitForFunction(() => { const st = document.querySelector('[x-omni-vn] [x-vn-st]'); return !!st?.querySelector('.x-risu-status') && getComputedStyle(st).display === 'block'; });
     assert.equal(await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]').className), 'chattext', "inside a .chattext the bot's chat CSS still reaches it");

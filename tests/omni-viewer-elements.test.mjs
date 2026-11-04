@@ -76,19 +76,21 @@ async function openViewerPage({ messages, html, touch = false } = { messages: ME
   const open = async () => { await page.evaluate(() => window.buttons['omni-viewer-chat']()); await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent); };
   const press = async act => { const b = await page.locator(`[x-omni-vn] [data-vn-act="${act}"]`).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
   const chip = (row, label) => page.locator(`[x-omni-vn] [data-vn-el]:has(b:text-is("${row}")) i`, { hasText: label });
-  const tapChip = async (row, label) => { const b = await chip(row, label).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
+  // As a reader would: scrolled into sight in the panel first (a tall list scrolls), then tapped where it is.
+  const tapChip = async (row, label) => { const c = chip(row, label); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
   const shownMessages = () => page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')]
     .filter(c => getComputedStyle(c).display !== 'none').map(c => Number(c.querySelector('.risu-chat').dataset.chatIndex)).sort((a, b) => a - b));
   return { browser, page, errors, open, press, chip, tapChip, shownMessages };
 }
 
-test('요소: a sticker over the people and under the box, the 요소 button kept, the chat folded to the bot\'s newest three', async () => {
+test('요소: a sticker over the people and under the box, the 요소 button kept, the chat folded to the bot\'s newest three and the reader\'s between them', async () => {
   const { browser, page, errors, open, press, tapChip, shownMessages } = await openViewerPage();
   try {
     await open();
-    // Behind the viewer: the bot's newest three messages and the newest of any; the reader's own folded away.
+    // Behind the viewer: from the bot's third newest message on, the reader's between them too (their panels can be
+    // 요소); the older folded away.
     await page.waitForFunction(() => /:has\(/.test(document.querySelector('[x-omni-vn-style="fold"]')?.textContent || ''));
-    assert.deepEqual(await shownMessages(), [2, 4, 6]);
+    assert.deepEqual(await shownMessages(), [2, 3, 4, 5, 6]);
     // 요소 on, the status panel a sticker.
     await press('elems');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
@@ -142,13 +144,14 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
     await press('elems');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
     await press('eledit');
-    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-tabs] i').length === 3);
+    // The tabs in the chat's order: the reply, the reader's message after it, the bot's next two.
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-tabs] i')].map(i => i.textContent).join('|') === '이 답장|다음 유저 메시지|다음 메시지 1|다음 메시지 2');
     await page.waitForTimeout(400);
     // 이 답장 has the reply's own status panel; 다음 메시지 1 the board of the message after it.
     assert.equal(await chip('status', '스티커').count(), 1);
     const tabAt = async i => { const b = await page.locator('[x-omni-vn] [data-vn-tabs] i').nth(i).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); };
-    await tabAt(1);
-    await page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-tabs] i:nth-child(2)')?.hasAttribute('data-on') && !!document.querySelector('[x-omni-vn] [data-vn-el] b'));
+    await tabAt(2);
+    await page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-tabs] i:nth-child(3)')?.hasAttribute('data-on') && !!document.querySelector('[x-omni-vn] [data-vn-el] b'));
     assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-el] b')].map(b => b.textContent)), ['board']);
     await page.waitForTimeout(300);
     await tapChip('board', '스티커');
@@ -390,6 +393,97 @@ test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, i
     await page.waitForTimeout(400);
     await touchDrag(bar.x + 20, bar.y + bar.height / 2, 60, 100);
     await page.waitForFunction(y => Math.abs(document.querySelector('[x-omni-vn] [x-vn-st-bar]').getBoundingClientRect().top - y - 100) < 10, bar.y);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+// The reader's message has its own panel (다음 유저 메시지), and the bot's status panel comes in the reply or in the
+// message after it: registered as 작동 from both tabs and grouped, it is one tile opening the newest one there is.
+test('요소: 다음 유저 메시지 finds the reader\'s panel; one panel from two tabs, grouped on 그룹화, opens only the newest there is, and 분리 lets one go', async () => {
+  const chat = [
+    { role: 'char', chatId: 'a0', data: '전날 밤은 조용했다.' }, { role: 'user', data: '안녕' },
+    { role: 'char', chatId: 'a2', data: '바람이 불었다.' }, { role: 'user', data: '가자' },
+    { role: 'char', chatId: 'a4', data: reply }, { role: 'user', data: '(나의 상태)' },
+    { role: 'char', chatId: 'a6', data: '상태가 갱신되었다.' },
+  ];
+  const html = i => i === 4 ? replyHtml
+    : i === 5 ? '<p>(나의 상태)</p><div class="x-risu-mine" style="width:150px;height:40px;background:#535">나 HP 7</div>'
+    : i === 6 ? '<p>상태가 갱신되었다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#355">HP 1 갱신</div>'
+    : `<p>${chat[i].data}</p>`;
+  const { browser, page, errors, open, press, tapChip } = await openViewerPage({ messages: chat, html });
+  try {
+    const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
+    const tabAt = async i => { const b = await page.locator('[x-omni-vn] [data-vn-tabs] i').nth(i).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(400); };
+    const fixedIn = () => page.evaluate(() => [...document.querySelectorAll('.risu-chat .x-risu-status')].filter(n => getComputedStyle(n).position === 'fixed').map(n => Number(n.closest('.risu-chat').dataset.chatIndex)));
+    const drag = async (from, to) => { await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 }); await page.mouse.move(to.x, to.y, { steps: 4 }); await page.mouse.up(); };
+    const centre = async locator => { const b = await locator.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const statusTiles = () => page.locator('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])', { hasText: 'status' });
+    await open();
+    await page.waitForFunction(() => /갱신되었다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
+    await page.waitForTimeout(400);
+    // The reply's status panel, 작동.
+    await tapChip('status', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 1);
+    // 다음 유저 메시지: the reader's own panel, as a sticker from that message.
+    await tabAt(1);
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-el] b')].map(b => b.textContent).join() === 'mine');
+    await tapChip('mine', '스티커');
+    await page.waitForFunction(() => /나 HP 7/.test(document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]')?.textContent || ''));
+    // 다음 메시지 1: the same status panel, registered again from there (a rule of its own), 작동.
+    await tabAt(2);
+    await page.waitForFunction(() => /갱신/.test(document.querySelector('[x-omni-vn] [data-vn-el] span')?.textContent || ''));
+    await tapChip('status', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 2);
+    await page.waitForTimeout(500);
+    // Both let go on 그룹화: each joins the group (🔗) and goes back where it was.
+    const group = await centre(page.locator('[x-omni-vn] [data-vn-drop="group"]'));
+    for (let k = 0; k < 2; k++) {
+      await drag(await centre(statusTiles().nth(k)), group);
+      await page.waitForFunction(n => [...document.querySelectorAll('[x-omni-vn] [data-vn-tile]')].filter(t => t.textContent.includes('🔗')).length === n, k + 1);
+      await page.waitForTimeout(500);
+    }
+    let saved = await savedRule(page);
+    assert.deepEqual(saved.filter(r => r.role === 'live').map(r => [r.from, r.group]).sort(), [[0, true], [1, true]], 'one panel from two tabs, both in the group');
+    assert.equal(new Set(saved.filter(r => r.group).map(r => `${r.gx},${r.gy}`)).size, 1, 'one place for the group');
+    await press('eledit');
+    await page.waitForTimeout(500);
+    // Out of 편집: one tile for the group (both present: 2), the reader's sticker as it was.
+    assert.equal(await statusTiles().count(), 0);
+    assert.match(await page.locator('[x-omni-vn] [data-vn-tile][data-vn-group]').textContent(), /status.*2/);
+    assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]')?.textContent || ''), /나 HP 7/);
+    // It opens only the newest there is: the bot's next message's (6), not the reply's (4).
+    const before = await text();
+    await page.mouse.click(...Object.values(await centre(page.locator('[x-omni-vn] [data-vn-group]'))));
+    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    assert.deepEqual(await fixedIn(), [6]);
+    assert.equal(await text(), before);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.risu-chat .x-risu-status')].some(n => getComputedStyle(n).position === 'fixed'));
+    // On the reply before (2): no panel in it, its next message (4) has one: only that one is there, and it opens.
+    await page.keyboard.press('ArrowLeft');
+    for (let i = 0; i < 10 && !/바람이 불었다/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
+    await page.waitForFunction(() => /1/.test(document.querySelector('[x-omni-vn] [data-vn-group] i')?.textContent || ''));
+    await page.waitForTimeout(300);
+    await page.mouse.click(...Object.values(await centre(page.locator('[x-omni-vn] [data-vn-group]'))));
+    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    assert.deepEqual(await fixedIn(), [4]);
+    await page.keyboard.press('Escape');
+    // 분리: in 편집 the members are tiles again; one let go on 분리 leaves the group.
+    for (let i = 0; i < 10 && !/늦었지/.test(await text()); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(350); }
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])').length === 2);
+    await page.waitForTimeout(500);
+    await drag(await centre(statusTiles().nth(0)), await centre(page.locator('[x-omni-vn] [data-vn-drop="split"]')));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-tile]')].filter(t => t.textContent.includes('🔗')).length === 1);
+    for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 1; i++) await page.waitForTimeout(100);
+    saved = await savedRule(page);
+    assert.equal(saved.filter(r => r.group).length, 1, 'one let go, one still in it');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
