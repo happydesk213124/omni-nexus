@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 
 // DOMParser lives in a browser: the finder runs where the viewer does.
-const built = await build({ stdin: { contents: "import {findElementKinds} from './src/domain/viewer/elements';window.findElementKinds=findElementKinds;", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'iife' });
+const built = await build({ stdin: { contents: "import {findElementKinds,kindLabel} from './src/domain/viewer/elements';window.findElementKinds=findElementKinds;window.kindLabel=kindLabel;", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'iife' });
 const BODY = [
   '<p>문이 열렸다.</p>',
   '<div class="x-risu-status">HP 3 <span>MP 2</span><span>호감 42</span><span data-omnitts-tail="1"><button data-omnitts-play="1">▶</button></span></div>',
@@ -24,8 +24,12 @@ test('요소: a bot\'s own elements by kind — ours, wrappers around our pictur
     const kinds = await page.evaluate(body => {
       const root = new DOMParser().parseFromString(`<div>${body}</div>`, 'text/html').body.firstElementChild;
       document.body.innerHTML = `<div class="chattext">${body}</div>`;
-      return window.findElementKinds(root).map(k => ({ ...k, live: document.querySelectorAll(`.chattext ${k.selector}`).length }));
+      return window.findElementKinds(root).map(k => ({ ...k, live: document.querySelectorAll(`.chattext ${k.selector}`).length, named: window.kindLabel(k.sig) }));
     }, BODY);
+    // A kind registered and absent from a message is named from its signature alone, as it is when found.
+    for (const k of kinds) assert.equal(k.named, k.label, `${k.sig}: named from its signature`);
+    assert.equal(await page.evaluate(() => window.kindLabel('div#board.x-risu-a.x-risu-b')), 'a', 'its first class before its id');
+    assert.equal(await page.evaluate(() => window.kindLabel('details#log')), 'log');
     assert.deepEqual(kinds.map(k => k.label), ['status', 'choices', 'card', 'inner', '상태'], 'in reading order; no inray shot or bar, no wrapper holding a picture, no empty one');
     const [status, choices, card, , hangul] = kinds;
     assert.equal(status.text, 'HP 3 MP 2 호감 42', 'cells side by side are words apart; a TTS ▶ inside is no part of the panel');

@@ -47,7 +47,8 @@ async function openViewerPage({ messages, html, touch = false } = { messages: ME
       async appendChild(child) { this.node.append(child.node); }
       async remove() { this.node.remove(); }
       async cloneNode(deep) { return new Safe(this.node.cloneNode(deep)); }
-      async getBoundingClientRect() { return this.node.getBoundingClientRect().toJSON(); }
+      // window.slowRect: every rectangle read slow, as a phone's bridge is (the box is read where it is by then).
+      async getBoundingClientRect() { if (window.slowRect) await new Promise(r => setTimeout(r, window.slowRect)); return this.node.getBoundingClientRect().toJSON(); }
       async addEventListener(type, fn) { const id = String(Math.random()); const cb = e => fn({ clientX: e.clientX, clientY: e.clientY, key: e.key, repeat: e.repeat }); this.listeners.set(id, [type, cb]); document.addEventListener(type, cb); return id; }
       async removeEventListener(type, id) { const x = this.listeners.get(id); if (x) { document.removeEventListener(type, x[1]); this.listeners.delete(id); } }
       async createElement(tag) { if (window.slowCreate) await new Promise(r => setTimeout(r, window.slowCreate)); if (!['div', 'button', 'style'].includes(tag)) throw Error('Unsupported host element ' + tag); return new Safe(document.createElement(tag)); }
@@ -405,6 +406,42 @@ test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, i
   } finally { await browser.close(); }
 });
 
+// On a phone every read through Risu's bridge is slow, and a busy page slow to paint: 편집's list shows well before it
+// is measured, or is measured while it slides in. A chip tapped then, or after, must still take (it was dropped: the
+// tap fell on a panel not measured yet, or measured where it was on its way).
+test('요소 편집: a chip tapped before the panel is measured (a slow bridge), or after it was measured sliding in, still takes', async () => {
+  const { browser, page, errors, open, press, tapChip, chip } = await openViewerPage();
+  try {
+    await open();
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    // From here every rectangle read takes 1.5 s: the list shows long before it is measured.
+    await page.evaluate(() => { window.slowRect = 1500; });
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
+    await page.waitForTimeout(450);
+    await tapChip('status', '스티커');
+    await page.evaluate(() => { window.slowRect = 0; });
+    await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [x-vn-st] .x-risu-status'));
+    for (let i = 0; i < 30 && (await savedRule(page)).length === 0; i++) await page.waitForTimeout(100);
+    assert.deepEqual((await savedRule(page)).map(r => r.role), ['sticker']);
+    // Closed, and its slide in made slow (2.5 s): opened again, it is measured on its way. A chip at the panel's left,
+    // tapped once it stands still, takes.
+    await press('eledit');
+    await page.waitForTimeout(600);
+    await page.addStyleTag({ content: '[x-omni-vn] [data-vn-edit]{transition-duration:2.5s!important}' });
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
+    await page.waitForTimeout(2800);
+    await tapChip('status', '숨김');
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-el] i')].some(i => i.textContent === '숨김' && i.hasAttribute('data-on')));
+    for (let i = 0; i < 30 && !(await savedRule(page))[0]?.hidden; i++) await page.waitForTimeout(100);
+    assert.equal((await savedRule(page))[0].hidden, true);
+    assert.equal(await chip('status', '숨김').count(), 1);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
 // The reader's message has its own panel (다음 유저 메시지), and the bot's panels come in the reply or in the message
 // after it: each registered as 작동 from both tabs, picked with 선택 and grouped twice (A, B); a group is one tile
 // opening the newest one there is.
@@ -522,6 +559,161 @@ test('요소: 다음 유저 메시지 finds the reader\'s panel; 선택 picks ti
     for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 2; i++) await page.waitForTimeout(100);
     saved = await savedRule(page);
     assert.deepEqual(saved.filter(r => r.role === 'live').map(r => r.group).sort(), ['', '', 'B', 'B'], 'A undone, B as it was');
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+// A group's members are seldom all in one reply (the bot's panel in the reply, or in its next message): with 편집's
+// 없는것 숨김 off a kind registered and absent here is a grey tile, picked and grouped with the rest. Stickers group
+// too (never with 작동): out of 편집 a group of them is one sticker, the newest one's copy, where the group is.
+test('요소: 없는것 숨김 off shows the absent as grey tiles, picked and grouped; stickers group too, one copy of the newest', async () => {
+  const card = label => `<div class="x-risu-card" style="width:150px;height:44px;background:#533">${label}</div>`;
+  const chat = [
+    { role: 'char', chatId: 'a0', data: '전날 밤은 조용했다.' }, { role: 'user', data: '안녕' },
+    { role: 'char', chatId: 'a2', data: '바람이 불었다.' }, { role: 'user', data: '가자' },
+    { role: 'char', chatId: 'a4', data: reply }, { role: 'user', data: '들어가자' },
+    { role: 'char', chatId: 'a6', data: '상태가 갱신되었다.' },
+  ];
+  const html = i => i === 4 ? replyHtml + card('카드 4')
+    : i === 6 ? '<p>상태가 갱신되었다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#355">HP 1 갱신</div>' + card('카드 6')
+    : `<p>${chat[i].data}</p>`;
+  const { browser, page, errors, open, press, tapChip } = await openViewerPage({ messages: chat, html });
+  try {
+    const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
+    const scene = () => page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
+    const tabAt = async i => { const b = await page.locator('[x-omni-vn] [data-vn-tabs] i').nth(i).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(400); };
+    const tap = async locator => { const b = await locator.boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(150); };
+    // A sticker by its left edge: the panel covers the rest of it on a phone-wide stage.
+    const tapEdge = async locator => { const b = await locator.boundingBox(); await page.mouse.click(b.x + 12, b.y + b.height / 2); await page.waitForTimeout(150); };
+    const button = name => page.locator(`[x-omni-vn] [data-vn-gb="${name}"]`);
+    const sticker = label => page.locator('[x-omni-vn] [x-vn-st]:not([x-vn-ghost])', { has: page.locator('.x-risu-card', { hasText: label }) });
+    const tile = label => page.locator('[x-omni-vn] [x-vn-st]:not([x-vn-ghost]) [data-vn-tile]:not([data-vn-group])', { hasText: label });
+    const ghost = label => page.locator('[x-omni-vn] [x-vn-st][x-vn-ghost] [data-vn-tile]', { hasText: label });
+    // The grey tiles on show: their name, tab and group letter.
+    const ghosts = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st][x-vn-ghost]')].filter(g => getComputedStyle(g).display !== 'none')
+      .map(g => [g.querySelector('span')?.textContent, g.querySelector('em')?.textContent, g.querySelector('i')?.textContent || ''].join(' ')).sort());
+    // The cards on show, by what they say, and how many are picked (✓) with 선택.
+    const cards = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] .x-risu-card')].filter(c => getComputedStyle(c.closest('[x-vn-st]')).display !== 'none').map(c => c.textContent));
+    const picks = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st], [x-omni-vn] [x-vn-st] [data-vn-tile]')].filter(el => getComputedStyle(el, '::after').content.includes('✓')).length);
+    const letters = letter => page.evaluate(l => [...document.querySelectorAll('[x-omni-vn] [x-vn-st-group], [x-omni-vn] [x-vn-st] [data-vn-tile] i')].filter(i => i.textContent === l).length, letter);
+    const seenIn = () => page.evaluate(() => {
+      const f = document.querySelector('[x-omni-vn] [data-vn-pop]');
+      if (!f || getComputedStyle(f).display === 'none') return '';
+      const r = f.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), chat = at?.closest('.risu-chat');
+      return chat ? `${chat.dataset.chatIndex}:${at.closest('.x-risu-status') ? 'status' : '?'}` : '';
+    });
+    const opened = async () => { await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '')); return seenIn(); };
+    await open();
+    await page.waitForFunction(() => /갱신되었다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
+    await page.waitForTimeout(400);
+    // The status panel 작동 and the card a sticker, from the reply (4) and again from the bot's next message (6).
+    await tapChip('status', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 1);
+    await page.waitForTimeout(300);
+    await tapChip('card', '스티커');
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] .x-risu-card')].some(c => c.textContent === '카드 4'));
+    await tabAt(2);
+    await page.waitForFunction(() => /갱신/.test(document.querySelector('[x-omni-vn] [data-vn-el] span')?.textContent || ''));
+    await tapChip('status', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 2);
+    await page.waitForTimeout(300);
+    await tapChip('card', '스티커');
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] .x-risu-card')].some(c => c.textContent === '카드 6'));
+    await page.waitForTimeout(500);
+    // The two card stickers picked with 선택 (✓ on each), 그룹화: group A, its letter by each.
+    await tap(button('select'));
+    await page.waitForFunction(() => /data-vn-gb="select"\]\{color:#1a1408/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    await tapEdge(sticker('카드 4'));
+    await tapEdge(sticker('카드 6'));
+    for (let i = 0; i < 20 && await picks() !== 2; i++) await page.waitForTimeout(100);
+    assert.equal(await picks(), 2, 'a sticker is picked as a tile is');
+    await tap(button('group'));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st-group]')].filter(i => i.textContent === 'A').length === 2);
+    await page.waitForTimeout(400);
+    // A member dropped in 편집 is where its group shows (a group of stickers has no bar to move it by otherwise).
+    const c4 = await sticker('카드 4').boundingBox(), was = (await savedRule(page)).find(r => r.role === 'sticker' && r.from === 0).y;
+    await page.mouse.move(c4.x + 12, c4.y + c4.height / 2); await page.mouse.down();
+    await page.mouse.move(c4.x + 12, c4.y + c4.height / 2 + 20, { steps: 4 }); await page.mouse.move(c4.x + 12, c4.y + c4.height / 2 + 40, { steps: 4 }); await page.mouse.up();
+    for (let i = 0; i < 30 && (await savedRule(page)).find(r => r.role === 'sticker' && r.from === 0).y === was; i++) await page.waitForTimeout(100);
+    const dropped = (await savedRule(page)).find(r => r.role === 'sticker' && r.from === 0);
+    assert.notEqual(dropped.y, was, 'dropped lower');
+    assert.deepEqual((await savedRule(page)).filter(r => r.group === 'A').map(r => r.gy), [dropped.y, dropped.y], 'the group\'s place with it');
+    await page.waitForTimeout(300);
+    // A sticker and a 작동 tile are no group: said so, nothing grouped.
+    await tap(tile('status').nth(0));
+    await tapEdge(sticker('카드 4'));
+    await tap(button('group'));
+    await page.waitForFunction(() => /스티커와 작동은 따로 묶어요/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    await page.waitForTimeout(400);
+    assert.equal(await letters('B'), 0, 'no group B');
+    await tap(button('select'));
+    for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 2; i++) await page.waitForTimeout(100);
+    assert.deepEqual((await savedRule(page)).map(r => [r.role, r.from, r.group]).sort(), [['live', 0, ''], ['live', 1, ''], ['sticker', 0, 'A'], ['sticker', 1, 'A']]);
+    await press('eledit');
+    await page.waitForTimeout(500);
+    // Out of 편집 the group is one sticker: the newest one's copy (the next message's, not the reply's), where the
+    // group is.
+    assert.deepEqual(await cards(), ['카드 6']);
+    const a = (await savedRule(page)).filter(r => r.group === 'A'), own = a.find(r => r.from === 1);
+    assert.equal(new Set(a.map(r => `${r.gx},${r.gy}`)).size, 1, 'one place for group A');
+    assert.notEqual(own.y, own.gy, 'the newest one has a place of its own');
+    assert.equal(await sticker('카드 6').evaluate(el => el.style.top), `${own.gy}%`, 'shown where the group is');
+    // On the newest reply (6) the bot has no next message: in 편집 the next message's are not there, nor shown.
+    for (let i = 0; i < 10 && !/갱신되었다/.test(await text()); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(350); }
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 1);
+    assert.deepEqual(await cards(), ['카드 6']);
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile]').length === 1);
+    await page.waitForTimeout(500);
+    assert.match(await scene(), /data-vn-gb="absent"\]\{color:#1a1408/, '없는것 숨김 is on as 편집 opens');
+    assert.deepEqual(await ghosts(), []);
+    // 없는것 숨김 off: the next message's two, grey tiles where they go (the card's with its group's letter).
+    await tap(button('absent'));
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-st][x-vn-ghost]').length === 2);
+    assert.deepEqual(await ghosts(), ['card 다음1 A', 'status 다음1 '].sort());
+    assert.doesNotMatch(await scene(), /data-vn-gb="absent"\]\{color:#1a1408/);
+    assert.notEqual(await ghost('status').evaluate(el => getComputedStyle(el).color), await tile('status').evaluate(el => getComputedStyle(el).color), 'grey, not gold');
+    // The present status tile and the absent one picked, 그룹화: group B, a letter on both.
+    await tap(button('select'));
+    await tap(tile('status'));
+    await tap(ghost('status'));
+    for (let i = 0; i < 20 && await picks() !== 2; i++) await page.waitForTimeout(100);
+    await tap(button('group'));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile] i')].filter(i => i.textContent === 'B').length === 2);
+    await page.waitForTimeout(400);
+    // A grey tile picked, then hidden again: let go (shown once more, it is not picked).
+    await tap(ghost('card'));
+    for (let i = 0; i < 20 && await picks() !== 1; i++) await page.waitForTimeout(100);
+    await tap(button('absent'));
+    await page.waitForFunction(() => !document.querySelector('[x-omni-vn] [x-vn-st][x-vn-ghost]'));
+    await page.waitForTimeout(300);
+    await tap(button('absent'));
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [x-vn-st][x-vn-ghost]').length === 2);
+    await page.waitForTimeout(300);
+    assert.equal(await picks(), 0, 'hidden, the pick was let go');
+    await press('eledit');
+    await page.waitForTimeout(500);
+    for (let i = 0; i < 30 && (await savedRule(page)).filter(r => r.group).length !== 4; i++) await page.waitForTimeout(100);
+    assert.deepEqual((await savedRule(page)).map(r => [r.role, r.from, r.group]).sort(), [['live', 0, 'B'], ['live', 1, 'B'], ['sticker', 0, 'A'], ['sticker', 1, 'A']]);
+    // Out of 편집 no grey tile; group B is one tile, opening the one there is (6); on the reply before, the newest (6).
+    assert.equal(await page.locator('[x-omni-vn] [x-vn-st][x-vn-ghost]').count(), 0);
+    assert.equal(await tile('status').count(), 0);
+    await tap(page.locator('[x-omni-vn] [data-vn-group="B"]'));
+    assert.equal(await opened(), '6:status');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    for (let i = 0; i < 10 && !/늦었지/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-group]').length === 1);
+    await page.waitForTimeout(300);
+    await tap(page.locator('[x-omni-vn] [data-vn-group="B"]'));
+    assert.equal(await opened(), '6:status');
+    assert.deepEqual(await cards(), ['카드 6']);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

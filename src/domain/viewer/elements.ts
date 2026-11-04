@@ -40,6 +40,14 @@ export function elementSignature(el: Element): string {
   const id = el.getAttribute('id') || '';
   return `${el.tagName.toLowerCase()}${id && id.length <= 60 ? `#${id}` : ''}${ownClasses(el).map(c => `.${c}`).join('')}`;
 }
+/**
+ * The name findElementKinds gives a kind (its first class, else its id, else its tag), from its signature alone: for
+ * one registered and absent from the message read. An id holding a dot reads as cut there.
+ */
+export function kindLabel(sig: string): string {
+  const m = /^([^#.]+)(?:#([^.]*))?((?:\.[^.]+)*)$/.exec(sig);
+  return (m?.[3]?.split('.').find(Boolean) || m?.[2] || m?.[1] || sig).replace(/^x-risu-/, '');
+}
 export function elementSelector(el: Element): string {
   const id = el.getAttribute('id') || '';
   return `${el.tagName.toLowerCase()}${id && id.length <= 60 ? `#${ident(id)}` : ''}${ownClasses(el).map(c => `.${ident(c)}`).join('')}`;
