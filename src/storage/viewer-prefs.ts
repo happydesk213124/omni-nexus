@@ -22,8 +22,9 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * floatResume, floatCenter, menuResume, menuCenter: 바로가기, the viewer's two ways in (where the reader left this chat,
  * the message in the middle of the chat screen) as Risu's floating buttons (off unless switched on) and in the chat's
  * ☰ menu (on unless switched off), each up while on.
+ * elements: its 요소 button, as AUTO and VOICE are: on, the bot's registered elements come up (any bot, any chat).
  */
-export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean }
+export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean; elements: boolean }
 export type CgSize = 1 | 2 | 3;
 export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
 const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
@@ -48,6 +49,7 @@ function normalize(raw: unknown): ViewerPrefs {
     // The floating pair is new over the chat: up only once switched on (the menu's pair was always there).
     floatResume: r.floatResume === true, floatCenter: r.floatCenter === true,
     menuResume: r.menuResume !== false, menuCenter: r.menuCenter !== false,
+    elements: r.elements === true,
   };
 }
 let prefs = normalize(null);

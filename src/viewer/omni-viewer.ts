@@ -79,10 +79,29 @@ const TAG_BAR = new Set<string>(TAG_ACTS);
 // Its 🔢's row under it (look.ts), in its order.
 const COUNT_ACTS = COUNT_STEPS.map(([act]) => act);
 const COUNT_BAR = new Set<string>(COUNT_ACTS);
-// Behind the viewer only the newest messages stay laid out: Risu's re-render costs less.
+// Behind the viewer only the newest messages stay laid out: Risu's re-render costs less. The newest three of the
+// bot's (role char), whatever the reader typed between them: a status panel a bot sends in a message of its own stays
+// drawn with its reply (요소's 다음 메시지), and only a drawn element can be lifted (작동). The newest message stays
+// too, whatever it is: a reply streaming in is not among the messages read yet, and a reply is read as drawn
+// (innerText, which reads the bot-hidden lines too once nothing is drawn). Before the chat is read, the newest three.
 // The floating TTS and image viewers stand above everything: hidden while this covers the
 // chat — Omni's overlay too, except while its 크게보기 is open over the stepped-down viewer.
-const foldCss = (hideOmni: boolean) => `${LIST} > .chat-message-container:nth-child(n+3){display:none!important}[x-omnitts-viewer],[x-nx-float],[x-omni-tagfloat]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
+const FOLD_KEEP = 3;
+const foldCss = (hideOmni: boolean) => {
+  const keep = charIndexes().slice(-FOLD_KEEP);
+  const chat = keep.length
+    ? `${LIST} > .chat-message-container:nth-child(n+2):not(:has(> .risu-chat:is(${keep.map(i => `[data-chat-index="${i}"]`).join(',')}))){display:none!important}`
+    : `${LIST} > .chat-message-container:nth-child(n+${FOLD_KEEP + 1}){display:none!important}`;
+  return `${chat}[x-omnitts-viewer],[x-nx-float],[x-omni-tagfloat]${hideOmni ? ',.inlay-nx-overlay-root' : ''}{display:none!important}`;
+};
+let foldShown = '';
+/** The fold as the chat now is (its newest char messages, 크게보기 or not): written only when it changed. */
+async function syncFold(): Promise<void> {
+  const next = foldCss(!away);
+  if (!fold || next === foldShown) return;
+  foldShown = next;
+  await fold.setTextContent(next);
+}
 
 interface HostPoint { clientX: number; clientY: number }
 let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeElement | null = null, fold: SafeElement | null = null;
@@ -183,6 +202,7 @@ async function readChat(ctx?: TtsChatContext): Promise<void> {
   // The bot just read stands for every read of it while the costume names are worked out (the rosters they read).
   const read = bot, rosterScope = context.rosterScope;
   if (read) await withViewerBot(() => refreshCostumeNames(read.id, rosterScope));
+  await syncFold();
 }
 /**
  * The viewer works off the chat as it read it (refreshed at a stream's end, a bake, 최신): reads of that bot meanwhile
@@ -502,6 +522,7 @@ function flushMarks(): void {
 async function resume(): Promise<void> {
   const [ctx, all] = await Promise.all([currentTtsContext(), streaming ? null : readMarks()]), mark = all?.[chatKey(ctx)];
   context = ctx;
+  void syncFold().catch(() => {});
   const list = charIndexes(), newest = list[list.length - 1];
   let target: number | undefined, resumeAt = 0;
   if (mark && typeof mark === 'object' && newest !== undefined) {
@@ -1213,7 +1234,7 @@ async function inspectCg(): Promise<boolean> {
   try { shown = await shot(scene.cg.card, scene.cg.asset) === true; } catch (error) { dbg('viewer.inspect', { message: String(error) }, 'warn'); }
   if (!shown || !open) return false;
   away = true;
-  await fold?.setTextContent(foldCss(false));
+  await syncFold();
   await restyle();
   const since = Date.now();
   let seen = false;
@@ -1238,7 +1259,7 @@ async function comeBack(): Promise<void> {
   if (!away) return;
   away = false;
   if (!open) return;
-  await fold?.setTextContent(foldCss(true));
+  await syncFold();
   cgView = lastCg ? fullFrom : 'none';
   await restyle();
   await measureCgControls();
@@ -2061,7 +2082,8 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     await root.setStyleAttribute(FALLBACK_RECT);
     const css = await doc.createElement('style'); await css.setAttribute('x-omni-vn-style', 'static'); await css.setTextContent(STATIC_CSS);
     fold = await doc.createElement('style'); await fold.setAttribute('x-omni-vn-style', 'fold');
-    await fold.setTextContent(foldCss(true));
+    foldShown = '';
+    await syncFold();
     dyn = await doc.createElement('style'); await dyn.setAttribute('x-omni-vn-style', 'scene');
     // Until the first line: the spinner, so the frame never stands there blank.
     await dyn.setTextContent('[x-omni-vn] [data-vn-busy]{display:block}');

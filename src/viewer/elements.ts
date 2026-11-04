@@ -3,6 +3,7 @@ import { risuHost } from '../core/host';
 import { compactHash } from '../domain/tts/segment';
 import { findElementKinds, type ElementKind } from '../domain/viewer/elements';
 import { elementRules, saveElementRules, type ElementRule, type ElementRules } from '../storage/viewer-elements';
+import { saveViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { quiet, release, rowAt, unwrap } from './safe-dom';
 
 /**
@@ -40,7 +41,8 @@ const stickers = new Map<string, Sticker>();
 let options: string[] = [], choicesOn = false, chosen = -1, choicesRect: DOMRect | null = null, panelRect: DOMRect | null = null;
 
 export async function elementsOpen(h: ElementsHost): Promise<void> {
-  host = h; showing = false; editing = false; kinds = []; rows = []; options = []; choicesOn = false; chosen = -1; choicesRect = null; panelRect = null;
+  // 요소 stays as it was left, as AUTO and VOICE do (any bot, any chat); 편집 always starts closed.
+  host = h; showing = viewerPrefs().elements; editing = false; kinds = []; rows = []; options = []; choicesOn = false; chosen = -1; choicesRect = null; panelRect = null;
   stickers.clear();
   const root = h.root();
   if (root) [layer, choicesEl, panel] = await Promise.all(['[data-vn-stickers]', '[data-vn-choices]', '[data-vn-edit]'].map(s => root.querySelector(s)));
@@ -231,6 +233,7 @@ async function panelTap(p: HostPoint): Promise<void> {
 
 export async function toggleElements(): Promise<void> {
   showing = !showing;
+  void saveViewerPrefs({ elements: showing }).catch(() => {});
   if (!showing) editing = false;
   await host?.restyle();
   await measureStickers();

@@ -85,7 +85,11 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     assert.match(await page.evaluate(() => document.querySelector('[x-omni-vn-style="scene"]').textContent), /\[data-vn-clock\]::after\{content:"배경: 장소 없음"\}/);
     // The counter is drawn by the scene's style text (::after), costing no call of its own.
     assert.match(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content), /^"1 \/ 5/, 'the hidden summary line is no scene: 4 lines and the CG');
-    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').length), 2, 'only the newest messages stay laid out behind it');
+    // Behind it only the bot's newest messages stay laid out (its three newest; this chat has two of the bot's, 0 and 2),
+    // and the newest of any: the reader's message (1) and the rest are folded away.
+    await page.waitForFunction(() => /:has\(/.test(document.querySelector('[x-omni-vn-style="fold"]')?.textContent || ''));
+    const laidOut = await page.evaluate(() => [...document.querySelectorAll('.flex-col-reverse > .chat-message-container')].filter(n => getComputedStyle(n).display !== 'none').map(n => Number(n.querySelector('.risu-chat').dataset.chatIndex)));
+    assert.deepEqual([...new Set(laidOut)].sort(), [0, 2], `only the bot's newest messages stay laid out behind it: ${laidOut}`);
     // A tap while the letters still come in only completes them: each tap waits for its line to be whole (its arrow shows then).
     const lineDone = () => page.waitForFunction(() => { const cue = document.querySelector('[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]'); return !cue || getComputedStyle(cue).opacity !== '0'; });
     const tap = async expected => {
