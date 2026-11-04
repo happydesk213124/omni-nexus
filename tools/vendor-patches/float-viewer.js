@@ -23,7 +23,8 @@ let nxFloatFoldBtn = null, nxFloatResize = null, nxFloatFoldGrip = null, nxFloat
 let nxFloatIcon = null, nxFloatImgReroll = null, nxFloatCss = null, nxFloatButtons = [];
 let nxFloatDoc = null, nxFloatChatRoot = null, nxFloatMoveListener = null;
 let nxFloatCardId = null, nxFloatAsset = null, nxFloatGen = 0, nxFloatLastUrl = "";
-let nxFloatLastDomSrc = "", nxFloatCollapsed = null, nxFloatHidden = false;
+// nxFloatShownKey: the chat picture copied in (id|asset), '' while the pixels came from the card's file instead.
+let nxFloatShownKey = "", nxFloatCollapsed = null, nxFloatHidden = false;
 let nxFloatCompact = false, nxFloatCompactBtn = null;
 let nxFloatGeo = null, nxFloatIconGeo = null, nxFloatImage = null;
 let nxFloatEnsuring = null, nxFloatPainting = Promise.resolve(), nxFloatSelecting = 0;
@@ -131,11 +132,29 @@ async function nxFloatSetTarget(card, bubbleHtml, valid = () => true) {
     _floatPin: 1
   });
 }
+const NX_FLOAT_IMG_CSS = 'width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;';
 async function nxFloatPaintImg(url) {
   if (!nxFloatImage) return;
-  nxFloatLastUrl = String(url || '');
+  nxFloatLastUrl = String(url || ''); nxFloatShownKey = '';
   const safe = nxFloatLastUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  await nxFloatImage.setInnerHTML(safe ? '<img src="' + safe + '" style="width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;" />' : '');
+  await nxFloatImage.setInnerHTML(safe ? '<img src="' + safe + '" style="' + NX_FLOAT_IMG_CSS + '" />' : '');
+}
+// The chat's own <img>, copied in: its src (a file, or image history's data URL) is never read nor written back, and
+// nothing is parsed or sanitized (크게보기 shows a chat picture the same way, inspect-surface.js).
+async function nxFloatPaintShot(shot) {
+  if (!nxFloatImage) return false;
+  const gen = nxFloatGen, img = await shot.node.querySelector('img');
+  if (!img) { shot.dead = true; return false; }
+  let copy = null;
+  try { copy = await img.cloneNode(false); } finally { await omniRelease(img); }
+  try {
+    if (gen !== nxFloatGen || !nxFloatImage) return false;
+    // Sent together and done by Risu in the order sent: the copy restyled, the old picture cleared, the copy put in.
+    // (A paint overtaken meanwhile is cleared by the next one, sent after it.)
+    await Promise.all([copy.setClassName(''), copy.setStyleAttribute(NX_FLOAT_IMG_CSS), nxFloatImage.setInnerHTML(''), nxFloatImage.appendChild(copy)]);
+    nxFloatLastUrl = 'shot:' + shot.key; nxFloatShownKey = shot.key;
+    return true;
+  } finally { await omniRelease(copy); }
 }
 async function nxFloatPixels(card) {
   // Blob-cache fallback only: the DOM probe paints first when it finds pixels.
@@ -160,15 +179,16 @@ async function nxFloatPixels(card) {
     } catch {}
   }
 }
-async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
+// shot: the chat's picture to copy (a row of nxFloatMeasureShots); without one the card's file is shown.
+async function nxFloatSelect(id, bubbleHtml = '', asset = null, shot = null) {
   const token = ++nxFloatSelecting, epoch = nxFloatEpoch;
   let card = nxFloatFind(id);
-  if (!card && !domSrc) return false;
+  if (!card && !shot) return false;
   const changed = nxFloatCardId !== id;
   if (changed) {
     ++nxFloatGen;
-    nxFloatLastDomSrc = '';
-    await nxFloatPaintImg('');
+    // A copy replaces the old picture itself; a card's file may take a while, and the old one must not stand for it.
+    if (!shot) await nxFloatPaintImg('');
   }
   if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
   nxFloatCardId = id;
@@ -189,19 +209,21 @@ async function nxFloatSelect(id, bubbleHtml = '', asset = null, domSrc = '') {
   if (index >= 0) t.viewerIndex = index;
   // The reading message target is independent of the displayed image.
   if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
-  if (domSrc) {
+  if (shot) {
     ++nxFloatGen;
-    nxFloatLastDomSrc = String(domSrc);
-    if (domSrc !== nxFloatLastUrl) await nxFloatPaintImg(domSrc);
+    if (shot.key === nxFloatShownKey || await nxFloatPaintShot(shot)) return true;
+    if (token !== nxFloatSelecting || epoch !== nxFloatEpoch) return false;
+    // No <img> in it to copy: the card's file.
+    void nxFloatPixels(card).catch(e => nxFloatLog('pixels', String(e)));
   } else if (changed || !nxFloatLastUrl) {
     // Storage hydration must not hold the mount/visibility queue hostage.
     void nxFloatPixels(card).catch(e => nxFloatLog('pixels', String(e)));
   }
   return true;
 }
-async function nxFloatShowCardId(id, bubbleHtml, asset, domSrc) {
+async function nxFloatShowCardId(id) {
   if (!await nxFloatEnsure() || !id) return false;
-  return nxFloatSelect(id, bubbleHtml, asset, domSrc);
+  return nxFloatSelect(id);
 }
 async function nxFloatShowCard(id) { return nxFloatShowCardId(id); }
 async function nxFloatShowLatest() {
@@ -222,6 +244,8 @@ async function nxFloatClick(kind) {
     if (kind === "unfold") { await nxFloatSetCollapsed(false); return; }
     if (kind === "stop") { await omniFooterAction("stop", nxFloatKey); return; }
     if (kind === "single") { await nxFloatRerollOne(); return; }
+    // 인물 looks for the names of the message being read: which one that is, is asked now (no scroll asks it).
+    if(kind === "char") await nxFloatReadTarget().catch(() => null);
     if(kind === "char" || kind === "preset") {await omniFooterAction(kind,nxFloatKey);return;}
     if (kind === "full") {
       const card = nxFloatFind(nxFloatCardId);
@@ -231,7 +255,8 @@ async function nxFloatClick(kind) {
       return;
     }
     if (kind === "tag" || kind === "regen" || kind === "note") {
-      if(kind !== "note" || !omniFooterTargets.has(nxFloatKey))await nxFloatScan();
+      // The message being read, asked now: the scroll scans look for pictures only.
+      await nxFloatReadTarget();
       if (!omniFooterTargets.get(nxFloatKey)) {
         $e("화면에 보이는 채팅 메시지가 없습니다.");
         return;
@@ -261,7 +286,6 @@ async function nxFloatRerollOne() {
     if (epoch !== nxFloatEpoch || nxFloatCardId !== id) return;
     const nid = String(B?.card?.id || id);
     nxFloatSelectedCard = {...before,...B?.card,id:nid,message_index:target?.index};
-    nxFloatLastDomSrc = '';
     await nxFloatPaintImg('');
     await nxFloatSelect(nid);
     y("info", "float.reroll", `${String(id).slice(0, 8)}→${nid.slice(0, 8)}`);
@@ -330,7 +354,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatSession = scope.sessionId;
     nxFloatDirty = true;
     nxFloatStructureDirty = true; nxFloatReadingIndex = -1;
-    nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
+    nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatShownKey = ''; nxFloatLastUrl = '';
     nxFloatNavIds = []; nxFloatShotIndex = -1; nxFloatNavHold = null;
     omniFooterTargets.delete(nxFloatKey);
     await nxFloatPaintImg('');
@@ -486,7 +510,7 @@ async function nxFloatDispose(resetSession = true) {
   nxFloatFoldBtn = null; nxFloatResize = null; nxFloatFoldGrip = null; nxFloatFoldGrid = null;
   nxFloatIcon = null; nxFloatImgReroll = null;
   nxFloatCompactBtn = null;
-  nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatLastDomSrc = ''; nxFloatLastUrl = '';
+  nxFloatCardId = null; nxFloatSelectedCard = null; nxFloatAsset = null; nxFloatShownKey = ''; nxFloatLastUrl = '';
   if (resetSession) { nxFloatSession = ''; nxFloatCompact = false; }
   omniFooterTargets.delete(nxFloatKey);
 }

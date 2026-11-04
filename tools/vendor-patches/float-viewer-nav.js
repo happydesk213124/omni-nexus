@@ -73,6 +73,8 @@ async function nxFloatNavGo(dir) {
   try {
     const list = await nxFloatNavList();
     if (!list) return;
+    // No picture of the chat's on show: the step starts from the message being read, asked now (no scroll asks it).
+    if (!nxFloatNavWhere(list) && nxFloatShotIndex < 0) await nxFloatReadTarget().catch(() => null);
     const target = nxFloatNavStep(list, dir);
     if (!target) { await nxFloatApply(); return; }
     // The scan that follows the scroll must not snap back to a neighbour.
