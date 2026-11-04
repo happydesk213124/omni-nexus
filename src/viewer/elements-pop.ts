@@ -35,6 +35,11 @@ let sig = '', mode: '' | 'wait' | 'live' | 'copy' = '', rule: ElementRule | null
 let turn = 0;
 /** Its size as the chat drew it (read before it is lifted), where each window is, all of them together, the frame's style. */
 let natural = { width: 0, height: 0 }, rects: Array<Box | null> = [], rect: Box | null = null, framed = '';
+/**
+ * How far it is put from the middle to stand in the middle: a box of Risu's page around it that holds fixed boxes
+ * (one the sheet cannot free), or a zoom, moves it, and it is put back by as much. Kept for the next opening.
+ */
+let nudge = { x: 0, y: 0 };
 /** The sheet that lifts it (made the first time), what it says, its writes one at a time, and which viewer they are for. */
 let sheet: SafeElement | null = null, sheetText = '', writes: Promise<void> = Promise.resolve(), epoch = 0, warned = false;
 let later: Array<ReturnType<typeof setTimeout>> = [];
@@ -44,7 +49,7 @@ const round = (n: number) => Math.round(n * 10) / 10;
 const SPINNER = '<b data-vn-spin></b>';
 
 export function popAttach(h: PopHost, el: SafeElement | null): void {
-  host = h; frameEl = el; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null; framed = ''; sheetText = ''; warned = false;
+  host = h; frameEl = el; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null; framed = ''; sheetText = ''; warned = false; nudge = { x: 0, y: 0 };
 }
 export async function popDetach(): Promise<void> {
   // A write asked for before the close is dropped; one under way finishes first, so the sheet it made comes down too.
@@ -109,21 +114,22 @@ export function popTapped(): void {
   for (const ms of [200, 900]) later.push(setTimeout(() => void popRelay().catch(report('viewer.pop')), ms));
 }
 
-/** Where the window stands now: the middle of the frame, as wide as the chat drew it if that fits. */
+const middle = (f: Box) => ({ x: f.left + f.width / 2, y: f.top + f.height / 2 });
+/** Where the window is put: the middle of the frame (and the nudge), as wide as the chat drew it if that fits. */
 function entry(): LiveEntry | null {
   if (!host || !tile || !rule || mode !== 'live' || !popSeen()) return null;
-  const f = host.frame(), s = rule.scale;
+  const f = host.frame(), s = rule.scale, m = middle(f);
   return {
-    index: tile.index, selector: tile.selector, targets: tile.targets, scale: s, cx: f.left + f.width / 2, cy: f.top + f.height / 2,
+    index: tile.index, selector: tile.selector, targets: tile.targets, scale: s, cx: m.x + nudge.x, cy: m.y + nudge.y,
     width: Math.max(60, Math.min(natural.width, (f.width - 24) / s)), maxHeight: f.height * 0.8 / s, rects,
   };
 }
 /** Where each window will stand, before it is read: its own size (taller than allowed, cut), in the middle. */
 function standing(): Box[] {
-  const e = entry();
-  if (!e) return [];
-  const w = e.width * e.scale, h = Math.min(natural.height, e.maxHeight) * e.scale;
-  return e.targets.map((_, k) => ({ left: e.cx + k * LIVE_STEP - w / 2, top: e.cy + k * LIVE_STEP - h / 2, width: w, height: h }));
+  const e = entry(), f = host?.frame();
+  if (!e || !f) return [];
+  const w = e.width * e.scale, h = Math.min(natural.height, e.maxHeight) * e.scale, m = middle(f);
+  return e.targets.map((_, k) => ({ left: m.x + k * LIVE_STEP - w / 2, top: m.y + k * LIVE_STEP - h / 2, width: w, height: h }));
 }
 function union(boxes: Array<Box | null>): Box | null {
   const real = boxes.filter((b): b is Box => !!b && b.width > 0 && b.height > 0);
@@ -153,16 +159,29 @@ export async function popRelay(): Promise<void> {
     if (mine === turn) rect = now;
     return;
   }
-  const doc = host?.doc(), t = tile, mine = turn;
-  if (!doc || !t || !entry()) return;
-  const read = await Promise.all(t.targets.map(async target => {
-    const node = await doc.querySelector(target);
-    try { return node ? await node.getBoundingClientRect() : null; } finally { await release(node); }
-  }));
-  if (mine !== turn || mode !== 'live') return;
-  rects = read.map(b => b && b.width > 0 && b.height > 0 ? { left: b.left, top: b.top, width: b.width, height: b.height } : null);
-  await placeFrame();
-  await popSync();
+  for (let pass = 0; pass < 3; pass++) {
+    const doc = host?.doc(), t = tile, f = host?.frame(), mine = turn;
+    if (!doc || !t || !f || !entry()) return;
+    const read = await Promise.all(t.targets.map(async target => {
+      const node = await doc.querySelector(target);
+      try { return node ? await node.getBoundingClientRect() : null; } finally { await release(node); }
+    }));
+    if (mine !== turn || mode !== 'live') return;
+    rects = read.map(b => b && b.width > 0 && b.height > 0 ? { left: b.left, top: b.top, width: b.width, height: b.height } : null);
+    // Where it went, against the frame's middle where it was put: astray, it is put again by as much (its hole and
+    // frame with it at once) and read again; twice at most (a zoom takes two to come near).
+    const first = rects[0], m = middle(f);
+    const ex = first ? first.left + first.width / 2 - m.x : 0, ey = first ? first.top + first.height / 2 - m.y : 0;
+    const astray = Math.abs(ex) > 1.5 || Math.abs(ey) > 1.5;
+    if (astray && pass < 2) {
+      nudge = { x: nudge.x - ex, y: nudge.y - ey };
+      rects = rects.map(b => b && { left: b.left - ex, top: b.top - ey, width: b.width, height: b.height });
+      dbg('viewer.pop.astray', { pass, ex: Math.round(ex), ey: Math.round(ey), nudge: { x: Math.round(nudge.x), y: Math.round(nudge.y) }, frame: f, at: first });
+    } else if (astray) dbg('viewer.pop.off', { ex: Math.round(ex), ey: Math.round(ey), frame: f, at: first }, 'warn');
+    await placeFrame();
+    await popSync();
+    if (!astray || pass >= 2) return;
+  }
 }
 /** An older reply's: a copy in the frame (its buttons not Risu's there), said so under it. */
 async function fillCopy(doc: SafeDocument, mine: number): Promise<void> {

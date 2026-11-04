@@ -305,6 +305,22 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position === 'fixed');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    // A box of Risu's page that holds fixed boxes, one the sheet cannot free (an inline !important transform): the
+    // panel goes astray, is read where it went, and is put back in the middle, its hole with it.
+    await page.evaluate(() => document.querySelector('.flex-col-reverse').style.setProperty('transform', 'translate(12px, 30px)', 'important'));
+    await tapTile();
+    await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    await page.waitForFunction(() => {
+      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
+      return Math.abs(r.left + r.width / 2 - (v.left + v.width / 2)) <= 2 && Math.abs(r.top + r.height / 2 - (v.top + v.height / 2)) <= 2;
+    });
+    assert.equal(await page.evaluate(() => {
+      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + 8);
+      return !!at?.closest('.risu-chat[data-chat-index="6"] .x-risu-status');
+    }), true, 'through its hole, where it stands now');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status')).position !== 'fixed');
+    await page.evaluate(() => document.querySelector('.flex-col-reverse').style.removeProperty('transform'));
     // An older reply, folded away behind the viewer: its tile opens a copy (its buttons are not Risu's there), said so.
     for (let i = 0; i < 10 && !/전날 밤은 조용했다/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
     await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-tile]'));
