@@ -314,6 +314,22 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(await page.evaluate(()=>window.outerReads),0,'chat changes during a scroll hold wait');
     await page.evaluate(()=>{window.scrollHeld=false;});
     await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
+    // A tap on the chat asks for no scan (a fold is heard by the watcher); a scroll is read once it stops.
+    await page.waitForTimeout(600);
+    await page.evaluate(()=>{window.outerReads=0;});
+    await page.mouse.click(3,3);
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(()=>window.outerReads),0,'a tap asks for no chat scan');
+    await page.evaluate(async()=>{window.outerReads=0;for(let i=0;i<12;i++){document.dispatchEvent(new Event('scroll'));await new Promise(r=>setTimeout(r,100));}window.readsWhileScrolling=window.outerReads;});
+    assert.equal(await page.evaluate(()=>window.readsWhileScrolling),0,'no chat scan while the chat scrolls');
+    await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
+    // The TTS window moved, its volume and speed changed: no line changes, so the chat is not read again.
+    await page.waitForTimeout(600);
+    await page.evaluate(async()=>{window.outerReads=0;await window.updateTtsSettings({viewerAnchor:{right:40,top:120}});await window.updateTtsSettings({volume:.5});await window.updateTtsSettings({rate:1.1});});
+    await page.waitForTimeout(700);
+    assert.equal(await page.evaluate(()=>window.outerReads),0,'window-only settings read no chat');
+    await page.evaluate(()=>window.updateTtsSettings({skipChars:(window.ttsData().settings.skipChars||0)+1}));
+    await page.waitForFunction(()=>window.outerReads>0,undefined,{timeout:3000});
     await page.evaluate(()=>{document.querySelector('.default-chat-screen').remove();});
     await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');
     await page.evaluate(()=>window.updateTtsSettings({enabled:false}));await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none',undefined,{timeout:12000});
