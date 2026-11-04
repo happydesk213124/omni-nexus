@@ -84,14 +84,23 @@ async function openViewerPage({ messages, html, touch = false } = { messages: ME
   return { browser, page, errors, open, press, chip, tapChip, shownMessages };
 }
 
-test('요소: a sticker over the people and under the box, the 요소 button kept, the chat folded to the bot\'s newest three and the reader\'s between them', async () => {
+test('요소: a sticker over the people and under the box, the 요소 button kept, the chat folded to its newest six, a message come in followed at once', async () => {
   const { browser, page, errors, open, press, tapChip, shownMessages } = await openViewerPage();
   try {
     await open();
-    // Behind the viewer: from the bot's third newest message on, the reader's between them too (their panels can be
-    // 요소); the older folded away.
-    await page.waitForFunction(() => /:has\(/.test(document.querySelector('[x-omni-vn-style="fold"]')?.textContent || ''));
-    assert.deepEqual(await shownMessages(), [2, 3, 4, 5, 6]);
+    // Behind the viewer: the chat's newest six, whoever wrote them; the older folded away.
+    await page.waitForFunction(() => /nth-child\(n\+7\)/.test(document.querySelector('[x-omni-vn-style="fold"]')?.textContent || ''));
+    assert.deepEqual(await shownMessages(), [1, 2, 3, 4, 5, 6]);
+    // A message come in that the viewer never heard of (no stream, so no read of the chat): followed at once, the
+    // oldest of the six folded away; gone again, back as it was.
+    await page.evaluate(() => {
+      const c = document.createElement('div'); c.className = 'chat-message-container'; c.id = 'arrived';
+      c.innerHTML = '<div class="risu-chat" data-chat-index="7"><div class="chattext"><p>새 메시지</p></div></div>';
+      document.querySelector('.flex-col-reverse').prepend(c);
+    });
+    assert.deepEqual(await shownMessages(), [2, 3, 4, 5, 6, 7]);
+    await page.evaluate(() => document.getElementById('arrived').remove());
+    assert.deepEqual(await shownMessages(), [1, 2, 3, 4, 5, 6]);
     // 요소 on, the status panel a sticker.
     await press('elems');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');

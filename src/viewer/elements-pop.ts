@@ -6,7 +6,7 @@ import { quiet, release, unwrap } from './safe-dom';
 
 /**
  * 작동's popup: a tap on a tile shows the kind's element in the middle of 옴니 뷰어 (its frame, not the window), the
- * stage dimmed around it. In a message drawn behind the viewer (the bot's newest three) it is the chat's own element,
+ * stage dimmed around it. In a message drawn behind the viewer (the chat's newest six) it is the chat's own element,
  * where Risu drew it: the chat behind is scrolled until it stands in the middle, and a hole is cut in the viewer
  * where it is (elements-live.ts), so its buttons are Risu's. In an older message it is a copy. elements.ts tells the
  * taps: in it, the element's; anywhere else, a fold.
@@ -173,7 +173,7 @@ async function fillCopy(doc: SafeDocument, mine: number): Promise<void> {
     await quiet(body.setClassName('chattext'));
     for (const node of nodes.slice(0, 6)) { const copy = await node.cloneNode(true); await body.appendChild(copy); await release(copy); }
     await note.setAttribute('x-vn-pop-note', '1');
-    await note.setTextContent(nodes.length ? '지난 답장이라 복사본이에요. 버튼은 봇의 최신 답장 3개에서만 눌려요.' : '이 메시지에서 요소를 찾지 못했어요.');
+    await note.setTextContent(nodes.length ? '지난 답장이라 복사본이에요. 버튼은 최근 메시지 6개에서만 눌려요.' : '이 메시지에서 요소를 찾지 못했어요.');
     await frameEl.setInnerHTML('');
     await frameEl.appendChild(body); await frameEl.appendChild(note);
     for (const el of [body, note]) await release(el);
