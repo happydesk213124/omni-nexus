@@ -1637,6 +1637,21 @@
                 <h3>참조 이미지</h3>
                 <p>Models의 NovelAI 쪽 <strong>참조 이미지</strong>에 그림을 올린 뒤 ComfyUI로 돌아와, LoadImage 노드에 <code>"image": "[[ref]]"</code>를 넣습니다. Omni가 그 그림을 ComfyUI에 업로드하고 파일 이름을 채웁니다. 캐릭터별 참고이미지와는 별개입니다.</p>
                 <p>참조가 없으면 <code>[[ref]]</code>는 빈 문자열이 됩니다. <strong>LoadImage 노드가 자동으로 삭제되지는 않습니다.</strong> 이미지가 꼭 필요한 워크플로라면 참조를 올리거나, ComfyUI에서 참조 없는 흐름을 따로 준비하세요.</p>
+                <h3>캐릭터 위치 · 마스크 · 캐릭터 참고이미지</h3>
+                <p>NovelAI에 보내는 캐릭터 위치(가운데 점)를 Omni가 캐릭터마다 <strong>네모 영역</strong>으로 바꿔 줍니다. 그림을 캐릭터끼리 가운데에서 나눠 가지므로, 왼쪽·오른쪽 두 명이면 반씩입니다. 같은 자리에 선 캐릭터는 같은 영역을 씁니다. <code>N</code>은 1~6, 이번 샷의 캐릭터 순서입니다.</p>
+                <ul>
+                  <li><strong>픽셀 네모</strong> <code>[[charN_x]]</code> <code>[[charN_y]]</code> <code>[[charN_w]]</code> <code>[[charN_h]]</code> — 왼쪽 위 모서리와 크기. 8의 배수, 최소 64. <strong>Conditioning (Set Area)</strong>에 넣습니다.</li>
+                  <li><strong>비율 네모</strong> <code>[[charN_px]]</code> <code>[[charN_py]]</code> <code>[[charN_pw]]</code> <code>[[charN_ph]]</code> — 같은 네모를 0~1로. <strong>Conditioning (Set Area with Percentage)</strong>용입니다.</li>
+                  <li><strong>가운데 점</strong> <code>[[charN_cx]]</code> <code>[[charN_cy]]</code> — NovelAI 좌표 그대로(0~1).</li>
+                  <li><strong>마스크</strong> <code>[[charN_mask]]</code> — 그 네모만 흰색인 흑백 그림을 Omni가 만들어 업로드합니다. <strong>Load Image (as Mask)</strong>의 image에 넣고 channel은 <code>red</code>로 두세요. IPAdapter의 attn_mask나 Conditioning (Set Mask)에 씁니다.</li>
+                  <li><strong>캐릭터 참고이미지</strong> <code>[[charN_ref]]</code> — 캐릭터 시트에 넣은 그 캐릭터의 참고이미지를 업로드합니다. LoadImage에 넣습니다. 세기는 <code>[[charN_ref_weight]]</code>(캐릭터 참고 세기 설정값)로 IPAdapter weight에 넣으세요.</li>
+                  <li><strong>바이브</strong> <code>[[vibe]]</code> — 이번 프리셋의 바이브 그림, 없으면 Models의 바이브 그림(바이브 켬일 때)을 업로드합니다. 세기는 <code>[[vibe_weight]]</code>. 그림 전체에 씁니다.</li>
+                  <li><code>[[charN_on]]</code>은 그 캐릭터가 있으면 1, 없으면 0입니다. <code>[[char_count]]</code>는 이번 캐릭터 수입니다.</li>
+                </ul>
+                <p><strong>캐릭터가 적은 샷도 그대로 돌아갑니다.</strong> 3명용 워크플로로 1명 샷을 그리면, 빈 자리는 네모가 그림 전체, 마스크는 까만 그림, <code>[[charN_on]]</code>은 0이 됩니다. 참고이미지·바이브 그림이 없으면 까만 대체 그림이 들어가고 세기는 0입니다. 그러니 Set Area의 strength에 <code>"[[charN_on]]"</code>, IPAdapter weight에 <code>"[[charN_ref_weight]]"</code>를 넣어 두면 빈 자리는 저절로 꺼집니다. 숫자 자리도 <code>"[[char1_x]]"</code>처럼 따옴표로 감싸세요.</p>
+                <pre><code>"inputs": { "conditioning": ["7", 0], "x": "[[char1_x]]", "y": "[[char1_y]]",
+  "width": "[[char1_w]]", "height": "[[char1_h]]", "strength": "[[char1_on]]" }</code></pre>
+                <p>워크플로에 쓴 그림 자리만 업로드합니다. 안 쓰면 아무것도 올리지 않습니다.</p>
                 <h3>조건부 마커</h3>
                 <p>텍스트 입력 안에서 <code>[[#char1]]</code>…<code>[[/char1]]</code>로 감싸면 캐릭터 값이 있을 때만 그 안의 내용이 남습니다. 없으면 헤더까지 함께 지워집니다. <code>char2</code>~<code>char6</code>, <code>ref</code>에도 같은 형식을 쓸 수 있습니다.</p>
                 <pre><code>"text": "[[pos]]\n[[#char1]]\n## Character 1\n### Outfit, Appearance Design &amp; Facial Expression\n[[char1]]\n[[/char1]]"</code></pre>

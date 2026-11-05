@@ -383,3 +383,37 @@ test("a 🆙 upscale keeps NAI's PNG even where WebP is available; a studio save
   const saved = await withWebpEncoder(() => f.api.studioCommit('root', { image_data_url: 'data:image/png;base64,' + png(832, 1216).toString('base64'), recipe: { ...f.recipe, seed: 5 }, seed: 5, width: 832, height: 1216 }));
   assert.equal(Buffer.from((await f.api.idbGet('images', saved.card.id)).png).subarray(0, 4).toString(), 'RIFF', 'an ordinary studio save is still a WebP');
 });
+
+test('Comfy: each character gets its box, mask and reference picture from the centers NovelAI would get', async () => {
+  const f = await fixture();
+  f.config.nai.comfy_workflow_json = JSON.stringify({
+    1: { class_type: 'CLIPTextEncode', inputs: { text: '[[pos]]' } },
+    2: { class_type: 'ConditioningSetArea', inputs: { x: '[[char2_x]]', y: '[[char2_y]]', width: '[[char2_w]]', height: '[[char2_h]]', strength: '[[char2_on]]' } },
+    3: { class_type: 'LoadImageMask', inputs: { image: '[[char1_mask]]', channel: 'red' } },
+    4: { class_type: 'LoadImage', inputs: { image: '[[char2_ref]]' } },
+    5: { class_type: 'IPAdapterAdvanced', inputs: { weight: '[[char2_ref_weight]]' } },
+    6: { class_type: 'ConditioningSetArea', inputs: { strength: '[[char3_on]]' } },
+  });
+  f.api.setConfig(f.config);
+  const uploads = [];
+  const inner = risuai.nativeFetch;
+  risuai.nativeFetch = async (url, options) => {
+    if (String(url) === 'http://test-comfy:8188/upload/image') {
+      const file = options.body.get('image');
+      uploads.push({ name: file.name, bytes: Buffer.from(await file.arrayBuffer()) });
+      return new Response(JSON.stringify({ name: file.name, subfolder: '' }));
+    }
+    return inner(url, options);
+  };
+  const out = await f.api.rerollCard('root');
+  assert.equal(out.ok, true);
+  const wf = f.requests[0];
+  // The recipe puts A at x 0.3 and B at x 0.7, so B owns the right half of 832.
+  assert.deepEqual(wf[2].inputs, { x: 416, y: 0, width: 416, height: 1216, strength: 1 });
+  assert.equal(wf[6].inputs.strength, 0, 'a slot with no character is switched off');
+  assert.match(wf[3].inputs.image, /^inlay-char1-mask-\d+\.png$/);
+  assert.match(wf[4].inputs.image, /^inlay-blank-\d+\.png$/, 'no stored reference: a black stand-in so LoadImage still validates');
+  assert.equal(wf[5].inputs.weight, 0, 'and its weight is 0');
+  assert.deepEqual(uploads.map(u => u.name.replace(/-\d+\.png$/, '')), ['inlay-char1-mask', 'inlay-blank']);
+  assert.equal(uploads[0].bytes.readUInt32BE(16), 832); assert.equal(uploads[0].bytes.readUInt32BE(20), 1216);
+});
