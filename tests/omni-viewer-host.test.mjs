@@ -457,11 +457,12 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
     // 요소: nothing registered, nothing read (the reply's HTML is not even fetched).
     assert.equal(await page.evaluate(() => window.htmlReads || 0), 0, 'every reply loaded so far: a bot with nothing registered costs nothing');
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     assert.equal(await page.locator('[x-omni-vn] [x-vn-st]').count(), 0, 'only registered kinds come up');
-    // ✎ 편집 stands right by 요소, left of its tab: no trip to the top for it.
-    const [elemsTab, editButton] = await Promise.all(['elems', 'eledit'].map(act => page.locator(`[x-omni-vn] [data-vn-act="${act}"]`).boundingBox()));
-    assert.ok(editButton.x + editButton.width <= elemsTab.x && elemsTab.x - (editButton.x + editButton.width) < 16 && Math.abs(editButton.y - elemsTab.y) < 12, '✎ 편집 beside 요소: ' + JSON.stringify([elemsTab, editButton]));
+    // 요소 편집 in the top bar, just left of ⚙ (the reader's place for it), saying so.
+    const [settings, editButton] = await Promise.all(['set', 'eledit'].map(act => page.locator(`[x-omni-vn] [data-vn-act="${act}"]`).boundingBox()));
+    assert.ok(editButton.x + editButton.width <= settings.x && settings.x - (editButton.x + editButton.width) < 12 && Math.abs(editButton.y + editButton.height / 2 - (settings.y + settings.height / 2)) < 3, '요소 편집 left of ⚙: ' + JSON.stringify([settings, editButton]));
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-act="eledit"]').textContent(), '요소 편집');
     // 편집 lists the bot's own elements (not ours): the status panel, its fold (a kind of its own), the choice list.
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length === 3);
