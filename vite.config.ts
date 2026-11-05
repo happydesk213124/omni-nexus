@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.8';
+const PLUGIN_VERSION = '1.4.9';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -990,6 +990,18 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.9 · 감정 에셋·배경은 세션/캐릭터 프리셋으로, 감정 에셋 비우기·다시 만들기, 긴 채팅 스트리밍 렉 줄이기, 스트리밍 중 줄 건너뜀 고침</strong>
+          <div class="muted" style="margin-top:8px">2026.11.05 · 감정 에셋과 배경도 세션 작가노트에서 고른 이미지 프리셋을 따릅니다. 그림체를 바꿀 때 쓰는 감정 에셋 비우기와, 이미 만든 그림만 다시 만드는 버튼을 넣었습니다. 채팅이 길수록 스트리밍 중에 렉이 걸리던 문제도 크게 줄였고, AUTO를 끄고 스트리밍을 볼 때 새 줄이 오면 저절로 넘어가던 것을 고쳤습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>감정 에셋·배경 프리셋</strong>: 표정 그림과 봇 배경을 그릴 때 1순위 이 세션에 고른 프리셋, 2순위 이 캐릭터에 고른 프리셋, 3순위 Omni에서 선택한 프리셋 순서로 고릅니다(삽화·태깅과 같은 규칙 하나). 모든 봇이 같이 쓰는 샘플 장소 배경만 Omni 선택 프리셋으로 그립니다.</li>
+            <li><strong>이 봇 감정 에셋 비우기</strong>: 감정 에셋 설정의 버튼으로, 지금 연 봇의 캐릭터들에게 Omni가 만든 표정 그림(모든 코스튬)을 지웁니다. 봇 에셋 목록에서도 빠지고, 다음에 필요할 때 지금 프리셋으로 다시 만들어집니다. 봇에 원래 있던 그림과 배경은 그대로이고, 몇 장인지 먼저 묻습니다. 응답이 오는 중이나 그림을 만드는 중에는 끝난 뒤 눌러 주세요.</li>
+            <li><strong>만든 것 다시 만들기</strong>: 캐릭터 시트의 감정 에셋 탭, 「기본 표정 전부 만들기」 옆. 보고 있는 코스튬에서 Omni가 만든 그림만 다시 만듭니다(봇에 원래 있던 그림은 그대로). 몇 장인지 먼저 묻습니다.</li>
+            <li><strong>긴 채팅 스트리밍 렉 줄이기</strong>: 응답이 한 조각 들어올 때마다 TTS 버튼을 다시 붙이려고 봇 전체(모든 채팅·모든 메시지)를 Risu에서 통째로 읽던 것이 원인이었습니다. 이제 스트리밍 동안에는 봇을 한 번만 읽고 새로 들어온 글만 바꿔 쓰며, 응답이 끝나면 저장된 채팅을 다시 읽습니다. 스트리밍 중 TTS 버튼 다시 붙이기도 1초에 한 번으로 줄였습니다. 다 쓴 줄을 미리 TTS로 만드는 것은 그대로입니다.</li>
+            <li><strong>스트리밍 중 저절로 넘어가지 않음</strong>: AUTO를 끈 채 마지막 줄(예: 15/15)을 보고 있을 때 새 줄이 오면 바로 16/16으로 넘어가 버리던 것을 고쳤습니다. 이제 15/16에 머물고, 누를 때만 넘어갑니다. AUTO를 켜 두면 지금 줄을 다 읽은 뒤에 새 줄로 넘어갑니다.</li>
+            <li><strong>에셋 목록 쓰기 차례로</strong>: 그림 등록과 비우기가 겹치면 지운 그림이 다시 봇 목록에 들어가던 문제를 고쳤습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.8 · 작동 창 뷰어 높이·닫기 바, 이전 버튼 타일, 스트리밍 중 AUTO 고침, 새 메시지 바로 감지</strong>
@@ -15362,7 +15374,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.8 · 옴니 뷰어 작동 창이 뷰어 위아래 끝까지(요소 폭, 보이게만 스크롤, 아래 빈 여백 없음)·아래 「닫기」 바(바깥·타일·Esc로도 닫힘)·직접 닫을 때만 닫힘(요소가 사라지면 그대로, 다시 생기면 그리로, 그룹은 지금 있는 최신 것으로)·타일 두 벌 버그 고침·편집에서만 타일 이동·요소 편집 버튼은 위 바 ⚙ 왼쪽, 편집 판에 닫기·이전 버튼 타일(감정 에셋 설정 → 뷰어 → 화면, 기본 꺼짐: 누르면 한 줄 뒤로, 끌어서 옮김)·스트리밍 중 AUTO가 멈추던 문제 고침·Lua 등이 스트리밍 없이 끼워 넣은 메시지도 바로 감지해 요소 갱신·장소 못 찾은 답장은 다시 묻지 않음"
+    body: "1.4.9 · 감정 에셋·봇 배경은 세션 프리셋 → 캐릭터 프리셋 → Omni 선택 프리셋 순서로 그림(샘플 장소 배경은 Omni 선택)·이 봇 감정 에셋 비우기(감정 에셋 설정, 그림체 바꿀 때: Omni가 만든 표정만 지우고 다음에 지금 프리셋으로 다시 만듦)·캐릭터 시트에 만든 것 다시 만들기·긴 채팅에서 스트리밍 중 렉 줄임(스트리밍 동안 봇을 한 번만 읽음)·AUTO를 끄면 스트리밍 중 새 줄이 와도 저절로 넘어가지 않음(15/16에 머묾)·그림 등록과 비우기가 겹치던 문제 고침"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

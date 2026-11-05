@@ -147,6 +147,26 @@ test('옴니 뷰어 over a restricted SafeDOM, Risu\'s page pushed up under it: 
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+// Without AUTO a line that comes while the reader is at the newest one is not gone to: 15/15 became 16/16 at once,
+// before the 15th was read (the reader's report). They stay (15/16) and go on with a tap.
+test('옴니 뷰어 over a restricted SafeDOM, AUTO off while a reply streams in: at the newest line, a line that comes is not gone to', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const { page, errors, text, shows, lineDone, tick } = await viewerPage(browser);
+    const part = '하린: "하나야."\n하린: "둘이야."\n';
+    await page.evaluate(t => { window.bot.chats[0].message.push({ role: 'char', chatId: 'r1', data: t.trim() }); window.renderChat(); }, part);
+    await tick(part);
+    await shows(/하나야/);
+    await lineDone(); await page.keyboard.press('ArrowRight'); await shows(/둘이야/);
+    const more = part + '하린: "셋이야."\n';
+    await page.evaluate(t => { window.bot.chats[0].message[2].data = t.trim(); window.renderChat(); }, more);
+    await tick(more);
+    await page.waitForTimeout(1800);
+    assert.match(await text(), /둘이야/, 'stays on the line being read');
+    await lineDone(); await page.keyboard.press('ArrowRight'); await shows(/셋이야/);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
 
 // AUTO while a reply streams in: each chunk brings a look a second, which draws the line on screen again. That look
 // cleared AUTO's step to come and never set it again, so AUTO stood still while a reply streamed (the reader's report).
