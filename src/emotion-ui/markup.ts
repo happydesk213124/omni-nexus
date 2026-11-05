@@ -61,7 +61,8 @@ ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 �
 ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
 ${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 에셋'), '<span id="emo-costumes-status" role="status"></span>')}
 </fieldset>
-${row('고아 메모 정리', '<button type="button" id="emo-tidy">정리</button>', '<span id="emo-tidy-status" role="status"></span>')}</div>
+${row('고아 메모 정리', '<button type="button" id="emo-tidy">정리</button>', '<span id="emo-tidy-status" role="status"></span>')}
+${row('이 봇 감정 에셋 비우기 · 그림체 바꿀 때', '<button type="button" id="emo-clear">비우기</button>', '<span id="emo-clear-status" role="status"></span>')}</div>
 <div class="group"><h3>그리기 · 태그로만</h3><div class="fields">
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
 <label class="field"><span>Effort (V5)</span><select id="emo-effort"><option value="follow">삽화 설정 따름</option><option value="high">high</option><option value="medium">medium · 빠르고 덜 씀</option></select></label>
@@ -81,7 +82,7 @@ export const EMOTION_PANEL = VIEWER_PANEL + BACKGROUND_PANEL + FACES_PANEL;
 
 /** The character sheet's view switch and its 감정 에셋 section. */
 export const EMOTION_SHEET_SWITCH = '<div class="emo-sheet-switch" role="tablist"><button type="button" role="tab" data-emo-tab="voice" aria-selected="true">음성</button><button type="button" role="tab" data-emo-tab="faces" aria-selected="false">감정 에셋</button></div>';
-export const EMOTION_SHEET = '<div id="emo-char-section"><div id="emo-char-costumes" class="emo-costume-bar" role="tablist" aria-label="코스튬" hidden></div><p id="emo-char-looks" class="emo-looks"></p><div class="actions"><button type="button" id="emo-char-make-seen">본 감정 모두 만들기</button><button type="button" id="emo-char-make-all">기본 표정 전부 만들기</button><small id="emo-char-status" role="status"></small></div><div id="emo-char-grid" class="emo-grid"></div></div>';
+export const EMOTION_SHEET = '<div id="emo-char-section"><div id="emo-char-costumes" class="emo-costume-bar" role="tablist" aria-label="코스튬" hidden></div><p id="emo-char-looks" class="emo-looks"></p><div class="actions"><button type="button" id="emo-char-make-seen">본 감정 모두 만들기</button><button type="button" id="emo-char-make-all">기본 표정 전부 만들기</button><button type="button" id="emo-char-remake">만든 것 다시 만들기</button><small id="emo-char-status" role="status"></small></div><div id="emo-char-grid" class="emo-grid"></div></div>';
 
 export const EMOTION_CSS = `
 #emo-bg .emo-bg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
