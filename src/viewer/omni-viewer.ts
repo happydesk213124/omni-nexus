@@ -2045,9 +2045,11 @@ function onStreamTick(text: string): void {
     // The same reply going on after the 4 s guess took its end early (the writer only paused) is no new reply: its
     // place stays, and the place it was read to is where it goes on from.
     const goesOn = !streaming && !!pausedHead && pendingText.startsWith(pausedHead);
-    // At the newest line, the next one that comes is gone to: unless AUTO is still on this one (its step to come, or
-    // the voice it waits for), which goes on itself when it is done (it was cut short).
-    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1 && !(viewerPrefs().auto && autoDue > 0);
+    // Only AUTO goes on to a line that comes, and only once it is done with this one (its step taken at the newest
+    // line, nowhere to go): still on it (its step to come, or the voice it waits for), it goes on itself when done.
+    // Without AUTO the reader stays where they are (15/16), however the line came: they go on with a tap. A reader
+    // at the newest line was taken on at once, before they had read it.
+    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1 && viewerPrefs().auto && autoDue === 0;
     // Until its own clock line comes, the clock the last one left.
     if (!streaming) { streaming = true; messageIndex = -1; if (fresh) carriedClock = clockBefore(context?.messages.length ?? 0); }
     pausedHead = ''; streamHead = pendingText.slice(0, 200);
