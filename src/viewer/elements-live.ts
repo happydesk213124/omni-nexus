@@ -25,7 +25,7 @@ export interface LiveEntry {
   below: number;
   /** Where each window is (the holes), read after the scroll; null, none. */
   rects: Array<Box | null>;
-  /** A spot of the viewer's kept inside the windows (the popup's ✕): seen and tapped there, not the chat. */
+  /** A spot of the viewer's kept inside the windows (the popup's 닫기): seen and tapped there, not the chat. */
   keep?: Box | null;
 }
 

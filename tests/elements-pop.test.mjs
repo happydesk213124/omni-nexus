@@ -44,12 +44,13 @@ test('elements-pop: the stage restyling every turn while it opens, one sheet is 
   await popSync();
   assert.equal(popOpenSig(), 'sig');
   assert.equal(made.length, 1, 'one sheet: writes go one at a time, so none finds no sheet while another makes one');
-  // Brought into sight once, the bar's margin (90) already written; the hole after, where it is.
+  // Brought into sight once, the margin already written (Risu's bar, 90, and the window's 닫기 over its foot, 44); the
+  // hole after, where it is.
   assert.deepEqual(centred.map(c => c.target), [tile.targets[0]]);
-  assert.match(centred[0].sheet, /scroll-margin-bottom:90px!important/);
+  assert.match(centred[0].sheet, /scroll-margin-bottom:134px!important/);
   assert.doesNotMatch(centred[0].sheet, /clip-path/, 'no hole before it is there');
-  // A window as wide as it and as tall as the viewer, the ✕'s spot at its top right kept the viewer's.
-  assert.match(made[0].text, /clip-path:path\(evenodd,"M0 0H400V800H0ZM110 0h180v800h-180ZM256 52h28v28h-28Z"\)/, 'a window where it is, the viewer\'s height');
+  // A window as wide as it and as tall as the viewer, 닫기's bar across its foot kept the viewer's.
+  assert.match(made[0].text, /clip-path:path\(evenodd,"M0 0H400V800H0ZM110 0h180v800h-180ZM110 756h180v44h-180Z"\)/, 'a window where it is, the viewer\'s height');
   await popClose(false);
   assert.equal(made[0].text, '', 'folded: back in its message');
   await popDetach();

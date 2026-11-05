@@ -326,17 +326,20 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     assert.notEqual((await savedRule(page))[0].y, was.y, 'its place kept');
     await page.waitForTimeout(300);
     assert.equal(await seen(), false, 'the drag opened nothing');
-    // A button of the viewer's outside the window folds it and does its own: 삽화 opens. (One under the window, as tall
-    // as the viewer, is the chat's there: 기록 at the panel's foot is not pressed.)
+    // The window's foot is its 닫기, across it, over the viewer's own buttons there: 기록 under it is not pressed, the
+    // window folds. A button of the viewer's outside the window folds it and does its own: 삽화 opens.
     await tapTile();
     await page.waitForFunction(holeCut);
     const stripOpen = () => /\[data-vn-strip\]\{translate:0 0/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
-    const log = await page.locator('[x-omni-vn] [data-vn-act="log"]').boundingBox(), panelBox = await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect().toJSON());
-    assert.ok(log.x + log.width / 2 < panelBox.right, '기록 is under the window here');
+    const log = await page.locator('[x-omni-vn] [data-vn-act="log"]').boundingBox(), bar = await page.locator('[x-omni-vn] [data-vn-popx]').boundingBox();
+    assert.ok(log.x + log.width / 2 > bar.x && log.x + log.width / 2 < bar.x + bar.width && log.y + log.height / 2 > bar.y, '기록 is under 닫기 here');
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-popx]').textContent(), '닫기');
     await press('log');
-    await page.waitForTimeout(400);
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display), 'none', 'under the window: the chat\'s, not 기록');
-    assert.equal(await page.evaluate(holeCut), true, 'still open');
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display), 'none', '닫기, not 기록');
+    await tapTile();
+    await page.waitForFunction(holeCut);
     await press('strip');
     await page.waitForFunction(stripOpen);
     await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
