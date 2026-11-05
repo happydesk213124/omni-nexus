@@ -23,11 +23,11 @@ test('elements-live: nothing open writes nothing', () => {
   assert.equal(liveCss([], frame), '');
 });
 
-test('elements-live: never lifted out of its place; the list has room to scroll it to the middle, the bar under the viewer left out', () => {
+test('elements-live: never lifted out of its place, no room made in the list (in sight is enough); the bar under the viewer is not sight', () => {
   const css = liveCss([entry()], frame);
   const [first, second] = liveTargets(6, '.x-risu-status', 2);
   assert.doesNotMatch(css, /position:fixed|transform:none|z-index/, 'nothing of Risu\'s page is changed to lift it');
-  assert.ok(css.includes('.default-chat-screen > .flex-col-reverse{padding-block:50vh!important}'), css);
+  assert.doesNotMatch(css, /padding/, 'no room under the list: half a screen of nothing when Risu took the chat to its foot');
   assert.ok(css.includes(`:is(${first},${second}){scroll-margin-bottom:90px!important}`), css);
 });
 

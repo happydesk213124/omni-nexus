@@ -200,8 +200,8 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
   } finally { await browser.close(); }
 });
 
-// 작동: a tile on the stage; a tap shows the chat's own panel in the middle of the viewer: the chat behind is scrolled
-// until it stands there, where Risu drew it, and it is seen through a hole, so that its button is Risu's (Risu takes a
+// 작동: a tile on the stage; a tap shows the chat's own panel through the viewer: the chat behind is scrolled until it
+// is in sight (the least move), where Risu drew it, and it is seen through a hole, so that its button is Risu's (Risu takes a
 // button's click on the message: here a capture listener stands for it, and draws the message anew with the result,
 // as Risu does). The chat screen here makes a stacking context of its own (fixed, z-index 30): a window over the
 // viewer by z-index could never be, a hole can.
@@ -216,7 +216,7 @@ const openIn = page => page.evaluate(() => {
   return n && n.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) ? `${m[1]}:${m[2]}` : '';
 });
 const savedRule = page => page.evaluate(async () => { const raw = await window.risuai.pluginStorage.getItem('omniviewer.elements'); const all = typeof raw === 'string' ? JSON.parse(raw) : raw || {}; return Object.values(all.bot || {}); });
-test('요소 작동: a tile of its own (never a sticker as well); a tap opens the chat\'s own panel in the viewer\'s middle, its button Risu\'s; a tap elsewhere folds it; an older reply opens a copy', async () => {
+test('요소 작동: a tile of its own (never a sticker as well); a tap opens the chat\'s own panel, brought into sight by the least move, its button Risu\'s; a tap elsewhere folds it; an older reply opens a copy', async () => {
   const oldPanel = '<p>전날 밤은 조용했다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#353">HP 9</div>';
   const nowPanel = replyHtml.replace('HP 3 <span>MP 2</span>', 'HP 3 <button risu-btn="hit" style="width:70px;height:32px">맞기</button>');
   const { browser, page, errors, open, press, chip, tapChip } = await openViewerPage({ messages: MESSAGES, html: i => i === 0 ? oldPanel : i === 6 ? nowPanel : `<p>${MESSAGES[i].data}</p>` });
@@ -238,6 +238,12 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
       return !!at && n.contains(at);
     });
     const holeCut = () => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '');
+    // The chat's scroll; the panel whole within the viewer (above Risu's bar under it).
+    const scrollTop = () => page.evaluate(() => document.querySelector('.default-chat-screen').scrollTop);
+    const inSight = () => page.evaluate(() => {
+      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
+      return r.top >= v.top - 1 && r.bottom <= v.bottom + 1;
+    });
     const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
     const lit = label => chip('status', label).evaluate(el => el.hasAttribute('data-on'));
     const tileBox = () => page.locator('[x-omni-vn] [data-vn-tile]').boundingBox();
@@ -277,7 +283,8 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     assert.equal(await seen(), false);
     assert.equal(await popShown(), false);
     // Tapped: the stage dims at once, a spinner where it opens, while the panel is read (slow here: 0.6 s a read)...
-    const before = await text();
+    const before = await text(), scrolledAt = await scrollTop();
+    assert.equal(await inSight(), true, 'the chat\'s newest: in sight already');
     await page.evaluate(() => { window.slowQuery = 600; });
     await tapTile();
     await page.waitForTimeout(250);
@@ -285,17 +292,13 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-pop] [data-vn-spin]')).display), 'block', 'its spinner');
     assert.equal(await seen(), false, 'no hole while it is read');
     await page.evaluate(() => { window.slowQuery = 0; });
-    // ...then the chat scrolled until the panel stands in the viewer's middle (the bar under it left out), where Risu
-    // drew it, never lifted out; seen through a hole there, the stage dimmed around it; one sheet.
+    // ...then, in sight already, not scrolled at all: seen through a hole where Risu drew it, never lifted out, the
+    // stage dimmed around it; one sheet.
     await page.waitForFunction(holeCut);
     assert.equal(await seen(), true);
     assert.equal(await isFixed(6), false, 'never lifted out of its place');
     assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style="live"]').length), 1, 'one live sheet');
-    const middle = await page.evaluate(() => {
-      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
-      return Math.round(r.top + r.height / 2 - (v.top + v.height / 2));
-    });
-    assert.ok(Math.abs(middle) <= 2, `in the viewer's middle, up and down: ${middle}`);
+    assert.equal(await scrollTop(), scrolledAt, 'in sight already: the chat not scrolled');
     assert.equal(await popShown(), true);
     // Its button is Risu's, and the story stays; Risu draws the message anew, and the new panel is seen in its place.
     const button = await page.locator('.risu-chat[data-chat-index="6"] [risu-btn="hit"]').boundingBox();
@@ -346,19 +349,27 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     await page.waitForFunction(holeCut);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
-    // A box of Risu's page around it moved (an inline !important transform on the list): it is scrolled to the
-    // middle all the same, and seen through its hole there.
-    await page.evaluate(() => document.querySelector('.flex-col-reverse').style.setProperty('transform', 'translate(12px, 30px)', 'important'));
+    // Out of sight (a long message of the reader's under it, the chat at its foot), and a box of Risu's page around it
+    // moved (an inline !important transform on the list): brought into sight by the least move (at the edge it was
+    // beyond), and seen through its hole there.
+    await page.evaluate(() => {
+      const tall = document.createElement('div'); tall.id = 'tall'; tall.style.height = '1400px'; tall.textContent = '(긴 내 메시지)';
+      document.querySelector('.risu-chat[data-chat-index="5"] .chattext').append(tall);
+      document.querySelector('.default-chat-screen').scrollTop = 0;
+      document.querySelector('.flex-col-reverse').style.setProperty('transform', 'translate(12px, 30px)', 'important');
+    });
+    assert.equal(await inSight(), false, 'out of sight first');
     await tapTile();
     await page.waitForFunction(holeCut);
     await page.waitForFunction(() => {
-      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
-      return Math.abs(r.top + r.height / 2 - (v.top + v.height / 2)) <= 2;
+      const r = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect(), s = document.querySelector('.default-chat-screen').getBoundingClientRect();
+      return Math.abs(r.top - s.top) <= 3;
     });
+    assert.equal(await inSight(), true);
     assert.equal(await seen(), true, 'through its hole, where it stands now');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
-    await page.evaluate(() => document.querySelector('.flex-col-reverse').style.removeProperty('transform'));
+    await page.evaluate(() => { document.querySelector('.flex-col-reverse').style.removeProperty('transform'); document.getElementById('tall').remove(); });
     // An older reply, folded away behind the viewer: its tile opens a copy (its buttons are not Risu's there), said so.
     for (let i = 0; i < 10 && !/전날 밤은 조용했다/.test(await text()); i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(350); }
     await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-tile]'));
@@ -372,7 +383,7 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     await page.waitForFunction(() => !document.querySelector('[x-omni-vn]'));
     assert.equal(await isFixed(6), false);
     assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn-style]').length), 0);
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.flex-col-reverse')).paddingTop), '0px', 'the room made in the list gone with it');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.flex-col-reverse')).paddingBottom), '0px', 'no room made in the list');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

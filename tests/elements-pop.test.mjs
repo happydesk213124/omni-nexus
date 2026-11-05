@@ -21,12 +21,12 @@ const doc = {
   async querySelectorAll() { return later([]); },
   async createElement(tag) { const el = node(); if (tag === 'style') made.push(el); return later(el); },
 };
-// `centred`: what the popup asked the chat to scroll to the middle, and what its sheet said by then.
+// `centred`: what the popup asked the chat to bring into sight, and what its sheet said by then.
 const centred = [];
 // `lostCount`: how often the popup said its element was not where it was.
 let lostCount = 0;
 const host = { doc: () => doc, frame: () => ({ left: 0, top: 0, width: 400, height: 800 }), drawn: () => true, hideLive: () => false, say() {}, restyle: () => later(),
-  async centre(target) { centred.push({ target, sheet: made[0]?.text ?? '' }); await later(); }, lost() { lostCount++; } };
+  async reveal(target) { centred.push({ target, sheet: made[0]?.text ?? '' }); await later(); }, lost() { lostCount++; } };
 const tile = { index: 6, selector: '.x-risu-status', targets: ['.risu-chat[data-chat-index="6"] .chattext .x-risu-status'] };
 const rule = { role: 'live', x: 4, y: 12, scale: 1, hidden: false, always: false, from: 0, fold: false, folded: false };
 const { popAttach, popClose, popDetach, popOpen, popOpenSig, popRelay, popSync } = await import('../.test-build/elements-pop.mjs');
@@ -44,9 +44,8 @@ test('elements-pop: the stage restyling every turn while it opens, one sheet is 
   await popSync();
   assert.equal(popOpenSig(), 'sig');
   assert.equal(made.length, 1, 'one sheet: writes go one at a time, so none finds no sheet while another makes one');
-  // Scrolled to the middle once, the list's room and the bar's margin (90) already written; the hole after, where it is.
+  // Brought into sight once, the bar's margin (90) already written; the hole after, where it is.
   assert.deepEqual(centred.map(c => c.target), [tile.targets[0]]);
-  assert.match(centred[0].sheet, /padding-block:50vh!important/);
   assert.match(centred[0].sheet, /scroll-margin-bottom:90px!important/);
   assert.doesNotMatch(centred[0].sheet, /clip-path/, 'no hole before it is there');
   // A window as wide as it and as tall as the viewer, the ✕'s spot at its top right kept the viewer's.
@@ -74,7 +73,7 @@ test('elements-pop: its element gone, the window stays; back elsewhere, it is sc
   assert.equal(made[0].text, open, 'the window as it was');
   assert.equal(popOpenSig(), 'sig', 'still open');
   assert.equal(lostCount, 0, 'not asked for at once');
-  // Back, elsewhere (its message drawn anew taller): found by the watch, scrolled to the middle again, the window
+  // Back, elsewhere (its message drawn anew taller): found by the watch, brought into sight again, the window
   // following it.
   at.rect = { left: 130, top: 300, width: 160, height: 90 };
   await wait(700);

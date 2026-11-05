@@ -40,7 +40,7 @@ import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
 import { chatCovered, setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, CAST_CHIPS, COUNT_STEPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
-import { centerIn, centreNow, quiet, release, rowAt, unwrap } from './safe-dom';
+import { centerIn, inSightNow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { CHAT_LIST, chatArea, messageAtCenter } from './chat-screen';
 import { replyAt } from '../domain/viewer/reply-at';
 import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
@@ -2104,12 +2104,12 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
       // What the fold keeps drawn, as far as the chat read knows (작동 opens the chat's own there): the newest six. A
       // message come in since moves one out unknown here, and is told by its size (none: a copy).
       drawn: index => index >= 0 && index >= (context?.messages.length ?? 0) - FOLD_KEEP,
-      // 작동's element scrolled to the middle of the chat behind (only the chat, where the engine can say so); a scroll
-      // the chat is too short for pushes Risu's page instead, and that is put back.
-      centre: async target => {
+      // 작동's element brought into sight in the chat behind, by the least move (only the chat, where the engine can say
+      // so); a scroll that pushes Risu's page instead is put back.
+      reveal: async target => {
         const node = doc ? await doc.querySelector(target) : null;
         if (!node) return;
-        try { await centreNow(node); } finally { await release(node); }
+        try { await inSightNow(node); } finally { await release(node); }
         await putPageBack();
       },
       // No hole is cut through what is over the stage: 작동's popup waits while a panel, the picture big or 크게보기 is up.
