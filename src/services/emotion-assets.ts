@@ -24,6 +24,7 @@ import { backgroundName, backgroundPlace, hashedPlace, placeKey, samePlace } fro
 import { modelForRequest, type T2iRequest } from '../providers/nai/payload';
 import { emotionData, loadEmotionData, noteSeenFaces, saveEmotionData, type EmotionMade } from '../storage/emotion-store';
 import { putCharacterAssetRows, removeCharacterAssetRows } from '../storage/shot-character';
+import { drawingPresetId } from './preset-bindings';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { putSharedBackgrounds, removeSharedBackgrounds, sharedBackgroundRows } from './char-ref-module';
 import { loadTtsData, ttsData } from '../storage/tts-store';
@@ -199,19 +200,26 @@ const listeners = new Set<() => void>();
 export function subscribeSprites(callback: () => void): () => void { listeners.add(callback); return () => listeners.delete(callback); }
 const notify = () => { for (const callback of listeners) callback(); };
 
+/** The chat open in a bot as it was read (its chatPage's), for the session's own preset; '' none. */
+function openChatId(bot: EmotionBot): string {
+  const chats = Array.isArray(bot.character.chats) ? bot.character.chats as Array<Record<string, unknown> | null> : [];
+  const chat = chats[Number(bot.character.chatPage) || 0];
+  return cleanText(chat?.id ?? chat?.chatId, 200);
+}
 /**
- * One NovelAI image with the active style preset, saved as a Risu asset. Waits for
- * NovelAI to be free first (one generation at a time per account: an illustration
- * job running alongside would make one of them fail).
+ * One NovelAI image with the preset the bot draws with (drawingPresetId: the session's, else the bot's, else Omni's;
+ * a picture every bot shares, Omni's), saved as a Risu asset. Waits for NovelAI to be free first (one generation at a
+ * time per account: an illustration job running alongside would make one of them fail).
  */
-async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number }): Promise<{ bytes: Uint8Array; path: string }> {
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number; bot: EmotionBot | null }): Promise<{ bytes: Uint8Array; path: string }> {
   const settings = (await loadEmotionData()).settings, config = getConfig();
   const nai = input.effort ? { ...config.nai, effort_v5: input.effort } : config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
   const family = input.family ?? settings.family, token = tokensForFamily(nai, family)[0] || '';
   if (!token) throw new Error('NovelAI API 키를 먼저 넣어 주세요.');
   const card = config.card, presets = Array.isArray(card.presets) ? card.presets : [];
-  const preset = findPresetById(presets, cleanText(card.active_preset_id, 120)) ?? presets[0] ?? null;
+  const presetId = input.bot ? await drawingPresetId(input.bot.id, openChatId(input.bot)) : cleanText(card.active_preset_id, 120);
+  const preset = findPresetById(presets, presetId) ?? findPresetById(presets, cleanText(card.active_preset_id, 120)) ?? presets[0] ?? null;
   const familyNai = { ...nai, steps: naiStepsForFamily(nai, family), sampler: naiSamplerForFamily(nai, family) };
   const params = resolveGenerationCfgParams(familyNai, { cfg_scale: preset?.cfg_scale, cfg_rescale: preset?.cfg_rescale, steps: preset?.steps, sampler: preset?.sampler, scheduler: preset?.scheduler });
   const req: T2iRequest = {
@@ -244,7 +252,7 @@ async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costum
   const looks = sfwTags(await spriteLooks(c, bot, costume));
   if (!looks) throw new NoLooksError(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
-    width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE, effort: settings.effort === 'follow' ? undefined : settings.effort,
+    bot, width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE, effort: settings.effort === 'follow' ? undefined : settings.effort,
     prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
   });
@@ -320,7 +328,8 @@ export function makeBackground(place: string, bot: EmotionBot | null, force = fa
   return queueJob(spriteJobKey(owner, PLACE_PERSON, k), async () => {
     const v5 = !!tokensForFamily(getConfig().nai, 'v5')[0];
     // Wide (the stage is), WebP at 50: blurred behind the cast, the detail is never seen.
-    const { bytes, path } = await drawAndSave({ width: 1216, height: 832, family: v5 ? 'v5' : undefined, effort: 'medium', webp: 0.5, negative: '1girl, 1boy, people, person, character, crowd, text',
+    // A background every bot shares draws with Omni's preset; a bot's own, with the bot's (its session's).
+    const { bytes, path } = await drawAndSave({ bot: shared ? null : bot, width: 1216, height: 832, family: v5 ? 'v5' : undefined, effort: 'medium', webp: 0.5, negative: '1girl, 1boy, people, person, character, crowd, text',
       prompt: style => joinTags(style, '2::no humans::, scenery, wide shot, detailed background', k) });
     const name = backgroundName(k, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png');
     await remember(owner, PLACE_PERSON, k, name, path);
@@ -413,8 +422,19 @@ export function registerWhenIdle(): void {
     void registerMadeSprites().catch(error => dbg('emotion.register', { message: String((error as Error)?.message || error) }, 'warn'));
   }, POLL_MS);
 }
+/**
+ * Writes to the bots' asset lists one at a time (a registration, 감정 에셋 비우기): two registrations at once each took
+ * the faces waiting then, and one that had taken a face before 비우기 put it back on the bot after it was taken off.
+ */
+let assetTurn: Promise<unknown> = Promise.resolve();
+function inTurn<T>(work: () => Promise<T>): Promise<T> {
+  const run = assetTurn.catch(() => {}).then(work);
+  assetTurn = run.catch(() => {});
+  return run;
+}
 /** Sprites saved but not yet in their bot's asset list: one write per bot. */
-export async function registerMadeSprites(): Promise<void> {
+export function registerMadeSprites(): Promise<void> { return inTurn(registerNow); }
+async function registerNow(): Promise<void> {
   const data = await loadEmotionData(), waiting = data.made.filter(m => !m.registered);
   if (!waiting.length) return;
   const host = risuHost();
@@ -458,6 +478,33 @@ export async function forgetOrphans(records: readonly EmotionMade[]): Promise<nu
   data.made = data.made.filter(m => !gone.has(madeKey(m)));
   if (data.made.length !== before) { forgetEmotionPool(); await saveEmotionData(); notify(); }
   return before - data.made.length;
+}
+/**
+ * 감정 에셋 비우기 (the reader changing the art style): every face Omni made for this bot's people, each costume, out
+ * of the bot's assets and out of the records, so each is drawn again when it is needed, with the preset the bot draws
+ * with now. The bot's own pictures and the backgrounds stay. Not while a reply streams (a character write carries the
+ * chats), nor while one of them is being drawn (it would come back after).
+ */
+const madeFaces = (data: { made: EmotionMade[] }, botId: string): EmotionMade[] => data.made.filter(m => m.bot === botId && m.person !== PLACE_PERSON);
+export async function madeSpriteCount(botId: string): Promise<number> { return madeFaces(await loadEmotionData(), botId).length; }
+export async function clearMadeSprites(bot: EmotionBot): Promise<number> {
+  if (replyStreaming()) throw new Error('응답이 오는 중에는 봇을 고치지 않습니다. 끝난 뒤 다시 눌러 주세요.');
+  const theirs = `${bot.id}\u0000`, place = `${theirs}${PLACE_PERSON}\u0000`;
+  if ([...jobs.keys()].some(key => key.startsWith(theirs) && !key.startsWith(place))) throw new Error('만드는 중인 그림이 끝난 뒤 다시 눌러 주세요.');
+  // In turn with the registrations: none under way puts a face back after it is taken off.
+  return inTurn(() => clearNow(bot, theirs, place));
+}
+async function clearNow(bot: EmotionBot, theirs: string, place: string): Promise<number> {
+  const data = await loadEmotionData(), gone = madeFaces(data, bot.id);
+  if (!gone.length) return 0;
+  // Every name, listed or not yet (one being put on the bot as this runs): a name not on it is passed over.
+  await removeCharacterAssetRows({ id: bot.id, index: bot.index }, [...new Set(gone.map(m => m.name))]);
+  data.made = data.made.filter(m => !(m.bot === bot.id && m.person !== PLACE_PERSON));
+  for (const key of [...failures.keys()]) if (key.startsWith(theirs) && !key.startsWith(place)) failures.delete(key);
+  forgetEmotionPool();
+  await saveEmotionData();
+  notify();
+  return gone.length;
 }
 async function botIndex(botId: string): Promise<number> {
   const bot = await currentEmotionBot();

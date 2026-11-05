@@ -4,6 +4,7 @@ import type { ApiResult } from '../core/types';
 import { psGet, psSet } from '../storage/device-store';
 import { characterPreset, effectivePreset, FOLLOW_OMNI, normalizePresetBindings, type EffectivePreset, type PresetBindings } from '../domain/style-presets/binding';
 import { getConfig, getPresetLookPreviewUrl } from './context';
+import { chatNoteSessionId } from './session-author-note';
 
 /**
  * Which image preset a bot and a session draw with. Kept in plugin storage, not
@@ -34,6 +35,15 @@ export async function effectivePresetIdFor(characterId: unknown, sessionId: unkn
   const active = cleanText(getConfig().card?.active_preset_id, 120);
   const ids = new Set(presetList().map(p => p.id));
   return effectivePreset(ids, active, bindings.characters[cleanText(characterId, 200)] || '', bindings.sessions[cleanText(sessionId, 200)] || '').id;
+}
+/**
+ * The preset any drawing for a bot uses, its open chat counted: that session's choice (세션 작가 노트), else the bot's
+ * (이 캐릭터), else Omni's (스타일 프리셋). The one rule: a feature that draws asks here and never reads Omni's own choice
+ * itself (감정 에셋 and 배경 did, so a bot's preset was passed over there).
+ */
+export async function drawingPresetId(characterId: string, chatId = ''): Promise<string> {
+  const session = characterId && chatId ? chatNoteSessionId('', { character_id: characterId, chat_id: chatId }) : '';
+  return effectivePresetIdFor(characterId, session);
 }
 
 async function describe(characterId: string, sessionId: string): Promise<ApiResult> {

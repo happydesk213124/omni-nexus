@@ -1,7 +1,7 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
 import { BASE_EXPRESSIONS, baseExpression } from '../domain/emotion/emotions';
-import { backgroundPlaces, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { backgroundPlaces, clearMadeSprites, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, madeSpriteCount, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { placeKey, samePlace } from '../domain/viewer/place';
 import { ensurePlaceModule } from '../storage/place-module';
@@ -215,6 +215,22 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
     } catch (error) { if (status) status.textContent = String((error as Error)?.message || error); }
     finally { button.disabled = false; }
   })());
+  // 감정 에셋 비우기: every face Omni made for the open bot's people, to be drawn again (another art style).
+  $('emo-clear')?.addEventListener('click', () => void (async () => {
+    const button = $('emo-clear') as HTMLButtonElement | null, status = $('emo-clear-status');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const bot = await currentEmotionBot();
+      if (!bot) { if (status) status.textContent = 'Risu에서 봇을 연 상태에서 쓸 수 있습니다.'; return; }
+      const count = await madeSpriteCount(bot.id), name = String(bot.character.name || '이 봇');
+      if (!count) { if (status) status.textContent = '옴니가 만든 감정 에셋이 없습니다.'; return; }
+      if (!confirm(`「${name}」에서 옴니가 만든 감정 에셋 ${count}장을 지울까요?\n봇의 에셋 목록에서도 빠지고, 필요할 때 지금 프리셋으로 다시 만들어집니다.\n봇에 원래 있던 그림과 배경은 그대로입니다.`)) return;
+      const gone = await clearMadeSprites(bot);
+      if (status) status.textContent = `감정 에셋 ${gone}장을 비웠습니다.`;
+    } catch (error) { if (status) status.textContent = String((error as Error)?.message || error); }
+    finally { button.disabled = false; }
+  })());
   // Drawn whenever 배경 comes into view: its tab pressed, or the page opened (again) on it.
   const bgPanel = $('emo-bg');
   if (bgPanel) {
@@ -295,6 +311,15 @@ function bindCharacterSheet(live: () => boolean): void {
   };
   $('emo-char-make-seen')?.addEventListener('click', () => void (async () => make(await missing(emotionData().seen[person?.id || ''] || [])))());
   $('emo-char-make-all')?.addEventListener('click', () => void (async () => make(await missing(BASE_EXPRESSIONS.map(e => e.key))))());
+  // 만든 것 다시 만들기: only the faces Omni made of them, in the costume shown (the bot's own pictures stay), each a draw.
+  $('emo-char-remake')?.addEventListener('click', () => {
+    if (!person || !bot) return;
+    const who = person, where = bot, worn = costume;
+    const faces = [...new Set(emotionData().made.filter(m => m.bot === where.id && m.person === who.id && (m.costume ?? 0) === worn).map(m => m.face))];
+    if (!faces.length) { status('다시 만들 그림이 없습니다. 옴니가 만든 그림만 다시 만듭니다.'); return; }
+    if (!confirm(`${who.name}${worn ? ` (${worn}번 코스튬)` : ''}의 만든 그림 ${faces.length}장을 지금 프리셋으로 다시 만들까요?`)) return;
+    make(faces);
+  });
   const unsubscribe = subscribeSprites(() => { if (live()) void render(); else unsubscribe(); });
   document.addEventListener('omnitts-character-open', event => {
     const detail = (event as CustomEvent<{ id?: string; view?: string }>).detail || {};

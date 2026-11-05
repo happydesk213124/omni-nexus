@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { installHost } from '../tools/parity/host.mjs';
-import { unifiedSessionIdForCharacter } from '../.test-build/text-util.mjs';
+import { sessionIdHash, unifiedSessionIdForCharacter } from '../.test-build/text-util.mjs';
 
 let instance = 0;
 const misun = { id: 't-misun', scope: 'global', name: '오미선', surname: '오', givenName: '미선', surnameAliases: ['Oh'], givenAliases: ['Misun'], triggers: [], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 };
@@ -340,4 +340,52 @@ test('고아 메모 정리: records of a bot gone from Risu or a person gone fro
   // Risu's bot list unreadable: nothing counts as gone.
   risuai.getDatabase = async () => { throw new Error('busy'); };
   assert.equal(await f.api.orphanMade(), null);
+});
+
+// 감정 에셋 and 배경 drew with Omni's preset (스타일 프리셋) whatever the bot or its session was bound to: they draw with
+// the one rule now, the session's choice, else the bot's, else Omni's; a background every bot shares, with Omni's.
+test('감정 에셋 and a bot\'s background draw with the session\'s preset, else the bot\'s, else Omni\'s; a shared background with Omni\'s', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선', 'Misun'], gender: 'girl', appearance: 'girl, black hair, short hair, blue eyes' });
+  const config = f.api.getConfig();
+  config.card = { ...config.card, active_preset_id: 'p-omni', presets: [{ id: 'p-omni', name: 'Omni', positive: 'omnistyle' }, { id: 'p-bot', name: 'Bot', positive: 'botstyle' }, { id: 'p-session', name: 'Session', positive: 'sessionstyle' }] };
+  f.api.setConfig(config);
+  const drawn = () => JSON.stringify(f.host.naiRequests.at(-1).body);
+  await f.api.makeSprite(f.person, 'sad', f.bot, true);
+  assert.match(drawn(), /omnistyle/, 'no binding: Omni\'s');
+  assert.equal((await f.api.savePresetBindings({ character_id: 'bot', character: 'p-bot' })).ok, true);
+  await f.api.makeSprite(f.person, 'happy', f.bot, true);
+  assert.match(drawn(), /botstyle/, 'the bot\'s (이 캐릭터)');
+  assert.doesNotMatch(drawn(), /omnistyle/);
+  // The session of the chat open in the bot (세션 작가 노트's own): first.
+  const session = `risu_${sessionIdHash('bot|chat')}`;
+  assert.equal((await f.api.savePresetBindings({ session_id: session, session: 'p-session' })).ok, true);
+  await f.api.makeSprite(f.person, 'angry', f.bot, true);
+  assert.match(drawn(), /sessionstyle/, 'the session\'s first');
+  await f.api.makeBackground('library, indoors', f.bot, true);
+  assert.match(drawn(), /sessionstyle/, 'the bot\'s own background too');
+  await f.api.makeBackground('cafe, indoors, window, daytime', null, true);
+  assert.match(drawn(), /omnistyle/, 'one every bot shares: Omni\'s');
+});
+
+// 감정 에셋 비우기: to draw them again in another style, every face Omni made for the bot's people goes from the
+// records and the bot's assets; the bot's own pictures and the backgrounds stay.
+test('감정 에셋 비우기: Omni\'s faces of the bot go from the records and from its assets, so they are drawn again; its own pictures and backgrounds stay', async () => {
+  const f = await fixture([['미선_sad', 'assets/own-sad.png', 'png']]);
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선', 'Misun'], gender: 'girl', appearance: 'girl, black hair, short hair, blue eyes' });
+  const made = await f.api.makeSprite(f.person, 'happy', f.bot, true);
+  await f.api.makeBackground('library, indoors', f.bot, true);
+  const listed = async () => (await risuai.getCharacterFromIndex(0)).additionalAssets.map(a => a[1]);
+  for (let i = 0; i < 40 && !(await listed()).includes(made.path); i++) await new Promise(r => setTimeout(r, 100));
+  assert.ok((await listed()).includes(made.path), 'registered on the bot first');
+  assert.equal(await f.api.madeSpriteCount('bot'), 1, 'one face (the background is no face)');
+  assert.equal(await f.api.clearMadeSprites(await f.api.currentEmotionBot()), 1);
+  assert.equal(await f.api.madeSpriteCount('bot'), 0);
+  assert.ok(!(await listed()).includes(made.path), 'out of the bot\'s assets');
+  assert.ok((await listed()).includes('assets/own-sad.png'), 'the bot\'s own picture stays');
+  assert.equal((await f.api.findSprite(f.person, 'happy', f.bot))?.source, 'bot', 'happy is no longer Omni\'s');
+  assert.ok(f.api.emotionData().made.some(m => m.person === f.api.PLACE_PERSON), 'the background stays');
+  // Drawn again on asking, as a new one.
+  const again = await f.api.makeSprite(f.person, 'happy', f.bot, true);
+  assert.notEqual(again.path, made.path);
 });
