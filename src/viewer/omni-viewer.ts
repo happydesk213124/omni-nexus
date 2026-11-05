@@ -1376,7 +1376,9 @@ const lineSig = (index: number): string => { const s = scenes[index]; return s ?
 async function render(force = false): Promise<void> {
   if (!open || !dyn || !box) return;
   const mine = ++epoch, scene = scenes[at];
-  clearTimeout(autoTimer);
+  // AUTO's step to come, if one was: the same line drawn again keeps it (below).
+  const autoWas = autoDue;
+  clearTimeout(autoTimer); autoDue = 0;
   if (!scene) {
     // The stage as it was, its spinner gone.
     boxFit = 0;
@@ -1410,7 +1412,7 @@ async function render(force = false): Promise<void> {
     playCues(scene);
     elementsAfter();
     behind(mine, later);
-    if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), 2600);
+    if (viewerPrefs().auto) armAuto(mine, 2600);
     return;
   }
   if (pendingSteps) return;
@@ -1442,6 +1444,9 @@ async function render(force = false): Promise<void> {
     // The folded picture's rect, also when the same line comes back (from its picture, a key back and on).
     if (cgView === 'fold' && !cgThumb) setTimeout(() => void measureCgThumb().catch(() => {}), 450);
     if (same) {
+      // The same line drawn again (a streaming reply's look each second, its save at the end): AUTO's step keeps its
+      // time. It was cleared on every look and never set again, so AUTO stopped while a reply streamed in.
+      if (viewerPrefs().auto && autoWas > 0) armAuto(mine, Math.max(0, autoWas - Date.now()));
       await Promise.all([elementsAtEnd(end), writeStage(stage)]);
       elementsAfter();
       behind(mine, later);
@@ -1458,7 +1463,7 @@ async function render(force = false): Promise<void> {
     await out;
     // A tap that came while the box went out: the line is complete now too.
     if (askReveal === draw && revealedAt !== at) await reveal();
-    if (viewerPrefs().auto) autoTimer = setTimeout(() => void autoNext(mine), revealMs + 900 + scene.text.length * 30);
+    if (viewerPrefs().auto) armAuto(mine, revealMs + 900 + scene.text.length * 30);
     elementsAfter();
     behind(mine, later);
     sendAhead(mine);
@@ -1495,10 +1500,20 @@ async function reveal(): Promise<void> {
   revealedAt = at; revealUntil = 0;
   await writeStage(state(lastCast, { narration: scenes[at]?.kind === 'narration' }));
 }
+/**
+ * 자동's step, due in `ms` (autoDue: when; 0, none pending): kept by name and time, so the same line drawn again (a
+ * streaming reply's look) carries it over instead of losing it.
+ */
+let autoDue = 0;
+function armAuto(mine: number, ms: number): void {
+  clearTimeout(autoTimer);
+  autoDue = Date.now() + ms;
+  autoTimer = setTimeout(() => { autoDue = 0; void autoNext(mine); }, ms);
+}
 /** 자동: wait for the voice to end (when it speaks), then move on. */
 async function autoNext(mine: number): Promise<void> {
   if (mine !== epoch || !viewerPrefs().auto) return;
-  if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { autoTimer = setTimeout(() => void autoNext(mine), 500); return; }
+  if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { armAuto(mine, 500); return; }
   await go(1);
 }
 /**
@@ -2029,7 +2044,9 @@ function onStreamTick(text: string): void {
     // The same reply going on after the 4 s guess took its end early (the writer only paused) is no new reply: its
     // place stays, and the place it was read to is where it goes on from.
     const goesOn = !streaming && !!pausedHead && pendingText.startsWith(pausedHead);
-    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1;
+    // At the newest line, the next one that comes is gone to: unless AUTO is still on this one (its step to come, or
+    // the voice it waits for), which goes on itself when it is done (it was cut short).
+    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1 && !(viewerPrefs().auto && autoDue > 0);
     // Until its own clock line comes, the clock the last one left.
     if (!streaming) { streaming = true; messageIndex = -1; if (fresh) carriedClock = clockBefore(context?.messages.length ?? 0); }
     pausedHead = ''; streamHead = pendingText.slice(0, 200);
@@ -2057,7 +2074,10 @@ function endStream(guessed = false): void {
   if (!open || !streaming) return;
   clearTimeout(tickTimer); tickTimer = undefined;
   streaming = false;
-  void load(undefined, true, 'fresh').then(() => render()).catch(error => dbg('viewer.stream', { message: String(error) }, 'warn'));
+  // AUTO waiting at the newest line (its step taken, nowhere to go): the saved reply's lines after it (the last one,
+  // unfinished while it streamed) are gone on to.
+  const autoWaiting = viewerPrefs().auto && autoDue === 0 && at >= scenes.length - 1;
+  void load(undefined, true, 'fresh').then(() => { if (autoWaiting && at < scenes.length - 1) at++; return render(); }).catch(error => dbg('viewer.stream', { message: String(error) }, 'warn'));
 }
 
 // Until the chat screen is measured: the whole page above Risu's input bar.
@@ -2166,7 +2186,7 @@ export async function closeViewer(): Promise<void> {
   finally { setViewerCovering(false); }
 }
 async function takeDown(): Promise<void> {
-  open = false; epoch++; clearTimeout(autoTimer); clearInterval(positionTimer); clearInterval(awayTimer); if (away) closeInspect(); away = false; stopPending();
+  open = false; epoch++; clearTimeout(autoTimer); autoDue = 0; clearInterval(positionTimer); clearInterval(awayTimer); if (away) closeInspect(); away = false; stopPending();
   clearInterval(shotWatch); shotWatch = undefined; unsubscribeVoice?.(); unsubscribeVoice = undefined;
   if (markTimer) flushMarks();
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
