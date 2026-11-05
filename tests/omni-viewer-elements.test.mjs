@@ -205,6 +205,16 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
 // button's click on the message: here a capture listener stands for it, and draws the message anew with the result,
 // as Risu does). The chat screen here makes a stacking context of its own (fixed, z-index 30): a window over the
 // viewer by z-index could never be, a hole can.
+// What 작동 has open ("message:kind"): the element its sheet names, seen through the viewer's window (the point at its
+// middle the element itself). The window is as tall as the viewer: its middle tells nothing of which (this page's frame
+// even grows a moment later, its input bar scrolling in the chat), and a panel's neighbour is seen through it too.
+const openIn = page => page.evaluate(() => {
+  const sheet = document.querySelector('[x-omni-vn-style="live"]')?.textContent || '';
+  const m = /\.risu-chat\[data-chat-index="(\d+)"\] \.chattext div\.x-risu-([a-z]+)/.exec(sheet);
+  if (!m || !/evenodd/.test(sheet)) return '';
+  const n = document.querySelector(`.risu-chat[data-chat-index="${m[1]}"] .x-risu-${m[2]}`), r = n?.getBoundingClientRect();
+  return n && n.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) ? `${m[1]}:${m[2]}` : '';
+});
 const savedRule = page => page.evaluate(async () => { const raw = await window.risuai.pluginStorage.getItem('omniviewer.elements'); const all = typeof raw === 'string' ? JSON.parse(raw) : raw || {}; return Object.values(all.bot || {}); });
 test('요소 작동: a tile of its own (never a sticker as well); a tap opens the chat\'s own panel in the viewer\'s middle, its button Risu\'s; a tap elsewhere folds it; an older reply opens a copy', async () => {
   const oldPanel = '<p>전날 밤은 조용했다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#353">HP 9</div>';
@@ -313,16 +323,24 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     assert.notEqual((await savedRule(page))[0].y, was.y, 'its place kept');
     await page.waitForTimeout(300);
     assert.equal(await seen(), false, 'the drag opened nothing');
-    // A button of the viewer's folds it and does its own: 기록 opens.
+    // A button of the viewer's outside the window folds it and does its own: 삽화 opens. (One under the window, as tall
+    // as the viewer, is the chat's there: 기록 at the panel's foot is not pressed.)
     await tapTile();
     await page.waitForFunction(holeCut);
+    const stripOpen = () => /\[data-vn-strip\]\{translate:0 0/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '');
+    const log = await page.locator('[x-omni-vn] [data-vn-act="log"]').boundingBox(), panelBox = await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status').getBoundingClientRect().toJSON());
+    assert.ok(log.x + log.width / 2 < panelBox.right, '기록 is under the window here');
     await press('log');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display !== 'none');
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display), 'none', 'under the window: the chat\'s, not 기록');
+    assert.equal(await page.evaluate(holeCut), true, 'still open');
+    await press('strip');
+    await page.waitForFunction(stripOpen);
     await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
-    await press('log');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-log]')).display === 'none');
+    await press('strip');
+    await page.waitForFunction(() => !/\[data-vn-strip\]\{translate:0 0/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
     await page.waitForTimeout(300);
-    assert.equal(await seen(), false, 'folded for good: closing 기록 does not open it again');
+    assert.equal(await seen(), false, 'folded for good: closing 삽화 does not open it again');
     // Escape folds it too.
     await tapTile();
     await page.waitForFunction(holeCut);
@@ -470,13 +488,8 @@ test('요소: 다음 유저 메시지 finds the reader\'s panel; 선택 picks ti
   try {
     const text = () => page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '');
     const tabAt = async i => { const b = await page.locator('[x-omni-vn] [data-vn-tabs] i').nth(i).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(400); };
-    // What the popup shows: the chat's element at its frame's middle, through the hole ("message:kind").
-    const seenIn = () => page.evaluate(() => {
-      const f = document.querySelector('[x-omni-vn] [data-vn-pop]');
-      if (!f || getComputedStyle(f).display === 'none') return '';
-      const r = f.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), chat = at?.closest('.risu-chat');
-      return chat ? `${chat.dataset.chatIndex}:${at.closest('.x-risu-status') ? 'status' : at.closest('.x-risu-card') ? 'card' : '?'}` : '';
-    });
+    // What the popup shows ("message:kind"), seen through its window.
+    const seenIn = () => openIn(page);
     const centre = async locator => { const b = await locator.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
     const tap = async locator => { const c = await centre(locator); await page.mouse.click(c.x, c.y); await page.waitForTimeout(150); };
     const tiles = label => page.locator('[x-omni-vn] [x-vn-st] [data-vn-tile]:not([data-vn-group])', { hasText: label });
@@ -605,12 +618,7 @@ test('요소: 없는것 숨김 off shows the absent as grey tiles, picked and gr
     const cards = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] .x-risu-card')].filter(c => getComputedStyle(c.closest('[x-vn-st]')).display !== 'none').map(c => c.textContent));
     const picks = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st], [x-omni-vn] [x-vn-st] [data-vn-tile]')].filter(el => getComputedStyle(el, '::after').content.includes('✓')).length);
     const letters = letter => page.evaluate(l => [...document.querySelectorAll('[x-omni-vn] [x-vn-st-group], [x-omni-vn] [x-vn-st] [data-vn-tile] i')].filter(i => i.textContent === l).length, letter);
-    const seenIn = () => page.evaluate(() => {
-      const f = document.querySelector('[x-omni-vn] [data-vn-pop]');
-      if (!f || getComputedStyle(f).display === 'none') return '';
-      const r = f.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), chat = at?.closest('.risu-chat');
-      return chat ? `${chat.dataset.chatIndex}:${at.closest('.x-risu-status') ? 'status' : '?'}` : '';
-    });
+    const seenIn = () => openIn(page);
     const opened = async () => { await page.waitForFunction(() => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '')); return seenIn(); };
     await open();
     await page.waitForFunction(() => /갱신되었다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
@@ -723,6 +731,91 @@ test('요소: 없는것 숨김 off shows the absent as grey tiles, picked and gr
     await tap(page.locator('[x-omni-vn] [data-vn-group="B"]'));
     assert.equal(await opened(), '6:status');
     assert.deepEqual(await cards(), ['카드 6']);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+// 작동's window is as wide as its element and as tall as the viewer: a panel that grows is seen whole. It folds only
+// when the reader folds it (its ✕, outside it, Escape): its element gone (Risu drawing the message anew after a
+// button), a group's goes to another member there, and with none the window stays, the chat's scroll as it is.
+test('요소 작동: the window is the viewer\'s height; its element gone, a group\'s goes to the one there is, else it stays; ✕ folds it', async () => {
+  const chat = [
+    { role: 'char', chatId: 'a0', data: '전날 밤은 조용했다.' }, { role: 'user', data: '안녕' },
+    { role: 'char', chatId: 'a2', data: '바람이 불었다.' }, { role: 'user', data: '가자' },
+    { role: 'char', chatId: 'a4', data: reply }, { role: 'user', data: '들어가자' },
+    { role: 'char', chatId: 'a6', data: '상태가 갱신되었다.' },
+  ];
+  const html = i => i === 4 ? replyHtml
+    : i === 6 ? '<p>상태가 갱신되었다.</p><div class="x-risu-status" style="width:180px;height:60px;background:#355">HP 1 갱신</div>'
+    : `<p>${chat[i].data}</p>`;
+  const { browser, page, errors, open, press, tapChip } = await openViewerPage({ messages: chat, html });
+  try {
+    const tap = async locator => { const b = await locator.boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(150); };
+    const tabAt = async i => { const b = await page.locator('[x-omni-vn] [data-vn-tabs] i').nth(i).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(400); };
+    const holeCut = () => /evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || '');
+    const popShown = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-pop]')).display !== 'none');
+    // What is open, seen through the window ("message:status"), and the chat's scroll.
+    const seenIn = () => openIn(page);
+    const scrollTop = () => page.evaluate(() => document.querySelector('.default-chat-screen').scrollTop);
+    // A tap in the window, on the chat over the panel (as a reader's after a button): its element is read again.
+    const tapWindow = async () => { const f = await page.locator('[x-omni-vn] [data-vn-pop]').boundingBox(); await page.mouse.click(f.x + 20, f.y + 110); };
+    const drop = index => page.evaluate(i => document.querySelector(`.risu-chat[data-chat-index="${i}"] .x-risu-status`).remove(), index);
+    await open();
+    await page.waitForFunction(() => /갱신되었다/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await press('elems');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await press('eledit');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
+    await page.waitForTimeout(400);
+    // The status panel 작동 from the reply (4) and the bot's next message (6), grouped (A).
+    await tapChip('status', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 1);
+    await tabAt(2);
+    await page.waitForFunction(() => /갱신/.test(document.querySelector('[x-omni-vn] [data-vn-el] span')?.textContent || ''));
+    await tapChip('status', '작동');
+    await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-tile]').length === 2);
+    await page.waitForTimeout(400);
+    await tap(page.locator('[x-omni-vn] [data-vn-gb="select"]'));
+    for (const n of [0, 1]) await tap(page.locator('[x-omni-vn] [x-vn-st] [data-vn-tile]').nth(n));
+    await tap(page.locator('[x-omni-vn] [data-vn-gb="group"]'));
+    await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st] [data-vn-tile] i')].filter(i => i.textContent === 'A').length === 2);
+    await page.waitForTimeout(400);
+    await press('eledit');
+    await page.waitForTimeout(500);
+    // Opened: the newest (6), seen through a window as tall as the viewer (the chat above the panel too), its ✕ the
+    // viewer's own (seen, there to tap).
+    await tap(page.locator('[x-omni-vn] [data-vn-group="A"]'));
+    await page.waitForFunction(holeCut);
+    for (let i = 0; i < 20 && await seenIn() !== '6:status'; i++) await page.waitForTimeout(100);
+    assert.equal(await seenIn(), '6:status');
+    const tall = await page.evaluate(() => {
+      const f = document.querySelector('[x-omni-vn] [data-vn-pop]').getBoundingClientRect(), v = document.querySelector('[x-omni-vn]').getBoundingClientRect();
+      const above = document.elementFromPoint(f.left + 20, v.top + 110), x = document.querySelector('[x-omni-vn] [data-vn-popx]').getBoundingClientRect();
+      return { top: Math.round(f.top - v.top), bottom: Math.round(v.bottom - f.bottom), chatAbove: !above?.closest('[x-omni-vn]'), xSeen: !!document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)?.closest('[data-vn-popx]') };
+    });
+    assert.deepEqual(tall, { top: 0, bottom: 0, chatAbove: true, xSeen: true }, 'the viewer\'s height, the chat seen above the panel, the ✕ seen');
+    // Its element gone from 6 (drawn anew without it): the window goes to the one there is, in 4.
+    await drop(6);
+    await tapWindow();
+    for (let i = 0; i < 40 && await seenIn() !== '4:status'; i++) await page.waitForTimeout(100);
+    assert.equal(await seenIn(), '4:status', 'the group\'s other one');
+    assert.equal(await popShown(), true);
+    // Gone from 4 too: nothing to go to; the window stays as it is, open, the chat not scrolled.
+    await page.waitForTimeout(1600);
+    await drop(4);
+    await page.waitForTimeout(200);
+    const before = await scrollTop();
+    await tapWindow();
+    await page.waitForTimeout(1800);
+    assert.equal(await popShown(), true, 'still open');
+    assert.equal(await page.evaluate(holeCut), true, 'its window still cut');
+    assert.equal(await scrollTop(), before, 'the chat where it was');
+    // Its ✕ folds it.
+    await tap(page.locator('[x-omni-vn] [data-vn-popx]'));
+    await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
+    assert.equal(await popShown(), false);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

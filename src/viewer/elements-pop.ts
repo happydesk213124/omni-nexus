@@ -9,7 +9,12 @@ import { quiet, release, unwrap } from './safe-dom';
  * stage dimmed around it. In a message drawn behind the viewer (the chat's newest six) it is the chat's own element,
  * where Risu drew it: the chat behind is scrolled until it stands in the middle, and a hole is cut in the viewer
  * where it is (elements-live.ts), so its buttons are Risu's. In an older message it is a copy. elements.ts tells the
- * taps: in it, the element's; anywhere else, a fold.
+ * taps: in it, the element's; on its ✕ or anywhere else, a fold.
+ *
+ * The hole is as wide as the element and as tall as the viewer: a panel that grows (a tab of its own opened) or is
+ * drawn anew is seen whole, with no new measure of its height. It folds only when the reader folds it: the element
+ * gone (Risu drawing it anew after a button), the window stays where it was, the chat's scroll as it is; elements.ts
+ * looks for it again (lost), and one of its group there moves the window to it (popRetarget).
  *
  * Optimistic: the tap's first write dims the stage and turns a spinner in the middle; the element shows through its
  * hole once it is scrolled there and read where it is. The spinner sits in the frame, which the hole cuts away.
@@ -25,6 +30,8 @@ export interface PopHost {
   centre: (target: string) => Promise<void>;
   say: (text: string, ms: number) => void;
   restyle: () => Promise<void>;
+  /** The open one's element is not where it was (none read): looked for again, the window staying meanwhile. */
+  lost: () => void;
 }
 /** A 작동 tile's element: the message it is in, its selector there, and one selector per window it holds. */
 export interface PopTile { index: number; selector: string; targets: string[] }
@@ -46,7 +53,9 @@ let later: Array<ReturnType<typeof setTimeout>> = [];
 const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
 const inside = (p: HostPoint, r: Box) => p.clientX >= r.left && p.clientX <= r.left + r.width && p.clientY >= r.top && p.clientY <= r.top + r.height;
 const round = (n: number) => Math.round(n * 10) / 10;
-const SPINNER = '<b data-vn-spin></b>';
+const SPINNER = '<b data-vn-spin></b><i data-vn-popx>✕</i>';
+/** The ✕ (look.ts draws it there): at the window's top right, under the viewer's own bar. */
+const POPX = 28, POPX_RIGHT = 6, POPX_TOP = 52;
 
 export function popAttach(h: PopHost, el: SafeElement | null): void {
   host = h; frameEl = el; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null; framed = ''; sheetText = ''; warned = false; below = 0;
@@ -65,7 +74,13 @@ export const popOpenSig = (): string => sig;
 /** Open and seen (nothing of the viewer's over the stage): its frame shows, a tap in it is its own. */
 export const popSeen = (): boolean => !!sig && !!host && !host.hideLive();
 export const popAt = (p: HostPoint): boolean => popSeen() && !!rect && inside(p, rect);
-/** The part of the stage's style text that is the popup's: its frame (the dim, the spinner, the outline). */
+/** Where the window's ✕ is (the chat's own element's only: a copy is folded by a tap outside it). */
+function closeBox(): Box | null {
+  return mode === 'live' && rect ? { left: rect.left + rect.width - POPX - POPX_RIGHT, top: rect.top + POPX_TOP, width: POPX, height: POPX } : null;
+}
+/** A tap on the window's ✕. */
+export const popCloseAt = (p: HostPoint): boolean => { const box = popSeen() ? closeBox() : null; return !!box && inside(p, box); };
+/** The part of the stage's style text that is the popup's: its frame (the dim, the spinner, the outline, the ✕). */
 export const popCss = (): string => popSeen() ? '[x-omni-vn] [data-vn-pop]{display:block}' : '';
 
 /** A tile tapped: the stage dims at once, then the element comes (the chat's own where it is drawn, else a copy). */
@@ -109,8 +124,8 @@ export async function popClose(restyle = true): Promise<void> {
   later = [];
   await Promise.all([restyle ? host?.restyle() : undefined, writeSheet('')]);
   if (!frameEl) return;
-  if (framed) { framed = ''; await frameEl.setStyleAttribute(''); }
-  if (wasCopy) { await frameEl.setAttribute('x-vn-pop', ''); await frameEl.setInnerHTML(SPINNER); }
+  if (framed) { framed = ''; await frameEl.setStyleAttribute(''); await frameEl.setAttribute('x-vn-pop', ''); }
+  if (wasCopy) await frameEl.setInnerHTML(SPINNER);
 }
 /** A tap in it was its own: its size may change (a <details>), a button's message is drawn anew a moment later. */
 export function popTapped(): void {
@@ -121,7 +136,7 @@ export function popTapped(): void {
 /** The element as the sheet has it: its windows, its 크기, the bar left out of the middle, its holes. */
 function entry(): LiveEntry | null {
   if (!host || !tile || !rule || mode !== 'live' || !popSeen()) return null;
-  return { targets: tile.targets, scale: rule.scale, below, rects };
+  return { targets: tile.targets, scale: rule.scale, below, rects, keep: closeBox() };
 }
 function union(boxes: Array<Box | null>): Box | null {
   const real = boxes.filter((b): b is Box => !!b && b.width > 0 && b.height > 0);
@@ -135,7 +150,8 @@ async function placeFrame(): Promise<void> {
   rect = union(rects);
   if (!frameEl || !f || !rect) return;
   const style = `left:${round(rect.left - f.left)}px;top:${round(rect.top - f.top)}px;width:${round(rect.width)}px;height:${round(rect.height)}px;transform:none`;
-  if (style !== framed) { framed = style; await frameEl.setStyleAttribute(style); }
+  // Placed, its ✕ shows (the frame's own mark: no restyle of the stage).
+  if (style !== framed) { const first = !framed; framed = style; await frameEl.setStyleAttribute(style); if (first) await frameEl.setAttribute('x-vn-pop', 'live'); }
 }
 /** The sheet as things stand, no read (the stage restyled: a panel opened over it, the picture went big). */
 export async function popSync(): Promise<void> {
@@ -158,9 +174,48 @@ export async function popRelay(): Promise<void> {
     try { return node ? await node.getBoundingClientRect() : null; } finally { await release(node); }
   }));
   if (mine !== turn || mode !== 'live') return;
-  rects = read.map(b => b && b.width > 0 && b.height > 0 ? { left: b.left, top: b.top, width: b.width, height: b.height } : null);
+  // The window: as wide as its windows together, the viewer's whole height.
+  const seen = union(read.map(b => b ? { left: b.left, top: b.top, width: b.width, height: b.height } : null)), f = host?.frame();
+  // None there (drawn anew, or gone with its message): the window stays where it was, and it is looked for again.
+  if (!seen || !f) { host?.lost(); return; }
+  rects = [{ left: seen.left, top: f.top, width: seen.width, height: f.height }];
   await placeFrame();
   await popSync();
+}
+/**
+ * The open one's element is another now (elements.ts, after a rebuild: one of its group in a newer message, or the
+ * reply moved on): the window goes to it, never folding. The same one: read where it is.
+ */
+export async function popRetarget(nextTile: PopTile, nextRule: ElementRule): Promise<void> {
+  const h = host;
+  if (!h || !sig) return;
+  const same = !!tile && tile.index === nextTile.index && tile.targets.join('|') === nextTile.targets.join('|');
+  tile = nextTile; rule = nextRule;
+  if (same) { await popRelay(); return; }
+  const doc = h.doc();
+  if (mode === 'live' && doc && h.drawn(nextTile.index)) {
+    const mine = ++turn;
+    // The bar under the viewer read again (the frame may have changed since it opened), its margin, then the scroll,
+    // then the window where it is (the last one's stays meanwhile).
+    const bar = await barBelow(doc);
+    if (mine !== turn) return;
+    below = bar;
+    await popSync();
+    await h.centre(nextTile.targets[0]!);
+    if (mine !== turn) return;
+    await popRelay();
+    return;
+  }
+  // A copy, or from one: folded and opened again at once (the dim and the spinner as on a tap).
+  await popOpen(sig, nextTile, nextRule);
+}
+/** How tall the chat's bar under the viewer is (the chat screen's foot against the frame's): left out of the middle. */
+async function barBelow(doc: SafeDocument): Promise<number> {
+  const screen = await doc.querySelector('.default-chat-screen');
+  try {
+    const chat = screen ? await screen.getBoundingClientRect() : null, f = host?.frame();
+    return chat && f ? Math.max(0, chat.top + chat.height - (f.top + f.height)) : 0;
+  } finally { await release(screen); }
 }
 /** An older reply's: a copy in the frame (its buttons not Risu's there), said so under it. */
 async function fillCopy(doc: SafeDocument, mine: number): Promise<void> {
