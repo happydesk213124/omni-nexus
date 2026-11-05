@@ -9,7 +9,7 @@ import { quiet, release, unwrap } from './safe-dom';
  * stage dimmed around it. In a message drawn behind the viewer (the chat's newest six) it is the chat's own element,
  * where Risu drew it: the chat behind is scrolled until it is in sight (the least move, none if it is), and a hole is cut in the viewer
  * where it is (elements-live.ts), so its buttons are Risu's. In an older message it is a copy. elements.ts tells the
- * taps: in it, the element's; on its ✕ or anywhere else, a fold.
+ * taps: in it, the element's; on its 닫기 or anywhere else, a fold.
  *
  * The hole is as wide as the element and as tall as the viewer: a panel that grows (a tab of its own opened) or is
  * drawn anew is seen whole, with no new measure of its height. It folds only when the reader folds it: the element
@@ -62,9 +62,9 @@ function stopWatch(): void { clearInterval(watch); watch = undefined; goneAt = 0
 const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
 const inside = (p: HostPoint, r: Box) => p.clientX >= r.left && p.clientX <= r.left + r.width && p.clientY >= r.top && p.clientY <= r.top + r.height;
 const round = (n: number) => Math.round(n * 10) / 10;
-const SPINNER = '<b data-vn-spin></b><i data-vn-popx>✕</i>';
-/** The ✕ (look.ts draws it there): at the window's top right, under the viewer's own bar. */
-const POPX = 28, POPX_RIGHT = 6, POPX_TOP = 52;
+const SPINNER = '<b data-vn-spin></b><i data-vn-popx>닫기</i>';
+/** 닫기 (look.ts draws it there): a bar across the window's foot, as tall as this. */
+const POPX_H = 44;
 
 export function popAttach(h: PopHost, el: SafeElement | null): void {
   host = h; frameEl = el; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null; framed = ''; sheetText = ''; warned = false; below = 0;
@@ -84,13 +84,13 @@ export const popOpenSig = (): string => sig;
 /** Open and seen (nothing of the viewer's over the stage): its frame shows, a tap in it is its own. */
 export const popSeen = (): boolean => !!sig && !!host && !host.hideLive();
 export const popAt = (p: HostPoint): boolean => popSeen() && !!rect && inside(p, rect);
-/** Where the window's ✕ is (the chat's own element's only: a copy is folded by a tap outside it). */
+/** Where the window's 닫기 is (the chat's own element's only: a copy is folded by a tap outside it). */
 function closeBox(): Box | null {
-  return mode === 'live' && rect ? { left: rect.left + rect.width - POPX - POPX_RIGHT, top: rect.top + POPX_TOP, width: POPX, height: POPX } : null;
+  return mode === 'live' && rect ? { left: rect.left, top: rect.top + rect.height - POPX_H, width: rect.width, height: POPX_H } : null;
 }
-/** A tap on the window's ✕. */
+/** A tap on the window's 닫기. */
 export const popCloseAt = (p: HostPoint): boolean => { const box = popSeen() ? closeBox() : null; return !!box && inside(p, box); };
-/** The part of the stage's style text that is the popup's: its frame (the dim, the spinner, the outline, the ✕). */
+/** The part of the stage's style text that is the popup's: its frame (the dim, the spinner, the outline, 닫기). */
 export const popCss = (): string => popSeen() ? '[x-omni-vn] [data-vn-pop]{display:block}' : '';
 
 /** A tile tapped: the stage dims at once, then the element comes (the chat's own where it is drawn, else a copy). */
@@ -145,10 +145,13 @@ export function popTapped(): void {
   for (const ms of [200, 900]) later.push(setTimeout(() => void popRelay().catch(report('viewer.pop')), ms));
 }
 
-/** The element as the sheet has it: its windows, its 크기, the bar under the viewer (not sight), its holes. */
+/**
+ * The element as the sheet has it: its windows, its 크기, what is not sight under it (Risu's bar under the viewer, and
+ * the window's 닫기 over its foot), its holes.
+ */
 function entry(): LiveEntry | null {
   if (!host || !tile || !rule || mode !== 'live' || !popSeen()) return null;
-  return { targets: tile.targets, scale: rule.scale, below, rects, keep: closeBox() };
+  return { targets: tile.targets, scale: rule.scale, below: below + POPX_H, rects, keep: closeBox() };
 }
 function union(boxes: Array<Box | null>): Box | null {
   const real = boxes.filter((b): b is Box => !!b && b.width > 0 && b.height > 0);
@@ -162,7 +165,7 @@ async function placeFrame(): Promise<void> {
   rect = union(rects);
   if (!frameEl || !f || !rect) return;
   const style = `left:${round(rect.left - f.left)}px;top:${round(rect.top - f.top)}px;width:${round(rect.width)}px;height:${round(rect.height)}px;transform:none`;
-  // Placed, its ✕ shows (the frame's own mark: no restyle of the stage).
+  // Placed, its 닫기 shows (the frame's own mark: no restyle of the stage).
   if (style !== framed) { const first = !framed; framed = style; await frameEl.setStyleAttribute(style); if (first) await frameEl.setAttribute('x-vn-pop', 'live'); }
 }
 /** The sheet as things stand, no read (the stage restyled: a panel opened over it, the picture went big). */
