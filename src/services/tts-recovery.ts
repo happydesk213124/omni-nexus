@@ -2,6 +2,7 @@ import type { TtsCharacter, TtsSettings } from '../core/tts-types';
 import { fishVoiceId } from '../domain/tts/library';
 import { selectTtsVoices } from '../providers/tts/selection';
 import { saveTtsData, ttsData } from '../storage/tts-store';
+import { voiceEmbedding } from './tts-characters';
 
 /** Audio arrived for this Fish ID, so its recorded failures (402, 400…) are history. */
 export async function clearTtsVoiceError(fishId: string): Promise<void> {
@@ -46,7 +47,10 @@ export class TtsVoiceRecovery {
           if (!valid()) return;
           const candidates = ttsData().voices.filter(voice => fishVoiceId(voice.fishId) && fishVoiceId(voice.fishId) !== fishVoiceId(failedId)).map(voice => ({ ...voice, tags: [...voice.tags] }));
           if (!candidates.length) throw new Error('400 오류가 난 음성을 대신할 후보가 없습니다.');
-          const selected = await selectTtsVoices([character], candidates, settings, 'llm');
+          // The same engine 음성 선택 모델 names for a first pick: a JEV or embedding user has
+          // not asked for the helper LLM and may not have one, so a rejected voice must not call it.
+          const engine = settings.selector;
+          const selected = await selectTtsVoices([character], candidates, settings, engine, undefined, engine === 'embedding' ? await voiceEmbedding() : null);
           if (!valid()) return;
           const chosen = selected.get(character.id)![0];
           const voice = ttsData().voices.find(row => row.key === chosen.key && row.fishId === chosen.fishId);
