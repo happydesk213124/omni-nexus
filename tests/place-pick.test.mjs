@@ -28,4 +28,13 @@ test("a reply that says no place: JEV picks one of the bot's backgrounds and the
   assert.ok(criteria.length <= 100 && criteria.includes('cafe, indoors, window, daytime'), 'the samples follow, a hundred at most');
   assert.ok(!criteria.includes('b1d46bdb-879') && !criteria.includes('미선_happy'), 'a hash-named background says no place; a sprite is none');
   assert.equal(await api.replyPlace('bot', 'chat', 'm1'), picked, "kept as that message's place");
+  // No place fits (JEV answers none): remembered, so reading the reply again asks nothing more; its text edited, asked again.
+  globalThis.risuai.nativeFetch = async (url, init) => { asked.push(JSON.parse(String(init.body))); return new Response(JSON.stringify({ answers: { 0: { choice: '0' } } }), { status: 200, headers: { 'content-type': 'application/json' } }); };
+  const other = { characterId: 'bot', chatId: 'chat', messageId: 'm2' }, before = asked.length;
+  assert.equal(await api.pickPlace('아무 데도 아닌 곳에서 말이 오갔다.', other, bot, 'auto'), '');
+  assert.equal(asked.length, before + 1);
+  assert.equal(await api.pickPlace('아무 데도 아닌 곳에서 말이 오갔다.', other, bot, 'auto'), '');
+  assert.equal(asked.length, before + 1, 'no place found: not asked again');
+  await api.pickPlace('아무 데도 아닌 곳에서 다른 말이 오갔다.', other, bot, 'auto');
+  assert.equal(asked.length, before + 2, 'its text edited: asked again');
 });
