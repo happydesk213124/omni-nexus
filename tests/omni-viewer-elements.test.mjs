@@ -59,10 +59,14 @@ async function openViewerPage({ messages, html, touch = false } = { messages: ME
     document.body.innerHTML = `<div class="default-chat-screen" style="position:fixed;inset:0;z-index:30;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px">입력창</div><div class="flex-col-reverse">${list}</div></div>`;
     const bytes = Uint8Array.from(atob(png), c => c.charCodeAt(0));
     const bot = { chaId: 'bot', name: 'Bot', additionalAssets: [['오미선_happy', 'assets/h.png', 'png'], ['하린_neutral', 'assets/n.png', 'png']], chats: [{ id: 'chat', message: messages }], chatPage: 0 };
+    // The chat Risu holds (a test writes a message into it as a bot's Lua would).
+    window.bot = bot;
     window.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
       getDatabase: async () => ({ modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0, getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
       showContainer: async () => { throw new Error('no container in the test'); }, hideContainer: async () => {},
       readImage: async () => bytes, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; },
+      // Risu's observer over the page's own (records handed over as the bridge's, each to let go).
+      createMutationObserver: async cb => { const mo = new MutationObserver(records => cb(records.map(() => ({ release() {} })))); return { observe: async (el, o) => mo.observe(el.node, o), disconnect: async () => mo.disconnect() }; },
       addRisuChatListener: async () => {} };
   }, { png: PNG, messages, bodies });
   await page.evaluate(() => { window.crypto.randomUUID = undefined; });
@@ -877,6 +881,32 @@ test('요소 작동: the window is the viewer\'s height; its element gone, a gro
     await tap(page.locator('[x-omni-vn] [data-vn-popx]'));
     await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));
     assert.equal(await popShown(), false);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+// A bot's Lua writes the reader's message when a panel's button is pressed: no stream tells the viewer, which read the
+// chat when it opened. Risu's observer of the chat's list tells it a message came: the chat is read again and the
+// reply's 요소 put up anew, the reader's panel among them (it took closing the viewer and opening it again).
+test('요소: a message a bot\'s Lua writes (no stream) is seen at once: its panel, registered from 다음 유저 메시지, comes up with the viewer open', async () => {
+  const { browser, page, errors, open } = await openViewerPage();
+  try {
+    // The reader's panel registered before, from 다음 유저 메시지, shown always.
+    await page.evaluate(() => window.risuai.pluginStorage.setItem('omniviewer.elements', { bot: { 'div.x-risu-mine @3': { role: 'sticker', x: 4, y: 20, scale: 1, hidden: false, always: true, from: 3, fold: false, folded: false, group: '', gx: 4, gy: 20 } } }));
+    await open();
+    await page.waitForTimeout(800);
+    const mine = () => page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [x-vn-st]')].some(s => getComputedStyle(s).display !== 'none' && /나 HP 7/.test(s.textContent)));
+    assert.equal(await mine(), false, 'no message of the reader\'s after the reply yet');
+    // The Lua writes it: into Risu's chat, and drawn at the list's newest end.
+    await page.evaluate(() => {
+      window.bot.chats[0].message.push({ role: 'user', data: '(나의 상태)' });
+      const c = document.createElement('div');
+      c.className = 'chat-message-container';
+      c.innerHTML = '<div class="risu-chat" data-chat-index="7"><div class="chattext"><p>(나의 상태)</p><div class="x-risu-mine" style="width:150px;height:40px;background:#535">나 HP 7</div></div></div>';
+      document.querySelector('.flex-col-reverse').prepend(c);
+    });
+    for (let i = 0; i < 40 && !await mine(); i++) await page.waitForTimeout(100);
+    assert.equal(await mine(), true, 'its panel up, the viewer still open');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

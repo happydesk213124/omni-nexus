@@ -1,6 +1,7 @@
 import { dbg } from '../core/debug';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { bgmSceneText } from '../domain/sound/scene';
+import { compactHash } from '../domain/tts/segment';
 import { placeKey, samePlace } from '../domain/viewer/place';
 import { jevChoose } from '../providers/sound/choose';
 import { embedNearestTexts, soundEmbedSettings } from '../providers/sound/embed';
@@ -14,7 +15,8 @@ import { backgroundPlaces, sharedBackgroundPlaces, type EmotionBot } from './emo
  * A reply that says no place (no `[[place:…]]`, no cast block or picture place): its
  * text picks one from what the bot already has and the sample places, by JEV or
  * embedding. Asked once per message; the answer is kept as that message's place
- * (below any place the message says itself), so reopening it asks nothing.
+ * (below any place the message says itself), so reopening it asks nothing; no place found is remembered for the
+ * session, so it is not asked again either.
  */
 export type PlaceEngine = 'jev' | 'embedding' | '';
 export function placeEngine(pref: ViewerBgPick): PlaceEngine {
@@ -30,13 +32,19 @@ export const PICKED_RANK = 90;
 const MAX_CHOICES = 100;
 
 const asking = new Map<string, Promise<string>>();
+/**
+ * Replies asked about that came back with no place, by their text too (an edited reply is asked again): a place found
+ * is kept with the reply, none was kept nowhere, so each reading of the reply asked again (JEV, or the embedding: a
+ * paid call each time).
+ */
+const foundNone = new Set<string>();
 export function pickPlace(reply: string, ids: { characterId: string; chatId: string; messageId: string }, bot: EmotionBot, pref: ViewerBgPick): Promise<string> {
   const key = `${ids.characterId}|${ids.chatId}|${ids.messageId}`;
   const known = asking.get(key);
   if (known) return known;
   const job = (async () => {
-    const engine = placeEngine(pref), scene = bgmSceneText(reply);
-    if (!engine || !scene) return '';
+    const engine = placeEngine(pref), scene = bgmSceneText(reply), none = `${key}|${engine}|${compactHash(scene)}`;
+    if (!engine || !scene || foundNone.has(none)) return '';
     // The bot's own backgrounds first, then every chat's, then the samples not drawn yet.
     const own: string[] = [];
     for (const place of [...await backgroundPlaces(bot), ...await sharedBackgroundPlaces(), ...PLACE_SAMPLES.map(placeKey)]) if (!own.some(known => samePlace(known, place))) own.push(place);
@@ -47,6 +55,7 @@ export function pickPlace(reply: string, ids: { characterId: string; chatId: str
       : (await embedNearestTexts(scene, labels, soundEmbedSettings(soundData().settings, tts)!, 1))[0] ?? -1;
     const place = labels[index] || '';
     if (place) await rememberReplyPlace(ids.characterId, ids.chatId, ids.messageId, place, PICKED_RANK);
+    else foundNone.add(none);
     dbg('viewer.place.pick', { message: `${engine}: ${place || '(none)'}` });
     return place;
   })().finally(() => asking.delete(key));

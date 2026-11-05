@@ -42,6 +42,7 @@ import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, CAST_CHIPS, COUNT_STEPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, inSightNow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { backTileAttach, backTileBlocked, backTileDetach, backTileDown, backTileUp } from './back-tile';
+import { chatWatchStart, chatWatchStop } from './chat-watch';
 import { CHAT_LIST, chatArea, messageAtCenter } from './chat-screen';
 import { replyAt } from '../domain/viewer/reply-at';
 import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
@@ -2164,6 +2165,10 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     downId = await doc.addEventListener('pointerdown', (e: HostPoint) => onDown(e));
     upId = await doc.addEventListener('pointerup', (e: HostPoint) => onUp(e));
     await measure().catch(error => dbg('viewer.measure', { message: String(error) }, 'warn'));
+    // A message come or gone that no stream told of (a bot's Lua writing the reader's message on a panel's button):
+    // the chat read again, and the reply's 요소 put up anew.
+    void chatWatchStart({ doc: () => doc, known: () => context?.messages.length ?? 0, idle: () => !open || away || streaming || !context,
+      changed: async () => { await readChat(); elementsDue = true; await render(); } }).catch(error => dbg('viewer.watch', { message: String(error) }, 'warn'));
     clearInterval(positionTimer);
     // Never while the reader is tapping or a scene is going out: a tap's one call would queue behind these.
     positionTimer = setInterval(() => { if (open && !away && !stepping && !streaming && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
@@ -2197,6 +2202,7 @@ async function takeDown(): Promise<void> {
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   await elementsClose().catch(() => {});
   await backTileDetach().catch(() => {});
+  chatWatchStop();
   for (const place of people.values()) await release(place);
   people.clear(); placing.clear();
   root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = ratesEl = null;
