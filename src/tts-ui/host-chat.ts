@@ -3,7 +3,7 @@ import { uuid } from '../core/util/text';
 import { sleep } from '../core/util/async';
 import { ttsData, subscribeTts } from '../storage/tts-store';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
-import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
+import { currentTtsContext, replyStreamingNow, streamEnded, type TtsChatContext } from '../services/tts-context';
 import { parseTtsMessage, compactHash, cueLineKey, isSoundSegment, type TtsSoundCues } from '../domain/tts/segment';
 import { soundData, soundReady, subscribeSound } from '../storage/sound-store';
 import { omniSound } from '../services/sound-runtime';
@@ -297,7 +297,9 @@ export async function installTtsHost(): Promise<void> {
   // host about each record. The old whole-page watcher made 2-3 bridge calls per
   // DOM change and then re-read every message, which competed with a drag.
   const watchers: SafeMutationObserver[] = [];
-  const onChange = (records: unknown) => { void releaseHost(records).catch(()=>{}); schedule(200); };
+  // A streaming reply changes the chat with every chunk, and a scan reads every message on screen over the bridge:
+  // one a second then, not one after another for as long as it streams.
+  const onChange = (records: unknown) => { void releaseHost(records).catch(()=>{}); schedule(replyStreamingNow() ? 1000 : 200); };
   const watchChat = async () => {
     const screen = await doc.querySelector('.default-chat-screen:not([x-omnitts-watched])');
     if (!screen) return;
@@ -351,6 +353,8 @@ export async function installTtsHost(): Promise<void> {
   const unsubscribeUncovered=onViewerUncovered(()=>{lastPrefetch='';if(behind){behind=false;schedule(0);}void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
   const seen = new Map<string,string>();
   const output: (arg:ChatOutputListenerArg)=>Promise<void> = async arg=>{
+    // The reply is saved: the chat is read again, not the one held while it streamed.
+    streamEnded();
     if (disposed || !active()) return;
     try { const context=await currentTtsContext(); if (String(arg.char?.chaId)!==context.characterId || String(arg.chat?.id)!==context.chatId) return;
       const index=arg.messageIndex; let list=requests(context,index); if (!list.length) return;

@@ -32,6 +32,7 @@ import { createStreamLineBatcher } from '../domain/prompt/stream-lines';
 import { inlineCastBlock, inlineShotBlocks, inlineShotLine, inlineShotTagged } from '../domain/prompt/inline-shots';
 import { addChatCover } from '../services/viewer-presence';
 import { checkChatScreenSoon, watchChatScreen } from '../services/chat-screen-watch';
+import { noteStreamText } from '../services/tts-context';
 
 export function installUiContractGlobals(): void {
   Reflect.set(globalThis, '__OMNI_EXPORT__', { jsonParts });
@@ -41,6 +42,8 @@ export function installUiContractGlobals(): void {
   // (Risu's settings and its other pages are drawn in its place), and is laid out again when it moves or is drawn
   // anew. A tap asks for a check soon.
   Reflect.set(globalThis, '__OMNI_CHAT_SCREEN__', { watch: watchChatScreen, soon: checkChatScreenSoon });
+  // Each chunk of a streaming reply, from the output script: the chat read while it streams stands, with this text.
+  Reflect.set(globalThis, '__OMNI_STREAM_TEXT__', noteStreamText);
   Reflect.set(globalThis, '__INLAY_VIEWER_CORE__', { ...viewerCore });
   Reflect.set(globalThis, '__INLAY_STREAM_KW__', {
     ...messageBody,
