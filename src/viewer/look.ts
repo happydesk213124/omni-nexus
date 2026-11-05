@@ -137,11 +137,11 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-stickers]{position:absolute;inset:0;z-index:3;pointer-events:none}
 [x-omni-vn] [x-vn-st]{display:none;position:absolute;max-width:min(92%,460px);margin:0;padding:0;transform-origin:0 0}
 [x-omni-vn] [x-vn-st] summary{pointer-events:auto;cursor:pointer}
-/* 접기: a title bar over the sticker (26px: BAR_H in elements.ts), its name and ▾ (▸ folded); a tap folds, a drag moves. */
-[x-omni-vn] [x-vn-st-bar]{display:flex;align-items:center;gap:8px;min-width:120px;height:26px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-bottom-width:0;border-radius:8px 8px 0 0;background:rgba(10,9,17,.9);color:var(--gold);font:600 12px/24px system-ui,sans-serif;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+/* 접기: a title bar over the sticker (26px: BAR_H in elements.ts), its name and ▾ (▸ folded); a tap folds, a drag (in 편집) moves. */
+[x-omni-vn] [x-vn-st-bar]{display:flex;align-items:center;gap:8px;min-width:120px;height:26px;padding:0 10px;box-sizing:border-box;border:1px solid var(--line);border-bottom-width:0;border-radius:8px 8px 0 0;background:rgba(10,9,17,.9);color:var(--gold);font:600 12px/24px system-ui,sans-serif;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
 [x-omni-vn] [x-vn-st-bar]::after{content:"▾";margin-left:auto;color:#efe9da}
-/* 작동: a tile, dragged anywhere like a floating icon; a tap opens its element in the middle of the viewer. */
-[x-omni-vn] [data-vn-tile]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:56px;height:56px;padding:4px;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;background:rgba(10,9,17,.9);color:var(--gold);font:600 10px/1.2 system-ui,sans-serif;text-align:center;overflow:hidden;cursor:grab;box-shadow:0 4px 14px rgba(0,0,0,.45);user-select:none;-webkit-user-select:none}
+/* 작동: a tile, dragged anywhere in 편집 like a floating icon; a tap opens its element through the viewer. */
+[x-omni-vn] [data-vn-tile]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:56px;height:56px;padding:4px;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;background:rgba(10,9,17,.9);color:var(--gold);font:600 10px/1.2 system-ui,sans-serif;text-align:center;overflow:hidden;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);user-select:none;-webkit-user-select:none}
 [x-omni-vn] [data-vn-tile] b{font-size:22px;line-height:1;font-weight:400}
 [x-omni-vn] [data-vn-tile] span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* A tile's corner: its group's letter (on a member in 편집, and on the group's own tile). */
@@ -182,8 +182,10 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 [x-omni-vn] [data-vn-tabs] i{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;text-align:center;font-style:normal;font-size:10.5px;line-height:1.25;padding:5px 2px;border-radius:8px;cursor:pointer;color:#e9e3d3;border:1px solid rgba(255,255,255,.2);word-break:keep-all;overflow:hidden}
 [x-omni-vn] [data-vn-tabs] i[data-on]{color:#1a1408;background:var(--gold);border-color:var(--gold)}
 [x-omni-vn] [x-vn-st] [data-omnitts-tail],[x-omni-vn] [x-vn-st] [data-omnitts-play]{display:none!important}
-/* ✎ 편집 stands right by 요소 (left of its tab), where the hand already is; above the panel it opens. */
-[x-omni-vn] [data-vn-act="eledit"]{position:absolute;right:34px;top:calc(38% + 84px);z-index:8;visibility:hidden}
+/* 요소 편집 in the top bar, left of ⚙ (the reader's place for it): there while 요소 is on or 편집 open, lit while open. */
+[x-omni-vn] [data-vn-act="eledit"]{display:none;flex:none;white-space:nowrap;font-size:12px}
+/* 편집's own 닫기, at the panel's top right by its title. */
+[x-omni-vn] [data-vn-edit] [data-vn-edx]{position:absolute;top:8px;right:10px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);color:#efe9da;font:600 12px/1.4 system-ui,sans-serif;font-style:normal;cursor:pointer}
 [x-omni-vn] [data-vn-edit]{position:absolute;top:104px;right:0;width:min(84%,330px);max-height:calc(100% - 104px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px;z-index:7;display:flex;flex-direction:column;gap:8px;
   background:rgba(10,9,17,.96);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
 [x-omni-vn] [data-vn-edit] h4{margin:0;font-size:13px;color:var(--gold)}
@@ -268,12 +270,12 @@ const COUNT_BAR = `${countButton(COUNT_STEPS[0])}${countButton(COUNT_STEPS[1])}<
 const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b><i data-vn-popx>닫기</i></div><div data-vn-groupbar><div data-vn-gb="select"><b>☑️</b><span>선택</span></div><div data-vn-gb="group"><b>🔗</b><span>그룹화</span></div><div data-vn-gb="split"><b>✂️</b><span>분리</span></div><div data-vn-gb="absent"><b>🙈</b><span>없는것 숨김</span></div></div>
-<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
+<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="eledit" type="button">요소 편집</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
 <button data-vn-act="tags" type="button">태그</button><div data-vn-tagbar>${TAG_BAR}<div data-vn-counts>${COUNT_BAR}</div></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
-<button data-vn-act="elems" type="button">요소</button><button data-vn-act="eledit" type="button">✎ 편집</button><div data-vn-edit></div><div data-vn-choices></div>
+<button data-vn-act="elems" type="button">요소</button><div data-vn-edit></div><div data-vn-choices></div>
 <div data-vn-note></div><div data-vn-cgchips>${CHIPS}</div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
 <div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="rate" type="button" aria-label="음성 배속"></button><button data-vn-act="first" type="button" aria-label="이 답장의 처음">◀</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button><button data-vn-act="last" type="button" aria-label="이 답장의 끝">▶</button></div><div data-vn-rates></div>`;

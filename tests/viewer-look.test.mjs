@@ -146,7 +146,9 @@ test("the picture's bar: 🎲 리롤 and 🔮 샷 태그 beside 전체화면, di
   assert.match(stage({ voiceWait: true }), /\[x-omni-vn\] \[data-vn-voicewait\]\{display:block\}/);
   assert.doesNotMatch(stage({}), /data-vn-voicewait/);
   assert.match(api.STATIC_CSS, /\[data-vn-voicewait\]\{display:none;position:absolute;right:36px;bottom:46px;[^}]*animation:vn-spin/);
-  assert.match(api.STATIC_CSS, /\[x-omni-vn\] \[data-vn-act="eledit"\]\{position:absolute;right:34px;top:calc\(38% \+ 84px\)/, '✎ 편집 by 요소');
+  // 요소 편집 in the top bar's row, just before ⚙ (hidden until 요소 is on: elements.ts shows it).
+  assert.match(api.STATIC_CSS, /\[x-omni-vn\] \[data-vn-act="eledit"\]\{display:none;flex:none;white-space:nowrap/, '요소 편집 in the top bar');
+  assert.match(api.FRAME, /<button data-vn-act="eledit" type="button">요소 편집<\/button><button data-vn-act="set"/, 'before ⚙');
 });
 
 test('overlapping people: the last to speak in front, then whoever spoke before them', () => {

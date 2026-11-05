@@ -103,13 +103,27 @@ test('요소: a sticker over the people and under the box, the 요소 button kep
     assert.deepEqual(await shownMessages(), [1, 2, 3, 4, 5, 6]);
     // 요소 on, the status panel a sticker.
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
     await page.waitForTimeout(400);
     await tapChip('status', '스티커');
     await page.waitForFunction(() => { const st = document.querySelector('[x-omni-vn] [x-vn-st]'); return !!st && getComputedStyle(st).display === 'block'; });
-    await press('eledit');
+    // 편집's own 닫기, by its title, folds it as 요소 편집 in the top bar does.
+    await page.waitForTimeout(400);
+    const edx = await page.locator('[x-omni-vn] [data-vn-edit] [data-vn-edx]').boundingBox();
+    assert.equal(await page.locator('[x-omni-vn] [data-vn-edit] [data-vn-edx]').textContent(), '닫기');
+    await page.mouse.click(edx.x + edx.width / 2, edx.y + edx.height / 2);
+    await page.waitForFunction(() => !/\[data-vn-edit\]\{translate:0 0/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    // The reply loaded twice at once (최신 twice, as a picture done while it loaded again), every element the stage
+    // makes slow: the stage is put up one at a time, so one sticker (two at once left one out of the list, twice over
+    // on the stage and not to be dragged).
+    await page.evaluate(() => { window.slowCreate = 120; });
+    await press('newest'); await press('newest');
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => { window.slowCreate = 0; });
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[x-omni-vn] [x-vn-st]').length), 1, 'one sticker, not two');
     // On 오미선's line she speaks, in front: the sticker put over her is still on top, and the box over the sticker.
     for (let i = 0; i < 4 && !/왔어/.test(await page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '')); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(400); }
     await page.waitForFunction(() => /z-index:3/.test([...document.querySelectorAll('[x-omni-vn] [x-vn-p]')].map(p => getComputedStyle(p).zIndex === '3' && getComputedStyle(p).display !== 'none' ? 'z-index:3' : '').join('')));
@@ -130,7 +144,7 @@ test('요소: a sticker over the people and under the box, the 요소 button kep
     await press('close');
     await page.waitForFunction(() => !document.querySelector('[x-omni-vn]'));
     await open();
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await page.waitForFunction(() => { const st = document.querySelector('[x-omni-vn] [x-vn-st]'); return !!st && getComputedStyle(st).display === 'block'; });
     await press('elems');
     await page.waitForFunction(() => window.viewerPrefs().elements === false);
@@ -152,7 +166,7 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
     await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     // The tabs in the chat's order: the reply, the reader's message after it, the bot's next two.
     await page.waitForFunction(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-tabs] i')].map(i => i.textContent).join('|') === '이 답장|다음 유저 메시지|다음 메시지 1|다음 메시지 2');
@@ -184,12 +198,13 @@ test('요소: 다음 메시지 1 brings the status message\'s panel to the reply
     await page.mouse.click(bar.x + 20, bar.y + bar.height / 2);
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [x-vn-st] [x-vn-st-body]')).display !== 'none');
     assert.equal(await bodyShown(), true);
-    // Dragged by its bar, outside 편집: it follows, stays open, and the story stays.
+    // Dragged by its bar outside 편집: it does not move (moving is 편집's), the drag no tap (still open), no step of
+    // the story.
     await page.waitForTimeout(300);
     await page.mouse.move(bar.x + 20, bar.y + 10); await page.mouse.down();
     await page.mouse.move(bar.x + 60, bar.y + 60, { steps: 5 }); await page.mouse.move(bar.x + 90, bar.y + 110, { steps: 5 }); await page.mouse.up();
-    await page.waitForFunction(was => Math.abs(document.querySelector('[x-omni-vn] [x-vn-st]').getBoundingClientRect().top - was - 100) < 8, bar.y);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(500);
+    assert.deepEqual(await page.locator('[x-omni-vn] [x-vn-st-bar]').boundingBox(), bar, 'out of 편집 it stays where it is');
     assert.equal(await bodyShown(), true, 'the drag was no tap: still open');
     assert.equal(await text(), before, 'nor a step of the story');
     // On the status message itself the bot has no message after it: the next message's sticker is not there.
@@ -252,7 +267,7 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     const isFixed = index => page.evaluate(i => getComputedStyle(document.querySelector(`.risu-chat[data-chat-index="${i}"] .x-risu-status`)).position === 'fixed', index);
     await open();
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
     await page.waitForTimeout(400);
@@ -316,16 +331,16 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     assert.equal(await popShown(), false);
     assert.doesNotMatch(await page.evaluate(() => document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''), /clip-path/);
     assert.equal(await text(), before, 'the folding tap moved no story on');
-    // The tile is dragged anywhere, outside 편집 too, and keeps its place; a drag opens nothing.
+    // Outside 편집 the tile is not moved by a drag (moving is 편집's), its place as it was, and the drag opens nothing.
     await page.waitForTimeout(300);
     const t0 = await tileBox(), was = (await savedRule(page))[0];
     await page.mouse.move(t0.x + 20, t0.y + 20); await page.mouse.down();
     await page.mouse.move(t0.x + 60, t0.y + 60, { steps: 5 }); await page.mouse.move(t0.x + 100, t0.y + 120, { steps: 5 }); await page.mouse.up();
-    await page.waitForFunction(y => Math.abs(document.querySelector('[x-omni-vn] [data-vn-tile]').getBoundingClientRect().top - y - 100) < 8, t0.y);
-    for (let i = 0; i < 30 && (await savedRule(page))[0]?.y === was.y; i++) await page.waitForTimeout(100);
-    assert.notEqual((await savedRule(page))[0].y, was.y, 'its place kept');
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
+    assert.deepEqual(await tileBox(), t0, 'it stays where it is');
+    assert.equal((await savedRule(page))[0].y, was.y, 'its place as it was');
     assert.equal(await seen(), false, 'the drag opened nothing');
+    assert.equal(await popShown(), false);
     // The window's foot is its 닫기, across it, over the viewer's own buttons there: 기록 under it is not pressed, the
     // window folds. A button of the viewer's outside the window folds it and does its own: 삽화 opens.
     await tapTile();
@@ -394,7 +409,7 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
 // On a phone a finger must land on what it drags, and the move must not be taken for a pan (the phone would cancel
 // the press a few pixels on, and the drag stop there). The sticker layer lets presses through, so what is dragged
 // takes them itself: the title bar and the tile at any time, a sticker in 편집.
-test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, in 편집, a sticker, never panning, and drags them', async () => {
+test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, in 편집, a sticker, never panning; it drags them in 편집 only', async () => {
   const twoKinds = replyHtml + '<div class="x-risu-card" style="width:120px;height:40px;background:#533">카드</div>';
   const { browser, page, errors, open, press, tapChip } = await openViewerPage({ messages: MESSAGES, html: i => i === 6 ? twoKinds : `<p>${MESSAGES[i].data}</p>`, touch: true });
   try {
@@ -414,7 +429,7 @@ test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, i
     }, [x, y]);
     await open();
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length === 2);
     await page.waitForTimeout(400);
@@ -431,18 +446,27 @@ test('요소 on a phone: a finger lands on the title bar, the 작동 tile and, i
     // covers the rest of it on a phone-wide stage.)
     const st = await page.locator('[x-omni-vn] [x-vn-st]:has(.x-risu-status)').boundingBox();
     assert.deepEqual(await landsOn(st.x + 12, st.y + st.height - 12), { what: 'sticker', touch: 'none' });
+    // In 편집 a finger drags the tile and the sticker all the way.
+    const tile0 = await page.locator('[x-omni-vn] [data-vn-tile]').boundingBox();
+    await touchDrag(tile0.x + tile0.width / 2, tile0.y + tile0.height / 2, 20, 120);
+    await page.waitForFunction(y => Math.abs(document.querySelector('[x-omni-vn] [data-vn-tile]').getBoundingClientRect().top - y - 120) < 10, tile0.y);
+    await page.waitForTimeout(400);
+    await touchDrag(st.x + 12, st.y + st.height - 12, 0, 100);
+    await page.waitForFunction(y => Math.abs(document.querySelector('[x-omni-vn] [x-vn-st]:has(.x-risu-status)').getBoundingClientRect().top - y - 100) < 10, st.y);
+    await page.waitForTimeout(400);
     await press('eledit');
     await page.waitForTimeout(500);
-    // Out of 편집 the bar and the tile take the finger themselves.
+    // Out of 편집 the bar and the tile take the finger themselves (no pan under it), and a finger moves neither.
     const bar = await page.locator('[x-omni-vn] [x-vn-st-bar]').boundingBox(), tile = await page.locator('[x-omni-vn] [data-vn-tile]').boundingBox();
     assert.deepEqual(await landsOn(bar.x + 20, bar.y + bar.height / 2), { what: 'bar', touch: 'none' });
     assert.deepEqual(await landsOn(tile.x + tile.width / 2, tile.y + tile.height / 2), { what: 'tile', touch: 'none' });
-    // And a finger drags each of them all the way.
     await touchDrag(tile.x + tile.width / 2, tile.y + tile.height / 2, 80, 120);
-    await page.waitForFunction(y => Math.abs(document.querySelector('[x-omni-vn] [data-vn-tile]').getBoundingClientRect().top - y - 120) < 10, tile.y);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(500);
+    assert.deepEqual(await page.locator('[x-omni-vn] [data-vn-tile]').boundingBox(), tile, 'the tile stays');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-pop]')).display), 'none', 'the drag opened nothing');
     await touchDrag(bar.x + 20, bar.y + bar.height / 2, 60, 100);
-    await page.waitForFunction(y => Math.abs(document.querySelector('[x-omni-vn] [x-vn-st-bar]').getBoundingClientRect().top - y - 100) < 10, bar.y);
+    await page.waitForTimeout(500);
+    assert.deepEqual(await page.locator('[x-omni-vn] [x-vn-st-bar]').boundingBox(), bar, 'the bar stays');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
@@ -455,7 +479,7 @@ test('요소 편집: a chip tapped before the panel is measured (a slow bridge),
   try {
     await open();
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     // From here every rectangle read takes 1.5 s: the list shows long before it is measured.
     await page.evaluate(() => { window.slowRect = 1500; });
     await press('eledit');
@@ -516,7 +540,7 @@ test('요소: 다음 유저 메시지 finds the reader\'s panel; 선택 picks ti
     await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
     await page.waitForTimeout(400);
@@ -639,7 +663,7 @@ test('요소: 없는것 숨김 off shows the absent as grey tiles, picked and gr
     await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
     await page.waitForTimeout(400);
@@ -779,7 +803,7 @@ test('요소 작동: the window is the viewer\'s height; its element gone, a gro
     await page.keyboard.press('ArrowLeft');
     await page.waitForFunction(() => /늦었지/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
     await press('elems');
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).visibility === 'visible');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-act="eledit"]')).display !== 'none');
     await press('eledit');
     await page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-edit] [data-vn-el]').length > 0);
     await page.waitForTimeout(400);

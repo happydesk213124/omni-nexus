@@ -84,6 +84,8 @@ const stickers = new Map<string, Sticker>();
 let options: string[] = [], choicesOn = false, chosen = -1, choicesRect: DOMRect | null = null, panelRect: DOMRect | null = null;
 /** 편집's tab, and where its row of tabs is (the tabs share it evenly: no rect of each). */
 let tab: ElementFrom = 0, tabsRect: DOMRect | null = null;
+/** Where 편집's own 닫기 is (by its title), read with the list. */
+let editCloseRect: DOMRect | null = null;
 /**
  * 편집's chips as the list was drawn (each row's ids) and where each is, read once after it is drawn, with where the
  * list's title was then: a tap is told from them and one read of where the title is now (the list may have scrolled
@@ -195,12 +197,12 @@ export async function elementsRelayLive(): Promise<void> {
 /** The part of the scene's one style text that is 요소's: which stickers show, the panel, the choices. */
 export function elementsCss(): string {
   const out: string[] = [];
-  if (showing || editing) out.push('[x-omni-vn] [data-vn-act="elems"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [data-vn-act="eledit"]{visibility:visible}');
+  if (showing || editing) out.push('[x-omni-vn] [data-vn-act="elems"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [data-vn-act="eledit"]{display:inline-flex}');
   // In 편집 a press drags: a <details> under it must not fold as well.
-  // Open, the panel covers the tab: ✎ steps out to the panel's left edge, still a tap away.
+  // Open, 요소 편집 in the top bar is lit (a toggle as ever; the panel's 닫기 folds it too).
   // A finger must land on what it drags (the layer lets presses through) and must not pan, or a phone takes the
   // move for a scroll and the drag stops: in 편집 a sticker takes the press, none of what is in it (a link in a copy).
-  if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{right:calc(min(84%,330px) + 8px);color:#1a1408;background:var(--gold)}[x-omni-vn] [x-vn-st] summary{pointer-events:none}'
+  if (editing) out.push('[x-omni-vn] [data-vn-edit]{translate:0 0}[x-omni-vn] [data-vn-act="eledit"]{color:#1a1408;background:var(--gold)}[x-omni-vn] [x-vn-st] summary{pointer-events:none}'
     + '[x-omni-vn] [x-vn-st]{pointer-events:auto;touch-action:none;cursor:grab}[x-omni-vn] [x-vn-st] *{pointer-events:none}'
     // 선택 · 그룹화 · 분리 · 없는것 숨김 at the top, 선택 and 숨김 lit while they are on.
     + `[x-omni-vn] [data-vn-groupbar]{display:flex}${selecting ? lit('select') : ''}${hideAbsent ? lit('absent') : ''}`);
@@ -348,10 +350,23 @@ export async function elementsForReply(): Promise<void> {
   await putUp();
 }
 /**
+ * One putting up at a time, and once more after if asked meanwhile (the last state is what stays). Two at once (a
+ * reply loaded again as a picture came, a stream's end) each cleared the list and filled it: one's tiles were put in
+ * the list the other then filled, and stayed on the stage out of it, twice over and not to be dragged.
+ */
+let putting: Promise<void> | null = null, putAgain = false;
+function putUp(): Promise<void> {
+  if (putting) { putAgain = true; return putting; }
+  putting = (async () => {
+    try { do { putAgain = false; await putUpNow(); } while (putAgain); } finally { putting = null; }
+  })();
+  return putting;
+}
+/**
  * The stage's stickers and tiles as the rules have them, and the reply's choices: the reply's kinds are read once
  * (a rule changed in 편집 reads nothing). The new go up before the old come down, so what stays never blinks.
  */
-async function putUp(): Promise<void> {
+async function putUpNow(): Promise<void> {
   const old = [...stickers.values()];
   stickers.clear(); options = []; choicesOn = false; chosen = -1; choicesRect = null;
   await arm(null);
@@ -492,7 +507,7 @@ async function paintPanel(): Promise<void> {
     const r = ruleHere(row.sig), chips = chipsOf(r).map(c => `<i${c.on ? ' data-on' : ''}>${c.label}</i>`).join('');
     return `<div data-vn-el><b>${esc(row.label)}</b>${r?.group ? `<small>🔗 그룹 ${r.group}</small>` : ''}${row.count > 1 ? `<small>×${row.count}</small>` : ''}<span>${esc(row.text)}</span><p>${chips}</p></div>`;
   }).join('') || `<small data-vn-hint>${empty}</small>`;
-  await panel.setInnerHTML(`<h4>요소 편집</h4>${tabs}<small data-vn-hint>${HINT}</small>${list}`);
+  await panel.setInnerHTML(`<h4>요소 편집</h4><i data-vn-edx>닫기</i>${tabs}<small data-vn-hint>${HINT}</small>${list}`);
 }
 /** Where 편집's panel, its tabs and every chip are, read together once it is drawn: a tap then reads one place. */
 async function measureEditing(): Promise<void> {
@@ -500,12 +515,12 @@ async function measureEditing(): Promise<void> {
   const root = host?.root();
   if (panel && root) {
     const drawn = painted;
-    const [[tabsEl, head, chips], gb] = await Promise.all([
-      Promise.all([panel.querySelector('[data-vn-tabs]'), panel.querySelector('h4'), panel.querySelectorAll('[data-vn-el] i').then(list => unwrap(list))]),
+    const [[tabsEl, head, chips, closer], gb] = await Promise.all([
+      Promise.all([panel.querySelector('[data-vn-tabs]'), panel.querySelector('h4'), panel.querySelectorAll('[data-vn-el] i').then(list => unwrap(list)), panel.querySelector('[data-vn-edx]')]),
       Promise.all(GROUP_BUTTONS.map(b => root.querySelector(`[data-vn-gb="${b}"]`))),
     ]);
     try {
-      const read = await Promise.all([panel, tabsEl, head, ...gb, ...chips].map(el => el ? el.getBoundingClientRect() : Promise.resolve(null)));
+      const read = await Promise.all([panel, tabsEl, head, ...gb, ...chips, closer].map(el => el ? el.getBoundingClientRect() : Promise.resolve(null)));
       // The panel and the buttons stay whatever the list: kept even when it was drawn again meanwhile, or a tap
       // would fall on no panel until the next read.
       panelRect = read[0] ?? null;
@@ -513,12 +528,12 @@ async function measureEditing(): Promise<void> {
       GROUP_BUTTONS.forEach((b, i) => { buttons[b] = read[3 + i] ?? null; });
       // Drawn again meanwhile: the tabs, the title and the chips read are another list's.
       if (drawn === painted) {
-        tabsRect = read[1] ?? null; chipsAt = { left: read[2]?.left ?? 0, top: read[2]?.top ?? 0 };
+        tabsRect = read[1] ?? null; chipsAt = { left: read[2]?.left ?? 0, top: read[2]?.top ?? 0 }; editCloseRect = read[read.length - 1] ?? null;
         chipRects = [];
         let k = 3 + GROUP_BUTTONS.length;
         drawn.forEach((ids, row) => ids.forEach((_, chip) => { const r = read[k++]; if (r) chipRects.push({ row, chip, r }); }));
       }
-    } finally { for (const el of [tabsEl, head, ...gb, ...chips]) await release(el); }
+    } finally { for (const el of [tabsEl, head, ...gb, ...chips, closer]) await release(el); }
   }
   await measureStickers();
 }
@@ -550,6 +565,8 @@ async function openTab(next: ElementFrom): Promise<void> {
 async function panelTap(p: HostPoint, dx: number, dy: number): Promise<void> {
   if (!panel || !host) return;
   const at = (r: DOMRect) => inside(p, { left: r.left + dx, top: r.top + dy, width: r.width, height: r.height });
+  // 편집's own 닫기: 편집 folds, as 요소 편집 in the top bar folds it.
+  if (editCloseRect && at(editCloseRect)) { if (editing) await toggleEdit(); return; }
   if (tabsRect && at(tabsRect)) {
     const i = Math.floor((p.clientX - tabsRect.left - dx) / Math.max(1, tabsRect.width / TABS.length));
     await openTab(TAB_FROM[Math.min(TABS.length - 1, Math.max(0, i))]!);
@@ -629,7 +646,7 @@ export async function toggleElements(): Promise<void> {
 }
 export async function toggleEdit(): Promise<void> {
   editing = !editing;
-  panelRect = null; tabsRect = null; chipRects = [];
+  panelRect = null; tabsRect = null; chipRects = []; editCloseRect = null;
   // 선택 is 편집's: closed, nothing stays picked.
   selecting = false; selected.clear();
   if (editing) showing = true;
@@ -760,15 +777,18 @@ function startDrag(sig: string, p: HostPoint): void {
   moveId = doc.addEventListener('pointermove', (e: HostPoint) => onMove(e));
 }
 /**
- * In 편집 every press is 편집's (no swipe, no line completed); one on a sticker drags it. Outside it, a press on a
- * 작동 tile or a sticker's title bar drags it (and taps open or fold it, elementsClick); with the popup up, a press
- * in it is its own and one anywhere else only folds it; any other press is the stage's.
+ * In 편집 every press is 편집's (no swipe, no line completed); one on a sticker drags it. Outside it nothing moves (the
+ * reader's ask: a tile or a bar moved by a press meant for something else): a press on a 작동 tile or a sticker's title
+ * bar is its own (a tap opens or folds it, elementsClick; one that moved is no tap); with the popup up, a press in it is
+ * its own and one anywhere else only folds it; any other press is the stage's.
  */
+let pressedAt: { x: number; y: number } | null = null;
 export function elementsDown(p: HostPoint, onControl: boolean): boolean {
   if (!editing) {
     if (popAt(p)) return true;
     const sig = onControl ? '' : tileAt(p) || barAt(p);
-    if (sig) { startDrag(sig, p); return true; }
+    pressedAt = sig ? { x: p.clientX, y: p.clientY } : null;
+    if (sig) return true;
     return popSeen() && !onControl;
   }
   // Before the panel is read a press may be on it (a scroll of its list): no sticker under it is dragged.
@@ -781,7 +801,13 @@ export function elementsDown(p: HostPoint, onControl: boolean): boolean {
   return true;
 }
 export function elementsUp(p: HostPoint): boolean {
-  if (!editing && !drag) return false;
+  if (!editing && !drag) {
+    // A press on a tile or a bar that moved (a swipe begun there) opens nothing: the click it ends with is no tap.
+    const at = pressedAt;
+    pressedAt = null;
+    if (at && Number.isFinite(p?.clientX) && Math.hypot(p.clientX - at.x, p.clientY - at.y) >= 8) dragUntil = Date.now() + 250;
+    return false;
+  }
   const d = drag;
   drag = null;
   if (!d || !host) return true;
