@@ -234,3 +234,19 @@ test('audio that actually arrives clears the voice error record and the stale no
   assert.equal(runtime.notice, '');
   assert.equal(data.voices[0].error, undefined, 'other voices are untouched');
 });
+
+test('음성 선택 모델 JEV: a rejected voice is replaced by JEV, and the helper LLM is never called', async () => {
+  const { data, calls, runtime } = await setup();
+  data.settings.selector = 'jev';
+  data.settings.jev.key = 'jev-key';
+  const jev = [], fish = globalThis.risuai.nativeFetch;
+  globalThis.risuai.nativeFetch = async (url, options) => {
+    if (String(url).startsWith(data.settings.jev.url)) { jev.push(JSON.parse(options.body)); return { ok: true, data: { answers: { 0: { choice: 1 } } } }; }
+    return fish(url, options);
+  };
+  assert.equal((await audio(runtime)).byteLength, 32);
+  assert.equal(calls.llm.length, 0);
+  assert.equal(jev.length, 1);
+  assert.deepEqual(Object.keys(jev[0].questions[0].criteria), ['1'], 'only the voice that is not the rejected model is offered');
+  assert.equal(data.characters[0].fishId, nextId);
+});
