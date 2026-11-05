@@ -5,9 +5,9 @@ import { liveCss, type Box, type LiveEntry } from './elements-live';
 import { quiet, release, unwrap } from './safe-dom';
 
 /**
- * 작동's popup: a tap on a tile shows the kind's element in the middle of 옴니 뷰어 (its frame, not the window), the
+ * 작동's popup: a tap on a tile shows the kind's element through 옴니 뷰어 (its frame, not the window), the
  * stage dimmed around it. In a message drawn behind the viewer (the chat's newest six) it is the chat's own element,
- * where Risu drew it: the chat behind is scrolled until it stands in the middle, and a hole is cut in the viewer
+ * where Risu drew it: the chat behind is scrolled until it is in sight (the least move, none if it is), and a hole is cut in the viewer
  * where it is (elements-live.ts), so its buttons are Risu's. In an older message it is a copy. elements.ts tells the
  * taps: in it, the element's; on its ✕ or anywhere else, a fold.
  *
@@ -26,8 +26,8 @@ export interface PopHost {
   drawn: (index: number) => boolean;
   /** Something of the viewer's is over the stage (a panel, the picture big, 크게보기): the popup waits under it. */
   hideLive: () => boolean;
-  /** The element named so scrolled to the middle of the chat behind the viewer (Risu's page put back, if pushed). */
-  centre: (target: string) => Promise<void>;
+  /** The element named so brought into sight in the chat behind the viewer, by the least move (Risu's page put back, if pushed). */
+  reveal: (target: string) => Promise<void>;
   say: (text: string, ms: number) => void;
   restyle: () => Promise<void>;
   /** The open one's element is not where it was (none read): looked for again, the window staying meanwhile. */
@@ -43,7 +43,7 @@ let sig = '', mode: '' | 'wait' | 'live' | 'copy' = '', rule: ElementRule | null
 /** Each opening and each close counts: a read that comes back after another tap does nothing. */
 let turn = 0;
 /**
- * How tall the chat's bar under the viewer is (left out of the middle), where each window is, all of them together,
+ * How tall the chat's bar under the viewer is (not sight), where each window is, all of them together,
  * and the frame's style.
  */
 let below = 0, rects: Array<Box | null> = [], rect: Box | null = null, framed = '';
@@ -53,7 +53,7 @@ let later: Array<ReturnType<typeof setTimeout>> = [];
 /**
  * The open one's element gone: since when (0: there), read again every half second meanwhile (ten seconds at most), and
  * whether its group was asked for after it (lost). Risu draws a message anew after a button: back, maybe elsewhere,
- * it is scrolled to the middle again. Only gone a while is another of its group looked for: drawn anew, it is gone a
+ * it is brought into sight again. Only gone a while is another of its group looked for: drawn anew, it is gone a
  * moment, and the older one of its group would take its place.
  */
 let goneAt = 0, watch: ReturnType<typeof setInterval> | undefined, asked = false;
@@ -114,9 +114,9 @@ export async function popOpen(nextSig: string, nextTile: PopTile, nextRule: Elem
       const f = h.frame();
       below = chat ? Math.max(0, chat.top + chat.height - (f.top + f.height)) : 0;
       mode = 'live';
-      // The room and the margin first (no hole yet), then the scroll into the middle, then the hole where it is.
+      // The margin first (no hole yet), then the scroll into sight, then the hole where it is.
       await popSync();
-      await h.centre(nextTile.targets[0]!);
+      await h.reveal(nextTile.targets[0]!);
       if (mine !== turn) return;
       await popRelay();
       warnClickToEdit();
@@ -145,7 +145,7 @@ export function popTapped(): void {
   for (const ms of [200, 900]) later.push(setTimeout(() => void popRelay().catch(report('viewer.pop')), ms));
 }
 
-/** The element as the sheet has it: its windows, its 크기, the bar left out of the middle, its holes. */
+/** The element as the sheet has it: its windows, its 크기, the bar under the viewer (not sight), its holes. */
 function entry(): LiveEntry | null {
   if (!host || !tile || !rule || mode !== 'live' || !popSeen()) return null;
   return { targets: tile.targets, scale: rule.scale, below, rects, keep: closeBox() };
@@ -201,14 +201,14 @@ export async function popRelay(): Promise<void> {
     if (away >= WATCH_FOR) { clearInterval(watch); watch = undefined; }
     return;
   }
-  // Back after it was gone (maybe elsewhere, its message drawn anew taller or shorter): to the middle again.
+  // Back after it was gone (maybe elsewhere, its message drawn anew taller or shorter): into sight again.
   const back = goneAt > 0;
   stopWatch();
   rects = [{ left: seen.left, top: f.top, width: seen.width, height: f.height }];
   await placeFrame();
   await popSync();
   if (back && host) {
-    await host.centre(t.targets[0]!);
+    await host.reveal(t.targets[0]!);
     if (mine === turn) await popRelay();
   }
 }
@@ -233,7 +233,7 @@ export async function popRetarget(nextTile: PopTile, nextRule: ElementRule): Pro
     if (mine !== turn) return;
     below = bar;
     await popSync();
-    await h.centre(nextTile.targets[0]!);
+    await h.reveal(nextTile.targets[0]!);
     if (mine !== turn) return;
     await popRelay();
     return;
@@ -241,7 +241,7 @@ export async function popRetarget(nextTile: PopTile, nextRule: ElementRule): Pro
   // A copy, or from one: folded and opened again at once (the dim and the spinner as on a tap).
   await popOpen(sig, nextTile, nextRule);
 }
-/** How tall the chat's bar under the viewer is (the chat screen's foot against the frame's): left out of the middle. */
+/** How tall the chat's bar under the viewer is (the chat screen's foot against the frame's): not sight. */
 async function barBelow(doc: SafeDocument): Promise<number> {
   const screen = await doc.querySelector('.default-chat-screen');
   try {

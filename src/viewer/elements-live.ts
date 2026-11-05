@@ -1,19 +1,17 @@
-import { CHAT_LIST } from './chat-screen';
-
 /**
- * 요소's 작동: the chat's own element shown in the middle of the viewer, its buttons Risu's. Risu takes a button's
- * click on the message itself (Chat.svelte: `.risu-chat`'s onclickcapture finds `[risu-trigger],[risu-btn]`), so the
- * element stays where Risu drew it: the chat behind the viewer is scrolled until it stands in the middle, and it is
- * seen through a hole cut in the viewer (clip-path) where it is: as wide as it, the viewer's whole height (elements-pop.ts),
- * so a panel that grows or is drawn anew needs no new measure of its height.
+ * 요소's 작동: the chat's own element shown through the viewer, its buttons Risu's. Risu takes a button's click on the
+ * message itself (Chat.svelte: `.risu-chat`'s onclickcapture finds `[risu-trigger],[risu-btn]`), so the element stays
+ * where Risu drew it: the chat behind the viewer is scrolled until it is in sight, and it is seen through a hole cut in
+ * the viewer (clip-path) where it is: as wide as it, the viewer's whole height (elements-pop.ts), so a panel that grows
+ * or is drawn anew needs no new measure of its height.
  *
  * It is never lifted out of its place (position:fixed): any box of Risu's page around it that holds fixed boxes (a
  * transform, a filter, containment, a newer Tailwind's translate) moved a lifted one away from the middle, and those
  * cannot all be known or undone. Scrolled, it is where the chat puts it, as the chat shows it.
  *
- * Behind the viewer only the newest messages are drawn, and a reply's panel is often its last line: the list has room
- * made above and below it while the popup is open, so any of them can be scrolled to the middle. The chat's bar under
- * the viewer is left out of the middle (a scroll margin as tall).
+ * In sight is enough, the window being the viewer's height: the least scroll that brings it there, none when it is
+ * (room made under the list, to bring a reply's last line to the middle, left half a screen of nothing when Risu took
+ * the chat to its foot). The chat's bar under the viewer is not sight (a scroll margin as tall).
  *
  * Nothing is written on the chat's nodes (SafeDOM writes x- attributes only, and Risu draws a message anew after a
  * button, its nodes new): the sheet names the element by its message and its kind. Pure: the sheet's text.
@@ -23,7 +21,7 @@ export interface LiveEntry {
   /** One selector per window (a kind the message holds more than once: each its own, by its place among siblings). */
   targets: string[];
   scale: number;
-  /** How tall the chat's bar under the viewer is: left out of the middle the scroll brings it to. */
+  /** How tall the chat's bar under the viewer is: not sight, for the scroll that brings it there. */
   below: number;
   /** Where each window is (the holes), read after the scroll; null, none. */
   rects: Array<Box | null>;
@@ -40,10 +38,10 @@ export function liveTargets(index: number, selector: string, count: number): str
   return n === 1 ? [base] : Array.from({ length: n }, (_, k) => `${base}:nth-child(${k + 1} of ${selector})`);
 }
 
-/** The sheet: room in the list to scroll any element to the middle, each element's margin and size, the holes. */
+/** The sheet: each element's margin (the bar under the viewer) and size, the holes. */
 export function liveCss(entries: readonly LiveEntry[], frame: Box): string {
   if (!entries.length) return '';
-  const out = [`${CHAT_LIST}{padding-block:50vh!important}`], holes: string[] = [];
+  const out: string[] = [], holes: string[] = [];
   const square = (r: Box) => { const x = round(r.left - frame.left), y = round(r.top - frame.top), w = round(r.width), h = round(r.height); return `M${x} ${y}h${w}v${h}h${-w}Z`; };
   for (const e of entries) {
     // Its 크기 in place, about its middle: the chat's layout stays as it was.
