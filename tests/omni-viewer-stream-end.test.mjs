@@ -147,3 +147,31 @@ test('옴니 뷰어 over a restricted SafeDOM, Risu\'s page pushed up under it: 
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+// AUTO while a reply streams in: each chunk brings a look a second, which draws the line on screen again. That look
+// cleared AUTO's step to come and never set it again, so AUTO stood still while a reply streamed (the reader's report).
+test('옴니 뷰어 over a restricted SafeDOM, AUTO while a reply streams in: it reads on as the lines come, waits at the newest, and reads the last once the reply ends', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const { page, errors, text, shows, tick } = await viewerPage(browser);
+    await page.locator('[x-omni-vn] [data-vn-act="auto"]').click();
+    await page.waitForTimeout(400);
+    const settled = ['하나야', '둘이야', '셋이야', '넷이야'].map(word => `하린: "${word}."`).join('\n') + '\n';
+    // Risu keeps the reply in the chat while it streams; its last line is still being written.
+    await page.evaluate(t => { window.bot.chats[0].message.push({ role: 'char', chatId: 'r1', data: t }); window.renderChat(); }, settled + '하린: "다섯이');
+    let flowing = true;
+    const chunks = (async () => { for (let n = 0; flowing; n++) { await tick(settled + '하린: "다섯이' + '.'.repeat(n % 3)); await page.waitForTimeout(300); } })();
+    await shows(/하나야/);
+    // On by itself, through each line that has come, the chunks still coming.
+    for (const word of ['둘이야', '셋이야', '넷이야']) await page.waitForFunction(w => (document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '').includes(w), word, { timeout: 7000 });
+    // At the newest line that has ended it waits (the one being written is no line yet).
+    await page.waitForTimeout(2500);
+    assert.match(await text(), /넷이야/);
+    // The reply ends, saved with its last line, and Risu says so: AUTO reads it.
+    flowing = false;
+    await chunks;
+    await page.evaluate(t => { window.bot.chats[0].message[2].data = t; window.renderChat(); window.output({ messageIndex: 2 }); }, settled + '하린: "다섯이야."');
+    await shows(/다섯이야/);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
