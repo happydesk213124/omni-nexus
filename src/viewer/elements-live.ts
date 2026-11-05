@@ -4,7 +4,8 @@ import { CHAT_LIST } from './chat-screen';
  * 요소's 작동: the chat's own element shown in the middle of the viewer, its buttons Risu's. Risu takes a button's
  * click on the message itself (Chat.svelte: `.risu-chat`'s onclickcapture finds `[risu-trigger],[risu-btn]`), so the
  * element stays where Risu drew it: the chat behind the viewer is scrolled until it stands in the middle, and it is
- * seen through a hole cut in the viewer (clip-path) where it is.
+ * seen through a hole cut in the viewer (clip-path) where it is: as wide as it, the viewer's whole height (elements-pop.ts),
+ * so a panel that grows or is drawn anew needs no new measure of its height.
  *
  * It is never lifted out of its place (position:fixed): any box of Risu's page around it that holds fixed boxes (a
  * transform, a filter, containment, a newer Tailwind's translate) moved a lifted one away from the middle, and those
@@ -26,6 +27,8 @@ export interface LiveEntry {
   below: number;
   /** Where each window is (the holes), read after the scroll; null, none. */
   rects: Array<Box | null>;
+  /** A spot of the viewer's kept inside the windows (the popup's ✕): seen and tapped there, not the chat. */
+  keep?: Box | null;
 }
 
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -41,15 +44,15 @@ export function liveTargets(index: number, selector: string, count: number): str
 export function liveCss(entries: readonly LiveEntry[], frame: Box): string {
   if (!entries.length) return '';
   const out = [`${CHAT_LIST}{padding-block:50vh!important}`], holes: string[] = [];
+  const square = (r: Box) => { const x = round(r.left - frame.left), y = round(r.top - frame.top), w = round(r.width), h = round(r.height); return `M${x} ${y}h${w}v${h}h${-w}Z`; };
   for (const e of entries) {
     // Its 크기 in place, about its middle: the chat's layout stays as it was.
     const size = e.scale !== 1 ? `;transform:scale(${e.scale})!important;transform-origin:50% 50%!important` : '';
     out.push(`:is(${e.targets.join(',')}){scroll-margin-bottom:${round(e.below)}px!important${size}}`);
-    for (const r of e.rects) {
-      if (!r || r.width <= 0 || r.height <= 0) continue;
-      const x = round(r.left - frame.left), y = round(r.top - frame.top), w = round(r.width), h = round(r.height);
-      holes.push(`M${x} ${y}h${w}v${h}h${-w}Z`);
-    }
+    const cut = e.rects.filter((r): r is Box => !!r && r.width > 0 && r.height > 0);
+    holes.push(...cut.map(square));
+    // Inside a hole, a third square is the viewer's again (even-odd); with no hole it would be one itself.
+    if (cut.length && e.keep && e.keep.width > 0 && e.keep.height > 0) holes.push(square(e.keep));
   }
   // The viewer with a hole where each window is (even-odd: the frame, then each hole cut out of it).
   if (holes.length) out.push(`[x-omni-vn]{clip-path:path(evenodd,"M0 0H${round(frame.width)}V${round(frame.height)}H0Z${holes.join('')}")!important}`);

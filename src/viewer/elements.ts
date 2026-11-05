@@ -5,7 +5,7 @@ import { findElementKinds, kindLabel, type ElementKind } from '../domain/viewer/
 import { elementKey, elementRules, elementSig, GROUP_LETTERS, saveElementRules, type ElementFrom, type ElementRole, type ElementRule, type ElementRules } from '../storage/viewer-elements';
 import { saveViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { liveTargets } from './elements-live';
-import { popAt, popAttach, popClose, popCss, popDetach, popOpen, popOpenSig, popRelay, popSeen, popSync, popTapped, type PopHost, type PopTile } from './elements-pop';
+import { popAt, popAttach, popClose, popCloseAt, popCss, popDetach, popOpen, popOpenSig, popRelay, popRetarget, popSeen, popSync, popTapped, type PopHost, type PopTile } from './elements-pop';
 import { quiet, release, rowAt, unwrap } from './safe-dom';
 
 /**
@@ -34,7 +34,7 @@ import { quiet, release, rowAt, unwrap } from './safe-dom';
  * Nothing here runs for a bot with nothing registered: the reply's HTML is read once,
  * and only when there is something to find or 편집 is open.
  */
-export interface ElementsHost extends PopHost {
+export interface ElementsHost extends Omit<PopHost, 'lost'> {
   root: () => SafeElement | null;
   /** The reply on stage: its chat index and its bot. null while streaming, or with none. */
   reply: () => { index: number; bot: string } | null;
@@ -112,7 +112,33 @@ export async function elementsOpen(h: ElementsHost): Promise<void> {
   const root = h.root();
   let pop: SafeElement | null = null;
   if (root) [layer, choicesEl, panel, pop] = await Promise.all(['[data-vn-stickers]', '[data-vn-choices]', '[data-vn-edit]', '[data-vn-pop]'].map(s => root.querySelector(s)));
-  popAttach(h, pop);
+  lostAt = 0;
+  popAttach({ ...h, lost: onLost }, pop);
+}
+/**
+ * The open one's element gone from where it was (Risu drew its message anew after a button, or it went): the reply's
+ * kinds read again and the stage rebuilt, which moves the window to it, or to one of its group there (resolveOpen);
+ * none, the window stays as it is. Once in a while at most: a tap brings two reads of it, and one gone for good would
+ * ask every time.
+ */
+let lostAt = 0;
+function onLost(): void {
+  if (!popOpenSig() || editing || rebuilding || Date.now() - lostAt < 1500) return;
+  lostAt = Date.now();
+  kindsAt.clear();
+  void rebuildSoon().catch(report('viewer.pop'));
+}
+/**
+ * After a rebuild, the open one: its tile here (a group's: its newest member there) is where its window goes; none
+ * here, it stays where it was. Only the reader folds it.
+ */
+async function resolveOpen(): Promise<void> {
+  const open = popOpenSig();
+  if (!open || editing) return;
+  const s = stickers.get(open);
+  if (isGroup(open)) { const m = newest(s?.members ?? []); if (m?.rule.role === 'live') await popRetarget(m.tile, m.rule); return; }
+  const r = rules[open];
+  if (s?.tile && r?.role === 'live') await popRetarget(s.tile, r);
 }
 export async function elementsClose(): Promise<void> {
   await popDetach();
@@ -318,8 +344,9 @@ async function putUp(): Promise<void> {
   const old = [...stickers.values()];
   stickers.clear(); options = []; choicesOn = false; chosen = -1; choicesRect = null;
   await arm(null);
-  // Another reply, or the rules changed: an open popup folds, its element back in its message.
-  await popClose(false);
+  // An open popup stays (only the reader folds it; resolveOpen moves it after), but not into 편집: its hole would cut
+  // through the panel.
+  if (editing) await popClose(false);
   const h = host, doc = h?.doc(), reply = h?.reply();
   if (h && doc && reply) {
     if (reply.bot !== bot) { bot = reply.bot; rules = await elementRules(bot); }
@@ -358,6 +385,7 @@ async function putUp(): Promise<void> {
   if (stickers.size || old.length) await host?.restyle();
   for (const s of old) { await quiet(s.el.remove()); await release(s.el); }
   setTimeout(() => void (editing ? measureEditing() : measureStickers()).catch(() => {}), 120);
+  await resolveOpen();
 }
 
 /**
@@ -804,6 +832,7 @@ export function elementsClick(p: HostPoint, onControl: boolean): boolean {
   // opens that one; anywhere else folds it, and that is all the tap does, but a button of the viewer's does its own.
   const open = popSeen() ? popOpenSig() : '';
   if (open) {
+    if (popCloseAt(p)) { void popClose().catch(report('viewer.pop')); return true; }
     if (popAt(p)) { popTapped(); return true; }
     const tile = onControl ? '' : tileAt(p);
     void (async () => { await popClose(); if (tile && tile !== open) await openTile(tile); })().catch(report('viewer.pop'));

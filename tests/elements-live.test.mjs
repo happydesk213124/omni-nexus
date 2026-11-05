@@ -39,6 +39,12 @@ test('elements-live: a hole where each window is, in the frame\'s own terms; one
   assert.doesNotMatch(liveCss([entry({ rects: [null, null] })], frame), /clip-path:path/, 'none read: the viewer stays whole');
 });
 
+test('elements-live: a spot kept inside the window is the viewer\'s again (the ✕); with no window, none is cut', () => {
+  const keep = { left: 170, top: 72, width: 28, height: 28 };
+  assert.ok(liveCss([entry({ keep })], frame).includes('M0 0H300V500H0ZM20 40h180v60h-180ZM160 52h28v28h-28Z'), 'even-odd: the third square filled again');
+  assert.doesNotMatch(liveCss([entry({ keep, rects: [null, null] })], frame), /clip-path/, 'no window: the spot would be a hole of its own');
+});
+
 test('elements-live: its 크기 in place, about its middle (the chat\'s layout as it was)', () => {
   assert.match(liveCss([entry({ scale: 0.8 })], frame), /scroll-margin-bottom:90px!important;transform:scale\(0\.8\)!important;transform-origin:50% 50%!important\}/);
   assert.doesNotMatch(liveCss([entry()], frame), /transform:scale/, 'at its own size, nothing');
