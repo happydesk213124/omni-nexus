@@ -92,6 +92,7 @@ import { cardWithPreset } from '../domain/style-presets/binding';
 import { getConfig } from './context';
 import { ensureCharRefVibeEncoded, ensurePresetVibeEncoded, ensureVibeEncoded, getCharRefImageBytes, getReferenceImageBytes } from './nai-assets';
 import { getPrompt } from './settings';
+import { comfyRegionImageSources } from './comfy-images';
 
 /** NAI width/height: accept any positive size up to 5000 (no 832/1216 portrait ceiling). */
 function clampNaiDim(value: unknown, fallback: number): number {
@@ -558,6 +559,7 @@ export async function generateImage(
       comfyPlan.neg,
       comfyPlan.captions as unknown as ShotCharacter[],
       refBytes,
+      await comfyRegionImageSources(nai, plan, active?.id),
     );
     return { bytes: comfyBytes, seed: comfySeed, recipe:{prompt:plan.main,negative_prompt:plan.neg,
       width:dims.width,height:dims.height,seed:comfySeed,steps:naiSized.steps,

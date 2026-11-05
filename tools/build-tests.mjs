@@ -64,6 +64,7 @@ const MODULES = {
   'nai-payload': 'src/providers/nai/payload.ts',
   'nai-to-comfy': 'src/domain/prompt/nai-to-comfy.ts',
   'comfy-client': 'src/providers/comfy/client.ts',
+  'comfy-regions': ['src/domain/comfy/regions.ts','src/providers/comfy/region-images.ts','src/core/util/png-mask.ts'],
   'stream-keywords': 'src/domain/prompt/stream-keywords.ts',
   'character-tags': 'src/domain/character/tags.ts',
   'character-focus': 'src/domain/character/focus.ts',

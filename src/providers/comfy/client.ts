@@ -12,6 +12,8 @@ import { comfyPromptPair } from '../../domain/prompt/nai-to-comfy.ts';
 import { sniffImageMime } from '../../core/util/bytes.ts';
 import { cleanText } from '../../core/util/text.ts';
 import { networkFetch, readResponseBytes, type NetworkFetchOptions, type ReadBytesOptions } from '../nai/http.ts';
+import { comfyRegionValues } from '../../domain/comfy/regions.ts';
+import { comfyRegionImageValues, type ComfyRegionImages } from './region-images.ts';
 
 /** One node of an API-format workflow: `{ class_type, inputs }` keyed by node id. */
 export interface ComfyNode {
@@ -334,6 +336,7 @@ export function buildComfyPlaceholderValues(
   for (let i = 0; i < 6; i += 1) {
     values[`char${i + 1}`] = chars[i]?.positive || '';
   }
+  Object.assign(values, comfyRegionValues(captions || [], Number(values.width), Number(values.height)));
   return values;
 }
 
@@ -348,10 +351,13 @@ function extForImageBytes(bytes: ArrayBuffer): string {
 export async function comfyUploadImage(
   baseUrl: string,
   bytes: ArrayBuffer,
-  opts: ComfyRequestOptions = {},
+  opts: ComfyRequestOptions & { label?: string } = {},
 ): Promise<string> {
   const ext = extForImageBytes(bytes);
-  const filename = `inlay-ref-${Date.now()}.${ext}`;
+  // Several images go up for one generation within the same millisecond, and
+  // `overwrite` is on, so the label is what keeps them from replacing each other.
+  const label = cleanText(opts.label || 'ref', 40).replace(/[^\w-]/g, '') || 'ref';
+  const filename = `inlay-${label}-${Date.now()}.${ext}`;
   const form = new FormData();
   form.append('image', new Blob([new Uint8Array(bytes)], { type: sniffImageMime(bytes) || 'image/png' }), filename);
   form.append('overwrite', 'true');
@@ -417,6 +423,7 @@ export async function generateViaComfy(
   neg: string,
   captions: readonly ShotCharacter[],
   refBytes?: ArrayBuffer | null,
+  regionImages: ComfyRegionImages = {},
 ): Promise<[ArrayBuffer, number]> {
   const baseUrl = comfyBaseUrl(nai);
   const timeoutMs = backendTimeoutMs(nai);
@@ -427,12 +434,21 @@ export async function generateViaComfy(
     refName = await comfyUploadImage(baseUrl, refBytes);
   }
   const values = buildComfyPlaceholderValues({ main, neg, captions, nai, seed, ref: refName });
+  Object.assign(values, await comfyRegionImageValues(
+    nai.comfy_workflow_json,
+    captions || [],
+    Number(values.width),
+    Number(values.height),
+    regionImages,
+    (bytes, label) => comfyUploadImage(baseUrl, bytes, { label }),
+  ));
   const wf = buildComfyWorkflowFromTemplate(nai.comfy_workflow_json, values);
   dbg('comfy.generate.start', {
     message: baseUrl,
     prompt_len: String(main || '').length,
     chars: (captions || []).length,
     has_ref: Boolean(refName),
+    region_images: Object.keys(values).filter(k => /_(mask|ref)$|^vibe$/.test(k)).length,
     nodes: Object.keys(wf).length,
     focus: true,
   });

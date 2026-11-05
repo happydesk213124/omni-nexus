@@ -1,5 +1,6 @@
 /** Store-method ZIP + gallery manifest / reattach helpers (no deps). */
 import { asU8, concatChunks, sniffImageMime } from '../core/util/bytes.ts';
+import { crc32Bytes } from '../core/util/crc32.ts';
 
 /** Anything the ported call sites hand over as entry payloads. */
 export type ByteSource = Uint8Array | ArrayBufferLike | number[] | null | undefined;
@@ -100,16 +101,6 @@ export interface UnpackedGalleryZip {
   files: Map<string, Uint8Array>;
 }
 
-const CRC_TABLE = ((): Uint32Array => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let c = i;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[i] = c >>> 0;
-  }
-  return table;
-})();
-
 function toBytes(value: ByteSource): Uint8Array {
   if (Array.isArray(value)) return new Uint8Array(value);
   return asU8(value);
@@ -117,10 +108,7 @@ function toBytes(value: ByteSource): Uint8Array {
 
 /** CRC-32 (IEEE) of the bytes, as an unsigned 32-bit number. */
 export function crc32(bytes: ByteSource): number {
-  const u8 = toBytes(bytes);
-  let c = 0xffffffff;
-  for (let i = 0; i < u8.length; i += 1) c = CRC_TABLE[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+  return crc32Bytes(toBytes(bytes));
 }
 
 function u16(n: number): Uint8Array {

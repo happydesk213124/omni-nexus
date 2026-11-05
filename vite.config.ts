@@ -801,6 +801,7 @@ const VENDOR_COMFY_HELP_PATCH =
               5) 저장 후 생성하면 Inlay가 만든 값으로 그 자리가 치환됩니다.<br><br>
               <strong>크기</strong> — <code>"width": "[[width]]"</code>, <code>"height": "[[height]]"</code>처럼 <strong>따옴표로 감싸서</strong> 넣으면 숫자로 치환됩니다. 자동 비율 조절이 켜져 있으면 샷 비율에 맞는 크기, 꺼져 있으면 Models의 NAI Width/Height가 들어갑니다. 같은 방식으로 <code>[[steps]]</code> / <code>[[cfg]]</code>도 쓸 수 있습니다.<br><br>
               <strong>참조 이미지</strong> — LoadImage 노드의 image 칸에 <code>"[[ref]]"</code>를 넣으면, Models에 올린 참조 그림을 Comfy에 업로드한 뒤 파일 이름이 들어갑니다. 참조가 없으면 빈 칸. 노드 자체를 빼려면 <code>[[#ref]]</code>…<code>[[/ref]]</code>.<br><br>
+              <strong>캐릭터 위치</strong> — 캐릭터마다 NovelAI 위치를 네모로 바꾼 <code>[[char1_x]]</code>·<code>_y</code>·<code>_w</code>·<code>_h</code>(픽셀), <code>_px</code>·<code>_py</code>·<code>_pw</code>·<code>_ph</code>(0~1), 마스크 그림 <code>[[char1_mask]]</code>, 캐릭터 참고이미지 <code>[[char1_ref]]</code>와 세기 <code>[[char1_ref_weight]]</code>, 바이브 <code>[[vibe]]</code>·<code>[[vibe_weight]]</code>, 캐릭터가 있으면 1인 <code>[[char1_on]]</code>을 쓸 수 있습니다. 빈 자리는 세기 0으로 들어갑니다.<br><br>
               <strong>강조</strong> — Inlay가 만든 <code>2::hard::</code> / <code>{{happy}}</code>는 Comfy로 보낼 때 <code>(hard:2)</code> / <code>((happy))</code>로 바꿉니다.<br><br>
               <strong>시드 (랜덤)</strong> — API Export의 숫자 seed는 요청마다 Inlay가 새 랜덤 시드로 덮어씁니다.<br>
               명시적으로 쓰려면 <code>"seed": "[[seed]]"</code>처럼 <strong>따옴표로 감싸서</strong> 넣으세요. (숫자만 남겨둬도 자동 랜덤)<br><br>`;
