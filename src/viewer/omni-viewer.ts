@@ -33,7 +33,7 @@ import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
 import { replyPlace } from '../storage/viewer-places';
 import { botFrom, holdBot } from '../storage/current-bot';
-import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
+import { currentTtsContext, streamEnded, type TtsChatContext } from '../services/tts-context';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
@@ -2260,7 +2260,7 @@ export async function installOmniViewer(): Promise<void> {
   // nor are taps on Omni's controls floating over the chat (viewer-presence.ts).
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => (open && inside({ clientX: x, clientY: y }, rect)) || chatCovered(x, y));
   // A reply saved: its faces made ahead, and a viewer showing it as it streamed reads the saved one at once.
-  if (host.addRisuChatListener) await host.addRisuChatListener('output', () => { scheduleAhead(); endStream(); });
+  if (host.addRisuChatListener) await host.addRisuChatListener('output', () => { streamEnded(); scheduleAhead(); endStream(); });
   // The reply on stage baked: read again, once (see rereadBaked).
   onMessageBaked(baked => { if (open && !streaming && baked.messageIndex === messageIndex) rereadBaked(); });
   // A sprite finished: the scene on screen may be waiting for it.
