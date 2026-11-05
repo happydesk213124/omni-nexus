@@ -796,6 +796,25 @@ test('요소 작동: the window is the viewer\'s height; its element gone, a gro
       return { top: Math.round(f.top - v.top), bottom: Math.round(v.bottom - f.bottom), chatAbove: !above?.closest('[x-omni-vn]'), xSeen: !!document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)?.closest('[data-vn-popx]') };
     });
     assert.deepEqual(tall, { top: 0, bottom: 0, chatAbove: true, xSeen: true }, 'the viewer\'s height, the chat seen above the panel, the ✕ seen');
+    // Drawn anew a moment later, the chat moved meanwhile (to its foot: back, the panel is out of sight): gone, then back,
+    // it is scrolled to again, with no tap when it comes back. (A line added under it would not do: the browser's
+    // scroll anchoring keeps it in sight.)
+    await page.evaluate(() => { const n = document.querySelector('.risu-chat[data-chat-index="6"] .x-risu-status'); window.panel6 = n; n.remove(); });
+    await tapWindow();
+    await page.waitForTimeout(700);
+    const outOfSight = await page.evaluate(() => {
+      const s = document.querySelector('.default-chat-screen'), tall = document.createElement('div');
+      tall.style.height = '1400px'; tall.textContent = '(긴 내 메시지)';
+      document.querySelector('.risu-chat[data-chat-index="5"] .chattext').append(tall);
+      s.scrollTop = 0;
+      document.querySelector('.risu-chat[data-chat-index="6"] .chattext').append(window.panel6);
+      const r = window.panel6.getBoundingClientRect();
+      return r.bottom < 0 || r.top > innerHeight;
+    });
+    assert.equal(outOfSight, true, 'back out of sight');
+    for (let i = 0; i < 30 && await seenIn() !== '6:status'; i++) await page.waitForTimeout(100);
+    assert.equal(await seenIn(), '6:status', 'back, and scrolled to');
+    await page.waitForTimeout(1600);
     // Its element gone from 6 (drawn anew without it): the window goes to the one there is, in 4.
     await drop(6);
     await tapWindow();
@@ -812,6 +831,10 @@ test('요소 작동: the window is the viewer\'s height; its element gone, a gro
     assert.equal(await popShown(), true, 'still open');
     assert.equal(await page.evaluate(holeCut), true, 'its window still cut');
     assert.equal(await scrollTop(), before, 'the chat where it was');
+    // Then one of its group comes (6 drawn anew with it): looked for again, the window goes to it, scrolled there.
+    await page.evaluate(() => document.querySelector('.risu-chat[data-chat-index="6"] .chattext').prepend(window.panel6));
+    for (let i = 0; i < 50 && await seenIn() !== '6:status'; i++) await page.waitForTimeout(100);
+    assert.equal(await seenIn(), '6:status', 'the one come, found');
     // Its ✕ folds it.
     await tap(page.locator('[x-omni-vn] [data-vn-popx]'));
     await page.waitForFunction(() => !/evenodd/.test(document.querySelector('[x-omni-vn-style="live"]')?.textContent || ''));

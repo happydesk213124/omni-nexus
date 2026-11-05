@@ -50,6 +50,15 @@ let below = 0, rects: Array<Box | null> = [], rect: Box | null = null, framed = 
 /** The sheet that lifts it (made the first time), what it says, its writes one at a time, and which viewer they are for. */
 let sheet: SafeElement | null = null, sheetText = '', writes: Promise<void> = Promise.resolve(), epoch = 0, warned = false;
 let later: Array<ReturnType<typeof setTimeout>> = [];
+/**
+ * The open one's element gone: since when (0: there), read again every half second meanwhile (ten seconds at most), and
+ * whether its group was asked for after it (lost). Risu draws a message anew after a button: back, maybe elsewhere,
+ * it is scrolled to the middle again. Only gone a while is another of its group looked for: drawn anew, it is gone a
+ * moment, and the older one of its group would take its place.
+ */
+let goneAt = 0, watch: ReturnType<typeof setInterval> | undefined, asked = false;
+const WATCH_MS = 500, WATCH_FOR = 10_000, LOOK_AFTER = 1500;
+function stopWatch(): void { clearInterval(watch); watch = undefined; goneAt = 0; asked = false; }
 const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
 const inside = (p: HostPoint, r: Box) => p.clientX >= r.left && p.clientX <= r.left + r.width && p.clientY >= r.top && p.clientY <= r.top + r.height;
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -63,6 +72,7 @@ export function popAttach(h: PopHost, el: SafeElement | null): void {
 export async function popDetach(): Promise<void> {
   // A write asked for before the close is dropped; one under way finishes first, so the sheet it made comes down too.
   epoch++; turn++;
+  stopWatch();
   for (const t of later) clearTimeout(t);
   later = [];
   await writes;
@@ -88,6 +98,7 @@ export async function popOpen(nextSig: string, nextTile: PopTile, nextRule: Elem
   const h = host, doc = h?.doc();
   if (!h || !doc) return;
   if (sig) await popClose(false);
+  stopWatch();
   sig = nextSig; tile = nextTile; rule = nextRule; mode = 'wait'; rects = []; rect = null;
   const mine = ++turn;
   await h.restyle();
@@ -120,6 +131,7 @@ export async function popClose(restyle = true): Promise<void> {
   if (!sig) return;
   const wasCopy = mode === 'copy';
   turn++; sig = ''; mode = ''; rule = null; tile = null; rects = []; rect = null;
+  stopWatch();
   for (const t of later) clearTimeout(t);
   later = [];
   await Promise.all([restyle ? host?.restyle() : undefined, writeSheet('')]);
@@ -176,11 +188,29 @@ export async function popRelay(): Promise<void> {
   if (mine !== turn || mode !== 'live') return;
   // The window: as wide as its windows together, the viewer's whole height.
   const seen = union(read.map(b => b ? { left: b.left, top: b.top, width: b.width, height: b.height } : null)), f = host?.frame();
-  // None there (drawn anew, or gone with its message): the window stays where it was, and it is looked for again.
-  if (!seen || !f) { host?.lost(); return; }
+  // None there (drawn anew, or gone with its message): the window stays where it was, the chat's scroll as it is; it
+  // is read again meanwhile, and gone a while, its group is asked for.
+  if (!seen || !f) {
+    if (!goneAt) {
+      goneAt = Date.now();
+      // Its own end too: a panel over the stage meanwhile reads nothing, and would leave it running.
+      watch = setInterval(() => { if (Date.now() - goneAt >= WATCH_FOR) { clearInterval(watch); watch = undefined; return; } void popRelay().catch(report('viewer.pop')); }, WATCH_MS);
+    }
+    const away = Date.now() - goneAt;
+    if (!asked && away >= LOOK_AFTER) { asked = true; host?.lost(); }
+    if (away >= WATCH_FOR) { clearInterval(watch); watch = undefined; }
+    return;
+  }
+  // Back after it was gone (maybe elsewhere, its message drawn anew taller or shorter): to the middle again.
+  const back = goneAt > 0;
+  stopWatch();
   rects = [{ left: seen.left, top: f.top, width: seen.width, height: f.height }];
   await placeFrame();
   await popSync();
+  if (back && host) {
+    await host.centre(t.targets[0]!);
+    if (mine === turn) await popRelay();
+  }
 }
 /**
  * The open one's element is another now (elements.ts, after a rebuild: one of its group in a newer message, or the
@@ -192,6 +222,8 @@ export async function popRetarget(nextTile: PopTile, nextRule: ElementRule): Pro
   const same = !!tile && tile.index === nextTile.index && tile.targets.join('|') === nextTile.targets.join('|');
   tile = nextTile; rule = nextRule;
   if (same) { await popRelay(); return; }
+  // Another: it is scrolled to here, so the watch for the last one ends.
+  stopWatch();
   const doc = h.doc();
   if (mode === 'live' && doc && h.drawn(nextTile.index)) {
     const mine = ++turn;

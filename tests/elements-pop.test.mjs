@@ -57,25 +57,38 @@ test('elements-pop: the stage restyling every turn while it opens, one sheet is 
   assert.equal(made[0].removed, true, 'the viewer gone: the sheet with it');
 });
 
-test('elements-pop: its element gone, the window stays where it was and it is looked for again; only the reader folds it', async () => {
+test('elements-pop: its element gone, the window stays; back elsewhere, it is scrolled to again; gone a while, its group is asked for; only the reader folds it', async () => {
   made.length = 0; centred.length = 0; lostCount = 0;
   const at = node();
   const gone = { ...doc, async querySelector(selector) { return later(selector === '.default-chat-screen' ? node({ left: 0, top: 0, width: 400, height: 890 }) : at); } };
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   popAttach({ ...host, doc: () => gone }, node());
   await popOpen('sig', tile, rule);
   const open = made[0].text;
   assert.match(open, /M110 0h180v800h-180Z/);
-  // Drawn anew without it (no size): read again, nothing moves, and it is asked for.
+  assert.equal(centred.length, 1);
+  // Drawn anew without it (no size): read again, nothing moves, nothing scrolls, its group not asked for yet (drawn
+  // anew, it is gone only a moment).
   at.rect = { left: 0, top: 0, width: 0, height: 0 };
   await popRelay();
   assert.equal(made[0].text, open, 'the window as it was');
   assert.equal(popOpenSig(), 'sig', 'still open');
-  assert.equal(lostCount, 1, 'looked for again');
-  // Back, a little to the right: the window follows it.
+  assert.equal(lostCount, 0, 'not asked for at once');
+  // Back, elsewhere (its message drawn anew taller): found by the watch, scrolled to the middle again, the window
+  // following it.
   at.rect = { left: 130, top: 300, width: 160, height: 90 };
-  await popRelay();
+  await wait(700);
+  assert.equal(centred.length, 2, 'scrolled to it again');
   assert.match(made[0].text, /M130 0h160v800h-160Z/);
-  assert.equal(lostCount, 1);
+  // There: read again, no scroll (the reader's own scroll is theirs).
+  await popRelay();
+  assert.equal(centred.length, 2);
+  // Gone a while: its group is asked for, once.
+  at.rect = { left: 0, top: 0, width: 0, height: 0 };
+  await popRelay();
+  await wait(2300);
+  assert.equal(lostCount, 1, 'asked for once, gone a while');
+  assert.equal(made[0].text.includes('M130 0h160v800h-160Z'), true, 'the window still where it was');
   await popDetach();
 });
 
