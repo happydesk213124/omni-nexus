@@ -112,21 +112,31 @@ export async function elementsOpen(h: ElementsHost): Promise<void> {
   const root = h.root();
   let pop: SafeElement | null = null;
   if (root) [layer, choicesEl, panel, pop] = await Promise.all(['[data-vn-stickers]', '[data-vn-choices]', '[data-vn-edit]', '[data-vn-pop]'].map(s => root.querySelector(s)));
-  lostAt = 0;
+  lostAt = 0; clearTimeout(seekTimer);
   popAttach({ ...h, lost: onLost }, pop);
 }
 /**
- * The open one's element gone from where it was (Risu drew its message anew after a button, or it went): the reply's
- * kinds read again and the stage rebuilt, which moves the window to it, or to one of its group there (resolveOpen);
- * none, the window stays as it is. Once in a while at most: a tap brings two reads of it, and one gone for good would
- * ask every time.
+ * The open one's element gone a while (Risu drew its message anew after a button, or it went): the reply's kinds read
+ * again and the stage rebuilt, which moves the window to one of its group there (resolveOpen: the newest present);
+ * none, the window stays as it is. A group's is looked for again every 1.5 s for some seconds: another of it may come
+ * a moment later (a message drawn anew, or the one gone back, which then takes its place again, being newer).
  */
-let lostAt = 0;
+let lostAt = 0, seekTimer: ReturnType<typeof setTimeout> | undefined;
+const SEEK_EVERY = 1500, SEEK_FOR = 8500;
 function onLost(): void {
-  if (!popOpenSig() || editing || rebuilding || Date.now() - lostAt < 1500) return;
+  const open = popOpenSig();
+  if (!open || editing || Date.now() - lostAt < SEEK_EVERY) return;
   lostAt = Date.now();
-  kindsAt.clear();
-  void rebuildSoon().catch(report('viewer.pop'));
+  clearTimeout(seekTimer);
+  const until = lostAt + (isGroup(open) ? SEEK_FOR : 0);
+  const seek = (): void => {
+    if (popOpenSig() !== open || editing) return;
+    kindsAt.clear();
+    void rebuildSoon().catch(report('viewer.pop')).finally(() => {
+      if (Date.now() < until && popOpenSig() === open) seekTimer = setTimeout(seek, SEEK_EVERY);
+    });
+  };
+  seek();
 }
 /**
  * After a rebuild, the open one: its tile here (a group's: its newest member there) is where its window goes; none
@@ -141,6 +151,7 @@ async function resolveOpen(): Promise<void> {
   if (s?.tile && r?.role === 'live') await popRetarget(s.tile, r);
 }
 export async function elementsClose(): Promise<void> {
+  clearTimeout(seekTimer);
   await popDetach();
   await endDrag();
   await arm(null);
