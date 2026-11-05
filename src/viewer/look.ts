@@ -147,6 +147,10 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
 /* A tile's corner: its group's letter (on a member in 편집, and on the group's own tile). */
 [x-omni-vn] [data-vn-tile]{position:relative}
 [x-omni-vn] [data-vn-tile] i{position:absolute;right:3px;top:3px;min-width:16px;height:16px;padding:0 3px;box-sizing:border-box;border-radius:8px;background:rgba(227,194,122,.92);color:#1a1408;font:700 9px/16px system-ui,sans-serif;font-style:normal;text-align:center}
+/* The floating 이전 tile (뷰어 설정): a step back, as the menu's ◀; dragged anywhere (back-tile.ts), placed by the
+   scene's style text. Over the stage and the box, under the panels. */
+[x-omni-vn] [data-vn-act="back"]{display:none;position:absolute;z-index:5;flex-direction:column;gap:2px;width:56px;height:56px;min-width:0;padding:0;border-radius:14px;border:1px solid var(--line);background:rgba(10,9,17,.88);color:var(--gold);font:600 11px/1.2 system-ui,sans-serif;letter-spacing:0;box-shadow:0 4px 14px rgba(0,0,0,.45);touch-action:none;user-select:none;-webkit-user-select:none}
+[x-omni-vn] [data-vn-act="back"] b{font-size:20px;line-height:1;font-weight:400}
 /* 편집's buttons at the top, between the bar and the panel: 선택 (pick tiles and stickers), 그룹화, 분리, 없는것 숨김
    (told by where the tap falls, as every tap of the viewer's). */
 [x-omni-vn] [data-vn-groupbar]{display:none;position:absolute;left:12px;top:52px;z-index:6;gap:8px;pointer-events:none}
@@ -269,7 +273,7 @@ const countButton = ([act, glyph, label]: typeof COUNT_STEPS[number]) => `<butto
 const COUNT_BAR = `${countButton(COUNT_STEPS[0])}${countButton(COUNT_STEPS[1])}<span data-vn-range></span>${countButton(COUNT_STEPS[2])}${countButton(COUNT_STEPS[3])}`;
 const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
 // VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
-export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b><i data-vn-popx>닫기</i></div><div data-vn-groupbar><div data-vn-gb="select"><b>☑️</b><span>선택</span></div><div data-vn-gb="group"><b>🔗</b><span>그룹화</span></div><div data-vn-gb="split"><b>✂️</b><span>분리</span></div><div data-vn-gb="absent"><b>🙈</b><span>없는것 숨김</span></div></div>
+export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><button data-vn-act="back" type="button" aria-label="이전"><b>◀</b><span>이전</span></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b><i data-vn-popx>닫기</i></div><div data-vn-groupbar><div data-vn-gb="select"><b>☑️</b><span>선택</span></div><div data-vn-gb="group"><b>🔗</b><span>그룹화</span></div><div data-vn-gb="split"><b>✂️</b><span>분리</span></div><div data-vn-gb="absent"><b>🙈</b><span>없는것 숨김</span></div></div>
 <div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="eledit" type="button">요소 편집</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
 <div data-vn-box></div><div data-vn-log></div>
 <button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
@@ -361,6 +365,8 @@ export interface StageState {
   counts?: string;
   /** The reply on stage has pink slots and is not streaming: 전체 생성 shows. `pinkBusy`: they are being made. */
   pink?: boolean;
+  /** The floating 이전 tile (뷰어 설정): where it stands, in percent of the frame. */
+  back?: { x: number; y: number };
   pinkBusy?: boolean;
 }
 // Each breathes at their own pace, so two lit at once never move as one.
@@ -464,6 +470,7 @@ export function stageCss(s: StageState): string {
     s.rates ? '[x-omni-vn] [data-vn-rates]{display:flex}[x-omni-vn] [data-vn-menu] [data-vn-act="rate"]{color:var(--gold)}' : '',
     s.tags ? '[x-omni-vn] [data-vn-tagbar]{translate:0 0}[x-omni-vn] [data-vn-act="tags"]{opacity:0}' : '',
     s.tags && s.counts ? `[x-omni-vn] [data-vn-counts]{display:flex}[x-omni-vn] [data-vn-tagbar] [data-vn-act="mcounts"]{background:rgba(227,194,122,.28)}[x-omni-vn] [data-vn-range]::after{content:${JSON.stringify(s.counts)}}` : '',
+    s.back ? `[x-omni-vn] [data-vn-act="back"]{display:inline-flex;left:${s.back.x}%;top:${s.back.y}%}` : '',
     s.pink ? `[x-omni-vn] [data-vn-act="pink"]{display:inline-flex}${s.pinkBusy ? '[x-omni-vn] [data-vn-act="pink"]{opacity:.7}[x-omni-vn] [data-vn-act="pink"]::before{border-color:rgba(236,72,153,.3);border-top-color:#ec4899;background:transparent;animation:vn-spin .8s linear infinite}' : ''}` : '',
   ].filter(Boolean).join('\n');
 }
