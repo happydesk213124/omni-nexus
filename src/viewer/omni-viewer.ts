@@ -41,6 +41,7 @@ import { chatCovered, setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 import { boxHtml, CAST_CHIPS, COUNT_STEPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, inSightNow, quiet, release, rowAt, unwrap } from './safe-dom';
+import { backTileAttach, backTileBlocked, backTileDetach, backTileDown, backTileUp } from './back-tile';
 import { CHAT_LIST, chatArea, messageAtCenter } from './chat-screen';
 import { replyAt } from '../domain/viewer/reply-at';
 import { syncViewerShortcuts, type ViewerFrom } from './shortcuts';
@@ -1267,7 +1268,7 @@ async function comeBack(): Promise<void> {
 const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState => ({
   cgView: cgView === 'none' ? undefined : cgView, cgSize: viewerPrefs().cgSize, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   zoomAt: cgView === 'fold' && cgThumb ? { left: cgThumb.left - rect.left, top: cgThumb.top + cgThumb.height - rect.top } : undefined, chips: shownCast(),
-  rate: ttsData().settings.rate, rates: ratesOpen, tags: tagsOpen, counts: tagsOpen && countsOpen ? countRange || '…' : undefined, pink: pinkCount() > 0, pinkBusy: pinkRun,
+  rate: ttsData().settings.rate, rates: ratesOpen, tags: tagsOpen, counts: tagsOpen && countsOpen ? countRange || '…' : undefined, pink: pinkCount() > 0, pinkBusy: pinkRun, back: viewerPrefs().backTile ? { x: viewerPrefs().backX, y: viewerPrefs().backY } : undefined,
   log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
@@ -1639,7 +1640,7 @@ async function messageAction(kind: string): Promise<void> {
  * chat (wait-taps.ts). How far it is is said over the stage (Omni's toasts are under the viewer); the pictures go
  * into the reply all at once at the end, and the reply is read again then (onMessageBaked).
  */
-let pinkRun = false, pinkShown = false, pinkFor = '', pinkSlots = 0;
+let pinkRun = false, pinkShown = false, pinkFor = '', pinkSlots = 0, backShown = false;
 function pinkCount(): number {
   if (streaming || messageIndex < 0) return 0;
   if (pinkFor !== source) { pinkFor = source; pinkSlots = pinkSlotIds(source).length; }
@@ -1665,7 +1666,8 @@ async function act(name: string): Promise<void> {
   if (ratesOpen && name !== 'rate') { ratesOpen = false; rateRows = []; void restyle().catch(() => {}); }
   if (tagsOpen && name !== 'tags' && !TAG_BAR.has(name) && !COUNT_BAR.has(name)) { tagsOpen = false; countsOpen = false; void restyle().catch(() => {}); }
   if (name === 'next') queueStep(1);
-  else if (name === 'prev') queueStep(-1);
+  // The floating 이전 tile is ◀ too.
+  else if (name === 'prev' || name === 'back') queueStep(-1);
   // The reply's first and last line: steps to there, counted from where the steps already asked for lead.
   else if (name === 'first' || name === 'last') queueStep((name === 'first' ? 0 : scenes.length - 1) - (at + pendingSteps));
   else if (name === 'cgclose') { if (cgView === 'open') queueStep(1); else { cgView = lastCg ? 'fold' : 'none'; await restyle(); } }
@@ -1728,7 +1730,8 @@ async function act(name: string): Promise<void> {
     await Promise.all([restyle(), stripOpen ? buildStrip() : null]);
     if (stripOpen) setTimeout(() => { if (stripOpen) void measureThumbs().catch(() => {}); }, 380);
   }
-  else if (name === 'elems') { await toggleElements(); await remeasure('eledit'); }
+  // 요소 편집 comes or goes in the top bar: it, and 전체 생성 left of it (moved by it), read again.
+  else if (name === 'elems') { await toggleElements(); await remeasure('eledit'); if (pinkShown) await remeasure('pink'); }
   else if (name === 'eledit') {
     if (!elementsShown()) return;
     // 편집 is a panel too: the others make room.
@@ -1820,6 +1823,8 @@ function onClick(p: HostPoint): void {
   // the key has acted already, and 0,0 would be whatever sits in the corner (⚙).
   if (p.clientX === 0 && p.clientY === 0) return;
   const hit = liveHit(p);
+  // The click a drag of the 이전 tile ended with: no step back.
+  if (hit?.act === 'back' && backTileBlocked()) return;
   const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
   // 배속's list is over what it lies on (a big picture's bar): a speed in it is picked whatever is under it.
   const rateRow = ratesOpen ? rateRows.find(r => inside(p, r.r)) : undefined;
@@ -1862,6 +1867,8 @@ async function writeStage(s: StageState): Promise<void> {
   void elementsSyncLive().catch(() => {});
   // 전체 생성 comes and goes with the reply's pink slots: where it stands is read once it shows.
   if (!!s.pink !== pinkShown) { pinkShown = !!s.pink; if (pinkShown) void remeasure('pink').catch(() => {}); }
+  // The 이전 tile up: its rectangle read once it shows (the frame's first read may have found it hidden).
+  if (!!s.back !== backShown) { backShown = !!s.back; if (backShown) void remeasure('back').catch(() => {}); }
   // 배속 is as wide as the figure this style draws in it (on a phone it has no width of its own): read again when it changes.
   if (s.rate !== rateShown) { rateShown = s.rate; void remeasure('rate').catch(() => {}); }
 }
@@ -1983,6 +1990,8 @@ function onDown(p: HostPoint): void {
   keysOn = inside(p, rect);
   if (!keysOn) return;
   pressFrom = { x: p.clientX, y: p.clientY };
+  // The floating 이전 tile: a press on it is its own (a tap a step back, a drag moves it).
+  if (backShown && backTileDown(p, controls.find(c => c.act === 'back')?.r ?? null)) return;
   if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
   // (A picture up front hides the box, or leaves only the end cue there: no line to select, the swipe is the stage's.)
   const lineBox = boxNow();
@@ -1994,6 +2003,7 @@ function onDown(p: HostPoint): void {
 }
 function onUp(p: HostPoint): void {
   const from = swipeFrom, press = pressFrom; swipeFrom = null; pressFrom = null;
+  if (open && !away && backTileUp(p)) return;
   if (open && !away && elementsUp(p)) return;
   if (!open || away || !Number.isFinite(p?.clientY)) return;
   // A drag ends in a click that is no tap: what it selected stays, to be copied.
@@ -2115,8 +2125,9 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
       // No hole is cut through what is over the stage: 작동's popup waits while a panel, the picture big or 크게보기 is up.
       hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen,
       say: (text, ms) => sayShot(text, ms) });
+    backTileAttach({ doc: () => doc, root: () => root, frame: () => rect, restyle, remeasure: () => remeasure('back') });
     stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
-    ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
+    ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; backShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
     open = true; rect = { left: 0, top: 0, width: 0, height: 0 }; boxRect = null; people.clear(); faces.clear(); clones.clear(); fromFile.clear(); bgs.clear(); bg = ''; place = ''; basePlace = ''; livePlace = ''; bgFor = ''; placeMarks = []; picking = false; lastCast = []; logOpen = false;
@@ -2165,6 +2176,7 @@ async function takeDown(): Promise<void> {
   for (const node of [root, dyn, fold]) if (node) { await quiet(node.remove()); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
   await elementsClose().catch(() => {});
+  await backTileDetach().catch(() => {});
   for (const place of people.values()) await release(place);
   people.clear(); placing.clear();
   root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = ratesEl = null;

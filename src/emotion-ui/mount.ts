@@ -142,7 +142,7 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   if (reach) reach.value = String(viewerPrefs().stageReach);
   reach?.addEventListener('change', event => { event.stopPropagation(); void saveViewerPrefs({ stageReach: Number(reach.value) }); });
   // 바로가기: its button goes up or down as it is switched (the viewer listens to these settings).
-  for (const [id, key] of [['emo-breathe', 'breathe'], ['emo-bounce', 'bounce'], ['emo-base64', 'revealBase64'],
+  for (const [id, key] of [['emo-breathe', 'breathe'], ['emo-bounce', 'bounce'], ['emo-base64', 'revealBase64'], ['emo-back-tile', 'backTile'],
     ['emo-float-resume', 'floatResume'], ['emo-float-center', 'floatCenter'], ['emo-menu-resume', 'menuResume'], ['emo-menu-center', 'menuCenter']] as const) {
     const node = root.querySelector<HTMLInputElement>(`#${id}`);
     if (!node) continue;

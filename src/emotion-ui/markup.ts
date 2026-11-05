@@ -19,6 +19,7 @@ const VIEWER_PANEL = `<section class="panel" id="emo-viewer" role="tabpanel" hid
 <div class="tts-settings-column"><div class="group"><h3>화면</h3>
 ${row('글자 크기', select('emo-size', '글자 크기', [['small', '작게'], ['normal', '보통'], ['large', '크게'], ['xlarge', '아주 크게']]))}
 ${row('글자 속도', select('emo-speed', '글자 속도', [['instant', '즉시'], ['fast', '빠르게'], ['normal', '보통'], ['slow', '느리게']]))}
+${row('이전 버튼 타일 · 끌어서 옮기는 ◀ 이전', sw('emo-back-tile', '이전 버튼 타일'))}
 </div>
 <div class="group"><h3>캐릭터 움직임</h3>
 ${row('말한 뒤 남는 줄', select('emo-reach', '말한 뒤 남는 줄', [['1', '1줄'], ['2', '2줄'], ['3', '3줄'], ['4', '4줄'], ['5', '5줄'], ['0', '답장 끝까지']]))}

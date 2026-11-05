@@ -419,3 +419,43 @@ test('옴니 뷰어 over a restricted SafeDOM: a long line comes out to its last
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });
+
+// 이전 버튼 타일 (뷰어 설정): on a phone the next line is a tap anywhere, the one before a small ◀ at the box's foot. A
+// floating 이전 tile on the stage is a step back too, dragged anywhere; its place is kept.
+test('옴니 뷰어 over a restricted SafeDOM: 이전 버튼 타일 — off, none; on, a tile on the stage: a tap goes a line back, a drag moves it (no step), its place kept', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const v = await viewerOn(browser, ['하린: "첫째 줄이야."', '오미선: "둘째 줄이야."', '하린: "셋째 줄이야."']);
+    const tile = '[x-omni-vn] [data-vn-act="back"]';
+    const shown = () => v.page.evaluate(s => getComputedStyle(document.querySelector(s)).display !== 'none', tile);
+    await v.shows(/첫째/);
+    assert.equal(await shown(), false, 'off: no tile');
+    // Switched on: up with the next line, saying 이전.
+    await v.page.evaluate(() => window.saveViewerPrefs({ backTile: true }));
+    await v.page.waitForTimeout(300); await v.page.keyboard.press('ArrowRight');
+    await v.shows(/둘째/);
+    await v.page.waitForFunction(s => getComputedStyle(document.querySelector(s)).display !== 'none', tile);
+    assert.match(await v.page.locator(tile).textContent(), /이전/);
+    await v.page.waitForTimeout(400);
+    // A tap: a line back.
+    await v.press('back');
+    await v.shows(/첫째/);
+    // A drag moves it, and is no step; dropped, it stays there (the settings place it now, its own px let go).
+    await v.page.waitForTimeout(400); await v.page.keyboard.press('ArrowRight');
+    await v.shows(/둘째/);
+    await v.page.waitForTimeout(400);
+    const b0 = await v.rect(tile);
+    await v.page.mouse.move(b0.x + b0.width / 2, b0.y + b0.height / 2); await v.page.mouse.down();
+    await v.page.mouse.move(b0.x + b0.width / 2 + 45, b0.y + b0.height / 2 - 60, { steps: 5 });
+    await v.page.mouse.move(b0.x + b0.width / 2 + 90, b0.y + b0.height / 2 - 120, { steps: 5 }); await v.page.mouse.up();
+    await v.page.waitForTimeout(700);
+    const b1 = await v.rect(tile);
+    assert.ok(Math.abs(b1.x - b0.x - 90) < 8 && Math.abs(b1.y - b0.y + 120) < 8, `moved with the drag: ${JSON.stringify([b0, b1])}`);
+    assert.match(await v.text(), /둘째/, 'the drag was no step back');
+    assert.equal(await v.page.evaluate(s => document.querySelector(s).getAttribute('style') || '', tile), '', 'placed by the settings, not its own px');
+    // A tap where it is now still goes back.
+    await v.press('back');
+    await v.shows(/첫째/);
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
