@@ -23,13 +23,13 @@ test('joinExampleShotPrompt appends weighted solo portrait without forcing gende
   assert.match(joinExampleShotPrompt('best quality, 2::solo::, extra'), /2::solo::/);
 });
 
-test('joinPresetLookPrompt appends weighted 1girl solo once', () => {
+test('joinPresetLookPrompt appends the sample girl once', () => {
   assert.equal(joinPresetLookPrompt(''), PRESET_LOOK_TAIL);
   assert.equal(joinPresetLookPrompt('best quality'), `best quality, ${PRESET_LOOK_TAIL}`);
   assert.equal(joinPresetLookPrompt('best quality,'), `best quality, ${PRESET_LOOK_TAIL}`);
-  assert.equal(joinPresetLookPrompt('best quality, 1girl, smile, extra'), 'best quality, 1girl, smile, extra, 4::1girl, solo::');
-  assert.equal(joinPresetLookPrompt('4::1girl, solo::'), '4::1girl, solo::');
-  assert.equal(PRESET_LOOK_TAIL, '4::1girl, solo::');
+  assert.equal(joinPresetLookPrompt('best quality, 1girl, smile, extra'), 'best quality, 1girl, smile, extra, 2::1girl, solo, orange hair, blue eyes, dress::');
+  assert.equal(joinPresetLookPrompt('2::1girl, solo, orange hair, blue eyes, dress::'), '2::1girl, solo, orange hair, blue eyes, dress::');
+  assert.equal(PRESET_LOOK_TAIL, '2::1girl, solo, orange hair, blue eyes, dress::');
   assert.equal(EXAMPLE_SHOT_TAIL, '4::solo, portrait, white background::');
   assert.equal(joinExampleShotPrompt(joinExampleShotPrompt('1boy')), '1boy, 4::solo, portrait, white background::');
 });

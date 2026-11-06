@@ -3,6 +3,7 @@ import { bindAuthorNotePresets } from './author-note-presets';
 import { bindSettingsPresets } from './settings-presets';
 import { bindCharacterOptions } from './character-options';
 import { bindCountSteppers } from './count-steppers';
+import { bindGenEffort } from './gen-effort';
 import { bindCharacterCreate } from './character-create';
 import { bindModels } from './model-bindings';
 import { bindGuardrailPreset } from './guardrail-preset';
@@ -323,7 +324,7 @@ export function afterPaint(): void {
     const actions = Reflect.get(globalThis, '__OMNI_SETTINGS_ACTIONS__') as { config?: () => { card?: { stream_inline_tags?: unknown } } } | undefined;
     markAutoGenForInlineTags(actions?.config?.()?.card?.stream_inline_tags === true);
   }
-  if (tab === 'gen_options') { bindGuardrailPreset(); bindInlineTagToggles(); bindCountSteppers(); }
+  if (tab === 'gen_options') { bindGuardrailPreset(); bindInlineTagToggles(); bindCountSteppers(); bindGenEffort(); }
   if (tab === 'prompts') bindAuthorNotePresets();
   bindCharacterOptions();
   const line = document.getElementById('nx-version-line');

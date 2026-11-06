@@ -673,6 +673,30 @@ try {
     assert.equal(naiAfterComfy[key],value,`Comfy round-trip reset nai.${key}`);
   }
   assert.equal(await page.locator('#nx-nai-effort-v5').inputValue(),'medium');
+  // 생성 옵션 has the same Effort: one saved value, whichever tab changes it.
+  const showTab=tab=>page.evaluate(async tab=>{const {t,paint}=uxTestRuntime;t.uiTab=tab;await paint();},tab);
+  const savedEffort=()=>page.evaluate(()=>uxTestRuntime.t.backendSettings.nai.effort_v5);
+  const effortBecomes=async value=>{for(let i=0;i<40&&await savedEffort()!==value;i++)await page.waitForTimeout(50);assert.equal(await savedEffort(),value,'Effort reached the saved settings');};
+  await showTab('gen_options');
+  const genEffort=page.locator('#nx-gen-effort-v5');
+  assert.equal(await genEffort.isVisible(),true,'V5 Full shows Effort in 생성 옵션');
+  assert.equal(await genEffort.inputValue(),'medium','it shows what 모델 설정 saved');
+  await genEffort.selectOption('high');
+  await effortBecomes('high');
+  await showTab('models');
+  assert.equal(await page.locator('#nx-nai-effort-v5').inputValue(),'high','모델 설정 follows 생성 옵션');
+  await page.locator('#nx-nai-effort-v5').selectOption('medium');
+  await page.evaluate(()=>globalThis.__OMNI_SETTINGS_ACTIONS__.saveModels());
+  await effortBecomes('medium');
+  await showTab('gen_options');
+  assert.equal(await genEffort.inputValue(),'medium','생성 옵션 follows 모델 설정');
+  await page.evaluate(async()=>{await __OMNI_SETTINGS_ACTIONS__.save({nai:{model_v5:'nai-diffusion-5-curated'}});await uxTestRuntime.paint();});
+  assert.equal(await genEffort.isVisible(),false,'Curated has no Effort');
+  await page.evaluate(async()=>{await __OMNI_SETTINGS_ACTIONS__.save({nai:{model_v5:'nai-diffusion-5-full',backend:'comfy'}});await uxTestRuntime.paint();});
+  assert.equal(await genEffort.isVisible(),false,'ComfyUI has no Effort');
+  await page.evaluate(async()=>{await __OMNI_SETTINGS_ACTIONS__.save({nai:{backend:'nai'}});await uxTestRuntime.paint();});
+  assert.equal(await genEffort.isVisible(),true);
+  await showTab('models');
   await page.locator('[data-nai-family="v4"]').click();
   assert.equal(await page.locator('#nx-nai-steps-v4').inputValue(),'27');
   await page.locator('[data-backend="comfy"]').click();

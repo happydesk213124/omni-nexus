@@ -1277,6 +1277,9 @@
         <div class="group">
           <h3>NovelAI</h3>
           <div class="stack">
+            <div class="row" data-nx-help-id="nx-gen-effort-v5" hidden><span class="row-text"><b>Effort</b><small>Medium: V5 Full · 14 Steps · Euler Ancestral<br>부정 프롬프트·CFG rescale 사용 안 함</small></span>
+              <select class="ctrl" id="nx-gen-effort-v5"><option value="high" selected>High</option><option value="medium">Medium</option></select>
+            </div>
             <label class="row"><span class="row-text"><b>NAI 위치 좌표</b></span><span class="sw"><input id="nx-nai-coords" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>LLM한테 V4/V5 선택권</b></span><span class="sw"><input id="nx-nai5-first" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>무조건 NAI V5만</b></span><span class="sw"><input id="nx-nai5-only" type="checkbox"></span></label>
@@ -2694,6 +2697,10 @@
   "nx-image-png-bake": {
     "title": "박제는 PNG 원본",
     "body": "켜면 NAI가 준 PNG를 그대로 저장하고 채팅에 박제합니다. 박제 전에 채팅에 먼저 뜨는 미리보기만 위 WebP 품질로 작게 만들어 넘깁니다(품질 50이면 장당 약 70KB, PNG는 약 2MB). 미리보기용 인코딩이 장당 한 번 듭니다. 원본으로 저장과 같이 켜면 이 설정이 우선합니다. PNG에는 Omni 메타데이터를 쓰지 않습니다. ComfyUI 이미지에는 적용되지 않습니다. 새로 저장하는 이미지에만 적용됩니다."
+  },
+  "nx-gen-effort-v5": {
+    "title": "Effort",
+    "body": "모델 설정의 Effort와 같은 값입니다. 어느 쪽에서 바꿔도 함께 바뀝니다. NAI5 모델이 V5 Full일 때만 쓰이므로 그때만 보입니다. Medium은 14 Steps · Euler Ancestral로 고정되고 부정 프롬프트와 CFG rescale을 쓰지 않습니다."
   },
   "nx-speech-bubble-weight": {
     "title": "말풍선 강조",

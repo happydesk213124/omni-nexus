@@ -119,20 +119,29 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     const help = src.closest('[data-nx-help-id]');
     if (help) dst.setAttribute('data-nx-help-id', help.getAttribute('data-nx-help-id') || id);
   });
+  const pick = (id: string, value: unknown): void => {
+    const select = out.querySelector<HTMLSelectElement>('#' + id);
+    if (!select) return;
+    const current = [...select.options].some(option => option.value === value) ? String(value) : select.options[0]?.value;
+    for (const option of select.options) option.toggleAttribute('selected', option.value === current);
+  };
+  const v5Model = (nai: Record<string, unknown>): unknown => {
+    const active = String(nai.model || '');
+    return nai.model_v5 || (active.includes('nai-diffusion-5') ? active : 'nai-diffusion-5-full');
+  };
   if (tab === 'models' && settings?.nai) {
     const nai = settings.nai;
     const active = String(nai.model || '');
-    const selected = [
-      ['nx-nai-model-v5', nai.model_v5 || (active.includes('nai-diffusion-5') ? active : 'nai-diffusion-5-full')],
-      ['nx-nai-model-v4', nai.model_v4 || (!active.includes('nai-diffusion-5') ? active : 'nai-diffusion-4-5-full')],
-      ['nx-nai-effort-v5', nai.effort_v5 === 'medium' ? 'medium' : 'high'],
-    ] as const;
-    for (const [id, value] of selected) {
-      const select = out.querySelector<HTMLSelectElement>('#' + id);
-      if (!select) continue;
-      const current = [...select.options].some(option => option.value === value) ? String(value) : select.options[0]?.value;
-      for (const option of select.options) option.toggleAttribute('selected', option.value === current);
-    }
+    pick('nx-nai-model-v5', v5Model(nai));
+    pick('nx-nai-model-v4', nai.model_v4 || (!active.includes('nai-diffusion-5') ? active : 'nai-diffusion-4-5-full'));
+    pick('nx-nai-effort-v5', nai.effort_v5 === 'medium' ? 'medium' : 'high');
+  }
+  if (tab === 'gen_options' && settings?.nai) {
+    const nai = settings.nai;
+    pick('nx-gen-effort-v5', nai.effort_v5 === 'medium' ? 'medium' : 'high');
+    // Shown only where Effort does anything, the same rule as on 모델 설정.
+    const row = out.querySelector<HTMLElement>('#nx-gen-effort-v5')?.closest<HTMLElement>('.row');
+    if (row) row.hidden = nai.backend === 'comfy' || v5Model(nai) !== 'nai-diffusion-5-full';
   }
   if (tab === 'characters') {
     const slot = out.querySelector('#nx-lorefilter-slot');
