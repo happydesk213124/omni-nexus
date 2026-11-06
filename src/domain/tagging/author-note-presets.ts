@@ -34,6 +34,14 @@ export function normalizeAuthorNotePresets(raw: unknown): AuthorNotePreset[] {
   return out;
 }
 
+// The viewpoint person stays in the cast here, unlike POV_CORE: the tagger hears of `pov` with POV on.
+const NEW_POV_CORE = `Every shot is seen through one person's eyes: the first-person narrator, else the user persona. When the text changes whose eyes they are, follow it.
+- camera gets pov plus framing/angle (close-up, upper body, cowboy shot, from above when looking down, from below when looking up).
+- The viewpoint person goes in characters[] with \`pov\` (see POV); the people they look at are ordinary characters.
+- Acts that would show the viewpoint person's face or back (kiss, hug): write only the incoming form on the other person's action (incoming kiss, incoming hug), with no source/target/mutual, and add nothing for it to the viewpoint person.
+- Other contact uses source/target like anyone's; the other person's action carries the reaction (blush, looking at viewer, closed eyes).
+- Prefer moments when their hands or body meet the others: they make the viewpoint felt.`;
+
 // English on purpose: the note rides along on every tagging call, and English
 // costs a fraction of the tokens Korean does. Names stay Korean; they are UI labels.
 const POV_CORE = `Camera = the viewpoint person's eyes (the first-person narrator, else the user persona).
@@ -71,12 +79,13 @@ Goal: intensely arousing images with striking composition and mood.
   ['pov', 'POV · 1인칭 시점', `[POV]
 ${POV_CORE}`],
   ['new-pov', 'New POV · 시점 인물도 캐릭터로', `[New POV]
-Every shot is seen through one person's eyes: the first-person narrator, else the user persona. When the text changes whose eyes they are, follow it.
-- camera gets pov plus framing/angle (close-up, upper body, cowboy shot, from above when looking down, from below when looking up).
-- The viewpoint person goes in characters[] with \`pov\` (see POV); the people they look at are ordinary characters.
-- Acts that would show the viewpoint person's face or back (kiss, hug): write only the incoming form on the other person's action (incoming kiss, incoming hug), with no source/target/mutual, and add nothing for it to the viewpoint person.
-- Other contact uses source/target like anyone's; the other person's action carries the reaction (blush, looking at viewer, closed eyes).
-- Prefer moments when their hands or body meet the others: they make the viewpoint felt.`],
+${NEW_POV_CORE}`],
+  ['new-pov-touch', 'New POV · 손과 스킨십', `[New POV · hands and touch]
+${NEW_POV_CORE}
+
+Prefer shots where the viewpoint person's hands are in frame:
+- When the text has them touching someone (holding, stroking, handing over, hugging), pick that moment.
+- Frame hands and partner together (close-up or upper body): the viewpoint person's action e.g. pov hands, headpat; the partner's action carries the reaction (blush, surprised, looking at viewer, closed eyes).`],
   ['pov-touch', 'POV · 손과 스킨십', `[POV · hands and touch]
 ${POV_CORE}
 
@@ -112,8 +121,8 @@ Prefer shots of the places and atmosphere the text describes.
 - No people, buildings or props the text does not have.`],
 ];
 
-/** Picking this one turns POV on: it asks for a field the tagger only hears about with POV on. */
-export const NEW_POV_PRESET_ID = 'example-new-pov';
+/** Picking one of these turns POV on: they ask for a field the tagger only hears about with POV on. */
+export const NEW_POV_PRESET_IDS: readonly string[] = ['example-new-pov', 'example-new-pov-touch'];
 
 export function authorNotePresetExamples(): AuthorNotePreset[] {
   return EXAMPLES.map(([id, name, text]) => ({ id: `example-${id}`, name, text, builtin: true }));

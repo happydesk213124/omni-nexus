@@ -1,4 +1,4 @@
-import { NEW_POV_PRESET_ID, type AuthorNotePreset } from '../domain/tagging/author-note-presets';
+import { NEW_POV_PRESET_IDS, type AuthorNotePreset } from '../domain/tagging/author-note-presets';
 
 interface Listing { ok?: boolean; items?: AuthorNotePreset[]; custom?: string; selected?: string }
 interface Actions { request: (path: string, body?: Record<string, unknown>) => Promise<Listing> }
@@ -79,7 +79,7 @@ export function bindAuthorNotePresets(): void {
     write(row ? row.text : custom);
     // Outside this root on purpose: its change reaches the settings collector this root keeps its own from.
     const pov = document.getElementById('nx-pov-mode') as HTMLInputElement | null;
-    if (picked === NEW_POV_PRESET_ID && pov && !pov.checked) { pov.checked = true; pov.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (NEW_POV_PRESET_IDS.includes(picked) && pov && !pov.checked) { pov.checked = true; pov.dispatchEvent(new Event('change', { bubbles: true })); }
     name.value = row && !row.builtin ? row.name : '';
     paint();
     void flushCustom().then(() => send({ selected: picked })).catch(error => report('선택 저장 실패 · ' + String((error as Error)?.message || error)));

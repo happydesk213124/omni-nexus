@@ -73,6 +73,13 @@ try {
   assert.equal(await page.locator('#nx-pov-mode').isChecked(), true, 'the window opened again shows POV on');
   await page.locator('#nx-pov-mode').click();
   await povBecomes(false);
+  await select.selectOption('example-new-pov-touch');
+  assert.equal(await page.locator('#nx-pov-mode').isChecked(), true, 'New POV · 손과 스킨십 turns POV on too');
+  await povBecomes(true);
+  assert.match(await note.inputValue(), /goes in characters\[\] with `pov`[^]*incoming kiss[^]*hands are in frame/, 'it is New POV with the hands part');
+  assert.doesNotMatch(await note.inputValue(), /never a character/);
+  await page.locator('#nx-pov-mode').click();
+  await povBecomes(false);
 
   // 직접 입력: one's own note, saved as it is typed.
   await select.selectOption('custom');
