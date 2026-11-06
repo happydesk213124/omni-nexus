@@ -374,7 +374,8 @@ ${J6}`],["new-pov","New POV · 시점 인물도 캐릭터로",`[New POV]
 Every shot is seen through one person's eyes: the first-person narrator, else the user persona. When the text changes whose eyes they are, follow it.
 - camera gets pov plus framing/angle (close-up, upper body, cowboy shot, from above when looking down, from below when looking up).
 - The viewpoint person goes in characters[] with \`pov\` (see POV); the people they look at are ordinary characters.
-- Contact with them uses source/target like anyone's; the other person's action carries the reaction (blush, looking at viewer, closed eyes).
+- Acts that would show the viewpoint person's face or back (kiss, hug): write only the incoming form on the other person's action (incoming kiss, incoming hug), with no source/target/mutual, and add nothing for it to the viewpoint person.
+- Other contact uses source/target like anyone's; the other person's action carries the reaction (blush, looking at viewer, closed eyes).
 - Prefer moments when their hands or body meet the others: they make the viewpoint felt.`],["pov-touch","POV · 손과 스킨십",`[POV · hands and touch]
 ${J6}
 
