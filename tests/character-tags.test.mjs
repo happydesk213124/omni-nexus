@@ -632,3 +632,17 @@ test('misfiled penis appearance follows exposure without losing unrelated weight
   for(const wear_state of ['bottomless','nude','completely'])assert.match(composeCharacterCaptionTags(stored,{name:'Aria',wear_state}),/large penis/);
   assert.deepEqual(stored,original,'generation must not rewrite the saved appearance');
 });
+
+test('POV: the viewpoint person is sent only what the shot says shows, cut by what they wear', () => {
+  const stored={name:'Min',gender:'boy',original:'min (series)',appearance:'boy, petite, slender, long eyelashes',hair_color:'black hair',hair_style:'short hair',eye_color:'blue eyes',height:'170',age:24,attire:'white shirt',bottoms:'black pants',accessories:'wristwatch',penis_size:'huge penis'};
+  const tags=shot=>composeCharacterCaptionTags(stored,{name:'Min',action:'pov hands, petite',expression:'smile',...shot}).split(', ');
+  const all='attire, bottoms, accessories, penis';
+  assert.deepEqual(tags({pov:'none'}),['boy','pov hands','petite'],'no look, no original, no face; the action stays and boy keeps the count honest');
+  assert.deepEqual(tags({pov:'attire'}),['boy','white shirt','pov hands','petite']);
+  assert.deepEqual(tags({pov:all}),['boy','white shirt','black pants','wristwatch','huge penis','pov hands','petite'],'the penis follows the tagger alone: clothed here');
+  assert.deepEqual(tags({pov:['bottoms'],wear_state:'bottomless'}),['boy','pov hands','petite'],'trousers they have off are cut');
+  assert.deepEqual(tags({pov:all,wear_state:'topless'}),['boy','black pants','wristwatch','huge penis','pov hands','petite']);
+  assert.deepEqual(tags({pov:'attire, bottoms',wear_state:'nude'}),['boy','pov hands','petite'],'no state tag says so, so clothes off go');
+  assert.deepEqual(tags({pov:'bottoms',wear_state:'nude'}).filter(tag=>/penis|nsfw/.test(tag)),[],'the state brings no anatomy of its own');
+  for(const pov of [undefined,'',null,false])assert.match(tags({pov}).join(', '),/black hair.*blue eyes/,'no pov: their looks as ever');
+});

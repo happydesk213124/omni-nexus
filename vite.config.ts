@@ -687,6 +687,7 @@ const VENDOR_ASSET_NAI_CT_NEEDLE =
 const VENDOR_ASSET_NAI_CT_PATCH =
   `      natural_base: document.getElementById("nx-natural-base") ? N("nx-natural-base") || "short" : e.natural_base || "short",
       char_appearance: document.getElementById("nx-appearance") ? ee("nx-appearance") : e.char_appearance !== !1,
+      pov_mode: document.getElementById("nx-pov-mode") ? ee("nx-pov-mode") : !!e.pov_mode,
       llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!e.llm_json_retry,
       llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? N("nx-llm-reverse-bar") || "off" : e.llm_reverse_bar || "off",
       llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!e.llm_tag_cal,
@@ -8092,6 +8093,7 @@ const VENDOR_CHAR_TAB_GENDER_READ_PATCH =
         height: w(n.querySelector("[data-char-height]")?.value || "", 80),
         age: n.querySelector("[data-char-age]")?.value === "" || n.querySelector("[data-char-age]")?.value == null ? "" : Number(n.querySelector("[data-char-age]")?.value),
         penis_size: ["small penis", "penis", "huge penis", "gigantic penis"].includes(String(n.querySelector("[data-char-penis-size]")?.value || "")) ? String(n.querySelector("[data-char-penis-size]")?.value || "") : "",
+        ...(n.querySelector("[data-char-pov-reference]") ? { pov_reference: !!n.querySelector("[data-char-pov-reference]").checked } : {}),
         active_costume: (() => {
           const sel = n.querySelector("[data-char-costume]");
           if (!sel || sel.value === "__add__") return 0;
@@ -8179,7 +8181,7 @@ const VENDOR_CHAR_TAB_WEAR_HTML_PATCH =
 const VENDOR_CHAR_TAB_LOOKS_HTML_NEEDLE =
   `            <label class="wide"><span>외형 태그 (옷·악세사리 제외)</span><textarea data-char-appearance rows="3">\${h(r.appearance || "")}</textarea></label>`;
 const VENDOR_CHAR_TAB_LOOKS_HTML_PATCH =
-  `            <label class="wide"><span>외형 태그 (옷·악세사리 제외)</span><textarea data-char-appearance rows="2">\${h(r.appearance || "")}</textarea></label>
+  `            <div class="wide"><div class="char-wear-head"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">외형 태그 (옷·악세사리 제외)</span><label class="char-lock" style="flex-shrink:0" title="POV를 켰을 때, 본문에 이름이 없어도 이 외형을 LLM에게 참고로 보냅니다"><span>POV 참고</span><input data-char-pov-reference type="checkbox" \${r.pov_reference === true ? "checked" : ""}></label></div><textarea data-char-appearance rows="2">\${h(r.appearance || "")}</textarea></div>
             <div class="wide char-looks-row">
               <label><span>머리</span><input data-char-hair-color value="\${h(r.hair_color||"")}" placeholder="black hair"></label>
               <label><span>스타일</span><input data-char-hair-style value="\${h(r.hair_style||"")}" placeholder="short hair, bangs…"></label>

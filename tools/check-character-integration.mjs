@@ -76,6 +76,17 @@ try {
  const persisted = await page.evaluate(async()=>{const s=switchTest.t.lastScope;return globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(s.sessionId)+'&character_id='+s.characterId,{method:'GET'});});
  assert.deepEqual(persisted.characters.map(c=>c.name).sort(),['Edited immediately','Second']);
  assert.deepEqual(await page.locator('.char-card [data-char-name]').evaluateAll(xs=>xs.map(x=>x.value)),['Edited immediately','Second']);
+ // POV 참고 sits on the look field's title line (no row of its own) and saves with the form.
+ const povToggle=page.locator('#nx-char-edit-body [data-char-pov-reference]');
+ assert.equal(await povToggle.isChecked(),false,'POV 참고 starts off');
+ const povBox=await povToggle.boundingBox(),lookBox=await page.locator('#nx-char-edit-body [data-char-appearance]').boundingBox();
+ assert.ok(povBox.y+povBox.height<=lookBox.y+1 && lookBox.y-povBox.y<40,'POV 참고 is on the line above the field');
+ await povToggle.check();
+ await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());
+ const povSaved=await page.evaluate(async()=>{const s=switchTest.t.lastScope;return globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(s.sessionId)+'&character_id='+s.characterId,{method:'GET'});});
+ assert.equal(povSaved.characters.filter(c=>c.pov_reference===true).length,1,'the switch reached the roster');
+ await povToggle.uncheck();
+ await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());
  // A full save completing after another edit cannot put its old form back.
  await page.locator('#nx-char-edit-body [data-char-appearance]').fill('first eyes');
  await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());

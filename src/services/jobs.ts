@@ -81,6 +81,7 @@ import { pickNextReadyShot } from '../domain/comic/schedule';
 import { characterHasAppearance, characterMaxLimit, applyWearContinuityToShots, applyCostumeContinuityToShots, applyCreatedCostumesToShots, collectCostumePairs, createdCostumeWearByName, ensureCostumes } from '../domain/character/tags';
 import { slimCardCharacters } from '../domain/gallery/slim-cast';
 import { stripStoredCardMeta } from '../domain/gallery/strip-stored-meta';
+import { dropPov } from '../domain/character/pov';
 import { dedupeShotCharacters, resolveCharacter } from '../domain/character/roster';
 import { publishImage, resolveImageUrl } from '../storage/image-urls';
 import { idbGet, idbPut, rememberSessionAlias } from '../storage/stores';
@@ -1145,6 +1146,7 @@ async function runJob(jobId: string): Promise<void> {
     for (const shot of shots) {
       if (shotKeepsComicSlots(shot)) continue;
       shot.characters = dedupeShotCharacters(shot.characters || [], roster, charMax);
+      if (!cardFlagOn(card.pov_mode, false)) dropPov(shot.characters);
     }
     // Session-remembered outfits (id-keyed, from prior generations in this
     // chat). Roster first, then the note, then the clothed default inside

@@ -159,6 +159,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   out.querySelector<HTMLInputElement>('#nx-speech-bubble-weight')?.setAttribute('value', String(card?.speech_bubble_weight ?? 1));
   if (card) for (const [id, key, defaultOn] of [
     ['nx-appearance', 'char_appearance', true],
+    ['nx-pov-mode', 'pov_mode', false],
     ['nx-llm-json-retry', 'llm_json_retry', false],
     ['nx-llm-tag-cal', 'llm_tag_cal', false],
     ['nx-preprocess', 'preprocessing', false],

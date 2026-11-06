@@ -6,6 +6,7 @@
  * identity, so "holding umbrella" never lands in attire and earrings stay with
  * clothes (not the weapons tab).
  */
+import { povParts, povWorn, type PovPart } from './pov.ts';
 import clothingHints from '../../config/clothing-hints.json';
 import jewelryHints from '../../config/jewelry-hints.json';
 import weaponHints from '../../config/weapon-hints.json';
@@ -689,6 +690,8 @@ export function composeCharacterCaptionTags(
     wear_state?: unknown;
     weapon?: unknown;
     negative?: unknown;
+    /** The viewpoint person of a pov shot: what shows of them (pov.ts). */
+    pov?: unknown;
   } | null | undefined,
   options: { character_height?: unknown; character_age?: unknown } = {},
 ): string {
@@ -733,6 +736,24 @@ export function composeCharacterCaptionTags(
   // `upper body` among this character's own tags: their legs are out of frame, so
   // their bottoms are never drawn and no bottoms tags are sent.
   const upperBody = tagsFrameUpperBody(shot?.pose, shot?.action, shot?.gaze, shot?.left_hand, shot?.right_hand);
+  // The viewpoint person: their face and looks are out of frame, and a look sent anyway draws them as another person
+  // in the picture. Only what the shot says shows of them goes; the body type they show the tagger writes in the action.
+  const pov = povParts(shot?.pov);
+  if (pov) {
+    const shown = (part: PovPart, tags: string) => pov.has(part) ? tags : '';
+    const contact = applyInteractionKeys(shot);
+    return normalizeCharacterCaptionTags(joinTags(
+      gender === 'm' ? 'boy' : gender === 'f' ? 'girl' : '',
+      povWorn('attire', shown('attire', attire), wearState),
+      povWorn('bottoms', shown('bottoms', bottoms), wearState),
+      wrapWearCatalogTags(shown('accessories', accessories), wearState),
+      // Only the tagger's word: it knows what is in frame, and the wear state does not.
+      shown('penis', normalizePenisSize(stored?.penis_size) || 'penis'),
+      shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, contact.action,
+      contact.tags,
+      shot?.sex,
+    ));
+  }
   const wear = wearTagsForWearState(joinTags(attire, upperBody ? '' : bottoms), wearState, gender, penis);
   const explicitGender = normalizeGender(shot?.gender ?? stored?.gender ?? stored?.sex);
   const heightCap = options.character_height === false ? '' : formatHeightCaption(

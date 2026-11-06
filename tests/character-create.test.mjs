@@ -63,6 +63,26 @@ test('actual tagging request carries 50,000 characters; lore/assets search stops
  assert.ok(JSON.stringify(cast).includes('TAIL_CHARACTER_LOOK'));
 });
 
+test('POV off changes no prompt; on, a reference person is read apart from those in the message, and the switch survives saves',async()=>{
+ const {api,config}=await runtime();
+ await api.upsertCharacter('char_parity',{id:'me',name:'POV_SELF',aliases:['POV_SELF'],gender:'boy',appearance:'SELF_BODY_LOOK',pov_reference:true});
+ await api.upsertCharacter('char_parity',{id:'other',name:'NOT_NAMED',aliases:['NOT_NAMED'],gender:'girl',appearance:'OTHER_BODY_LOOK'});
+ const ask=async text=>(await api.buildTaggerMessages({session_id:'char_parity',character_id:'char_parity',assistant_text:text})).map(m=>m.content).join('\n');
+ const off=await ask('나는 문을 열었다.');
+ assert.doesNotMatch(off,/SELF_BODY_LOOK|## POV|Viewpoint reference/);
+ config.card={...config.card,pov_mode:true};api.setConfig(config);
+ const on=await ask('나는 문을 열었다.');
+ assert.match(on,/## POV/);
+ assert.match(on,/Viewpoint reference[^]*POV_SELF ← appearance=[^\n]*SELF_BODY_LOOK/);
+ assert.doesNotMatch(on,/OTHER_BODY_LOOK/,'only those switched on come without being named');
+ const named=await ask('POV_SELF가 문을 열었다.');
+ assert.doesNotMatch(named,/Viewpoint reference/,'named, they are already listed as present');
+ await api.upsertCharacter('char_parity',{id:'me',name:'POV_SELF',aliases:['POV_SELF'],gender:'boy',appearance:'SELF_BODY_LOOK'});
+ assert.equal((await api.listCharacters('char_parity')).find(c=>c.id==='me').pov_reference,true,'a save that does not send it keeps it');
+ await api.upsertCharacter('char_parity',{id:'me',name:'POV_SELF',aliases:['POV_SELF'],gender:'boy',appearance:'SELF_BODY_LOOK',pov_reference:false});
+ assert.equal((await api.listCharacters('char_parity')).find(c=>c.id==='me').pov_reference,undefined);
+});
+
 test('one description call adds multiple characters with names, aliases, look slots and clothes',async()=>{
  const {api,host}=await runtime();
  const db=await globalThis.risuai.getDatabase();

@@ -1732,7 +1732,7 @@
         </div>
         <div class="stack">
           <div class="block" id="nx-author-note-block">
-            <label data-prompt-title for="nx-prompt-author_note">메인 태거 작가의 노트</label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label data-prompt-title for="nx-prompt-author_note">메인 태거 작가의 노트</label><label data-nx-help-id="nx-pov-mode" style="display:inline-flex;align-items:center;gap:6px;flex:none;font-size:12px"><span>POV</span><span class="sw"><input id="nx-pov-mode" type="checkbox"></span></label></div>
             <p class="muted">메인 태거의 장면 선택·이미지 태그 작성 지침입니다. 프리셋을 고르면 노트가 그 내용으로 바뀝니다.</p>
             <div id="nx-author-note-presets">
               <select id="nx-anp-select" aria-label="작가의 노트 프리셋"><option value="">프리셋 선택</option></select>
@@ -1951,9 +1951,9 @@
           <button class="btn-ghost" type="button" data-char-costume-slot-save>저장</button>
           <button class="btn-ghost" type="button" data-char-costume-default>현재외형을Default로</button>
         </div>
-        <label class="block"><span>외형 태그 (옷·무기 제외) <button class="btn-ghost" type="button" data-ce-clear-looks style="min-height:28px;padding:2px 8px;margin-left:8px">✕</button></span>
+        <div class="block"><div class="char-wear-head"><span>외형 태그 (옷·무기 제외) <button class="btn-ghost" type="button" data-ce-clear-looks style="min-height:28px;padding:2px 8px;margin-left:8px">✕</button></span><label class="lock-sw" title="POV를 켰을 때, 본문에 이름이 없어도 이 외형을 LLM에게 참고로 보냅니다">POV 참고 <span class="sw"><input data-char-pov-reference type="checkbox"></span></label></div>
           <textarea id="nx-char-edit-appearance" data-char-appearance rows="2"></textarea>
-        </label>
+        </div>
         <div class="char-looks-row">
           <label class="field"><span>머리</span><input id="nx-char-edit-hair" data-char-hair-color type="text" placeholder="black hair"></label>
           <label class="field"><span>스타일</span><input data-char-hair-style type="text" placeholder="short hair, bangs…"></label>
@@ -2882,6 +2882,10 @@
   "nx-focus-prompt": {
     "title": "프롬프트 강도",
     "body": "중점 focus를 태거에 어떻게 시킬지입니다.\n\n• 기본값 — 필요할 때만(애매하면 비움)\n• 좀더 강하게 넣기 — 쓸 수 있으면 자주 넣도록\n• 무조건 넣기 — 매 샷 focus 필수\n• 수동으로 넣기 — LLM에 묻지 않고, 여성/남성위주일 때 반대 성별 캐릭에 out of frame을 코드로 붙입니다(알아서 고르기와는 함께 쓰이지 않음)."
+  },
+  "nx-pov-mode": {
+    title: "POV",
+    body: "켜면 메인 태거가 장면마다 시점 인물을 고를 수 있습니다. 시점 인물은 머리·눈·외형·원본 태그가 빠지고, LLM이 화면에 보인다고 고른 상의·하의·무기/기타·자지 태그만 들어갑니다. 상의·하의는 옷 상태로 한 번 더 걸러집니다. 끄면 태깅은 평소와 똑같습니다. 예제의 New POV를 고르면 자동으로 켜집니다.",
   },
   "nx-costume": {
     "title": "코스튬",

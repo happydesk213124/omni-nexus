@@ -119,6 +119,8 @@ export interface CardSettings {
   char_info: boolean;
   user_info: boolean;
   char_appearance: boolean;
+  /** POV: the tagger may mark a shot's viewpoint person. Off, nothing about tagging changes. */
+  pov_mode: boolean;
   /** Unused legacy flag — UI removed; keep so old saves do not break. */
   preprocessing: boolean;
   person_tag_mode: PersonTagMode;
@@ -501,6 +503,8 @@ export interface CharacterRecord {
   cast_id?: string;
   /** 비활성화: kept in the roster, left out of tagging (no injection, no merge writes). */
   disabled?: boolean;
+  /** POV 참고 외형: with POV on, the tagger reads these looks even when the text never names them. */
+  pov_reference?: boolean;
   /** Convenience field the UI reads: original + appearance + attire + bottoms + accessories. */
   tags?: string;
   [key: string]: unknown;
@@ -547,6 +551,8 @@ export interface ShotCharacter {
   nude?: boolean | string | number;
   /** When on: include accessories (weapons/props) in the caption. */
   weapon?: boolean | string | number;
+  /** The viewpoint person of a pov shot: what shows of them. */
+  pov?: unknown;
   /** Spoken line for V5 speech (main tags). */
   speech?: string;
   speech_lang?: string;

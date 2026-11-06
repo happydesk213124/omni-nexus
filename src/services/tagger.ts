@@ -482,6 +482,9 @@ function appearancePayload(
       .map((char) => `- ${char.name} (aliases: ${characterTriggers(char).slice(0, 8).join(', ')}) → empty appearance; full looks required in new_characters`)
       .join('\n')
     : '(none)';
+  const povReference = cardFlagOn(card.pov_mode, false)
+    ? filled.filter((c) => c.pov_reference === true && !matchedFilled.includes(c))
+    : [];
   dbg('job.roster.split', {
     filled: filled.map((c) => c.name),
     incomplete: incomplete.map((c) => c.name),
@@ -495,6 +498,13 @@ function appearancePayload(
     '',
     '## Incomplete in this message (empty appearance)',
     incompleteBlock,
+    // Apart from the list above: read among those who are here, one who is not would be drawn into the shot.
+    ...(povReference.length ? [
+      '',
+      '## Viewpoint reference (NOT in this message unless the text puts them there)',
+      'Read only to know the body of a viewpoint person (see POV). Never add them to a shot for being listed here.',
+      povReference.map((c) => formatAppearanceInjectLine(c)).filter(Boolean).join('\n'),
+    ] : []),
   ].join('\n');
 }
 
@@ -552,6 +562,7 @@ export async function taggerRules(card: CardSettings, opts: { imageMin: number; 
       : '',
     cardFlagOn(card.nai_use_coords, true) ? naiCoordsHowTo() : '',
     cardFlagOn(card.nai5_speech, false) ? naiSpeechHowTo() : '',
+    cardFlagOn(card.pov_mode, false) ? povHowTo() : '',
     comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain) : '',
     comicPack,
     withMain ? comicNaturalInstruction(card.comic_natural_supplement === true) : '',
@@ -796,6 +807,18 @@ function naiCoordsHowTo(): string {
     'Story-fit: lying y≈0.72, standing y≈0.5, face/above y≈0.22, left side x≈0.2, right side x≈0.8.',
     'Contact sits next to the other person: on belly ≈ same x, y a bit higher; on face ≈ same x, y higher still.',
     'Centers MUST match main `natural` positions (do not write left and set x=0.8).',
+  ].join('\n');
+}
+
+function povHowTo(): string {
+  return [
+    '## POV (per shot, like upper body)',
+    'A shot seen through one person\'s eyes keeps that person in characters[] and sets their `pov`. Everyone else in it is an ordinary character; camera also gets pov. A shot that is not through their eyes has no `pov`, and they are drawn in full.',
+    '`pov`: what of them is in frame, a comma list of attire (their top), bottoms, accessories (weapons, props, other items), penis; or none. List only what this frame shows.',
+    'Their hair, eyes, face, height, age, looks and original tag are left out for you. Never write them for this person.',
+    'Their action holds only what is visible: pov hands, pov crotch, what the hands do. From their appearance, add body type and skin only for parts in frame (petite, slender, dark skin). No face, expression, or gaze.',
+    'Their center_x 0.5, center_y 1.0: the bottom edge, past the usual center range. Others keep their own centers, so coordinates stay valid.',
+    'Others get looking at viewer only when they look at this person. In `natural`, call this person the viewer and never describe their face or head.',
   ].join('\n');
 }
 

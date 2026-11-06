@@ -39,6 +39,20 @@ try {
   const shipped = await note.inputValue();
   assert.ok(shipped.trim().length > 0);
   assert.ok(await page.locator('#nx-anp-select option[value="example-quality"]').count() === 1, '퀄리티 향상 is listed');
+  // POV sits on the note's title line: no row of its own, and New POV turns it on through the settings collector.
+  const pov = page.locator('#nx-pov-mode');
+  assert.equal(await pov.isChecked(), false, 'POV starts off');
+  const title = await page.locator('[data-prompt-title][for="nx-prompt-author_note"]').boundingBox(), povBox = await page.locator('[data-nx-help-id="nx-pov-mode"]').boundingBox();
+  assert.ok(povBox.y < title.y + title.height && title.y < povBox.y + povBox.height, 'POV shares the title line');
+  await select.selectOption('example-pov');
+  assert.equal(await pov.isChecked(), false, 'the old POV note leaves the switch alone');
+  await select.selectOption('example-new-pov');
+  assert.equal(await pov.isChecked(), true, 'New POV turns POV on');
+  await page.waitForFunction(() => globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings').then(s => s?.card?.pov_mode === true), null, { timeout: 5000 });
+  await select.selectOption('custom');
+  assert.equal(await pov.isChecked(), true, 'leaving it does not turn POV off');
+  await pov.click();
+  await page.waitForFunction(() => globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings').then(s => s?.card?.pov_mode === false), null, { timeout: 5000 });
 
   // 직접 입력: one's own note, saved as it is typed.
   await select.selectOption('custom');

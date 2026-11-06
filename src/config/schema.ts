@@ -276,6 +276,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.upscale_button_mode = card.upscale_button_mode === 'upscale' || card.upscale_button_mode === 'upscale_webp' ? card.upscale_button_mode : 'original';
   card.location_tag_weight = normalizeLocationWeight(card.location_tag_weight);
   card.message_select_gesture = normalizeMessageSelectGesture(card.message_select_gesture);
+  card.pov_mode = card.pov_mode === true;
   // costume: main-tagger catalog inject (char_looks always builds costumes[])
   card.costume =
     card.costume === true

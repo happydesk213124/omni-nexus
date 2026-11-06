@@ -403,6 +403,8 @@ export function mergeSessionAndGlobalRoster(
 
   for (const schar of list) {
     const hit = resolve(schar.name, merged);
+    // The same person on both rosters: the row that stays is the global's, the switch may be on the bot's.
+    if (hit && schar.pov_reference === true) hit.pov_reference = true;
     if (hit && hasAppearance(schar)) {
       if (!hasAppearance(hit)) {
         const idx = merged.findIndex((c) => resolve(schar.name, [c]));

@@ -70,6 +70,12 @@ Goal: intensely arousing images with striking composition and mood.
 그 사람한테도 이미지상 뭔가 뒷모습 보이는게 자연스러우면 back view 태그 넣어줘`],
   ['pov', 'POV · 1인칭 시점', `[POV]
 ${POV_CORE}`],
+  ['new-pov', 'New POV · 시점 인물도 캐릭터로', `[New POV]
+Every shot is seen through one person's eyes: the first-person narrator, else the user persona. When the text changes whose eyes they are, follow it.
+- camera gets pov plus framing/angle (close-up, upper body, cowboy shot, from above when looking down, from below when looking up).
+- The viewpoint person goes in characters[] with \`pov\` (see POV); the people they look at are ordinary characters.
+- Contact with them uses source/target like anyone's; the other person's action carries the reaction (blush, looking at viewer, closed eyes).
+- Prefer moments when their hands or body meet the others: they make the viewpoint felt.`],
   ['pov-touch', 'POV · 손과 스킨십', `[POV · hands and touch]
 ${POV_CORE}
 
@@ -104,6 +110,9 @@ Prefer shots of the places and atmosphere the text describes.
 - People present in the text appear small (very wide shot, from behind); otherwise leave characters empty (no humans is added automatically).
 - No people, buildings or props the text does not have.`],
 ];
+
+/** Picking this one turns POV on: it asks for a field the tagger only hears about with POV on. */
+export const NEW_POV_PRESET_ID = 'example-new-pov';
 
 export function authorNotePresetExamples(): AuthorNotePreset[] {
   return EXAMPLES.map(([id, name, text]) => ({ id: `example-${id}`, name, text, builtin: true }));

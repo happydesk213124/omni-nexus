@@ -166,6 +166,7 @@ function characterRosterView(stored: CharacterRecord[], scope: string): Characte
     const castId = sanitizeCastId(row.cast_id);
     if (castId) rec.cast_id = castId;
     if (row.disabled === true) rec.disabled = true;
+    if (row.pov_reference === true) rec.pov_reference = true;
     rec.tags = fullTags(rec);
     const cid = cleanText(rec.id, 200);
     if (cid) {
