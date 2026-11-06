@@ -640,9 +640,10 @@ test('POV: the viewpoint person is sent only what the shot says shows, cut by wh
   assert.deepEqual(tags({pov:'none'}),['boy','pov hands','petite'],'no look, no original, no face; the action stays and boy keeps the count honest');
   assert.deepEqual(tags({pov:'attire'}),['boy','white shirt','pov hands','petite']);
   assert.deepEqual(tags({pov:all}),['boy','white shirt','black pants','wristwatch','huge penis','pov hands','petite'],'the penis follows the tagger alone: clothed here');
-  assert.deepEqual(tags({pov:['bottoms'],wear_state:'bottomless'}),['boy','pov hands','petite'],'trousers they have off are cut');
-  assert.deepEqual(tags({pov:all,wear_state:'topless'}),['boy','black pants','wristwatch','huge penis','pov hands','petite']);
-  assert.deepEqual(tags({pov:'attire, bottoms',wear_state:'nude'}),['boy','pov hands','petite'],'no state tag says so, so clothes off go');
-  assert.deepEqual(tags({pov:'bottoms',wear_state:'nude'}).filter(tag=>/penis|nsfw/.test(tag)),[],'the state brings no anatomy of its own');
+  assert.deepEqual(tags({pov:['bottoms'],wear_state:'bottomless'}),['boy','2::bottomless::','pov hands','petite'],'trousers they have off are cut, and the state says so');
+  assert.deepEqual(tags({pov:all,wear_state:'topless'}),['boy','black pants','wristwatch','2::topless::','huge penis','pov hands','petite']);
+  assert.deepEqual(tags({pov:'attire, bottoms',wear_state:'nude'}),['boy','white shirt','black pants','2::nsfw::','pov hands','petite'],'nude keeps what they wear, as for anyone');
+  assert.deepEqual(tags({pov:'attire, bottoms, accessories',wear_state:'completely'}),['boy','2.5::completely nude::','pov hands','petite']);
+  for(const wear_state of ['torn','topless','bottomless','nude','completely'])assert.doesNotMatch(tags({pov:'none',wear_state}).join(', '),/penis|nipples|pussy/,wear_state+': the state brings no anatomy of its own');
   for(const pov of [undefined,'',null,false])assert.match(tags({pov}).join(', '),/black hair.*blue eyes/,'no pov: their looks as ever');
 });

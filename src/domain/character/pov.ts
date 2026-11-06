@@ -1,4 +1,5 @@
-import type { WearState } from './wear-state.ts';
+import { splitTagTokens } from '../../core/util/text.ts';
+import { wearTagsForWearState, type WearState } from './wear-state.ts';
 
 /** What of the viewpoint person a pov shot may show. The tagger names them; nothing else of theirs is sent. */
 export type PovPart = 'attire' | 'bottoms' | 'accessories' | 'penis';
@@ -21,13 +22,19 @@ export function dropPov(characters: Array<{ pov?: unknown }> | null | undefined)
   for (const character of characters || []) delete character.pov;
 }
 
-/**
- * Worn clothes of the viewpoint person, cut by what they still wear. Unlike the others, no state tag follows to
- * say so (nothing of theirs but the clothes is sent), so clothes they have off must go rather than be `nude` over them.
- */
+/** Worn clothes of the viewpoint person, less what their state has off. `nude` keeps them, as it does for anyone. */
 export function povWorn(part: 'attire' | 'bottoms', tags: string, state: WearState): string {
-  if (state === 'nude' || state === 'completely') return '';
+  if (state === 'completely') return '';
   if (part === 'attire' && state === 'topless') return '';
   if (part === 'bottoms' && state === 'bottomless') return '';
   return tags;
+}
+
+const ANATOMY = /nipples|pussy|penis|breasts out/i;
+/**
+ * Their state's own tags (`2::topless::`, `2::nsfw::`…), the same as anyone's. The anatomy a state brings stays out:
+ * it says what is in frame, which is the tagger's to say here (the penis) or not theirs to show at all.
+ */
+export function povStateTags(state: WearState, gender: 'f' | 'm' | null): string {
+  return splitTagTokens(wearTagsForWearState('', state, gender)).filter(tag => !ANATOMY.test(tag)).join(', ');
 }
