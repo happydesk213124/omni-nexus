@@ -195,3 +195,31 @@ test('옴니 뷰어 over a restricted SafeDOM, AUTO while a reply streams in: it
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+// The same look drew a picture again, and a picture's step started over each time: 2.6 s never passed at a look a
+// second, so AUTO stood on it until the reply ended or the reader tapped (the reader's report). Left at the newest
+// picture, the picture stays folded: the look opened it again.
+test('옴니 뷰어 over a restricted SafeDOM, AUTO while a reply streams in: a picture is gone past in its time and stays folded, and the line after it is read on to', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const { page, errors, tick } = await viewerPage(browser);
+    await page.locator('[x-omni-vn] [data-vn-act="auto"]').click();
+    await page.waitForTimeout(400);
+    let settled ='하린: "하나야."\n[[@inray::card1::inxshot_pic::832::1216]]\n', flowing = true;
+    await page.evaluate(t => { window.bot.chats[0].message.push({ role: 'char', chatId: 'r1', data: t }); window.renderChat(); }, settled);
+    const chunks = (async () => { for (let n = 0; flowing; n++) { await tick(settled + '.'.repeat(n % 3)); await page.waitForTimeout(300); } })();
+    try {
+      // This 1×1 picture is smaller open (a few px) than folded (the top's fixed 84 px thumbnail).
+      const height = () => page.evaluate(() => Math.round(document.querySelector('[x-omni-vn] img[x-vn-cg]')?.getBoundingClientRect().height ?? 0));
+      await page.waitForFunction(() => { const h = document.querySelector('[x-omni-vn] img[x-vn-cg]')?.getBoundingClientRect().height ?? 0; return h > 0 && h < 40; }, null, { timeout: 7000 });
+      await page.waitForFunction(() => (document.querySelector('[x-omni-vn] img[x-vn-cg]')?.getBoundingClientRect().height ?? 0) > 40, null, { timeout: 6000 });
+      await page.waitForTimeout(2200);
+      assert.ok(await height() > 40, 'the looks that came after it did not open it again');
+      // A line comes after it: AUTO is done with the picture, so it goes on by itself.
+      settled += '하린: "둘이야."\n';
+      await page.evaluate(t => { window.bot.chats[0].message[2].data = t; window.renderChat(); }, settled);
+      await page.waitForFunction(() => (document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '').includes('둘이야'), null, { timeout: 6000 });
+    } finally { flowing = false; await chunks; }
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
