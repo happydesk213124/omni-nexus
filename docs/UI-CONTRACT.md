@@ -420,6 +420,8 @@ switching tabs or returning from ComfyUI. `nai.effort_v5` defaults to `high`;
 `medium` applies only to V5 Full and requests the distilled Medium model with
 fixed 14 steps and Euler Ancestral. Its request omits custom undesired content
 and CFG rescale. ComfyUI-only saves must leave all NAI fields untouched.
+생성 옵션 `#nx-gen-effort-v5` is a second control for the same `nai.effort_v5`,
+saved on change, shown only with V5 Full on the NAI backend.
 Shot Tag Studio reads Medium from the image model id or the official V5 Source
 hashes `70AB5786` / `93F4BD30`; 14 steps alone never imply Medium. The compact
 Effort selector sits beside the seed for V5 Full, including image-value mode,
