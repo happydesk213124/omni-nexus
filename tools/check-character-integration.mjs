@@ -85,6 +85,9 @@ try {
  await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());
  const povSaved=await page.evaluate(async()=>{const s=switchTest.t.lastScope;return globalThis.__INLAY_NATIVE__.fetch('/v1/characters?session_id='+encodeURIComponent(s.sessionId)+'&character_id='+s.characterId,{method:'GET'});});
  assert.equal(povSaved.characters.filter(c=>c.pov_reference===true).length,1,'the switch reached the roster');
+ await page.evaluate(async()=>{switchTest.t.uiTab='gen_options';await switchTest.paint();switchTest.t.uiTab='characters';await switchTest.paint();});
+ assert.equal(await page.locator('.char-card [data-char-pov-reference]:checked').count(),1,'the sheet painted again shows it on');
+ await page.evaluate(()=>{const id=document.querySelector('.char-card [data-char-pov-reference]:checked').closest('.char-card').dataset.charId;globalThis.__INLAY_SETTINGS_UX__.openCharacterEditor({id,scope:'session'});});
  await povToggle.uncheck();
  await page.evaluate(()=>__OMNI_FLUSH_CHARACTERS__());
  // A full save completing after another edit cannot put its old form back.

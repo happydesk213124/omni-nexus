@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.9';
+const PLUGIN_VERSION = '1.4.10';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -647,6 +647,7 @@ const VENDOR_ASSET_NAI_SAVE_PATCH =
       llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!(t.backendSettings?.card?.llm_json_retry),
       llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? N("nx-llm-reverse-bar") || "off" : (t.backendSettings?.card?.llm_reverse_bar ?? "off"),
       llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!(t.backendSettings?.card?.llm_tag_cal),
+      pov_mode: document.getElementById("nx-pov-mode") ? ee("nx-pov-mode") : !!(t.backendSettings?.card?.pov_mode),
       omni_helper_prompt: ee("nx-omni-helper"),
       stream_keywords_enabled: ee("nx-stream-keywords-on"),
       stream_keywords: w(N("nx-stream-keywords") || "", 4000),
@@ -992,6 +993,18 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.10 · New POV(시점 인물도 캐릭터로), ComfyUI 캐릭터 위치·마스크·참고이미지, 400 대체 음성은 음성 선택 모델로, 스트리밍 중 AUTO가 삽화를 넘어감</strong>
+          <div class="muted" style="margin-top:8px">2026.11.06 · 시점 인물을 캐릭터로 넣어 보이는 부위만 그리는 POV가 생겼습니다. 끄면 태깅은 평소와 똑같고, 기본은 꺼짐입니다. ComfyUI도 NovelAI처럼 캐릭터마다 위치와 마스크, 참고이미지를 쓸 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>POV 토글</strong>: 프롬프트 탭, 메인 태거 작가의 노트 제목 줄 오른쪽. 켜면 메인 태거가 장면마다 시점 인물을 고를 수 있습니다. 시점 인물은 머리·눈·외형·원본·키·나이·표정 태그가 빠지고, boy/girl과 action, LLM이 화면에 보인다고 고른 상의·하의·무기/기타·자지 태그만 들어갑니다. 상의·하의는 옷 상태로 한 번 더 걸러지고, 자지 태그는 LLM이 고를 때만 들어갑니다.</li>
+            <li><strong>New POV 프리셋</strong>: 작가의 노트 예제에 추가했습니다. 고르면 POV 토글이 자동으로 켜지고, 해제해도 꺼지지 않습니다. 기존 POV 프리셋은 그대로입니다.</li>
+            <li><strong>POV 참고</strong>: 캐릭터 시트 외형 태그 제목 줄 오른쪽. 켜면 본문에 이름이 없어도 그 캐릭터 외형을 LLM에게 참고로 보냅니다(POV를 켰을 때만). 시점이 바뀌는 소설이면 여러 명 켜 두어도 됩니다. 없어도 POV는 돌아가고, 그때는 LLM이 문맥으로 짐작합니다.</li>
+            <li><strong>ComfyUI 캐릭터 위치·마스크·참고이미지</strong>: NovelAI 좌표로 캐릭터마다 영역을 나눠 워크플로에 넘길 수 있습니다. 위치 값, 영역 마스크, 캐릭터 참고이미지, 프리셋 vibe 그림을 자리표시자로 받습니다. 쓰는 방법은 ComfyUI 도움말에 있습니다.</li>
+            <li><strong>400 대체 음성</strong>: Fish가 음성을 거부(400)했을 때 대신할 음성도 음성 선택 모델을 따릅니다. JEV를 고르면 JEV로, 임베딩을 고르면 임베딩으로 다음 음성을 고르고, 보조 LLM 요청이 나가지 않습니다.</li>
+            <li><strong>옴니 뷰어 AUTO</strong>: 스트리밍 중 삽화에서 멈춰 눌러야 넘어가던 것을 고쳤습니다. 이제 삽화도 시간이 지나면 넘어가고, 다음 줄이 아직 없으면 접힌 채 기다렸다가 줄이 오면 이어 읽습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.9 · 감정 에셋·배경은 세션/캐릭터 프리셋으로, 감정 에셋 비우기·다시 만들기, 긴 채팅 스트리밍 렉 줄이기, 스트리밍 중 줄 건너뜀 고침</strong>
@@ -10266,6 +10279,7 @@ const VENDOR_DT_FN_PATCH =
         llm_json_retry: document.getElementById("nx-llm-json-retry") ? ee("nx-llm-json-retry") : !!t.backendSettings?.card?.llm_json_retry,
       llm_reverse_bar: document.getElementById("nx-llm-reverse-bar") ? N("nx-llm-reverse-bar") || "off" : (t.backendSettings?.card?.llm_reverse_bar ?? "off"),
         llm_tag_cal: document.getElementById("nx-llm-tag-cal") ? ee("nx-llm-tag-cal") : !!t.backendSettings?.card?.llm_tag_cal,
+        pov_mode: document.getElementById("nx-pov-mode") ? ee("nx-pov-mode") : !!t.backendSettings?.card?.pov_mode,
         preprocessing: document.getElementById("nx-preprocess") ? ee("nx-preprocess") : !!t.backendSettings?.card?.preprocessing,
         stream_keywords_enabled: document.getElementById("nx-stream-keywords-on") ? ee("nx-stream-keywords-on") : !!t.backendSettings?.card?.stream_keywords_enabled,
         stream_keywords: document.getElementById("nx-stream-keywords") ? w(N("nx-stream-keywords") || "", 4000) : String(t.backendSettings?.card?.stream_keywords || ""),
@@ -10284,7 +10298,7 @@ const VENDOR_DT_FN_PATCH =
     };
     shell.addEventListener("change", event => {
       const id = String(event.target?.id || "");
-      if (/^nx-(appearance|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|stream-lines-on|stream-lines-count|stream-lines-image-min|stream-lines-image-max|stream-inline-on|stream-inline-autogen|stream-inline-cast|stream-inline-asset-meta|image-done-sound)$/.test(id)) saveHabitCard();
+      if (/^nx-(appearance|pov-mode|llm-json-retry|llm-reverse-bar|llm-tag-cal|preprocess|stream-keywords-on|stream-keywords|stream-lines-on|stream-lines-count|stream-lines-image-min|stream-lines-image-max|stream-inline-on|stream-inline-autogen|stream-inline-cast|stream-inline-asset-meta|image-done-sound)$/.test(id)) saveHabitCard();
     });
   }
   async function nxScrollHoldScroller() {
@@ -15377,7 +15391,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.9 · 감정 에셋·봇 배경은 세션 프리셋 → 캐릭터 프리셋 → Omni 선택 프리셋 순서로 그림(샘플 장소 배경은 Omni 선택)·이 봇 감정 에셋 비우기(감정 에셋 설정, 그림체 바꿀 때: Omni가 만든 표정만 지우고 다음에 지금 프리셋으로 다시 만듦)·캐릭터 시트에 만든 것 다시 만들기·긴 채팅에서 스트리밍 중 렉 줄임(스트리밍 동안 봇을 한 번만 읽음)·AUTO를 끄면 스트리밍 중 새 줄이 와도 저절로 넘어가지 않음(15/16에 머묾)·그림 등록과 비우기가 겹치던 문제 고침"
+    body: "1.4.10 · POV 토글(프롬프트 탭, 시점 인물은 보이는 옷만)·New POV 프리셋(고르면 POV 켜짐)·POV 참고(캐릭터 시트, 이름이 없어도 외형을 참고로)·ComfyUI 캐릭터 위치·마스크·참고이미지·400 대체 음성은 음성 선택 모델로·옴니 뷰어 AUTO가 스트리밍 중 삽화를 넘어감 · 1.4.9 · 감정 에셋·봇 배경은 세션 프리셋 → 캐릭터 프리셋 → Omni 선택 프리셋 순서로 그림(샘플 장소 배경은 Omni 선택)·이 봇 감정 에셋 비우기(감정 에셋 설정, 그림체 바꿀 때: Omni가 만든 표정만 지우고 다음에 지금 프리셋으로 다시 만듦)·캐릭터 시트에 만든 것 다시 만들기·긴 채팅에서 스트리밍 중 렉 줄임(스트리밍 동안 봇을 한 번만 읽음)·AUTO를 끄면 스트리밍 중 새 줄이 와도 저절로 넘어가지 않음(15/16에 머묾)·그림 등록과 비우기가 겹치던 문제 고침"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

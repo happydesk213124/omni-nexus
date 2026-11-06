@@ -24,7 +24,7 @@ try {
       getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
     };
   });
-  await page.addScriptTag({ type: 'module', content: full.replace(seam, 'await le();await ia();t.lastScope=await Z();t.uiOpen=true;t.uiTab="prompts";globalThis.noteRuntime={t};await P();') });
+  await page.addScriptTag({ type: 'module', content: full.replace(seam, 'await le();await ia();t.lastScope=await Z();t.uiOpen=true;t.uiTab="prompts";globalThis.noteRuntime={t,paint:P};await P();') });
   await page.waitForFunction(() => !!globalThis.noteRuntime);
   const request = (path, body) => page.evaluate(([p, b]) => globalThis.__OMNI_SETTINGS_ACTIONS__.request(p, b), [path, body]);
   const savedNote = async () => ((await request('/v1/prompts')).prompts || []).find(row => row.key === 'author_note')?.text || '';
@@ -41,6 +41,12 @@ try {
   assert.ok(await page.locator('#nx-anp-select option[value="example-quality"]').count() === 1, '퀄리티 향상 is listed');
   // POV sits on the note's title line: no row of its own, and New POV turns it on through the settings collector.
   const pov = page.locator('#nx-pov-mode');
+  // Read and polled here: a promise handed to waitForFunction counts as true at once, whatever it resolves to.
+  const povSaved = () => page.evaluate(() => globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings').then(s => s?.settings?.card?.pov_mode));
+  const povBecomes = async value => {
+    for (let i = 0; i < 40 && await povSaved() !== value; i++) await page.waitForTimeout(100);
+    assert.equal(await povSaved(), value, 'POV reached the saved settings');
+  };
   assert.equal(await pov.isChecked(), false, 'POV starts off');
   const title = await page.locator('[data-prompt-title][for="nx-prompt-author_note"]').boundingBox(), povBox = await page.locator('[data-nx-help-id="nx-pov-mode"]').boundingBox();
   assert.ok(povBox.y < title.y + title.height && title.y < povBox.y + povBox.height, 'POV shares the title line');
@@ -48,11 +54,25 @@ try {
   assert.equal(await pov.isChecked(), false, 'the old POV note leaves the switch alone');
   await select.selectOption('example-new-pov');
   assert.equal(await pov.isChecked(), true, 'New POV turns POV on');
-  await page.waitForFunction(() => globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings').then(s => s?.card?.pov_mode === true), null, { timeout: 5000 });
+  await povBecomes(true);
   await select.selectOption('custom');
   assert.equal(await pov.isChecked(), true, 'leaving it does not turn POV off');
-  await pov.click();
-  await page.waitForFunction(() => globalThis.__OMNI_SETTINGS_ACTIONS__.request('/v1/settings').then(s => s?.card?.pov_mode === false), null, { timeout: 5000 });
+  // It stays on through what a reader does next: another tab, a setting changed there, the window closed and opened.
+  const showTab = tab => page.evaluate(async tab => { const { t, paint } = globalThis.noteRuntime; t.uiTab = tab; await paint(); }, tab);
+  await showTab('dashboard');
+  await showTab('prompts');
+  assert.equal(await page.locator('#nx-pov-mode').isChecked(), true, 'back on the tab, POV still shows on');
+  await showTab('dashboard');
+  await page.evaluate(() => { const box = document.querySelector('#nx-main .pane input[type=checkbox]'); box.click(); });
+  await page.waitForTimeout(1200);
+  assert.equal(await povSaved(), true, 'a setting saved on another tab keeps POV on');
+  await page.evaluate(() => { document.querySelector('#nx-main .pane input[type=checkbox]').click(); });
+  await page.waitForTimeout(1200);
+  await page.evaluate(async () => { const { t, paint } = globalThis.noteRuntime; t.uiOpen = false; await paint(); t.uiOpen = true; await paint(); });
+  await showTab('prompts');
+  assert.equal(await page.locator('#nx-pov-mode').isChecked(), true, 'the window opened again shows POV on');
+  await page.locator('#nx-pov-mode').click();
+  await povBecomes(false);
 
   // 직접 입력: one's own note, saved as it is typed.
   await select.selectOption('custom');
