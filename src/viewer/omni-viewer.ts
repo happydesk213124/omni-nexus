@@ -1403,19 +1403,25 @@ async function render(force = false): Promise<void> {
     // forward, ◀ from the scene after it landed on it and was sent straight back: it never got past.
     if (!cg) { queueStep(stepDir); return; }
     // Shown once; past it, it waits folded at the top, a tap away.
-    lastCg = cg; lastCgAt = at; cgView = 'open'; revealedAt = -1;
+    // The same picture drawn again (a streaming reply's look each second) stays as the reader left it and keeps its
+    // time: AUTO's step started over on every look, so a picture never got past while a reply streamed.
+    const sig = `${lineSig(at)}|${cg}`, again = !force && sig === cgSig && cgView !== 'none';
+    lastCg = cg; lastCgAt = at; revealedAt = -1;
+    if (!again) { cgSig = sig; cgDue = Date.now() + CG_AUTO_MS; cgView = 'open'; }
     const end = atEnd(), endCue = end && !(shownSig === '' && shownEnd);
     if (endCue) { shownSig = ''; shownEnd = true; boxFit = 0; }
     if (end) { elementsAfter(); await elementsReady; }
     // The reply ends on this picture: the cue to write the next message comes with it. Its calls go out together.
-    await Promise.all([elementsAtEnd(end), writeStage(state(lastCast, { cg, cgView })), endCue ? box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html) : null]);
+    await Promise.all([elementsAtEnd(end), writeStage(state(lastCast, { cg, cgView: cgView === 'none' ? undefined : cgView })), endCue ? box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html) : null]);
     void measureCgControls().catch(error => dbg('viewer.cg', { message: String(error) }, 'warn'));
     playCues(scene);
     elementsAfter();
     behind(mine, later);
-    if (viewerPrefs().auto) armAuto(mine, 2600);
+    // A look that came meanwhile arms it itself: this one's step would find the epoch moved on and be lost.
+    if (viewerPrefs().auto && cgDue > 0 && mine === epoch) armAuto(mine, Math.max(0, cgDue - Date.now()));
     return;
   }
+  cgSig = ''; cgDue = 0;
   if (pendingSteps) return;
   const draw = ++drawId;
   drawing = at;
@@ -1506,6 +1512,11 @@ async function reveal(): Promise<void> {
  * streaming reply's look) carries it over instead of losing it.
  */
 let autoDue = 0;
+/** The picture on stage and when AUTO leaves it (0: its step is taken): it outlives the timer each look clears. */
+const CG_AUTO_MS = 2600;
+let cgSig = '', cgDue = 0;
+/** AUTO has no step to come on what is on stage: it goes on to a line that arrives. */
+const autoSpent = (): boolean => autoDue === 0 && cgDue === 0;
 function armAuto(mine: number, ms: number): void {
   clearTimeout(autoTimer);
   autoDue = Date.now() + ms;
@@ -1515,6 +1526,7 @@ function armAuto(mine: number, ms: number): void {
 async function autoNext(mine: number): Promise<void> {
   if (mine !== epoch || !viewerPrefs().auto) return;
   if (['playing', 'loading'].includes(String(omniTts.player.status)) && voiceKey) { armAuto(mine, 500); return; }
+  cgDue = 0;
   await go(1);
 }
 /**
@@ -2049,7 +2061,7 @@ function onStreamTick(text: string): void {
     // line, nowhere to go): still on it (its step to come, or the voice it waits for), it goes on itself when done.
     // Without AUTO the reader stays where they are (15/16), however the line came: they go on with a tap. A reader
     // at the newest line was taken on at once, before they had read it.
-    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1 && viewerPrefs().auto && autoDue === 0;
+    const fresh = !streaming && !goesOn, waiting = !fresh && at >= scenes.length - 1 && viewerPrefs().auto && autoSpent();
     // Until its own clock line comes, the clock the last one left.
     if (!streaming) { streaming = true; messageIndex = -1; if (fresh) carriedClock = clockBefore(context?.messages.length ?? 0); }
     pausedHead = ''; streamHead = pendingText.slice(0, 200);
@@ -2079,7 +2091,7 @@ function endStream(guessed = false): void {
   streaming = false;
   // AUTO waiting at the newest line (its step taken, nowhere to go): the saved reply's lines after it (the last one,
   // unfinished while it streamed) are gone on to.
-  const autoWaiting = viewerPrefs().auto && autoDue === 0 && at >= scenes.length - 1;
+  const autoWaiting = viewerPrefs().auto && autoSpent() && at >= scenes.length - 1;
   void load(undefined, true, 'fresh').then(() => { if (autoWaiting && at < scenes.length - 1) at++; return render(); }).catch(error => dbg('viewer.stream', { message: String(error) }, 'warn'));
 }
 
