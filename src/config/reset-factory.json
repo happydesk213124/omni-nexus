@@ -34,6 +34,7 @@
     "char_info": true,
     "user_info": true,
     "char_appearance": true,
+    "pov_mode": false,
     "preprocessing": false,
     "person_tag_mode": "gender",
     "auto_person_tags": true,

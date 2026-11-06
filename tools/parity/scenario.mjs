@@ -236,6 +236,16 @@ export async function runScenario(N, handles) {
     await put('/v1/settings', {card:{omni_helper_prompt:false}});
     return {defaultOff:true,helperToggle:true,mandatoryOn:true,percentDisabled:true};
   });
+  await rec('settings.pov_contract', async () => {
+    const initial = (await get('/v1/settings')).settings.card;
+    if (!('pov_mode' in initial)) return {unsupported:true};
+    if (initial.pov_mode !== false) throw new Error('POV must start off');
+    const on = (await put('/v1/settings', {card:{pov_mode:true}})).settings.card;
+    if (on.pov_mode !== true) throw new Error('POV must persist');
+    const off = (await put('/v1/settings', {card:{pov_mode:false}})).settings.card;
+    if (off.pov_mode !== false) throw new Error('POV must turn off');
+    return {defaultOff:true,persists:true};
+  });
   await rec('job.commit_output_unknown', async () => {
     const result = await post('/v1/jobs/commit-output', {job_id:'missing',stream_id:'missing'});
     if (result.ok !== false || result.error?.code !== 'not_pending') throw new Error('Unknown stream must not attach');

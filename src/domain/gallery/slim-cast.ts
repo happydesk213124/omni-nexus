@@ -10,6 +10,7 @@ const SHOT_KEYS = [
   'costume',
   'wear_state',
   'weapon',
+  'pov',
   'center_x',
   'center_y',
   'sex',

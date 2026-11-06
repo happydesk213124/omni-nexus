@@ -130,6 +130,9 @@ export function prepareCharacterUpsert(
   const disabled = mergedDuplicate ? rec.disabled === true : hasOwn(raw, 'disabled')
     ? (raw as Record<string, unknown>).disabled === true
     : rec.disabled === true || sameRow?.disabled === true;
+  const povReference = mergedDuplicate ? rec.pov_reference === true : hasOwn(raw, 'pov_reference')
+    ? (raw as Record<string, unknown>).pov_reference === true
+    : rec.pov_reference === true || sameRow?.pov_reference === true;
   const gender = normalizeGender(rec.gender ?? rec.sex);
   const appearance = syncGenderIntoAppearance(rec.appearance, gender);
   const saved: CharacterRecord = {
@@ -174,6 +177,7 @@ export function prepareCharacterUpsert(
       ? sanitizeCastId((raw as Record<string, unknown>).cast_id)
       : sanitizeCastId(rec.cast_id || sameRow?.cast_id || dup?.cast_id),
     ...(disabled ? { disabled: true } : {}),
+    ...(povReference ? { pov_reference: true } : {}),
     updated_at: now,
   } as CharacterRecord;
   const replacedIds = new Set([selfId, rec.id, ...duplicates.map(row => row.id)]);
