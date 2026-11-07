@@ -413,3 +413,17 @@ test('이 태그가 들어가면 빼기 sweeps the preset and the looks, never t
   await f.api.updateEmotionSettings({ excludeTags: '' });
   assert.match(await input('angry'), /black hair, blue eyes, nipples, 1\.2::huge penis::/, 'empty: nothing is taken out');
 });
+
+test('무기/기타 태그 빼기 keeps the accessories out of a sprite, of the default costume and any other', async () => {
+  const f = await fixture([]);
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', gender: 'girl', appearance: 'girl, black hair', attire: 'white shirt', accessories: 'katana',
+    costumes: [{ name: 'default', attire: 'white shirt', accessories: 'katana' }, { name: 'armor', note: '갑옷', attire: 'plate armor', accessories: 'great sword' }] });
+  assert.match(await f.api.spriteLooks(f.person, f.bot), /white shirt, katana/, 'off: as ever');
+  await f.api.updateEmotionSettings({ dropAccessories: true });
+  const looks = await f.api.spriteLooks(f.person, f.bot);
+  assert.match(looks, /black hair/);
+  assert.match(looks, /white shirt/, 'clothes stay');
+  assert.doesNotMatch(looks, /katana/);
+  assert.doesNotMatch(await f.api.spriteLooks(f.person, f.bot, 1), /great sword/);
+  await f.api.updateEmotionSettings({ dropAccessories: false });
+});

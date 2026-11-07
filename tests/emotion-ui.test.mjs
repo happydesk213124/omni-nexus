@@ -112,6 +112,9 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     await page.waitForFunction(() => document.getElementById('emo-faces-gate').disabled && window.emotionData().settings.enabled === false);
     await page.locator('#emo-enabled').check();
     await page.waitForFunction(() => !document.getElementById('emo-faces-gate').disabled);
+    assert.equal(await page.evaluate(() => window.emotionData().settings.dropAccessories), false, '무기/기타 stays in unless switched');
+    await page.locator('#emo-drop-accessories').check();
+    await page.waitForFunction(() => window.emotionData().settings.dropAccessories === true);
     // 코스튬별 에셋 waits on streaming tags with costumes: the writer names a costume from the list they bring.
     assert.equal(await page.locator('#emo-costumes').isDisabled(), true);
     assert.match(await page.locator('#emo-costumes-status').textContent(), /스트리밍 중 태그 생성과 코스튬을 켜면/);

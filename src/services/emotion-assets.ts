@@ -130,12 +130,13 @@ export async function spriteCostumes(c: TtsCharacter, bot: EmotionBot): Promise<
  */
 export async function spriteLooks(c: TtsCharacter, bot: EmotionBot, costume = 0): Promise<string> {
   const person = await rosterPerson(c, bot);
+  const opts = { accessories: !(await loadEmotionData()).settings.dropAccessories };
   if (costume) {
     if (!person || !ensureCostumes(person).costumes[costume]) throw new Error(`${c.name}에게 ${costume}번 코스튬이 없습니다. 삽화 캐릭터 탭에서 코스튬을 확인해 주세요.`);
-    return characterPreviewTags(person, costume);
+    return characterPreviewTags(person, costume, opts);
   }
   // The default costume, whichever the roster has on now: a face is the same person on every line.
-  const roster = person ? characterPreviewTags(person, 'default') : '';
+  const roster = person ? characterPreviewTags(person, 'default', opts) : '';
   if (cleanText(roster)) return roster;
   const collected = await collectAssetNaiTags(emotionNames(c), { characterId: bot.id, roster: person ? [person] : [] }).catch(() => null);
   const group = collected?.packed.groups[0];
