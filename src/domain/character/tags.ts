@@ -747,7 +747,8 @@ export function composeCharacterCaptionTags(
       povWorn('attire', shown('attire', attire), wearState),
       povWorn('bottoms', shown('bottoms', bottoms), wearState),
       wrapWearCatalogTags(shown('accessories', accessories), wearState),
-      povStateTags(wearState, gender === 'm' || gender === 'f' ? gender : null),
+      // Neither top nor bottoms in the tagger's frame: their body is not in the shot, so there is no state to tell.
+      pov.has('attire') || pov.has('bottoms') ? povStateTags(wearState, gender === 'm' || gender === 'f' ? gender : null) : '',
       // Only the tagger's word: it knows what is in frame, and the wear state does not.
       shown('penis', normalizePenisSize(stored?.penis_size) || 'penis'),
       shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, contact.action,
