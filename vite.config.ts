@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.10';
+const PLUGIN_VERSION = '1.4.11';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -993,6 +993,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.11 · 스트리밍에서 안 나온 전역 캐릭터는 명단에서 제외, POV 옷 상태 태그 정리, 생성 옵션 Effort, 프리셋 참고컷 태그</strong>
+          <div class="muted" style="margin-top:8px">2026.11.07 · 깡통봇에서 전역 캐릭터가 엑스트라로 끌려오던 문제를 고쳤고, POV는 LLM이 고른 것만 들어가게 정리했습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>전역 캐릭터</strong>: 「Risu 메인 모델 메시지 스트리밍 중에 태그 생성」에서 이 채팅에 나온 적 없는 전역 캐릭터는 명단에 넣지 않습니다. 최근 메시지 40개에 이름이 나왔거나, 이 채팅에서 그려졌거나, POV 참고가 켜진 캐릭터만 들어갑니다. 이 봇에 등록된 캐릭터는 그대로입니다.</li>
+            <li><strong>POV 옷 상태</strong>: 시점 인물에게는 옷 상태 태그가 들어가지 않고 LLM이 고른 상의·하의·무기/기타·자지만 들어갑니다. completely일 때만 강조 없는 nude 하나가 들어갑니다. 벗은 옷은 LLM이 골라도 빠집니다.</li>
+            <li><strong>생성 옵션 Effort</strong>: 모델 설정의 Effort(High · Medium)를 생성 옵션의 NovelAI 묶음에서도 바꿀 수 있습니다. 값은 하나로 묶여 있고, V5 Full일 때만 보입니다.</li>
+            <li><strong>프리셋 참고컷</strong>: 스타일 프리셋 참고컷을 생성할 때 붙는 태그를 2::1girl, solo, orange hair, blue eyes, dress::로 바꿨습니다. 이미 만든 참고컷은 다시 생성해야 바뀝니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.10 · New POV(시점 인물도 캐릭터로), ComfyUI 캐릭터 위치·마스크·참고이미지, 400 대체 음성은 음성 선택 모델로, 스트리밍 중 AUTO가 삽화를 넘어감</strong>
@@ -15391,7 +15401,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.10 · POV 토글(프롬프트 탭, 시점 인물은 보이는 옷만)·New POV 프리셋(고르면 POV 켜짐)·POV 참고(캐릭터 시트, 이름이 없어도 외형을 참고로)·ComfyUI 캐릭터 위치·마스크·참고이미지·400 대체 음성은 음성 선택 모델로·옴니 뷰어 AUTO가 스트리밍 중 삽화를 넘어감 · 1.4.9 · 감정 에셋·봇 배경은 세션 프리셋 → 캐릭터 프리셋 → Omni 선택 프리셋 순서로 그림(샘플 장소 배경은 Omni 선택)·이 봇 감정 에셋 비우기(감정 에셋 설정, 그림체 바꿀 때: Omni가 만든 표정만 지우고 다음에 지금 프리셋으로 다시 만듦)·캐릭터 시트에 만든 것 다시 만들기·긴 채팅에서 스트리밍 중 렉 줄임(스트리밍 동안 봇을 한 번만 읽음)·AUTO를 끄면 스트리밍 중 새 줄이 와도 저절로 넘어가지 않음(15/16에 머묾)·그림 등록과 비우기가 겹치던 문제 고침"
+    body: "1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경 · 1.4.10 · POV 토글(프롬프트 탭, 시점 인물은 보이는 옷만)·New POV 프리셋(고르면 POV 켜짐)·POV 참고(캐릭터 시트, 이름이 없어도 외형을 참고로)·ComfyUI 캐릭터 위치·마스크·참고이미지·400 대체 음성은 음성 선택 모델로·옴니 뷰어 AUTO가 스트리밍 중 삽화를 넘어감"
   };`;
 
 /** Message select gesture: options + help + save + reader. */
