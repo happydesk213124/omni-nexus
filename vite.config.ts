@@ -998,7 +998,7 @@ const VENDOR_CURATION_PANEL_PATCH =
           <strong>1.4.10 · New POV(시점 인물도 캐릭터로), ComfyUI 캐릭터 위치·마스크·참고이미지, 400 대체 음성은 음성 선택 모델로, 스트리밍 중 AUTO가 삽화를 넘어감</strong>
           <div class="muted" style="margin-top:8px">2026.11.06 · 시점 인물을 캐릭터로 넣어 보이는 부위만 그리는 POV가 생겼습니다. 끄면 태깅은 평소와 똑같고, 기본은 꺼짐입니다. ComfyUI도 NovelAI처럼 캐릭터마다 위치와 마스크, 참고이미지를 쓸 수 있습니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
-            <li><strong>POV 토글</strong>: 프롬프트 탭, 메인 태거 작가의 노트 제목 줄 오른쪽. 켜면 메인 태거가 장면마다 시점 인물을 고를 수 있습니다. 시점 인물은 머리·눈·외형·원본·키·나이·표정 태그가 빠지고, boy/girl과 action, LLM이 화면에 보인다고 고른 상의·하의·무기/기타·자지 태그만 들어갑니다. 상의·하의는 옷 상태로 한 번 더 걸러지고(topless는 상의, bottomless는 하의가 빠짐), 옷 상태 태그는 들어가지 않습니다. 자지 태그는 옷 상태와 상관없이 LLM이 고를 때만 들어갑니다.</li>
+            <li><strong>POV 토글</strong>: 프롬프트 탭, 메인 태거 작가의 노트 제목 줄 오른쪽. 켜면 메인 태거가 장면마다 시점 인물을 고를 수 있습니다. 시점 인물은 머리·눈·외형·원본·키·나이·표정 태그가 빠지고, boy/girl과 action, LLM이 화면에 보인다고 고른 상의·하의·무기/기타·자지 태그만 들어갑니다. 상의·하의는 옷 상태로 한 번 더 걸러지고(topless는 상의, bottomless는 하의가 빠짐), 옷 상태 태그는 들어가지 않습니다. completely일 때만 강조 없는 nude 하나가 들어갑니다. 자지 태그는 옷 상태와 상관없이 LLM이 고를 때만 들어갑니다.</li>
             <li><strong>New POV 프리셋</strong>: 작가의 노트 예제에 New POV와 New POV · 손과 스킨십을 추가했습니다. 고르면 POV 토글이 자동으로 켜지고, 해제해도 꺼지지 않습니다. 기존 POV 프리셋은 그대로입니다.</li>
             <li><strong>POV 참고</strong>: 캐릭터 시트 외형 태그 제목 줄 오른쪽. 켜면 본문에 이름이 없어도 그 캐릭터 외형을 LLM에게 참고로 보냅니다(POV를 켰을 때만). 시점이 바뀌는 소설이면 여러 명 켜 두어도 됩니다. 없어도 POV는 돌아가고, 그때는 LLM이 문맥으로 짐작합니다.</li>
             <li><strong>ComfyUI 캐릭터 위치·마스크·참고이미지</strong>: NovelAI 좌표로 캐릭터마다 영역을 나눠 워크플로에 넘길 수 있습니다. 위치 값, 영역 마스크, 캐릭터 참고이미지, 프리셋 vibe 그림을 자리표시자로 받습니다. 쓰는 방법은 ComfyUI 도움말에 있습니다.</li>

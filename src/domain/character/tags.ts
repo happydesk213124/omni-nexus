@@ -747,7 +747,9 @@ export function composeCharacterCaptionTags(
       povWorn('attire', shown('attire', attire), wearState),
       povWorn('bottoms', shown('bottoms', bottoms), wearState),
       wrapWearCatalogTags(shown('accessories', accessories), wearState),
-      // No state tag: what the tagger picked is the whole of what shows of them, bared parts included.
+      // No state tag: what the tagger picked is the whole of what shows of them, bared parts included. Only `completely`
+      // says so, plainly: every piece of clothing is gone, which no pick can tell.
+      wearState === 'completely' ? 'nude' : '',
       // Only the tagger's word: it knows what is in frame, and the wear state does not.
       shown('penis', normalizePenisSize(stored?.penis_size) || 'penis'),
       shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, contact.action,
