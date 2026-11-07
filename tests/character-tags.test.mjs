@@ -644,10 +644,13 @@ test('POV: the viewpoint person is sent only what the shot says shows, cut by wh
   assert.deepEqual(tags({pov:all,wear_state:'topless'}),['boy','black pants','wristwatch','huge penis','pov hands','petite']);
   assert.deepEqual(tags({pov:'attire, penis',wear_state:'bottomless'}),['boy','white shirt','huge penis','pov hands','petite'],'trousers off and the penis shows: the tagger picks the top and the penis');
   assert.deepEqual(tags({pov:'attire, bottoms',wear_state:'nude'}),['boy','white shirt','black pants','pov hands','petite'],'nude keeps what they wear, as for anyone');
-  assert.deepEqual(tags({pov:'attire, bottoms, accessories',wear_state:'completely'}),['boy','pov hands','petite']);
-  for(const wear_state of ['torn','topless','bottomless','nude','completely']){
+  assert.deepEqual(tags({pov:'attire, bottoms, accessories',wear_state:'completely'}),['boy','nude','pov hands','petite'],'completely: one plain nude, no weight');
+  assert.deepEqual(tags({pov:'none',wear_state:'completely'}),['boy','nude','pov hands','petite']);
+  assert.deepEqual(tags({pov:'penis',wear_state:'completely'}),['boy','nude','huge penis','pov hands','petite']);
+  for(const wear_state of ['torn','topless','bottomless','nude']){
     assert.deepEqual(tags({pov:'none',wear_state}),['boy','pov hands','petite'],wear_state+': only what the tagger picked');
     assert.doesNotMatch(tags({pov:all,wear_state}).join(', '),/torn|topless|bottomless|nsfw|nude|nipples|pussy/,wear_state+': no state tag and no anatomy of its own, whatever is picked');
   }
+  assert.doesNotMatch(tags({pov:all,wear_state:'completely'}).join(', '),/completely|nsfw|::|nipples|pussy/,'and completely brings nothing else');
   for(const pov of [undefined,'',null,false])assert.match(tags({pov}).join(', '),/black hair.*blue eyes/,'no pov: their looks as ever');
 });
