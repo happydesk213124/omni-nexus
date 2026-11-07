@@ -485,6 +485,7 @@ function appearancePayload(
   const povReference = cardFlagOn(card.pov_mode, false)
     ? filled.filter((c) => c.pov_reference === true && !matchedFilled.includes(c))
     : [];
+  const persona = filled.filter((c) => c.persona_active === true && !matchedFilled.includes(c) && !povReference.includes(c));
   dbg('job.roster.split', {
     filled: filled.map((c) => c.name),
     incomplete: incomplete.map((c) => c.name),
@@ -504,6 +505,13 @@ function appearancePayload(
       '## Viewpoint reference (NOT in this message unless the text puts them there)',
       'Read only to know the body of a viewpoint person (see POV). Never add them to a shot for being listed here.',
       povReference.map((c) => formatAppearanceInjectLine(c)).filter(Boolean).join('\n'),
+    ] : []),
+    // A persona often goes unnamed (you, I), so a name match alone would miss them; apart for the same reason as above.
+    ...(persona.length ? [
+      '',
+      '## The user persona (not named in this message; the text may call them you or I)',
+      'Add them to a shot only where the text has them in the frame.',
+      persona.map((c) => formatAppearanceInjectLine(c, { withCostumes })).filter(Boolean).join('\n'),
     ] : []),
   ].join('\n');
 }

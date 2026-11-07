@@ -1111,6 +1111,7 @@
     .preset-tile [data-preset-model] { position:absolute; top:4px; right:4px; z-index:2; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; pointer-events:none; }
     .preset-tile [data-preset-model="v5"] { background:#5741d8; }
     .preset-tile.nx-off { opacity:.45; }
+    .preset-tile.nx-persona::after { content:"페르소나"; position:absolute; top:4px; right:4px; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; }
     .preset-tile.nx-off::after { content:"꺼짐"; position:absolute; top:4px; right:4px; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; }
 </style>
 </head>
@@ -1195,6 +1196,7 @@
             <label class="row"><span class="row-text"><b>Lorebook 주입</b></span><span class="sw"><input id="nx-lore" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>CharInfo</b></span><span class="sw"><input id="nx-charinfo" type="checkbox" checked></span></label>
             <label class="row"><span class="row-text"><b>UserInfo</b></span><span class="sw"><input id="nx-userinfo" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-userinfo-persona-only"><span class="row-text"><b>전역 캐릭터는 현재 페르소나만</b><small>페르소나 이름과 맞는 전역 캐릭터만 씁니다</small></span><span class="sw"><input id="nx-userinfo-persona-only" type="checkbox"></span></label>
           </div>
         </div>
         </div>
@@ -2861,6 +2863,10 @@
   "nx-charinfo": {
     "title": "CharInfo",
     "body": "캐릭터 카드의 기본 정보를 태깅에 넣습니다. 외형·성격이 더 맞게 나오도록 돕습니다."
+  },
+  "nx-userinfo-persona-only": {
+    "title": "전역 캐릭터는 현재 페르소나만",
+    "body": "켜면 Risu에서 선택된 페르소나의 이름과 맞는 전역 캐릭터 1명만 태깅에 씁니다. 나머지 전역 캐릭터는 채팅에 이름이 나와도 무시합니다. 일반 태깅과 스트리밍 모두 같습니다. 이름이 같은 캐릭터가 먼저, 그다음 이름이 많이 겹치는 캐릭터, 그다음 별칭이 같은 캐릭터 순서이고, 그래도 같으면 목록에서 앞선 캐릭터입니다. 채팅에 이름이 안 나와도 후보로 알려 주고, 그림에 넣을지는 LLM이 정합니다. 맞는 캐릭터가 없으면 전역 캐릭터는 아무도 안 들어갑니다. 비활성화한 캐릭터는 고르지 않습니다. 이 봇에 등록된 캐릭터는 영향이 없습니다. 고른 캐릭터는 캐릭터 탭의 전역 타일에 페르소나 칩이 붙습니다."
   },
   "nx-userinfo": {
     "title": "UserInfo",

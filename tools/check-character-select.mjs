@@ -122,6 +122,26 @@ try {
   await page.waitForFunction(() => document.getElementById('nx-char-to-tts').disabled === false);
   await page.evaluate(() => { globalThis.ttsOpened = 0; globalThis.__OMNI_OPEN_TTS__ = async () => { globalThis.ttsOpened++; }; document.getElementById('nx-char-to-tts').click(); });
   await page.waitForFunction(() => globalThis.ttsOpened === 1);
+  // 전역 캐릭터는 현재 페르소나만: a chip on the one global tile that is the selected persona, and only with the switch on.
+  const tiles = () => page.evaluate(() => [...document.querySelectorAll('[data-ux-character-tile].nx-persona')].map(el => [el.dataset.uxCharacterTile, getComputedStyle(el, '::after').content]));
+  await page.evaluate(async () => {
+    const entry = { comment: 'omni.nexus.data.globalcharacter', key: '', secondkey: '', alwaysActive: false, selective: false, mode: 'normal', insertorder: 0,
+      content: JSON.stringify({ version: 1, roster: [{ id: 'g-alias', name: 'GlobalAlias', aliases: ['GlobalMe'] }, { id: 'g-me', name: 'GlobalMe', aliases: [] }] }) };
+    const db = await risuai.getDatabase();
+    await risuai.setDatabase({ modules: db.modules.map(m => ({ ...m, lorebook: [entry] })) });
+    const read = risuai.getDatabase;
+    risuai.getDatabase = async (...args) => ({ ...await read(...args), personas: [{ name: 'GlobalMe' }], selectedPersona: 0 });
+    document.getElementById('nx-refresh-chars').click();
+  });
+  await page.waitForFunction(() => !!document.querySelector('[data-ux-character-tile="g-me"]'));
+  assert.deepEqual(await tiles(), [], 'switch off: no chip');
+  await page.evaluate(async () => {
+    await globalThis.__OMNI_SETTINGS_ACTIONS__.save({ card: { user_info_persona_only: true } });
+    document.getElementById('nx-refresh-chars').click();
+  });
+  await page.waitForFunction(() => !!document.querySelector('[data-ux-character-tile].nx-persona'));
+  assert.deepEqual(await tiles(), [['g-me', '"페르소나"']], 'the whole name, not the alias, and no session tile');
+  await page.evaluate(() => globalThis.__OMNI_SETTINGS_ACTIONS__.save({ card: { user_info_persona_only: false } }));
   // 연결된 삽화 from a TTS sheet when the 캐릭터 tab has no list yet (no chat picked, or never shown): the frozen UI's
   // own opener loads it first, then opens the sheet (it once found nothing).
   await page.evaluate(async () => { const r = globalThis.selectRuntime; r.t.charactersSession = []; r.t.charactersGlobal = []; await r.paint(); });

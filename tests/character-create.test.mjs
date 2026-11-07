@@ -83,6 +83,36 @@ test('POV off changes no prompt; on, a reference person is read apart from those
  assert.equal((await api.listCharacters('char_parity')).find(c=>c.id==='me').pov_reference,undefined);
 });
 
+test('전역 캐릭터는 현재 페르소나만: the one global who is the persona is offered unnamed, the others are gone, the bot\'s stay',async()=>{
+ const {api,config}=await runtime();
+ const read=globalThis.risuai.getDatabase;let selected=0;
+ globalThis.risuai.getDatabase=async(...args)=>({...await read(...args),personas:[{name:'NAME_ME'},{name:'ALIASED'}],selectedPersona:selected});
+ try {
+  await api.upsertCharacter('__global__',{id:'by-alias',name:'BY_ALIAS',aliases:['NAME_ME'],gender:'boy',appearance:'ALIAS_LOOK'});
+  await api.upsertCharacter('__global__',{id:'by-name',name:'NAME_ME',aliases:['MEE'],gender:'boy',appearance:'NAME_LOOK'});
+  await api.upsertCharacter('__global__',{id:'stranger',name:'STRANGER',aliases:['ALIASED'],gender:'girl',appearance:'STRANGER_LOOK'});
+  await api.upsertCharacter('char_parity',{id:'own',name:'OWN_ROW',aliases:['OWN_ROW'],gender:'girl',appearance:'OWN_LOOK'});
+  const ask=async text=>(await api.buildTaggerMessages({session_id:'char_parity',character_id:'char_parity',assistant_text:text})).map(m=>m.content).join('\n');
+  const off=await ask('STRANGER와 OWN_ROW가 웃었다.');
+  assert.match(off,/STRANGER_LOOK/);assert.doesNotMatch(off,/NAME_LOOK|user persona/,'off: as ever');
+  config.card={...config.card,user_info_persona_only:true};api.setConfig(config);
+  const on=await ask('STRANGER와 OWN_ROW가 웃었다.');
+  assert.doesNotMatch(on,/STRANGER_LOOK/,'named or not, another global is ignored');
+  assert.doesNotMatch(on,/ALIAS_LOOK/,'a whole name beats an alias');
+  assert.match(on,/OWN_LOOK/,'the bot\'s own stay');
+  assert.match(on,/user persona[^]*NAME_LOOK/,'unnamed in the text, they are still offered');
+  const named=await ask('NAME_ME가 웃었다.');
+  assert.match(named,/NAME_LOOK/);assert.doesNotMatch(named,/## The user persona/,'named: among those present');
+  selected=1;
+  const other=await ask('아무도 없었다.');
+  assert.match(other,/STRANGER_LOOK/,'the persona changes, the character follows: by alias here');
+  assert.doesNotMatch(other,/NAME_LOOK/);
+  await api.upsertCharacter('__global__',{id:'stranger',name:'STRANGER',aliases:['ALIASED'],gender:'girl',appearance:'STRANGER_LOOK',disabled:true});
+  assert.doesNotMatch(await ask('아무도 없었다.'),/STRANGER_LOOK/,'비활성화 stays their word');
+  assert.equal((await api.listCharacters('__global__')).some(row=>'persona_active' in row),false,'the mark is never saved');
+ } finally {globalThis.risuai.getDatabase=read;config.card={...config.card,user_info_persona_only:false};api.setConfig(config);}
+});
+
 test('one description call adds multiple characters with names, aliases, look slots and clothes',async()=>{
  const {api,host}=await runtime();
  const db=await globalThis.risuai.getDatabase();

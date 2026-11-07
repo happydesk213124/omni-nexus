@@ -6,14 +6,18 @@ import { cleanText } from '../../core/util/text.ts';
 
 export function pickSelectedPersona(
   db: unknown,
-): { personaPrompt?: unknown; note?: unknown } | null {
+): { name?: unknown; personaPrompt?: unknown; note?: unknown } | null {
   if (!db || typeof db !== 'object') return null;
   const rec = db as Record<string, unknown>;
   if (!Array.isArray(rec.personas)) return null;
   const idx = typeof rec.selectedPersona === 'number' ? rec.selectedPersona : 0;
   const row = rec.personas[idx];
   if (!row || typeof row !== 'object') return null;
-  return row as { personaPrompt?: unknown; note?: unknown };
+  return row as { name?: unknown; personaPrompt?: unknown; note?: unknown };
+}
+
+export function pickPersonaName(persona: { name?: unknown } | null | undefined): string {
+  return cleanText(persona?.name, 200);
 }
 
 export function pickPersonaUserText(

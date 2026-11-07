@@ -112,8 +112,8 @@ async function withoutAbsentGlobals(roster: CharacterRecord[], characterId: stri
   const named = new Set(castInTexts([story.join('\n')], globals)), drawn = sessionDrawnCast(note);
   const absent = new Set(globals.filter(char => {
     const id = cleanText(char.id || char.name, 200);
-    // POV 참고 is the user's own word that this one belongs here.
-    return char.pov_reference !== true && !named.has(id) && !drawn.has(id);
+    // POV 참고 and the persona are the user's own word that this one belongs here.
+    return char.pov_reference !== true && char.persona_active !== true && !named.has(id) && !drawn.has(id);
   }));
   return roster.filter(char => !absent.has(char));
 }
@@ -128,7 +128,7 @@ function rosterLine(char: CharacterRecord, withCostumes: boolean): string {
   // default) has nothing to pick from, and the default worn, clothed, goes without saying (the heading says so): every
   // line said it, in every request.
   const catalog = withCostumes && costumes.length > 1 ? costumes.map((c, i) => [`${c.name}[${i}]`, cleanText(c.note, 60)].filter(Boolean).join(' ')).join('; ') : '';
-  return [`${head} — looks saved`, catalog ? `costumes: ${catalog}` : '',
+  return [`${head} — ${char.persona_active ? "the user's persona, looks saved" : 'looks saved'}`, catalog ? `costumes: ${catalog}` : '',
     withCostumes && worn && active_costume > 0 ? `wearing ${worn.name}[${active_costume}]` : '', wear !== 'clothed' ? `wear_state=${wear}` : ''].filter(Boolean).join(' | ');
 }
 
@@ -149,6 +149,8 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
     rememberRecentCast(noteId, order.map(char => cleanText(char.id || char.name, 200)));
     roster = order;
   }
+  // The user is in every chat, however long since anyone named them.
+  roster = [...roster.filter(char => char.persona_active), ...roster.filter(char => !char.persona_active)];
   const withCostumes = getConfig().card?.costume === true;
   const listed = roster.slice(0, ROSTER_LIMIT), people = listed.map(char => rosterLine(char, withCostumes));
   const location = formatPrevLocationLine((note as { location?: unknown } | null)?.location ?? '');

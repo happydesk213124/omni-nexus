@@ -416,6 +416,18 @@ try {
   await page.waitForFunction(()=>globalThis.uxTestRuntime.t.backendSettings.card.secondary_preset_id==='rename-probe');
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),1,'setting secondary marks the tile without reopening settings');
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
+  // 전역 캐릭터는 현재 페르소나만 sits right under UserInfo and saves as it is pressed: no save button on the way.
+  const personaOnly=page.locator('#nx-userinfo-persona-only');
+  assert.equal(await personaOnly.evaluate(el=>el.closest('.row')?.previousElementSibling?.querySelector('input')?.id),'nx-userinfo');
+  assert.equal(await personaOnly.isChecked(),false,'off to begin with');
+  const personaSaved=()=>page.evaluate(()=>uxTestRuntime.t.backendSettings.card.user_info_persona_only);
+  const personaBecomes=async value=>{for(let i=0;i<40&&await personaSaved()!==value;i++)await page.waitForTimeout(50);assert.equal(await personaSaved(),value,'the switch reached the saved settings');};
+  await personaOnly.setChecked(true);
+  await personaBecomes(true);
+  await page.evaluate(async()=>{const {t,paint}=uxTestRuntime;t.uiTab='gen_options';await paint();t.uiTab='dashboard';await paint();});
+  assert.equal(await personaOnly.isChecked(),true,'back on the tab, it still shows on');
+  await personaOnly.setChecked(false);
+  await personaBecomes(false);
   await page.evaluate(async()=>{uxTestRuntime.t.uiTab='gen_options';await uxTestRuntime.paint();});
   await page.locator('#nx-nai-auto-upscale').setChecked(true);
   await page.evaluate(()=>uxTestRuntime.flush());
