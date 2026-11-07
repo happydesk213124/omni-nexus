@@ -6,7 +6,7 @@
  * identity, so "holding umbrella" never lands in attire and earrings stay with
  * clothes (not the weapons tab).
  */
-import { povParts, povStateTags, povWorn, type PovPart } from './pov.ts';
+import { povParts, povWorn, type PovPart } from './pov.ts';
 import clothingHints from '../../config/clothing-hints.json';
 import jewelryHints from '../../config/jewelry-hints.json';
 import weaponHints from '../../config/weapon-hints.json';
@@ -747,8 +747,7 @@ export function composeCharacterCaptionTags(
       povWorn('attire', shown('attire', attire), wearState),
       povWorn('bottoms', shown('bottoms', bottoms), wearState),
       wrapWearCatalogTags(shown('accessories', accessories), wearState),
-      // Neither top nor bottoms in the tagger's frame: their body is not in the shot, so there is no state to tell.
-      pov.has('attire') || pov.has('bottoms') ? povStateTags(wearState, gender === 'm' || gender === 'f' ? gender : null) : '',
+      // No state tag: what the tagger picked is the whole of what shows of them, bared parts included.
       // Only the tagger's word: it knows what is in frame, and the wear state does not.
       shown('penis', normalizePenisSize(stored?.penis_size) || 'penis'),
       shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, contact.action,

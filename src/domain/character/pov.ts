@@ -1,5 +1,4 @@
-import { splitTagTokens } from '../../core/util/text.ts';
-import { wearTagsForWearState, type WearState } from './wear-state.ts';
+import type { WearState } from './wear-state.ts';
 
 /** What of the viewpoint person a pov shot may show. The tagger names them; nothing else of theirs is sent. */
 export type PovPart = 'attire' | 'bottoms' | 'accessories' | 'penis';
@@ -28,13 +27,4 @@ export function povWorn(part: 'attire' | 'bottoms', tags: string, state: WearSta
   if (part === 'attire' && state === 'topless') return '';
   if (part === 'bottoms' && state === 'bottomless') return '';
   return tags;
-}
-
-const ANATOMY = /nipples|pussy|penis|breasts out/i;
-/**
- * Their state's own tags (`2::topless::`, `2::nsfw::`…), the same as anyone's. The anatomy a state brings stays out:
- * it says what is in frame, which is the tagger's to say here (the penis) or not theirs to show at all.
- */
-export function povStateTags(state: WearState, gender: 'f' | 'm' | null): string {
-  return splitTagTokens(wearTagsForWearState('', state, gender)).filter(tag => !ANATOMY.test(tag)).join(', ');
 }
