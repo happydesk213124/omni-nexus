@@ -12,13 +12,13 @@ import { castInTexts, orderCast } from '../domain/tagging/recent-cast';
 import { authorNoteSystemContent } from '../domain/tagging/session-note';
 import { isOwnLlmRequest } from '../providers/llm/own-requests';
 import { auditCues, lastCueAudit } from './cue-audit';
-import { loadTaggerRoster } from './characters';
+import { globalOnlyCharacters, loadTaggerRoster } from './characters';
 import { getConfig } from './context';
 import { loadEmotionData } from '../storage/emotion-store';
 import { holdBot, readOpenBot, type Bot } from '../storage/current-bot';
 import { fetchHostLorebookEntries } from './lorefilter';
 import { getPrompt } from './settings';
-import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionRecentCast } from './session-author-note';
+import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionDrawnCast, sessionRecentCast } from './session-author-note';
 import { collectAssetTagsForTagger, taggerRules, type TaggerArgs } from './tagger';
 
 /**
@@ -27,7 +27,8 @@ import { collectAssetTagsForTagger, taggerRules, type TaggerArgs } from './tagge
  * gives it the rules. Two parts, placed for prompt caching:
  *  - the rules, fixed until settings or prompts change, right after the first
  *    message (ahead of everything that varies per turn);
- *  - this chat's registered people (most recently named first, with their
+ *  - this chat's registered people: the bot's, and of the global ones only those this
+ *    chat has (most recently named first, with their
  *    costumes and what they wear now) and previous place, before the last user turn.
  * Character descriptions and story lorebooks are not repeated: Risu already sends them.
  */
@@ -37,6 +38,8 @@ export const INLINE_STATE_MARK = '# Omni Nexus · image state for this chat';
 const ROSTER_LIMIT = 20;
 // Replies read each turn for who was just named. Older ones live on in the remembered order.
 const RECENT_REPLIES = 2;
+// Messages, of either side, read for the global characters this chat has named.
+const STORY_MESSAGES = 40;
 // How long a chat request may wait for this chat's roster before going without it.
 const STATE_BUDGET_MS = 2500;
 
@@ -93,7 +96,27 @@ export async function inlineTagRules(): Promise<string> {
   ].filter(Boolean).map(part => stripCbs(part)).join('\n\n');
 }
 
-export interface InlineScope { sessionId?: unknown; characterId?: unknown; chatId?: unknown; recent?: unknown }
+export interface InlineScope { sessionId?: unknown; characterId?: unknown; chatId?: unknown; recent?: unknown; story?: unknown }
+
+const texts = (value: unknown): string[] => Array.isArray(value) ? value.map(text => String(text ?? '')) : [];
+
+/**
+ * A global character is a person kept for any bot, not one of this story's: their name in the list is enough for the
+ * model to write them in as an extra, and in an empty bot the list is all it knows. So they are listed once this chat
+ * has them, named lately or drawn; the reply tagger reads only who is named, too. One the model brings in unlisted
+ * still draws with the saved looks: a same-named row never replaces a filled global one.
+ */
+async function withoutAbsentGlobals(roster: CharacterRecord[], characterId: string, story: string[], note: unknown): Promise<CharacterRecord[]> {
+  const globals = await globalOnlyCharacters(roster, characterId);
+  if (!globals.length) return roster;
+  const named = new Set(castInTexts([story.join('\n')], globals)), drawn = sessionDrawnCast(note);
+  const absent = new Set(globals.filter(char => {
+    const id = cleanText(char.id || char.name, 200);
+    // POV 참고 is the user's own word that this one belongs here.
+    return char.pov_reference !== true && !named.has(id) && !drawn.has(id);
+  }));
+  return roster.filter(char => !absent.has(char));
+}
 
 function rosterLine(char: CharacterRecord, withCostumes: boolean): string {
   const aliases = characterTriggers(char).filter(name => name !== char.name).slice(0, 6);
@@ -119,7 +142,8 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
   const note = noteId ? await getSessionAuthorNote(noteId).catch(() => null) : null;
   if (note) roster = rosterWithSessionOutfits(roster, note);
   roster = roster.filter(char => cleanText(char.name, 200));
-  const recent = Array.isArray(scope.recent) ? scope.recent.map(text => String(text ?? '')) : [];
+  const recent = texts(scope.recent);
+  roster = await withoutAbsentGlobals(roster, characterId, [...texts(scope.story), ...recent], note);
   if (noteId) {
     const order = orderCast(roster, castInTexts(recent, roster), await sessionRecentCast(noteId));
     rememberRecentCast(noteId, order.map(char => cleanText(char.id || char.name, 200)));
@@ -152,11 +176,12 @@ async function liveScope(): Promise<{ scope: InlineScope; bot: Bot } | null> {
   if (!characterId || !chatId) return null;
   const messages = Array.isArray(chat?.message) ? chat!.message as Array<{ role?: unknown; data?: unknown }> : [];
   const recent = messages.filter(m => m?.role === 'char').slice(-RECENT_REPLIES).reverse().map(m => String(m.data ?? ''));
+  const story = messages.slice(-STORY_MESSAGES).map(m => String(m.data ?? ''));
   const sessionId = `risu_${sessionIdHash(`${characterId}|${chatId}`)}`;
   requested = { at: Date.now(), scope: { sessionId, characterId, chatId, charIndex: bot.index, chatIndex,
     characterName: String(character.name ?? ''), chatName: String(chat?.name ?? ''),
     character: { name: String(character.name ?? ''), description: String(character.description ?? character.desc ?? ''), personality: String(character.personality ?? '') } } };
-  return { scope: { sessionId, characterId, chatId, recent }, bot };
+  return { scope: { sessionId, characterId, chatId, recent, story }, bot };
 }
 
 let lastScope: InlineScope | null = null;

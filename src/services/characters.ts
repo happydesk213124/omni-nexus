@@ -280,6 +280,12 @@ export async function rosterForSession(
   return mergeSessionAndGlobalRoster(await listCharacters(characterId || _unifiedSessionId || sessionId), await listCharacters(GLOBAL_SCOPE), {hasAppearance:characterHasAppearance,resolve:resolveCharacter}) as CharacterRecord[];
 }
 
+/** Who of this merged roster only the global list holds: no row of the bot's is the same person. */
+export async function globalOnlyCharacters(roster: CharacterRecord[], characterId: string): Promise<CharacterRecord[]> {
+  const own = await listCharacters(characterId);
+  return roster.filter(char => !own.some(row => resolveCharacter(row.name, [char])));
+}
+
 /** Same arguments `buildTaggerMessages` threads into `rosterForSession`. */
 export interface TaggerRosterArgs {
   sessionId?: string;
