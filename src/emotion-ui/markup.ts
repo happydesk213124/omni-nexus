@@ -60,6 +60,7 @@ ${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'))}
 ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'))}
 ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
 ${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 에셋'), '<span id="emo-costumes-status" role="status"></span>')}
+${row('무기/기타 태그 빼기', sw('emo-drop-accessories', '무기/기타 태그 빼기'))}
 </fieldset>
 ${row('고아 메모 정리', '<button type="button" id="emo-tidy">정리</button>', '<span id="emo-tidy-status" role="status"></span>')}
 ${row('이 봇 감정 에셋 비우기 · 그림체 바꿀 때', '<button type="button" id="emo-clear">비우기</button>', '<span id="emo-clear-status" role="status"></span>')}</div>
