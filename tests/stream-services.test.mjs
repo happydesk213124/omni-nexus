@@ -1326,3 +1326,23 @@ test('a chat request reads its bot once: its rosters and this chat\'s note come 
     assert.deepEqual(counts,{directory:0,getCharacterFromIndex:1,getCharacter:0,getChatFromIndex:0},'one read of the bot, nothing else of it');
   } finally { Object.assign(risuai,real); }
 });
+
+test('전역 캐릭터는 현재 페르소나만, streaming: the persona heads the list though nobody names them, the other globals are gone even named',async()=>{
+  const f=await fixture();const card=f.api.getConfig().card;Object.assign(card,{stream_inline_tags:true,user_info_persona_only:true});
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();
+  const looks={appearance:'1girl, blue hair',attire:'school uniform'},read=risuai.getDatabase;
+  await f.api.ensureInrayDisplayModule();
+  await f.api.upsertCharacter('c',{name:'하나',...looks});
+  await f.api.upsertCharacter('__global__',{name:'유리',...looks});
+  await f.api.upsertCharacter('__global__',{name:'소라',aliases:['주인공'],...looks});
+  risuai.getDatabase=async(...args)=>({...await read(...args),personas:[{name:'주인공'}],selectedPersona:0});
+  try {
+    const character=await risuai.getCharacterFromIndex(0);
+    await risuai.setCharacterToIndex(0,{...character,chats:[{...character.chats[0],message:[{role:'user',chatId:'u',data:'안녕'},{role:'char',chatId:'r',data:'유리가 웃었다.'}]}]});
+    const sent=await replacer([{role:'system',content:'main'},{role:'user',content:'go'}],'model');
+    const state=sent.find(m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK))?.content ?? '';
+    assert.deepEqual([...state.matchAll(/^- (\S+)/gm)].map(m=>m[1]),['소라','하나'],'an alias finds them; 유리 is named and still out');
+    assert.match(state,/- 소라 \(also: 주인공\) — the user's persona, looks saved/);
+  } finally {risuai.getDatabase=read;card.user_info_persona_only=false;}
+});

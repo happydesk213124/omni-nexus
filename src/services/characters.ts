@@ -45,6 +45,7 @@ import { restoreAssetTagWeights } from '../domain/nai-meta/prompt-tags.ts';
 import { idbDelete, idbGetAll, idbPut } from '../storage/stores';
 import { getLastAssetWeightMap } from './asset-tags';
 import { getCharRefPreviewUrl, getConfig, getExamplePreviewUrl } from './context';
+import { personaGlobals } from './persona-global';
 import { seedCharRefsFromLooks } from './nai-assets';
 
 export interface ReplaceOptions {
@@ -277,7 +278,7 @@ export async function rosterForSession(
   _sourceSessionIds: unknown[] = [],
 ): Promise<CharacterRecord[]> {
   if(sessionId===GLOBAL_SCOPE)return listCharacters(GLOBAL_SCOPE);
-  return mergeSessionAndGlobalRoster(await listCharacters(characterId || _unifiedSessionId || sessionId), await listCharacters(GLOBAL_SCOPE), {hasAppearance:characterHasAppearance,resolve:resolveCharacter}) as CharacterRecord[];
+  return mergeSessionAndGlobalRoster(await listCharacters(characterId || _unifiedSessionId || sessionId), await personaGlobals(await listCharacters(GLOBAL_SCOPE)), {hasAppearance:characterHasAppearance,resolve:resolveCharacter}) as CharacterRecord[];
 }
 
 /** Who of this merged roster only the global list holds: no row of the bot's is the same person. */

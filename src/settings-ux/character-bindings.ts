@@ -1,3 +1,4 @@
+import { personaGlobalRow } from '../services/persona-global';
 import { exampleShotActions } from '../char-command/example-shot';
 import { uuid } from '../core/util/text';
 import { openRosterCommand, type RosterCommandActions } from './roster-command';
@@ -386,6 +387,19 @@ async function paintDisabled(cards: HTMLElement[]): Promise<void> {
       tile?.classList.toggle('nx-off', off.has(card.dataset.charId || ''));
       if (tile) tile.title = off.has(card.dataset.charId || '') ? `${name} · 비활성화 (태깅에서 빠짐)` : name;
     }
+  }
+  await paintPersona(cards);
+}
+
+/** 전역 캐릭터는 현재 페르소나만: the chip on the one global tile that is the persona selected now. */
+async function paintPersona(cards: HTMLElement[]): Promise<void> {
+  const actions = Reflect.get(globalThis, '__OMNI_SETTINGS_ACTIONS__') as { config?: () => { card?: { user_info_persona_only?: unknown } } } | undefined;
+  const on = actions?.config?.()?.card?.user_info_persona_only === true;
+  const row = on ? await personaGlobalRow(await listCharacters('__global__').catch(() => [])) : null;
+  for (const card of cards) {
+    const tile = tileFor(card), mine = !!row && card.dataset.charScope === 'global' && card.dataset.charId === row.id;
+    tile?.classList.toggle('nx-persona', mine);
+    if (tile && mine) tile.title = `${tile.title} · 현재 페르소나`;
   }
 }
 

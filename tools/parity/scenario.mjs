@@ -236,6 +236,16 @@ export async function runScenario(N, handles) {
     await put('/v1/settings', {card:{omni_helper_prompt:false}});
     return {defaultOff:true,helperToggle:true,mandatoryOn:true,percentDisabled:true};
   });
+  await rec('settings.persona_only_contract', async () => {
+    const initial = (await get('/v1/settings')).settings.card;
+    if (!('user_info_persona_only' in initial)) return {unsupported:true};
+    if (initial.user_info_persona_only !== false) throw new Error('Persona-only must start off');
+    const on = (await put('/v1/settings', {card:{user_info_persona_only:true}})).settings.card;
+    if (on.user_info_persona_only !== true) throw new Error('Persona-only must persist');
+    const off = (await put('/v1/settings', {card:{user_info_persona_only:false}})).settings.card;
+    if (off.user_info_persona_only !== false) throw new Error('Persona-only must turn off');
+    return {defaultOff:true,persists:true};
+  });
   await rec('settings.pov_contract', async () => {
     const initial = (await get('/v1/settings')).settings.card;
     if (!('pov_mode' in initial)) return {unsupported:true};

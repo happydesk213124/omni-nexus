@@ -420,6 +420,9 @@ switching tabs or returning from ComfyUI. `nai.effort_v5` defaults to `high`;
 `medium` applies only to V5 Full and requests the distilled Medium model with
 fixed 14 steps and Euler Ancestral. Its request omits custom undesired content
 and CFG rescale. ComfyUI-only saves must leave all NAI fields untouched.
+Dashboard `#nx-userinfo-persona-only` (`card.user_info_persona_only`, default off) keeps
+only the global character answering to the selected Risu persona's name in every
+tagging roster (name, then name share, then alias); its tile shows `.nx-persona`.
 생성 옵션 `#nx-gen-effort-v5` is a second control for the same `nai.effort_v5`,
 saved on change, shown only with V5 Full on the NAI backend.
 Shot Tag Studio reads Medium from the image model id or the official V5 Source
