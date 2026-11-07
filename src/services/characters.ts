@@ -37,6 +37,9 @@ import {
   collectCostumePairs,
   ensureCostumes,
   mergeCostumeLists,
+  resolveCostumeIndex,
+  unsavedCostumes,
+  type CostumePair,
 } from '../domain/character/costume';
 import { sanitizeHash } from '../domain/character/char-ref-store';
 import { sanitizeCastId } from '../domain/gallery/cast-ids.ts';
@@ -765,30 +768,36 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     roster = await readRoster();
   }
 
-  const costumePairs = collectCostumePairs({
+  const saveCostumes = async (pairs: CostumePair[], onlyUnsaved = false): Promise<void> => {
+    for (const pair of pairs) {
+      const existing = resolveCharacter(pair.name, roster);
+      if (!existing) continue;
+      const list = ensureCostumes(existing).costumes;
+      const incoming = onlyUnsaved ? unsavedCostumes(list, pair.costumes) : pair.costumes;
+      if (!incoming.length) continue;
+      const writeScope = existing.scope === GLOBAL_SCOPE ? GLOBAL_SCOPE : (existing.scope || writeSessionId);
+      const protectDefault = characterHasAppearance(existing);
+      await upsertCharacter(writeScope, {
+        id: existing.id,
+        name: existing.name,
+        costumes: mergeCostumeLists(list, incoming, { protectDefault }),
+        active_costume: existing.active_costume,
+      }, writeOpts);
+      roster = await readRoster();
+    }
+  };
+  await saveCostumes(collectCostumePairs({
     new_costumes: (tagged as { new_costumes?: unknown }).new_costumes,
     // These designs were already snapshotted above. Re-merging by costume name
     // here would overwrite an existing named costume after preserving it.
     new_characters: tagged.new_characters?.filter(row => !savedCostumeOwners.has(cleanText(row.name))),
-    shots: [{ characters: shotChars }],
-  });
-  for (const pair of costumePairs) {
-    const name = pair.name;
-    const incoming = pair.costumes;
-    if (!incoming.length) continue;
-    const existing = resolveCharacter(name, roster);
-    if (!existing) continue;
-    const writeScope = existing.scope === GLOBAL_SCOPE ? GLOBAL_SCOPE : (existing.scope || writeSessionId);
-    const protectDefault = characterHasAppearance(existing);
-    const merged = mergeCostumeLists(ensureCostumes(existing).costumes, incoming, { protectDefault });
-    await upsertCharacter(writeScope, {
-      id: existing.id,
-      name: existing.name,
-      costumes: merged,
-      active_costume: existing.active_costume,
-    }, writeOpts);
-    roster = await readRoster();
-  }
+  }));
+  // A shot wears a costume, it does not rewrite one: clothes written on a shot are for that picture, and only a costume
+  // nobody has yet is registered from them. By pick, not by name: `maid[1]` and `1` are the saved one too.
+  await saveCostumes(collectCostumePairs({ shots: [{ characters: (shotChars || []).filter(char => {
+    const existing = resolveCharacter(cleanText(char.name, 200), roster);
+    return !existing || resolveCostumeIndex(ensureCostumes(existing).costumes, char.costume) < 0;
+  }) }] }), true);
 
   for (const char of shotChars || []) {
     const name = cleanText(char.name, 200);

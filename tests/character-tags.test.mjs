@@ -654,3 +654,15 @@ test('POV: the viewpoint person is sent only what the shot says shows, cut by wh
   assert.doesNotMatch(tags({pov:all,wear_state:'completely'}).join(', '),/completely|nsfw|::|nipples|pussy/,'and completely brings nothing else');
   for(const pov of [undefined,'',null,false])assert.match(tags({pov}).join(', '),/black hair.*blue eyes/,'no pov: their looks as ever');
 });
+
+test("a locked costume takes additions from a shot, never a replacement", () => {
+  const stored = { name: "Han", appearance: "black hair, boy", attire: "white shirt", bottoms: "trousers", accessories: "sword" };
+  const added = composeCharacterCaptionTags(stored, { attire: "[base], ribbon", weapon: "on" });
+  assert.match(added, /white shirt, ribbon/);
+  assert.match(added, /trousers/, "the fields it left alone stay");
+  assert.equal(added.includes("[base]"), false);
+  const replaced = composeCharacterCaptionTags(stored, { attire: "bikini", bottoms: "shorts", accessories: "gun", weapon: "on" });
+  assert.doesNotMatch(replaced, /bikini|shorts|gun/);
+  assert.match(replaced, /white shirt.*trousers.*sword/);
+  assert.match(composeCharacterCaptionTags({ ...stored, attire_locked: false }, { attire: "bikini" }), /bikini/, "unlocked, it may replace");
+});

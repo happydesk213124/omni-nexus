@@ -685,9 +685,11 @@ hair_color, hair_style, eye_color, height, age, penis_size,
 index **0** is the generation default when a shot has no `costume` pick.
 `active_costume` is the UI select index (editing mirror into `attire`/`accessories`).
 `attire_locked` / `accessories_locked` default **ON** (`!== false`). When locked, freeform shot
-`attire`/`accessories` are ignored for generation; a shot `costume` name/index still
-selects from the roster catalog. When unlocked, shot wear applies to
-**that shot's caption only** — it is never written back to the roster. Roster wear
+`attire`/`accessories` are ignored for generation, except `[base], tag`, which adds to the
+worn costume; a shot `costume` name/index still selects from the roster catalog. When
+unlocked, any shot wear applies. Either way it is **that shot's caption only** — it is never
+written back to a saved costume; only a costume name the character lacks is registered from
+a shot. A repeated `new_costumes` name changes only the fields it wrote. Roster wear
 changes via character edit/create; or when appearance is still empty, a
 `new_characters` re-collect **overwrites** appearance+attire+accessories (and may
 fill `costumes[]`). Viewer character save may send `stamp_card_id` so that card's

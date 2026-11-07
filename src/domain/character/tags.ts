@@ -16,7 +16,7 @@ import type { CharacterInput } from './identity.ts';
 import { normalizeGender } from './identity.ts';
 import { applyInteractionKeys } from '../nai/action-tags.ts';
 import { resolveCharacter } from './roster.ts';
-import { ensureCostumes, expandBaseTokens, resolveCostumeWear } from './costume.ts';import {
+import { addsToBase, ensureCostumes, expandBaseTokens, resolveCostumeWear } from './costume.ts';import {
   cleanLookSlot,
   formatAgeCaption,
   formatHeightCaption,
@@ -716,19 +716,13 @@ export function composeCharacterCaptionTags(
   const catalogBottoms = useCatalog ? costumeWear.bottoms : cleanText(stored?.bottoms || '', 4000);
   const catalogAcc = useCatalog ? costumeWear.accessories : cleanText(stored?.accessories || '', 4000);
   // Shot overrides inherit token-wise too: `[base], happy` = catalog + happy.
-  const shotTag = (value: unknown, fallback: unknown = '') => expandBaseTokens(value, fallback);
-  const shotAttire = shotTag(shot?.attire, catalogAttire);
-  const shotBottoms = shotTag(shot?.bottoms, catalogBottoms);
-  const shotAcc = shotTag(shot?.accessories, catalogAcc);
-  const attire = wearLocked(stored?.attire_locked)
-    ? catalogAttire
-    : (shotAttire || catalogAttire);
-  const bottoms = wearLocked(stored?.bottoms_locked)
-    ? catalogBottoms
-    : (shotBottoms || catalogBottoms);
-  const accessories = wearLocked(stored?.accessories_locked)
-    ? catalogAcc
-    : (shotAcc || catalogAcc);
+  // A lock stops a shot replacing the costume, not adding to it: `[base], ribbon` keeps it whole, for this picture only.
+  const shotWear = (locked: unknown, value: unknown, catalog: string) => wearLocked(locked) && !addsToBase(value)
+    ? catalog
+    : (expandBaseTokens(value, catalog) || catalog);
+  const attire = shotWear(stored?.attire_locked, shot?.attire, catalogAttire);
+  const bottoms = shotWear(stored?.bottoms_locked, shot?.bottoms, catalogBottoms);
+  const accessories = shotWear(stored?.accessories_locked, shot?.accessories, catalogAcc);
   const wearState = resolveWearState(shot, stored?.wear_state);
   const weapon = flagOn(shot?.weapon);
   const gender = resolveCharacterGender(shot, stored);

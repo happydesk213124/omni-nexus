@@ -524,6 +524,7 @@ function costumeHowTo(): string {
     'New outfit/transformation: new_costumes=[{name:"exact character name",costumes:[{name:"bare variant id",note:"what the outfit is, not when/where",...lookFields}]}]; wear it via characters[].costume. Never name a set default0/maid1/name[index].',
     'The catalog\'s default (index 0) is the base look. Never register a base, default, normal or usual look again, and never a set whose note matches one already in the catalog: wear that one by name instead. Only a genuinely different outfit or form is new.',
     'lookFields: appearance, hair_color, hair_style, eye_color, height, age, penis_size, attire, bottoms, accessories. Apply shared character rules; unchanged variant fields use [base]. Identity/name/aliases/original/gender stay common; never overwrite default.',
+    'A shot\'s attire/bottoms/accessories never change a saved costume. To add to what is worn for that shot alone, write "[base], tag" in the field, never bare tags.',
   ].join('\n');
 }
 

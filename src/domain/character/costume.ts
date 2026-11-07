@@ -38,6 +38,9 @@ export function expandBaseTokens(value: unknown, fallback: unknown): string {
   return joinTags(...out);
 }
 
+/** `[base], ribbon`: keeps the fallback whole and adds to it, where bare tags replace it. */
+export const addsToBase = (value: unknown): boolean => splitTagTokens(value).includes('[base]');
+
 /** A costume name as it is compared: no case, spaces, underscores, dots or dashes (also how a cue names one). */
 export const costumeKey = (value: unknown): string =>
   cleanText(value, 120).normalize('NFKC').toLocaleLowerCase().replace(/[\s_.·•･-]+/g, '');
@@ -432,7 +435,8 @@ export function formatCostumeCatalog(costumes: CharacterCostume[] | null | undef
 
 /**
  * Merge incoming costume rows into existing. Never overwrites index 0 when
- * `protectDefault` (filled characters). Same-name rows deepen tags if longer.
+ * `protectDefault` (filled characters). A same-name row changes only the fields
+ * it wrote: a field left out or blank keeps the saved tags, `[base], x` adds to them.
  */
 export function mergeCostumeLists(
   existing: CharacterCostume[] | null | undefined,
@@ -460,7 +464,10 @@ export function mergeCostumeLists(
         continue;
       }
       for (const key of COSTUME_FIELDS) {
-        if (next[key] !== undefined && next[key] !== '[base]') out[hit]![key] = next[key];
+        const written = next[key], saved = out[hit]![key];
+        if (!written || written === '[base]') continue;
+        // A saved `[base]` still inherits from the default, so what is written stays as it is and resolves against that.
+        out[hit]![key] = addsToBase(saved) ? written : expandBaseTokens(written, saved);
       }
       if (next.note && !cleanText(out[hit]!.note)) out[hit]!.note = next.note;
       continue;
@@ -469,6 +476,17 @@ export function mergeCostumeLists(
     out.push(next);
   }
   return dedupeIdenticalCostumeTags(out, 0).costumes;
+}
+
+/** The rows that name no costume in the list, each name once: the first one says it. */
+export function unsavedCostumes(list: readonly CharacterCostume[], incoming: readonly CharacterCostume[]): CharacterCostume[] {
+  const names = new Set(list.map(row => costumeKey(row.name)));
+  return incoming.filter(row => {
+    const key = costumeKey(row.name);
+    if (names.has(key)) return false;
+    names.add(key);
+    return true;
+  });
 }
 
 /** Sync active slot from attire/accessories textareas; keep other slots. */
