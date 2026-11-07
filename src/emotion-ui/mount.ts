@@ -46,7 +46,7 @@ function fillSettings(s: EmotionSettings): void {
   costumeGate();
   value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
-  value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-pose', s.pose);
+  value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-exclude', s.excludeTags); value('emo-pose', s.pose);
   for (const e of BASE_EXPRESSIONS) value(`emo-face-${e.key}`, s.faceTags[e.key] || '');
   gates(s);
   value('emo-words', Object.entries(s.words).map(([w, face]) => `${w}=${face}`).join('\n'));
@@ -75,7 +75,7 @@ function readSettings(): Partial<EmotionSettings> {
     enabled: !!$<HTMLInputElement>('emo-enabled')?.checked, useExisting: !!$<HTMLInputElement>('emo-existing')?.checked, autoGenerate: !!$<HTMLInputElement>('emo-auto')?.checked, placeBackgrounds: !!$<HTMLInputElement>('emo-places')?.checked,
     costumes: !!$<HTMLInputElement>('emo-costumes')?.checked,
     family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0',
-    width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), pose: val('emo-pose'),
+    width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), excludeTags: val('emo-exclude'), pose: val('emo-pose'),
     faceTags: Object.fromEntries(BASE_EXPRESSIONS.map(e => [e.key, val(`emo-face-${e.key}`).trim()]).filter(([, tags]) => tags)), words,
   };
 }

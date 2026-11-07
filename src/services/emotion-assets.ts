@@ -6,7 +6,7 @@ import { risuHost } from '../core/host';
 import { isWebpBytes, sniffImageMime } from '../core/util/bytes';
 import { encodeWebpQuality } from '../core/util/image';
 import { cleanText, joinTags, unifiedSessionIdForCharacter } from '../core/util/text';
-import { assetMatchesExpression, emotionAssetName, emotionPrompt, expressionOfTone, sfwTags, SPRITE_NEGATIVE } from '../domain/emotion/emotions';
+import { assetMatchesExpression, emotionAssetName, emotionPrompt, excludeTags, expressionOfTone } from '../domain/emotion/emotions';
 import { normalizeAssetPath } from '../domain/gallery/shot-assets';
 import { tokensForFamily } from '../domain/nai/keys';
 import { findPresetById, modelForFamily } from '../domain/nai/routing';
@@ -249,11 +249,12 @@ async function remember(owner: string, person: string, face: string, name: strin
 }
 async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<EmotionSprite> {
   const settings = (await loadEmotionData()).settings;
-  const looks = sfwTags(await spriteLooks(c, bot, costume));
+  const looks = excludeTags(await spriteLooks(c, bot, costume), settings.excludeTags);
   if (!looks) throw new NoLooksError(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
-    bot, width: settings.width, height: settings.height, negative: SPRITE_NEGATIVE, effort: settings.effort === 'follow' ? undefined : settings.effort,
-    prompt: (style, family) => emotionPrompt({ looks: joinTags(style, looks), face, faceTags: settings.faceTags[face],
+    bot, width: settings.width, height: settings.height, effort: settings.effort === 'follow' ? undefined : settings.effort,
+    // 선행 · 후행 are the user's own words: only what comes from elsewhere is swept.
+    prompt: (style, family) => emotionPrompt({ looks: joinTags(excludeTags(style, settings.excludeTags), looks), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
   });
   const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png', costume);

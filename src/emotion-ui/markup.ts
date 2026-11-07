@@ -72,6 +72,7 @@ ${row('이 봇 감정 에셋 비우기 · 그림체 바꿀 때', '<button type="
 <label class="field full"><span>선행 프롬프트</span><textarea id="emo-prefix" rows="2" maxlength="2000"></textarea></label>
 <label class="field full"><span>자세 태그 · 비우면 기본</span><input id="emo-pose" maxlength="600" placeholder="${esc(DEFAULT_POSE)}"></label>
 <label class="field full"><span>후행 프롬프트</span><textarea id="emo-suffix" rows="2" maxlength="2000"></textarea></label>
+<label class="field full"><span>이 태그가 들어가면 빼기 · 쉼표로 구분 · *는 그 단어가 든 태그 전부</span><textarea id="emo-exclude" rows="4" maxlength="2000"></textarea></label>
 </div></div></div>
 <div class="tts-settings-column"><div class="group"><details class="emo-people-fold"><summary><h3>이 봇의 캐릭터 <small id="emo-people-count"></small></h3></summary><div id="emo-people" class="emo-people" role="list"></div></details></div>
 <div class="group"><h3>감정 표 · 표정 태그</h3><div id="emo-faces" class="emo-faces">${BASE_EXPRESSIONS.map(e => `<label class="emo-face-row"><span><b>${esc(e.label)}</b><small>${esc(e.key)} · ${esc(e.words.slice(0, 5).join(', '))}</small></span><input id="emo-face-${e.key}" data-face="${e.key}" maxlength="400" placeholder="${esc(e.tags)}"></label>`).join('')}</div>

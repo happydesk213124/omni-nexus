@@ -50,7 +50,7 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
     assert.match(prompt, /2::cowboy shot::/);
     const sent = f.host.naiRequests.at(-1).body, body = typeof sent === 'string' ? JSON.parse(sent) : sent;
     assert.doesNotMatch(String(body.input || ''), /nipples|penis/, 'no sexual anatomy in a portrait shown on every line');
-    assert.match(JSON.stringify(f.host.naiRequests.at(-1).body), /nude, naked, nipples, penis/, 'and it is kept out by the negative prompt too');
+    assert.doesNotMatch(JSON.stringify(f.host.naiRequests.at(-1).body), /nude, naked, nipples, penis/, 'the negative is the preset\'s alone');
     const listed = async () => (await risuai.getCharacterFromIndex(0)).additionalAssets;
     await new Promise(r => setTimeout(r, 2000));
     assert.deepEqual((await listed()).map(a => a[1]), ['assets/old.png'], 'not while a reply streams');
@@ -388,4 +388,28 @@ test('감정 에셋 비우기: Omni\'s faces of the bot go from the records and 
   // Drawn again on asking, as a new one.
   const again = await f.api.makeSprite(f.person, 'happy', f.bot, true);
   assert.notEqual(again.path, made.path);
+});
+
+test('이 태그가 들어가면 빼기 sweeps the preset and the looks, never the user\'s own 선행 and 후행', async () => {
+  const f = await fixture([]);
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', gender: 'girl', appearance: 'girl, black hair, blue eyes, nipples, 1.2::huge penis::' });
+  Object.assign(f.api.getConfig().card, { presets: [{ id: 'style', name: 'style', positive: 'masterpiece, uncensored', negative: 'lowres' }], active_preset_id: 'style' });
+  const input = async (face) => {
+    await f.api.makeSprite(f.person, face, f.bot);
+    const sent = f.host.naiRequests.at(-1).body, body = typeof sent === 'string' ? JSON.parse(sent) : sent;
+    return String(body.input || '');
+  };
+  await f.api.updateEmotionSettings({ prefix: 'nude', suffix: '3::uncensored::' });
+  const swept = await input('sad');
+  assert.match(swept, /^nude, /, 'written in 선행: it stays');
+  assert.match(swept, /3::uncensored::/, 'and in 후행');
+  assert.match(swept, /masterpiece/, 'the rest of the preset stays');
+  assert.equal(swept.match(/uncensored/g).length, 1, 'the preset\'s own is gone');
+  assert.doesNotMatch(swept, /nipples|penis/);
+  await f.api.updateEmotionSettings({ excludeTags: 'black hair, *penis' });
+  const mine = await input('happy');
+  assert.match(mine, /nipples/, 'the list is the user\'s: what they took out comes back');
+  assert.doesNotMatch(mine, /black hair|penis/);
+  await f.api.updateEmotionSettings({ excludeTags: '' });
+  assert.match(await input('angry'), /black hair, blue eyes, nipples, 1\.2::huge penis::/, 'empty: nothing is taken out');
 });

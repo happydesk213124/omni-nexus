@@ -1,4 +1,4 @@
-import { baseExpression } from '../domain/emotion/emotions';
+import { baseExpression, EMOTION_EXCLUDE_DEFAULT } from '../domain/emotion/emotions';
 import { psGet, psSet } from './device-store';
 
 /**
@@ -23,6 +23,8 @@ export interface EmotionSettings {
   height: number;
   prefix: string;
   suffix: string;
+  /** 이 태그가 들어가면 빼기: taken out of the preset and the looks, never out of `prefix` and `suffix`. Empty: nothing is. */
+  excludeTags: string;
   pose: string;
   /** V5 only: a transparent background instead of a white one. */
   transparent: boolean;
@@ -42,7 +44,7 @@ export interface EmotionData { settings: EmotionSettings; seen: Record<string, s
 
 export const emotionDefaults = (): EmotionSettings => ({
   enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, family: 'v5', effort: 'follow', width: 832, height: 1216,
-  prefix: '', suffix: '', pose: '', transparent: true, costumes: false, faceTags: {}, words: {},
+  prefix: '', suffix: '', excludeTags: EMOTION_EXCLUDE_DEFAULT, pose: '', transparent: true, costumes: false, faceTags: {}, words: {},
 });
 
 let state: EmotionData | undefined;
@@ -70,7 +72,7 @@ export function normalizeEmotionSettings(raw: unknown): EmotionSettings {
   return {
     enabled: r.enabled !== false, useExisting: r.useExisting !== false, autoGenerate: r.autoGenerate !== false, placeBackgrounds: r.placeBackgrounds !== false,
     family: r.family === 'v4' ? 'v4' : 'v5', effort: r.effort === 'high' || r.effort === 'medium' ? r.effort : 'follow', width: size(r.width, d.width), height: size(r.height, d.height),
-    prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
+    prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), excludeTags: typeof r.excludeTags === 'string' ? text(r.excludeTags, 2000) : d.excludeTags, pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
     faceTags: strings(r.faceTags, () => true), words: strings(r.words, (_k, value) => !!baseExpression(value)),
   };
 }

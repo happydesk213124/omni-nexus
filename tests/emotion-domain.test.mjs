@@ -46,3 +46,20 @@ test("a costume's sprite is named apart (omni_c2_이름_face) and is never taken
   assert.equal(api.assetMatchesExpression('omni_c2_오미선_happy.webp', ['오미선_c2'], 'happy'), true);
   assert.equal(api.assetMatchesExpression('omni_c2_오미선_happy.webp', ['오미선_c1'], 'happy'), false);
 });
+
+test('excludeTags: a bare rule is that tag, a star any tag with that word, through emphasis', () => {
+  const sweep = api.excludeTags;
+  assert.equal(sweep('penis, huge penis', 'penis'), 'huge penis', 'bare: the whole tag only');
+  assert.equal(sweep('penis, huge penis, penises', '*penis'), 'penises', 'star: the word, not a longer one');
+  assert.equal(sweep('sex, anal sex, sexy', '*sex'), 'sexy');
+  assert.equal(sweep('huge_penis, pubic_hair, 1girl', '*penis, *pubic hair'), '1girl', 'underscores are spaces');
+  assert.equal(sweep('2::huge penis::, 1girl, {nude}', '*penis, *nude'), '1girl', 'emphasis does not hide a tag');
+  assert.equal(sweep('2::huge penis, smile::, 1girl', '*penis'), '2::smile::, 1girl', 'the rest of its group stays');
+  assert.equal(sweep('NSFW, 1girl', '*nsfw'), '1girl', 'any case');
+  assert.equal(sweep('벗은 몸, 몸매', '*몸'), '몸매', 'a word in any language');
+  assert.equal(sweep('nude, 1girl', ''), 'nude, 1girl', 'no rules, nothing out');
+  assert.equal(sweep('nude, 1girl', '*, , '), 'nude, 1girl', 'a lone star names nothing');
+  assert.equal(sweep('a.b, axb', '*a.b'), 'axb', 'rules are words, not patterns');
+  assert.match(api.EMOTION_EXCLUDE_DEFAULT, /^\*penis, /);
+  assert.equal(sweep('huge penis, completely nude, uncensored, sexy, long hair', api.EMOTION_EXCLUDE_DEFAULT), 'sexy, long hair', 'the first value covers what was always kept out, and uncensored');
+});
