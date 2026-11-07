@@ -7,6 +7,8 @@
  * expressions: a character needs about a dozen images, not one per adjective.
  * Words that are delivery, not mood (whispering, slow), map to nothing.
  */
+import { splitTagTokens } from '../../core/util/text';
+
 export interface BaseExpression { key: string; label: string; tags: string; words: readonly string[] }
 
 export const DEFAULT_EXPRESSION = 'neutral';
@@ -93,14 +95,36 @@ export function assetMatchesExpression(assetName: unknown, names: readonly strin
 }
 
 /**
- * A standing portrait is shown on every line: the looks it is drawn from keep no
- * sexual anatomy or nudity tags (a roster's looks may carry them for scenes).
+ * 감정 에셋 › 이 태그가 들어가면 빼기, the first value it holds. A standing portrait is shown on every line, and a
+ * roster's looks may carry tags meant for scenes; what counts is the user's to change.
  */
-const NSFW_TAG = /\b(?:penis|cock|dick|testicles?|scrotum|erection|nipples?|areolae?|pussy|vagina|vulva|clitoris|anus|nude|naked|nudity|nsfw|explicit|sex|cum|semen|pubic hair|genitals?|crotch|cameltoe|bulge|topless|bottomless|breasts? out|bare breasts|exposed breasts|no bra|no panties|lactation|futanari)\b/i;
-export function sfwTags(tags: string): string {
-  return String(tags || '').split(',').map(t => t.trim()).filter(t => t && !NSFW_TAG.test(t.replace(/^[\d.]+::|::$/g, ''))).join(', ');
+export const EMOTION_EXCLUDE_DEFAULT = ['penis', 'cock', 'dick', 'testicle', 'testicles', 'scrotum', 'erection', 'nipple', 'nipples',
+  'areola', 'areolae', 'pussy', 'vagina', 'vulva', 'clitoris', 'anus', 'nude', 'naked', 'nudity', 'nsfw', 'uncensored', 'explicit', 'sex',
+  'cum', 'semen', 'pubic hair', 'genital', 'genitals', 'crotch', 'cameltoe', 'bulge', 'topless', 'bottomless', 'breast out', 'breasts out',
+  'bare breasts', 'exposed breasts', 'no bra', 'no panties', 'lactation', 'futanari'].map(word => '*' + word).join(', ');
+
+const tagWords = (value: string): string => value.toLowerCase().replace(/_/g, ' ').trim();
+
+/**
+ * Takes out of a tag list what the rules name, commas between them: `penis` is that tag and no other, `*penis`
+ * every tag with that word in it (huge penis, not penises). Emphasis does not hide a tag, and the rest of its group stays.
+ */
+export function excludeTags(tags: unknown, rules: unknown): string {
+  const list = String(rules ?? '').split(',').map(tagWords).filter(rule => rule.replace(/^\*/, '').trim());
+  const exact = new Set(list.filter(rule => !rule.startsWith('*')));
+  const words = list.filter(rule => rule.startsWith('*')).map(rule => rule.slice(1).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  // Letters of any language around the word make it another word; \b knows only ASCII.
+  const word = words.length ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${words.join('|')})(?![\\p{L}\\p{N}])`, 'iu') : null;
+  const sweep = (text: string): string => splitTagTokens(text).flatMap(tag => {
+    const group = /^(-?\d+(?:\.\d+)?::)([\s\S]*)(::)$/.exec(tag) || /^([{[(]+)([\s\S]*?)([}\])]+)$/.exec(tag);
+    if (group) {
+      const kept = sweep(group[2]!);
+      return kept ? [group[1] + kept + group[3]] : [];
+    }
+    return exact.has(tagWords(tag)) || word?.test(tagWords(tag)) ? [] : [tag];
+  }).join(', ');
+  return list.length ? sweep(String(tags ?? '')) : String(tags ?? '');
 }
-export const SPRITE_NEGATIVE = 'nsfw, nude, naked, nipples, penis, pussy, genitals, explicit';
 
 /** The emotion asset name Omni writes: `이름_감정.png` (PNG keeps a transparent background). */
 export function emotionAssetName(person: string, face: string, ext = 'png', costume = 0): string {
