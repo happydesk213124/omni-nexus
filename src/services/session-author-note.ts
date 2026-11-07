@@ -247,6 +247,12 @@ export function rosterWithSessionOutfits(roster: CharacterRecord[], note: unknow
   });
 }
 
+/** Ids of the people this chat's shots have drawn: the note keeps what each of them wore. */
+export function sessionDrawnCast(note: unknown): Set<string> {
+  const parsed = parseSessionAuthorNote(note);
+  return new Set([...parsed.wear, ...(parsed.costumes ?? [])].map(entry => entry.id));
+}
+
 /** Successful shots only, in narrative order; absent cast retain their state. */
 export function persistSessionOutfits(id: string, shots: Array<{characters?: unknown; comic_page?: unknown}>, roster: CharacterRecord[], revision: number): Promise<void> {
   return updateNote(async () => {

@@ -397,6 +397,31 @@ test('a chat request that comes before the settings load waits for them, instead
   assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
 });
 
+test('the chat model hears of a global character only once this chat has them, so an empty bot gets no extras',async()=>{
+  const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true});
+  let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
+  await f.api.installInlineTags();
+  const sid='risu_'+sessionIdHash('c|chat'),looks={appearance:'1girl, blue hair',attire:'school uniform'};
+  await f.api.upsertCharacter('c',{name:'하나',...looks});
+  await f.api.ensureInrayDisplayModule();
+  for(const name of ['유리','소라','미오','레이'])await f.api.upsertCharacter('__global__',{name,...looks});
+  await f.api.upsertCharacter('c',{name:'레이',...looks});
+  const listed=async(...message)=>{
+    const character=await risuai.getCharacterFromIndex(0);await risuai.setCharacterToIndex(0,{...character,chats:[{...character.chats[0],message}]});
+    const sent=await replacer([{role:'system',content:'main'},{role:'user',content:'go'}],'model');
+    return [...(sent.find(m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK))?.content ?? '').matchAll(/^- (\S+)/gm)].map(m=>m[1]).sort();
+  };
+  const row=(role,data)=>({role,chatId:'m'+data,data});
+  assert.deepEqual(await listed(row('user','안녕')),['레이','하나'],'the bot\'s own, and the one on both lists; no global stranger');
+  assert.deepEqual(await listed(row('user','유리를 불렀다')),['레이','유리','하나'],'the user names one: the reply that follows knows them');
+  const older=[row('char','유리가 노래했다.'),...Array.from({length:9},(_,i)=>row('char','조용한 밤 '+i))];
+  assert.deepEqual(await listed(...older),['레이','유리','하나'],'named well before the last two replies: still of this chat');
+  await f.api.setSessionAuthorNote(sid,{wear:{[(await f.api.listCharacters('__global__')).find(c=>c.name==='소라').id]:{name:'소라',wear:'topless'}}});
+  assert.deepEqual(await listed(row('user','안녕')),['레이','소라','하나'],'drawn in this chat, though no message here names them');
+  await f.api.upsertCharacter('__global__',{...(await f.api.listCharacters('__global__')).find(c=>c.name==='미오'),pov_reference:true});
+  assert.deepEqual(await listed(row('user','안녕')),['레이','미오','소라','하나'],'POV 참고 stays: the user put them here');
+});
+
 test('the chat model gets this chat\'s people, most recently named first, with their costumes; the order is kept in the note once a reply is done',async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,costume:true});
   let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
