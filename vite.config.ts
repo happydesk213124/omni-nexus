@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.11';
+const PLUGIN_VERSION = '1.4.12';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -997,6 +997,19 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
+          <strong>1.4.12 · LLM이 코스튬을 못 바꿈, 전역 캐릭터는 현재 페르소나만, 전역 → 현재 챗 이동, JEV 작가의 노트, 감정 에셋 태그 빼기</strong>
+          <div class="muted" style="margin-top:8px">2026.11.09 · 코스튬 상의 태그가 자꾸 사라지던 문제를 고쳤고, 전역 캐릭터를 여러 명씩 현재 챗으로 옮길 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>코스튬 태그 유지</strong>: LLM이 그림을 만들면서 등록된 코스튬을 바꾸지 못합니다. 샷에 적은 옷은 저장되지 않고, 같은 이름으로 다시 등록해도 적은 칸만 바뀌며 안 적은 칸은 그대로입니다. 이미 지워진 태그는 다시 넣어주세요.</li>
+            <li><strong>코스튬에 추가</strong>: 샷에서 [base], 태그로 적으면 지금 입은 코스튬에 그 그림만 태그를 더합니다. 옷 잠금이 켜져 있어도 들어갑니다.</li>
+            <li><strong>전역 캐릭터는 현재 페르소나만</strong>: 대시보드 UserInfo 아래 토글입니다. 켜면 선택한 페르소나와 이름이 맞는 전역 캐릭터 1명만 씁니다. 이름 일치, 이름 일부 일치, 별칭, 목록 순서로 고르고, 캐릭터 탭 타일에 페르소나 칩이 붙습니다. 기본은 꺼짐입니다.</li>
+            <li><strong>전역 ↔ 현재 챗 이동</strong>: 전역 탭에 현재 챗으로 버튼이 생겼습니다. 지금 Risu에 열린 채팅의 봇으로 옮깁니다. 선택 모드에서는 여러 명을 한 번에 현재 챗으로, 또는 전역 로스터로 옮길 수 있습니다. 복사가 아니라 이동입니다.</li>
+            <li><strong>JEV 작가의 노트</strong>: TTS 설정의 캐릭터 음성 배정에 칸이 생겼습니다. JEV가 캐릭터 음성을 고를 때마다 함께 보냅니다.</li>
+            <li><strong>TTS 음성 고르기</strong>: 첫 대사 이모지에서 학생이 어린이로 잡히지 않게 👧👦는 초등학생 이하만 쓰도록 했습니다. 등록됐지만 음성이 없는 캐릭터도 JEV가 로어북과 메시지를 보고 고릅니다. 이미 배정된 음성은 다시 골라야 바뀝니다.</li>
+            <li><strong>감정 에셋 태그 빼기</strong>: 「이 태그가 들어가면 빼기」 칸을 직접 고칠 수 있습니다. 쉼표로 구분하고, *penis처럼 쓰면 그 단어가 들어간 태그를 뺍니다. 고정 부정 태그는 없앴습니다. 코스튬별 에셋에는 무기/기타 태그 빼기 스위치가 생겼습니다.</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:14px">
           <strong>1.4.11 · 스트리밍에서 안 나온 전역 캐릭터는 명단에서 제외, POV 옷 상태 태그 정리, 생성 옵션 Effort, 프리셋 참고컷 태그</strong>
           <div class="muted" style="margin-top:8px">2026.11.07 · 깡통봇에서 전역 캐릭터가 엑스트라로 끌려오던 문제를 고쳤고, POV는 LLM이 고른 것만 들어가게 정리했습니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
@@ -1004,10 +1017,6 @@ const VENDOR_CURATION_PANEL_PATCH =
             <li><strong>POV 옷 상태</strong>: 시점 인물에게는 옷 상태 태그가 들어가지 않고 LLM이 고른 상의·하의·무기/기타·자지만 들어갑니다. completely일 때만 강조 없는 nude 하나가 들어갑니다. 벗은 옷은 LLM이 골라도 빠집니다.</li>
             <li><strong>생성 옵션 Effort</strong>: 모델 설정의 Effort(High · Medium)를 생성 옵션의 NovelAI 묶음에서도 바꿀 수 있습니다. 값은 하나로 묶여 있고, V5 Full일 때만 보입니다.</li>
             <li><strong>프리셋 참고컷</strong>: 스타일 프리셋 참고컷을 생성할 때 붙는 태그를 2::1girl, solo, orange hair, blue eyes, dress::로 바꿨습니다. 이미 만든 참고컷은 다시 생성해야 바뀝니다.</li>
-            <li><strong>코스튬 태그 유지</strong>: LLM이 그림을 만들면서 등록된 코스튬을 바꾸지 못합니다. 샷에 적은 옷은 저장되지 않고, 같은 이름으로 다시 등록해도 적은 칸만 바뀌며 안 적은 칸은 그대로입니다. 이미 지워진 태그는 다시 넣어주세요.</li>
-            <li><strong>코스튬에 추가</strong>: 샷에서 [base], 태그로 적으면 지금 입은 코스튬에 그 그림만 태그를 더합니다. 옷 잠금이 켜져 있어도 들어갑니다.</li>
-            <li><strong>전역 캐릭터는 현재 페르소나만</strong>: 대시보드 UserInfo 아래 토글입니다. 켜면 선택한 페르소나와 이름이 맞는 전역 캐릭터 1명만 씁니다. 이름 일치, 이름 일부 일치, 별칭, 목록 순서로 고르고, 캐릭터 탭 타일에 페르소나 칩이 붙습니다. 기본은 꺼짐입니다.</li>
-            <li><strong>감정 에셋 태그 빼기</strong>: 「이 태그가 들어가면 빼기」 칸을 직접 고칠 수 있습니다. 쉼표로 구분하고, *penis처럼 쓰면 그 단어가 들어간 태그를 뺍니다. 고정 부정 태그는 없앴습니다. 코스튬별 에셋에는 무기/기타 태그 빼기 스위치가 생겼습니다.</li>
           </ul>
         </div>
         <div class="card" style="margin-top:14px">
@@ -15408,7 +15417,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경·LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.10 · POV 토글(프롬프트 탭, 시점 인물은 보이는 옷만)·New POV 프리셋(고르면 POV 켜짐)·POV 참고(캐릭터 시트, 이름이 없어도 외형을 참고로)·ComfyUI 캐릭터 위치·마스크·참고이미지·400 대체 음성은 음성 선택 모델로·옴니 뷰어 AUTO가 스트리밍 중 삽화를 넘어감"
+    body: "1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */
