@@ -36,6 +36,8 @@ export const GLOBAL_SCOPE = '__global__';
 // Image pixels stay in the shot module, not these rows.
 export const SETTINGS_KEY = 'onx_native_settings';
 export const STORE_KEY = (name: string): string => `onx_nxstore_${name}`;
+/** A chat's own data entry in its lorebook. Old chats hold it under this name. */
+export const SESSION_LORE_NAME = 'omni.nexus.data';
 export const CHAR_REF_VIBE_PREFIX = 'char_ref_vibe_';
 export const isCharRefVibeKey = (key: unknown): boolean =>
   typeof key === 'string' && key.startsWith(CHAR_REF_VIBE_PREFIX);

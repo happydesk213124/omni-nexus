@@ -33,7 +33,7 @@ export function syncWaitTaps(): Promise<void> { return synchronize(); }
 /** What a slot's job needs to find its message, read when the slot is acted on. */
 async function messageTarget(index: number) {
   const host = risuHost()!;
-  const [context, charIndex, chatIndex] = await Promise.all([currentTtsContext(), host.getCurrentCharacterIndex?.(), host.getCurrentChatIndex?.()]);
+  const [context, charIndex, chatIndex] = await Promise.all([currentTtsContext({ chatOnly: true }), host.getCurrentCharacterIndex?.(), host.getCurrentChatIndex?.()]);
   const message = context.messages[index] as Record<string, unknown> | undefined;
   if (!message) return null;
   return { session_id: context.sessionId, character_id: context.characterId, chat_id: context.chatId,

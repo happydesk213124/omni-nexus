@@ -26,7 +26,15 @@ export interface TtsChatContext {
  */
 const STREAM_QUIET_MS = 1500, STREAM_NEW_MS = 4000;
 let streamText = '', streamAt = 0, streamFrom = 0;
-let held: { context: TtsChatContext; charIndex: number; chatIndex: number } | null = null;
+let held: { context: TtsChatContext; charIndex: number; chatIndex: number; whole: boolean } | null = null;
+/**
+ * Who the open bot is, from its last whole read. The chat's watchers read the context every time the chat screen
+ * changes, and only the open chat can have changed for them: its bot, every other chat and message of it, was copied
+ * over Risu's bridge each time. Read again when the open chat is one it did not have (another bot, a new chat) or
+ * after a while, so an edited description reaches a voice pick late by this much at worst.
+ */
+const BOT_KEPT_MS = 300_000;
+let kept: { host: unknown; charIndex: number; at: number; chats: Set<string>; character: Record<string, unknown> } | null = null;
 /** A chunk of the reply streaming in (the frozen UI's output script hands each one here). */
 export function noteStreamText(text: string): void {
   const now = Date.now();
@@ -53,31 +61,55 @@ function withStreamText(context: TtsChatContext, text: string): TtsChatContext {
   if (raw.length) raw[raw.length - 1] = { ...objectValue(raw[raw.length - 1]), data: text };
   return { ...context, chat: { ...context.chat, message: raw }, messages };
 }
-async function heldWhileStreaming(): Promise<TtsChatContext | null> {
-  if (!held || !replyStreamingNow()) return null;
+async function heldWhileStreaming(chatOnly: boolean): Promise<TtsChatContext | null> {
+  if (!held || !replyStreamingNow() || (!held.whole && !chatOnly)) return null;
   const read = held, [charIndex, chatIndex] = await openIndices();
   // Another chat opened meanwhile: that one is read.
   if (read !== held || charIndex !== read.charIndex || chatIndex !== read.chatIndex) return null;
   return withStreamText(read.context, streamText);
 }
 
-export async function currentTtsContext(): Promise<TtsChatContext> {
-  const reused = await heldWhileStreaming().catch(() => null);
-  if (reused) return reused;
-  const host = risuHost();
-  if (!host?.getCharacter) throw new Error('현재 Risu 채팅을 읽을 수 없습니다.');
-  const startedAt = Date.now(), from = streamFrom;
-  const character = objectValue(await host.getCharacter());
-  const chats = Array.isArray(character.chats) ? character.chats : [];
-  const chat = objectValue(chats[Number(character.chatPage) || 0]);
+async function contextOf(character: Record<string, unknown>, chat: Record<string, unknown>): Promise<TtsChatContext> {
   const characterId = String(character.chaId || character.id || ''), chatId = String(chat.id || chat.chatId || '');
   if (!characterId || !chatId) throw new Error('안정적인 ID가 있는 Risu 채팅을 먼저 열어 주세요.');
   await ensureBotTtsCharacters(characterId);
-  const context: TtsChatContext = { scope: JSON.stringify([characterId, chatId]), rosterScope: ttsBotScope(characterId), characterId, chatId, sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, character, chat, messages: Array.isArray(chat.message) ? chat.message.map(objectValue) : [] };
+  return { scope: JSON.stringify([characterId, chatId]), rosterScope: ttsBotScope(characterId), characterId, chatId, sessionId: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, character, chat, messages: Array.isArray(chat.message) ? chat.message.map(objectValue) : [] };
+}
+async function wholeBotRead(): Promise<TtsChatContext> {
+  const host = risuHost();
+  if (!host?.getCharacter) throw new Error('현재 Risu 채팅을 읽을 수 없습니다.');
+  const [value, [charIndex]] = await Promise.all([host.getCharacter(), openIndices().catch((): [number, number] => [NaN, NaN])]);
+  const character = objectValue(value);
+  const chats = (Array.isArray(character.chats) ? character.chats : []).map(objectValue);
+  const context = await contextOf(character, chats[Number(character.chatPage) || 0] ?? {});
+  kept = Number.isInteger(charIndex) ? { host, charIndex, at: Date.now(), chats: new Set(chats.map(chat => String(chat.id || chat.chatId || ''))),
+    character: { chaId: character.chaId, id: character.id, name: character.name, desc: character.desc } } : null;
+  return context;
+}
+/** The open chat alone, under the bot as last read; null when that read does not answer for it. */
+async function openChatRead(): Promise<TtsChatContext | null> {
+  const host = risuHost(), bot = kept;
+  if (!bot || bot.host !== host || Date.now() - bot.at > BOT_KEPT_MS || typeof host?.getChatFromIndex !== 'function') return null;
+  const [charIndex, chatIndex] = await openIndices();
+  if (charIndex !== bot.charIndex || !Number.isInteger(chatIndex) || chatIndex < 0) return null;
+  const chat = objectValue(await host.getChatFromIndex(charIndex, chatIndex));
+  return bot.chats.has(String(chat.id || chat.chatId || '')) ? contextOf(bot.character, chat) : null;
+}
+/**
+ * The chat open in Risu. `chatOnly`: for those who read its messages and need to know only who the bot is; its
+ * `character` then holds no more than that, its name and its description.
+ */
+export async function currentTtsContext(options: { chatOnly?: boolean } = {}): Promise<TtsChatContext> {
+  const chatOnly = options.chatOnly === true;
+  const reused = await heldWhileStreaming(chatOnly).catch(() => null);
+  if (reused) return reused;
+  const startedAt = Date.now(), from = streamFrom;
+  const light = chatOnly ? await openChatRead().catch(() => null) : null;
+  const context = light ?? await wholeBotRead();
   // Read after this reply's first chunk (its message is in the chat by then) while Risu still streams it: held.
-  if (replyStreamingNow() && from === streamFrom && startedAt >= streamFrom && chat.isStreaming === true && context.messages.at(-1)?.role === 'char') {
+  if (replyStreamingNow() && from === streamFrom && startedAt >= streamFrom && context.chat.isStreaming === true && context.messages.at(-1)?.role === 'char') {
     const [charIndex, chatIndex] = await openIndices().catch((): [number, number] => [NaN, NaN]);
-    if (Number.isInteger(charIndex) && Number.isInteger(chatIndex) && from === streamFrom && streamAt > 0) held = { context, charIndex, chatIndex };
+    if (Number.isInteger(charIndex) && Number.isInteger(chatIndex) && from === streamFrom && streamAt > 0) held = { context, charIndex, chatIndex, whole: !light };
   }
   return context;
 }

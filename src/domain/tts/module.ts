@@ -89,13 +89,16 @@ export const TTS_MODULE_CSS = [
   // The line being read keeps moving, so the button visibly reads as live.
   '[data-omnitts-play][x-omnitts-state="loading"],[data-omnitts-play][x-omnitts-state="playing"],[data-omnitts-play][x-omnitts-state="paused"]{background:#7132f5;border-color:#d8c8ff;color:#fff}',
   '[data-omnitts-play][data-omnitts-kind="narration"][x-omnitts-state]:not([x-omnitts-state=""]){background:#2563eb;border-color:#bfdbfe;color:#fff}',
-  '[data-omnitts-play][x-omnitts-state="playing"]{animation:omnitts-pulse 1.3s ease-out infinite}',
+  // Size only, never a shadow or a background: those repaint Risu's page every frame for as long as a line is read.
+  '[data-omnitts-play][x-omnitts-state="playing"]{animation:omnitts-pulse 1.3s ease-in-out infinite}',
+  // The button sits raised by half its height: from there it grows about its own middle.
+  '[data-omnitts-tail]>[data-omnitts-play][x-omnitts-state="playing"]{transform-origin:50% 0}',
   '[data-omnitts-play][data-omnitts-kind][x-omnitts-state="loading"]::before{width:12px;height:12px;margin:0;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:omnitts-spin .8s linear infinite}',
-  '[data-omnitts-play][data-omnitts-kind][x-omnitts-state="playing"]::before{width:12px;height:12px;margin:0;border:0;background:linear-gradient(currentColor,currentColor) 0 100%/3px 40% no-repeat,linear-gradient(currentColor,currentColor) 4.5px 100%/3px 90% no-repeat,linear-gradient(currentColor,currentColor) 9px 100%/3px 60% no-repeat;animation:omnitts-eq .9s ease-in-out infinite}',
+  '[data-omnitts-play][data-omnitts-kind][x-omnitts-state="playing"]::before{width:12px;height:12px;margin:0;border:0;background:linear-gradient(currentColor,currentColor) 0 100%/3px 40% no-repeat,linear-gradient(currentColor,currentColor) 4.5px 100%/3px 90% no-repeat,linear-gradient(currentColor,currentColor) 9px 100%/3px 60% no-repeat;transform-origin:50% 100%;animation:omnitts-eq .9s ease-in-out infinite}',
   '[data-omnitts-play][data-omnitts-kind][x-omnitts-state="paused"]::before{width:9px;height:10px;margin:0;border-width:0 3px;border-color:currentColor;border-style:solid}',
   '@keyframes omnitts-spin{to{transform:rotate(360deg)}}',
-  '@keyframes omnitts-pulse{0%{box-shadow:0 0 0 0 #b69cffcc}100%{box-shadow:0 0 0 9px #b69cff00}}',
-  '@keyframes omnitts-eq{0%,100%{background-size:3px 40%,3px 90%,3px 60%}33%{background-size:3px 100%,3px 35%,3px 80%}66%{background-size:3px 55%,3px 70%,3px 25%}}',
+  '@keyframes omnitts-pulse{0%,100%{scale:1}50%{scale:1.14}}',
+  '@keyframes omnitts-eq{0%,100%{scale:1 .7}33%{scale:1 1}66%{scale:1 .5}}',
   '@media (prefers-reduced-motion:reduce){[data-omnitts-play][x-omnitts-state]{animation:none!important}[data-omnitts-play][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
 

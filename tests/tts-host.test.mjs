@@ -125,7 +125,8 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     // The list toggle repaints the viewer; measure once the new header is in place, not mid-repaint.
     await page.waitForFunction(()=>window.ttsData().settings.panel===''&&document.querySelector('[data-tts-header]')?.getBoundingClientRect().width>0);
     const oldRect=await page.locator('[x-omnitts-viewer]').boundingBox();
-    const header=await page.locator('[data-tts-header]').boundingBox();
+    // Read where it is in one step: between two calls another repaint can take the element away.
+    const header=await (await page.waitForFunction(()=>{const r=document.querySelector('[data-tts-header]')?.getBoundingClientRect();return r&&r.width>0?{x:r.x,y:r.y}:null;})).jsonValue();
     await page.mouse.move(header.x+10,header.y+18);await page.mouse.down();
     await page.waitForTimeout(80);await page.mouse.move(header.x-70,header.y-62,{steps:6});
     await page.mouse.up();

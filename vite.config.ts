@@ -69,8 +69,9 @@ const VENDOR_THEME_CHROME_PATCH =
 const VENDOR_THEME_HEAD_NEEDLE =
   `.chrome{position:sticky;top:0;z-index:200;margin:0 0 16px;padding:10px 0 8px;background:linear-gradient(180deg,rgba(8,11,18,.98) 70%,rgba(8,11,18,.88));backdrop-filter:blur(18px)}
 .head{position:relative;z-index:2;display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 10px;padding:10px 14px 10px 16px;min-height:92px;background:rgba(13,18,29,.92);border:1px solid var(--border);border-radius:18px}`;
+// No blur behind the sticky header: at .88 to .98 opaque it could hardly be seen, and every frame of a scroll paid for it.
 const VENDOR_THEME_HEAD_PATCH =
-  `.chrome{position:sticky;top:0;z-index:200;margin:0 0 16px;padding:10px 0 8px;background:linear-gradient(180deg,rgba(8,11,18,.98) 70%,rgba(8,11,18,.88));backdrop-filter:blur(18px)}
+  `.chrome{position:sticky;top:0;z-index:200;margin:0 0 16px;padding:10px 0 8px;background:linear-gradient(180deg,rgba(8,11,18,.98) 70%,rgba(8,11,18,.88))}
 .head{position:relative;z-index:2;display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 10px;padding:10px 14px 10px 16px;min-height:92px;background:rgba(13,18,29,.92);border:1px solid var(--border);border-radius:16px;box-shadow:0 12px 34px rgba(0,0,0,.18)}`;
 
 const VENDOR_THEME_CARD_NEEDLE =
@@ -15144,9 +15145,17 @@ const VENDOR_SCROLL_GALLERY_SAME_DOM_PATCH = `          linked.length ? schedule
           Ce(), scheduleOverlayPlace(80), await onSelectionChanged("content");
         }`;
 
-const VENDOR_SCOPE_POLL_NEEDLE = `n._scopeTick % 24 === 0 && !(t.jobsInFlight.size`;
-// Was patched to %4 (≈1s) — that made idle scope thrash worse. Keep vendor ~6s cadence.
-const VENDOR_SCOPE_POLL_PATCH = `n._scopeTick % 24 === 0 && !(t.jobsInFlight.size`;
+const VENDOR_SCOPE_POLL_NEEDLE = `n._scopeTick % 24 === 0 && !(t.jobsInFlight.size || (t.jobProgress && formatViewerJob(t.jobProgress)?.busy)) && Z().catch(() => {
+      }), !!t.selectedMessage)) {`;
+// Every 24th tick (about 10 s at the 400 ms below) copied the whole bot, every chat and message of it, to learn that
+// the same bot was open. It asks what a touch asks now: the bot's number, and only another number reads the bot.
+// Was patched to %4 (≈1s) — that made idle scope thrash worse. Keep the cadence.
+const VENDOR_SCOPE_POLL_PATCH = `n._scopeTick % 24 === 0 && nxScopeCheckSoon(), !!t.selectedMessage)) {`;
+
+const VENDOR_GALLERY_BLUR_NEEDLE = `      "backdrop-filter:blur(14px)",
+`;
+// Behind a 97% opaque window the blur could hardly be seen, and every frame the chat scrolled under the window paid for it.
+const VENDOR_GALLERY_BLUR_PATCH = ``;
 
 const VENDOR_SEGMENT_CE_NEEDLE = `        n.markers?.length && Ce();
       }
@@ -16646,9 +16655,9 @@ const VENDOR_POINTER_SELECT_PATCH =
     }));
   }
   /**
-   * Session switch lands on the next user input instead of waiting out the 6s idle
-   * scope poll. Two host index reads, throttled, and never while idle — the idle
-   * cadence is what thrashed when the poll itself was sped up.
+   * Session switch lands on the next user input instead of waiting out the idle
+   * scope poll, which asks this same question every 10 s or so. One host index read,
+   * throttled — the idle cadence is what thrashed when the poll itself was sped up.
    */
   function nxScopeCheckSoon() {
     if (t.uiOpen || t._hostChromeBlocked || t.unloading) return;
@@ -17549,6 +17558,7 @@ const loadVendorUi = (): string => {
     [VENDOR_SCROLL_GALLERY_SAME_PAINT_NEEDLE, 'scroll same content paint'],
     [VENDOR_SCROLL_GALLERY_SAME_DOM_NEEDLE, 'scroll same dom content paint'],
     [VENDOR_SCOPE_POLL_NEEDLE, 'scope poll cadence'],
+    [VENDOR_GALLERY_BLUR_NEEDLE, 'gallery window blur'],
     [VENDOR_SEGMENT_CE_NEEDLE, 'idle segment Ce skip'],
     [VENDOR_CE_RAF_NEEDLE, 'sticky Ce rAF coalesce'],
     [VENDOR_HA_ANCESTOR_NEEDLE, 'sticky scroll ancestor cap'],
@@ -17928,6 +17938,7 @@ const loadVendorUi = (): string => {
     .replace(VENDOR_SCROLL_GALLERY_SAME_PAINT_NEEDLE, VENDOR_SCROLL_GALLERY_SAME_PAINT_PATCH)
     .replace(VENDOR_SCROLL_GALLERY_SAME_DOM_NEEDLE, VENDOR_SCROLL_GALLERY_SAME_DOM_PATCH)
     .replace(VENDOR_SCOPE_POLL_NEEDLE, VENDOR_SCOPE_POLL_PATCH)
+    .replace(VENDOR_GALLERY_BLUR_NEEDLE, VENDOR_GALLERY_BLUR_PATCH)
     .replace(VENDOR_SEGMENT_CE_NEEDLE, VENDOR_SEGMENT_CE_PATCH)
     .replace(VENDOR_CE_RAF_NEEDLE, VENDOR_CE_RAF_PATCH)
     .replace(VENDOR_HA_ANCESTOR_NEEDLE, VENDOR_HA_ANCESTOR_PATCH)

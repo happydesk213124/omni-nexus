@@ -68,6 +68,19 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(reads, 1, 'a different character index runs the full scope read');
 }
 
+// --- The idle check, every 24th tick: asks nxScopeCheckSoon, never copies the bot itself ---
+{
+  let beat = null, asks = 0, reads = 0;
+  const t = { overlayUi: {}, jobsInFlight: new Map() };
+  new Function('t', 'Z', 'nxScopeCheckSoon', 'setInterval', 'formatViewerJob', 'Fe', 'Ce', grab('  function Gt() {') + '\nreturn Gt;')(
+    t, async () => { reads++; }, () => { asks++; }, (fn) => { beat = fn; return 1; }, () => null, async () => {}, () => {})();
+  for (let i = 0; i < 48; i++) beat();
+  assert.deepEqual({ asks, reads }, { asks: 2, reads: 0 }, 'two idle checks in 48 ticks, neither reading the bot itself');
+}
+
+// --- No blur behind windows that hide what is behind them anyway: every frame of a scroll paid for it ---
+assert.doesNotMatch(dist, /backdrop-filter:blur\(1[48]px\)/, 'the gallery window and the settings header have no backdrop blur');
+
 // --- The floating viewer hears the chat screen check: hidden while it is gone, back with it, nothing polled ---
 {
   const subs = [], hides = [], restores = [], ensures = [];

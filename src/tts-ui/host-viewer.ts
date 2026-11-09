@@ -180,7 +180,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   async function readingPeople():Promise<string[]>{
     let rows:readonly TtsRequest[]=omniTts.list;
     if(!rows.length){
-      const context=await currentTtsContext(),index=context.messages.map(message=>message.role).lastIndexOf('char');
+      const context=await currentTtsContext({chatOnly:true}),index=context.messages.map(message=>message.role).lastIndexOf('char');
       rows=index<0?[]:parseTtsMessage(String(context.messages[index]?.data??'')).map(segment=>({context,messageId:'',sourceKey:'',segment}));
     }
     const names:string[]=[];
@@ -192,7 +192,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   }
   /** ⚡ reads the reply being read, else the newest reply on screen; the BGM picker does the rest. */
   async function bgmScene():Promise<string>{
-    const messages=(await currentTtsContext()).messages,current=omniTts.current;
+    const messages=(await currentTtsContext({chatOnly:true})).messages,current=omniTts.current;
     const reading=current&&messages.find(message=>String(message.chatId||message.id||'')===current.messageId);
     const latest=[...messages].reverse().find(message=>message.role==='char');
     return String((reading||latest)?.data??'');

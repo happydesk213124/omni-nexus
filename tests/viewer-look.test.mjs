@@ -61,7 +61,7 @@ test('letters are plain <i>: their delay is by place in the style sheet, never a
   assert.match(line.html, /<div data-vn-text style="--vs:\d+ms"><i>“<\/i><i>응<\/i>/);
   assert.doesNotMatch(line.html, /<(span|i) style/, 'no inline style per letter');
   assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(2\)\{animation-delay:calc\(1 \* var\(--vs\)\)\}/);
-  assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(n\+321\)\{animation-delay:calc\(320 \* var\(--vs\)\)\}/, 'a long line: the rest come with the last');
+  assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(n\+141\)\{animation-delay:calc\(140 \* var\(--vs\)\)\}/, 'a long line: the rest come with the last');
   assert.match(stage({ revealed: true }), /\[data-vn-text\] i\{animation:none!important;visibility:visible!important\}/);
   // Shown at its turn, at once: no letter is ever a fading layer of its own (that cost a phone every frame of a reveal).
   assert.match(api.STATIC_CSS, /\[data-vn-text\] i\{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps\(1,end\) forwards\}/);
@@ -69,8 +69,35 @@ test('letters are plain <i>: their delay is by place in the style sheet, never a
   // and the line stopped there for good (the browser check is in omni-viewer-reading: a long line to its last letter).
   assert.match(api.STATIC_CSS, /@keyframes vn-ch\{from,to\{visibility:visible\}\}/);
   assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-text\] i\{[^}]*opacity/);
-  const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 }), vs = Number(long.html.match(/--vs:(\d+)ms/)[1]);
-  assert.equal(long.revealMs, 321 * vs, 'a long line is whole when its last delayed letter is: the cue does not wait for 1000 of them');
+  const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 }), vs = Number(long.html.match(/--vs:(\d+)ms/)[1]), turns = long.html.match(/<i>/g).length;
+  assert.equal(long.revealMs, turns * vs, 'a long line is whole when its last turn is: the cue does not wait for 1000 letters');
+  assert.ok(long.revealMs < 2100, `as soon as it was with a letter a turn: ${long.revealMs}ms`);
+  assert.equal(long.html.match(/가/g).length, 1000, 'every letter is there');
+});
+
+test('letters too close to tell apart come as one turn: fewer elements for the page to restyle, every letter and line break kept', () => {
+  assert.equal(api.boxHtml({ speaker: '', text: '가나다', narration: true, pace: 2.6 }).html.match(/<i>/g).length, 3, 'slow enough to see: one letter a turn');
+  assert.match(api.boxHtml({ speaker: '', text: '가나다라마바', narration: true, pace: 1 }).html, /<i>가나<\/i><i>다라<\/i><i>마바<\/i>/);
+  assert.match(api.boxHtml({ speaker: '', text: '가\n나다', narration: true, pace: 1 }).html, /<i>가<\/i>\n<i>나다<\/i>/, 'a line break stays between the runs');
+  assert.match(api.boxHtml({ speaker: '', text: '<a&b', narration: true, pace: 1 }).html, /<i>&lt;a<\/i><i>&amp;b<\/i>/, 'a run is escaped as a letter was');
+  for (const length of [40, 90, 150, 300, 320]) {
+    const line = api.boxHtml({ speaker: '', text: '가'.repeat(length), narration: true, pace: 1 });
+    assert.ok(line.html.match(/<i>/g).length <= 60, `${length} letters: ${line.html.match(/<i>/g).length} turns`);
+  }
+  for (const pace of [1, 1.7, 2.6]) for (const length of [10, 100, 138, 141, 500]) {
+    const turns = api.boxHtml({ speaker: '', text: '가'.repeat(length), narration: true, pace }).html.match(/<i>/g).length;
+    assert.ok(turns <= 141, `the style sheet has a delay for every turn (${length} letters at ${pace}: ${turns})`);
+  }
+});
+
+test('the cues under a line stop after a few seconds and stay lit; breathing goes in steps', () => {
+  assert.match(api.STATIC_CSS, /\[data-vn-next\]\{[^}]*animation:vn-next \.5s ease-in-out 13 alternate forwards\}/);
+  assert.match(api.STATIC_CSS, /\[data-vn-end\]\{[^}]*animation:vn-blink \.6s ease-in-out 13 alternate forwards;/);
+  assert.match(api.STATIC_CSS, /@keyframes vn-next\{from\{opacity:\.25;[^}]*\}to\{opacity:1;/, 'an odd count ends on "to": lit');
+  assert.match(api.STATIC_CSS, /@keyframes vn-blink\{from\{opacity:\.3\}to\{opacity:1\}\}/);
+  const css = stage({ motion: { breathe: true }, cast: [{ key: 'a', face: 'x', speaking: true }] });
+  assert.match(css, /\[x-vn-p="a"\] \[x-vn-sp\] img\{animation:vn-breathe [\d.]+s steps\(14,end\) /, 'its shadow worked out a few times a second, not every frame');
+  assert.doesNotMatch(stage({ motion: { breathe: false }, cast: [{ key: 'a', face: 'x', speaking: true }] }), /vn-breathe/);
 });
 
 test('a long line: the box is given its reckoned height as a least one (a line needing more still grows it), a short one none', () => {
@@ -106,12 +133,12 @@ test('캐릭터 움직임: a spring on the face shown (or the oval), breathing f
   assert.match(on, /\[x-vn-p="tA"\] \[x-vn-sp="sp1"\]\{opacity:1;animation:vn-jelly-b \.62s/);
   assert.match(on, /\[x-vn-p="tB"\] \[data-vn-sil\]\{animation:vn-jelly-a/, 'an oval springs too');
   // The speaker breathes; the dimmed (blurred) one stands still: moving inside a blur redraws it every frame.
-  assert.match(on, /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe 4\.6s ease-in-out 0s infinite\}/);
+  assert.match(on, /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe 4\.6s steps\(14,end\) 0s infinite\}/);
   assert.doesNotMatch(on, /\[x-vn-p="tB"\] \[x-vn-sp\] img\{animation:vn-breathe/);
   assert.doesNotMatch(on, /\[x-omni-vn\] \[x-vn-sp\] img\{animation:vn-breathe/, 'never every picture at once');
   const told = stage({ cast, narration: true, motion: { breathe: true, bounce: true } });
   assert.match(told, /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe 4\.6s/);
-  assert.match(told, /\[x-vn-p="tB"\] \[x-vn-sp\] img\{animation:vn-breathe 5\.2s ease-in-out -1\.7s/, 'in narration nobody is blurred: all breathe, each at their own pace');
+  assert.match(told, /\[x-vn-p="tB"\] \[x-vn-sp\] img\{animation:vn-breathe 5\.2s steps\(14,end\) -1\.7s/, 'in narration nobody is blurred: all breathe, each at their own pace');
   assert.doesNotMatch(stage({ cast, cg: 'p1', cgView: 'open', motion: { breathe: true, bounce: true } }), /vn-breathe/, 'a picture on show dims everyone');
   assert.match(stage({ cast, cg: 'p1', cgView: 'fold', motion: { breathe: true, bounce: true } }), /\[x-vn-p="tA"\] \[x-vn-sp\] img\{animation:vn-breathe/, 'folded at the top it does not');
   const off = stage({ cast, motion: { breathe: false, bounce: false } });

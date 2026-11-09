@@ -142,7 +142,7 @@ export async function installTtsHost(): Promise<void> {
       }
       if (ttsData().settings.enabled) {
         const reservation = omniTts.reservePlayback();
-        const shown = anchored.get(b.message), list = shown?.some(r => r.segment.id === b.line) ? shown : requests(await currentTtsContext(), b.message);
+        const shown = anchored.get(b.message), list = shown?.some(r => r.segment.id === b.line) ? shown : requests(await currentTtsContext({ chatOnly: true }), b.message);
         const index = list.findIndex(r => r.segment.kind === 'sfx' && r.segment.id === b.line);
         if (index < 0) throw new Error('이 효과음의 원문을 찾지 못했습니다. 메시지가 바뀌었다면 잠시 후 다시 눌러 주세요.');
         await withTtsAudio(async () => { if (!await omniTts.playEffect(list, index)) throw new Error(omniTts.notice || `「${segment.text}」에 맞는 효과음이 없습니다.`); }, reservation);
@@ -160,7 +160,7 @@ export async function installTtsHost(): Promise<void> {
     b.play = async () => {
       if (!ttsData().settings.enabled) return;
       const reservation = omniTts.reservePlayback();
-      const current = await currentTtsContext();
+      const current = await currentTtsContext({ chatOnly: true });
       if (b.illustration) {
         if (!ttsData().settings.illustration) return;
         const bar = await b.node.getParent(), image = await bar?.getParent();
@@ -192,7 +192,7 @@ export async function installTtsHost(): Promise<void> {
       if (disposed || !active()) return;
       // A remounted chat screen (another bot or chat) gets its own watcher.
       await watchChat();
-      const context = await currentTtsContext().catch(()=>null); if(!context){bootstrap();return;} omniTts.setContext(context);
+      const context = await currentTtsContext({ chatOnly: true }).catch(()=>null); if(!context){bootstrap();return;} omniTts.setContext(context);
       if (context.scope !== lastScope) { lastScope = context.scope; lastPrefetch = ''; }
       const live = new Set<string>(), nearby: {distance:number;request:TtsRequest}[] = [];
       const height = await doc.clientHeight();
@@ -356,7 +356,7 @@ export async function installTtsHost(): Promise<void> {
     // The reply is saved: the chat is read again, not the one held while it streamed.
     streamEnded();
     if (disposed || !active()) return;
-    try { const context=await currentTtsContext(); if (String(arg.char?.chaId)!==context.characterId || String(arg.chat?.id)!==context.chatId) return;
+    try { const context=await currentTtsContext({ chatOnly: true }); if (String(arg.char?.chaId)!==context.characterId || String(arg.chat?.id)!==context.chatId) return;
       const index=arg.messageIndex; let list=requests(context,index); if (!list.length) return;
       const key=JSON.stringify([context.scope,index]), signature=compactHash(String(context.messages[index]?.data || '')); if (seen.get(key)===signature) return; seen.set(key,signature); if (seen.size>100) seen.delete(seen.keys().next().value!);
       const s=ttsData().settings, reads=s.enabled&&s.autoReply;

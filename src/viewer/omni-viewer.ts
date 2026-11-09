@@ -2238,7 +2238,7 @@ async function ahead(): Promise<void> {
   const settings = (await loadEmotionData()).settings;
   if (!settings.enabled || !settings.autoGenerate) return;
   await loadTtsData();
-  const ctx = await currentTtsContext(), who = await currentEmotionBot();
+  const ctx = await currentTtsContext({ chatOnly: true }), who = await currentEmotionBot();
   if (!who) return;
   const index = ctx.messages.map(m => m?.role).lastIndexOf('char');
   if (index < 0) return;

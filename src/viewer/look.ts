@@ -14,8 +14,12 @@ export function accentOf(name: string): string {
   return `hsl(${h} 62% 60%)`;
 }
 
-// Letters given their own delay; any after these come with the last of them.
+// Letters that come in turn; any after these come with the last of them.
 const LETTERS = 320;
+// Turns the style sheet has a delay for. A turn is one element the page restyles and repaints alone.
+const TURNS = 140;
+// Letters closer together than this come as one turn: the eye cannot part them, and the page pays for each.
+const TURN_MS = 33;
 const SERIF = '"Gowun Batang","Nanum Myeongjo","Noto Serif KR","Noto Serif CJK KR",serif';
 export const STATIC_CSS = `
 [x-omni-vn]{position:fixed;z-index:45;isolation:isolate;overflow:hidden;color:#f4f1ea;font:14px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;
@@ -96,12 +100,12 @@ export const STATIC_CSS = `
 /* Each letter shows at its turn, at once: a fade made every letter its own layer to blend, the reveal
    cost the phone a frame every frame. Hidden letters keep their room, so the line never moves. */
 [x-omni-vn] [data-vn-text] i{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps(1,end) forwards}
-${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-child(${i + 1}){animation-delay:calc(${i} * var(--vs))}`).join('')}[x-omni-vn] [data-vn-text] i:nth-child(n+${LETTERS + 1}){animation-delay:calc(${LETTERS} * var(--vs))}
+${Array.from({ length: TURNS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-child(${i + 1}){animation-delay:calc(${i} * var(--vs))}`).join('')}[x-omni-vn] [data-vn-text] i:nth-child(n+${TURNS + 1}){animation-delay:calc(${TURNS} * var(--vs))}
 /* The line's voice is being made: a spinner at the box's corner, by the arrow. */
 [x-omni-vn] [data-vn-voicewait]{display:none;position:absolute;right:36px;bottom:46px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite;pointer-events:none}
-[x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next 1s ease-in-out infinite}
+[x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next .5s ease-in-out 13 alternate forwards}
 /* The story so far has ended: Risu's input below is where it goes on. */
-[x-omni-vn] [data-vn-end]{position:absolute;left:50%;top:-46px;translate:-50% 0;padding:5px 14px;border-radius:999px;font-size:12.5px;letter-spacing:.04em;white-space:nowrap;color:var(--gold);background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 0 16px -4px var(--gold);opacity:0;animation:vn-blink 1.2s ease-in-out infinite;pointer-events:none}
+[x-omni-vn] [data-vn-end]{position:absolute;left:50%;top:-46px;translate:-50% 0;padding:5px 14px;border-radius:999px;font-size:12.5px;letter-spacing:.04em;white-space:nowrap;color:var(--gold);background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 0 16px -4px var(--gold);opacity:0;animation:vn-blink .6s ease-in-out 13 alternate forwards;pointer-events:none}
 [x-omni-vn] [data-vn-menu]{position:absolute;left:18px;right:18px;bottom:16px;display:flex;align-items:center;gap:2px;z-index:4}
 [x-omni-vn] [data-vn-menu] button{height:30px;min-width:30px;padding:0 9px;font-size:11.5px;border-radius:8px;background:transparent;border-color:transparent;color:#d8cfb4}
 [x-omni-vn] [data-vn-act="bgm"]{width:64px}
@@ -249,9 +253,11 @@ ${Array.from({ length: LETTERS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-ch
    animation applied yet (fill forwards only), so it still waits hidden. */
 @keyframes vn-ch{from,to{visibility:visible}}
 @keyframes vn-fade{from{opacity:0}to{opacity:1}}
-@keyframes vn-next{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 3px}}
+/* The cues pulse for a few seconds and then stay lit: an odd count of half-pulses ends on "to". Pulsing for good,
+   they kept the screen drawing for as long as a reader stayed on a line. */
+@keyframes vn-next{from{opacity:.25;translate:0 0}to{opacity:1;translate:0 3px}}
 @keyframes vn-pulse{0%,100%{opacity:.45}50%{opacity:1}}
-@keyframes vn-blink{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes vn-blink{from{opacity:.3}to{opacity:1}}
 @keyframes vn-spin{to{rotate:360deg}}
 /* A phone: ten buttons in one row (배속 the tenth, its speed in smaller figures), the words drawn in to make room, each at its
    own width: a row out of room squeezes its buttons over their words. */
@@ -375,11 +381,14 @@ const BREATH = [[4.6, 0], [5.2, -1.7], [4.2, -3.1]] as const;
  * Breathing, for the lit only (the speaker; everyone in narration): the others stand dimmed
  * and blurred, and anything moving inside a blur has it drawn again every frame, on a phone
  * the dearest thing on the stage. A CG on show dims everyone: nobody breathes.
+ *
+ * In steps, six or so a second: each breath moves a picture about ten pixels, under a pixel a step, and only a step
+ * that moves it has its shadow and what lies under it worked out again. A smooth breath asked that of every frame.
  */
 function breathing(s: StageState): string {
   if (!s.motion?.breathe || (s.cg && s.cgView !== 'fold')) return '';
   const lit = s.narration ? s.cast.slice(0, 3) : s.cast.slice(0, 3).filter(p => p.speaking);
-  return lit.map((p, i) => `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp] img{animation:vn-breathe ${BREATH[i]![0]}s ease-in-out ${BREATH[i]![1]}s infinite}`).join('');
+  return lit.map((p, i) => `[x-omni-vn] [x-vn-p="${p.key}"] [x-vn-sp] img{animation:vn-breathe ${BREATH[i]![0]}s steps(14,end) ${BREATH[i]![1]}s infinite}`).join('');
 }
 // Phones are narrow: people overlap, the speaker in front, as a portrait VN stages them.
 const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] };
@@ -475,8 +484,22 @@ export function stageCss(s: StageState): string {
   ].filter(Boolean).join('\n');
 }
 
+/** The line's letters as the <i> runs that come in turn, `size` letters a run, and how many turns that makes. */
+function letterRuns(shown: readonly string[], size: number): { html: string; turns: number } {
+  let html = '', run = '', inRun = 0, turns = 0;
+  const close = () => { if (inRun) { html += `<i>${esc(run)}</i>`; turns++; run = ''; inRun = 0; } };
+  shown.forEach((ch, at) => {
+    // Past the letters that take turns, or the turns the style sheet has: the rest are one run, with the last.
+    const rest = at >= LETTERS || turns >= TURNS;
+    if (!rest && ch === '\n') { close(); html += '\n'; return; }
+    run += ch; inRun++;
+    if (!rest && inRun >= size) close();
+  });
+  close();
+  return { html, turns };
+}
 /**
- * Letters appear one by one (CSS only); the arrow shows once they all have. At the
+ * Letters appear in turn (CSS only); the arrow shows once they all have. At the
  * end of the story so far (`end`) the arrow is a blinking cue to write the next
  * message instead. Returns the reveal time.
  */
@@ -485,9 +508,9 @@ export function boxHtml(input: { speaker: string; text: string; narration: boole
   const chars = [...input.text], pace = input.pace ?? 1;
   const step = Math.max(6, Math.min(20, Math.floor(1800 / Math.max(1, chars.length)))) * pace;
   const shown = input.narration || !input.speaker ? chars : ['“', ...chars, '”'];
-  const letters = pace <= 0 ? esc(shown.join('')) : shown.map(ch => ch === '\n' ? '\n' : `<i>${esc(ch)}</i>`).join('');
-  // Letters past LETTERS come with the last of them: the line is whole by then.
-  const vs = Math.round(step), revealMs = Math.min(shown.length, LETTERS + 1) * vs;
+  const size = pace > 0 ? Math.max(1, Math.ceil(TURN_MS / step)) : 1;
+  const { html: letters, turns } = pace <= 0 ? { html: esc(shown.join('')), turns: 0 } : letterRuns(shown, size);
+  const vs = Math.round(step * size), revealMs = turns * vs;
   const name = input.narration || !input.speaker ? '' : esc(input.speaker) + (input.costume ? `<span data-vn-costume> · ${esc(input.costume)}</span>` : '');
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {

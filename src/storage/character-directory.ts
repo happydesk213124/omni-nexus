@@ -1,3 +1,4 @@
+import { SESSION_LORE_NAME } from '../core/constants';
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 
@@ -15,7 +16,11 @@ import { risuHost } from '../core/host';
  * never missed. Writes that route data by this list pass `fresh` themselves.
  */
 type Row = Record<string, unknown>;
-export interface DirectoryChat { index: number; id: string; chatId: string; name: string; modules: unknown }
+export interface DirectoryChat {
+  index: number; id: string; chatId: string; name: string; modules: unknown;
+  /** This chat's own data entry when the list was asked for it (`ownData`); null otherwise, or when the host sent the chat without its lorebook. */
+  ownData: unknown[] | null;
+}
 export interface DirectoryCharacter {
   index: number; chaId: string; id: string; name: string; image: unknown; chatPage: unknown; chats: DirectoryChat[];
   /** Asset tuples only (names and paths): the gallery lists shots from these. */
@@ -24,39 +29,41 @@ export interface DirectoryCharacter {
 const REUSE_MS = 2000;
 const SLOW_MS = 100;
 const object = (v: unknown): Row | null => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Row : null;
-let inFlight: { host: unknown; rows: Promise<DirectoryCharacter[] | null> } | null = null;
+let inFlight: { host: unknown; rows: Promise<DirectoryCharacter[] | null>; ownData: boolean } | null = null;
 // Tied to the host object: a reloaded plugin (or a swapped test host) starts over.
-let done: { host: unknown; at: number; rows: DirectoryCharacter[] } | null = null;
+let done: { host: unknown; at: number; rows: DirectoryCharacter[]; ownData: boolean } | null = null;
 
-function project(list: unknown[]): DirectoryCharacter[] {
+function project(list: unknown[], ownData: boolean): DirectoryCharacter[] {
   return list.map((value, index) => {
     const c = object(value) || {};
     const chats = (Array.isArray(c.chats) ? c.chats : []).map((raw, at) => {
-      const chat = object(raw) || {};
-      return { index: at, id: String(chat.id ?? ''), chatId: String(chat.chatId ?? ''), name: String(chat.name ?? ''), modules: chat.modules };
+      const chat = object(raw) || {}, lore = ownData ? chat.localLore : null;
+      return { index: at, id: String(chat.id ?? ''), chatId: String(chat.chatId ?? ''), name: String(chat.name ?? ''), modules: chat.modules,
+        ownData: Array.isArray(lore) ? lore.filter(entry => object(entry)?.comment === SESSION_LORE_NAME) : null };
     });
     return { index, chaId: String(c.chaId ?? ''), id: String(c.id ?? ''), name: String(c.name ?? ''), image: c.image, chatPage: c.chatPage, chats, additionalAssets: c.additionalAssets };
   });
 }
 
 /** Null when the host cannot list characters (no getDatabase, or permission refused). */
-export async function characterDirectory(opts: { fresh?: boolean } = {}): Promise<DirectoryCharacter[] | null> {
-  const host = risuHost();
-  if (!opts.fresh && done && done.host === host && Date.now() - done.at < REUSE_MS) return done.rows;
-  if (inFlight && inFlight.host === host) return inFlight.rows;
+export async function characterDirectory(opts: { fresh?: boolean; ownData?: boolean } = {}): Promise<DirectoryCharacter[] | null> {
+  const host = risuHost(), ownData = opts.ownData === true;
+  // A list made without the chats' data entries cannot answer for them.
+  if (!opts.fresh && done && done.host === host && Date.now() - done.at < REUSE_MS && (done.ownData || !ownData)) return done.rows;
+  if (inFlight && inFlight.host === host && (inFlight.ownData || !ownData)) return inFlight.rows;
   if (typeof host?.getDatabase !== 'function') return null;
   const at = Date.now();
   const read = (async () => {
     const db = await host.getDatabase!(['characters']);
     if (!Array.isArray(db?.characters)) return null;
-    const rows = project(db.characters as unknown[]);
+    const rows = project(db.characters as unknown[], ownData);
     // Logged only when slow: a fast host (PocketRisu) would flood the job's short event log.
     const ms = Date.now() - at;
     if (ms >= SLOW_MS) dbg('host.characters', { ms, count: rows.length, chats: rows.reduce((n, r) => n + r.chats.length, 0) }, 'warn');
-    done = { host, at: Date.now(), rows };
+    done = { host, at: Date.now(), rows, ownData };
     return rows;
   })();
-  inFlight = { host, rows: read };
+  inFlight = { host, rows: read, ownData };
   try { return await read; }
   finally { if (inFlight?.rows === read) inFlight = null; }
 }

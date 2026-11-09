@@ -1,13 +1,12 @@
 import { risuHost } from '../core/host';
-import { CARD_PACK_KEY, SESSION_AUTHOR_NOTE_KEY, STORE_KEY, ROOM_INDEX_KEY } from '../core/constants';
+import { CARD_PACK_KEY, SESSION_AUTHOR_NOTE_KEY, SESSION_LORE_NAME, STORE_KEY, ROOM_INDEX_KEY } from '../core/constants';
 import { cleanText, sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import type { KvApi } from './device-store';
-import { characterDirectory, directoryWarm } from './character-directory';
+import { characterDirectory, directoryWarm, forgetCharacterDirectory } from './character-directory';
 import { forgetBots, openBotFor } from './current-bot';
 
-export const SESSION_LORE_NAME = 'omni.nexus.data';
 type RecordValue = Record<string, unknown>;
-type Target = { character: number; chat: number; characterId: string; chatId: string; sid: string };
+type Target = { character: number; chat: number; characterId: string; chatId: string; sid: string; ownData: unknown[] | null };
 type Payload = { version: 1; sessionId: string; records: RecordValue };
 const object = (v: unknown): RecordValue | null => v != null && typeof v === 'object' && !Array.isArray(v)
   ? v as RecordValue : null;
@@ -26,12 +25,12 @@ export function serializeSessionStorage<T>(work: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/** Writes route rows by this list, so they pass `fresh`; reads retry fresh on a miss. */
-async function targets(fresh = false): Promise<Target[]> {
+/** Writes route rows by this list, so they pass `fresh`; reads retry fresh on a miss. `ownData`: with each chat's own entry. */
+async function targets(fresh = false, ownData = false): Promise<Target[]> {
   const host = risuHost();
   if (!host?.getDatabase || !host.getCharacterFromIndex || !host.getChatFromIndex || !host.setChatToIndex) return [];
   const result: Target[] = [];
-  for (const row of await characterDirectory({ fresh }) || []) {
+  for (const row of await characterDirectory({ fresh, ownData }) || []) {
     // Names and array indices are not durable identity. Older chats without an
     // id remain in the original store until Risu gives them one.
     const characterId = cleanText(row.chaId || row.id, 200);
@@ -39,11 +38,13 @@ async function targets(fresh = false): Promise<Target[]> {
     for (const entry of row.chats) {
       const chatId = cleanText(entry.id || entry.chatId, 200);
       if (!chatId || chatId === '__unified__') continue;
-      result.push({ character: row.index, chat: entry.index, characterId, chatId, sid: `risu_${sessionIdHash(`${characterId}|${chatId}`)}` });
+      result.push({ character: row.index, chat: entry.index, characterId, chatId, sid: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, ownData: entry.ownData });
     }
   }
   // Duplicate identities cannot be safely assigned, even if one is selected.
-  return result.filter(t => result.filter(other => other.sid === t.sid).length === 1);
+  const seen = new Map<string, number>();
+  for (const t of result) seen.set(t.sid, (seen.get(t.sid) ?? 0) + 1);
+  return result.filter(t => seen.get(t.sid) === 1);
 }
 
 async function readChat(target: Target): Promise<RecordValue> {
@@ -73,6 +74,12 @@ function payload(chat: RecordValue, target: Target): Payload {
   }
   return data as Payload;
 }
+/**
+ * What a chat holds, from the list of bots just read when that list came with each chat's lorebook. Read chat by
+ * chat instead (the whole bot, then the chat), opening Omni copied every bot once per chat it had, for each store, to
+ * learn that almost none held anything.
+ */
+const heldRecords = async (t: Target): Promise<Payload> => payload(t.ownData ? { localLore: t.ownData } : await readChat(t), t);
 
 async function writeRecord(target: Target, key: string, value: unknown): Promise<void> {
   const chat = await readChat(target);
@@ -88,6 +95,8 @@ async function writeRecord(target: Target, key: string, value: unknown): Promise
   if (index < 0) lore.push(entry);
   else lore[index] = { ...object(lore[index]), ...entry };
   await risuHost()!.setChatToIndex!(target.character, target.chat, { ...chat, localLore: lore });forgetBots();
+  // The list holds this entry as it was: the next reader must not take it from there.
+  forgetCharacterDirectory();
   const verified = payload(await readChat(target), target);
   if (JSON.stringify(verified.records[key]) !== JSON.stringify(value)) throw new Error('Chat session write verification failed');
 }
@@ -133,6 +142,16 @@ function rowSession(key: string, id: string, raw: unknown): string {
   if (key === STORE_KEY('meta') && id.startsWith('appearance:')) return id.slice('appearance:'.length);
   return '';
 }
+/** A store's rows by the chat they belong to, once, rather than the whole store filtered again for every chat. */
+function rowsBySession(key: string, rows: RecordValue): Map<string, RecordValue> {
+  const out = new Map<string, RecordValue>();
+  for (const [id, row] of Object.entries(rows)) {
+    const sid = rowSession(key, id, row);
+    const group = out.get(sid) ?? {};
+    group[id] = row; out.set(sid, group);
+  }
+  return out;
+}
 
 export function isSessionStorageKey(key: string): boolean {
   return mixedKeys.has(key) || key.startsWith('onx_nxcards_') ||
@@ -145,9 +164,11 @@ export async function readSessionStorage(key: string, legacy: unknown): Promise<
   // write-only weight. Nothing stored, nothing merged.
   if (key === STORE_KEY('jobs')) return legacy;
   return serializeSessionStorage(async () => {
-    const warm = directoryWarm();
-    let all = await targets();
-    if (warm && !directTarget(key, all) && !packedTargets(key, all).length) all = await targets(true);
+    const warm = directoryWarm(), mixed = mixedKeys.has(key);
+    let all = await targets(false, mixed);
+    // A mixed store looks nothing up by chat, so a chat opened a moment ago misses nothing, and a row written here
+    // already ended the list's reuse: the stores read together at start share one list of every bot.
+    if (warm && !mixed && !directTarget(key, all) && !packedTargets(key, all).length) all = await targets(true);
     const target = directTarget(key, all);
     if (target) {
       const data = payload(await readChat(target), target);
@@ -170,9 +191,10 @@ export async function readSessionStorage(key: string, legacy: unknown): Promise<
     }
     if (!mixedKeys.has(key) || !all.length) return legacy;
     const result = { ...storedObject(legacy) };
+    const bySession = rowsBySession(key, result);
     for (const t of all) {
-      const data = payload(await readChat(t), t);
-      const rows = Object.fromEntries(Object.entries(result).filter(([id, row]) => rowSession(key, id, row) === t.sid));
+      const data = await heldRecords(t);
+      const rows = bySession.get(t.sid) ?? {};
       if (!owns(data.records, key)) {
         if (Object.keys(rows).length) await writeRecord(t, key, rows);
         continue;
@@ -192,7 +214,7 @@ export async function writeSessionStorage(key: string, value: unknown, api: KvAp
   // failure; reroll reads image metadata through its own logic now.
   if (key === STORE_KEY('jobs')) return;
   return serializeSessionStorage(async () => {
-    const all = await targets(true);
+    const all = await targets(true, mixedKeys.has(key));
     // directTarget matches pack keys and per-chat note keys only, and neither
     // is written anywhere any more (memory + Risu assets only; the user clears
     // old values by hand). Reads of existing lorebook entries keep working.
@@ -213,10 +235,11 @@ export async function writeSessionStorage(key: string, value: unknown, api: KvAp
     }
     const next = { ...storedObject(value) };
     const legacy = storedObject(await api.getItem!(key));
+    const nextBySession = rowsBySession(key, next), legacyBySession = rowsBySession(key, legacy);
     for (const t of all) {
-      const rows = Object.fromEntries(Object.entries(next).filter(([id, row]) => rowSession(key, id, row) === t.sid));
-      const data = payload(await readChat(t), t);
-      const backup = Object.fromEntries(Object.entries(legacy).filter(([id, row]) => rowSession(key, id, row) === t.sid));
+      const rows = nextBySession.get(t.sid) ?? {};
+      const data = await heldRecords(t);
+      const backup = legacyBySession.get(t.sid) ?? {};
       if (Object.keys(rows).length || Object.keys(backup).length || owns(data.records, key)) await writeRecord(t, key, rows);
       for (const id of Object.keys(rows)) delete next[id];
       Object.assign(next, backup);
