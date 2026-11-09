@@ -42,6 +42,9 @@ test('on: the tagger\'s word stands, and a plain penis becomes the saved size', 
   assert.match(compose(man, { action: 'penis' }), /(^|, )penis(,|$)/, 'off: nothing is swapped');
 });
 
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 미성년으로 그려지는 캐릭터의 노출 막기를 지키는 테스트 (AGENTS.md 8번).
+// ╚══════════════════════════════════════════════════════════════════════════╝
 test('an age field says under 18 by a number or a word', () => {
   for (const age of ['17', 17, '17살', '10대', '고등학생', '중학생', '고딩', 'high school student', 'teenager', 'child']) assert.equal(api.isUnderageAge(age), true, String(age));
   for (const age of ['18', 18, '24 years old', '20대', '', null, undefined]) assert.equal(api.isUnderageAge(age), false, String(age));
@@ -69,3 +72,6 @@ test('the scene\'s own tags go too, and only those', () => {
   assert.equal(api.characterIsUnderage({ age: '16' }, {}), true);
   assert.equal(api.characterIsUnderage({ age: '26' }, {}), false);
 });
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ [여기까지] 위 테스트는 절대 빼거나 약하게 바꾸지 말 것.
+// ╚══════════════════════════════════════════════════════════════════════════╝
