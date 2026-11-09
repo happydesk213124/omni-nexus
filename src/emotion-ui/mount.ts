@@ -12,6 +12,7 @@ import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerBgPick, type 
 import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTION_TABS } from './markup';
 import { attachSoundHelp } from '../sound-ui/help';
 import { getConfig } from '../services/context';
+import { openImagePeek } from '../char-command/peek';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -24,6 +25,15 @@ export function addEmotionStructure(root: ParentNode): void {
   attachSoundHelp(root);
 }
 export const emotionStyleText = (): string => EMOTION_CSS;
+
+/** A picture tapped, big, as the 캐릭터 tab's open: its tile already holds the whole file. False when it shows none. */
+function openPicture(target: Element | null): boolean {
+  const pic = target?.closest?.<HTMLElement>('.emo-pic,.emo-bg-pic');
+  const url = /url\("(.+)"\)/.exec(pic?.style.backgroundImage || '')?.[1];
+  if (!pic || !url) return false;
+  openImagePeek(url, pic.closest('dialog'));
+  return true;
+}
 
 // Thumbnails live in this settings iframe, so a blob URL is fine here (never in the chat).
 const thumbs = new Map<string, string>();
@@ -183,6 +193,7 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   });
   // A sample pressed: drawn now for every chat. A tile's 다시 그리기 draws it again; 삭제 takes it away.
   root.querySelector('#emo-bg')?.addEventListener('click', event => {
+    if (openPicture(event.target as Element | null)) return;
     const button = (event.target as Element | null)?.closest?.<HTMLButtonElement>('[data-emo-bg-make],[data-emo-bg-redraw],[data-emo-bg-delete]');
     if (!button || button.disabled) return;
     const make = button.getAttribute('data-emo-bg-make'), redraw = button.getAttribute('data-emo-bg-redraw'), remove = button.getAttribute('data-emo-bg-delete');
@@ -296,6 +307,7 @@ function bindCharacterSheet(live: () => boolean): void {
   };
   form.addEventListener('click', event => {
     const target = event.target as Element | null;
+    if (openPicture(target)) return;
     // The form itself carries data-emo-view: only the switch's own buttons count here.
     const switchTo = target?.closest?.('[data-emo-tab]')?.getAttribute('data-emo-tab');
     if (switchTo === 'voice' || switchTo === 'faces') { event.preventDefault(); view(switchTo); return; }

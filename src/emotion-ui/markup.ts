@@ -91,6 +91,7 @@ export const EMOTION_CSS = `
 #emo-bg .emo-bg-tile{display:flex;flex-direction:column;gap:4px;min-width:0}
 #emo-bg .emo-bg-pic{aspect-ratio:1216/832;border-radius:8px;border:1px solid #ffffff18;background:#0b0e14 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.9}
 #emo-bg .emo-bg-pic[data-busy="1"]{outline:2px solid #22c55e;outline-offset:-2px}
+#emo-bg .emo-bg-pic[style*="background-image"]{cursor:zoom-in}
 #emo-bg .emo-bg-tile small{font-size:11px;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #emo-bg .emo-bg-samples{margin-top:10px}
 #emo-bg .emo-bg-samples summary{cursor:pointer;opacity:.85;min-height:32px;display:flex;align-items:center}
@@ -125,6 +126,7 @@ export const EMOTION_CSS = `
 .emo-tile[data-seen="1"]{border-color:#ec489966}
 .emo-tile .emo-pic{aspect-ratio:832/1216;border-radius:8px;background:#0b0e14 center/contain no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.9}
 .emo-tile .emo-pic[data-busy="1"]{outline:2px solid #22c55e;outline-offset:-2px}
+.emo-tile .emo-pic[style*="background-image"]{cursor:zoom-in}
 .emo-tile b{font-size:12px}
 .emo-tile small{font-size:10px;opacity:.7}
 .emo-tile button{min-height:30px;font-size:12px}

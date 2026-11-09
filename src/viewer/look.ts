@@ -14,12 +14,8 @@ export function accentOf(name: string): string {
   return `hsl(${h} 62% 60%)`;
 }
 
-// Letters that come in turn; any after these come with the last of them.
-const LETTERS = 320;
-// Turns the style sheet has a delay for. A turn is one element the page restyles and repaints alone.
-const TURNS = 140;
-// Letters closer together than this come as one turn: the eye cannot part them, and the page pays for each.
-const TURN_MS = 33;
+// A line fades in whole, this long at the plainest speed: one animation, where letter by letter was one per letter.
+const FADE_MS = 240;
 const SERIF = '"Gowun Batang","Nanum Myeongjo","Noto Serif KR","Noto Serif CJK KR",serif';
 export const STATIC_CSS = `
 [x-omni-vn]{position:fixed;z-index:45;isolation:isolate;overflow:hidden;color:#f4f1ea;font:14px/1.5 system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;user-select:none;-webkit-user-select:none;touch-action:manipulation;
@@ -92,15 +88,11 @@ export const STATIC_CSS = `
   background:linear-gradient(135deg,var(--c,#7c5cf5),color-mix(in srgb,var(--c,#7c5cf5) 55%,#100c1c));box-shadow:0 4px 14px -4px var(--c,#7c5cf5)}
 [x-omni-vn] [data-vn-name]:empty{display:none}
 [x-omni-vn] [data-vn-costume]{font-size:.82em;font-weight:400;opacity:.85}
-[x-omni-vn] [data-vn-text]{flex:1 1 auto;min-height:0;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:thin;scrollbar-color:rgba(227,194,122,.3) transparent}
-[x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc;font-style:italic}
+[x-omni-vn] [data-vn-text]{flex:1 1 auto;min-height:0;overflow:auto;font:16.5px/1.78 ${SERIF};word-break:keep-all;overflow-wrap:anywhere;white-space:pre-wrap;scrollbar-width:thin;scrollbar-color:rgba(227,194,122,.3) transparent;animation:vn-fade .24s ease}
+[x-omni-vn] [data-vn-text][data-narr]{color:#cfc8dc}
 /* The line and 기록's lines can be selected, to copy: a drag on the line selects (a phone: a long press); a tap still goes on. */
 [x-omni-vn] [data-vn-text],[x-omni-vn] [data-vn-log] p{user-select:text!important;-webkit-user-select:text!important;-webkit-touch-callout:default}
 [x-omni-vn] [data-vn-text] ::selection,[x-omni-vn] [data-vn-log] ::selection{background:rgba(227,194,122,.42);color:#fff}
-/* Each letter shows at its turn, at once: a fade made every letter its own layer to blend, the reveal
-   cost the phone a frame every frame. Hidden letters keep their room, so the line never moves. */
-[x-omni-vn] [data-vn-text] i{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps(1,end) forwards}
-${Array.from({ length: TURNS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-child(${i + 1}){animation-delay:calc(${i} * var(--vs))}`).join('')}[x-omni-vn] [data-vn-text] i:nth-child(n+${TURNS + 1}){animation-delay:calc(${TURNS} * var(--vs))}
 /* The line's voice is being made: a spinner at the box's corner, by the arrow. */
 [x-omni-vn] [data-vn-voicewait]{display:none;position:absolute;right:36px;bottom:46px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite;pointer-events:none}
 [x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next .5s ease-in-out 13 alternate forwards}
@@ -209,9 +201,9 @@ ${Array.from({ length: TURNS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-chil
 [x-omni-vn] [data-vn-ch]{padding:11px 16px;border-radius:12px;cursor:pointer;text-align:center;font:15px/1.5 ${SERIF};color:#f4f1ea;background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 6px 20px rgba(0,0,0,.4);transition:background .15s,border-color .15s}
 [x-omni-vn] [data-vn-ch][data-sel]{border-color:var(--gold);background:rgba(227,194,122,.2)}
 [x-omni-vn] [data-vn-ch][data-sel]::after{content:"한 번 더 누르면 보내요 · 입력창에 쓰면 같이 가요 · 빈 곳을 누르면 풀려요";display:block;margin-top:2px;font:11px/1.4 system-ui,sans-serif;color:var(--gold)}
-[x-omni-vn] [data-vn-strip]{position:absolute;top:56px;right:0;width:min(42%,210px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:hidden;padding:10px;z-index:5;display:flex;flex-direction:column;gap:8px;
+[x-omni-vn] [data-vn-strip]{position:absolute;top:56px;right:0;width:min(42%,210px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding:10px;z-index:5;display:flex;flex-direction:column;gap:8px;
   background:rgba(10,9,17,.94);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
-[x-omni-vn] [data-vn-strip] [x-vn-thumb]{flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
+[x-omni-vn] [data-vn-strip] [x-vn-thumb]{position:static!important;inset:auto!important;flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
 [x-omni-vn] [data-vn-strip] div[x-vn-thumb]{display:flex;align-items:center;justify-content:center;font-size:11px;color:#bdb4cf;background:rgba(255,255,255,.05)}
 [x-omni-vn] [data-vn-strip]:empty::before{content:"";align-self:center;width:18px;height:18px;margin:10px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
 [x-omni-vn] [data-vn-msgs]{position:absolute;top:56px;left:0;width:min(56%,250px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding:10px;z-index:5;display:flex;flex-direction:column;gap:6px;
@@ -247,11 +239,6 @@ ${Array.from({ length: TURNS }, (_, i) => `[x-omni-vn] [data-vn-text] i:nth-chil
 @keyframes vn-enter{from{opacity:0;translate:-50% 7%}to{opacity:1;translate:-50% 0}}
 @keyframes vn-counts-in{from{opacity:0}to{opacity:1}}
 @keyframes vn-photo{from{opacity:0;translate:-50% -46%;scale:.96}to{opacity:1;translate:-50% -50%;scale:1}}
-/* Visible at both ends, not only at the end: a 1ms step past a second's delay is held at a rounding
-   short of its end (Chromium), the "from" value, and every letter after that stayed hidden for good:
-   a long line stopped mid-word (at 20ms a letter, after the 50th). Before its turn a letter has no
-   animation applied yet (fill forwards only), so it still waits hidden. */
-@keyframes vn-ch{from,to{visibility:visible}}
 @keyframes vn-fade{from{opacity:0}to{opacity:1}}
 /* The cues pulse for a few seconds and then stay lit: an odd count of half-pulses ends on "to". Pulsing for good,
    they kept the screen drawing for as long as a reader stayed on a line. */
@@ -458,7 +445,7 @@ export function stageCss(s: StageState): string {
     : s.cg ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:50%!important;top:calc(50% - 40px)!important;right:auto!important;bottom:auto!important}${s.endCg ? '[x-omni-vn] [data-vn-box]{background:transparent;border-color:transparent;box-shadow:none}[x-omni-vn] [data-vn-box]::before{display:none}' : '[x-omni-vn] [data-vn-box]{opacity:0}'}[x-omni-vn] [x-vn-bg]{filter:brightness(.45) blur(3px)}${big ? `[x-omni-vn] [data-vn-cgbar] [data-vn-act]{display:inline-flex}${castChips(s.chips)}${s.cgPending ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgfull"]{display:none}' : ''}${s.cgLocked ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"],[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}${s.cgRolling ? '[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgroll"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:6px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}[x-omni-vn] [data-vn-cgbar] [data-vn-act="cgtags"]{opacity:.35}' : ''}` : ''}` : '',
     // Over a big picture's bar (and its chips, when it has some).
     s.cgNote ? `[x-omni-vn] [data-vn-note]{display:block${big ? `;top:auto;bottom:${chipped ? 150 : 124}px` : ''}}${chipped ? '@media (hover:none),(pointer:coarse){[x-omni-vn] [data-vn-note]{bottom:164px}}' : ''}[x-omni-vn] [data-vn-note]::after{content:${JSON.stringify(s.cgNote)}}` : '',
-    s.revealed ? '[x-omni-vn] [data-vn-text] i{animation:none!important;visibility:visible!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
+    s.revealed ? '[x-omni-vn] [data-vn-text]{animation:none!important}[x-omni-vn] [data-vn-next],[x-omni-vn] [data-vn-end]{animation-delay:0s!important}' : '',
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
@@ -484,37 +471,20 @@ export function stageCss(s: StageState): string {
   ].filter(Boolean).join('\n');
 }
 
-/** The line's letters as the <i> runs that come in turn, `size` letters a run, and how many turns that makes. */
-function letterRuns(shown: readonly string[], size: number): { html: string; turns: number } {
-  let html = '', run = '', inRun = 0, turns = 0;
-  const close = () => { if (inRun) { html += `<i>${esc(run)}</i>`; turns++; run = ''; inRun = 0; } };
-  shown.forEach((ch, at) => {
-    // Past the letters that take turns, or the turns the style sheet has: the rest are one run, with the last.
-    const rest = at >= LETTERS || turns >= TURNS;
-    if (!rest && ch === '\n') { close(); html += '\n'; return; }
-    run += ch; inRun++;
-    if (!rest && inRun >= size) close();
-  });
-  close();
-  return { html, turns };
-}
 /**
- * Letters appear in turn (CSS only); the arrow shows once they all have. At the
- * end of the story so far (`end`) the arrow is a blinking cue to write the next
- * message instead. Returns the reveal time.
+ * The line fades in whole (CSS only); the arrow shows once it has. At the end of the
+ * story so far (`end`) the arrow is a blinking cue to write the next message instead.
+ * `revealMs`: how long the fade takes. `readMs`: the time AUTO gives a line for its length.
  */
 /** `costume`: the costume a line is in, by its name (none in the default one): after the name, the plate keeping the person's colour. */
-export function boxHtml(input: { speaker: string; text: string; narration: boolean; end?: boolean; pace?: number; costume?: string }): { html: string; revealMs: number } {
-  const chars = [...input.text], pace = input.pace ?? 1;
-  const step = Math.max(6, Math.min(20, Math.floor(1800 / Math.max(1, chars.length)))) * pace;
+export function boxHtml(input: { speaker: string; text: string; narration: boolean; end?: boolean; pace?: number; costume?: string }): { html: string; revealMs: number; readMs: number } {
+  const chars = [...input.text], pace = Math.max(0, input.pace ?? 1);
   const shown = input.narration || !input.speaker ? chars : ['“', ...chars, '”'];
-  const size = pace > 0 ? Math.max(1, Math.ceil(TURN_MS / step)) : 1;
-  const { html: letters, turns } = pace <= 0 ? { html: esc(shown.join('')), turns: 0 } : letterRuns(shown, size);
-  const vs = Math.round(step * size), revealMs = turns * vs;
+  const revealMs = Math.round(FADE_MS * pace), readMs = Math.round(Math.min(shown.length * 20, 1800) * pace);
   const name = input.narration || !input.speaker ? '' : esc(input.speaker) + (input.costume ? `<span data-vn-costume> · ${esc(input.costume)}</span>` : '');
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {
-    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="--vs:${vs}ms">${letters}</div>${tail}<div data-vn-voicewait></div>`,
-    revealMs,
+    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="animation-duration:${revealMs}ms">${esc(shown.join(''))}</div>${tail}<div data-vn-voicewait></div>`,
+    revealMs, readMs,
   };
 }

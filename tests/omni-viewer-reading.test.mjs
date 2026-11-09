@@ -374,7 +374,45 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line ope
   } finally { await browser.close(); }
 });
 
-test('옴니 뷰어 over a restricted SafeDOM: a long line comes out to its last letter (past a second in, its letters stayed hidden mid-word) and grows the box until all of it shows (it was cut off below, out of reach); the next short one takes it back, and the name rides on top', async () => {
+test('옴니 뷰어 over a restricted SafeDOM: 삽화\'s list scrolls, and a tile tapped after it has is the one under the finger', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const shots = [1, 2, 3, 4, 5, 6].flatMap(n => [`하린: "${n}번째 줄."`, `[[@inray::card${n}::inxshot_${n}::832::1216]]`]);
+    const v = await viewerOn(browser, [...shots, '오미선: "끝."']);
+    await v.shows(/번째 줄|끝/);
+    await v.press('strip');
+    await v.page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-strip] [x-vn-thumb]').length === 6);
+    await v.page.waitForTimeout(500);
+    const strip = await v.rect('[x-omni-vn] [data-vn-strip]');
+    assert.ok(await v.page.evaluate(() => { const n = document.querySelector('[x-omni-vn] [data-vn-strip]'); return n.scrollHeight > n.clientHeight + 20; }), 'more tiles than the panel shows');
+    await v.page.mouse.move(strip.x + strip.width / 2, strip.y + strip.height / 2);
+    await v.page.mouse.wheel(0, 3000);
+    const atEnd = () => v.page.waitForFunction(() => { const n = document.querySelector('[x-omni-vn] [data-vn-strip]'); return n.scrollTop > 0 && n.scrollTop + n.clientHeight >= n.scrollHeight - 1; });
+    await atEnd();
+    // A finger too: the browser's own touch scrolling, on a page that also listens for taps.
+    const cdp = await v.page.context().newCDPSession(v.page);
+    const swipe = async direction => {
+      const x = strip.x + strip.width / 2, from = strip.y + strip.height / 2, finger = y => [{ x, y, id: 1 }];
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: finger(from) });
+      for (let moved = 12; moved <= 240; moved += 12) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: finger(from + direction * moved) }); await v.page.waitForTimeout(16); }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    await swipe(1);
+    await v.page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-strip]').scrollTop === 0);
+    await swipe(-1);
+    await atEnd();
+    await v.page.waitForTimeout(300);
+    assert.match(await v.page.evaluate(() => (document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '').includes('[data-vn-strip]{translate:0 0}') ? 'open' : 'closed'), /open/, 'a swipe on the list is no tap: it stays open');
+    const last = await v.page.locator('[x-omni-vn] [data-vn-strip] [x-vn-thumb]').last().boundingBox();
+    await v.page.mouse.click(last.x + last.width / 2, last.y + last.height / 2);
+    await v.page.waitForFunction(() => !/\[data-vn-strip\]\{translate:0 0/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
+    // The sixth picture's place: the twelfth scene, not that of the tile that stood there before the scroll.
+    await v.page.waitForFunction(() => /^"12 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    assert.deepEqual(v.errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM: a long line shows whole and grows the box until all of it shows (it was cut off below, out of reach); the next short one takes it back, and the name rides on top', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const long = '야청이 오른손에 쥐고 있던 파란색 무늬의 수퍼볼을 입술 가까이 가져다 대며 윙크하더니, 유려한 투구 폼으로 코트 한가운데를 향해 힘차게 던져 올렸다.';
@@ -384,12 +422,14 @@ test('옴니 뷰어 over a restricted SafeDOM: a long line comes out to its last
       window.__OMNI_TTS_SETTINGS_OPEN__ = () => window.settingsUp;
       window.__OMNI_OPEN_TTS__ = async () => { window.settingsUp = true; setTimeout(() => { const ask = window.takeSoundFocus(); window.asked.push(ask); ask?.shown?.(); }, 300); };
     });
-    /** Once every letter is out: all of them inside the box's text, nothing left below it. */
+    /** Once the line has come in: all of it inside the box's text, nothing left below it. */
     const whole = () => v.page.waitForFunction(() => {
-      const text = document.querySelector('[x-omni-vn] [data-vn-text]'), letters = [...text.querySelectorAll('i')];
-      return letters.length > 0 && getComputedStyle(letters.at(-1)).visibility === 'visible';
+      const text = document.querySelector('[x-omni-vn] [data-vn-text]');
+      return !!text?.textContent && getComputedStyle(text).opacity === '1';
     }).then(() => v.page.evaluate(() => {
-      const text = document.querySelector('[x-omni-vn] [data-vn-text]'), area = text.getBoundingClientRect(), last = [...text.querySelectorAll('i')].at(-1).getBoundingClientRect();
+      const text = document.querySelector('[x-omni-vn] [data-vn-text]'), area = text.getBoundingClientRect(), all = document.createRange();
+      all.selectNodeContents(text);
+      const last = all.getBoundingClientRect();
       return { fits: text.scrollHeight <= text.clientHeight + 1 && last.bottom <= area.bottom + 1, box: Math.round(document.querySelector('[x-omni-vn] [data-vn-box]').getBoundingClientRect().height) };
     }));
     await v.shows(/야청이/);

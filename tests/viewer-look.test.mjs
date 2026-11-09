@@ -56,37 +56,30 @@ test('letter speed: 즉시 writes the line as it is; slower ones wait longer per
   assert.match(stage({ cg: 'pending', cgView: 'show', cgPending: true }), /\[data-vn-act="cgfull"\]\{display:none\}/, 'a frame still being drawn has no full screen');
 });
 
-test('letters are plain <i>: their delay is by place in the style sheet, never a style of their own', () => {
+test('a line fades in whole: one animation at the speed set, no element for any letter', () => {
   const line = api.boxHtml({ speaker: '하린', text: '응, 늦었지.', narration: false, pace: 1.7 });
-  assert.match(line.html, /<div data-vn-text style="--vs:\d+ms"><i>“<\/i><i>응<\/i>/);
-  assert.doesNotMatch(line.html, /<(span|i) style/, 'no inline style per letter');
-  assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(2\)\{animation-delay:calc\(1 \* var\(--vs\)\)\}/);
-  assert.match(api.STATIC_CSS, /\[data-vn-text\] i:nth-child\(n\+141\)\{animation-delay:calc\(140 \* var\(--vs\)\)\}/, 'a long line: the rest come with the last');
-  assert.match(stage({ revealed: true }), /\[data-vn-text\] i\{animation:none!important;visibility:visible!important\}/);
-  // Shown at its turn, at once: no letter is ever a fading layer of its own (that cost a phone every frame of a reveal).
-  assert.match(api.STATIC_CSS, /\[data-vn-text\] i\{font-style:normal;visibility:hidden;animation:vn-ch 1ms steps\(1,end\) forwards\}/);
-  // Visible at both ends: a 1ms step past a second's delay held at a rounding short of its end showed its "from" (hidden)
-  // and the line stopped there for good (the browser check is in omni-viewer-reading: a long line to its last letter).
-  assert.match(api.STATIC_CSS, /@keyframes vn-ch\{from,to\{visibility:visible\}\}/);
-  assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-text\] i\{[^}]*opacity/);
-  const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 }), vs = Number(long.html.match(/--vs:(\d+)ms/)[1]), turns = long.html.match(/<i>/g).length;
-  assert.equal(long.revealMs, turns * vs, 'a long line is whole when its last turn is: the cue does not wait for 1000 letters');
-  assert.ok(long.revealMs < 2100, `as soon as it was with a letter a turn: ${long.revealMs}ms`);
+  assert.match(line.html, /<div data-vn-text style="animation-duration:408ms">“응, 늦었지\.”<\/div>/);
+  assert.equal(line.revealMs, 408);
+  assert.match(api.STATIC_CSS, /\[x-omni-vn\] \[data-vn-text\]\{[^}]*animation:vn-fade \.24s ease\}/);
+  assert.doesNotMatch(api.STATIC_CSS, /\[data-vn-text\] i\b|@keyframes vn-ch\b/, 'nothing is left of the letters');
+  assert.match(stage({ revealed: true }), /\[data-vn-text\]\{animation:none!important\}/, 'a tap during the fade shows the line at once');
+  assert.match(api.boxHtml({ speaker: '', text: '가\n<a&b', narration: true, pace: 1 }).html, />가\n&lt;a&amp;b<\/div>/, 'a line break stays, and the text is escaped');
+  const long = api.boxHtml({ speaker: '', text: '가'.repeat(1000), narration: true, pace: 1 });
+  assert.equal(long.revealMs, 240, 'a long line comes in as fast as a short one');
   assert.equal(long.html.match(/가/g).length, 1000, 'every letter is there');
 });
 
-test('letters too close to tell apart come as one turn: fewer elements for the page to restyle, every letter and line break kept', () => {
-  assert.equal(api.boxHtml({ speaker: '', text: '가나다', narration: true, pace: 2.6 }).html.match(/<i>/g).length, 3, 'slow enough to see: one letter a turn');
-  assert.match(api.boxHtml({ speaker: '', text: '가나다라마바', narration: true, pace: 1 }).html, /<i>가나<\/i><i>다라<\/i><i>마바<\/i>/);
-  assert.match(api.boxHtml({ speaker: '', text: '가\n나다', narration: true, pace: 1 }).html, /<i>가<\/i>\n<i>나다<\/i>/, 'a line break stays between the runs');
-  assert.match(api.boxHtml({ speaker: '', text: '<a&b', narration: true, pace: 1 }).html, /<i>&lt;a<\/i><i>&amp;b<\/i>/, 'a run is escaped as a letter was');
-  for (const length of [40, 90, 150, 300, 320]) {
-    const line = api.boxHtml({ speaker: '', text: '가'.repeat(length), narration: true, pace: 1 });
-    assert.ok(line.html.match(/<i>/g).length <= 60, `${length} letters: ${line.html.match(/<i>/g).length} turns`);
-  }
-  for (const pace of [1, 1.7, 2.6]) for (const length of [10, 100, 138, 141, 500]) {
-    const turns = api.boxHtml({ speaker: '', text: '가'.repeat(length), narration: true, pace }).html.match(/<i>/g).length;
-    assert.ok(turns <= 141, `the style sheet has a delay for every turn (${length} letters at ${pace}: ${turns})`);
+test('AUTO still gives a line the time its length asks for, at the speed set', () => {
+  const at = (text, pace) => api.boxHtml({ speaker: '', text, narration: true, pace }).readMs;
+  assert.equal(at('가'.repeat(10), 1), 200);
+  assert.equal(at('가'.repeat(1000), 1), 1800, 'as long as letters took, and no longer');
+  assert.equal(at('가'.repeat(1000), 2.6), 4680);
+  assert.equal(at('가'.repeat(10), 0), 0, '즉시: no wait of its own');
+});
+
+test('the illustrations panel scrolls as the messages panel does', () => {
+  for (const panel of ['data-vn-strip', 'data-vn-msgs']) {
+    assert.match(api.STATIC_CSS, new RegExp(`\\[${panel}\\]\\{[^}]*overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;`), panel);
   }
 });
 

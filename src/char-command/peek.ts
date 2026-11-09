@@ -10,7 +10,8 @@ export function closeImagePeek(): void {
   active = null;
 }
 
-export function openImagePeek(src: string): void {
+/** `over`: the modal window it opens from. A modal is drawn above the whole page, so the picture must go inside it. */
+export function openImagePeek(src: string, over?: Element | null): void {
   if (!src) return;
   closeImagePeek();
   const veil = document.createElement('div');
@@ -34,6 +35,6 @@ export function openImagePeek(src: string): void {
   document.addEventListener('keydown', onKey, true);
   releaseKey = () => document.removeEventListener('keydown', onKey, true);
   veil.appendChild(img);
-  document.body.appendChild(veil);
+  (over ?? document.body).appendChild(veil);
   active = veil;
 }
