@@ -220,3 +220,21 @@ test('a 402 from Fish explains that API credit is separate from the web plan', a
   assert.match(new TtsHttpError(402).message, /402.*API 크레딧.*s2\.1-pro-free/);
   assert.equal(new TtsHttpError(400).message, '음성 API 요청 실패 (400)');
 });
+
+test('JEV reads the chat author notes: a new speaker, and one who is known but has no voice',async()=>{
+  const saved=new Map();let sent=[];
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
+    nativeFetch:async(_url,options)=>{sent.push(JSON.parse(options.body));return {ok:true,json:async()=>({answers:{0:{choice:'1001'}}})};}};
+  try{
+    const data=await api.loadTtsData();data.settings.enabled=true;data.settings.autoAssign=true;data.settings.selector='jev';data.settings.jev.key='fake';data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male'],folder:''}];data.characters=[];
+    const context={scope:'jev-note',rosterScope:'bot:note-char',characterId:'note-char',chatId:'chat',sessionId:'',character:{},chat:{note:'Gorn is a high schooler.'},messages:[]};
+    await api.ensureTtsSpeakers(context,['Gorn'],()=>true);
+    assert.deepEqual(sent[0].questions[0].instructions.sources.author_note,['Gorn is a high schooler.'],'a new speaker');
+    data.characters[0].voiceKey='';data.characters[0].fishId='';sent=[];
+    await api.ensureTtsSpeakers(context,['Gorn'],()=>true);
+    assert.deepEqual(sent[0].questions[0].instructions.sources.author_note,['Gorn is a high schooler.'],'known, voiceless');
+    data.characters=[];sent=[];
+    await api.ensureTtsSpeakers({...context,scope:'jev-quiet',chat:{}},['Gorn'],()=>true);
+    assert.equal(sent[0].questions[0].instructions.sources.author_note,undefined,'no note: nothing empty goes along');
+  }finally{delete globalThis.risuai;}
+});

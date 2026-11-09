@@ -3,6 +3,7 @@ import { GLOBAL_SCOPE } from '../core/constants';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { objectValue } from '../providers/tts/http';
 import { listCharacters } from './characters';
+import { sessionAuthorNoteLlmContent } from './session-author-note';
 import { ensureBotTtsCharacters } from '../storage/tts-store';
 import { ttsBotScope } from '../storage/tts-roster';
 import { voicedMessages } from '../domain/tts/excerpts';
@@ -81,8 +82,12 @@ export async function currentTtsContext(): Promise<TtsChatContext> {
   }
   return context;
 }
-/** `messages`: ids of the chat messages being voiced; their text goes along. */
-export interface TtsSourceOptions { lore: boolean; persona: boolean; illustration: boolean; messages?: string[] }
+/** `messages`: ids of the chat messages being voiced; their text goes along. `note`: the chat's author's notes. */
+export interface TtsSourceOptions { lore: boolean; persona: boolean; illustration: boolean; messages?: string[]; note?: boolean }
+/** What JEV reads about the people it picks for. Only JEV takes sources: the other engines answer from name and tags. */
+export function voicePickSources(engine: string, context: TtsChatContext, names: string[], messages: string[] = []): Promise<Record<string, unknown> | undefined> {
+  return engine === 'jev' ? ttsCharacterSources(context, { lore: true, persona: true, illustration: true, messages, note: true }, names) : Promise.resolve(undefined);
+}
 export async function ttsCharacterSources(context: TtsChatContext, options: TtsSourceOptions, names: string[] = []): Promise<Record<string, unknown>> {
   const host = risuHost(), result: Record<string, unknown> = {};
   if (options.lore) {
@@ -109,6 +114,11 @@ export async function ttsCharacterSources(context: TtsChatContext, options: TtsS
   if (options.messages?.length) {
     const chat = voicedMessages(context.messages, options.messages);
     if (chat.length) result.chat = chat;
+  }
+  if (options.note) {
+    // Risu's own note on the chat, then Omni's (the bot's and the session's): where an age or a voice is often written.
+    const notes = [String(context.chat.note || '').slice(0, 6000), (await sessionAuthorNoteLlmContent(context.sessionId)).slice(0, 6000)].filter(text => text.trim());
+    if (notes.length) result.author_note = notes;
   }
   result.character = [String(context.character.name || ''), String(context.character.desc || '').slice(0, 6000)];
   return result;

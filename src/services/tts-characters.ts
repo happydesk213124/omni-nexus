@@ -10,7 +10,7 @@ import { costumeCue } from '../domain/tts/costume-cue';
 import { costumesOf, refreshCostumeNames } from './costume-names';
 import { callLlm } from '../providers/llm/client';
 import { ttsData, saveTtsData, ttsCandidateVoices } from '../storage/tts-store';
-import { ttsCharacterSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
+import { ttsCharacterSources, voicePickSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
 import { loadSoundData } from '../storage/sound-store';
 import { soundEmbedSettings } from '../providers/sound/embed';
 import type { EmbeddingSettings } from '../providers/embedding/client';
@@ -132,7 +132,7 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
     const engine=data.settings.selector;
     // Names already came from the parser. JEV can select from lore directly;
     // it must not require a second, independently configured LLM connection.
-    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true, messages: messageIds }, context.rosterScope, unknown);
+    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true, messages: messageIds, note: true }, context.rosterScope, unknown);
     for(const name of unknown)if(!proposals.some(p=>ttsNameKey(p.draft.name)===ttsNameKey(name)))proposals.push({draft:blankTtsCharacter(context.rosterScope,name)});
     // A new person takes their emoji's gender and tags before a voice is chosen; a voice the LLM already
     // picked of the other gender is let go, and chosen again below among that gender's.
@@ -145,7 +145,7 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
     if (!ttsData().settings.enabled) return;
     if (engine === 'jev' && proposals.length) {
       // The message being voiced is the evidence for a speaker no lorebook describes.
-      const sources=await ttsCharacterSources(context,{lore:true,persona:true,illustration:true,messages:messageIds},unknown);
+      const sources=await voicePickSources('jev',context,unknown,messageIds);
       const selected = await selectTtsVoices(proposals.map(p => p.draft), ttsCandidateVoices(), ttsData().settings, 'jev',sources);
       for (const proposal of proposals) { const voice = selected.get(proposal.draft.id)![0]; proposal.draft.voiceKey = voice.key; proposal.draft.fishId = voice.fishId; adoptVoiceTags(proposal.draft, voice); }
     }
@@ -155,5 +155,5 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
   const empty=[...new Map(names.flatMap(name=>{const c=resolveTtsSpeaker(name,ttsData().characters,context.rosterScope);return c&&!c.fixed&&!c.fishId&&!ttsData().voices.some(v=>v.key===c.voiceKey)?[[c.id,c] as const]:[];})).values()];
   // One known but still voiceless keeps what it holds: its emoji fill only an unknown gender and empty tags.
   for (const c of empty) { const hint = [c.name, ...c.triggers].map(n => hints.get(ttsNameKey(n))).find(Boolean); if (hint) applyCueHint(c, hint, false); }
-  if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selector=ttsData().settings.selector;const selected=await selectTtsVoices(empty,ttsCandidateVoices(),ttsData().settings,selector,undefined,selector==='embedding'?await voiceEmbedding():null);if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];c.voiceKey=voice.key;c.fishId=voice.fishId;adoptVoiceTags(c,voice);}await saveTtsData();}
+  if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selector=ttsData().settings.selector;const selected=await selectTtsVoices(empty,ttsCandidateVoices(),ttsData().settings,selector,await voicePickSources(selector,context,empty.flatMap(c=>[c.name,...c.triggers]),messageIds),selector==='embedding'?await voiceEmbedding():null);if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];c.voiceKey=voice.key;c.fishId=voice.fishId;adoptVoiceTags(c,voice);}await saveTtsData();}
 }

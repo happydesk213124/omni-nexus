@@ -11,7 +11,7 @@ Keep both quotation marks on the same line. Narration stays plain prose. Never c
 // 첫 대사 이모지: each speaker's first cue in a reply. The model knows its own reply, where "first in the story" was a guess
 // (an early reply cut from its prompt). The six age-gender emoji are named (they become the voice library's ages); the
 // personality one is the model's own pick.
-const CUE_EMOJI = `Each character's first cue in every reply starts with two emoji: age-gender (👧 girl, 👦 boy: child; 👩 woman, 👨 man: teen to young adult; 👩‍🦰, 👨‍🦰: mature, 30s-40s; 👵, 👴: elderly), then one for personality: 👩🥺 Harin (soft tone): "Hi." Their later cues in that reply have none.`;
+const CUE_EMOJI = `Each character's first cue in every reply starts with two emoji: age-gender (👧 girl, 👦 boy: elementary school age or younger only; 👩 woman, 👨 man: middle schooler to young adult, students included; 👩‍🦰, 👨‍🦰: mature, 30s-40s; 👵, 👴: elderly), then one for personality: 👩🥺 Harin (soft tone): "Hi." Their later cues in that reply have none.`;
 export const ttsCuePrompt = (emoji = false): string => `@@depth 0\n<OmniTTS>\n${CUE_RULES}${emoji ? `\n${CUE_EMOJI}` : ''}\n</OmniTTS>`;
 export const TTS_CUE_PROMPT = ttsCuePrompt();
 

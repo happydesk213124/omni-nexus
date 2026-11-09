@@ -1464,6 +1464,7 @@
               <div class="actions">
                 <button class="btn-ghost" type="button" id="nx-char-select" aria-pressed="false">선택</button>
                 <button class="btn-ghost" type="button" id="nx-char-to-global">전역 로스터로</button>
+                <button class="btn-ghost" type="button" id="nx-char-to-session" hidden>현재 챗으로</button>
                 <button class="btn-ghost" type="button" id="nx-char-add-session">새 캐릭터</button>
                 <button class="btn-ghost" type="button" id="nx-char-add-global" hidden>새 캐릭터</button>
                 <button class="btn-ghost" type="button" id="nx-char-dup">복제</button>
@@ -2377,6 +2378,8 @@
         document.getElementById("nx-char-add-global").hidden = session;
         const toGlobal = document.getElementById("nx-char-to-global");
         if (toGlobal) toGlobal.hidden = !session;
+        const toSession = document.getElementById("nx-char-to-session");
+        if (toSession) toSession.hidden = session;
         document.getElementById("nx-export-session-chars").hidden = !session;
         document.getElementById("nx-export-global-chars").hidden = session;
         document.getElementById("nx-import-session-chars").hidden = !session;

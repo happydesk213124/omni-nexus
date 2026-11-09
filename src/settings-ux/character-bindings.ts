@@ -146,6 +146,8 @@ export function bindCharacterSheet(): void {
     }
     const move = document.getElementById('nx-char-to-global');
     if (move) move.hidden = scope !== 'session';
+    const back = document.getElementById('nx-char-to-session');
+    if (back) back.hidden = scope !== 'global';
     choose(cards.find(card => card.dataset.charScope === scope && card.dataset.charId === selectedId)
       || cards.find(card => card.dataset.charScope === scope));
     document.getElementById('nx-char-search')?.dispatchEvent(new Event('input', { bubbles: true }));
@@ -345,20 +347,16 @@ export function bindCharacterSheet(): void {
     }
     if (empty) { empty.hidden = visible > 0; empty.classList.toggle('show', visible === 0); }
   });
-  document.getElementById('nx-char-to-global')?.addEventListener('click',async()=> {
-    if(!current || selectedScope==='global')return;
-    const button=document.getElementById('nx-char-to-global') as HTMLButtonElement;
-    button.disabled=true;
-    try {
-      await (globalThis as typeof globalThis & {__OMNI_FLUSH_CHARACTERS__?:()=>Promise<void>}).__OMNI_FLUSH_CHARACTERS__?.();
-      const scope=current.dataset.charRefScope || '';
-      const row=(await listCharacters(scope)).find(r=>r.id===selectedId);
-      if(!row)throw new Error('저장된 캐릭터를 찾을 수 없습니다.');
-      await upsertCharacter('__global__',row);
-      await deleteCharacter(scope,row.id);
-      document.getElementById('nx-refresh-chars')?.click();
-    } catch(error) {window.alert(String(error));} finally {button.disabled=false;}
-  });
+  for (const [id, from, to] of [['nx-char-to-global', 'session', 'global'], ['nx-char-to-session', 'global', 'session']] as const) {
+    const button = document.getElementById(id) as HTMLButtonElement | null;
+    button?.addEventListener('click', async () => {
+      if (!current || selectedScope !== from) return;
+      button.disabled = true;
+      try { await moveCharacters([selectedId], rosterOf(current, from), rosterOf(cards.find(card => card.dataset.charScope === to), to)); }
+      catch (error) { window.alert(String(error)); }
+      finally { button.disabled = false; }
+    });
+  }
   if(empty) empty.textContent='등록된 캐릭터가 없습니다.';
   bindSelection({ cards: () => cards, scope: () => selectedScope, removeCharacters, selection });
   document.getElementById('nx-char-search')?.dispatchEvent(new Event('input', {bubbles:true}));
@@ -374,6 +372,25 @@ const tileFor = (card: HTMLElement) => [...document.querySelectorAll<HTMLElement
 /** The roster a card is saved in: the global one, or its bot's. */
 const rosterOf = (card: HTMLElement | undefined, scope: string): string => scope === 'global'
   ? '__global__' : card?.dataset.charRefScope || (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '';
+
+/** Moved, not copied: on one roster only, so the global row never overrides what is edited in the chat. */
+async function moveCharacters(ids: readonly string[], from: string, to: string): Promise<void> {
+  // Same roster: the upsert would land on the row the delete then removes.
+  if (!to || to === from) throw new Error('보낼 챗을 찾을 수 없습니다. 채팅을 먼저 열어 주세요.');
+  await (globalThis as Bridge).__OMNI_FLUSH_CHARACTERS__?.();
+  const rows = await listCharacters(from);
+  try {
+    for (const id of ids) {
+      const row = rows.find(r => r.id === id);
+      if (!row) throw new Error('저장된 캐릭터를 찾을 수 없습니다.');
+      await upsertCharacter(to, row);
+      await deleteCharacter(from, row.id);
+    }
+  } finally {
+    // Also after a failure part-way: those already moved show where they are.
+    document.getElementById('nx-refresh-chars')?.click();
+  }
+}
 
 /** 비활성화 shows on its tile: dimmed, and said in its title. */
 async function paintDisabled(cards: HTMLElement[]): Promise<void> {
@@ -405,7 +422,7 @@ async function paintPersona(cards: HTMLElement[]): Promise<void> {
 
 /**
  * 선택 모드: tiles are picked by tapping, then one bar acts on all of them:
- * delete, 비활성화/활성화, an LLM command, or a copy/move to the other roster.
+ * delete, 비활성화/활성화, an LLM command, or a move to the other roster.
  */
 function bindSelection(ctx: {
   cards: () => HTMLElement[];
@@ -426,7 +443,8 @@ function bindSelection(ctx: {
   bar.innerHTML = '<span data-sel-count></span><button type="button" class="dock-btn" data-sel="all">전체 선택</button>'
     + '<button type="button" class="dock-btn" data-sel="off">비활성화</button><button type="button" class="dock-btn" data-sel="on">활성화</button>'
     + '<button type="button" class="dock-btn" data-sel="llm">LLM 명령</button><button type="button" class="dock-btn" data-sel="look-gen">참고컷 생성</button>'
-    + '<button type="button" class="dock-btn" data-sel="look-vibe">vibe레퍼로</button><button type="button" class="dock-btn" data-sel="delete">삭제</button>';
+    + '<button type="button" class="dock-btn" data-sel="look-vibe">vibe레퍼로</button><button type="button" class="dock-btn" data-sel="to-global">전역 로스터로</button>'
+    + '<button type="button" class="dock-btn" data-sel="to-session">현재 챗으로</button><button type="button" class="dock-btn" data-sel="delete">삭제</button>';
   const chosen = () => [...picked].filter(card => card.isConnected && card.dataset.charScope === ctx.scope());
   let note = '';
   const paint = () => {
@@ -436,6 +454,8 @@ function bindSelection(ctx: {
     for (const button of bar.querySelectorAll<HTMLButtonElement>('[data-sel]')) {
       button.disabled = button.dataset.sel !== 'all' && n === 0;
     }
+    // Only ever the other roster.
+    for (const [action, shownOn] of [['to-global', 'session'], ['to-session', 'global']]) bar.querySelector<HTMLElement>(`[data-sel="${action}"]`)!.hidden = ctx.scope() !== shownOn;
     toggleButton.classList.toggle('on', ctx.selection.on);
     toggleButton.setAttribute('aria-pressed', String(ctx.selection.on));
   };
@@ -455,6 +475,8 @@ function bindSelection(ctx: {
   };
   toggleButton.textContent = '선택';
   toggleButton.addEventListener('click', () => setMode(!ctx.selection.on));
+  // The scope switch clears the selection before it changes scope: this is what paints the new one.
+  document.getElementById('nx-char-scope-bar')?.addEventListener('omni-roster-scope', paint);
   const run = async (work: (cards: HTMLElement[]) => Promise<void>) => {
     const cards = chosen(); if (!cards.length) return;
     note = '';
@@ -476,6 +498,11 @@ function bindSelection(ctx: {
       await mutateCharacterRoster(roster, rows => rows.map(row => !ids.has(row.id) ? row
         : action === 'off' ? { ...row, disabled: true } : Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'disabled')) as CharacterRecord));
       await paintDisabled(ctx.cards());
+    });
+    if (action === 'to-global' || action === 'to-session') void run(async cards => {
+      const to = action === 'to-global' ? 'global' : 'session';
+      await moveCharacters(cards.map(card => card.dataset.charId || ''), rosterOf(cards[0], ctx.scope()), rosterOf(ctx.cards().find(card => card.dataset.charScope === to), to));
+      for (const card of cards) picked.delete(card);
     });
     if (action === 'llm') void run(async cards => {
       const actions = (globalThis as Bridge).__OMNI_SETTINGS_ACTIONS__;

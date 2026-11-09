@@ -81,7 +81,7 @@ try {
   await page.waitForFunction(() => rosterNow().map(row => row.id).join() === 'alpha,gamma');
   assert.equal(await tile('Beta').count(), 0);
   assert.equal(await page.locator('#nx-char-select-bar [data-sel="done"]').count(), 0, 'no 완료: 선택 itself turns it off');
-  for (const gone of ['copy', 'move']) assert.equal(await page.locator(`#nx-char-select-bar [data-sel="${gone}"]`).count(), 0, gone + ' gave way to 참고컷 생성 · vibe레퍼로');
+  for (const gone of ['copy']) assert.equal(await page.locator(`#nx-char-select-bar [data-sel="${gone}"]`).count(), 0, gone + ' gave way to 참고컷 생성 · vibe레퍼로');
   await select.click();
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);
   assert.equal(await page.locator('#nx-char-dup').isVisible(), true, 'the row comes back');
@@ -142,6 +142,34 @@ try {
   await page.waitForFunction(() => !!document.querySelector('[data-ux-character-tile].nx-persona'));
   assert.deepEqual(await tiles(), [['g-me', '"페르소나"']], 'the whole name, not the alias, and no session tile');
   await page.evaluate(() => globalThis.__OMNI_SETTINGS_ACTIONS__.save({ card: { user_info_persona_only: false } }));
+  // 현재 챗으로 · 전역 로스터로: a move, one by its button or many from the bar, and only ever to the other roster.
+  const on = (scope, id) => `[data-ux-character-scope="${scope}"][data-ux-character-tile="${id}"]`;
+  const moved = (scope, id, from) => page.waitForFunction(([there, gone]) => !!document.querySelector(there) && !document.querySelector(gone), [on(scope, id), on(from, id)]);
+  const pane = id => page.locator('#' + id), sel = name => page.locator(`#nx-char-select-bar [data-sel="${name}"]`);
+  await page.locator('[data-ux-scope="global"]').dispatchEvent('click');
+  assert.deepEqual([await pane('nx-char-to-global').isVisible(), await pane('nx-char-to-session').isVisible()], [false, true], 'the global tab sends to the chat');
+  await page.locator(on('global', 'g-me')).click();
+  await pane('nx-char-to-session').click();
+  await moved('session', 'g-me', 'global');
+  await select.click();
+  const shown = async () => [await sel('to-global').isVisible(), await sel('to-session').isVisible()];
+  assert.deepEqual(await shown(), [false, true], 'and so does its bar');
+  await page.locator('[data-ux-scope="session"]').dispatchEvent('click');
+  assert.deepEqual(await shown(), [true, false], 'the bar follows the tab');
+  await page.locator('[data-ux-scope="global"]').dispatchEvent('click');
+  assert.deepEqual(await shown(), [false, true], 'and back');
+  await page.locator(on('global', 'g-alias')).click();
+  await sel('to-session').click();
+  await moved('session', 'g-alias', 'global');
+  assert.equal(await page.locator('#nx-char-select-bar').isVisible(), false, 'the list is drawn again, and selecting ends with it');
+  await page.locator('[data-ux-scope="session"]').dispatchEvent('click');
+  await select.click();
+  await page.locator(on('session', 'g-me')).click();
+  await page.locator(on('session', 'g-alias')).click();
+  assert.match(await page.locator('#nx-char-select-bar [data-sel-count]').textContent(), /2명 선택/);
+  await sel('to-global').click();
+  await moved('global', 'g-me', 'session');
+  await moved('global', 'g-alias', 'session');
   // 연결된 삽화 from a TTS sheet when the 캐릭터 tab has no list yet (no chat picked, or never shown): the frozen UI's
   // own opener loads it first, then opens the sheet (it once found nothing).
   await page.evaluate(async () => { const r = globalThis.selectRuntime; r.t.charactersSession = []; r.t.charactersGlobal = []; await r.paint(); });
