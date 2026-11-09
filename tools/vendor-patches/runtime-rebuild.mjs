@@ -68,7 +68,8 @@ export function rebuildMessageRuntime(source) {
   once('  async function At() {',`  async function At() {
     if(await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();`);
   once('  async function P() {','  async function P() {\n    if(t.uiOpen && await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();');
-  once('      auto_aspect: document.getElementById("nx-auto-aspect")', `      character_height: document.getElementById("nx-character-height") ? ee("nx-character-height") : e.character_height !== false,
+  once('      auto_aspect: document.getElementById("nx-auto-aspect")', `      genitals_when_visible: document.getElementById("nx-genitals-when-visible") ? ee("nx-genitals-when-visible") : e.genitals_when_visible === true,
+      character_height: document.getElementById("nx-character-height") ? ee("nx-character-height") : e.character_height !== false,
       character_age: document.getElementById("nx-character-age") ? ee("nx-character-age") : e.character_age !== false,
       speech_bubble_weight: document.getElementById("nx-speech-bubble-weight") ? (() => { const r = N("nx-speech-bubble-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.speech_bubble_weight ?? 1),
       speech_huge_text: document.getElementById("nx-speech-huge-text") ? ee("nx-speech-huge-text") : e.speech_huge_text === true,

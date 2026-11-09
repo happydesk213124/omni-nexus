@@ -7,6 +7,7 @@
  * clothes (not the weapons tab).
  */
 import { povParts, povWorn, type PovPart } from './pov.ts';
+import { hasUnderageLook, isUnderageAge, withoutExposureTags } from './underage.ts';
 import clothingHints from '../../config/clothing-hints.json';
 import jewelryHints from '../../config/jewelry-hints.json';
 import weaponHints from '../../config/weapon-hints.json';
@@ -658,7 +659,27 @@ export function wearLocked(value: unknown): boolean {
  * Wear source: `shot.costume` → previous pick → roster `active_costume`.
  * Freeform shot attire/accessories still apply only when the matching lock is off.
  */
-export function composeCharacterCaptionTags(
+export function composeCharacterCaptionTags(...[stored, shot, options]: Parameters<typeof composeCaption>): string {
+  if (!characterIsUnderage(stored, shot)) return composeCaption(stored, shot, options);
+  return withoutExposureTags(composeCaption(stored ? { ...stored, wear_state: 'clothed' } : stored, { ...shot, wear_state: 'clothed', nude: undefined, sex: '' }, options));
+}
+
+/** The look a shot wears says the person is under 18 (underage.ts). */
+export function characterIsUnderage(
+  stored: CharacterInput | null | undefined,
+  shot: { age?: unknown; appearance?: unknown; costume?: unknown } | null | undefined,
+): boolean {
+  const worn = resolveCostumeWear(stored || {}, shot?.costume, stored?.active_costume);
+  return [shot?.age, stored?.age, worn.age].some(isUnderageAge) || [shot?.appearance, stored?.appearance, worn.appearance].some(hasUnderageLook);
+}
+
+/** The tagger wrote the plain word: this person's own size goes there. */
+function sizedPenis(tags: string, size: string): string {
+  return size ? splitTagTokens(tags).map(tag => tag.toLowerCase() === 'penis' ? size : tag).join(', ') : tags;
+}
+const withoutGenitals = (tags: string): string => splitTagTokens(tags).filter(tag => !/penis|pussy/i.test(tag)).join(', ');
+
+function composeCaption(
   stored: CharacterInput | null | undefined,
   shot: {
     original?: unknown;
@@ -693,8 +714,12 @@ export function composeCharacterCaptionTags(
     /** The viewpoint person of a pov shot: what shows of them (pov.ts). */
     pov?: unknown;
   } | null | undefined,
-  options: { character_height?: unknown; character_age?: unknown } = {},
+  options: { character_height?: unknown; character_age?: unknown; genitals_when_visible?: unknown } = {},
 ): string {
+  // 성기 태그는 보일 때만: none from the wear state or the saved looks, only the tagger's own word for this shot.
+  const seenOnly = options.genitals_when_visible === true;
+  const savedPenis = normalizePenisSize(stored?.penis_size);
+  const inFrame = (action: string): string => seenOnly ? sizedPenis(action, savedPenis) : action;
   const resolvedCostume = resolveCostumeWear(stored || {}, shot?.costume, stored?.active_costume);
   const ownsAppearance = Array.isArray(stored?.costumes) && Object.hasOwn(stored.costumes[resolvedCostume.index] || {}, 'appearance');
   stored = { ...stored, ...resolvedCostume };
@@ -746,12 +771,12 @@ export function composeCharacterCaptionTags(
       wearState === 'completely' ? 'nude' : '',
       // Only the tagger's word: it knows what is in frame, and the wear state does not.
       shown('penis', normalizePenisSize(stored?.penis_size) || 'penis'),
-      shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, contact.action,
+      shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, inFrame(contact.action),
       contact.tags,
       shot?.sex,
     ));
   }
-  const wear = wearTagsForWearState(joinTags(attire, upperBody ? '' : bottoms), wearState, gender, penis);
+  const wear = wearTagsForWearState(joinTags(attire, upperBody ? '' : bottoms), wearState, gender, penis, !seenOnly);
   const explicitGender = normalizeGender(shot?.gender ?? stored?.gender ?? stored?.sex);
   const heightCap = options.character_height === false ? '' : formatHeightCaption(
     stored?.height ?? (shot as { height?: unknown } | null | undefined)?.height,
@@ -769,16 +794,18 @@ export function composeCharacterCaptionTags(
   // only wire point, so the prefixed form lands on per-character captions
   // (both Danbooru and V5-natural paths call this) and never the base prompt.
   const interaction = applyInteractionKeys(shot);
-  const bodySlots = joinTags(shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, interaction.action);
-  const weapons = weapon ? wrapWearCatalogTags(accessories, wearState) : '';
+  const bodySlots = joinTags(shot?.gaze, shot?.pose, shot?.left_hand, shot?.right_hand, inFrame(interaction.action));
+  const savedOnly = (tags: string): string => seenOnly ? withoutGenitals(tags) : tags;
+  const weapons = weapon ? savedOnly(wrapWearCatalogTags(accessories, wearState)) : '';
   const nudeAcc = wearStateNeedsAnatomyAccessories(wearState)
-    ? nudeAnatomyTagsFromAccessories(accessories)
+    ? savedOnly(nudeAnatomyTagsFromAccessories(accessories))
     : '';
   // Misfiled anatomy tags must follow the same exposure rule as penis_size.
   // Keep the saved appearance intact so editing/importing never loses tags.
-  const exposed = ['bottomless', 'nude', 'completely'].includes(wearState);
+  const exposed = !seenOnly && ['bottomless', 'nude', 'completely'].includes(wearState);
+  const hiddenLook = seenOnly ? /penis|pussy/i : /penis/i;
   const visibleAppearance = (value: unknown): string => splitTagTokens(value).flatMap(tag => {
-    if (exposed || !/penis/i.test(tag)) return [tag];
+    if (exposed || !hiddenLook.test(tag)) return [tag];
     const group = /^(-?\d+(?:\.\d+)?)::([\s\S]*)::$/.exec(tag);
     if (!group) return [];
     const kept = visibleAppearance(group[2]);

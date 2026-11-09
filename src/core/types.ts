@@ -121,6 +121,8 @@ export interface CardSettings {
   char_appearance: boolean;
   /** POV: the tagger may mark a shot's viewpoint person. Off, nothing about tagging changes. */
   pov_mode: boolean;
+  /** pussy/penis come only from the tagger, when it judges them seen in the shot. Off, the wear state adds them. */
+  genitals_when_visible: boolean;
   /** Only the global character the selected Risu persona is takes part in tagging. */
   user_info_persona_only: boolean;
   /** Unused legacy flag — UI removed; keep so old saves do not break. */

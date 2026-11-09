@@ -256,6 +256,16 @@ export async function runScenario(N, handles) {
     if (off.pov_mode !== false) throw new Error('POV must turn off');
     return {defaultOff:true,persists:true};
   });
+  await rec('settings.genitals_when_visible_contract', async () => {
+    const initial = (await get('/v1/settings')).settings.card;
+    if (!('genitals_when_visible' in initial)) return {unsupported:true};
+    if (initial.genitals_when_visible !== false) throw new Error('Must start off');
+    const on = (await put('/v1/settings', {card:{genitals_when_visible:true}})).settings.card;
+    if (on.genitals_when_visible !== true) throw new Error('Must persist');
+    const off = (await put('/v1/settings', {card:{genitals_when_visible:false}})).settings.card;
+    if (off.genitals_when_visible !== false) throw new Error('Must turn off');
+    return {defaultOff:true,persists:true};
+  });
   await rec('job.commit_output_unknown', async () => {
     const result = await post('/v1/jobs/commit-output', {job_id:'missing',stream_id:'missing'});
     if (result.ok !== false || result.error?.code !== 'not_pending') throw new Error('Unknown stream must not attach');

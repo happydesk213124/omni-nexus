@@ -169,6 +169,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   if (card) for (const [id, key, defaultOn] of [
     ['nx-appearance', 'char_appearance', true],
     ['nx-pov-mode', 'pov_mode', false],
+    ['nx-genitals-when-visible', 'genitals_when_visible', false],
     ['nx-userinfo-persona-only', 'user_info_persona_only', false],
     ['nx-llm-json-retry', 'llm_json_retry', false],
     ['nx-llm-tag-cal', 'llm_tag_cal', false],

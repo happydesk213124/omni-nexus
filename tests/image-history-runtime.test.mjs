@@ -30,6 +30,12 @@ test('history arrows preview, pin posts the viewed revision, and scale updates c
     });
     assert.deepEqual(options.saved,[false,true]);assert.deepEqual(options.defaults,[true,true]);
     assert.match(options.help['nx-character-height'].body,/170cm/);assert.match(options.help['nx-character-age'].body,/24 years old/);
+    const seenOnly = await page.evaluate(()=>{
+      const box=card=>{document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card});return document.getElementById('nx-genitals-when-visible').checked;};
+      return {on:box({genitals_when_visible:true}),off:box({}),help:SettingsTabs.previewHelp('nx-genitals-when-visible')};
+    });
+    assert.deepEqual([seenOnly.on,seenOnly.off],[true,false],'pussy·penis는 보일 때만 shows what is saved, off by default');
+    assert.match(seenOnly.help.body,/x-ray/);
     // 말풍선 강조 / 글씨 크게 sit under NAI5 대사삽입 and show what is saved.
     const speech = await page.evaluate(()=>{
       const read=()=>[document.getElementById('nx-speech-bubble-weight').value,document.getElementById('nx-speech-huge-text').checked,

@@ -87,28 +87,31 @@ export function wearTagsForWearState(
   state: WearState,
   gender: 'f' | 'm' | null = null,
   penisSize: unknown = '',
+  /** False: the state adds neither (the tagger writes them when they show). */
+  genitals = true,
 ): string {
   const base = wrapWearCatalogTags(attire, state);
-  const malePenis = cleanText(penisSize, 40) || 'penis';
+  const malePenis = genitals ? cleanText(penisSize, 40) || 'penis' : '';
+  const pussy = genitals ? 'pussy' : '';
   if (state === 'clothed') return base;
   if (state === 'torn') {
-    if (gender === 'f') return joinTags(base, '2::torn clothes::', 'nipples', 'pussy');
+    if (gender === 'f') return joinTags(base, '2::torn clothes::', 'nipples', pussy);
     return joinTags(base, '2::torn clothes::');
   }
   if (state === 'topless') return joinTags(base, '2::topless::', 'nipples');
   if (state === 'bottomless') {
-    if (gender === 'f') return joinTags(base, '2::bottomless::', 'pussy');
+    if (gender === 'f') return joinTags(base, '2::bottomless::', pussy);
     if (gender === 'm') return joinTags(base, '2::bottomless::', malePenis);
     return joinTags(base, '2::bottomless::');
   }
   if (state === 'nude') {
     const tag = '2::nsfw::';
-    if (gender === 'f') return joinTags(base, tag, '2::nipples::', '2::pussy::', '2::breasts out::');
+    if (gender === 'f') return joinTags(base, tag, '2::nipples::', genitals ? '2::pussy::' : '', '2::breasts out::');
     if (gender === 'm') return joinTags(base, tag, malePenis);
     return joinTags(base, tag);
   }
   const full = gender === 'm' ? '2.5::completely nude::' : '2::completely nude::';
-  if (gender === 'f') return joinTags(base, full, 'nipples', 'pussy');
+  if (gender === 'f') return joinTags(base, full, 'nipples', pussy);
   if (gender === 'm') return joinTags(base, full, malePenis);
   return joinTags(base, full);
 }

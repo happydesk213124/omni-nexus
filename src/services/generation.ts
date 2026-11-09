@@ -34,7 +34,9 @@ import {
   parseFocusIndexes,
 } from '../domain/character/focus';
 import { dedupeShotCharacters, resolveCharacter } from '../domain/character/roster';
+import { withoutExposureTags } from '../domain/character/underage';
 import {
+  characterIsUnderage,
   characterMaxLimit,
   composeCharacterCaptionTags,
   emphasizePersonTags,
@@ -330,6 +332,8 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
   const naiaModel = modelToNaia(route.model || nai.model || 'nai-diffusion-4-5-full');
   if (nai.apply_quality_tags !== false) main += QUALITY_TAGS[naiaModel] || '';
   main = appendNoHumansWhenNoCast(main, chars.length, card.no_humans_when_no_char);
+  // The scene's tags too, when anyone in it is written as under 18 (underage.ts).
+  if (chars.some(char => characterIsUnderage(cleanText(char.name, 200) ? resolveCharacter(cleanText(char.name, 200), roster) : null, char))) main = withoutExposureTags(main);
   // Frozen UI has no UC preset control; leftover human_focus appended a long UC block on every gen.
   const ucPreset = 'none';
   const neg = joinTags(styleNeg, fixedNeg, (UC_PRESETS[naiaModel] || {})[ucPreset] || '');

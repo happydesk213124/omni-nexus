@@ -277,6 +277,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.location_tag_weight = normalizeLocationWeight(card.location_tag_weight);
   card.message_select_gesture = normalizeMessageSelectGesture(card.message_select_gesture);
   card.pov_mode = card.pov_mode === true;
+  card.genitals_when_visible = card.genitals_when_visible === true;
   card.user_info_persona_only = card.user_info_persona_only === true;
   // costume: main-tagger catalog inject (char_looks always builds costumes[])
   card.costume =
