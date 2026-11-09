@@ -93,6 +93,8 @@ export interface TtsSettings {
   hideTone: boolean;
   passageLine: boolean;
   excludeText: string;
+  /** JEV 작가의 노트: the user's own guidance, sent with every voice JEV picks. */
+  jevNote: string;
   /** 1 once the default status-panel terms were merged into excludeText. */
   excludeSeed: number;
   /** Legacy preference, used only when migrating to omitCharacters. */

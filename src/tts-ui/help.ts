@@ -64,6 +64,7 @@ export const TTS_HELP: Record<string, Tip> = {
   'jev-model': { title: 'JEV 모델명', body: 'JEV 모델 이름입니다.' },
   'jev-url': { title: 'JEV 요청 URL', body: 'JEV 요청을 보낼 전체 주소입니다.' },
   'jev-format': { title: 'JEV API 형식', body: '연결 사이트에 맞는 요청 형식을 고릅니다.' },
+  'jev-note': { title: 'JEV 작가의 노트', body: 'JEV가 캐릭터 음성을 고를 때마다 함께 보내는 안내입니다. 자동 배정과 JEV 추천 버튼 모두에 들어갑니다. 이미 음성이 있는 캐릭터는 다시 고를 때 반영됩니다. 비우면 보내지 않습니다.' },
   'jev-key': { title: 'JEV API Key', body: 'JEV 요청에 쓰는 API 키입니다.' },
   'tts-test-jev': { title: '연결 테스트', body: 'JEV에 실제로 요청을 보내 응답을 확인합니다.' },
   'tts-test-translation': { title: '연결 테스트', body: '선택한 번역 방식으로 짧은 문장을 번역해 봅니다.' },

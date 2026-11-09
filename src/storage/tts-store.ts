@@ -24,6 +24,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
     jev: { ...defaults.jev, ...raw.jev } };
   for (const field of Object.keys(defaults) as (keyof TtsSettings)[]) if (typeof defaults[field] === 'boolean' && typeof result[field] !== 'boolean') Object.assign(result, { [field]: defaults[field] });
   if (typeof result.excludeText !== 'string') result.excludeText = '';
+  if (typeof result.jevNote !== 'string') result.jevNote = '';
   // 화자 이름 숨기기 once hid the emoji before the name as well: a save from then keeps its screen as it was.
   if (typeof raw.hideEmoji !== 'boolean') result.hideEmoji = result.hideName;
   // An empty list is intentional; only older saves inherit the bracket setting.

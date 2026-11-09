@@ -149,8 +149,12 @@ try {
   await page.locator('[data-ux-scope="global"]').dispatchEvent('click');
   assert.deepEqual([await pane('nx-char-to-global').isVisible(), await pane('nx-char-to-session').isVisible()], [false, true], 'the global tab sends to the chat');
   await page.locator(on('global', 'g-me')).click();
+  // The chat open in Risu, though the tab was last showing another bot.
+  await page.evaluate(() => { globalThis.lastShown = globalThis.__OMNI_CHARACTER_SCOPE__; globalThis.__OMNI_CHARACTER_SCOPE__ = () => 'another-bot'; });
   await pane('nx-char-to-session').click();
   await moved('session', 'g-me', 'global');
+  assert.equal(await page.evaluate(() => rosterNow().some(row => row.id === 'g-me')), true, 'in the open bot');
+  await page.evaluate(() => { globalThis.__OMNI_CHARACTER_SCOPE__ = globalThis.lastShown; });
   await select.click();
   const shown = async () => [await sel('to-global').isVisible(), await sel('to-session').isVisible()];
   assert.deepEqual(await shown(), [false, true], 'and so does its bar');

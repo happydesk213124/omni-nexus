@@ -132,7 +132,7 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
     const engine=data.settings.selector;
     // Names already came from the parser. JEV can select from lore directly;
     // it must not require a second, independently configured LLM connection.
-    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true, messages: messageIds, note: true }, context.rosterScope, unknown);
+    const proposals: TtsCharacterProposal[] = engine==='jev' ? unknown.map(name=>({draft:blankTtsCharacter(context.rosterScope,name)})) : await proposeTtsCharacters(context, '자료에 있는 미등록 화자만 추가하고 적합한 음성을 배정하세요.', { lore: true, persona: true, illustration: true, messages: messageIds }, context.rosterScope, unknown);
     for(const name of unknown)if(!proposals.some(p=>ttsNameKey(p.draft.name)===ttsNameKey(name)))proposals.push({draft:blankTtsCharacter(context.rosterScope,name)});
     // A new person takes their emoji's gender and tags before a voice is chosen; a voice the LLM already
     // picked of the other gender is let go, and chosen again below among that gender's.

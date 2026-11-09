@@ -302,6 +302,9 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.locator('#jev-key').fill('fake-jev-key');await page.locator('#jev-key').dispatchEvent('change');
     await page.locator('#tts-test-jev').click();await page.waitForFunction(()=>document.getElementById('tts-test-jev-result').textContent.startsWith('연결 성공'));
     await openPage('tts'); await page.locator('#tab-settings').click();await page.locator('#translation').selectOption('google-free');
+    await page.locator('#jev-note').evaluate(n=>{n.value='학생은 어린이가 아님';n.dispatchEvent(new Event('change',{bubbles:true}));});
+    await page.waitForFunction(()=>window.ttsData().settings.jevNote==='학생은 어린이가 아님');
+    assert.equal(await page.locator('#jev-note').evaluate(n=>n.closest('[data-nx-help-id]')?.dataset.nxHelpId),'jev-note','JEV 작가의 노트 has its own help tip');
     await page.locator('#tts-exclude-text').fill('상태창, 체력\n[시스템]');
     await page.waitForFunction(async()=>{const d=await window.risuai.pluginStorage.getItem('omnitts.data');return d?.settings?.excludeText==='상태창, 체력\n[시스템]';});
     assert.equal(await page.locator('#tts-omit-characters').inputValue(),'[, ], (, )');

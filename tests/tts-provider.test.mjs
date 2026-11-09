@@ -221,20 +221,29 @@ test('a 402 from Fish explains that API credit is separate from the web plan', a
   assert.equal(new TtsHttpError(400).message, '음성 API 요청 실패 (400)');
 });
 
-test('JEV reads the chat author notes: a new speaker, and one who is known but has no voice',async()=>{
+test('JEV 작가의 노트 goes with every voice JEV picks, apart from the sources; one with no voice gets the sources too',async()=>{
   const saved=new Map();let sent=[];
-  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[{key:'Gorn',comment:'Gorn',content:'Gorn is in high school.'}],getDatabase:async()=>({personas:[]}),
     nativeFetch:async(_url,options)=>{sent.push(JSON.parse(options.body));return {ok:true,json:async()=>({answers:{0:{choice:'1001'}}})};}};
   try{
-    const data=await api.loadTtsData();data.settings.enabled=true;data.settings.autoAssign=true;data.settings.selector='jev';data.settings.jev.key='fake';data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male'],folder:''}];data.characters=[];
-    const context={scope:'jev-note',rosterScope:'bot:note-char',characterId:'note-char',chatId:'chat',sessionId:'',character:{},chat:{note:'Gorn is a high schooler.'},messages:[]};
+    const data=await api.loadTtsData();data.settings.enabled=true;data.settings.autoAssign=true;data.settings.selector='jev';data.settings.jev.key='fake';data.settings.jevNote='  Students are not children.  ';data.voices=[{key:'male',name:'voice',fishId:voiceId,gender:'male',tags:['male'],folder:''}];data.characters=[];
+    const context={scope:'jev-note',rosterScope:'bot:note-char',characterId:'note-char',chatId:'chat',sessionId:'',character:{},chat:{note:'the chat note stays home'},messages:[]};
     await api.ensureTtsSpeakers(context,['Gorn'],()=>true);
-    assert.deepEqual(sent[0].questions[0].instructions.sources.author_note,['Gorn is a high schooler.'],'a new speaker');
+    const asked=()=>sent[0].questions[0].instructions;
+    assert.equal(asked().author_note,'Students are not children.','a new speaker');
+    assert.match(asked().question,/Follow author_note/);
+    assert.equal(asked().sources.author_note,undefined,'not among the sources');
+    assert.doesNotMatch(JSON.stringify(sent),/the chat note stays home/,'a chat note is not what this is');
     data.characters[0].voiceKey='';data.characters[0].fishId='';sent=[];
     await api.ensureTtsSpeakers(context,['Gorn'],()=>true);
-    assert.deepEqual(sent[0].questions[0].instructions.sources.author_note,['Gorn is a high schooler.'],'known, voiceless');
-    data.characters=[];sent=[];
-    await api.ensureTtsSpeakers({...context,scope:'jev-quiet',chat:{}},['Gorn'],()=>true);
-    assert.equal(sent[0].questions[0].instructions.sources.author_note,undefined,'no note: nothing empty goes along');
+    assert.equal(asked().author_note,'Students are not children.','known, voiceless');
+    assert.match(JSON.stringify(asked().sources.lore),/in high school/,'and the lore comes along for them too');
+    sent=[];
+    await api.selectTtsVoices([data.characters[0]],data.voices,data.settings,'jev');
+    assert.equal(asked().author_note,'Students are not children.','a pick from the window');
+    data.settings.jevNote='   ';sent=[];
+    await api.selectTtsVoices([data.characters[0]],data.voices,data.settings,'jev');
+    assert.equal(asked().author_note,undefined,'blank: nothing goes');
+    assert.doesNotMatch(asked().question,/author_note/);
   }finally{delete globalThis.risuai;}
 });

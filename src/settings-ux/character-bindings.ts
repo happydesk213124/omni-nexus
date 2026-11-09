@@ -1,6 +1,7 @@
 import { personaGlobalRow } from '../services/persona-global';
 import { exampleShotActions } from '../char-command/example-shot';
-import { uuid } from '../core/util/text';
+import { unifiedSessionIdForCharacter, uuid } from '../core/util/text';
+import { readOpenBot } from '../storage/current-bot';
 import { openRosterCommand, type RosterCommandActions } from './roster-command';
 import { bindCharacterPaste, selectPasteCharacter } from './character-paste';
 import type { CharacterRecord } from '../core/types';
@@ -352,7 +353,7 @@ export function bindCharacterSheet(): void {
     button?.addEventListener('click', async () => {
       if (!current || selectedScope !== from) return;
       button.disabled = true;
-      try { await moveCharacters([selectedId], rosterOf(current, from), rosterOf(cards.find(card => card.dataset.charScope === to), to)); }
+      try { await moveCharacters([selectedId], rosterOf(current, from), await moveTarget(to)); }
       catch (error) { window.alert(String(error)); }
       finally { button.disabled = false; }
     });
@@ -372,6 +373,13 @@ const tileFor = (card: HTMLElement) => [...document.querySelectorAll<HTMLElement
 /** The roster a card is saved in: the global one, or its bot's. */
 const rosterOf = (card: HTMLElement | undefined, scope: string): string => scope === 'global'
   ? '__global__' : card?.dataset.charRefScope || (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '';
+
+/** 현재 챗으로 means the bot open in Risu now, not the one the 캐릭터 tab was last showing. */
+async function moveTarget(to: 'global' | 'session'): Promise<string> {
+  if (to === 'global') return '__global__';
+  const bot = await readOpenBot();
+  return bot ? unifiedSessionIdForCharacter(bot.id) : '';
+}
 
 /** Moved, not copied: on one roster only, so the global row never overrides what is edited in the chat. */
 async function moveCharacters(ids: readonly string[], from: string, to: string): Promise<void> {
@@ -500,8 +508,7 @@ function bindSelection(ctx: {
       await paintDisabled(ctx.cards());
     });
     if (action === 'to-global' || action === 'to-session') void run(async cards => {
-      const to = action === 'to-global' ? 'global' : 'session';
-      await moveCharacters(cards.map(card => card.dataset.charId || ''), rosterOf(cards[0], ctx.scope()), rosterOf(ctx.cards().find(card => card.dataset.charScope === to), to));
+      await moveCharacters(cards.map(card => card.dataset.charId || ''), rosterOf(cards[0], ctx.scope()), await moveTarget(action === 'to-global' ? 'global' : 'session'));
       for (const card of cards) picked.delete(card);
     });
     if (action === 'llm') void run(async cards => {
