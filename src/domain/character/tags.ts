@@ -659,6 +659,9 @@ export function wearLocked(value: unknown): boolean {
  * Wear source: `shot.costume` → previous pick → roster `active_costume`.
  * Freeform shot attire/accessories still apply only when the matching lock is off.
  */
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 미성년으로 그려지는 캐릭터의 노출 막기 (underage.ts).
+// ╚══════════════════════════════════════════════════════════════════════════╝
 export function composeCharacterCaptionTags(...[stored, shot, options]: Parameters<typeof composeCaption>): string {
   if (!characterIsUnderage(stored, shot)) return composeCaption(stored, shot, options);
   return withoutExposureTags(composeCaption(stored ? { ...stored, wear_state: 'clothed' } : stored, { ...shot, wear_state: 'clothed', nude: undefined, sex: '' }, options));
@@ -672,6 +675,9 @@ export function characterIsUnderage(
   const worn = resolveCostumeWear(stored || {}, shot?.costume, stored?.active_costume);
   return [shot?.age, stored?.age, worn.age].some(isUnderageAge) || [shot?.appearance, stored?.appearance, worn.appearance].some(hasUnderageLook);
 }
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
 /** The tagger wrote the plain word: this person's own size goes there. */
 function sizedPenis(tags: string, size: string): string {

@@ -1,3 +1,8 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것. 이 플러그인에서 가장 중요한 코드다.
+// ║ 나이는 그림의 외형을 정한다: 15로 적으면 15살로 그려진다.
+// ║ 설정상 나이가 몇 살이든, 미성년으로 그려지는 캐릭터의 노출 그림은 만들지 않는다.
+// ╚══════════════════════════════════════════════════════════════════════════╝
 /**
  * Someone written as under 18 is never drawn exposed, whatever a shot or a saved look asks for. Only what is written
  * can be told: an age left empty says nothing here.
@@ -23,3 +28,6 @@ export function hasUnderageLook(raw: unknown): boolean {
 export function withoutExposureTags(tags: unknown): string {
   return splitTagTokens(tags).filter(tag => !EXPOSURE.test(tag)).join(', ');
 }
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+// ╚══════════════════════════════════════════════════════════════════════════╝
