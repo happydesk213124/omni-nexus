@@ -192,6 +192,8 @@ On top of it we keep five logical row stores plus per-image blobs.
 | `onx_char_command_presets` | LLM 명령수정 phrase presets (legacy device row; live list is `card.command_presets`) |
 | `onx_settings_presets` | Dashboard settings presets, hidden examples and last applied id; no style collections or credentials. |
 | `onx_quick_setup` | ⚡ 빠른 설정 opened or applied (`{at}`): a first install (no settings saved before) opens it by itself only until then (`src/settings-ux/quick-setup.ts`). |
+| `onx_session_slice_census` | Which chats hold session rows in their own lorebook (`{v:1,has:[sessionId…]}`): a start reads those chats and no other (`src/storage/chat-session-store.ts`). Missing, the first start looks through the chats once and writes it. |
+| `onx_module_marks` | A content mark per module of ours as last written (`{[moduleId]:mark}`): a start whose marks match, with the module still switched on, reads no module list (`src/storage/module-write.ts`). |
 | `omnitts.data` | TTS settings, voice library, folders and **global** TTS characters (`src/storage/tts-store.ts`). |
 | `omnisound.data` | BGM·효과음 settings, lists, glossary (`src/storage/sound-store.ts`). |
 | `omniinline.waits` | Streaming-tag waiting slots: older slots only (new ones are `[[inxwN]]` blocks in the message itself): the shot each pink `[[@inraywait::id…]]` will draw, newest 300 (`src/storage/inline-wait-store.ts`). |
@@ -221,12 +223,15 @@ npm run audit       # structural invariants of the built file + doc link check
 npm run smoke       # boots the built file and drives real requests through it
 npm run bench       # a 40-image gallery must list without decoding any image
 npm run parity      # old vs new behavioural diff  ← the important one
+npm run reads       # host reads at a start and per image job must not grow (tools/check-host-reads.mjs)
 ```
 
 `npm test` runs all seven and the settings checks (`tools/test-all.mjs`): what waits on
 nothing runs beside what does, and the tests named `SafeDOM`, which time real taps,
-run alone at the end. About 4 minutes; one after another (`npm run test:serial`)
-they took 5½. While working, `npm run test:related` runs only what the change can
+run alone at the end (only the files that have one). About 4 minutes; one after another (`npm run test:serial`)
+they took 5½. Test files run through `tools/run-tests.mjs`: slowest first (local
+times in `.test-times.json`, a fallback in `tools/test-times.json`), one browser per
+file (`tools/shared-browser.mjs`), and a file that never ends is named and stopped. While working, `npm run test:related` runs only what the change can
 reach (the type check, the tests that import a changed module or anything importing
 it, their unit bundles): seconds to a minute or two. Run `npm test` once before a
 commit.

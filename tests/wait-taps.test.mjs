@@ -56,7 +56,8 @@ test('a double tap on a pink slot generates that slot in its message; a single t
   await api.dropInlineWait('w123');
   await api.syncWaitTaps();
   assert.equal(listeners.size, 0, 'the last slot drawn: the listener goes away');
-  assert.equal(queries, 5, 'slots are looked up only on a click, once per click');
+  // Five taps, two of them second taps of a double tap: a single tap looks at nothing on the page.
+  assert.equal(queries, 2, 'slots are looked up only for the second tap of a double tap');
   // A waiting block lives in the message, from this session or an earlier one: with
   // streaming tags on, clicks are watched from the start, store or no store.
   api.getConfig().card.stream_inline_tags = true;

@@ -299,3 +299,34 @@ bot skips roster reload, while a host selection change follows the new bot.
 `--break-edit-metadata` restores the obsolete listener and must fail the image
 identity check during typing.
 This complements the service-only tests above with the complete built UI.
+
+## Host reads, rendering and idle work (2026-11-10)
+
+Counted on the parity mock host (`npm run reads`) and timed by replaying Risu's own
+parser and regex-script pipeline (kwaroran/RisuAI and PocketRisu source) on a PC.
+None of it is a phone measurement.
+
+| What | Before | After |
+|---|---|---|
+| Host reads at an everyday start | every chat of every bot, twice | 0 |
+| One image job: whole-bot / every-module / every-bot reads | 26 / 9–11 / 3 | 3 / 1 / 0 |
+| One image job: bot writes | 2 | 1 |
+| Rules + CBS, long reply with 4 pictures, display module only | 4.1 ms | 0.5 ms |
+| Same, every module on | 14.9 ms | 4.1 ms |
+| `<style>` blocks Risu scopes per draw of that reply | 6 | 0 |
+| Chat output listeners Risu copies the bot to and waits on | 3 | 1, answering at once |
+| `npm test` | 337 s | about 240 s |
+
+- **Census of session rows** (`onx_session_slice_census`): only the chats that hold rows are read.
+- **A job holds its bot** (`src/storage/current-bot.ts`): read once per write, not per question.
+- **Module marks** (`onx_module_marks`): an unchanged module is not read back to be compared.
+- **`setDatabaseLite`** for our database writes: `setDatabase` runs Risu's normaliser, which marks every chat as not streaming.
+- **One stylesheet per page**: the module's `backgroundEmbedding` plus a pre-scoped copy in the page (`src/image-ui/display-css.ts`, `src/domain/css-scope.ts`); rules no longer carry it.
+- **Quiet rules** (`<onx>`): a rule with any action is tried before it is run, so a message it has nothing to do in costs one scan instead of a replace and a full CBS parse.
+- **No Lua**: the message-row trigger (run for every draw and streamed chunk) is four rules; `tests/message-controls-rules.test.mjs` holds them to the released trigger.
+- **Idle**: the TTS host is not mounted with TTS and BGM·효과음 off; mouseover only with hover play; the stall monitor only during jobs or while the debug report is read; the chat-screen check slows to 5 s when nothing changes and stops while the page is hidden; a single tap on the chat no longer measures pink slots.
+
+Risk worth knowing: a module's `backgroundEmbedding` goes through every module's
+display rules (as TTS and BGM already did). A third-party rule that rewrites any
+text could touch it; the page copy is unaffected.
+

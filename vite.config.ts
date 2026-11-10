@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.12';
+const PLUGIN_VERSION = '1.4.13';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -995,6 +995,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.13 · 속도·배터리 최적화</strong>
+          <div class="muted" style="margin-top:8px">2026.11.10 · 기능은 그대로, Risu에 묻는 횟수와 채팅을 그릴 때 드는 일을 크게 줄였습니다. 업데이트 후 첫 실행에서 모듈이 한 번 다시 써집니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>시작이 가벼워짐</strong>: 시작할 때 모든 봇의 모든 채팅을 두 번씩 읽던 것을 없앴습니다. 첫 실행 뒤로는 시작할 때 채팅을 읽지 않습니다.</li>
+            <li><strong>이미지 생성 중 읽기 감소</strong>: 그림 한 번 만들 때 봇 전체를 26번 읽던 것을 3번으로, 모듈 목록 읽기도 1번으로 줄였습니다.</li>
+            <li><strong>채팅 그리기</strong>: 그림마다 붙던 스타일을 페이지에 한 번만 넣고, 할 일 없는 정규식은 건너뛰게 했습니다. 바로가기툴 줄을 넣던 Lua 트리거는 정규식으로 바꿨습니다(위치 동일).</li>
+            <li><strong>쉴 때 배터리</strong>: TTS·BGM이 둘 다 꺼져 있으면 채팅 감시를 아예 하지 않습니다. 마우스 올려 재생이 꺼져 있으면 마우스 움직임을 받지 않고, 한가할 때 화면 확인 간격을 늘렸으며, 분홍 칸은 한 번 탭으로는 화면을 읽지 않습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.12 · LLM이 코스튬을 못 바꿈, 전역 캐릭터는 현재 페르소나만, 전역 → 현재 챗 이동, JEV 작가의 노트, 감정 에셋 태그 빼기</strong>
@@ -15417,7 +15427,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

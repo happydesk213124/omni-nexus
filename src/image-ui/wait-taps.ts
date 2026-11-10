@@ -15,6 +15,8 @@ import { hitHost, releaseHost, safeArray, type HostPoint } from '../tts-ui/host-
 let installed = false;
 /** Two taps on the same slot within this long count as one double tap. */
 export const DOUBLE_TAP_MS = 450;
+/** How far apart the two taps of a double tap may land. */
+export const TAP_SLOP_PX = 32;
 /** A press held this long on a pink slot makes every pink slot of its message. */
 export const LONG_PRESS_MS = 1500;
 /**
@@ -70,8 +72,9 @@ export function installWaitTaps(): void {
     const nodes = await safeArray(await doc!.querySelectorAll(selector));
     const owned: unknown[] = [...nodes];
     try {
-      let hit: SafeElement | undefined;
-      for (const node of nodes) if (await hitHost(node, event)) { hit = node; break; }
+      // Every slot measured at once: one after another, a long chat's slots cost a round trip each, in a row.
+      const hits = await Promise.all(nodes.map(node => hitHost(node, event).catch(() => false)));
+      const hit = nodes[hits.indexOf(true)];
       if (!hit) return null;
       const id = /\bdata-inray-(?:wait|spinner)="([a-zA-Z0-9_-]{1,64})"/.exec(String(await hit.getOuterHTML()).split('>')[0] || '')?.[1];
       if (!id) return null;
@@ -114,15 +117,23 @@ export function installWaitTaps(): void {
     await releaseHost(node);
   });
 
-  // A double tap on one slot makes it; a single tap (scrolling, a stray touch) never spends a request.
-  let last = { key: '', at: 0 }, ignoreClickUntil = 0;
+  /**
+   * A double tap on one slot makes it; a single tap (scrolling, a stray touch) never spends a request. Nor does it
+   * cost a look at the page: every tap on the chat measured every pink slot to learn whether it was on one. The
+   * first tap is only remembered (where, when); a second one near it in time and place is the one that looks, and
+   * two taps that close together are on the same slot (a slot is far larger than TAP_SLOP_PX).
+   */
+  let last: { x: number; y: number; at: number } | null = null, ignoreClickUntil = 0;
   const tap = async (event: HostPoint) => {
     if (busy || Date.now() < ignoreClickUntil) return;
+    const now = Date.now(), first = last;
+    if (!first || now - first.at > DOUBLE_TAP_MS || Math.hypot(event.clientX - first.x, event.clientY - first.y) > TAP_SLOP_PX) {
+      last = { x: event.clientX, y: event.clientY, at: now };
+      return;
+    }
+    last = null;
     const slot = await slotAt(event);
     if (!slot) return;
-    const key = `${slot.index}:${slot.id}`, now = Date.now();
-    if (last.key !== key || now - last.at > DOUBLE_TAP_MS) { last = { key, at: now }; return; }
-    last = { key: '', at: 0 };
     busy = true;
     try {
       const target = await messageTarget(slot.index);
