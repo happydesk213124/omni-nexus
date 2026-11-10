@@ -19,6 +19,8 @@ const UC_HUMAN_FOCUS_TOKENS = new Set(
     .filter(Boolean),
 );
 
+// 나이 제한's box as it starts: read from the defaults, not copied, so a longer list never needs this file touched.
+const UNDERAGE_TAGS_DEFAULT = JSON.parse(fs.readFileSync(new URL('../../src/config/default-settings.json', import.meta.url), 'utf8')).card.underage_tags;
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\b|_[rs]\d+)/gi;
 const TS_LOW = FIXED_EPOCH - 60_000;
 const TS_HIGH = FIXED_EPOCH + 86_400_000;
@@ -531,7 +533,7 @@ function expectedAssetChange(a,b,at) {
   // persists. Only absent → its default (on, 18, the built-in words) passes.
   if (/\.value\.(?:settings|json)\.card\.underage_strict$/.test(at)) return a === undefined && b === true;
   if (/\.value\.(?:settings|json)\.card\.underage_age$/.test(at)) return a === undefined && b === 18;
-  if (/\.value\.(?:settings|json)\.card\.underage_tags$/.test(at)) return a === undefined && b === 'loli, shota, child, toddler';
+  if (/\.value\.(?:settings|json)\.card\.underage_tags$/.test(at)) return a === undefined && b === UNDERAGE_TAGS_DEFAULT;
   // The persona-only switch is opt-in; the scenario asserts it starts off, persists and turns back off. Only absent → off passes.
   if (/\.value\.(?:settings|json)\.card\.user_info_persona_only$/.test(at)) return a === undefined && b === false;
   // Reply-only character filtering is opt-in; the scenario asserts persistence,

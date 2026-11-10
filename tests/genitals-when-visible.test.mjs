@@ -89,10 +89,14 @@ test('나이 제한 only adds: a higher age, more words; off or cleared, under 1
   assert.equal(api.isUnderageAge('20', rules({ underage_age: 20 })), false);
   assert.equal(api.isUnderageAge('19', rules({ underage_strict: false, underage_age: 20 })), false, 'off: back to 18');
   assert.equal(api.isUnderageAge('17', rules({ underage_strict: false })), true, 'off: under 18 still counts');
-  const more = rules({ underage_tags: 'petite, 꼬마' });
+  // A word is looked for in the whole field, tags or sentences, commas or none: alone, or with * inside other words too.
+  const more = rules({ underage_tags: 'petite, *tiny, 꼬마' });
   assert.equal(api.hasUnderageLook('girl, petite, smile', more), true, 'a word written counts');
+  assert.equal(api.hasUnderageLook('a very petite girl with long hair', more), true, 'in a sentence, no commas');
+  assert.equal(api.hasUnderageLook('girl, 2::Petite::', more), true, 'emphasis and case aside');
   assert.equal(api.hasUnderageLook('girl, petiteness', more), false, 'a Latin word stands alone');
-  assert.equal(api.isUnderageAge('설정상 꼬마다', more), true, 'any other is found inside a word');
+  assert.equal(api.hasUnderageLook('girl, tinybody', more), true, '*: inside other words too');
+  assert.equal(api.isUnderageAge('설정상 꼬마다', more), true, 'a Korean word is found with its particles');
   assert.equal(api.hasUnderageLook('girl, loli', rules({ underage_tags: '' })), true, 'cleared: the built-in words still count');
   assert.equal(api.hasUnderageLook('girl, loli', rules({ underage_strict: false, underage_tags: 'petite' })), true, 'off: likewise');
   assert.equal(api.hasUnderageLook('girl, petite', rules({ underage_strict: false, underage_tags: 'petite' })), false, 'off: the added words rest');
@@ -100,6 +104,23 @@ test('나이 제한 only adds: a higher age, more words; off or cleared, under 1
   assert.match(compose(nineteen, { wear_state: 'nude' }), /nsfw/, 'at 18 as ever');
   assert.doesNotMatch(compose(nineteen, { wear_state: 'nude' }, { underage_age: 20 }), /nsfw|nipples/, 'a caption follows it');
   assert.doesNotMatch(compose({ ...woman, appearance: 'girl, petite' }, { wear_state: 'nude' }, { underage_tags: 'petite' }), /nsfw|nipples/);
+});
+
+test('the box starts with every built-in word, each counting with it switched off; a word alone keeps clear of children, childrencafe and lolipop', async () => {
+  const off = api.underageRules({ underage_strict: false });
+  const words = api.UNDERAGE_TAGS_DEFAULT.split(', ');
+  assert.ok(words.length >= 20 && words.every(word => !word.startsWith('*')));
+  for (const word of words) assert.equal(api.isUnderageAge(word, off) || api.hasUnderageLook(word, off), true, word);
+  const box = api.underageRules({ underage_tags: api.UNDERAGE_TAGS_DEFAULT });
+  for (const look of ['children', 'childrencafe', 'childish smile', 'holding lolipop', 'school uniform', 'teenage mutant']) assert.equal(api.hasUnderageLook(`girl, ${look}`, box), look === 'teenage mutant', look);
+  assert.equal(api.hasUnderageLook('girl, holding lolipop', off), false, 'the built-in words alone neither');
+  assert.equal(api.hasUnderageLook('girl, holding lolipop', api.underageRules({ underage_tags: '*loli' })), true, '*loli is the user\'s to write');
+  assert.equal(api.hasUnderageLook('girl, childrencafe', api.underageRules({ underage_tags: '*child' })), true);
+  // One list everywhere it is written down: the defaults, the factory reset, the save when the box is not on screen, the preview.
+  const fs = await import('node:fs');
+  for (const file of ['src/config/default-settings.json', 'src/config/reset-factory.json']) assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).card.underage_tags, api.UNDERAGE_TAGS_DEFAULT, file);
+  assert.ok(fs.readFileSync('tools/vendor-patches/runtime-rebuild.mjs', 'utf8').includes(JSON.stringify(api.UNDERAGE_TAGS_DEFAULT)), 'runtime-rebuild.mjs');
+  assert.ok(fs.readFileSync('docs/settings-ux-preview.html', 'utf8').includes(`>${api.UNDERAGE_TAGS_DEFAULT}</textarea>`), 'settings-ux-preview.html');
 });
 
 test('기본 nude and 천박모드 draw nobody unknown, and nobody under 18 in any costume', () => {

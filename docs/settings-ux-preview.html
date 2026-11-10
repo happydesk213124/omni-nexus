@@ -1327,7 +1327,7 @@
           <div class="stack">
             <label class="row" data-nx-help-id="nx-underage-strict"><span class="row-text"><b>나이 제한 강화</b><small>꺼도 18세 미만·기본 태그는 항상 막음</small></span><span class="sw"><input id="nx-underage-strict" type="checkbox" checked></span></label>
             <div class="row" data-nx-help-id="nx-underage-age"><span class="row-text"><b>이 나이 미만은 노출 막기</b><small>18 아래로는 내려가지 않음</small></span><input class="ctrl" id="nx-underage-age" type="number" min="18" max="99" step="1" value="18" aria-label="이 나이 미만은 노출 막기"></div>
-            <label class="block" data-nx-help-id="nx-underage-tags"><span>미성년으로 볼 태그 · 쉼표로 구분</span><textarea id="nx-underage-tags" rows="2" maxlength="2000">loli, shota, child, toddler</textarea></label>
+            <label class="block" data-nx-help-id="nx-underage-tags"><span>미성년으로 볼 단어 · 쉼표로 구분 · *는 다른 단어에 붙어 있어도</span><textarea id="nx-underage-tags" rows="4" maxlength="4000">loli, shota, child, toddler, kid, teen, teenage, teenager, minor, underage, elementary school, middle school, junior high school, high school, highschool, 초등학생, 중학생, 고등학생, 초딩, 중딩, 고딩, 미성년, 어린이, 유아, 아동</textarea></label>
           </div>
         </div>
         </div>
@@ -2916,9 +2916,9 @@
     "title": "코스튬",
     "body": "켜면 메인 태거가 캐릭터별 코스튬 목록을 보고 샷마다 복장을 고릅니다(이름·번호). 꺼도 에셋으로 캐릭을 만들 때는 복장이 코스튬으로 나뉘어 저장됩니다. 샷에 고른 값이 없으면 이전 샷 옷, 없으면 로스터 현재 코스튬을 씁니다."
   },
-  "nx-underage-strict": {"title":"나이 제한 강화","body":"나이 칸이나 외형 태그가 18세 미만이라고 말하는 캐릭터는 옷을 입은 채로 그리고, 그 캐릭터와 컷의 장면 태그에서 노출 태그를 뺍니다. 이 막기는 끌 수 없습니다. 켜면 아래 나이와 태그로 더 막습니다(기본 켜짐). 끄면 18세와 기본 태그(loli, shota, child, toddler)로만 막습니다. 감정 에셋의 기본 nude·천박모드도 이 막기를 따릅니다."},
+  "nx-underage-strict": {"title":"나이 제한 강화","body":"나이 칸이나 외형 태그가 18세 미만이라고 말하는 캐릭터는 옷을 입은 채로 그리고, 그 캐릭터와 컷의 장면 태그에서 노출 태그를 뺍니다. 이 막기는 끌 수 없습니다. 켜면 아래 나이와 태그 칸으로 더 막습니다(기본 켜짐). 끄면 18세와 기본 단어로만 막습니다. 감정 에셋의 기본 nude·천박모드도 이 막기를 따릅니다."},
   "nx-underage-age": {"title":"이 나이 미만은 노출 막기","body":"나이 칸의 숫자가 이보다 작으면 미성년으로 봅니다. 18에서 99까지 고를 수 있고, 18 아래로는 내려가지 않습니다. 15~16처럼 숫자가 여러 개면 하나라도 작으면 막습니다. 나이 칸이 비어 있으면 나이로는 막지 않고 외형 태그만 봅니다. 나이 제한 강화가 켜져 있을 때 씁니다."},
-  "nx-underage-tags": {"title":"미성년으로 볼 태그","body":"나이 칸이나 외형 태그에 이 단어가 있으면 미성년으로 봅니다. 쉼표로 구분합니다. 영어 단어는 따로 떨어진 단어만(child는 children과 다름), 한글은 글자 안에 들어 있어도 찾습니다. 기본 태그(loli, shota, child, toddler)는 지워도 항상 막습니다. 나이 제한 강화가 켜져 있을 때 씁니다."},
+  "nx-underage-tags": {"title":"미성년으로 볼 단어","body":"나이 칸이나 외형에 이 단어가 있으면 미성년으로 봅니다. 쉼표로 구분합니다. 외형이 태그든 자연어 문장이든, 쉼표가 있든 없든 칸 전체에서 찾습니다. 영어 단어는 떨어져 있을 때만 찾아 child는 cute child·a child를 막고 children·childrencafe는 막지 않습니다. 앞에 *를 붙이면 다른 단어에 붙어 있어도 막습니다(*loli는 lolicon·loligirl도). 한글은 조사가 붙으니 *가 없어도 글자 안에서 찾습니다(중학생은 중학생이다도). 처음 들어 있는 기본 단어는 칸에서 지워도 항상 막습니다. 장소·장면 태그는 보지 않습니다. 나이 제한 강화가 켜져 있을 때 씁니다."},
   "nx-genitals-when-visible": {"title":"pussy·penis는 보일 때만","body":"켜면 벗은 상태라고 pussy·penis를 자동으로 넣지 않고, 저장된 외형에 적힌 것도 빠집니다. 메인 태거가 그 컷에서 보인다고 판단할 때만 action에 씁니다. 몸이 겹치거나 자세 때문에 안 보이면 넣지 않고, x-ray 장면에는 넣습니다. penis는 그 캐릭터에 저장된 크기로 바뀝니다. 기본 꺼짐."},
   "nx-character-height": {"title":"캐릭터 키 넣기","body":"기본 켜짐. 캐릭터와 선택한 코스튬의 키를 이미지 생성 태그에 넣습니다(예: 170cm, tall). 끄면 키 항목에서 자동으로 붙이는 태그만 생략하며 저장된 키와 직접 쓴 외형 태그는 유지합니다. 다음 생성부터 적용됩니다."},"nx-character-age": {"title":"캐릭터 나이 넣기","body":"기본 켜짐. 캐릭터와 선택한 코스튬의 나이를 이미지 생성 태그에 넣습니다(예: 24 years old). 끄면 나이 항목에서 자동으로 붙이는 태그만 생략하며 저장된 나이와 직접 쓴 외형 태그는 유지합니다. 다음 생성부터 적용됩니다."},"nx-auto-aspect": {
     "title": "자동 비율 조절",
