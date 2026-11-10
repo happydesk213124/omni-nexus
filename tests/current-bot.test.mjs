@@ -109,3 +109,67 @@ test('the asset tags\' bot is the open bot alone too',async()=>{
   assert.equal((await api.characterSource('bot-b'))?.chaId,'bot-b');
   assert.equal(reads.getDatabase,1,'another bot: the directory, as before');
 });
+
+// An image job asks for its bot dozens of times (its roster nine times over). While its scope is held, one read
+// serves them all, until a write: then one more read, kept in turn.
+test('a job that holds its bot reads it once per write, the shared roster once, and lets both go at its end',async()=>{
+  await api.mutateCharacterRoster('bot-a',()=>[alice]);
+  let moduleReads=0;
+  const shared={id:'inlay-inray-display',lorebook:[{comment:'omni.nexus.data.globalcharacter',key:'',alwaysActive:false,content:JSON.stringify({version:1,roster:[{...bob,id:'shared'}]})}]};
+  const listBots=globalThis.risuai.getDatabase;
+  globalThis.risuai.getDatabase=async keys=>{ if(Array.isArray(keys)&&keys.includes('modules')){moduleReads++;return {modules:[structuredClone(shared)]};} return listBots(keys); };
+  zero();
+  const release=api.holdBotScope(scope('bot-a','one'));
+  for(let i=0;i<9;i++){
+    assert.deepEqual(names(await api.readCharacterRoster(scope('bot-a','one'))),['Alice']);
+    assert.deepEqual(names(await api.readCharacterRoster('__global__')),['Bob']);
+  }
+  assert.equal(await api.characterIdForNoteSession(scope('bot-a','two')),'bot-a');
+  assert.deepEqual(await api.readChatNote(scope('bot-a','one')),{text:'bot-a one'});
+  assert.deepEqual(reads,{getDatabase:0,getCharacterFromIndex:1,getChatFromIndex:0},'nine rosters, the note and its bot: one read of the bot');
+  assert.equal(moduleReads,1,'and one read of the modules for the shared roster');
+  // What a reader is handed is its own: changing it changes nothing for the next.
+  const mine=await api.readCharacterRoster('bot-a');mine[0].name='Changed';mine[0].costumes[0].attire='changed';
+  assert.equal((await api.readCharacterRoster('bot-a'))[0].costumes[0].attire,'shirt');
+  // A write: the bot kept is older than it, so the next question reads once, and that read is kept.
+  await api.writeChatNote(scope('bot-a','one'),{text:'changed'});
+  zero();
+  assert.deepEqual(await api.readChatNote(scope('bot-a','one')),{text:'changed'});
+  for(let i=0;i<3;i++)await api.readCharacterRoster('bot-a');
+  assert.equal(reads.getCharacterFromIndex,1,'one read after the write, not one per question');
+  release();release();
+  zero();
+  await api.readCharacterRoster('bot-a');await api.readCharacterRoster('bot-a');
+  assert.equal(reads.getCharacterFromIndex,2,'the job over, nothing is kept: every question asks Risu again');
+  moduleReads=0;await api.readCharacterRoster('__global__');await api.readCharacterRoster('__global__');
+  assert.equal(moduleReads,2);
+});
+
+test('a held job writes its bot fresh: the roster it saves is built on what Risu holds now, not on the bot it kept',async()=>{
+  await api.mutateCharacterRoster('bot-a',()=>[alice]);
+  const release=api.holdBotScope('bot-a');
+  try {
+    assert.deepEqual(names(await api.readCharacterRoster('bot-a')),['Alice']);
+    // Changed behind the plugin's back (another device, Risu's own editor) while the job holds its read.
+    const lore=chars[0].globalLore.find(e=>e.comment==='omni.nexus.data.global'),data=JSON.parse(lore.content);
+    data.roster.push({id:'carol',name:'Carol'});lore.content=JSON.stringify(data);
+    chars[0].chats[0].message=[{role:'char',data:'a reply that came meanwhile'}];
+    await api.mutateCharacterRoster('bot-a',rows=>[...rows,bob]);
+    assert.deepEqual(names(JSON.parse(chars[0].globalLore.find(e=>e.comment==='omni.nexus.data.global').content).roster),['Alice','Bob','Carol']);
+    assert.equal(chars[0].chats[0].message[0].data,'a reply that came meanwhile','the write carried the bot as it was then, messages and all');
+  } finally { release(); }
+});
+
+test('a person saved again as they were (a new stamp and nothing else) writes nothing',async()=>{
+  await api.mutateCharacterRoster('bot-a',()=>[{...alice,updated_at:100}]);
+  let writes=0;const set=globalThis.risuai.setCharacterToIndex;
+  globalThis.risuai.setCharacterToIndex=async(i,c)=>{writes++;return set(i,c);};
+  await api.mutateCharacterRoster('bot-a',rows=>rows.map(row=>({...row,updated_at:200})));
+  await api.mutateCharacterRoster('bot-a',rows=>rows.map(row=>({...row,updated_at:300})),{buffer:true});
+  assert.equal(writes,0);
+  assert.deepEqual(api.bufferedRosterTargets(),[],'and nothing waits for the bake');
+  assert.equal((await api.readCharacterRoster('bot-a'))[0].updated_at,100);
+  await api.mutateCharacterRoster('bot-a',rows=>rows.map(row=>({...row,attire:'coat',updated_at:400})));
+  assert.equal(writes,1,'a real change still writes, stamp and all');
+  assert.equal((await api.readCharacterRoster('bot-a'))[0].updated_at,400);
+});

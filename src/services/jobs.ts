@@ -91,6 +91,7 @@ import { ensureCastIds } from './cast-ids';
 import { applyLocationContinuityToShots } from '../domain/tagging/location';
 import { holdChatNote, releaseChatNote } from '../storage/chat-session-store';
 import { holdShotAssets, releaseShotAssets } from '../storage/shot-character';
+import { holdBotScope } from '../storage/current-bot';
 import { rememberReplyPlace } from '../storage/viewer-places';
 import { effectivePresetIdFor } from './preset-bindings';
 import { cardWithPreset } from '../domain/style-presets/binding';
@@ -767,6 +768,8 @@ async function runJob(jobId: string): Promise<void> {
   // and its shots register together with that bake, not one character write per image.
   holdChatNote(noteSessionId);
   holdShotAssets();
+  // And the bot it reads is read once per write, not once per question (current-bot).
+  const releaseBot = [holdBotScope(sessionId), holdBotScope(noteSessionId)];
   const jobSpan = dbgSpan('job.run');
   dbg('job.start', {
     job_id: jobId,
@@ -1927,6 +1930,7 @@ async function runJob(jobId: string): Promise<void> {
       // Its bakes are done: what they did not carry is written now, unless another job holds the chat.
       releaseShotAssets();
       releaseChatNote(noteSessionId);
+      for (const release of releaseBot) release();
     }
   }
 }

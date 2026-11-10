@@ -1,7 +1,7 @@
-import { risuHost } from '../core/host';
+import { risuHost, writeHostDatabase } from '../core/host';
 import type { SoundData, SoundKind } from '../core/sound-types';
 import { SOUND_MODULES, soundModule } from '../domain/sound/module';
-import { serializeModuleWrite } from './module-write';
+import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 import { sleep } from '../core/util/async';
 
 type ModuleRow = RisuModule & { id?: string };
@@ -15,6 +15,13 @@ export async function ensureSoundModules(data: SoundData): Promise<void> {
   return serializeModuleWrite(async () => {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) throw new Error('Risu 모듈 저장 API를 사용할 수 없습니다.');
+    // Both as they would be written, and each switched as wanted: no read of every module (module-write). A kind
+    // never used has no module and is not switched on: that too is "as wanted".
+    const kinds = ['bgm', 'sfx'] as const;
+    const wanted = (kind: SoundKind) => kind === 'bgm' ? data.settings.bgmEnabled : data.settings.sfxEnabled;
+    const mark = moduleMark(kinds.map(kind => soundModule(kind, data.settings, kind === 'bgm' ? data.bgm : data.sfx)));
+    if ((await Promise.all(kinds.map(kind => moduleCurrent(SOUND_MODULES[kind].id, mark, wanted(kind))))).every(Boolean)) return;
+    const done = async () => { for (const kind of kinds) await noteModuleMark(SOUND_MODULES[kind].id, mark); };
     if (host.requestPluginPermission && !await host.requestPluginPermission('db')) throw new Error('BGM·효과음 모듈 설치에 Risu 데이터 접근 허용이 필요합니다.');
     const db = await host.getDatabase(['modules', 'enabledModules']);
     if (!db) throw new Error('Risu 모듈 목록을 읽지 못했습니다.');
@@ -33,15 +40,16 @@ export async function ensureSoundModules(data: SoundData): Promise<void> {
       if (on) enabled.push(id);
     }
     const changedModules = JSON.stringify(modules) !== JSON.stringify(db.modules);
-    if (!changedModules && JSON.stringify(enabled) === JSON.stringify(previous)) return;
+    if (!changedModules && JSON.stringify(enabled) === JSON.stringify(previous)) { await done(); return; }
     // Same reason as OmniTTS: Risu caches enabled module objects by id, so a
     // changed module is disabled for one frame and enabled again.
     const reenable = enabled.filter(id => previous.includes(id) && changedModules);
     if (reenable.length) {
-      await host.setDatabase({ modules, enabledModules: enabled.filter(id => !reenable.includes(id)) });
+      await writeHostDatabase({ modules, enabledModules: enabled.filter(id => !reenable.includes(id)) });
       await sleep(16);
     }
-    await host.setDatabase({ modules, enabledModules: enabled });
+    await writeHostDatabase({ modules, enabledModules: enabled });
+    await done();
   });
 }
 

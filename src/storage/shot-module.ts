@@ -7,7 +7,7 @@ import { serializeModuleWrite } from './module-write';
  * missing image — plugin storage is not a pixel fallback.
  */
 import { dbg } from '../core/debug';
-import { hostHas, risuHost } from '../core/host';
+import { hostHas, risuHost, writeHostDatabase } from '../core/host';
 import { asU8, sniffImageMime, u8ToArrayBuffer, type BytesLike } from '../core/util/bytes';
 import { sleep } from '../core/util/async';
 import { cleanText } from '../core/util/text';
@@ -112,9 +112,9 @@ export async function refreshGalleryAssetLookup(): Promise<boolean> {
   if (!db) return false;
   const { off, on } = bounceEnabledModuleIds(db.enabledModules);
   try {
-    await host.setDatabase!({ enabledModules: off as string[] });
+    await writeHostDatabase({ enabledModules: off as string[] });
     await sleep(16);
-    await host.setDatabase!({ enabledModules: on as string[] });
+    await writeHostDatabase({ enabledModules: on as string[] });
     await sleep(16);
     return true;
   } catch (err) {
@@ -345,7 +345,7 @@ export async function putShotAssetsBatch(
   const held = [...pendingShotTuples.values()].filter((row) => !saved.some((s) => s.id === row.id));
   upsertShotTuples(modules, held.length ? [...held, ...saved] : saved);
   if (!moduleEnabled) enabled.push(SHOT_MODULE_ID);
-  await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+  await writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] });
   pendingShotTuples.clear();
   return saved;
   });
@@ -400,7 +400,7 @@ export async function dropShotAsset(id: string): Promise<boolean> {
   });
   if (kept.length === assets.length) return false;
   modules[idx] = { ...modules[idx], assets: kept };
-  await host.setDatabase!({
+  await writeHostDatabase({
     modules: modules as never,
     enabledModules: asShotAssetRows(db?.enabledModules).map((row) => cleanText(row, 200)).filter(Boolean) as string[],
   });

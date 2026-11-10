@@ -5,7 +5,7 @@ import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import type { BytesLike } from '../core/util/bytes';
 import { serializeSessionStorage } from './chat-session-store';
 import { characterDirectory, directoryWarm } from './character-directory';
-import { forgetBots } from './current-bot';
+import { forgetBots, heldBot, openBotFor } from './current-bot';
 import { storeShotBytes, readShotAssetBytes, type ShotAssetRow } from './shot-module';
 import { isShotAssetName, idFromShotAssetName, sessionFromShotAssetName } from '../domain/gallery/shot-assets';
 import { psGet, psRemove, psSet } from './device-store';
@@ -22,6 +22,8 @@ export async function resolveShotOwner(location:Row={}):Promise<Target> {
  const id=String(location.asset_owner_character_id || location.character_id || ''),sid=String(location.session_id || '');
  const hint=Number(location.char_index ?? await risuHost()?.getCurrentCharacterIndex?.());
  if(Number.isInteger(hint)&&hint>=0 && id) {
+  // A bot the job holds is where it was read: the write that follows reads it again and checks.
+  if(heldBot(id)?.index===hint)return {id,index:hint};
   const char=obj(await risuHost()?.getCharacterFromIndex?.(hint));
   if(String(char.chaId || char.id)===id)return {id,index:hint};
  }
@@ -204,11 +206,9 @@ export async function listShotAssets(sessionId?:string):Promise<CharacterShotAss
    return sessionId===unifiedSessionIdForCharacter(id) || (Array.isArray(char.chats)?char.chats:[]).some(c=>sessionId==='risu_'+sessionIdHash(id+'|'+String(obj(c).id || '')));
  };
  if(sessionId) {
-  const index=Number(await risuHost()?.getCurrentCharacterIndex?.());
-  if(Number.isInteger(index)&&index>=0) {
-   const char=obj(await risuHost()?.getCharacterFromIndex?.(index));
-   if(belongs(char))rows=[{index,char}];
-  }
+  // The open bot, or the one a job holds: read once for everyone asking, not once per listing.
+  const bot=await openBotFor(sessionId);
+  if(bot && belongs(bot.char))rows=[{index:bot.index,char:bot.char}];
  }
  if(!rows.length)rows=await directory();
  const selected=sessionId ? rows.filter(({char})=> {

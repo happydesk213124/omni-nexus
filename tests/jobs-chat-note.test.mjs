@@ -70,13 +70,15 @@ test('error/stop finalizer bakes completed shots before spinner cleanup and scro
         finishCompletedSpinners:async()=>{calls.push('bake');if(fails)throw Error('write failed');},
         closeStreamJob:()=>calls.push('close-stream'),setJobContext:()=>calls.push('restore-context'),prevCtx:'',deferred:undefined,
         releaseShotAssets:()=>calls.push('register-shots'),releaseChatNote:()=>calls.push('write-note'),noteSessionId:'note',
+        // The bot kept for the job's reads is let go last: nothing after it reads through it.
+        releaseBot:[()=>calls.push('release-bot')],
         dbg:()=>{},durableSpinners:true,enqueueBakeWrite:async work=>work(),
         keptSpinners:new Map(kept?[['job_0',0]]:[]),settleKeptSpinners:async()=>calls.push('park'),
         clearJobSpinners:async()=>calls.push('clear'),jobChatTarget:()=>({}),request:{},jobId:'job',spinnerOverlayUrls:[],inlineWait:'',deferWait:false,
       });
       // Shots waiting for registration and note changes no bake carried go out last, after every bake.
       // Spinners still without their image turn pink after the bake, before the scroll is let go.
-      assert.deepEqual(calls,['bake',...(kept?['park']:[]),'end-scroll','close-stream','restore-context','register-shots','write-note']);
+      assert.deepEqual(calls,['bake',...(kept?['park']:[]),'end-scroll','close-stream','restore-context','register-shots','write-note','release-bot']);
     } finally {globalThis.__OMNI_END_SCROLL__=old;}
   }
 });

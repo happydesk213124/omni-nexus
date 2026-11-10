@@ -243,3 +243,92 @@ test('comic costume memory uses the final rendered slot', async () => {
   await api.persistSessionOutfits(sid('two'),[{characters:[{name:'Aria',costume:'default'}],comic_page:{slots:[{name:'Aria',costume:'default',wear_state:'clothed'},{name:'Aria',costume:'night',wear_state:'bottomless'}]}}],roster,api.sessionOutfitRevision(sid('two')));
   const note=await api.getSessionAuthorNote(sid('two'));assert.equal(note.costumes[0].costume,'night');assert.equal(note.wear[0].wear,'bottomless');
 });
+
+// ── which chats are read ───────────────────────────────────────────────────
+// Every store kept per chat was found by reading every chat of every bot (a whole bot and a chat each), twice at
+// each start. These count what the host is asked.
+function counted() {
+  const calls = { list: 0, bot: 0, chat: 0, write: 0 };
+  const host = globalThis.risuai;
+  globalThis.risuai = { ...host,
+    getDatabase: async keys => { calls.list++; return host.getDatabase(keys); },
+    getCharacterFromIndex: async i => { calls.bot++; return host.getCharacterFromIndex(i); },
+    getChatFromIndex: async (i, j) => { calls.chat++; return host.getChatFromIndex(i, j); },
+    setChatToIndex: async (i, j, v) => { calls.write++; return host.setChatToIndex(i, j, v); },
+  };
+  return calls;
+}
+const censusKey = 'onx_session_slice_census';
+
+test('the first look reads only chats that could hold an entry, alone; after it a start asks the host nothing', async () => {
+  // 'one' came with its messages and a lorebook that names nothing of ours: the list of bots already says so.
+  // 'two' has no messages (a chat not opened yet looks like this on PocketRisu): only reading it tells.
+  const calls = counted();
+  const meta = api.STORE_KEY('meta'), roster = api.STORE_KEY('characters');
+  legacy.set(meta, { 'prompt:x': { key: 'prompt:x', text: 'kept' } });
+  assert.deepEqual(await api.psGet(meta), legacy.get(meta));
+  assert.deepEqual(await api.psGet(roster), null);
+  assert.deepEqual(calls, { list: 1, bot: 0, chat: 1, write: 0 }, 'one list of bots, the one chat it could not vouch for, no bot');
+  assert.deepEqual(legacy.get(censusKey), { v: 1, has: [] });
+  // The next start: a new plugin instance, the same save.
+  api.resetDeviceStore();
+  Object.assign(calls, { list: 0, bot: 0, chat: 0, write: 0 });
+  assert.deepEqual(await api.psGet(meta), legacy.get(meta));
+  assert.deepEqual(await api.psGet(roster), null);
+  await api.psSet(meta, { 'prompt:x': { key: 'prompt:x', text: 'changed' } });
+  assert.deepEqual(calls, { list: 0, bot: 0, chat: 0, write: 0 }, 'nothing of ours in any chat: no bot listed, no chat read, for reads and for a save');
+  assert.equal(legacy.get(meta)['prompt:x'].text, 'changed');
+});
+
+test('a chat that holds rows is the only one read on later starts, and its rows still win over the plain copy', async () => {
+  const key = api.STORE_KEY('characters'), rowId = `${sid('one')}\ta`;
+  legacy.set(key, { [rowId]: { scope: sid('one'), id: 'a', name: 'old' }, '__global__\tc': { scope: '__global__', id: 'c' } });
+  await api.psGet(key);
+  await api.psSet(key, { [rowId]: { scope: sid('one'), id: 'a', name: 'new' }, '__global__\tc': { scope: '__global__', id: 'c' } });
+  assert.deepEqual(legacy.get(censusKey), { v: 1, has: [sid('one')] });
+  api.resetDeviceStore();
+  const calls = counted();
+  const read = await api.psGet(key);
+  assert.equal(read[rowId].name, 'new', 'the chat holds the row; the plain store keeps the backup');
+  assert.equal(legacy.get(key)[rowId].name, 'old');
+  assert.deepEqual(calls, { list: 1, bot: 0, chat: 1, write: 0 }, 'the list (to find it) and that chat; the other chat is not read');
+  // A store with no rows of that kind does not read the chat a second time.
+  await api.psGet(api.STORE_KEY('meta'));
+  assert.equal(calls.chat, 1);
+});
+
+test('an entry that is another chat\'s, or broken, is left alone and fails no read', async () => {
+  // A branched chat carries a copy of the entry, still naming the chat it was copied from.
+  chars[0].chats[0].localLore.push({ comment: 'omni.nexus.data', key: '', alwaysActive: false, mode: 'normal',
+    content: JSON.stringify({ version: 1, sessionId: 'risu_someone_else', records: { [api.STORE_KEY('meta')]: { stray: { key: 'stray' } } } }) });
+  chars[0].chats[1].localLore.push({ comment: 'omni.nexus.data', content: '{bad' });
+  const meta = api.STORE_KEY('meta');
+  legacy.set(meta, { 'prompt:x': { key: 'prompt:x' } });
+  assert.deepEqual(await api.psGet(meta), { 'prompt:x': { key: 'prompt:x' } });
+  assert.equal(writes, 0);
+  assert.deepEqual(legacy.get(censusKey), { v: 1, has: [] }, 'neither counts as holding rows of ours');
+  assert.equal(chars[0].chats[1].localLore.at(-1).content, '{bad');
+});
+
+test('a host that cannot list its bots is told nothing was learned', async () => {
+  globalThis.risuai = { ...globalThis.risuai, getDatabase: async () => null };
+  const meta = api.STORE_KEY('meta');
+  legacy.set(meta, { 'prompt:x': { key: 'prompt:x' } });
+  assert.deepEqual(await api.psGet(meta), legacy.get(meta));
+  await api.psSet(meta, { 'prompt:x': { key: 'prompt:x', text: 'saved' } });
+  assert.equal(legacy.get(meta)['prompt:x'].text, 'saved');
+  assert.equal(legacy.has(censusKey), false, 'no census is written down for chats that were never seen');
+});
+
+test('a chat that could not be read keeps the census open: the next start looks again', async () => {
+  const host = globalThis.risuai;
+  let fail = true;
+  globalThis.risuai = { ...host, getChatFromIndex: async (i, j) => { if (fail && j === 1) throw new Error('network'); return host.getChatFromIndex(i, j); } };
+  const meta = api.STORE_KEY('meta');
+  legacy.set(meta, { 'prompt:x': { key: 'prompt:x' } });
+  assert.deepEqual(await api.psGet(meta), legacy.get(meta), 'the read itself still answers');
+  assert.equal(legacy.has(censusKey), false);
+  fail = false; api.resetDeviceStore();
+  await api.psGet(meta);
+  assert.deepEqual(legacy.get(censusKey), { v: 1, has: [] });
+});

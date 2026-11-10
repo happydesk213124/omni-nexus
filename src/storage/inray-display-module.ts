@@ -1,4 +1,4 @@
-import { serializeModuleWrite } from './module-write';
+import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 import { messageControlsDisplayScript, messageControlsTrigger, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
 import { measureWrite } from '../core/write-metrics';
 /**
@@ -6,7 +6,7 @@ import { measureWrite } from '../core/write-metrics';
  * Display controls and regex — gallery bytes stay on ⚛️Omni Nexus 갤러리.
  */
 import { dbg } from '../core/debug';
-import { hostHas, risuHost } from '../core/host';
+import { hostHas, risuHost, writeHostDatabase } from '../core/host';
 import { cleanText } from '../core/util/text';
 import {
   INRAY_DISPLAY_MODULE_ID,
@@ -68,9 +68,25 @@ type MessageControls = { enabled: boolean; userchat: boolean; folded?: boolean }
 export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: MessageControls): Promise<boolean> {
   const key=JSON.stringify([folded,scalePct,controls]);
   const existing=displayPending.get(key);if(existing)return existing;
-  const pending=displayTail.then(()=>updateInrayDisplayModule(folded,scalePct,controls));
+  const pending=displayTail.then(async()=>{
+    // Written before as it would be written now, and still switched on: every module in Risu is not read to learn
+    // that. (It was, at every start and before every bake.)
+    const mark=controls ? displayMark(folded,scalePct,controls) : '';
+    if(mark && await moduleCurrent([INRAY_DISPLAY_MODULE_ID,INRAY_DISPLAY_MODULE_NS],mark,true)) return true;
+    const ok=await updateInrayDisplayModule(folded,scalePct,controls);
+    if(ok && mark) await noteModuleMark(INRAY_DISPLAY_MODULE_ID,mark);
+    return ok;
+  });
   displayPending.set(key,pending);displayTail=pending.catch(()=>false);
   void pending.finally(()=>displayPending.delete(key));return pending;
+}
+/** Everything of ours the module holds for these settings: equal when nothing would be written. */
+function displayMark(folded: boolean, scalePct: unknown, controls: MessageControls): string {
+  return moduleMark([
+    inrayDisplayRegexScript(folded, scalePct), requestMarkerStripScript(), spinnerDisplayRegexScript(scalePct), waitDisplayRegexScript(scalePct),
+    waitBlockDisplayScripts(scalePct), waitBlockRequestScript(), tokenGuardScripts(), framedAssetDisplayRegexScript(folded, scalePct),
+    historyDisplayRegexScript(folded, scalePct), messageControlsDisplayScript(controls.folded === true), messageControlsTrigger(controls.enabled, controls.userchat), displayOrders,
+  ]);
 }
 async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: MessageControls): Promise<boolean> {
   if (!hostHas('getDatabase') || !hostHas('setDatabase')) return false;
@@ -199,7 +215,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       changed = true;
     }
     if (!changed) return true;
-    await measureWrite('module','display',()=>host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] }));
+    await measureWrite('module','display',()=>writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] }));
     return true;
   } catch (err) {
     dbg('inray-display.ensure.fail', { message: String((err as Error)?.message || err) }, 'warn');

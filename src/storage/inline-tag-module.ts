@@ -1,8 +1,8 @@
-import { risuHost } from '../core/host';
+import { risuHost, writeHostDatabase } from '../core/host';
 import { sleep } from '../core/util/async';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 import { inlineCastRequestScript, inlineShotDisplayScripts, inlineShotRequestScript, isTokenGuardComment, tokenGuardScripts } from '../domain/inray-display';
-import { serializeModuleWrite } from './module-write';
+import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 
 export const INLINE_TAG_MODULE_ID = 'omni-inline-tags';
 export const INLINE_TAG_MODULE_NAME = '⚛️ omni 스트리밍태그';
@@ -20,12 +20,15 @@ export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100,
   return serializeModuleWrite(async () => {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) return false;
+    // Already as it would be written, and switched as wanted: no read of every module (module-write).
+    const mark = moduleMark([inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), inlineCastRequestScript(), tokenGuardScripts()]);
+    if (await moduleCurrent(INLINE_TAG_MODULE_ID, mark, enabled)) return true;
     if (host.requestPluginPermission && !await host.requestPluginPermission('db')) return false;
     const db = await host.getDatabase(['modules', 'enabledModules']);
     if (!db) return false;
     const modules = rows(db.modules);
     const index = modules.findIndex(m => m.id === INLINE_TAG_MODULE_ID || m.namespace === INLINE_TAG_MODULE_ID);
-    if (index < 0 && !enabled) return true;
+    if (index < 0 && !enabled) { await noteModuleMark(INLINE_TAG_MODULE_ID, mark); return true; }
     const previous = index < 0 ? {} : modules[index]!;
     // A user's own rules in this module stay; ours are rewritten.
     const regex = [...inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), inlineCastRequestScript(), ...tokenGuardScripts(), ...rows(previous.regex).filter(row => !ours(row))];
@@ -37,14 +40,15 @@ export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100,
     const next = current.filter(id => id !== INLINE_TAG_MODULE_ID);
     if (enabled) next.push(INLINE_TAG_MODULE_ID);
     const changed = JSON.stringify(db.modules) !== JSON.stringify(modules);
-    if (!changed && JSON.stringify(current) === JSON.stringify(next)) return true;
+    if (!changed && JSON.stringify(current) === JSON.stringify(next)) { await noteModuleMark(INLINE_TAG_MODULE_ID, mark); return true; }
     // Risu caches enabled modules by their id list: a changed module that stays
     // enabled is switched off for one frame so the new rules are read.
     if (changed && enabled && current.includes(INLINE_TAG_MODULE_ID)) {
-      await host.setDatabase({ modules: modules as never, enabledModules: next.filter(id => id !== INLINE_TAG_MODULE_ID) });
+      await writeHostDatabase({ modules: modules as never, enabledModules: next.filter(id => id !== INLINE_TAG_MODULE_ID) });
       await sleep(16);
     }
-    await host.setDatabase({ modules: modules as never, enabledModules: next });
+    await writeHostDatabase({ modules: modules as never, enabledModules: next });
+    await noteModuleMark(INLINE_TAG_MODULE_ID, mark);
     return true;
   });
 }

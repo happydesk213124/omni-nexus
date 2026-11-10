@@ -11,7 +11,7 @@ import { measureWrite } from '../core/write-metrics';
 
 import { dbg, dbgSpan } from '../core/debug';
 import { risuHost } from '../core/host';
-import { isSessionStorageKey, readSessionStorage, writeSessionStorage, removeSessionStorage } from './chat-session-store';
+import { isSessionStorageKey, readSessionStorage, writeSessionStorage, removeSessionStorage, resetSessionStorageState } from './chat-session-store';
 
 export interface KvApi {
   getItem?(key: string): Promise<unknown>;
@@ -191,7 +191,10 @@ async function legacyPsGet(key: string, legacyKey?: string): Promise<unknown> {
 
 export async function psGet(key: string, legacyKey?: string): Promise<unknown> {
   const legacy = await legacyPsGet(key, legacyKey);
-  return isSessionStorageKey(key) ? readSessionStorage(key, legacy) : legacy;
+  if (!isSessionStorageKey(key)) return legacy;
+  // The store itself goes along: what it knows of the chats (which hold rows of ours) is kept in it.
+  const api = await getDeviceStore().then(store => store.api, () => null);
+  return readSessionStorage(key, legacy, api);
 }
 
 function approxBytes(value: unknown): number {
@@ -244,4 +247,5 @@ export async function psRemove(key: string): Promise<void> {
 
 export function resetDeviceStore(): void {
   deviceStorePromise = null;
+  resetSessionStorageState();
 }

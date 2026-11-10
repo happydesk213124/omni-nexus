@@ -193,6 +193,11 @@ const normalize = (root) => {
             // Where each streamed reply opens (its cast block's "place", for 옴니 뷰어's stage) — no 1.x key;
             // the inline.cast_registers step asserts the place the route keeps.
             .filter((k) => k !== 'omniviewer.places')
+            // Which chats hold rows of ours, and how each of our modules was last written: written down so a start
+            // does not read every chat and every module to find out. No 1.x keys, and neither changes an answer:
+            // tests/chat-session-storage.test.mjs and tests/module-marks.test.mjs assert what they hold, and
+            // tools/check-host-reads.mjs what they save.
+            .filter((k) => k !== 'onx_session_slice_census' && k !== 'onx_module_marks')
             // 2.5.33 boot stamp: a diagnostic written once per boot so the debug
             // dump can tell "iframe reloaded" from "shell failed to paint". No
             // 1.x key, and nothing reads it for behaviour.

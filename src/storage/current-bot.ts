@@ -44,6 +44,42 @@ let reading: Promise<Bot | null> | null = null;
 // with that bot still open, goes to the directory without a read of the open one.
 let seen: { index: number; aliases: Set<string> } | null = null;
 const held = new Map<string, { bot: Bot; jobs: number }>();
+/**
+ * Scopes whose bot is kept while an image job runs. Such a job asks for its bot dozens of times (its roster nine
+ * times over, the character note, the shots already made), and each answer was the whole bot again, every chat of
+ * it. While a scope is held, the bot read for it is kept until a write (`forgetBots`), and the first read after
+ * that write is kept in turn: one read per write, not one per question. A write never uses a kept bot: each reads
+ * its bot from the host itself, right before writing.
+ */
+const holds = new Map<string, number>();
+const kept = new Map<string, Bot>();
+/** Counts writes of a bot or a chat: a read begun before one is not kept after it. */
+let botWrites = 0;
+const wanted = (bot: Bot): boolean => { for (const scope of holds.keys()) if (bot.aliases.has(scope)) return true; return false; };
+/** When the read of a bot began (`botReadEpoch()`), for `keepBot`. */
+export function botReadEpoch(): number { return botWrites; }
+/** A bot just read from the host (the open one, or another by its index): kept when a job holds one of its scopes. */
+export function keepBot(bot: Bot | null, epoch: number): void { if (bot && epoch === botWrites && wanted(bot)) kept.set(bot.id, bot); }
+/**
+ * Which stretch of held jobs this is (0 when none runs): what was read once for the jobs of one stretch is kept
+ * for them (the shared roster too), and never carried into the next.
+ */
+let stretch = 0;
+export function heldStretch(): number { return holds.size ? stretch : 0; }
+/** Holds a scope's bot for a job; the returned call lets it go. */
+export function holdBotScope(scope: string): () => void {
+  if (!scope) return () => {};
+  if (!holds.size) stretch++;
+  holds.set(scope, (holds.get(scope) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (holds.get(scope) ?? 1) - 1;
+    if (left > 0) holds.set(scope, left); else holds.delete(scope);
+    for (const [id, bot] of kept) if (!wanted(bot)) kept.delete(id);
+  };
+}
 
 /** The open bot: one read for everyone asking while it is under way. Null when the host cannot say. */
 export function readOpenBot(): Promise<Bot | null> {
@@ -53,9 +89,10 @@ export function readOpenBot(): Promise<Bot | null> {
   const job = async (): Promise<Bot | null> => {
     const index = Number(await host.getCurrentCharacterIndex!());
     if (!Number.isInteger(index) || index < 0) return null;
+    const epoch = botWrites;
     const bot = botOf(await host.getCharacterFromIndex!(index), index);
     // Not after a write that came meanwhile: what it names may be older than the write.
-    if (bot && reading === read) seen = { index, aliases: bot.aliases };
+    if (bot && reading === read) { seen = { index, aliases: bot.aliases }; keepBot(bot, epoch); }
     return bot;
   };
   const read: Promise<Bot | null> = job().finally(() => { if (reading === read) reading = null; });
@@ -67,6 +104,7 @@ export function readOpenBot(): Promise<Bot | null> {
 export function heldBot(scope: string): Bot | null {
   if (!scope) return null;
   for (const { bot } of held.values()) if (bot.aliases.has(scope)) return bot;
+  for (const bot of kept.values()) if (bot.aliases.has(scope)) return bot;
   return null;
 }
 
@@ -99,5 +137,7 @@ export async function holdBot<T>(bot: Bot | null, job: () => Promise<T>): Promis
 /** A character or chat was written: what was read before it is not used again. */
 export function forgetBots(): void {
   held.clear();
+  kept.clear();
+  botWrites++;
   reading = null;
 }

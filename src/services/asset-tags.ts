@@ -6,6 +6,7 @@ import { dbg } from '../core/debug';
 import { TAGGER_LORE_CONTENT_LIMIT, TAGGER_LORE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { hostHas, risuHost } from '../core/host';
 import { withRefilledModules } from '../storage/module-assets';
+import { readModulesDb } from '../storage/host-database';
 import type { ApiResult, LoreEntry } from '../core/types';
 import { cleanText } from '../core/util/text.ts';
 import { normalizeAssetNaiTagsMode } from '../config/schema.ts';
@@ -186,7 +187,8 @@ export async function listSearchableAssets(character: unknown): Promise<AssetPoo
 
   if (hostHas('getDatabase')) {
     try {
-      const db = await risuHost()!.getDatabase!([
+      // In an image job, the job's one read of the modules (host-database); else its own.
+      const db = await readModulesDb([
         'modules',
         'enabledModules',
         'moduleIntergration',

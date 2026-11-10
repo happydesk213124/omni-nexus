@@ -19,9 +19,11 @@ function backend() {
   const context = { console, performance, TextEncoder, TextDecoder, URL, setTimeout, clearTimeout,
     risuai: {
       pluginStorage: {
-        getItem: async key => { reads.push(key); return structuredClone(stored.get(key) ?? null); },
+        // The display module's content mark (storage/module-write) is its own key, written once when the module
+        // is: these count the settings' traffic and anything else an unchanged save might touch.
+        getItem: async key => { if (key !== 'onx_module_marks') reads.push(key); return structuredClone(stored.get(key) ?? null); },
         setItem: async (key, value) => {
-          writes.push(structuredClone(value));
+          if (key !== 'onx_module_marks') writes.push(structuredClone(value));
           if (state.block) await state.block.promise;
           if (state.fail) throw Error('write rejected');
           if (!state.drop) stored.set(key, structuredClone(value));

@@ -707,8 +707,10 @@ test('a slow tagger does not block insertion of a completed sibling',async()=>{
   const request=(start,end)=>({...f.request,assistant_text:text.split('\n').slice(0,end).join('\n'),content_hash:'partial-'+end,stream_line_start:start,stream_line_end:end});
   const nativeFetch=risuai.nativeFetch;let release,blocked=false;
   const gate=new Promise(r=>release=r);
+  // The slow tagger is the first job's, whichever of the two asks first: its request holds two lines, the sibling's four.
+  const sent=options=>{const body=options?.body;return typeof body==='string'?body:body?new TextDecoder().decode(body):'';};
   risuai.nativeFetch=async(url,options)=>{
-    if(String(url).includes('completions') && !blocked){blocked=true;await gate;}
+    if(String(url).includes('completions') && !blocked && !sent(options).includes('narrative paragraph 3')){blocked=true;await gate;}
     return nativeFetch(url,options);
   };
   try {

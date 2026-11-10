@@ -1,5 +1,5 @@
-import { risuHost } from '../core/host';
-import { serializeModuleWrite } from './module-write';
+import { risuHost, writeHostDatabase } from '../core/host';
+import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 import { isTokenGuardComment, tokenGuardScripts, TOKEN_GUARD_ORDER } from '../domain/inray-display';
 
@@ -15,6 +15,9 @@ export function ensureOmniHelperModule(enabled: boolean): Promise<boolean> {
   return serializeModuleWrite(async () => {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) return false;
+    // Already as it would be written, and switched as wanted: no read of every module (module-write).
+    const mark = moduleMark([OMNI_HELPER_PROMPT, promptComment, regexComment, TOKEN_GUARD_ORDER, tokenGuardScripts()]);
+    if (await moduleCurrent(OMNI_HELPER_ID, mark, enabled)) return true;
     if (host.requestPluginPermission) await host.requestPluginPermission('db');
     const db = await host.getDatabase(['modules', 'enabledModules']);
     if (!db) return false;
@@ -35,8 +38,9 @@ export function ensureOmniHelperModule(enabled: boolean): Promise<boolean> {
     const next = current.filter(id => id !== OMNI_HELPER_ID);
     if (enabled) next.push(OMNI_HELPER_ID);
     if (JSON.stringify(db.modules) !== JSON.stringify(modules) || JSON.stringify(current) !== JSON.stringify(next)) {
-      await host.setDatabase({modules:modules as never,enabledModules:next as string[]});
+      await writeHostDatabase({modules:modules as never,enabledModules:next as string[]});
     }
+    await noteModuleMark(OMNI_HELPER_ID, mark);
     return true;
   });
 }

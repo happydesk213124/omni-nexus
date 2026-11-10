@@ -1,3 +1,4 @@
+import { readModulesDb } from '../storage/host-database';
 import { analysisBody } from '../domain/prompt/message-body';
 import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-lines';
 import { TAGGER_LORE_CONTENT_LIMIT, TAGGER_LORE_LIMIT, TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
@@ -88,7 +89,7 @@ export async function hydrateTaggerCharUser(request: TaggerArgs): Promise<void> 
   let hostPersona: { personaPrompt?: unknown; note?: unknown } | null = null;
   if (userInfoOn && hostHas('getDatabase')) {
     try {
-      const db = await risuHost()!.getDatabase!(['personas', 'selectedPersona']);
+      const db = await readModulesDb(['personas', 'selectedPersona']);
       hostPersona = pickSelectedPersona(db);
     } catch {
       hostPersona = null;

@@ -12,6 +12,7 @@ import { allCharacterRosters, readCharacterRoster, viewerCharacterRosters } from
 import { readShotAssetBytes } from '../storage/shot-character.ts';
 import { findInspectAsset } from '../storage/inspect-assets';
 import { dbg } from '../core/debug';
+import { risuHost } from '../core/host';
 import { errorBody, makeFetchError } from '../core/errors';
 import { bytesToDataUrlAsync, sniffImageMime } from '../core/util/bytes';
 import { listCharacters, upsertCharacter } from './characters';
@@ -28,6 +29,20 @@ function readViewerCastRosters(onReadError?: RosterReadError) {
     dbg('cast.roster.read.fail', { scope, message: String((error as Error)?.message || error), background: true }, 'warn');
     onReadError?.(scope, error);
   });
+}
+
+/**
+ * Every cast id in use, as one look through every bot found them, and each one issued here since. A new person
+ * needs an id no bot uses, and another bot's ids are only seen by reading that bot whole: every bot there is, for
+ * each new person a reply named. Now once per start. An id issued on another device meanwhile shows at the next.
+ */
+let takenIds: { host: unknown; ids: Set<string> } | null = null;
+async function takenCastIds(): Promise<Set<string>> {
+  const host = risuHost();
+  if (takenIds && takenIds.host === host) return takenIds.ids;
+  const ids = new Set((await readCastRosters()).map(r => sanitizeCastId(r.cast_id)).filter(Boolean));
+  takenIds = { host, ids };
+  return ids;
 }
 
 function seedTextFor(row: { name?: unknown; aliases?: unknown; original?: unknown }): string {
@@ -62,7 +77,11 @@ export async function ensureCastIds(
     }
     // Reusing a persisted ID needs only its owner's roster. Scan for collisions
     // once, and only when this call actually needs to issue a new ID.
-    if (!taken) taken = new Set((await readCastRosters()).map(r => sanitizeCastId(r.cast_id)).filter(Boolean));
+    if (!taken) {
+      taken = await takenCastIds();
+      // This roster as it is now (a person brought in with an id of their own since the look).
+      for (const known of rows) { const used = sanitizeCastId(known.cast_id); if (used) taken.add(used); }
+    }
     if (out[id]) continue;
     let candidate = seedCastId(seedTextFor({ name: row?.name ?? w.name, aliases: row?.aliases, original: row?.original }));
     let guard = 0;

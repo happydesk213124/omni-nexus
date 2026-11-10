@@ -10,7 +10,7 @@
  * makes the host skip the header entirely, which is why the header used to stay
  * gone across reloads and even after uninstalling the plugin.
  */
-import { hostHas, risuHost } from '../core/host';
+import { hostHas, risuHost, writeHostDatabase } from '../core/host';
 import { sleep } from '../core/util/async';
 import { forgetBots } from '../storage/current-bot';
 import { clearCharRefHideIcon } from './char-ref-module';
@@ -64,7 +64,7 @@ async function remountPersonaCards(): Promise<boolean> {
   if (!persona) return false;
   const prev = Boolean(persona.largePortrait);
   const flip = personas.map((row, i) => (i === idx ? { ...row, largePortrait: !prev } : row));
-  await host.setDatabase!({ personas: flip as never });
+  await writeHostDatabase({ personas: flip as never });
   await sleep(REMOUNT_FLUSH_MS);
   const after = asRecord(await host.getDatabase!(['personas', 'selectedPersona']));
   const live = (Array.isArray(after?.personas) ? after.personas : [])
@@ -72,7 +72,7 @@ async function remountPersonaCards(): Promise<boolean> {
     .filter((row): row is Record<string, unknown> => Boolean(row));
   const rows = live.length === personas.length ? live : personas;
   const restore = rows.map((row, i) => (i === idx ? { ...row, largePortrait: prev } : row));
-  await host.setDatabase!({ personas: restore as never });
+  await writeHostDatabase({ personas: restore as never });
   await sleep(REMOUNT_FLUSH_MS);
   return true;
 }

@@ -1,11 +1,13 @@
 import { INRAY_DISPLAY_MODULE_ID, INRAY_DISPLAY_MODULE_NS } from '../domain/inray-display';
-import { risuHost } from '../core/host';
+import { risuHost, writeHostDatabase } from '../core/host';
 import type { CharacterRecord } from '../core/types';
 import { sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import { serializeSessionStorage } from './chat-session-store';
 import { COSTUME_FIELDS } from '../domain/character/costume';
 import { characterDirectory, directoryWarm } from './character-directory';
-import { forgetBots, openBotFor } from './current-bot';
+import { botFrom, botReadEpoch, forgetBots, heldBot, heldStretch, keepBot, openBotFor } from './current-bot';
+import { deepcopy } from '../core/util/object';
+import { readModulesDb } from './host-database';
 
 export const CHARACTER_ROSTER_LORE = 'omni.nexus.data.global';
 type Row = Record<string, unknown>;
@@ -22,6 +24,12 @@ function clean(row: Row): CharacterRecord {
   if (/data:image\/|data:application\//i.test(JSON.stringify(out))) throw new Error('Image bytes cannot be stored in character lore');
   return out as CharacterRecord;
 }
+/**
+ * A roster as it is compared to decide whether to write: without each row's `updated_at`. A person named again in a
+ * reply is saved again as they were, stamped now; that stamp alone rewrote the whole bot (every chat of it) after
+ * each image job, and for a shared person every module in Risu. A row that changes in nothing else keeps its stamp.
+ */
+const unstamped = (rows: readonly CharacterRecord[]): string => JSON.stringify(rows.map(row => ({ ...row, updated_at: undefined })));
 async function targets(fresh = false): Promise<Array<Target & {aliases:string[]}>> {
   return (await characterDirectory({ fresh }) || []).flatMap(char=> {
     const id=char.chaId || char.id;
@@ -51,8 +59,12 @@ export async function characterIdForRosterScope(scope: string): Promise<string> 
 }
 
 async function readEntryData(t: Target): Promise<{ char: Row; data: Row }> {
+  const epoch = botReadEpoch();
   const char = object(await risuHost()?.getCharacterFromIndex?.(t.index));
-  return entryData(char, t);
+  const read = entryData(char, t);
+  // A job holding this bot (one that is not the open one, too) reads it from here on.
+  keepBot(botFrom(char, t.index), epoch);
+  return read;
 }
 function entryData(char: Row | null, t: Target): { char: Row; data: Row } {
   if (!char || String(char.chaId || char.id) !== t.id) throw new Error('Character moved during roster access');
@@ -83,9 +95,15 @@ function entryData(char: Row | null, t: Target): { char: Row; data: Row } {
   return { char, data };
 }
 
+/** For reading only: a bot a job holds answers without the host (a write lets it go, so a read after one is fresh). */
+async function entryFor(t: Target): Promise<{ char: Row; data: Row }> {
+  const bot = heldBot(t.id);
+  return bot && bot.index === t.index ? entryData(bot.char, t) : readEntryData(t);
+}
 async function read(t: Target): Promise<{ char: Row; roster: CharacterRecord[] }> {
-  const { char, data } = await readEntryData(t);
-  return { char, roster: withBuffered(t, (data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope: t.scope }))) };
+  const { char, data } = await entryFor(t);
+  // Copies: a kept bot serves many reads, and none may change it for the next.
+  return { char, roster: withBuffered(t, deepcopy((data.roster as unknown[]).map(value => ({ ...clean(object(value) || {}), scope: t.scope })))) };
 }
 
 /**
@@ -149,7 +167,7 @@ function rosterLore(char: Row, t: Target, data: Row, next: CharacterRecord[]): u
 export async function readCharacterEntryKey(scope: string, key: string): Promise<unknown> {
   const t = await target(scope);
   if (!t) return undefined;
-  return (await readEntryData(t)).data[key];
+  return deepcopy((await entryFor(t)).data[key]);
 }
 
 export async function writeCharacterEntryKey(scope: string, key: string, value: unknown): Promise<void> {
@@ -209,12 +227,12 @@ export async function writeCharacterLoreText(scope: string, comment: string, con
 }
 
 export async function readCharacterRoster(scope:string):Promise<CharacterRecord[]> {
-  if(scope==='__global__') return (await readShared()).roster;
+  if(scope==='__global__') return sharedRoster();
   // The open bot (or one a job holds): no directory of every bot, no second copy of it.
   const bot=await openBotFor(scope);
   if(bot) {
     const t={index:bot.index,id:bot.id,scope:unifiedSessionIdForCharacter(bot.id)};
-    return withBuffered(t,(entryData(bot.char,t).data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope})));
+    return withBuffered(t,deepcopy((entryData(bot.char,t).data.roster as unknown[]).map(value=>({...clean(object(value)||{}),scope:t.scope}))));
   }
   const t=await target(scope);return t?(await read(t)).roster:[];
 }
@@ -244,7 +262,7 @@ export async function allCharacterRosters(onReadError?: (scope: string, error: u
       onReadError(scope, error);
     }
   };
-  await collect('__global__', readShared);
+  await collect('__global__', async () => ({ roster: await sharedRoster() }));
   for(const t of await targets()) await collect(t.scope, () => read(t));
   return rows;
 }
@@ -252,7 +270,7 @@ export async function allCharacterRosters(onReadError?: (scope: string, error: u
 /** Viewer reads must not fetch the all-bot directory just to name one image. */
 export async function viewerCharacterRosters(onReadError?: (scope: string, error: unknown) => void): Promise<CharacterRecord[]> {
   const rows: CharacterRecord[] = [];
-  try { rows.push(...(await readShared()).roster); }
+  try { rows.push(...await sharedRoster()); }
   catch (error) { if (!onReadError) throw error; onReadError('__global__', error); }
   const host = risuHost();
   const index = Number(await host?.getCurrentCharacterIndex?.());
@@ -270,7 +288,10 @@ export async function viewerCharacterRosters(onReadError?: (scope: string, error
 }
 export async function mutateCharacterRoster(scope:string,change:(rows:CharacterRecord[])=>CharacterRecord[],opts:{buffer?:boolean}={}):Promise<void> {
   if(scope==='__global__') return mutateShared(change);
-  const t=await target(scope, true);
+  // A change that waits for the bake's write names its bot by the open one (or the one its job holds): the write
+  // itself finds the bot again. A write made now looks its bot up in the list, which also refuses two with one id.
+  const own=opts.buffer ? await openBotFor(scope) : null;
+  const t=own ? {index:own.index,id:own.id,scope:unifiedSessionIdForCharacter(own.id)} : await target(scope, true);
   if(!t) throw new Error('Risu character required for roster save');
   if(opts.buffer) return serializeSessionStorage(async()=> {
     // Waits for the bake's character write; reads see it from now on.
@@ -279,10 +300,10 @@ export async function mutateCharacterRoster(scope:string,change:(rows:CharacterR
     if(new Set(next.map(row=>row.id)).size!==next.length) throw new Error('Duplicate roster IDs');
     const ops=bufferedRosters.get(t.id) ?? { target: t, put: new Map<string, CharacterRecord>(), drop: new Set<string>() };
     ops.target=t;
-    const before=new Map(roster.map(row=>[row.id,JSON.stringify(clean(row))]));
+    const before=new Map(roster.map(row=>[row.id,unstamped([clean(row)])]));
     const after=new Set(next.map(row=>row.id));
     for(const id of before.keys()) if(!after.has(id)) { ops.drop.add(id); ops.put.delete(id); }
-    for(const row of next) if(before.get(row.id)!==JSON.stringify(row)) { ops.put.set(row.id,row); ops.drop.delete(row.id); }
+    for(const row of next) if(before.get(row.id)!==unstamped([row])) { ops.put.set(row.id,row); ops.drop.delete(row.id); }
     if(ops.put.size || ops.drop.size) bufferedRosters.set(t.id,ops);
   });
   await serializeSessionStorage(async()=> {
@@ -293,7 +314,7 @@ export async function mutateCharacterRoster(scope:string,change:(rows:CharacterR
     const next=change(roster).map(clean);
     if(new Set(next.map(row=>row.id)).size!==next.length) throw new Error('Duplicate roster IDs');
     const stored=(data.roster as unknown[]).map(value=>clean(object(value)||{}));
-    if(data.characterId===t.id && JSON.stringify(stored)===JSON.stringify(next)) { bufferedRosters.delete(t.id); return; }
+    if(data.characterId===t.id && unstamped(stored)===unstamped(next)) { bufferedRosters.delete(t.id); return; }
     await host.setCharacterToIndex(t.index,{...char,globalLore:rosterLore(char,t,data,next)});
     forgetBots();
     // This write already holds every waiting change it was built on (reads include them).
@@ -303,8 +324,34 @@ export async function mutateCharacterRoster(scope:string,change:(rows:CharacterR
 }
 
 export const SHARED_ROSTER_LORE = 'omni.nexus.data.globalcharacter';
-async function readShared() {
-  const db=await risuHost()?.getDatabase?.(['modules']);
+/**
+ * The shared roster as an image job read it, kept for that job (and the jobs running beside it). It lives in a
+ * lorebook entry of the display module, and one module cannot be read alone: `getDatabase(['modules'])` is every
+ * module in Risu (on PocketRisu each one's asset list with it, from the server). A job asks for its roster nine
+ * times over, the shared one each time. Outside a job every read still asks the host. A write of ours replaces
+ * what is kept; a change made elsewhere meanwhile (another device, the module edited by hand) shows with the next job.
+ */
+let sharedKept: { stretch: number; host: unknown; roster: CharacterRecord[] } | null = null, sharedReading: Promise<CharacterRecord[]> | null = null;
+async function sharedRoster(): Promise<CharacterRecord[]> {
+  const stretch = heldStretch(), host = risuHost();
+  if (!stretch) return (await readShared()).roster;
+  if (sharedKept && sharedKept.stretch === stretch && sharedKept.host === host) return deepcopy(sharedKept.roster);
+  const reading = sharedReading ??= readShared().then(read => {
+    // Not over a write that landed while this read was under way.
+    if (sharedReading === reading) sharedKept = { stretch, host, roster: read.roster };
+    return read.roster;
+  }).finally(() => { if (sharedReading === reading) sharedReading = null; });
+  return deepcopy(await reading);
+}
+/** Our own write of the shared roster: readers of a job take it from here on. */
+function keepShared(roster: CharacterRecord[] | null): void {
+  const stretch = heldStretch();
+  sharedReading = null;
+  sharedKept = roster && stretch ? { stretch, host: risuHost(), roster } : null;
+}
+/** `fresh`: for a write (and its read back), straight from Risu; a reader in a job is answered from the job's one read. */
+async function readShared(fresh = false) {
+  const db=fresh ? await risuHost()?.getDatabase?.(['modules']) : await readModulesDb(['modules']);
   const modules=Array.isArray(db?.modules)?db.modules:[];
   const matches=modules.filter(m=>m.id===INRAY_DISPLAY_MODULE_ID || m.namespace===INRAY_DISPLAY_MODULE_NS);
   if(matches.length>1) throw new Error('Duplicate Omni display modules');
@@ -324,15 +371,19 @@ async function readShared() {
 async function mutateShared(change:(rows:CharacterRecord[])=>CharacterRecord[]):Promise<void> {
   await serializeSessionStorage(async()=> {
     const host=risuHost();
-    const {modules,module,entries,roster}=await readShared();
+    const {modules,module,entries,roster}=await readShared(true);
     const next=change(roster).map(clean);
     if(new Set(next.map(r=>r.id)).size!==next.length)throw new Error('Duplicate roster IDs');
-    if(JSON.stringify(roster.map(clean))===JSON.stringify(next)) return;
+    if(unstamped(roster.map(clean))===unstamped(next)) { keepShared(roster); return; }
     if(!host?.setDatabase)throw new Error('Module writing unavailable');
     if(!module) throw new Error('Omni display module required');
     const entry={comment:SHARED_ROSTER_LORE,key:'',secondkey:'',alwaysActive:false,selective:false,mode:'normal',insertorder:0,content:JSON.stringify({version:1,roster:next})};
     const lore=entries.filter(e=>object(e)?.comment!==SHARED_ROSTER_LORE);lore.push(entry);
-    await host.setDatabase({modules:modules.map(m=>m===module?{...m,lorebook:lore}:m)});
-    if(JSON.stringify((await readShared()).roster.map(clean))!==JSON.stringify(next))throw new Error('Shared roster verification failed');
+    // What readers kept is older than this write from here on, whether or not it lands.
+    keepShared(null);
+    await writeHostDatabase({modules:modules.map(m=>m===module?{...m,lorebook:lore}:m)});
+    const written=(await readShared(true)).roster;
+    if(JSON.stringify(written.map(clean))!==JSON.stringify(next))throw new Error('Shared roster verification failed');
+    keepShared(written);
   });
 }

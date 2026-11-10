@@ -1,19 +1,22 @@
-import { risuHost } from '../core/host';
+import { risuHost, writeHostDatabase } from '../core/host';
 import { OMNI_TTS_MODULE, ttsModule, type TtsSfxMarks } from '../domain/tts/module';
 import type { TtsSettings } from '../core/tts-types';
-import { serializeModuleWrite } from './module-write';
+import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 import { sleep } from '../core/util/async';
 
 export async function ensureTtsModule(settings: TtsSettings, sfxMarks: TtsSfxMarks = []): Promise<void> {
   return serializeModuleWrite(async () => {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) throw new Error('Risu 모듈 저장 API를 사용할 수 없습니다.');
+    const module = ttsModule(settings, sfxMarks);
+    // Already as it would be written, and switched as wanted: no read of every module (module-write).
+    const mark = moduleMark(module);
+    if (await moduleCurrent(OMNI_TTS_MODULE, mark, !!settings.enabled)) return;
     if (host.requestPluginPermission && !await host.requestPluginPermission('db')) throw new Error('OmniTTS 모듈 설치에 Risu 데이터 접근 허용이 필요합니다.');
     const db = await host.getDatabase(['modules', 'enabledModules']);
     if (!db) throw new Error('Risu 모듈 목록을 읽지 못했습니다.');
     const modules = Array.isArray(db.modules) ? [...db.modules] : [];
     const index = modules.findIndex(m => m.id === OMNI_TTS_MODULE);
-    const module = ttsModule(settings, sfxMarks);
     if (index < 0) modules.push(module); else modules[index] = { ...modules[index], ...module };
     const previous: string[] = Array.isArray(db.enabledModules) ? [...db.enabledModules] : [];
     const enabled = previous.filter(id => id !== OMNI_TTS_MODULE);
@@ -22,16 +25,17 @@ export async function ensureTtsModule(settings: TtsSettings, sfxMarks: TtsSfxMar
       // Risu caches module objects by active IDs. Replacing the object with
       // unchanged IDs leaves both editDisplay and the rendered chat stale.
       if (settings.enabled && previous.includes(OMNI_TTS_MODULE) && JSON.stringify(modules) !== JSON.stringify(db.modules)) {
-        await host.setDatabase({ modules, enabledModules: previous.filter(id => id !== OMNI_TTS_MODULE) });
+        await writeHostDatabase({ modules, enabledModules: previous.filter(id => id !== OMNI_TTS_MODULE) });
         try { await sleep(16); }
         finally {
           const current = await host.getDatabase(['enabledModules']);
           const active = (Array.isArray(current?.enabledModules) ? current.enabledModules : enabled).filter(id => id !== OMNI_TTS_MODULE);
           active.splice(Math.min(previous.indexOf(OMNI_TTS_MODULE),active.length),0,OMNI_TTS_MODULE);
-          await host.setDatabase({ enabledModules: active });
+          await writeHostDatabase({ enabledModules: active });
           await sleep(16);
         }
-      } else await host.setDatabase({ modules, enabledModules: enabled });
+      } else await writeHostDatabase({ modules, enabledModules: enabled });
     }
+    await noteModuleMark(OMNI_TTS_MODULE, mark);
   });
 }

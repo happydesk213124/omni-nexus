@@ -1,4 +1,4 @@
-import { risuHost } from '../core/host';
+import { risuHost, writeHostDatabase } from '../core/host';
 import { PLACE_MODULE, placeModule } from '../domain/viewer/place';
 import { serializeModuleWrite } from './module-write';
 import { sleep } from '../core/util/async';
@@ -29,9 +29,9 @@ export async function ensurePlaceModule(on: boolean): Promise<void> {
     if (!changedModules && JSON.stringify(enabled) === JSON.stringify(previous)) return;
     // Risu caches enabled module objects by id: a changed module goes off for one frame, then on.
     if (changedModules && on && previous.includes(id)) {
-      await host.setDatabase({ modules, enabledModules: enabled.filter(x => x !== id) });
+      await writeHostDatabase({ modules, enabledModules: enabled.filter(x => x !== id) });
       await sleep(16);
     }
-    await host.setDatabase({ modules, enabledModules: enabled });
+    await writeHostDatabase({ modules, enabledModules: enabled });
   });
 }

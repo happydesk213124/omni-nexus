@@ -7,7 +7,7 @@ import { moduleAssetsMissing, refillModuleAssets } from '../storage/module-asset
  */
 import type { ApiResult } from '../core/types';
 import { dbg } from '../core/debug';
-import { hostHas, risuHost } from '../core/host';
+import { hostHas, risuHost, writeHostDatabase } from '../core/host';
 import { asU8, sniffImageMime, u8ToArrayBuffer, sha256Hex, bytesToDataUrlAsync, type BytesLike } from '../core/util/bytes';
 import { encodeCharRefWebp } from '../core/util/image';
 import { cleanText } from '../core/util/text';
@@ -166,7 +166,7 @@ export async function ensureCharRefModule(): Promise<ModuleRow> {
     return mod;
   }
   if (changed) {
-    await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+    await writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] });
   }
   rebuildIndex(parseCharRefModuleAssets(mod.assets));
   return mod;
@@ -197,7 +197,7 @@ export async function clearCharRefHideIcon(): Promise<{ cleared: boolean; blocke
   }
   if (idx >= 0 && modules[idx]!.hideIcon) {
     modules[idx] = { ...modules[idx], hideIcon: false };
-    await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+    await writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] });
     cleared = true;
   }
   const enabledSet = new Set(enabled);
@@ -315,7 +315,7 @@ export async function putCharRefAsset(
     if (check && check.byteLength >= MIN_IMAGE_BYTES) {
       if (!moduleEnabled) {
         enabled.push(CHAR_REF_MODULE_ID);
-        await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+        await writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] });
       }
       return { hash, bytes: stored, path: existing };
     }
@@ -370,7 +370,7 @@ export async function putCharRefAsset(
     dbg('char_ref.module.assets.unloaded', { hash: hash.slice(0, 12), known: knownCharRefCount(), background: true }, 'warn');
     return { hash, bytes: stored, path };
   }
-  await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+  await writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] });
   rebuildIndex(assets);
   dbg('char_ref.module.put', { hash: hash.slice(0, 12), bytes: stored.byteLength, ext, path });
   return { hash, bytes: stored, path };
@@ -441,7 +441,7 @@ export async function clearAllCharRefModuleAssets(): Promise<number> {
   const kept = assets.filter((row) => !isCharRefAssetName(row[0]));
   const removed = assets.length - kept.length;
   modules[idx] = { ...modules[idx], assets: kept };
-  await host.setDatabase!({
+  await writeHostDatabase({
     modules: modules as never,
     enabledModules: asUnknownArray(db?.enabledModules).map((id) => cleanText(id, 200)).filter(Boolean) as string[],
   });
@@ -506,7 +506,7 @@ async function writeSharedBackgrounds(put: ReadonlyArray<{ name: string; path: s
     modules[idx] = { ...modules[idx], assets: next };
     const enabled = asUnknownArray(db.enabledModules).map(id => cleanText(id, 200)).filter(Boolean);
     if (put.length && !enabled.includes(CHAR_REF_MODULE_ID) && !enabled.includes(CHAR_REF_MODULE_NS)) enabled.push(CHAR_REF_MODULE_ID);
-    await host.setDatabase!({ modules: modules as never, enabledModules: enabled as string[] });
+    await writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] });
     sharedRows = { at: Date.now(), rows: next.filter(row => SHARED_BG.test(row[0])).map(row => [row[0], row[1]]) };
     dbg('shared_bg.module.write', { message: `+${put.length} −${drop.length}` });
   });

@@ -1065,10 +1065,18 @@ async function discoverAssetCards(sessionId?:string): Promise<void> {
  * or an old name written before rooms were stamped — falls back to reading every
  * room, which is correct and rare.
  */
-export async function ensureCard(id: unknown): Promise<void> {
+export async function ensureCard(id: unknown, home = ''): Promise<void> {
   await openDb();
   const k = String(id || '');
   if (!k || memStores.cards.has(k) || memStores.images.has(k)) return;
+  // A row being saved names its own session: its bot's shots are looked through (the open bot, or the one its job
+  // holds), and a row that is not among them is new. Looking through every bot for it listed them all, twice, for
+  // each picture a job made.
+  if (home) {
+    await ensureRoom(home);
+    await discoverAssetCards(home);
+    return;
+  }
   await discoverAssetCards();
   if (memStores.cards.has(k) || memStores.images.has(k)) return;
   if (!cardRoomHint) {
@@ -1173,7 +1181,7 @@ export async function idbPut(store: StoreName, value: Record<string, unknown>, o
   if (store === 'images') {
     // The room must be in memory before the row is replaced, or the pack write
     // that follows would drop every other row in that room.
-    await ensureCard(k);
+    await ensureCard(k, String((value.location as Record<string, unknown> | undefined)?.session_id || ''));
     const png = (value.png as ArrayBuffer | null) || null;
     const owner = png ? await resolveShotOwner(value.location as Record<string,unknown> || {}) : null;
     const prev = memStores.images.get(k);
@@ -1350,7 +1358,7 @@ export async function idbPut(store: StoreName, value: Record<string, unknown>, o
   }
 
   if (store === 'cards') {
-    await ensureCard(k);
+    await ensureCard(k, String(value.session_id || ''));
     const prevRoom = memStores.cards.has(k) || memStores.images.has(k) ? roomOf(k) : '';
     deindexCard(memStores.cards.get(k));
     const row = value as unknown as CardRow;

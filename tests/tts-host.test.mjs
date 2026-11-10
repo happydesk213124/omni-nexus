@@ -122,10 +122,15 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(await page.locator('[data-tts-control="line-12"]').evaluate(n=>n.style.background),'rgba(113, 50, 245, 0.6)','the picked line is highlighted in place');
     await page.evaluate(()=>window.omniTts.stop());
     await page.locator('[data-tts-control="list"]').click();
-    // The list toggle repaints the viewer; measure once the new header is in place, not mid-repaint.
-    await page.waitForFunction(()=>window.ttsData().settings.panel===''&&document.querySelector('[data-tts-header]')?.getBoundingClientRect().width>0);
-    const oldRect=await page.locator('[x-omnitts-viewer]').boundingBox();
-    const header=await page.locator('[data-tts-header]').boundingBox();
+    // The list toggle repaints the viewer; measure once the new header is in place, not mid-repaint. Both boxes
+    // are read in the same look that saw the header: read one call later, a second repaint had taken the header
+    // away again (a null box, once in a loaded run).
+    const {oldRect,header}=await (await page.waitForFunction(()=>{
+      const head=document.querySelector('[data-tts-header]'),viewer=document.querySelector('[x-omnitts-viewer]');
+      if(window.ttsData().settings.panel!==''||!head||!viewer)return null;
+      const a=head.getBoundingClientRect(),b=viewer.getBoundingClientRect();
+      return a.width>0?{header:{x:a.x,y:a.y},oldRect:{x:b.x,y:b.y}}:null;
+    })).jsonValue();
     await page.mouse.move(header.x+10,header.y+18);await page.mouse.down();
     await page.waitForTimeout(80);await page.mouse.move(header.x-70,header.y-62,{steps:6});
     await page.mouse.up();

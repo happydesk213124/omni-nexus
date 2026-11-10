@@ -6,8 +6,8 @@
  *   1. the preview CSS extracted (the build and the type check read it), then the type
  *      check and the unit bundles side by side
  *   2. the tests, six files at once (more only slowed each one, the browsers sharing the
- *      cores, and timing-tight tests began to flake); beside them parity and the gallery
- *      bench (both build their own bundle and count calls, not time), the bundle build,
+ *      cores, and timing-tight tests began to flake); beside them parity, the gallery
+ *      bench and the host-read count (each builds its own bundle and counts calls, not time), the bundle build,
  *      and once it is built every check of it (audit, smoke, the settings checks), three
  *      at a time
  *   3. the tests named SafeDOM, alone: they time real taps and frames and go flaky
@@ -81,6 +81,7 @@ await Promise.all([
   run('tests', `node --test --test-concurrency=${TEST_CONCURRENCY} --test-timeout=120000 --test-skip-pattern=SafeDOM tests/*.test.mjs`),
   run('parity', 'npm run parity'),
   run('bench', 'npm run bench'),
+  run('reads', 'npm run reads'),
   run('build', 'npx vite build').then(built => built.ok ? pool(checks, 3) : undefined),
 ]);
 await run('SafeDOM tests', 'node --test --test-concurrency=3 --test-timeout=120000 --test-name-pattern=SafeDOM tests/*.test.mjs');
