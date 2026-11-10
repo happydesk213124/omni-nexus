@@ -9,7 +9,8 @@ import { resolveCostumeWear } from '../character/costume';
  */
 import type { CharacterRecord, ShotCharacter } from '../../core/types.ts';
 import { cleanText, splitTagTokens } from '../../core/util/text.ts';
-import { composeCharacterCaptionTags, isClothingTag } from '../character/tags.ts';
+import { characterIsUnderage, composeCharacterCaptionTags, isClothingTag } from '../character/tags.ts';
+import { underageRules, withoutExposureTags } from '../character/underage.ts';
 import { speechCaptionTag, speechStyleFromCard, type SpeechStyle } from '../nai/speech.ts';
 import { comicCutHidesLooks, normalizeComicCutKind } from './page.ts';
 import { resolveComicSlotCostume } from './costume.ts';
@@ -32,20 +33,27 @@ export function comicSpeechCaption(bubble: unknown, text: unknown, style: Speech
 export function composeComicSlotCaption(
   stored: Partial<CharacterRecord> | null | undefined,
   slot: ShotCharacter & { bubble?: unknown },
-  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown; speech_bubble_weight?: unknown; speech_huge_text?: unknown } = {},
+  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown; speech_bubble_weight?: unknown; speech_huge_text?: unknown; underage_strict?: unknown; underage_age?: unknown; underage_tags?: unknown } = {},
 ): string {
   const half = options.comic_closeup_character_half === true
     && normalizeComicCutKind((slot as { cut_kind?: unknown }).cut_kind) === 'closeup';
   // Zoomed cuts: action + interaction + speech only. Passing null roster drops
   // looks, costume, and wear — the prompt already forbids them per cut.
   if (!half && comicCutHidesLooks((slot as { cut_kind?: unknown }).cut_kind)) {
-    const looks = composeCharacterCaptionTags(null, {
+    const bare = composeCharacterCaptionTags(null, {
       action: slot.action,
       source: slot.source,
       target: slot.target,
       mutual: slot.mutual,
       sex: slot.sex,
     });
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 외형만 빠질 뿐 누군지는 그대로다. 미성년으로 그려지는 캐릭터는 확대 컷에서도 노출 태그를 뺀다 (underage.ts).
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+    const looks = characterIsUnderage(stored, slot, underageRules(options)) ? withoutExposureTags(bare) : bare;
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+    // ╚══════════════════════════════════════════════════════════════════════════╝
     const speech = comicSpeechCaption(slot.bubble, slot.speech || slot.text, speechStyleFromCard(options));
     if (!speech) return looks;
     return looks ? `${looks}, ${speech}` : speech;

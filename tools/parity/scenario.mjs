@@ -266,6 +266,19 @@ export async function runScenario(N, handles) {
     if (off.genitals_when_visible !== false) throw new Error('Must turn off');
     return {defaultOff:true,persists:true};
   });
+  // 나이 제한 only ever adds to the under-18 guard: it starts on, at 18, and its age never goes under 18.
+  await rec('settings.underage_contract', async () => {
+    const initial = (await get('/v1/settings')).settings.card;
+    if (!('underage_strict' in initial)) return {unsupported:true};
+    if (initial.underage_strict !== true || initial.underage_age !== 18 || initial.underage_tags !== 'loli, shota, child, toddler') throw new Error('Must start on, at 18, with the built-in words');
+    const low = (await put('/v1/settings', {card:{underage_age:12}})).settings.card;
+    if (low.underage_age !== 18) throw new Error('The age must never go under 18');
+    const set = (await put('/v1/settings', {card:{underage_strict:false, underage_age:21, underage_tags:'petite'}})).settings.card;
+    if (set.underage_strict !== false || set.underage_age !== 21 || set.underage_tags !== 'petite') throw new Error('Must persist');
+    const back = (await put('/v1/settings', {card:{underage_strict:true, underage_age:18, underage_tags:'loli, shota, child, toddler'}})).settings.card;
+    if (back.underage_strict !== true || back.underage_age !== 18 || back.underage_tags !== 'loli, shota, child, toddler') throw new Error('Must turn back');
+    return {defaultOn:true,floor:low.underage_age,persists:true};
+  });
   await rec('job.commit_output_unknown', async () => {
     const result = await post('/v1/jobs/commit-output', {job_id:'missing',stream_id:'missing'});
     if (result.ok !== false || result.error?.code !== 'not_pending') throw new Error('Unknown stream must not attach');

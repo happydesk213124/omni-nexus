@@ -1,11 +1,11 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
-import { DEFAULT_EXPRESSION } from '../domain/emotion/emotions';
+import { DEFAULT_EXPRESSION, NUDE_COSTUME } from '../domain/emotion/emotions';
 import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
 import { revealSegments } from '../domain/tts/base64-words';
 import { namedCostumes } from '../domain/tts/costume-cue';
-import { costumesOf, refreshCostumeNames } from '../services/costume-names';
+import { costumesOf, nudeAllowedFor, refreshCostumeNames } from '../services/costume-names';
 import { ttsComparable } from '../domain/tts/anchors';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import type { TtsSegment } from '../core/tts-types';
@@ -257,7 +257,7 @@ function makeForReply(): void {
   for (const p of new Set([basePlace, ...placeMarks.map(mark => mark.place)].filter(Boolean))) wants.push({ place: p });
   for (const scene of scenes) {
     if (scene.kind !== 'line' || !scene.speaker) continue;
-    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION, costume = costumeOf(scene.costume);
+    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION, costume = dressOf(person, scene.costume);
     if (!person || seen.has(`${person.id}|${face}|${costume}`)) continue;
     seen.add(`${person.id}|${face}|${costume}`); wants.push({ person, face, costume });
   }
@@ -609,7 +609,16 @@ function voice(scene: ViewerScene): void {
 /** `front`: 0 spoke last (in front where people overlap), then on back. `costume`: the one their latest line names (0 the default). */
 interface Member { key: string; name: string; person: TtsCharacter | null; face: string; costume: number; speaking: boolean; front: number }
 /** A line's costume, as the stage dresses it: 감정 에셋's 코스튬별 에셋 off, everyone is in the default one. */
-const costumeOf = (costume: number | undefined): number => costume && emotionData().settings.costumes ? costume : 0;
+const costumeOf = (costume: number | undefined): number => costume && costume !== NUDE_COSTUME && emotionData().settings.costumes ? costume : 0;
+/**
+ * What someone wears on stage: 기본 nude dresses a cue's `이름_nude` in their nude one, 천박모드 every line of theirs (and
+ * so no other costume's face is drawn). Only for whoever may be shown so (nudeAllowedFor): anyone else, as costumeOf.
+ */
+function dressOf(person: TtsCharacter | null, costume: number | undefined): number {
+  const settings = emotionData().settings;
+  if ((settings.nudeAll || (settings.nude && costume === NUDE_COSTUME)) && person && bot && nudeAllowedFor(bot.id, person.id)) return NUDE_COSTUME;
+  return costumeOf(costume);
+}
 /** The costume a line is in, by its name for the name plate (`멜론 · melony_form`): '' in the default one, as the stage. */
 function costumeName(scene: ViewerScene): string {
   const costume = costumeOf(scene.costume);
@@ -639,7 +648,7 @@ function stageLines(): NonNullable<typeof staged> {
  */
 function castAt(index: number): Member[] {
   const { lines, who } = stageLines();
-  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, costume: costumeOf(m.costume), speaking: m.speaking, front: m.front }));
+  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, costume: dressOf(who.get(m.who)!.person, m.costume), speaking: m.speaking, front: m.front }));
 }
 /** The TTS characters this reply brings on, in the order they first speak. */
 function replyPeople(): string[] {

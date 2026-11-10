@@ -7,7 +7,7 @@
  * clothes (not the weapons tab).
  */
 import { povParts, povWorn, type PovPart } from './pov.ts';
-import { hasUnderageLook, isUnderageAge, withoutExposureTags } from './underage.ts';
+import { hasUnderageLook, isUnderageAge, underageRules, withoutExposureTags, type UnderageRules } from './underage.ts';
 import clothingHints from '../../config/clothing-hints.json';
 import jewelryHints from '../../config/jewelry-hints.json';
 import weaponHints from '../../config/weapon-hints.json';
@@ -663,17 +663,28 @@ export function wearLocked(value: unknown): boolean {
 // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 미성년으로 그려지는 캐릭터의 노출 막기 (underage.ts).
 // ╚══════════════════════════════════════════════════════════════════════════╝
 export function composeCharacterCaptionTags(...[stored, shot, options]: Parameters<typeof composeCaption>): string {
-  if (!characterIsUnderage(stored, shot)) return composeCaption(stored, shot, options);
+  if (!characterIsUnderage(stored, shot, underageRules(options))) return composeCaption(stored, shot, options);
   return withoutExposureTags(composeCaption(stored ? { ...stored, wear_state: 'clothed' } : stored, { ...shot, wear_state: 'clothed', nude: undefined, sex: '' }, options));
 }
 
-/** The look a shot wears says the person is under 18 (underage.ts). */
+/** The look a shot wears says the person is under 18, or under what 생성 옵션 › 나이 제한 adds (underage.ts). */
 export function characterIsUnderage(
   stored: CharacterInput | null | undefined,
   shot: { age?: unknown; appearance?: unknown; costume?: unknown } | null | undefined,
+  rules?: UnderageRules,
 ): boolean {
   const worn = resolveCostumeWear(stored || {}, shot?.costume, stored?.active_costume);
-  return [shot?.age, stored?.age, worn.age].some(isUnderageAge) || [shot?.appearance, stored?.appearance, worn.appearance].some(hasUnderageLook);
+  return [shot?.age, stored?.age, worn.age].some(age => isUnderageAge(age, rules))
+    || [shot?.appearance, stored?.appearance, worn.appearance].some(look => hasUnderageLook(look, rules));
+}
+
+/**
+ * 감정 에셋's 기본 nude and 천박모드 draw nobody unknown, and nobody under 18 in any costume they have: 천박모드 shows the
+ * nude face whatever costume a line names, so one costume written as 12 keeps them all clothed.
+ */
+export function nudeForbidden(stored: CharacterInput | null | undefined, rules?: UnderageRules): boolean {
+  if (!stored) return true;
+  return ensureCostumes(stored).costumes.some((_, index) => characterIsUnderage(stored, { costume: index }, rules));
 }
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
@@ -720,7 +731,7 @@ function composeCaption(
     /** The viewpoint person of a pov shot: what shows of them (pov.ts). */
     pov?: unknown;
   } | null | undefined,
-  options: { character_height?: unknown; character_age?: unknown; genitals_when_visible?: unknown } = {},
+  options: { character_height?: unknown; character_age?: unknown; genitals_when_visible?: unknown; underage_strict?: unknown; underage_age?: unknown; underage_tags?: unknown } = {},
 ): string {
   // 성기 태그는 보일 때만: none from the wear state or the saved looks, only the tagger's own word for this shot.
   const seenOnly = options.genitals_when_visible === true;

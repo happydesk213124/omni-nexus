@@ -486,3 +486,15 @@ test('a cue naming a costume (이름_2): the speaker is the person, the number t
     assert.deepEqual(bound(html, '하린_2 (laugh): "안녕."').map(s => s?.text), ['안녕.'], 'the line keeps its control');
   }
 });
+
+test('a cue naming the nude one (이름_nude): the person, kept under its own number; the chat never shows it either', () => {
+  const [one] = api.parseTtsMessage('하린_nude (soft tone): "봐도 돼."');
+  assert.deepEqual([one.speaker, one.tone, one.costume, one.text], ['하린', 'soft tone', 100, '봐도 돼.']);
+  assert.deepEqual(api.parseTtsMessage('하린_Nude: "응, 좋아."').map(s => [s.speaker, s.costume]), [['하린', 100]], 'any case');
+  assert.deepEqual(api.parseTtsMessage('Nude: "응, 좋아."').map(s => [s.speaker, s.costume]), [['Nude', undefined]], 'a name that is only the word stays a name');
+  for (const [settings, shown] of [[{ hideName: false, hideTone: false }, '하린 (soft tone): "봐도 돼."'], [{ hideName: false, hideTone: true }, '하린: "봐도 돼."'], [{ hideName: true, hideTone: true }, '"봐도 돼."']]) {
+    const html = apply('하린_nude (soft tone): "봐도 돼."', api.ttsModule({ ...api.ttsDefaults(), ...settings }).regex);
+    assert.equal(strip(html), shown, JSON.stringify(settings));
+    assert.deepEqual(bound(html, '하린_nude (soft tone): "봐도 돼."').map(s => s?.text), ['봐도 돼.'], 'the line keeps its control');
+  }
+});

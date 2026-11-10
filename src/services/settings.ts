@@ -30,6 +30,7 @@ import type { ApiResult, StylePreset } from '../core/types';
 import { deepcopy, deepMerge } from '../core/util/object';
 import { cleanText } from '../core/util/text';
 import { characterMaxLimit } from '../domain/character/tags';
+import { normalizeUnderageAge } from '../domain/character/underage';
 import { naiHasAnyToken, normalizeTokenList, publicKeyRows } from '../domain/nai/keys';
 import { LLM_ROLE_IDS, normalizeLlmRolesSettings } from '../domain/llm/roles';
 import { comfyConfigured, imageBackendKind } from '../providers/comfy/client';
@@ -574,6 +575,10 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Ap
     }
     if ('auto_gen_char_limit_enabled' in card) merged.auto_gen_char_limit_enabled = normalizeAutoReplyCharLimitEnabled(card.auto_gen_char_limit_enabled);
     if ('auto_gen_char_limit' in card) merged.auto_gen_char_limit = normalizeAutoReplyCharLimit(card.auto_gen_char_limit);
+    // 나이 제한 only adds to the under-18 guard: its age is never stored under 18, whoever writes it.
+    if ('underage_strict' in card) merged.underage_strict = card.underage_strict !== false;
+    if ('underage_age' in card) merged.underage_age = normalizeUnderageAge(card.underage_age);
+    if ('underage_tags' in card) merged.underage_tags = String(card.underage_tags ?? '').slice(0, 2000);
     cfg.card = merged;
     cfg.card.character_max = characterMaxLimit(cfg.card);
     // Old viewer modes retired with the galleryUi window (same mapping as

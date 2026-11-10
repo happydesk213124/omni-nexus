@@ -139,8 +139,9 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
       { comment: 'omnitts-release-guard', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.release}>`,
         in: '\\uF8F1(?:<span data-omnitts-tail="1"><button [^<>]*></button></span>)+', out: GUARD_CLOSE },
       // `이름_2`'s number is the costume, for the viewer and the voice: never shown, whatever the name and tone show.
+      // `이름_nude` (감정 에셋's 기본 nude) is one too.
       { comment: 'omnitts-hide-cue-costume', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.costume}>`,
-        in: `(^|\\n)${HEADER_PREFIX}${SPEAKER}_\\d{1,2}(?=[ \\t]*(?:\\([A-Za-z][A-Za-z ,\\-]{0,99}\\))?${BEFORE_ANCHORED_QUOTE})`, out: '$1$2$3$4' },
+        in: `(^|\\n)${HEADER_PREFIX}${SPEAKER}_(?:\\d{1,2}|[Nn][Uu][Dd][Ee])(?=[ \\t]*(?:\\([A-Za-z][A-Za-z ,\\-]{0,99}\\))?${BEFORE_ANCHORED_QUOTE})`, out: '$1$2$3$4' },
       ...hideRules,
       { comment: 'omnitts-unguard', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.unguard}>`, in: '[\\uF8F0\\uF8F1]', out: '' },
     ],

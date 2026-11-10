@@ -1294,6 +1294,19 @@ test("감정 에셋's 코스튬별 에셋: the streaming rules ask for a cue's c
   assert.equal(await asks(), false);
 });
 
+test("감정 에셋's 기본 nude: the streaming rules ask for 이름_nude only with the switch on", async () => {
+  const f = await fixture(); f.api.getConfig().card.stream_inline_tags = true;
+  await f.api.loadEmotionData();
+  const asks = async () => (await f.api.inlineTagRules()).includes(f.api.NUDE_CUE_RULE);
+  f.api.emotionData().settings.nude = false;
+  assert.equal(await asks(), false, 'off: cues as they always were');
+  f.api.emotionData().settings.nude = true;
+  assert.equal(await asks(), true);
+  assert.match(f.api.NUDE_CUE_RULE, /Name_nude \(delivery\): "Dialogue"/);
+  f.api.emotionData().settings.nude = false;
+  assert.equal(await asks(), false);
+});
+
 test('comic ratio 100%: the tagger is told every shot is a comic, as at 0% every shot is an illustration', async () => {
   const f = await fixture(); const card = f.api.getConfig().card;
   Object.assign(card, { stream_inline_tags: true, comic_gen: 'on', comic_gen_ratio: 100 });

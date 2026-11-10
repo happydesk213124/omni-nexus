@@ -527,6 +527,11 @@ function expectedAssetChange(a,b,at) {
   if (/\.value\.(?:settings|json)\.card\.pov_mode$/.test(at)) return a === undefined && b === false;
   // 성기 태그는 보일 때만 is opt-in; the scenario asserts it starts off, persists and turns back off. Only absent → off passes.
   if (/\.value\.(?:settings|json)\.card\.genitals_when_visible$/.test(at)) return a === undefined && b === false;
+  // 나이 제한 is new and only adds to the under-18 guard; the scenario asserts its defaults, its floor of 18 and that it
+  // persists. Only absent → its default (on, 18, the built-in words) passes.
+  if (/\.value\.(?:settings|json)\.card\.underage_strict$/.test(at)) return a === undefined && b === true;
+  if (/\.value\.(?:settings|json)\.card\.underage_age$/.test(at)) return a === undefined && b === 18;
+  if (/\.value\.(?:settings|json)\.card\.underage_tags$/.test(at)) return a === undefined && b === 'loli, shota, child, toddler';
   // The persona-only switch is opt-in; the scenario asserts it starts off, persists and turns back off. Only absent → off passes.
   if (/\.value\.(?:settings|json)\.card\.user_info_persona_only$/.test(at)) return a === undefined && b === false;
   // Reply-only character filtering is opt-in; the scenario asserts persistence,
@@ -755,6 +760,7 @@ const NEW_ONLY_STEPS = new Map([
   ['settings.stream_contract', v => v?.defaultOff === true && v.helperToggle === true && v.mandatoryOn === true && v.percentDisabled === true ? null : 'streaming settings contract failed'],
   ['settings.pov_contract', v => v?.defaultOff === true && v.persists === true ? null : 'POV setting contract broken'],
   ['settings.genitals_when_visible_contract', v => v?.defaultOff === true && v.persists === true ? null : 'genitals-when-visible setting contract broken'],
+  ['settings.underage_contract', v => v?.defaultOn === true && v.floor === 18 && v.persists === true ? null : 'age-limit setting contract broken'],
   ['settings.persona_only_contract', v => v?.defaultOff === true && v.persists === true ? null : 'persona-only setting contract broken'],
   ['job.commit_output_unknown', v => v?.ok === false && v.error?.code === 'not_pending' ? null : 'unknown stream attached'],
   ['settings.stream_lines_contract', v => v?.defaultOff===true && v.defaultCount===30 && v.saved===true && v.disabledRetainsCount===true && v.bounds?.[0]===2 && v.bounds?.[1]===100 ? null : 'line batching settings contract failed'],
