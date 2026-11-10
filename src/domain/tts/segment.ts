@@ -4,6 +4,7 @@ import { allowedTtsText } from './filter';
 import { bgmMarkers } from '../sound/tags';
 import { sfxHits, withoutSfx } from '../sound/audio';
 import { INLINE_CAST_MASK_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOURCE, PLACE_MARKER_SOURCE } from '../prompt/inline-shot-pattern';
+import { NUDE_COSTUME } from '../emotion/emotions';
 
 /** Sound cues to list with the spoken lines: BGM markers and the effect rules in use. */
 export interface TtsSoundCues { bgm: boolean; sfxRules: readonly SfxRule[] }
@@ -54,10 +55,11 @@ export function cueHeader(value:string): {speaker:string;tone:string;costume?:nu
   const speaker=prefix.replace(/^[\s*\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]+/u,'').replace(/\*+$/,'').trim();
   if(!speaker||speaker.length>80||!/[\p{L}\p{N}]/u.test(speaker)||/[<>:："“”(){}\[\]|#!`~]/.test(speaker))return null;
   // `이름_2`: the costume the speaker wears, by its number in their illustration character's list (`_0`, the default, as none).
+  // `이름_nude` (감정 에셋's 기본 nude): naked, kept under its own number; whoever may not be drawn so stays dressed (the viewer).
   // 첫 대사 이모지 (cue-emoji.ts): what stood before the name is kept with the line.
   const lead=LEAD_EMOJI.exec(prefix)?.[0].replace(/[\s*]/g,''),marks=lead?{marks:lead}:{};
-  const worn=/^(.*\S)_(\d{1,2})$/u.exec(speaker);
-  if(worn)return Number(worn[2])?{speaker:worn[1]!.trim(),tone,costume:Number(worn[2]),...marks}:{speaker:worn[1]!.trim(),tone,...marks};
+  const worn=/^(.*\S)_(\d{1,2}|nude)$/iu.exec(speaker),costume=worn?(/^nude$/i.test(worn[2]!)?NUDE_COSTUME:Number(worn[2])):0;
+  if(worn)return costume?{speaker:worn[1]!.trim(),tone,costume,...marks}:{speaker:worn[1]!.trim(),tone,...marks};
   return {speaker,tone,...marks};
 }
 export function quotedCue(value:string):string|null {

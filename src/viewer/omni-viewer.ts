@@ -1,11 +1,11 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
-import { DEFAULT_EXPRESSION } from '../domain/emotion/emotions';
+import { DEFAULT_EXPRESSION, NUDE_COSTUME } from '../domain/emotion/emotions';
 import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
 import { revealSegments } from '../domain/tts/base64-words';
 import { namedCostumes } from '../domain/tts/costume-cue';
-import { costumesOf, refreshCostumeNames } from '../services/costume-names';
+import { costumesOf, nudeAllowedFor, refreshCostumeNames } from '../services/costume-names';
 import { ttsComparable } from '../domain/tts/anchors';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import type { TtsSegment } from '../core/tts-types';
@@ -108,7 +108,7 @@ let doc: SafeDocument | null = null, root: SafeElement | null = null, dyn: SafeE
 let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cgLayer: SafeElement | null = null, box: SafeElement | null = null, logBox: SafeElement | null = null, stripEl: SafeElement | null = null, msgsEl: SafeElement | null = null, ratesEl: SafeElement | null = null;
 // The right-hand strip: this reply's illustrations, each a way back to its scene.
 interface StripItem { key: string; message: number; asset: string }
-let stripOpen = false, stripItems: StripItem[] = [], thumbs: Array<StripItem & { r: DOMRect }> = [];
+let stripOpen = false, stripItems: StripItem[] = [];
 const STRIP_MAX = 6;
 // The left-hand list: the replies around the one on stage, each a way to it; ▲ ▼ rows bring more.
 let msgsOpen = false, msgsRect: DOMRect | null = null, msgRows: number[] = [], msgsSpan: [number, number] | null = null, msgsLoading: 'before' | 'after' | '' = '';
@@ -260,7 +260,7 @@ function makeForReply(): void {
   for (const p of new Set([basePlace, ...placeMarks.map(mark => mark.place)].filter(Boolean))) wants.push({ place: p });
   for (const scene of scenes) {
     if (scene.kind !== 'line' || !scene.speaker) continue;
-    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION, costume = costumeOf(scene.costume);
+    const person = resolveTtsSpeaker(scene.speaker, ttsData().characters, context.rosterScope), face = scene.face || DEFAULT_EXPRESSION, costume = dressOf(person, scene.costume);
     if (!person || seen.has(`${person.id}|${face}|${costume}`)) continue;
     seen.add(`${person.id}|${face}|${costume}`); wants.push({ person, face, costume });
   }
@@ -612,7 +612,16 @@ function voice(scene: ViewerScene): void {
 /** `front`: 0 spoke last (in front where people overlap), then on back. `costume`: the one their latest line names (0 the default). */
 interface Member { key: string; name: string; person: TtsCharacter | null; face: string; costume: number; speaking: boolean; front: number }
 /** A line's costume, as the stage dresses it: 감정 에셋's 코스튬별 에셋 off, everyone is in the default one. */
-const costumeOf = (costume: number | undefined): number => costume && emotionData().settings.costumes ? costume : 0;
+const costumeOf = (costume: number | undefined): number => costume && costume !== NUDE_COSTUME && emotionData().settings.costumes ? costume : 0;
+/**
+ * What someone wears on stage: 기본 nude dresses a cue's `이름_nude` in their nude one, 천박모드 every line of theirs (and
+ * so no other costume's face is drawn). Only for whoever may be shown so (nudeAllowedFor): anyone else, as costumeOf.
+ */
+function dressOf(person: TtsCharacter | null, costume: number | undefined): number {
+  const settings = emotionData().settings;
+  if ((settings.nudeAll || (settings.nude && costume === NUDE_COSTUME)) && person && bot && nudeAllowedFor(bot.id, person.id)) return NUDE_COSTUME;
+  return costumeOf(costume);
+}
 /** The costume a line is in, by its name for the name plate (`멜론 · melony_form`): '' in the default one, as the stage. */
 function costumeName(scene: ViewerScene): string {
   const costume = costumeOf(scene.costume);
@@ -642,7 +651,7 @@ function stageLines(): NonNullable<typeof staged> {
  */
 function castAt(index: number): Member[] {
   const { lines, who } = stageLines();
-  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, costume: costumeOf(m.costume), speaking: m.speaking, front: m.front }));
+  return stageAt(lines, index, MAX_CAST, viewerPrefs().stageReach || Infinity).map(m => ({ key: m.who, ...who.get(m.who)!, face: m.face || DEFAULT_EXPRESSION, costume: dressOf(who.get(m.who)!.person, m.costume), speaking: m.speaking, front: m.front }));
 }
 /** The TTS characters this reply brings on, in the order they first speak. */
 function replyPeople(): string[] {
@@ -1305,16 +1314,18 @@ async function buildStrip(): Promise<void> {
   for (const node of nodes) await release(node);
   stripItems = items;
 }
-/** Tile rectangles, once the strip has slid in: taps on it then cost nothing. */
-async function measureThumbs(): Promise<void> {
-  if (!stripEl) return;
-  const found: typeof thumbs = [];
+/** The tile under a tap, read at the tap: the strip scrolls, and a tile scrolled out of it lies over nothing. */
+async function thumbUnder(p: HostPoint): Promise<StripItem | undefined> {
+  if (!stripEl || !inside(p, await stripEl.getBoundingClientRect())) return undefined;
+  let under: StripItem | undefined;
   for (const node of await unwrap(await stripEl.querySelectorAll('[x-vn-thumb]'))) {
-    const id = await node.getAttribute('x-vn-thumb'), item = stripItems.find(it => it.key === id);
-    if (item) found.push({ ...item, r: await node.getBoundingClientRect() });
+    if (!under && inside(p, await node.getBoundingClientRect())) {
+      const id = await node.getAttribute('x-vn-thumb');
+      under = stripItems.find(it => it.key === id);
+    }
     await release(node);
   }
-  thumbs = found;
+  return under;
 }
 async function jumpTo(item: StripItem): Promise<void> {
   stripOpen = false;
@@ -1463,7 +1474,7 @@ async function render(force = false): Promise<void> {
       return;
     }
     shownSig = sig; shownEnd = end;
-    const { html, revealMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', costume: scene.kind === 'line' ? costumeName(scene) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
+    const { html, revealMs, readMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', costume: scene.kind === 'line' ? costumeName(scene) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
     revealUntil = revealedAt === at ? 0 : Date.now() + revealMs;
     // The line and its stage go out first, together (the bridge keeps their order): all else follows them.
     const out = Promise.all([elementsAtEnd(end), box.setInnerHTML(html), writeStage(stage)]);
@@ -1473,7 +1484,7 @@ async function render(force = false): Promise<void> {
     await out;
     // A tap that came while the box went out: the line is complete now too.
     if (askReveal === draw && revealedAt !== at) await reveal();
-    if (viewerPrefs().auto) armAuto(mine, revealMs + 900 + scene.text.length * 30);
+    if (viewerPrefs().auto) armAuto(mine, readMs + 900 + scene.text.length * 30);
     elementsAfter();
     behind(mine, later);
     sendAhead(mine);
@@ -1504,7 +1515,7 @@ function boxNow(): { left: number; top: number; width: number; height: number } 
   const height = boxFit || (boxGeometry()?.least ?? boxRect.height);
   return { left: boxRect.left, width: boxRect.width, height, top: rect.top + rect.height - 12 - height };
 }
-/** A tap while the letters still come in shows them all; the next tap moves on. */
+/** A tap while the line still fades in shows it at once (a double tap skips no line); the next tap moves on. */
 async function reveal(): Promise<void> {
   if (!dyn) return;
   revealedAt = at; revealUntil = 0;
@@ -1755,11 +1766,10 @@ async function act(name: string): Promise<void> {
   }
   else if (name === 'newest') await waitOn(async () => { await load(undefined, false, 'fresh'); await render(); });
   else if (name === 'strip') {
-    stripOpen = !stripOpen; thumbs = [];
+    stripOpen = !stripOpen;
     if (stripOpen) { msgsOpen = false; logOpen = false; }
     // It slides in at once (its spinner turning), its tiles right behind it; they are measured once in.
     await Promise.all([restyle(), stripOpen ? buildStrip() : null]);
-    if (stripOpen) setTimeout(() => { if (stripOpen) void measureThumbs().catch(() => {}); }, 380);
   }
   // 요소 편집 comes or goes in the top bar: it, and 전체 생성 left of it (moved by it), read again.
   else if (name === 'elems') { await toggleElements(); await remeasure('eledit'); if (pinkShown) await remeasure('pink'); }
@@ -1871,7 +1881,7 @@ function onClick(p: HostPoint): void {
   if (tagsOpen && !hit) { void toggleTags().catch(report('viewer.tags')); return; }
   // An open panel takes the tap: a tile or row jumps to its place, anywhere else closes it.
   if (msgsOpen && !hit) { void (msgsRect && inside(p, msgsRect) ? jumpFromMsgs(p.clientY) : act('msgs')).catch(report('viewer.msgs')); return; }
-  if (stripOpen && !hit) { const tile = thumbs.find(t => inside(p, t.r)); void (tile ? jumpTo(tile) : act('strip')).catch(report('viewer.strip')); return; }
+  if (stripOpen && !hit) { void thumbUnder(p).then(tile => tile ? jumpTo(tile) : act('strip')).catch(report('viewer.strip')); return; }
   if (logOpen && !hit) { void (logRect && inside(p, logRect) ? jumpFromLog(p.clientY) : act('log')).catch(report('viewer.log')); return; }
   // A tap on the folded CG opens it; a tap on an open or full CG folds it again.
   if (!hit && cgView === 'fold' && cgThumb && inside(p, cgThumb)) { cgView = 'show'; void restyle().then(() => measureCgControls()).catch(() => {}); return; }
@@ -2164,7 +2174,7 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
       hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen,
       say: (text, ms) => sayShot(text, ms) });
     backTileAttach({ doc: () => doc, root: () => root, frame: () => rect, restyle, remeasure: () => remeasure('back') });
-    stripOpen = false; stripItems = []; thumbs = []; msgsOpen = false; msgsRect = null; msgRows = [];
+    stripOpen = false; stripItems = []; msgsOpen = false; msgsRect = null; msgRows = [];
     ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; backShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
@@ -2241,7 +2251,7 @@ async function ahead(): Promise<void> {
   const settings = (await loadEmotionData()).settings;
   if (!settings.enabled || !settings.autoGenerate) return;
   await loadTtsData();
-  const ctx = await currentTtsContext(), who = await currentEmotionBot();
+  const ctx = await currentTtsContext({ chatOnly: true }), who = await currentEmotionBot();
   if (!who) return;
   const index = ctx.messages.map(m => m?.role).lastIndexOf('char');
   if (index < 0) return;

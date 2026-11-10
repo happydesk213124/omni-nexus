@@ -77,6 +77,11 @@ export function blockRules(min: number, max: number, castFirst = false, costumes
  * it (`이름_2`), for the viewer's faces and the voice; the default one is the plain name, as cues always were.
  */
 export const COSTUME_CUE_RULE = '- In a spoken cue line (Name (delivery): "Dialogue"), a registered character who wears a costume other than [0] gets that costume\'s number right after the name: Name_2 (delivery): "Dialogue" for the costume listed as [2]. In [0], write the plain Name. Keep the same name as always; only the number is added. A costume registered in this reply has no number yet: write its name instead, Name_idol_dress.';
+/**
+ * 감정 에셋's 기본 nude: a spoken cue names a speaker who is naked (`이름_nude`), for the viewer's nude faces. Whoever
+ * 생성 옵션 › 나이 제한 counts as under it is shown dressed whatever the cue says (omni-viewer.ts, nudeForbidden).
+ */
+export const NUDE_CUE_RULE = '- In a spoken cue line, a character who is completely naked at that moment gets _nude right after the name instead of any costume number: Name_nude (delivery): "Dialogue". Only while fully naked; partly undressed or dressed again, write the name as usual.';
 
 /** The fixed part. Same settings and prompts give the same text, byte for byte. */
 export async function inlineTagRules(): Promise<string> {
@@ -85,10 +90,12 @@ export async function inlineTagRules(): Promise<string> {
   const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
   const comicNote = withMain ? cleanText(card.comic_author_note, 8000) : '';
   // Only with costumes on is the list (and its numbers) in the prompt to name one by.
-  const costumeCues = card.costume === true && (await loadEmotionData().catch(() => null))?.settings.costumes === true;
+  const emotion = (await loadEmotionData().catch(() => null))?.settings;
+  const costumeCues = card.costume === true && emotion?.costumes === true;
   return [
     blockRules(min, max, card.stream_inline_cast_first !== false, card.costume === true),
     costumeCues ? COSTUME_CUE_RULE : '',
+    emotion?.nude === true ? NUDE_CUE_RULE : '',
     await taggerRules(card, { imageMin: min, imageMax: max, inline: true }),
     authorNoteSystemContent("Global Author's Note", await getPrompt('global_author_note')),
     authorNoteSystemContent("Author's Note", await getPrompt('author_note')),

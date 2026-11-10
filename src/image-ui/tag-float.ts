@@ -137,7 +137,7 @@ async function readCounts(step?: string): Promise<void> {
 
 /** The reply on screen, as readingReply picks it; -1 without one. */
 async function replyOnScreen(): Promise<number> {
-  const [context, view] = await Promise.all([currentTtsContext(), doc ? chatView(doc) : null]);
+  const [context, view] = await Promise.all([currentTtsContext({ chatOnly: true }), doc ? chatView(doc) : null]);
   return readingReply(context.messages.map(m => m?.role), view ?? { center: -1, atBottom: true });
 }
 

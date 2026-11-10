@@ -82,6 +82,11 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     assert.deepEqual(await page.locator('#emo-bg-shared .emo-bg-tools button').allTextContents(), ['다시 그리기', '삭제']);
     assert.equal(await page.locator('[data-emo-bg-make="cafe, indoors, window, daytime"]').isDisabled(), true);
     await page.waitForFunction(() => /url\("blob:/.test(document.querySelector('#emo-bg-shared .emo-bg-pic')?.style.backgroundImage || ''));
+    // A background tapped: big, as the 캐릭터 tab's pictures open; a tap off it puts it away.
+    await page.locator('#emo-bg-shared .emo-bg-pic').click();
+    assert.match(await page.locator('[data-nx-peek] img').getAttribute('src'), /^blob:/);
+    await page.mouse.click(4, 4);
+    await page.waitForFunction(() => !document.querySelector('[data-nx-peek]'));
     await page.evaluate(() => { window.confirm = () => true; });
     await page.locator('#emo-bg-shared [data-emo-bg-delete]').click();
     await page.waitForFunction(() => !document.querySelector('#emo-bg-shared .emo-bg-tile'));
@@ -134,6 +139,14 @@ test('감정 에셋: its page saves settings, and a TTS card opens on its faces 
     assert.equal(await page.locator('#c-name').isVisible(), false, 'the faces view hides the voice fields');
     const sad = page.locator('.emo-tile', { has: page.locator('[data-face="sad"]') });
     await page.waitForFunction(() => /url\("blob:/.test(document.querySelector('.emo-pic[data-face="sad"]')?.style.backgroundImage || ''));
+    // A face tapped: big, and over the sheet (a modal window lies over everything else on the page).
+    await page.locator('.emo-pic[data-face="sad"]').click();
+    assert.match(await page.locator('[data-nx-peek] img').getAttribute('src'), /^blob:/);
+    assert.equal(await page.evaluate(() => !!document.elementFromPoint(4, 4)?.closest('[data-nx-peek]')), true, 'the picture lies over the sheet');
+    await page.mouse.click(4, 4);
+    await page.waitForFunction(() => !document.querySelector('[data-nx-peek]'));
+    assert.equal(await page.evaluate(() => document.getElementById('character-dialog').open), true, 'putting it away leaves the sheet open');
+    assert.equal(await page.locator('.emo-pic[data-busy="0"]:not([style*="background-image"])').first().evaluate(n => { n.click(); return !!document.querySelector('[data-nx-peek]'); }), false, 'a face with no picture yet opens nothing');
     assert.match(await sad.textContent(), /봇 에셋/);
     // The reply's `(sobbing)` is the cry face: seen faces come first, marked.
     assert.equal(await page.locator('.emo-pic').first().getAttribute('data-face'), 'cry');

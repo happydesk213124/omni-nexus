@@ -64,16 +64,16 @@ test('Risu has one output listener for everyone, and it answers at once', async 
   assert.equal(hostListeners.length, 1);
 });
 
-test('the open chat is read alone once the bot is known; the whole bot only for who needs it', async () => {
+test('a reader of the messages gets the open chat alone once the bot is known; anyone else the whole bot', async () => {
   const api = await load('context');
   api.forgetOpenBot();
-  const first = await api.currentTtsContext();
+  const first = await api.currentTtsContext({ chatOnly: true });
   assert.deepEqual([first.characterId, first.chatId, first.messages.length], ['bot-b', 'b2', 4]);
   assert.deepEqual([calls.whole, calls.chat], [1, 0], 'who is open is learned by one whole read');
 
   calls.whole = 0; calls.chat = 0;
   for (let i = 0; i < 5; i++) {
-    const again = await api.currentTtsContext();
+    const again = await api.currentTtsContext({ chatOnly: true });
     assert.deepEqual([again.characterId, again.chatId, again.sessionId, again.rosterScope, again.messages.length], [first.characterId, first.chatId, first.sessionId, first.rosterScope, 4]);
     assert.equal(again.character.name, 'B');
     assert.equal('chats' in again.character, false, 'the bot is known by name: its other chats are not carried along');
@@ -82,48 +82,48 @@ test('the open chat is read alone once the bot is known; the whole bot only for 
 
   // A message added: the next read has it (nothing of the chat is kept between reads).
   bots[1].chats[1].message.push({ role: 'user', data: 'five', chatId: 'b2-4' });
-  assert.equal((await api.currentTtsContext()).messages.length, 5);
+  assert.equal((await api.currentTtsContext({ chatOnly: true })).messages.length, 5);
 
   // Who needs the bot itself gets it, by a whole read.
   calls.whole = 0;
-  const whole = await api.currentTtsContext({ bot: true });
+  const whole = await api.currentTtsContext();
   assert.equal(Array.isArray(whole.character.chats) && whole.character.chats.length, 2);
   assert.equal(calls.whole, 1);
 
-  // Its description is read when a voice is picked from it, not carried in every context.
+  // Who the bot is goes along with its description, for a voice pick, and no more of it.
   calls.whole = 0;
-  const sources = await api.ttsCharacterSources(await api.currentTtsContext(), { lore: false, persona: false, illustration: false });
+  const sources = await api.ttsCharacterSources(await api.currentTtsContext({ chatOnly: true }), { lore: false, persona: false, illustration: false });
   assert.deepEqual(sources.character, ['B', 'about B']);
-  assert.equal(calls.whole, 1);
+  assert.equal(calls.whole, 0);
 });
 
 test('another chat of the bot is read alone; a chat it has not heard of, or another bot at its place, by a whole read', async () => {
   const api = await load('other');
   api.forgetOpenBot();
-  await api.currentTtsContext();
+  await api.currentTtsContext({ chatOnly: true });
   calls.whole = 0; calls.chat = 0;
   // The reader turns to the bot's first chat.
   bots[1].chatPage = 0;
-  assert.equal((await api.currentTtsContext()).chatId, 'b1');
+  assert.equal((await api.currentTtsContext({ chatOnly: true })).chatId, 'b1');
   assert.deepEqual([calls.whole, calls.chat], [0, 1]);
   // A chat made since: its id is news, so the bot is read (and the chat is known from then on).
   bots[1].chats.push(chat('b3', ['new'])); bots[1].chatPage = 2;
-  assert.equal((await api.currentTtsContext()).chatId, 'b3');
+  assert.equal((await api.currentTtsContext({ chatOnly: true })).chatId, 'b3');
   assert.equal(calls.whole, 1);
   calls.whole = 0;
-  assert.equal((await api.currentTtsContext()).chatId, 'b3');
+  assert.equal((await api.currentTtsContext({ chatOnly: true })).chatId, 'b3');
   assert.equal(calls.whole, 0);
   // Another bot is opened: its place in the list is another, so it is read whole, never taken for the one known.
   open = 0;
-  const other = await api.currentTtsContext();
+  const other = await api.currentTtsContext({ chatOnly: true });
   assert.deepEqual([other.characterId, other.chatId], ['bot-a', 'a1']);
   assert.equal(calls.whole, 1);
   // The known bot deleted, another now at its place in the list: the chat there is not one of the known bot's.
   open = 1; calls.whole = 0;
-  await api.currentTtsContext();
+  await api.currentTtsContext({ chatOnly: true });
   bots[1] = { chaId: 'bot-c', name: 'C', chatPage: 0, chats: [chat('c1', ['z'])] };
   calls.whole = 0;
-  const moved = await api.currentTtsContext();
+  const moved = await api.currentTtsContext({ chatOnly: true });
   assert.deepEqual([moved.characterId, moved.chatId], ['bot-c', 'c1'], 'never the deleted bot\'s id over another bot\'s chat');
   assert.equal(calls.whole, 1);
 });
@@ -133,17 +133,17 @@ test('Risu\'s output event says who is open: the first read after a reply is alr
   api.forgetOpenBot();
   await api.addChatOutputListener(() => {});
   hostListeners[0][1](outputOf(1));
-  const context = await api.currentTtsContext();
+  const context = await api.currentTtsContext({ chatOnly: true });
   assert.deepEqual([context.characterId, context.chatId], ['bot-b', 'b2']);
   assert.equal(calls.chat, 1, 'who is open came with the event: the chat alone is asked for');
   // (One read of the bot is its TTS characters' own, once a bot: storage/tts-store.)
   assert.ok(calls.whole <= 1);
   calls.whole = 0; calls.chat = 0;
-  await api.currentTtsContext(); await api.currentTtsContext();
+  await api.currentTtsContext({ chatOnly: true }); await api.currentTtsContext({ chatOnly: true });
   assert.deepEqual([calls.whole, calls.chat], [0, 2]);
   // A reply of a bot that is not the open one teaches nothing about the open one.
   api.forgetOpenBot(); calls.whole = 0;
   hostListeners[0][1](outputOf(0));
-  assert.equal((await api.currentTtsContext()).characterId, 'bot-b');
+  assert.equal((await api.currentTtsContext({ chatOnly: true })).characterId, 'bot-b');
   assert.equal(calls.whole, 1, 'the open bot is read: what the event taught is another bot\'s place');
 });

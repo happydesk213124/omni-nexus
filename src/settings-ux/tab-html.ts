@@ -3,6 +3,7 @@ import { ttsHelpTip } from '../tts-ui/help';
 import { soundHelpTip } from '../sound-ui/help';
 import preview from './preview-panes.json';
 import { presetModelBadge } from './preset-tiles';
+import { normalizeUnderageAge, UNDERAGE_TAGS_DEFAULT } from '../domain/character/underage';
 
 type PreviewPack = { panes: Record<string, string>; overlays: string; chrome: string; help?: {tips:Record<string,{title:string;body:string}>;aliases:Record<string,string>} };
 
@@ -166,9 +167,14 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
   const locationWeight = out.querySelector<HTMLInputElement>('#nx-location-tag-weight');
   if (locationWeight) locationWeight.setAttribute('value', String(card?.location_tag_weight ?? 1));
   out.querySelector<HTMLInputElement>('#nx-speech-bubble-weight')?.setAttribute('value', String(card?.speech_bubble_weight ?? 1));
+  out.querySelector<HTMLInputElement>('#nx-underage-age')?.setAttribute('value', String(normalizeUnderageAge(card?.underage_age)));
+  const underageTags = out.querySelector('#nx-underage-tags');
+  if (underageTags) underageTags.textContent = typeof card?.underage_tags === 'string' ? card.underage_tags : UNDERAGE_TAGS_DEFAULT;
   if (card) for (const [id, key, defaultOn] of [
     ['nx-appearance', 'char_appearance', true],
     ['nx-pov-mode', 'pov_mode', false],
+    ['nx-genitals-when-visible', 'genitals_when_visible', false],
+    ['nx-underage-strict', 'underage_strict', true],
     ['nx-userinfo-persona-only', 'user_info_persona_only', false],
     ['nx-llm-json-retry', 'llm_json_retry', false],
     ['nx-llm-tag-cal', 'llm_tag_cal', false],

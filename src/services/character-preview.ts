@@ -8,6 +8,8 @@ import { bytesToBase64 } from '../core/util/bytes';
 import { cleanText, joinTags } from '../core/util/text';
 import { ensureCostumes, resolveCostumeFields } from '../domain/character/costume';
 import { formatAgeCaption, formatHeightCaption } from '../domain/character/looks-fields';
+import { characterIsUnderage } from '../domain/character/tags';
+import { underageRules, withoutExposureTags } from '../domain/character/underage';
 import { tokensForFamily } from '../domain/nai/keys';
 import { naiSamplerForFamily, naiStepsForFamily } from '../domain/nai/samplers';
 import { findPresetById, modelForFamily, normalizeNaiFamily, type NaiFamily } from '../domain/nai/routing';
@@ -42,26 +44,35 @@ function activePresetId(want: string): string {
   return cleanText(first?.id, 120);
 }
 
-/** `wear`: the costume the roster has on ('active'), or its first, the default one ('default': 감정 에셋 draws only that). */
-/** `wear`: the costume on now, the default one, or a costume by its number in the list. */
-export function characterPreviewTags(rec: Partial<CharacterRecord>, wear: 'active' | 'default' | number = 'active', opts: { accessories?: boolean } = {}): string {
+/**
+ * `wear`: the costume on now ('active'), the default one ('default': 감정 에셋's), or a costume by its number in the list.
+ * `undressed`: 감정 에셋's 기본 nude, the clothes (상의·하의) and 무기/기타 left out; the nude tags are its own to add.
+ */
+export function characterPreviewTags(rec: Partial<CharacterRecord>, wear: 'active' | 'default' | number = 'active', opts: { accessories?: boolean; undressed?: boolean } = {}): string {
   const { costumes, active_costume } = ensureCostumes(rec);
   const worn = typeof wear === 'number' ? costumes[wear] || costumes[0]! : wear === 'default' ? costumes[0]! : costumes[active_costume] || costumes[0]!;
   const look = resolveCostumeFields(worn, costumes[0]!);
-  const gender = cleanText(rec.gender, 20);
-  return joinTags(
+  const gender = cleanText(rec.gender, 20), card = getConfig().card;
+  const tags = joinTags(
     rec.original,
     look.appearance,
     look.hair_color,
     look.hair_style,
     look.eye_color,
-    getConfig().card.character_height === false ? '' : formatHeightCaption(look.height, gender === 'girl' || gender === 'boy' || gender === 'other' ? gender : ''),
-    getConfig().card.character_age === false ? '' : formatAgeCaption(look.age),
+    card.character_height === false ? '' : formatHeightCaption(look.height, gender === 'girl' || gender === 'boy' || gender === 'other' ? gender : ''),
+    card.character_age === false ? '' : formatAgeCaption(look.age),
     look.penis_size,
-    look.attire,
-    look.bottoms,
-    opts.accessories === false ? '' : look.accessories,
+    opts.undressed ? '' : look.attire,
+    opts.undressed ? '' : look.bottoms,
+    opts.accessories === false || opts.undressed ? '' : look.accessories,
   );
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 미리보기·감정 에셋도 미성년으로 그려지는 캐릭터의 노출 태그를 뺀다 (underage.ts).
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  return characterIsUnderage(rec, { age: look.age, appearance: look.appearance }, underageRules(card)) ? withoutExposureTags(tags) : tags;
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+  // ╚══════════════════════════════════════════════════════════════════════════╝
 }
 
 export async function generateCharacterPreview(body: Record<string, unknown>): Promise<ApiResult> {

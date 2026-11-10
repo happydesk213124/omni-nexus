@@ -126,12 +126,19 @@ export function excludeTags(tags: unknown, rules: unknown): string {
   return list.length ? sweep(String(tags ?? '')) : String(tags ?? '');
 }
 
+/**
+ * 기본 nude: the costume number a nude face is kept under, past any costume's (1–99). A cue names it `이름_nude`.
+ * Only someone 감정 에셋 may draw nude is ever dressed in it (nudeForbidden in character/tags.ts).
+ */
+export const NUDE_COSTUME = 100;
+
 /** The emotion asset name Omni writes: `이름_감정.png` (PNG keeps a transparent background). */
 export function emotionAssetName(person: string, face: string, ext = 'png', costume = 0): string {
   const name = String(person ?? '').normalize('NFKC').trim().replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
   // `omni_` first: never mixed up with the bot's own assets. A costume's (`c2_`) is not the default one's either:
   // its mark stands before the name, for beside the face a phrase (`c2 happy`) reads as that face, the name left bare.
-  return `omni_${costume > 0 ? `c${costume}_` : ''}${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
+  const worn = costume === NUDE_COSTUME ? 'nude_' : costume > 0 ? `c${costume}_` : '';
+  return `omni_${worn}${name}_${face}.${ext.replace(/[^a-z0-9]/gi, '') || 'png'}`;
 }
 
 // ── prompt ─────────────────────────────────────────────────────────────────

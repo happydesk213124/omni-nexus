@@ -60,6 +60,8 @@ ${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'))}
 ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'))}
 ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
 ${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 에셋'), '<span id="emo-costumes-status" role="status"></span>')}
+${row('기본 nude · 이름_nude', sw('emo-nude', '기본 nude'), '<span id="emo-nude-status" role="status"></span>')}
+${row('천박모드 · 모든 표정 nude', sw('emo-nude-all', '천박모드'))}
 ${row('무기/기타 태그 빼기', sw('emo-drop-accessories', '무기/기타 태그 빼기'))}
 </fieldset>
 ${row('고아 메모 정리', '<button type="button" id="emo-tidy">정리</button>', '<span id="emo-tidy-status" role="status"></span>')}
@@ -91,6 +93,7 @@ export const EMOTION_CSS = `
 #emo-bg .emo-bg-tile{display:flex;flex-direction:column;gap:4px;min-width:0}
 #emo-bg .emo-bg-pic{aspect-ratio:1216/832;border-radius:8px;border:1px solid #ffffff18;background:#0b0e14 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.9}
 #emo-bg .emo-bg-pic[data-busy="1"]{outline:2px solid #22c55e;outline-offset:-2px}
+#emo-bg .emo-bg-pic[style*="background-image"]{cursor:zoom-in}
 #emo-bg .emo-bg-tile small{font-size:11px;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #emo-bg .emo-bg-samples{margin-top:10px}
 #emo-bg .emo-bg-samples summary{cursor:pointer;opacity:.85;min-height:32px;display:flex;align-items:center}
@@ -125,6 +128,7 @@ export const EMOTION_CSS = `
 .emo-tile[data-seen="1"]{border-color:#ec489966}
 .emo-tile .emo-pic{aspect-ratio:832/1216;border-radius:8px;background:#0b0e14 center/contain no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.9}
 .emo-tile .emo-pic[data-busy="1"]{outline:2px solid #22c55e;outline-offset:-2px}
+.emo-tile .emo-pic[style*="background-image"]{cursor:zoom-in}
 .emo-tile b{font-size:12px}
 .emo-tile small{font-size:10px;opacity:.7}
 .emo-tile button{min-height:30px;font-size:12px}

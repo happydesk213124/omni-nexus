@@ -498,3 +498,15 @@ test('the removed 에셋 card mode migrates to illustration and stays there thro
   assert.equal(importSettings(exportSettings(migrated)).card.mode, 'illustration');
   assert.equal(migrateSettings({ card: { mode: 'illustration' } }).card.mode, 'illustration');
 });
+
+test('나이 제한 starts on, at 18, with every built-in word; its age never goes under 18; the box\'s first value gets the whole list', () => {
+  const card = migrateSettings({ card: {} }).card;
+  assert.equal(card.underage_strict, true);
+  assert.equal(card.underage_age, 18);
+  assert.match(card.underage_tags, /^loli, shota, child, toddler, kid, /);
+  assert.equal(migrateSettings({ card: { underage_age: 9 } }).card.underage_age, 18);
+  assert.equal(migrateSettings({ card: { underage_age: 21 } }).card.underage_age, 21);
+  assert.equal(migrateSettings({ card: { underage_tags: 'loli, shota, child, toddler' } }).card.underage_tags, card.underage_tags, 'the four words it once held: moved on');
+  assert.equal(migrateSettings({ card: { underage_tags: '*petite' } }).card.underage_tags, '*petite', 'the user\'s own list stays');
+  assert.equal(migrateSettings({ card: { underage_tags: '' } }).card.underage_tags, '', 'cleared stays cleared: the built-in words count anyway');
+});

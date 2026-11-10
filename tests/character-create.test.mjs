@@ -63,6 +63,17 @@ test('actual tagging request carries 50,000 characters; lore/assets search stops
  assert.ok(JSON.stringify(cast).includes('TAIL_CHARACTER_LOOK'));
 });
 
+test('pussy·penis는 보일 때만: off changes no prompt; on, the tagger is told when to write them',async()=>{
+ const {api,config}=await runtime();
+ const ask=async()=>(await api.buildTaggerMessages({session_id:'char_parity',character_id:'char_parity',assistant_text:'문을 열었다.'})).map(m=>m.content).join('\n');
+ assert.doesNotMatch(await ask(),/only when seen/);
+ config.card={...config.card,genitals_when_visible:true};api.setConfig(config);
+ const on=await ask();
+ assert.match(on,/## pussy \/ penis only when seen/);
+ assert.match(on,/characters\[\]\.action only when it can be seen in this shot/);
+ assert.match(on,/bodies overlap/);assert.match(on,/x-ray/);
+});
+
 test('POV off changes no prompt; on, a reference person is read apart from those in the message, and the switch survives saves',async()=>{
  const {api,config}=await runtime();
  await api.upsertCharacter('char_parity',{id:'me',name:'POV_SELF',aliases:['POV_SELF'],gender:'boy',appearance:'SELF_BODY_LOOK',pov_reference:true});

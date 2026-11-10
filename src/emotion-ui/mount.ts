@@ -1,6 +1,6 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
-import { BASE_EXPRESSIONS, baseExpression } from '../domain/emotion/emotions';
+import { BASE_EXPRESSIONS, baseExpression, NUDE_COSTUME } from '../domain/emotion/emotions';
 import { backgroundPlaces, clearMadeSprites, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, madeSpriteCount, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { placeKey, samePlace } from '../domain/viewer/place';
@@ -12,6 +12,7 @@ import { loadViewerPrefs, saveViewerPrefs, viewerPrefs, type ViewerBgPick, type 
 import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTION_TABS } from './markup';
 import { attachSoundHelp } from '../sound-ui/help';
 import { getConfig } from '../services/context';
+import { openImagePeek } from '../char-command/peek';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -24,6 +25,15 @@ export function addEmotionStructure(root: ParentNode): void {
   attachSoundHelp(root);
 }
 export const emotionStyleText = (): string => EMOTION_CSS;
+
+/** A picture tapped, big, as the 캐릭터 tab's open: its tile already holds the whole file. False when it shows none. */
+function openPicture(target: Element | null): boolean {
+  const pic = target?.closest?.<HTMLElement>('.emo-pic,.emo-bg-pic');
+  const url = /url\("(.+)"\)/.exec(pic?.style.backgroundImage || '')?.[1];
+  if (!pic || !url) return false;
+  openImagePeek(url, pic.closest('dialog'));
+  return true;
+}
 
 // Thumbnails live in this settings iframe, so a blob URL is fine here (never in the chat).
 const thumbs = new Map<string, string>();
@@ -43,7 +53,9 @@ function fillSettings(s: EmotionSettings): void {
   const check = (id: string, on: boolean) => { const node = $<HTMLInputElement>(id); if (node) node.checked = on; };
   const value = (id: string, v: string) => { const node = $<HTMLInputElement>(id); if (node && document.activeElement !== node) node.value = v; };
   check('emo-enabled', s.enabled); check('emo-existing', s.useExisting); check('emo-auto', s.autoGenerate); check('emo-places', s.placeBackgrounds); check('emo-costumes', s.costumes); check('emo-drop-accessories', s.dropAccessories);
+  check('emo-nude', s.nude); check('emo-nude-all', s.nudeAll);
   costumeGate();
+  nudeGate();
   value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-exclude', s.excludeTags); value('emo-pose', s.pose);
@@ -62,6 +74,16 @@ function costumeGate(): void {
   if (node) node.disabled = !ready && !node.checked;
   if (note) note.textContent = ready ? '' : '스트리밍 중 태그 생성과 코스튬을 켜면 쓸 수 있습니다.';
 }
+/** 기본 nude waits on streaming tags: only then does the writer see the rule to write `이름_nude`. Already on, it can still be switched off. */
+function nudeGate(): void {
+  const node = $<HTMLInputElement>('emo-nude'), note = $('emo-nude-status');
+  let ready = false;
+  try { ready = getConfig().card?.stream_inline_tags === true; } catch { /* no settings read yet */ }
+  if (node) node.disabled = !ready && !node.checked;
+  if (note) note.textContent = ready ? '' : '스트리밍 중 태그 생성을 켜면 쓸 수 있습니다.';
+}
+/** A costume's name on the sheet: 기본, N번, or the nude one. */
+const wornLabel = (costume: number): string => costume === NUDE_COSTUME ? 'nude' : costume ? `${costume}번 코스튬` : '';
 /** A section whose switch is off greys out (its values stay). */
 function gates(s: Pick<EmotionSettings, 'enabled' | 'placeBackgrounds'>): void {
   const gate = (id: string, on: boolean) => { const node = $<HTMLFieldSetElement>(id); if (node) node.disabled = !on; };
@@ -74,6 +96,7 @@ function readSettings(): Partial<EmotionSettings> {
   return {
     enabled: !!$<HTMLInputElement>('emo-enabled')?.checked, useExisting: !!$<HTMLInputElement>('emo-existing')?.checked, autoGenerate: !!$<HTMLInputElement>('emo-auto')?.checked, placeBackgrounds: !!$<HTMLInputElement>('emo-places')?.checked,
     costumes: !!$<HTMLInputElement>('emo-costumes')?.checked, dropAccessories: !!$<HTMLInputElement>('emo-drop-accessories')?.checked,
+    nude: !!$<HTMLInputElement>('emo-nude')?.checked, nudeAll: !!$<HTMLInputElement>('emo-nude-all')?.checked,
     family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0',
     width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), excludeTags: val('emo-exclude'), pose: val('emo-pose'),
     faceTags: Object.fromEntries(BASE_EXPRESSIONS.map(e => [e.key, val(`emo-face-${e.key}`).trim()]).filter(([, tags]) => tags)), words,
@@ -183,6 +206,7 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   });
   // A sample pressed: drawn now for every chat. A tile's 다시 그리기 draws it again; 삭제 takes it away.
   root.querySelector('#emo-bg')?.addEventListener('click', event => {
+    if (openPicture(event.target as Element | null)) return;
     const button = (event.target as Element | null)?.closest?.<HTMLButtonElement>('[data-emo-bg-make],[data-emo-bg-redraw],[data-emo-bg-delete]');
     if (!button || button.disabled) return;
     const make = button.getAttribute('data-emo-bg-make'), redraw = button.getAttribute('data-emo-bg-redraw'), remove = button.getAttribute('data-emo-bg-delete');
@@ -267,13 +291,16 @@ function bindCharacterSheet(live: () => boolean): void {
     bot = await currentEmotionBot();
     if (mine !== epoch || !bot) { if (!bot) status('Risu에서 봇을 연 상태에서 쓸 수 있습니다.'); return; }
     // 코스튬별 에셋: the illustration character's costumes, each its own faces. Off (or one costume), the default's.
-    const costumes = emotionData().settings.costumes ? await spriteCostumes(person, bot).catch(() => []) : [];
+    // 기본 nude · 천박모드: their nude one too, for whoever may be drawn so (spriteCostumes).
+    const s = emotionData().settings;
+    const listed = s.costumes || s.nude || s.nudeAll ? await spriteCostumes(person, bot).catch(() => []) : [];
+    const costumes = s.costumes ? listed : listed.filter(c => c.index === 0 || c.index === NUDE_COSTUME);
     if (mine !== epoch) return;
     if (!costumes.some(c => c.index === costume)) costume = 0;
     const bar = $('emo-char-costumes'), worn = costume;
     if (bar) {
       bar.hidden = costumes.length < 2;
-      bar.innerHTML = costumes.map(c => `<button type="button" role="tab" data-emo-costume="${c.index}" aria-selected="${c.index === worn}" title="${esc(c.note)}">${c.index ? `${c.index}번` : '기본'} · ${esc(c.name)}</button>`).join('');
+      bar.innerHTML = costumes.map(c => `<button type="button" role="tab" data-emo-costume="${c.index}" aria-selected="${c.index === worn}" title="${esc(c.note)}">${c.index === NUDE_COSTUME ? 'nude' : `${c.index ? `${c.index}번` : '기본'} · ${esc(c.name)}`}</button>`).join('');
     }
     const seen = new Set(emotionData().seen[person.id] || []);
     const faces = [...seen, ...BASE_EXPRESSIONS.map(e => e.key).filter(k => !seen.has(k))];
@@ -286,7 +313,7 @@ function bindCharacterSheet(live: () => boolean): void {
     for (const { face, sprite } of tiles) if (sprite) void thumb(sprite.path).then(url => { const pic = grid.querySelector<HTMLElement>(`.emo-pic[data-face="${CSS.escape(face)}"]`); if (url && pic && mine === epoch) pic.style.backgroundImage = `url("${url}")`; }).catch(() => {});
     const looks = await spriteLooks(person, bot, worn).catch(() => '');
     const line = $('emo-char-looks');
-    if (line && mine === epoch) line.textContent = looks ? `외형${worn ? ` (${worn}번 코스튬)` : ''}: ${looks}` : '외형 태그가 없습니다. 삽화 캐릭터 탭에서 이 사람의 외형을 채우면 만들 수 있습니다.';
+    if (line && mine === epoch) line.textContent = looks ? `외형${worn ? ` (${wornLabel(worn)})` : ''}: ${looks}` : '외형 태그가 없습니다. 삽화 캐릭터 탭에서 이 사람의 외형을 채우면 만들 수 있습니다.';
   };
   const make = (faces: string[]) => {
     if (!person || !bot) return;
@@ -296,6 +323,7 @@ function bindCharacterSheet(live: () => boolean): void {
   };
   form.addEventListener('click', event => {
     const target = event.target as Element | null;
+    if (openPicture(target)) return;
     // The form itself carries data-emo-view: only the switch's own buttons count here.
     const switchTo = target?.closest?.('[data-emo-tab]')?.getAttribute('data-emo-tab');
     if (switchTo === 'voice' || switchTo === 'faces') { event.preventDefault(); view(switchTo); return; }
@@ -317,7 +345,7 @@ function bindCharacterSheet(live: () => boolean): void {
     const who = person, where = bot, worn = costume;
     const faces = [...new Set(emotionData().made.filter(m => m.bot === where.id && m.person === who.id && (m.costume ?? 0) === worn).map(m => m.face))];
     if (!faces.length) { status('다시 만들 그림이 없습니다. 옴니가 만든 그림만 다시 만듭니다.'); return; }
-    if (!confirm(`${who.name}${worn ? ` (${worn}번 코스튬)` : ''}의 만든 그림 ${faces.length}장을 지금 프리셋으로 다시 만들까요?`)) return;
+    if (!confirm(`${who.name}${worn ? ` (${wornLabel(worn)})` : ''}의 만든 그림 ${faces.length}장을 지금 프리셋으로 다시 만들까요?`)) return;
     make(faces);
   });
   const unsubscribe = subscribeSprites(() => { if (live()) void render(); else unsubscribe(); });

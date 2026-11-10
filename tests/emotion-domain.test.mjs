@@ -47,6 +47,11 @@ test("a costume's sprite is named apart (omni_c2_이름_face) and is never taken
   assert.equal(api.assetMatchesExpression('omni_c2_오미선_happy.webp', ['오미선_c1'], 'happy'), false);
 });
 
+test("a nude face is named apart (omni_nude_이름_face) and is never taken for the default costume's", () => {
+  assert.equal(api.emotionAssetName('오미선', 'happy', 'png', api.NUDE_COSTUME), 'omni_nude_오미선_happy.png');
+  assert.equal(api.assetMatchesExpression('omni_nude_오미선_happy.png', ['오미선'], 'happy'), false);
+});
+
 test('excludeTags: a bare rule is that tag, a star any tag with that word, through emphasis', () => {
   const sweep = api.excludeTags;
   assert.equal(sweep('penis, huge penis', 'penis'), 'huge penis', 'bare: the whole tag only');

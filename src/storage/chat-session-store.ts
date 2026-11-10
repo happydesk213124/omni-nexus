@@ -1,15 +1,17 @@
 import { risuHost } from '../core/host';
 import { dbg } from '../core/debug';
-import { CARD_PACK_KEY, SESSION_AUTHOR_NOTE_KEY, STORE_KEY, ROOM_INDEX_KEY } from '../core/constants';
+import { CARD_PACK_KEY, SESSION_AUTHOR_NOTE_KEY, SESSION_LORE_NAME, STORE_KEY, ROOM_INDEX_KEY } from '../core/constants';
 import { cleanText, sessionIdHash, unifiedSessionIdForCharacter } from '../core/util/text';
 import type { KvApi } from './device-store';
-import { characterDirectory, directoryWarm } from './character-directory';
+import { characterDirectory, directoryWarm, forgetCharacterDirectory } from './character-directory';
 import { forgetBots, openBotFor } from './current-bot';
 
-export const SESSION_LORE_NAME = 'omni.nexus.data';
+// The name of a chat's own data entry (core/constants); re-exported for the modules that import it from here.
+export { SESSION_LORE_NAME };
 type RecordValue = Record<string, unknown>;
 /** `lore`: the names of our entries in the chat as the list of bots showed them, or null when it could not say. */
-type Target = { character: number; chat: number; characterId: string; chatId: string; sid: string; lore: string[] | null };
+/** `data`: the chat's own data entry as the list showed it (null: the list could not say). */
+type Target = { character: number; chat: number; characterId: string; chatId: string; sid: string; lore: string[] | null; data?: unknown[] | null };
 type Payload = { version: 1; sessionId: string; records: RecordValue };
 const object = (v: unknown): RecordValue | null => v != null && typeof v === 'object' && !Array.isArray(v)
   ? v as RecordValue : null;
@@ -41,7 +43,7 @@ async function targets(fresh = false): Promise<Target[]> {
     for (const entry of row.chats) {
       const chatId = cleanText(entry.id || entry.chatId, 200);
       if (!chatId || chatId === '__unified__') continue;
-      result.push({ character: row.index, chat: entry.index, characterId, chatId, sid: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, lore: entry.omniLore });
+      result.push({ character: row.index, chat: entry.index, characterId, chatId, sid: `risu_${sessionIdHash(`${characterId}|${chatId}`)}`, lore: entry.omniLore, data: entry.ownData });
     }
   }
   // Duplicate identities cannot be safely assigned, even if one is selected.
@@ -121,6 +123,8 @@ async function writeRecord(target: Target, key: string, value: unknown): Promise
   else lore[index] = { ...object(lore[index]), ...entry };
   chatEpoch++;
   await risuHost()!.setChatToIndex!(target.character, target.chat, { ...chat, localLore: lore });forgetBots();
+  // The list of bots shows this chat as it was: no reader takes its entry from there now.
+  forgetCharacterDirectory();
   // The bot was vouched for a moment ago; the read back is the chat alone.
   const verified = payload(await readChatOnly(target), target);
   if (JSON.stringify(verified.records[key]) !== JSON.stringify(value)) throw new Error('Chat session write verification failed');
@@ -188,7 +192,8 @@ async function slicesOf(list: readonly Target[], known = false): Promise<{ rows:
       // holding an entry is read whatever the list showed: the list may be a moment older than our own write.
       if (known || !t.lore || t.lore.includes(SESSION_LORE_NAME)) {
         let chat: RecordValue;
-        try { chat = await readChatOnly(t); }
+        // The list showed the entry itself (made after our last write: a write forgets the list): no read for it.
+        try { chat = t.data ? { localLore: t.data } : await readChatOnly(t); }
         catch (error) { dbg('session.slice.read', { message: `${t.sid}: ${String((error as Error)?.message || error)}` }, 'warn'); missed.push(t.sid); continue; }
         if (((chat.localLore as unknown[] | undefined) ?? []).some(e => object(e)?.comment === SESSION_LORE_NAME)) {
           try { slice = payload(chat, t); }

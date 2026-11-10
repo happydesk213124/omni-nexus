@@ -80,6 +80,61 @@ test('mixed rows migrate only exact chat scope; globals and unified rows keep th
   assert.deepEqual(await api.psGet(key), next);
 });
 
+/** The host's reads, counted: opening Omni copied every bot once per chat it had, for each store. */
+function countReads() {
+  const n = { lists: 0, bots: 0, chats: 0 }, host = globalThis.risuai;
+  const { getDatabase, getCharacterFromIndex, getChatFromIndex } = host;
+  host.getDatabase = async (...args) => { n.lists++; return getDatabase(...args); };
+  host.getCharacterFromIndex = async (...args) => { n.bots++; return getCharacterFromIndex(...args); };
+  host.getChatFromIndex = async (...args) => { n.chats++; return getChatFromIndex(...args); };
+  return n;
+}
+const dataEntry = (records, id) => ({ comment: 'omni.nexus.data', key: '', secondkey: '', mode: 'normal', alwaysActive: false, selective: false, insertorder: 0,
+  content: JSON.stringify({ version: 1, sessionId: sid(id), records }) });
+
+test('the stores read at start share one list of every bot, copy no bot or chat of their own, and still take what a chat holds', async () => {
+  const roster = api.STORE_KEY('characters'), meta = api.STORE_KEY('meta');
+  const rows = { [`${sid('two')}\tb`]: { scope: sid('two'), id: 'b', name: 'held in the chat' } };
+  chars[0].chats[1].localLore.push(dataEntry({ [roster]: rows }, 'two'));
+  legacy.set(meta, { prompt: { key: 'prompt', text: 'kept' } });
+  const n = countReads();
+  const [readMeta, readRoster] = await Promise.all([api.psGet(meta), api.psGet(roster)]);
+  assert.deepEqual(readMeta, { prompt: { key: 'prompt', text: 'kept' } });
+  assert.deepEqual(readRoster, rows);
+  assert.deepEqual(n, { lists: 1, bots: 0, chats: 0 });
+  assert.equal(writes, 0, 'reading wrote nothing');
+});
+
+test('one save of a store copies no chat that has nothing to do with it; a chat holding it is still written', async () => {
+  const roster = api.STORE_KEY('characters'), row = `${sid('one')}\ta`;
+  legacy.set(roster, { [row]: { scope: sid('one'), id: 'a', name: 'backup' } });
+  await api.psGet(roster);
+  const n = countReads();
+  await api.psSet(api.STORE_KEY('meta'), { prompt: { key: 'prompt', text: 'x' } });
+  assert.deepEqual(n, { lists: 1, bots: 0, chats: 0 });
+  await api.psSet(roster, { [row]: { scope: sid('one'), id: 'a', name: 'edited' } });
+  assert.equal(data().records[roster][row].name, 'edited');
+});
+
+test('a chat sent without its lorebook is read on its own, as before', async () => {
+  const roster = api.STORE_KEY('characters');
+  const rows = { [`${sid('two')}\tb`]: { scope: sid('two'), id: 'b', name: 'held in the chat' } };
+  chars[0].chats[1].localLore.push(dataEntry({ [roster]: rows }, 'two'));
+  globalThis.risuai.getDatabase = async () => ({ characters: chars.map(c => ({ ...c, chats: c.chats.map(({ localLore, ...chat }) => chat) })) });
+  const n = countReads();
+  assert.deepEqual(await api.psGet(roster), rows);
+  // The chat alone: its bot is not copied to vouch for it (a read changes nothing).
+  assert.deepEqual([n.bots, n.chats], [0, 2]);
+});
+
+test('a row written here is not read back from the list made before it', async () => {
+  const roster = api.STORE_KEY('characters'), row = `${sid('one')}\ta`;
+  await api.psSet(roster, { [row]: { scope: sid('one'), id: 'a', name: 'first' } });
+  assert.equal((await api.psGet(roster))[row].name, 'first');
+  await api.psSet(roster, { [row]: { scope: sid('one'), id: 'a', name: 'second' } });
+  assert.equal((await api.psGet(roster))[row].name, 'second');
+});
+
 test('pack writes are dropped for every sid shape, legacy or not', async () => {
   for (const id of [sid('one'), api.unifiedSessionIdForCharacter('char-a'), 'risu_unknown']) {
     const key = api.CARD_PACK_KEY(id);
@@ -291,10 +346,10 @@ test('a chat that holds rows is the only one read on later starts, and its rows 
   const read = await api.psGet(key);
   assert.equal(read[rowId].name, 'new', 'the chat holds the row; the plain store keeps the backup');
   assert.equal(legacy.get(key)[rowId].name, 'old');
-  assert.deepEqual(calls, { list: 1, bot: 0, chat: 1, write: 0 }, 'the list (to find it) and that chat; the other chat is not read');
-  // A store with no rows of that kind does not read the chat a second time.
+  assert.deepEqual(calls, { list: 1, bot: 0, chat: 0, write: 0 }, 'the list finds it and shows its entry: no chat is read');
+  // A store with no rows of that kind does not read anything more.
   await api.psGet(api.STORE_KEY('meta'));
-  assert.equal(calls.chat, 1);
+  assert.equal(calls.chat, 0);
 });
 
 test('an entry that is another chat\'s, or broken, is left alone and fails no read', async () => {

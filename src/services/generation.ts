@@ -34,7 +34,9 @@ import {
   parseFocusIndexes,
 } from '../domain/character/focus';
 import { dedupeShotCharacters, resolveCharacter } from '../domain/character/roster';
+import { underageRules, withoutExposureTags } from '../domain/character/underage';
 import {
+  characterIsUnderage,
   characterMaxLimit,
   composeCharacterCaptionTags,
   emphasizePersonTags,
@@ -330,6 +332,13 @@ export async function buildGenerationForShot(args: ShotArgs): Promise<Generation
   const naiaModel = modelToNaia(route.model || nai.model || 'nai-diffusion-4-5-full');
   if (nai.apply_quality_tags !== false) main += QUALITY_TAGS[naiaModel] || '';
   main = appendNoHumansWhenNoCast(main, chars.length, card.no_humans_when_no_char);
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 미성년으로 그려지는 캐릭터가 있는 컷의 장면 태그 (underage.ts).
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  if (chars.some(char => characterIsUnderage(cleanText(char.name, 200) ? resolveCharacter(cleanText(char.name, 200), roster) : null, char, underageRules(card)))) main = withoutExposureTags(main);
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+  // ╚══════════════════════════════════════════════════════════════════════════╝
   // Frozen UI has no UC preset control; leftover human_focus appended a long UC block on every gen.
   const ucPreset = 'none';
   const neg = joinTags(styleNeg, fixedNeg, (UC_PRESETS[naiaModel] || {})[ucPreset] || '');
@@ -464,6 +473,13 @@ export async function buildComicGenerationForShot(args: ShotArgs): Promise<Gener
   const naiaModel = modelToNaia(route.model || nai.model || 'nai-diffusion-5-full');
   if (nai.apply_quality_tags !== false) main += QUALITY_TAGS[naiaModel] || '';
   main = appendNoHumansWhenNoCast(main, slots.length, card.no_humans_when_no_char);
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 미성년으로 그려지는 캐릭터가 나오는 만화 페이지의 장면 태그 (underage.ts).
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  if (slots.some(char => characterIsUnderage(cleanText(char.name, 200) ? resolveCharacter(cleanText(char.name, 200), roster) : null, char, underageRules(card)))) main = withoutExposureTags(main);
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+  // ╚══════════════════════════════════════════════════════════════════════════╝
   const neg = styleNeg;
 
   const captions: NaiCaption[] = [];

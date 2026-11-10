@@ -1,4 +1,4 @@
-import { baseExpression, EMOTION_EXCLUDE_DEFAULT } from '../domain/emotion/emotions';
+import { baseExpression, EMOTION_EXCLUDE_DEFAULT, NUDE_COSTUME } from '../domain/emotion/emotions';
 import { psGet, psSet } from './device-store';
 
 /**
@@ -35,6 +35,14 @@ export interface EmotionSettings {
    * it. Only with streaming tags and costumes on (the writer sees the costume list then).
    */
   costumes: boolean;
+  /**
+   * 기본 nude: everyone has a nude costume besides theirs (`이름_nude`, the default one's looks with the clothes and the
+   * 무기/기타 left out), and the writer is asked to name it while they are naked. Only with streaming tags (the writer
+   * sees the rule then). Whoever 생성 옵션 › 나이 제한 counts as under it is never drawn in it (nudeForbidden).
+   */
+  nude: boolean;
+  /** 천박모드: every face shown is the nude one, whatever costume a line names, and no other costume's is drawn. 나이 제한 likewise. */
+  nudeAll: boolean;
   /** Base face → its tags, where the user changed them. */
   faceTags: Record<string, string>;
   /** More words → a base face (`pouting` → `sad`). */
@@ -46,7 +54,7 @@ export interface EmotionData { settings: EmotionSettings; seen: Record<string, s
 
 export const emotionDefaults = (): EmotionSettings => ({
   enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, family: 'v5', effort: 'follow', width: 832, height: 1216,
-  prefix: '', suffix: '', excludeTags: EMOTION_EXCLUDE_DEFAULT, dropAccessories: false, pose: '', transparent: true, costumes: false, faceTags: {}, words: {},
+  prefix: '', suffix: '', excludeTags: EMOTION_EXCLUDE_DEFAULT, dropAccessories: false, pose: '', transparent: true, costumes: false, nude: false, nudeAll: false, faceTags: {}, words: {},
 });
 
 let state: EmotionData | undefined;
@@ -75,6 +83,7 @@ export function normalizeEmotionSettings(raw: unknown): EmotionSettings {
     enabled: r.enabled !== false, useExisting: r.useExisting !== false, autoGenerate: r.autoGenerate !== false, placeBackgrounds: r.placeBackgrounds !== false,
     family: r.family === 'v4' ? 'v4' : 'v5', effort: r.effort === 'high' || r.effort === 'medium' ? r.effort : 'follow', width: size(r.width, d.width), height: size(r.height, d.height),
     prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), excludeTags: typeof r.excludeTags === 'string' ? text(r.excludeTags, 2000) : d.excludeTags, dropAccessories: r.dropAccessories === true, pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
+    nude: r.nude === true, nudeAll: r.nudeAll === true,
     faceTags: strings(r.faceTags, () => true), words: strings(r.words, (_k, value) => !!baseExpression(value)),
   };
 }
@@ -86,7 +95,7 @@ export function normalizeEmotionData(raw: unknown): EmotionData {
     // A background's face is its place tags, far past a face's 40: cut there, it never matched again after a reload.
     bot: text(m.bot, 200), person: text(m.person, 120), face: text(m.face, 400), name: text(m.name, 200), path: text(m.path, 800),
     registered: m.registered === true, at: Number(m.at) || 0,
-    ...(Number.isInteger(m.costume) && Number(m.costume) > 0 && Number(m.costume) < 100 ? { costume: Number(m.costume) } : {}),
+    ...(Number.isInteger(m.costume) && Number(m.costume) > 0 && (Number(m.costume) < 100 || m.costume === NUDE_COSTUME) ? { costume: Number(m.costume) } : {}),
   })).filter(m => m.bot && m.name && m.path).slice(-2000);
   return { settings: normalizeEmotionSettings(r.settings), seen, made };
 }

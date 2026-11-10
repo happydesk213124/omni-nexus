@@ -573,6 +573,7 @@ export async function taggerRules(card: CardSettings, opts: { imageMin: number; 
     cardFlagOn(card.nai_use_coords, true) ? naiCoordsHowTo() : '',
     cardFlagOn(card.nai5_speech, false) ? naiSpeechHowTo() : '',
     cardFlagOn(card.pov_mode, false) ? povHowTo() : '',
+    cardFlagOn(card.genitals_when_visible, false) ? genitalsHowTo() : '',
     comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain) : '',
     comicPack,
     withMain ? comicNaturalInstruction(card.comic_natural_supplement === true) : '',
@@ -817,6 +818,15 @@ function naiCoordsHowTo(): string {
     'Story-fit: lying y≈0.72, standing y≈0.5, face/above y≈0.22, left side x≈0.2, right side x≈0.8.',
     'Contact sits next to the other person: on belly ≈ same x, y a bit higher; on face ≈ same x, y higher still.',
     'Centers MUST match main `natural` positions (do not write left and set x=0.8).',
+  ].join('\n');
+}
+
+function genitalsHowTo(): string {
+  return [
+    '## pussy / penis only when seen (enabled)',
+    'wear_state no longer adds them. Write `pussy` or `penis` in that character\'s characters[].action only when it can be seen in this shot.',
+    'Leave it out when bodies overlap and cover it, when the pose or camera angle hides it, or whenever you judge it cannot be seen here. An x-ray or cross-section view shows it: always write it there.',
+    'Plain `penis` is enough: the application swaps in that character\'s saved size.',
   ].join('\n');
 }
 

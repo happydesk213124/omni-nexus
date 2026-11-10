@@ -25,10 +25,14 @@ export interface DirectoryChat {
    * asks (the gallery's) looks at no lorebook and no message at all.
    */
   omniLore: string[] | null;
+  /** This chat's own data entry (`omni.nexus.data`) as the list showed it, on the same terms as `omniLore`. */
+  ownData: unknown[] | null;
 }
 function omniLoreOf(chat: Row): string[] | null {
   if (chat._placeholder === true || chat._stub === true) return null;
-  if (!Array.isArray(chat.localLore) || !Array.isArray(chat.message) || !chat.message.length) return null;
+  if (!Array.isArray(chat.localLore)) return null;
+  // Empty, it may be a chat not fetched yet (a placeholder's lorebook is empty too); with entries, it is the chat's.
+  if (!chat.localLore.length && (!Array.isArray(chat.message) || !chat.message.length)) return null;
   return chat.localLore.map(entry => String(object(entry)?.comment ?? '')).filter(name => name.startsWith('omni.nexus.'));
 }
 export interface DirectoryCharacter {
@@ -48,7 +52,8 @@ function project(list: unknown[], lore: boolean): DirectoryCharacter[] {
     const c = object(value) || {};
     const chats = (Array.isArray(c.chats) ? c.chats : []).map((raw, at) => {
       const chat = object(raw) || {};
-      return { index: at, id: String(chat.id ?? ''), chatId: String(chat.chatId ?? ''), name: String(chat.name ?? ''), modules: chat.modules, omniLore: lore ? omniLoreOf(chat) : null };
+      return { index: at, id: String(chat.id ?? ''), chatId: String(chat.chatId ?? ''), name: String(chat.name ?? ''), modules: chat.modules, omniLore: lore ? omniLoreOf(chat) : null,
+        ownData: lore && omniLoreOf(chat) ? (chat.localLore as unknown[]).filter(entry => object(entry)?.comment === 'omni.nexus.data') : null };
     });
     return { index, chaId: String(c.chaId ?? ''), id: String(c.id ?? ''), name: String(c.name ?? ''), image: c.image, chatPage: c.chatPage, chats, additionalAssets: c.additionalAssets };
   });

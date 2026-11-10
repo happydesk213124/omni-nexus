@@ -6,7 +6,9 @@ import { risuHost } from '../core/host';
 import { isWebpBytes, sniffImageMime } from '../core/util/bytes';
 import { encodeWebpQuality } from '../core/util/image';
 import { cleanText, joinTags, unifiedSessionIdForCharacter } from '../core/util/text';
-import { assetMatchesExpression, emotionAssetName, emotionPrompt, excludeTags, expressionOfTone } from '../domain/emotion/emotions';
+import { assetMatchesExpression, emotionAssetName, emotionPrompt, excludeTags, expressionOfTone, NUDE_COSTUME } from '../domain/emotion/emotions';
+import { nudeForbidden } from '../domain/character/tags';
+import { underageRules } from '../domain/character/underage';
 import { normalizeAssetPath } from '../domain/gallery/shot-assets';
 import { tokensForFamily } from '../domain/nai/keys';
 import { findPresetById, modelForFamily } from '../domain/nai/routing';
@@ -98,7 +100,8 @@ export function spriteNow(c: TtsCharacter, face: string, bot: EmotionBot, costum
     const m = data.made[i]!;
     if (m.bot === bot.id && m.person === c.id && m.face === face && (m.costume ?? 0) === costume) return { face, name: m.name, path: m.path, source: 'omni', ...worn };
   }
-  if (!data.settings.useExisting) return null;
+  // A nude face is only ever Omni's own: a bot's picture so named is not looked for (nobody checked who it shows).
+  if (!data.settings.useExisting || costume === NUDE_COSTUME) return null;
   const assets = poolNow(bot);
   if (!assets) return undefined;
   // A costume's are Omni's own (`omni_이름_c2_happy`, in the bot once registered): its number reads as part of the name.
@@ -119,28 +122,51 @@ async function rosterPerson(c: TtsCharacter, bot: EmotionBot): Promise<Character
   const people = [...await listCharacters(GLOBAL_SCOPE).catch(() => []), ...await listCharacters(unifiedSessionIdForCharacter(bot.id)).catch(() => [])];
   return people.find(p => matchIllustrationSpeaker(p, [c], c.scope) === c) ?? null;
 }
-/** The illustration character's costumes, by their numbers (0 the default one): what a cue's `이름_2` names. [] with none. */
+/**
+ * The illustration character's costumes, by their numbers (0 the default one): what a cue's `이름_2` names. [] with none.
+ * With 기본 nude or 천박모드 on, their nude one comes last (NUDE_COSTUME), for whoever may be drawn so.
+ */
 export async function spriteCostumes(c: TtsCharacter, bot: EmotionBot): Promise<Array<{ index: number; name: string; note: string }>> {
   const person = await rosterPerson(c, bot);
-  return person ? ensureCostumes(person).costumes.map((costume, index) => ({ index, name: costume.name, note: cleanText(costume.note, 120) })) : [];
+  const list = person ? ensureCostumes(person).costumes.map((costume, index) => ({ index, name: costume.name, note: cleanText(costume.note, 120) })) : [];
+  const { nude, nudeAll } = (await loadEmotionData()).settings;
+  if (list.length && (nude || nudeAll) && !nudeForbidden(person, underageRules(getConfig().card))) list.push({ index: NUDE_COSTUME, name: 'nude', note: '' });
+  return list;
 }
 /**
- * The looks a sprite is drawn from: the roster's, else the bot's asset metadata. '' when neither has any.
+ * What a sprite is drawn from: the looks (the roster's, else the bot's asset metadata; '' when neither has any) and
+ * the wear, which 감정 에셋 › 이 태그가 들어가면 빼기 never sweeps (a nude face's own nude tags).
  * A costume other than the default is the illustration character's only: none there, nothing to draw it from.
  */
-export async function spriteLooks(c: TtsCharacter, bot: EmotionBot, costume = 0): Promise<string> {
+async function spriteParts(c: TtsCharacter, bot: EmotionBot, costume = 0): Promise<{ looks: string; wear: string }> {
   const person = await rosterPerson(c, bot);
   const opts = { accessories: !(await loadEmotionData()).settings.dropAccessories };
+  if (costume === NUDE_COSTUME) {
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 나이 제한에 걸리는 캐릭터(삽화 캐릭터가 없으면 모름)는 nude 그림을 만들지 않는다 (underage.ts).
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+    if (!person || nudeForbidden(person, underageRules(getConfig().card))) throw new Error(`${c.name}은(는) 나이 제한에 걸리거나 삽화 캐릭터가 없어 nude 그림을 만들지 않습니다.`);
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+    // The default one's looks, undressed; a man's nude weighs more, as a shot's completely is captioned (wear-state.ts).
+    return { looks: characterPreviewTags(person, 'default', { ...opts, undressed: true }), wear: person.gender === 'boy' ? '2.5::completely nude::' : '2::completely nude::' };
+  }
   if (costume) {
     if (!person || !ensureCostumes(person).costumes[costume]) throw new Error(`${c.name}에게 ${costume}번 코스튬이 없습니다. 삽화 캐릭터 탭에서 코스튬을 확인해 주세요.`);
-    return characterPreviewTags(person, costume, opts);
+    return { looks: characterPreviewTags(person, costume, opts), wear: '' };
   }
   // The default costume, whichever the roster has on now: a face is the same person on every line.
   const roster = person ? characterPreviewTags(person, 'default', opts) : '';
-  if (cleanText(roster)) return roster;
+  if (cleanText(roster)) return { looks: roster, wear: '' };
   const collected = await collectAssetNaiTags(emotionNames(c), { characterId: bot.id, roster: person ? [person] : [] }).catch(() => null);
   const group = collected?.packed.groups[0];
-  return group ? group.common.join(', ') : '';
+  return { looks: group ? group.common.join(', ') : '', wear: '' };
+}
+/** The tags a sprite is drawn from, as the character sheet shows them. '' when there are no looks. */
+export async function spriteLooks(c: TtsCharacter, bot: EmotionBot, costume = 0): Promise<string> {
+  const { looks, wear } = await spriteParts(c, bot, costume);
+  return cleanText(looks) ? joinTags(looks, wear) : '';
 }
 
 // One sprite at a time, each asked for once; the asset tab and the viewer read `spriteJobs`.
@@ -250,12 +276,13 @@ async function remember(owner: string, person: string, face: string, name: strin
 }
 async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<EmotionSprite> {
   const settings = (await loadEmotionData()).settings;
-  const looks = excludeTags(await spriteLooks(c, bot, costume), settings.excludeTags);
+  const parts = await spriteParts(c, bot, costume);
+  const looks = excludeTags(parts.looks, settings.excludeTags);
   if (!looks) throw new NoLooksError(`${c.name}의 외형 태그가 없습니다. 삽화 캐릭터 탭에서 외형을 채우면 만들 수 있습니다.`);
   const { bytes, path } = await drawAndSave({
     bot, width: settings.width, height: settings.height, effort: settings.effort === 'follow' ? undefined : settings.effort,
-    // 선행 · 후행 are the user's own words: only what comes from elsewhere is swept.
-    prompt: (style, family) => emotionPrompt({ looks: joinTags(excludeTags(style, settings.excludeTags), looks), face, faceTags: settings.faceTags[face],
+    // 선행 · 후행 are the user's own words: only what comes from elsewhere is swept. The wear goes on after the sweep.
+    prompt: (style, family) => emotionPrompt({ looks: joinTags(excludeTags(style, settings.excludeTags), looks, parts.wear), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
   });
   const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png', costume);

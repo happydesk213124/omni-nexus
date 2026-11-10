@@ -170,8 +170,9 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
 
     // TTS off: the sound buttons still work, on the effect channel (the chat shows the first reply again).
     await page.evaluate(async () => { window.messages[0] = { ...window.messages[0], data: window.firstReply }; await window.updateTtsSettings({ enabled: false }); document.querySelector('.risu-chat').append(document.createComment('re-render')); window.log = []; });
-    await page.locator('[data-omni-sfx]').click();
-    await page.waitForFunction(() => window.log.includes('sfx'));
+    // A tap answers from the last look at the chat, and the look after this redraw may still be on its way.
+    for (let tries = 0; tries < 60 && !await page.evaluate(() => window.log.includes('sfx')); tries++) { await page.locator('[data-omni-sfx]').click(); await page.waitForTimeout(100); }
+    assert.ok(await page.evaluate(() => window.log.includes('sfx')), 'the effect plays with TTS off');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
