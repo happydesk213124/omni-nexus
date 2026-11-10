@@ -56,6 +56,8 @@ const step = (label, cmd, args) => {
 if (changed.some(p => /\.(ts|tsx)$/.test(p) || p === 'tsconfig.json')) step('typecheck', 'npx', ['tsc', '--noEmit']);
 if (bundles.length || tests.some(t => readFileSync(t, 'utf8').includes('.test-build/'))) step('unit bundles', 'node', ['tools/build-tests.mjs']);
 if (tests.length) {
-  step('tests', 'node', ['--test', '--test-concurrency=4', '--test-timeout=120000', '--test-skip-pattern=SafeDOM', ...tests]);
-  step('SafeDOM tests', 'node', ['--test', '--test-concurrency=3', '--test-timeout=120000', '--test-name-pattern=SafeDOM', ...tests]);
+  // The runner `npm test` uses: slowest first, one browser per file, and only the files that have a SafeDOM test in
+  // the second step (none of them: the step is skipped).
+  step('tests', 'node', ['tools/run-tests.mjs', '--skip=SafeDOM', '--concurrency=4', ...tests]);
+  if (tests.some(test => readFileSync(test, 'utf8').includes('SafeDOM'))) step('SafeDOM tests', 'node', ['tools/run-tests.mjs', '--only=SafeDOM', '--concurrency=3', ...tests]);
 }

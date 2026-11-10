@@ -1,7 +1,7 @@
 import { risuHost, writeHostDatabase } from '../core/host';
 import { sleep } from '../core/util/async';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
-import { inlineCastRequestScript, inlineShotDisplayScripts, inlineShotRequestScript, isTokenGuardComment, tokenGuardScripts } from '../domain/inray-display';
+import { inlineCastRequestScript, inlineShotDisplayScripts, inlineShotRequestScript, isTokenGuardComment, moduleRule, tokenGuardScripts } from '../domain/inray-display';
 import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 
 export const INLINE_TAG_MODULE_ID = 'omni-inline-tags';
@@ -21,7 +21,10 @@ export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100,
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) return false;
     // Already as it would be written, and switched as wanted: no read of every module (module-write).
-    const mark = moduleMark([inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), inlineCastRequestScript(), tokenGuardScripts()]);
+    // Its slots are drawn with the pictures' stylesheet, which the page and the display module carry, not each slot
+    // (chatDisplayCss).
+    const own = [...inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), inlineCastRequestScript(), ...tokenGuardScripts()].map(moduleRule);
+    const mark = moduleMark(own);
     if (await moduleCurrent(INLINE_TAG_MODULE_ID, mark, enabled)) return true;
     if (host.requestPluginPermission && !await host.requestPluginPermission('db')) return false;
     const db = await host.getDatabase(['modules', 'enabledModules']);
@@ -31,7 +34,7 @@ export function ensureInlineTagModule(enabled: boolean, scalePct: unknown = 100,
     if (index < 0 && !enabled) { await noteModuleMark(INLINE_TAG_MODULE_ID, mark); return true; }
     const previous = index < 0 ? {} : modules[index]!;
     // A user's own rules in this module stay; ours are rewritten.
-    const regex = [...inlineShotDisplayScripts(scalePct, pending), inlineShotRequestScript(), inlineCastRequestScript(), ...tokenGuardScripts(), ...rows(previous.regex).filter(row => !ours(row))];
+    const regex = [...own, ...rows(previous.regex).filter(row => !ours(row))];
     const module = { ...previous, id: INLINE_TAG_MODULE_ID, namespace: INLINE_TAG_MODULE_ID, name: INLINE_TAG_MODULE_NAME,
       description: 'Risu 메인 모델이 답장 안에 쓴 [[inxN]] 샷을 스피너 칸으로 그립니다. 생성은 Omni Nexus 플러그인이 합니다.',
       hideIcon: false, lowLevelAccess: false, lorebook: rows(previous.lorebook), trigger: rows(previous.trigger), assets: rows(previous.assets), regex };

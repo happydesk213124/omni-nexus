@@ -1,7 +1,7 @@
 import { risuHost, writeHostDatabase } from '../core/host';
 import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
-import { isTokenGuardComment, tokenGuardScripts, TOKEN_GUARD_ORDER } from '../domain/inray-display';
+import { isTokenGuardComment, quietFlag, tokenGuardScripts, TOKEN_GUARD_ORDER } from '../domain/inray-display';
 
 export const OMNI_HELPER_ID = 'omni-nexus-helper';
 // In English, as every other instruction of ours: the same rule in fewer tokens than the Korean it was.
@@ -16,7 +16,7 @@ export function ensureOmniHelperModule(enabled: boolean): Promise<boolean> {
     const host = risuHost();
     if (!host?.getDatabase || !host.setDatabase) return false;
     // Already as it would be written, and switched as wanted: no read of every module (module-write).
-    const mark = moduleMark([OMNI_HELPER_PROMPT, promptComment, regexComment, TOKEN_GUARD_ORDER, tokenGuardScripts()]);
+    const mark = moduleMark([OMNI_HELPER_PROMPT, promptComment, regexComment, TOKEN_GUARD_ORDER, tokenGuardScripts(), quietFlag('g')]);
     if (await moduleCurrent(OMNI_HELPER_ID, mark, enabled)) return true;
     if (host.requestPluginPermission) await host.requestPluginPermission('db');
     const db = await host.getDatabase(['modules', 'enabledModules']);
@@ -29,7 +29,7 @@ export function ensureOmniHelperModule(enabled: boolean): Promise<boolean> {
     const prompt = {key:'',secondkey:'',comment:promptComment,content:OMNI_HELPER_PROMPT,mode:'normal',insertorder:100,alwaysActive:true,selective:false};
     if (loreIndex < 0) lorebook.push(prompt); else lorebook[loreIndex] = {...lorebook[loreIndex], ...prompt};
     // Right after the token guard gives the marker its brackets back.
-    const script = {comment:regexComment,in:'\\[\\[imgstart\\]\\]',out:'',type:'editdisplay',ableFlag:true,flag:`gi<order ${TOKEN_GUARD_ORDER.unguard - 1}>`};
+    const script = {comment:regexComment,in:'\\[\\[imgstart\\]\\]',out:'',type:'editdisplay',ableFlag:true,flag:quietFlag(`gi<order ${TOKEN_GUARD_ORDER.unguard - 1}>`)};
     // A fixed order (a user's rules, then ours), so an unchanged module is never rewritten.
     const regex = [...rows(previous.regex).filter(row => row.comment !== regexComment && !isTokenGuardComment(row.comment)), script, ...tokenGuardScripts()];
     const module = {...previous,id:OMNI_HELPER_ID,namespace:OMNI_HELPER_ID,name:'⚛️ omni 보조 프롬',hideIcon:false,lorebook,regex};

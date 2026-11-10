@@ -47,7 +47,9 @@ test('what a mark cannot vouch for is made sure of the old way', async () => {
   // Another setting: other content.
   restart();
   await api.ensureInrayDisplayModule(false, 80, controls);
-  assert.deepEqual([reads.full, writes], [1, 1], 'a changed scale is other content: read and written');
+  // Two writes: Risu keeps the modules that are on by their ids, so a rewritten one is switched off for a frame
+  // (tests/display-module.test.mjs).
+  assert.deepEqual([reads.full, writes], [1, 2], 'a changed scale is other content: read and written');
   // Switched off by hand in Risu.
   restart();
   db.enabledModules = db.enabledModules.filter(id => id !== 'inlay-inray-display');

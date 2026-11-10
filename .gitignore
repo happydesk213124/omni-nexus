@@ -6,6 +6,10 @@ node_modules
 # Build intermediates and harness output.
 .test-build
 .parity
+# How long each test file took here: tools/run-tests.mjs starts the slowest first.
+.test-times.json
+# Pictures the TTS settings tests take of what they checked.
+/.tts-*.png
 
 # Local prompt sources — never commit plaintext. The build embeds an opaque
 # pack into dist/; keep these files on the machine that runs `npm run build`.

@@ -284,10 +284,15 @@ test('요소 작동: a tile of its own (never a sticker as well); a tap opens th
     const spinning = () => page.evaluate(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-edit] h4'), '::after').content !== 'none');
     await page.evaluate(() => { window.slowCreate = 700; });
     await tapChip('status', '작동');
-    await page.waitForTimeout(300);
-    assert.deepEqual([await lit('스티커'), await lit('작동')], [false, true], 'lit at once');
-    assert.equal(await spinning(), true, 'the spinner turns while the stage catches up');
-    assert.equal(await page.evaluate(() => !!document.querySelector('[x-omni-vn] [data-vn-tile]')), false, 'the stage not there yet');
+    // The spinner is waited for, and the stage looked at in the same glance: at a fixed 0.3 s after the tap, with
+    // six files running, it had not started turning yet (once in a full run).
+    const turning = await (await page.waitForFunction(() => {
+      const head = document.querySelector('[x-omni-vn] [data-vn-edit] h4');
+      return head && getComputedStyle(head, '::after').content !== 'none' ? { stage: !!document.querySelector('[x-omni-vn] [data-vn-tile]') } : null;
+    })).jsonValue();
+    assert.equal(turning.stage, false, 'the spinner turns while the stage catches up: the stage is not there yet');
+    assert.deepEqual([await lit('스티커'), await lit('작동')], [false, true], 'lit before the stage has caught up');
+    assert.equal(await spinning(), true, 'and still turning');
     await page.evaluate(() => { window.slowCreate = 0; });
     await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-tile]'));
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-edit] h4'), '::after').content === 'none');

@@ -1,5 +1,6 @@
 import type { TtsSettings } from '../../core/tts-types';
 import { ttsExcludeTerms } from './filter';
+import { quietFlag } from '../inray-display';
 
 export const OMNI_TTS_MODULE = 'omni-tts';
 // Sent with every reply: each line keeps a rule a reply once broke, in as few words as it takes.
@@ -140,6 +141,7 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
         in: `(^|\\n)${HEADER_PREFIX}${SPEAKER}_\\d{1,2}(?=[ \\t]*(?:\\([A-Za-z][A-Za-z ,\\-]{0,99}\\))?${BEFORE_ANCHORED_QUOTE})`, out: '$1$2$3$4' },
       ...hideRules,
       { comment: 'omnitts-unguard', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.unguard}>`, in: '[\\uF8F0\\uF8F1]', out: '' },
-    ],
+    // Quiet: a rule that finds nothing in a message costs its own scan, not Risu's pass over the message as well.
+    ].map(rule => ({ ...rule, flag: quietFlag(rule.flag) })),
   };
 }

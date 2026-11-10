@@ -494,7 +494,7 @@ test('⚛️ omni 스트리밍태그 draws blocks as slots, never hides the stor
   assert.match(display('<Thoughts>a</Thoughts>\n본문\n[[inx1]]{"characters":[]}[[/inx1]]'),/data-inx-slot="1"/,'a story block after the thoughts is a slot');
   assert.match(display('본문 [[inx3]]{"place":"x"}[[/inx4]] 뒤'),/뒤/,'a misnumbered block never hides the story after it');
   const request=module.regex.find(r=>r.type==='editprocess');
-  assert.equal('앞\n[[inx1]]{"a":1}[[/inx1]]\n뒤'.replace(new RegExp(request.in,request.flag),request.out),'앞\n뒤');
+  assert.equal('앞\n[[inx1]]{"a":1}[[/inx1]]\n뒤'.replace(new RegExp(request.in,request.flag.replace(/<[^>]*>/g,'')),request.out),'앞\n뒤');
   await f.api.ensureInlineTagModule(false);db=await risuai.getDatabase();
   assert.ok(!db.enabledModules.includes('omni-inline-tags'));assert.ok(db.modules.some(m=>m.id==='omni-inline-tags'),'off keeps it installed, disabled');
 });
@@ -522,7 +522,7 @@ test('이미지 바로 생성 off: blocks stay as written and are the pink slots
   assert.match(draw(saved),/data-inray-wait="b2" data-inx-slot="2"[^]*viewBox="0 0 832 1216"/);
   assert.match(draw(saved),/stroke="#ec4899"/);assert.doesNotMatch(draw(saved),/inx\d\]\]|"place"/,'no JSON shows');
   const request=display.find(r=>r.comment==='omni-inline-shot-request');
-  assert.equal(saved.replace(new RegExp(request.in,request.flag),request.out),`${first}\nSecond dialogue in the scene.\nLast line.`,'and no request carries it');
+  assert.equal(saved.replace(new RegExp(request.in,request.flag.replace(/<[^>]*>/g,'')),request.out),`${first}\nSecond dialogue in the scene.\nLast line.`,'and no request carries it');
   const tap=async id=>f.api.generateInlineWait({...target,session_id:'session',wait_id:id});
   // Never while the reply is still being written, nor while this block's own streaming job draws it.
   const live=await risuai.getChatFromIndex(0,0);await risuai.setChatToIndex(0,0,{...live,isStreaming:true});
@@ -1191,7 +1191,7 @@ test('image markers leave only the request: 리퀘스트 데이터 수정 strips
   assert.deepEqual(display.lorebook.map(l=>l.comment),['mine'],'the do-not-imitate lore is gone; nothing else is touched');
   const strip=display.regex.find(r=>r.comment==='omni-request-strip-markers');
   assert.equal(strip.type,'editprocess','request only: stored chat and display keep the markers');
-  const sent='앞 문단\n[[@inrayspinner::job_1::832::1216]][[@inray::card::inxshot_a.png::832::1216]]\n[[@inraywait::w_2::1024::1024]]\n뒤 [[other::x]]'.replace(new RegExp(strip.in,strip.flag),strip.out);
+  const sent='앞 문단\n[[@inrayspinner::job_1::832::1216]][[@inray::card::inxshot_a.png::832::1216]]\n[[@inraywait::w_2::1024::1024]]\n뒤 [[other::x]]'.replace(new RegExp(strip.in,strip.flag.replace(/<[^>]*>/g,'')),strip.out);
   assert.equal(sent,'앞 문단\n\n\n뒤 [[other::x]]','only our markers go; other modules\' [[…]] stay');
   assert.ok(display.regex.some(r=>r.type==='editdisplay'&&r.comment==='omni-spinner-display'),'display rules are still there');
   const writes=JSON.stringify((await risuai.getDatabase()).modules);await f.api.ensureInrayDisplayModule();

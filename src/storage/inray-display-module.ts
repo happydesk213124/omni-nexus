@@ -1,5 +1,5 @@
 import { moduleCurrent, moduleMark, noteModuleMark, serializeModuleWrite } from './module-write';
-import { messageControlsDisplayScript, messageControlsTrigger, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
+import { messageControlsCss, messageControlsDisplayScript, messageControlsRules, MESSAGE_CONTROLS_COMMENT } from '../domain/message-controls';
 import { measureWrite } from '../core/write-metrics';
 /**
  * Ensures the Inray display-modify module exists and is enabled.
@@ -7,6 +7,7 @@ import { measureWrite } from '../core/write-metrics';
  */
 import { dbg } from '../core/debug';
 import { hostHas, risuHost, writeHostDatabase } from '../core/host';
+import { sleep } from '../core/util/async';
 import { cleanText } from '../core/util/text';
 import {
   INRAY_DISPLAY_MODULE_ID,
@@ -22,6 +23,9 @@ import {
   waitBlockDisplayScripts,
   waitBlockRequestScript,
   tokenGuardScripts,
+  chatDisplayCss,
+  moduleRule,
+  quietFlag,
 } from '../domain/inray-display';
 import { asShotAssetRows } from '../domain/gallery/shot-assets';
 
@@ -35,6 +39,7 @@ type ModuleRow = {
   regex?: unknown[];
   assets?: unknown[];
   trigger?: unknown[];
+  backgroundEmbedding?: string;
 };
 
 /** Older builds asked the model not to imitate markers; the request regex removes them instead. */
@@ -58,8 +63,13 @@ function scriptComment(row: unknown): string {
 }
 
 const displayOrders: Record<string, number> = { 'omni-image-history-display': -10010, 'omni-framed-asset-display': -10020, 'inray-shot-display': -10030, 'omni-spinner-display': -10040, 'omni-wait-display': -10045 };
+const orderFlag = (order: number): string => quietFlag(`g<order ${order}>`);
 function afterExternalRules<T extends {comment: string; flag: string}>(script: T): T {
-  return { ...script, flag: `g<order ${displayOrders[script.comment]}>` };
+  return { ...script, flag: orderFlag(displayOrders[script.comment]!) };
+}
+/** The module's one stylesheet: every picture's and the message row's (see `chatDisplayCss`). */
+export function displayModuleCss(scalePct: unknown, rowFolded: boolean): string {
+  return `<style>${chatDisplayCss(scalePct)}${messageControlsCss(rowFolded)}</style>`;
 }
 
 let displayTail:Promise<unknown>=Promise.resolve();
@@ -83,9 +93,10 @@ export function ensureInrayDisplayModule(folded = false, scalePct: unknown = 100
 /** Everything of ours the module holds for these settings: equal when nothing would be written. */
 function displayMark(folded: boolean, scalePct: unknown, controls: MessageControls): string {
   return moduleMark([
-    inrayDisplayRegexScript(folded, scalePct), requestMarkerStripScript(), spinnerDisplayRegexScript(scalePct), waitDisplayRegexScript(scalePct),
-    waitBlockDisplayScripts(scalePct), waitBlockRequestScript(), tokenGuardScripts(), framedAssetDisplayRegexScript(folded, scalePct),
-    historyDisplayRegexScript(folded, scalePct), messageControlsDisplayScript(controls.folded === true), messageControlsTrigger(controls.enabled, controls.userchat), displayOrders,
+    [inrayDisplayRegexScript(folded, scalePct), requestMarkerStripScript(), spinnerDisplayRegexScript(scalePct), waitDisplayRegexScript(scalePct),
+      ...waitBlockDisplayScripts(scalePct), waitBlockRequestScript(), ...tokenGuardScripts(), framedAssetDisplayRegexScript(folded, scalePct),
+      historyDisplayRegexScript(folded, scalePct), messageControlsDisplayScript(controls.folded === true)].map(moduleRule),
+    messageControlsRules(controls.enabled, controls.userchat), displayOrders, displayModuleCss(scalePct, controls.folded === true),
   ]);
 }
 async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100, controls?: MessageControls): Promise<boolean> {
@@ -104,7 +115,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
     const db = await host.getDatabase!(['modules', 'enabledModules']);
     if (!db) return false;
     const modules = readModules(db);
-    const wanted = afterExternalRules(inrayDisplayRegexScript(folded, scalePct));
+    const wanted = moduleRule(afterExternalRules(inrayDisplayRegexScript(folded, scalePct)));
     let idx = findModuleIndex(modules);
     let changed = false;
     if (idx < 0) {
@@ -158,14 +169,14 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       modules[idx] = { ...modules[idx], lorebook: lorebook.filter((row) => scriptComment(row) !== displayMarkerLoreComment) };
       changed = true;
     }
-    const strip = requestMarkerStripScript();
+    const strip = moduleRule(requestMarkerStripScript());
     const stripRegex = [...(modules[idx]!.regex || [])];
     const stripIndex = stripRegex.findIndex(row => scriptComment(row) === strip.comment);
     if (stripIndex < 0 || JSON.stringify(stripRegex[stripIndex]) !== JSON.stringify(strip)) {
       if (stripIndex < 0) stripRegex.push(strip); else stripRegex[stripIndex] = strip;
       modules[idx] = { ...modules[idx], regex: stripRegex }; changed = true;
     }
-    const spinner=afterExternalRules(spinnerDisplayRegexScript(scalePct));
+    const spinner=moduleRule(afterExternalRules(spinnerDisplayRegexScript(scalePct)));
     const regex=[...(modules[idx]!.regex || [])];
     const spinnerIndex=regex.findIndex(row=>scriptComment(row)===spinner.comment);
     if(spinnerIndex<0 || JSON.stringify(regex[spinnerIndex])!==JSON.stringify(spinner)) {
@@ -173,7 +184,7 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       modules[idx]={...modules[idx],regex};changed=true;
     }
     // Waiting slots outlive the streaming-tag switch: old replies keep a tappable pink frame.
-    const wait=afterExternalRules(waitDisplayRegexScript(scalePct));
+    const wait=moduleRule(afterExternalRules(waitDisplayRegexScript(scalePct)));
     const waitRegex=[...(modules[idx]!.regex || [])];
     const waitIndex=waitRegex.findIndex(row=>scriptComment(row)===wait.comment);
     if(waitIndex<0 || JSON.stringify(waitRegex[waitIndex])!==JSON.stringify(wait)) {
@@ -181,41 +192,55 @@ async function updateInrayDisplayModule(folded = false, scalePct: unknown = 100,
       modules[idx]={...modules[idx],regex:waitRegex};changed=true;
     }
     // Waiting blocks keep their JSON in the message: drawn pink, and stripped from requests.
-    for (const script of [...waitBlockDisplayScripts(scalePct), waitBlockRequestScript(), ...tokenGuardScripts()]) {
+    for (const script of [...waitBlockDisplayScripts(scalePct), waitBlockRequestScript(), ...tokenGuardScripts()].map(moduleRule)) {
       const rows = [...(modules[idx]!.regex || [])], at = rows.findIndex(row => scriptComment(row) === script.comment);
       if (at < 0 || JSON.stringify(rows[at]) !== JSON.stringify(script)) {
         if (at < 0) rows.push(script); else rows[at] = script;
         modules[idx] = { ...modules[idx], regex: rows }; changed = true;
       }
     }
-    const pair = afterExternalRules(framedAssetDisplayRegexScript(folded,scalePct));
-    const history = afterExternalRules(historyDisplayRegexScript(folded, scalePct));
+    const pair = moduleRule(afterExternalRules(framedAssetDisplayRegexScript(folded,scalePct)));
+    const history = moduleRule(afterExternalRules(historyDisplayRegexScript(folded, scalePct)));
     const paired = [history, pair,...(modules[idx]!.regex || []).filter(row=>scriptComment(row)!==pair.comment && scriptComment(row)!==history.comment)];
     // A write that does not say how the row is (no controls) keeps it folded or not, as the module has it.
     const shownRow = paired.find(row => scriptComment(row) === 'omni-message-controls-display') as { out?: unknown } | undefined;
     const rowFolded = controls ? controls.folded === true : String(shownRow?.out ?? '').includes('data-omni-folded');
-    const late = paired.filter(row => scriptComment(row) !== 'omni-message-controls-display').map(row => {
+    // The rules that say where the row goes (messageControlsRules): as the settings have them, or as the module
+    // has them when this write does not say.
+    const placing = (row: unknown) => { const name = scriptComment(row); return name.startsWith('omni-message-controls-') && name !== 'omni-message-controls-display'; };
+    const places = controls ? messageControlsRules(controls.enabled, controls.userchat).map(moduleRule) : paired.filter(placing);
+    const late = paired.filter(row => scriptComment(row) !== 'omni-message-controls-display' && !placing(row)).map(row => {
       const order = displayOrders[scriptComment(row)];
-      return order === undefined ? row : { ...(row as Record<string, unknown>), ableFlag: true, flag: `g<order ${order}>` };
+      return order === undefined ? row : { ...(row as Record<string, unknown>), ableFlag: true, flag: orderFlag(order) };
     });
-    late.push(messageControlsDisplayScript(rowFolded));
+    late.push(moduleRule(messageControlsDisplayScript(rowFolded)), ...places);
     if(JSON.stringify(late)!==JSON.stringify(modules[idx]!.regex)) {
       modules[idx]={...modules[idx],regex:late};changed=true;
     }
-    const triggers = [...(modules[idx]!.trigger || [])];
-    const controlIndex = triggers.findIndex(row => scriptComment(row) === MESSAGE_CONTROLS_COMMENT);
-    const control = controls ? messageControlsTrigger(controls.enabled, controls.userchat) : controlIndex < 0 ? messageControlsTrigger(false, false) : triggers[controlIndex];
-    if (controlIndex < 0 || JSON.stringify(triggers[controlIndex]) !== JSON.stringify(control)) {
-      if (controlIndex < 0) triggers.push(control); else triggers[controlIndex] = control;
-      modules[idx] = {...modules[idx], trigger: triggers}; changed = true;
+    // The sheet the rules above no longer carry: once here, for the whole chat screen.
+    const sheet = displayModuleCss(scalePct, rowFolded);
+    if (modules[idx]!.backgroundEmbedding !== sheet) { modules[idx] = { ...modules[idx], backgroundEmbedding: sheet }; changed = true; }
+    // The Lua trigger that used to place the row is retired with the rules above in its place: Risu ran it for
+    // every message drawn and every streamed chunk, switched on or not. Ours goes; a trigger of the user's stays.
+    const triggers = modules[idx]!.trigger || [];
+    if (controls && triggers.some(row => scriptComment(row) === MESSAGE_CONTROLS_COMMENT)) {
+      modules[idx] = {...modules[idx], trigger: triggers.filter(row => scriptComment(row) !== MESSAGE_CONTROLS_COMMENT)}; changed = true;
     }
-    const enabled = asShotAssetRows(db.enabledModules).map((row) => cleanText(row, 200)).filter(Boolean);
-    if (!enabled.includes(INRAY_DISPLAY_MODULE_ID) && !enabled.includes(INRAY_DISPLAY_MODULE_NS)) {
-      enabled.push(INRAY_DISPLAY_MODULE_ID);
-      changed = true;
-    }
-    if (!changed) return true;
-    await measureWrite('module','display',()=>writeHostDatabase({ modules: modules as never, enabledModules: enabled as string[] }));
+    const before = asShotAssetRows(db.enabledModules).map((row) => cleanText(row, 200)).filter(Boolean);
+    const ours = (id: string) => id === INRAY_DISPLAY_MODULE_ID || id === INRAY_DISPLAY_MODULE_NS;
+    const wasOn = before.some(ours);
+    const enabled = wasOn ? before : [...before, INRAY_DISPLAY_MODULE_ID];
+    if (!changed && wasOn) return true;
+    await measureWrite('module','display',async()=>{
+      // Risu keeps the modules that are on by the list of their ids (getModules): rewritten under the same ids, the
+      // new rules and stylesheet would wait for the next start, while the page's copy of the sheet
+      // (image-ui/display-css) is already the new one. Off for a frame, as ⚛️ omni tts and 스트리밍태그 do theirs.
+      if (changed && wasOn) {
+        await writeHostDatabase({ modules: modules as never, enabledModules: before.filter(id => !ours(id)) });
+        await sleep(16);
+        await writeHostDatabase({ enabledModules: enabled });
+      } else await writeHostDatabase({ modules: modules as never, enabledModules: enabled });
+    });
     return true;
   } catch (err) {
     dbg('inray-display.ensure.fail', { message: String((err as Error)?.message || err) }, 'warn');

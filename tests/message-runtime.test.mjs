@@ -4,26 +4,28 @@ import {readFileSync} from 'node:fs';
 import {build} from 'esbuild';
 import {chromium} from 'playwright';
 const compiled=await build({entryPoints:['src/domain/message-controls.ts'],bundle:true,write:false,format:'esm'});
-const {messageControlsTrigger,messageControlsDisplayScript}=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
-const lua=messageControlsTrigger(true,false).effect[0].code;
+const {messageControlsRules,messageControlsDisplayScript}=await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
+// Where the row goes: rules now (a Lua trigger until 1.4.12; tests/message-controls-rules.test.mjs holds them to it).
+const rules=messageControlsRules(true,false);
 const display=messageControlsDisplayScript();
 const buttons=display.out.match(/<button[\s\S]*?<\/button>(?=<\/div>)/)?.[0];
 const css=display.out.match(/<style>(.*?)<\/style>/s)[1];
 const runtime=readFileSync('tools/vendor-patches/message-runtime.js','utf8');
 
 test('module controls are display-only and preserve the seven actions',()=>{
- assert.match(lua,/listenEdit\("editDisplay"/);
- assert.doesNotMatch(lua,/getFullChat|setChat|setChatVar|request\(/);
+ assert.ok(rules.length&&rules.every(rule=>rule.type==='editdisplay'),'display rules only: nothing is written to the chat or sent');
  assert.equal((buttons.match(/data-omni-action=/g)||[]).length,7);
- assert.doesNotMatch(lua, /<button|<style/);
+ assert.doesNotMatch(JSON.stringify(rules), /<button|<style/);
  assert.match(display.flag, /<order -10090>/);
- assert.match(messageControlsTrigger(false,false).effect[0].code,/if not false/);
- assert.match(messageControlsTrigger(true,true).effect[0].code,/true and role == "user"/);
+ assert.deepEqual(messageControlsRules(false,false),[],'switched off: no rule, and no Lua for Risu to run');
+ assert.match(messageControlsRules(true,true)[0].in,/notequal::\{\{role\}\}::user/);
 });
 
 test('display buttons read only the role and never retrieve or hash the message body',()=>{
- assert.match(lua,/getChatRole\(tid, meta.index\)/);
- assert.doesNotMatch(lua,/getChat\(|raw:byte|#raw|for i = 1/);
+ // Risu is asked whose message it is and where it stands in the chat, in the first rule's pattern and nowhere else.
+ assert.match(rules[0].in,/\{\{role\}\}/);assert.match(rules[0].in,/\{\{chat_index\}\}/);
+ assert.ok(rules.slice(1).every(rule=>!/\{\{/.test(rule.in+rule.out)),'the others read nothing of Risu');
+ assert.doesNotMatch(JSON.stringify(rules),/getvar|setvar|lastmessage|previous|history|\{\{chat::/i);
 });
 
 test('module-owned controls dispatch, reject stale targets, and lazily reuse persisted counts',async()=>{

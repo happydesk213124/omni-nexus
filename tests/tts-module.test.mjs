@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { build } from 'esbuild';
-import { lua, lauxlib, lualib, to_luastring, to_jsstring } from 'fengari';
 import { chromium } from 'playwright';
+import { runRules } from './support/risu-rules.mjs';
 
 const compiled = await build({stdin:{contents:"export * from './src/domain/tts/module';export * from './src/domain/tts/anchors';export * from './src/domain/tts/segment';export * from './src/domain/tts/filter';export * from './src/storage/tts-module';export * from './src/domain/message-controls';export * from './src/domain/inray-display';export * from './src/config/tts-defaults';export {normalizeTtsSettings} from './src/storage/tts-store';export * from './src/domain/tts/illustration';export {soundModule} from './src/domain/sound/module';export {soundDefaults} from './src/config/sound-defaults';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm'});
 const api = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
@@ -15,17 +15,6 @@ const module = api.ttsModule(hidden);
 const visible = {...api.ttsDefaults(),hideName:false,hideTone:false,illustration:true};
 const plain = api.ttsModule(visible);
 
-function renderer(codes) {
-  const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-  const init = `callbacks={}\nfunction listenEdit(_, fn) table.insert(callbacks, fn) end\nfunction getChatRole() return 'char' end\n` + codes.join('\n') + '\nfunction render(data) for _,fn in ipairs(callbacks) do data=fn("id",data,{index=2}) end return data end';
-  assert.equal(lauxlib.luaL_dostring(L,to_luastring(init)),lua.LUA_OK,lua.lua_tojsstring(L,-1));
-  return text => {
-    lua.lua_getglobal(L,to_luastring('render')); lua.lua_pushstring(L,to_luastring(text));
-    const code = lua.lua_pcall(L,1,1,0);
-    assert.equal(code,lua.LUA_OK,lua.lua_tojsstring(L,-1));
-    const value = to_jsstring(lua.lua_tolstring(L,-1)); lua.lua_pop(L,1); return value;
-  };
-}
 function cbs(text, toggles) {
   // Only the conditional syntax present in this supplied fixture is modelled.
   // This is not a replacement for Risu's CBS parser.
@@ -56,7 +45,8 @@ const kinds=html=>[...html.matchAll(ANCHOR)].map(m=>m[1]);
 // What the host binds: anchors paired with source segments.
 const bound=(html,source,terms=[],skip=1)=>{const segments=api.parseTtsMessage(source,terms,skip);return api.matchTtsAnchors(api.ttsAnchorTexts(html),segments).map(i=>i<0?null:segments[i]);};
 const imageRules=[api.historyDisplayRegexScript(),api.framedAssetDisplayRegexScript(),api.inrayDisplayRegexScript(),api.spinnerDisplayRegexScript()].map((r,i)=>({...r,flag:`g<order ${-10010-i*10}>`}));
-const controls=renderer([api.messageControlsTrigger(true,false).effect[0].code]);
+// Where the row's two marks go in the bot's message at index 2, before every other rule (messageControlsRules).
+const controls=text=>runRules(text,api.messageControlsRules(true,false),{index:2,role:'char'});
 
 test('module display name and first-person speech instructions preserve module identity',()=>{
   assert.equal(module.name,'⚛️ omni tts');assert.equal(module.id,'omni-tts');

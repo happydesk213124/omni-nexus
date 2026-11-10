@@ -37,10 +37,20 @@ export function chatImageFrameStyle(width: string, height: string, scalePct: unk
   return chatImageSizeStyle(scalePct) + `;--inray-native-width:calc(min(${width}px,640px,calc(780px * ${width} / ${height})) * ${scale});aspect-ratio:${width}/${height}`;
 }
 
-export function inrayDisplayOut(folded = false, scalePct: unknown = 100): string {
-  const checked = folded ? ' checked' : '';
+/**
+ * The one stylesheet every picture, spinner and waiting slot is drawn with.
+ *
+ * It used to ride in front of each of them, inside the message. Risu scopes a message's `<style>` every time it
+ * draws the message (the CSS parsed, a selector parser run over each selector, the sheet written out again):
+ * about 3 ms for this sheet on a PC, per picture, per draw, so a reply with four pictures cost 13 ms for the same
+ * rules four times over, and every later rule's pass over the message walked the copies again. The rules in
+ * `inrayDisplayOut` and its kin still say what a picture looks like (and the layout tests draw them so); the
+ * module holds them without the sheet (`moduleRule`), the sheet once in its `backgroundEmbedding`, and the plugin
+ * keeps a ready-scoped copy in the page (image-ui/display-css).
+ */
+export function chatDisplayCss(scalePct: unknown = 100): string {
   return [
-    '<style>.inray-shot[data-inlay-inline-shot]{position:relative;display:block;width:100%;max-width:100%;margin:10px auto;box-sizing:border-box;text-align:center;overflow-anchor:none;contain:layout}',
+    '.inray-shot[data-inlay-inline-shot]{position:relative;display:block;width:100%;max-width:100%;margin:10px auto;box-sizing:border-box;text-align:center;overflow-anchor:none;contain:layout}',
     `.inray-shot[data-inlay-inline-shot] img{display:block;${chatImageSizeStyle(scalePct)};margin:0 auto;object-fit:contain;border-radius:10px}`,
     '.inray-clip{position:relative;display:block;width:100%;max-width:100%;overflow:hidden;border-radius:10px;transition:max-height .42s cubic-bezier(.4,0,.2,1)}',
     '.inray-clip img{min-height:0}',
@@ -55,7 +65,14 @@ export function inrayDisplayOut(folded = false, scalePct: unknown = 100): string
     '.inray-fold:hover,.inray-fs:hover,.inray-refresh:hover{background:rgba(65,55,90,.85)}',
     '[data-inray-toolbar]~[data-inray-history-layer] [data-inray-history-dots]{left:8px;transform:none}@media(hover:none){.inray-shot[data-inlay-inline-shot] .inray-bar{opacity:0!important;pointer-events:none}[data-inray-history-host][x-inray-touch="1"] .inray-bar{opacity:1!important;pointer-events:auto}}',
     '.inray-fold::before{content:"▲"}',
-    '.inray-fold-cb:checked~.inray-clip .inray-fold::before{content:"▼"}', imageHistoryCss(), chatImageResponsiveCss(), '</style>',
+    '.inray-fold-cb:checked~.inray-clip .inray-fold::before{content:"▼"}', imageHistoryCss(), chatImageResponsiveCss(),
+  ].join('');
+}
+
+export function inrayDisplayOut(folded = false, scalePct: unknown = 100): string {
+  const checked = folded ? ' checked' : '';
+  return [
+    '<style>', chatDisplayCss(scalePct), '</style>',
     '<br><div class="inray-shot" data-inray-bake="1" x-inray-bake="1" data-inlay-inline-shot="$1" x-inlay-inline-shot="$1" data-inray-asset="$2" x-inray-asset="$2">',
     `<input type="checkbox" class="inray-fold-cb" id="inray-fold-$1"${checked}>`,
     `<div class="inray-clip" data-inray-history-host="1" x-inray-history-host="1" style="${chatImageFrameStyle('$3', '$4', scalePct)};margin:0 auto"><div class="inray-image-plane" style="position:relative;width:100%;aspect-ratio:$3/$4"><img class="inray-shot-img" width="$3" height="$4" src="{{raw::$2}}" alt=""></div>`,
@@ -100,15 +117,37 @@ export function inrayDisplayRegexScript(folded = false, scalePct: unknown = 100)
  * The same pair rides in every module of ours that draws a token: masking an
  * already masked text, or unmasking a plain one, does nothing.
  */
+/**
+ * A rule's flags with a mark Risu takes for an action it does not know, and so does nothing for, except this: a
+ * rule with any action is tried against the message first (`reg.test`) and left alone when it does not match. A
+ * rule with none is run through `replace` and then the whole message through Risu's CBS parser again, match or no
+ * match: eleven such passes per message for the display module alone, most over text they never touch. With the
+ * mark, a rule that matches nothing costs its own scan. Rules that already name an action need none.
+ *
+ * The name has none of a regular expression's flag letters (d g i m s u v y): a host too old to read `<...>` in
+ * flags keeps whichever of its letters are flags, and `i` or `m` there would change what our rules match.
+ */
+export const QUIET_ACTION = 'onx';
+export function quietFlag(flag: string): string {
+  return /<[^>]*\b(?:onx|cbs|no_end_nl|inject|move_top|move_bottom|repeat_back)\b[^>]*>/.test(flag) ? flag : `${flag}<${QUIET_ACTION}>`;
+}
+/**
+ * A rule as a module holds it: quiet (above), and without the stylesheet its drawing starts with, which rides
+ * once in the module instead (`chatDisplayCss`).
+ */
+export function moduleRule<T extends { out: string; flag: string }>(rule: T): T {
+  return { ...rule, ableFlag: true, flag: quietFlag(rule.flag), out: rule.out.replace(/<style>[\s\S]*?<\/style>/g, '') };
+}
+
 export const TOKEN_GUARD_COMMENT = 'omni-token-guard';
 export const TOKEN_UNGUARD_COMMENT = 'omni-token-unguard';
 export const TOKEN_GUARD_ORDER = { guard: 10200, unguard: -10005 } as const;
 const MASK_OPEN = '\uf8f2', MASK_CLOSE = '\uf8f3';
 export function tokenGuardScripts() {
   return [
-    { comment: TOKEN_GUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: `gi<order ${TOKEN_GUARD_ORDER.guard}>`,
+    { comment: TOKEN_GUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: quietFlag(`gi<order ${TOKEN_GUARD_ORDER.guard}>`),
       in: '\\[\\[(@inray(?:spinner|wait)?::[^\\[\\]\\n]{1,4096}|\\/?inx(?:w?\\d{1,3}|c)|imgstart|bgm:[^\\]\\n]{1,200})\\]\\]', out: `${MASK_OPEN}$1${MASK_CLOSE}` },
-    { comment: TOKEN_UNGUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: `g<order ${TOKEN_GUARD_ORDER.unguard}>`,
+    { comment: TOKEN_UNGUARD_COMMENT, type: 'editdisplay' as const, ableFlag: true, flag: quietFlag(`g<order ${TOKEN_GUARD_ORDER.unguard}>`),
       in: `${MASK_OPEN}([^${MASK_OPEN}${MASK_CLOSE}\\n]{1,4300})${MASK_CLOSE}`, out: '[[$1]]' },
   ];
 }

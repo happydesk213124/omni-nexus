@@ -44,6 +44,8 @@ function syncDisplay(snapshot: Settings): void {
   const key = JSON.stringify([folded, scale, controls]);
   if (key === displayKey) return;
   displayKey = key;
+  // The picture size and the folded row are in the page's stylesheet too (image-ui/display-css).
+  (Reflect.get(globalThis, '__OMNI_DISPLAY_CSS__') as { sync?: () => void } | undefined)?.sync?.();
   void ensureInrayDisplayModule(folded, scale, controls).then(ok => {
     if (!ok && displayKey === key) displayKey = undefined;
   }, () => { if (displayKey === key) displayKey = undefined; });
