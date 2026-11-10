@@ -15,7 +15,7 @@ import { publishReferenceProgress, type ReferenceProgress } from '../core/refere
  */
 
 import { VERSION } from '../core/constants';
-import { clearDebug, dbg, debugSnapshot, setDebugCounts, setDebugMemory, startStallMonitor } from '../core/debug';
+import { clearDebug, dbg, debugSnapshot, setDebugCounts, setDebugMemory } from '../core/debug';
 import { errorBody, isFetchError, makeFetchError } from '../core/errors';
 import { hostHas } from '../core/host';
 import { routeFetch } from '../api/router';
@@ -227,7 +227,6 @@ export function installNativeBridge(): void {
     blob_urls: blobUrlCount(),
   }));
   setDebugMemory(() => ({ ...imageCacheStats(), encode: imageUrlStats() }));
-  startStallMonitor();
 
   // Same reason: the reference-image module must be able to tell "no assets
   // stored" from "the host did not load them", and only the roster knows.

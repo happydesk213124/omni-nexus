@@ -20,11 +20,14 @@ import { installWaitTaps } from './image-ui/wait-taps';
 import { installNoteExtras } from './image-ui/note-extras';
 import { installTagFloat } from './image-ui/tag-float';
 import { installDisplayCss } from './image-ui/display-css';
+import { installChatOutputHub } from './services/chat-output';
 import { restorePendingShotAssets } from './storage/shot-character';
 import { installOmniViewer } from './viewer/omni-viewer';
 import { installQuickSetup } from './settings-ux/quick-setup';
 
 installUiContractGlobals();
+// Before the frozen UI boots: its chat output listener goes through the same one as ours (chat-output.ts).
+installChatOutputHub();
 installSettingsUx();
 installNativeBridge();
 void installTtsHost().catch(error => dbg('tts.boot.failed', { message: String(error) }, 'warn'));

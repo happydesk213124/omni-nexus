@@ -1,7 +1,7 @@
 import { risuHost } from '../core/host';
 import type { TtsCharacter } from '../core/tts-types';
 import { serializeSessionStorage } from './chat-session-store';
-import { forgetBots } from './current-bot';
+import { forgetBots, heldBot } from './current-bot';
 import { characterDirectory, directoryWarm } from './character-directory';
 
 /**
@@ -57,7 +57,8 @@ function entry(char: Row): { entries: unknown[]; at: number; rows: TtsCharacter[
 
 /** Null when the bot is not in Risu's list (deleted or not yet loaded). */
 export async function readBotTtsCharacters(characterId: string): Promise<TtsCharacter[] | null> {
-  const found = await locate(characterId);
+  // A bot someone holds (the chat's context just read it) is the bot: it is not read from Risu a second time.
+  const found = heldBot(characterId) ?? await locate(characterId);
   if (!found) return null;
   const scope = ttsBotScope(characterId);
   return entry(found.char).rows.map(row => ({ ...row, scope }));

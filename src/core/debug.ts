@@ -116,6 +116,34 @@ export function stopStallMonitor(): void {
   stallTimer = null;
 }
 
+// The monitor ran from the plugin's start to its end: four wakes a second for as long as Risu was open, to fill a
+// list read only in the debug report. It now runs while something of ours is at work (an image job holds it) and
+// for ten minutes after each debug snapshot, which is when someone is looking at what it found.
+const STALL_LINGER_MS = 600_000;
+let stallHolds = 0, stallUntil = 0, stallLinger: ReturnType<typeof setTimeout> | undefined;
+function syncStallMonitor(): void {
+  if (stallHolds > 0 || Date.now() < stallUntil) startStallMonitor(); else stopStallMonitor();
+}
+/** Watches for stalls until the returned call (an image job, from its start to its end). */
+export function holdStallMonitor(): () => void {
+  stallHolds++;
+  syncStallMonitor();
+  let released = false;
+  return () => { if (released) return; released = true; stallHolds--; syncStallMonitor(); };
+}
+/** Whether stalls are being watched for now. */
+export const stallMonitoring = (): boolean => stallTimer != null;
+/** Test seam: nobody holds the watch and nobody has looked. */
+export function resetStallWatch(): void { stallHolds = 0; stallUntil = 0; clearTimeout(stallLinger); syncStallMonitor(); }
+function lingerStallMonitor(): void {
+  stallUntil = Date.now() + STALL_LINGER_MS;
+  syncStallMonitor();
+  clearTimeout(stallLinger);
+  stallLinger = setTimeout(syncStallMonitor, STALL_LINGER_MS + 50);
+  // Node hosts (unit tests, parity) must still be able to exit.
+  (stallLinger as unknown as { unref?: () => void }).unref?.();
+}
+
 export const setJobContext = (jobId: string): void => { jobCtx = jobId; };
 export const getJobContext = (): string => jobCtx;
 export const getFocusStage = (): string => focusStage;
@@ -201,6 +229,10 @@ export function dbgSpan(stage: string): DebugSpan {
 }
 
 export function debugSnapshot(): Record<string, unknown> {
+  // Someone is reading the report: stalls are watched for from here on (see holdStallMonitor). The report says
+  // whether they were being watched until now: `stalls: 0` with nobody watching is no finding.
+  const monitoring = stallTimer != null;
+  lingerStallMonitor();
   const host = risuHost() ?? {};
   let hidden: boolean | null = null;
   try {
@@ -231,7 +263,7 @@ export function debugSnapshot(): Record<string, unknown> {
     boot: { id: BOOT_ID, at: BOOT_AT, uptime_ms: Date.now() - BOOT_AT, prev_boot_gap_ms: prevBootGapMs },
     mem: { js_heap_used: usedHeap(), ...(memoryProvider?.() ?? {}) },
     main_thread: {
-      monitoring: stallTimer != null,
+      monitoring,
       stalls: stallCount,
       stall_max_ms: stallMaxMs,
       stall_total_ms: stallTotalMs,

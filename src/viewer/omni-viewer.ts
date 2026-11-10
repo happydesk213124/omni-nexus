@@ -33,7 +33,8 @@ import { withTtsAudio } from '../tts-ui/activation';
 import { chatNoteSessionId, getSessionAuthorNote } from '../services/session-author-note';
 import { replyPlace } from '../storage/viewer-places';
 import { botFrom, holdBot } from '../storage/current-bot';
-import { currentTtsContext, streamEnded, type TtsChatContext } from '../services/tts-context';
+import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
+import { addChatOutputListener } from '../services/chat-output';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
@@ -196,10 +197,12 @@ async function measureCgControls(): Promise<void> {
  * dearest call the viewer made).
  */
 async function readChat(ctx?: TtsChatContext): Promise<void> {
-  context = ctx ?? await currentTtsContext();
+  context = ctx ?? await currentTtsContext({ bot: true });
   shownText.clear(); clockCache.clear();
   const index = Number(await Promise.resolve(risuHost()?.getCurrentCharacterIndex?.()).catch(() => NaN));
-  bot = Number.isInteger(index) && index >= 0 && context.characterId ? { id: context.characterId, index, character: context.character } : await currentEmotionBot().catch(() => null);
+  // A context may know the bot by name only (tts-context.ts): the viewer's bot is the character itself.
+  const whole = Array.isArray(context.character.chats);
+  bot = whole && Number.isInteger(index) && index >= 0 && context.characterId ? { id: context.characterId, index, character: context.character } : await currentEmotionBot().catch(() => null);
   // The bot just read stands for every read of it while the costume names are worked out (the rosters they read).
   const read = bot, rosterScope = context.rosterScope;
   if (read) await withViewerBot(() => refreshCostumeNames(read.id, rosterScope));
@@ -521,7 +524,7 @@ function flushMarks(): void {
 }
 /** The reply and scene to open at: where the reader left this chat, or the first reply since. */
 async function resume(): Promise<void> {
-  const [ctx, all] = await Promise.all([currentTtsContext(), streaming ? null : readMarks()]), mark = all?.[chatKey(ctx)];
+  const [ctx, all] = await Promise.all([currentTtsContext({ bot: true }), streaming ? null : readMarks()]), mark = all?.[chatKey(ctx)];
   context = ctx;
   void syncFold().catch(() => {});
   const list = charIndexes(), newest = list[list.length - 1];
@@ -2274,7 +2277,7 @@ export async function installOmniViewer(): Promise<void> {
   // nor are taps on Omni's controls floating over the chat (viewer-presence.ts).
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => (open && inside({ clientX: x, clientY: y }, rect)) || chatCovered(x, y));
   // A reply saved: its faces made ahead, and a viewer showing it as it streamed reads the saved one at once.
-  if (host.addRisuChatListener) await host.addRisuChatListener('output', () => { streamEnded(); scheduleAhead(); endStream(); });
+  await addChatOutputListener(() => { scheduleAhead(); endStream(); });
   // The reply on stage baked: read again, once (see rereadBaked).
   onMessageBaked(baked => { if (open && !streaming && baked.messageIndex === messageIndex) rereadBaked(); });
   // A sprite finished: the scene on screen may be waiting for it.

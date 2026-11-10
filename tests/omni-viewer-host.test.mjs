@@ -56,7 +56,7 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap costs no rect read, sprites
         removeRisuScriptHandler: async (mode, fn) => { window.scriptHandlers[mode] = (window.scriptHandlers?.[mode] || []).filter(f => f !== fn); },
         showContainer: async () => { window.containerShown = (window.containerShown || 0) + 1; throw new Error('no container in the test'); }, hideContainer: async () => {},
         readImage: async () => { if (window.imageDelay) await new Promise(r => setTimeout(r, window.imageDelay)); return bytes; }, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; },
-        addRisuChatListener: async (mode, fn) => { if (mode === 'output') window.output = fn; } };
+        addRisuChatListener: async (mode, fn) => { if (mode === 'output') window.output = async arg => { await fn(arg); await window.__OMNI_CHAT_OUTPUT__?.settled(); }; } };
     }, { png: PNG, tall: TALL, reply });
     await page.evaluate(() => { window.crypto.randomUUID = undefined; });
     await page.addScriptTag({ content: built.outputFiles[0].text });

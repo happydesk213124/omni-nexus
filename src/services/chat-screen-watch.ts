@@ -14,16 +14,37 @@ import { onViewerUncovered, viewerCovering } from './viewer-presence';
  *
  * Behind 옴니 뷰어 nothing is asked: all three are out of sight there, and the page under it cannot be left for
  * another. One check as it closes catches up (viewer-presence.ts).
+ *
+ * The check is a call to Risu each time, and it went on once a second for as long as a chat was open, the reader
+ * doing nothing but read. Ten checks in a row that find nothing changed (ten seconds) and it slows to one every
+ * five; a tap, a change, or the viewer closing brings the second back. What changes the screen without a tap (a
+ * turned phone) is caught at the slower pace. With Risu's page out of sight (another tab, the phone's home screen)
+ * nothing is asked at all, and one check is made as it comes back.
  */
 /** `drawn` counts the times the screen was drawn anew (another bot's chat, say): one kept is no longer on the page. */
 export interface ChatScreen { present: boolean; left: number; top: number; width: number; height: number; drawn: number }
 type Listener = (screen: ChatScreen) => void;
 
-const CHECK_MS = 1000, SOON_MS = 300;
+const CHECK_MS = 1000, IDLE_CHECK_MS = 5000, QUIET_CHECKS = 10, SOON_MS = 300;
 const listeners = new Set<Listener>();
 let doc: SafeDocument | null = null, screen: SafeElement | null = null, drawn = 0;
-let last: ChatScreen | null = null, timer: ReturnType<typeof setInterval> | undefined, soonTimer: ReturnType<typeof setTimeout> | undefined;
-let checking: Promise<void> | null = null, stopUncovered: (() => void) | undefined;
+let last: ChatScreen | null = null, timer: ReturnType<typeof setTimeout> | undefined, soonTimer: ReturnType<typeof setTimeout> | undefined;
+let checking: Promise<void> | null = null, stopUncovered: (() => void) | undefined, stopVisible: (() => void) | undefined;
+// Checks in a row that found the screen as it was.
+let quiet = 0;
+const pageHidden = (): boolean => typeof document !== 'undefined' && document.hidden === true;
+/** The next check: a second on while things change or the reader taps, five once ten in a row found nothing new. */
+function schedule(): void {
+  clearTimeout(timer);
+  if (!listeners.size) { timer = undefined; return; }
+  timer = setTimeout(() => { timer = undefined; void checkChatScreen().finally(schedule); }, quiet < QUIET_CHECKS ? CHECK_MS : IDLE_CHECK_MS);
+  // Node hosts (smoke, audit) end when nothing is left to run.
+  (timer as unknown as { unref?: () => void }).unref?.();
+}
+/** Something happened (a tap, the viewer closed, the page came back): the quick pace again. */
+function wake(): void {
+  if (quiet >= QUIET_CHECKS) { quiet = 0; schedule(); } else quiet = 0;
+}
 
 const release = async (value: unknown): Promise<void> => {
   const r = value && typeof value === 'object' ? Reflect.get(value, 'release') : null;
@@ -47,14 +68,14 @@ async function lookAtChatScreen(): Promise<void> {
   const next: ChatScreen = shown(r)
     ? { present: true, left: Math.round(r!.left), top: Math.round(r!.top), width: Math.round(r!.width), height: Math.round(r!.height), drawn }
     : { present: false, left: 0, top: 0, width: 0, height: 0, drawn };
-  if (last && last.present === next.present && last.left === next.left && last.top === next.top && last.width === next.width && last.height === next.height && last.drawn === next.drawn) return;
-  last = next;
+  if (last && last.present === next.present && last.left === next.left && last.top === next.top && last.width === next.width && last.height === next.height && last.drawn === next.drawn) { quiet++; return; }
+  last = next; quiet = 0;
   for (const fn of [...listeners]) { try { fn(next); } catch { /* one listener never stops the others */ } }
 }
 
 /** One check now (one at a time: a check under way is shared), unless 옴니 뷰어 is over the chat. */
 function checkChatScreen(): Promise<void> {
-  if (viewerCovering()) return Promise.resolve();
+  if (viewerCovering() || pageHidden()) return Promise.resolve();
   if (checking) return checking;
   checking = lookAtChatScreen().catch(() => {}).finally(() => { checking = null; });
   return checking;
@@ -68,18 +89,23 @@ function checkChatScreen(): Promise<void> {
 export function watchChatScreen(fn: Listener): () => void {
   listeners.add(fn);
   if (last) queueMicrotask(() => { if (listeners.has(fn) && last) fn(last); });
-  if (!timer) {
-    timer = setInterval(() => { void checkChatScreen(); }, CHECK_MS);
-    (timer as unknown as { unref?: () => void }).unref?.();
-    stopUncovered = onViewerUncovered(() => { void checkChatScreen(); });
-    void checkChatScreen();
+  if (!stopUncovered) {
+    quiet = 0;
+    stopUncovered = onViewerUncovered(() => { wake(); void checkChatScreen(); });
+    if (typeof document !== 'undefined') {
+      const visible = () => { if (!document.hidden) { wake(); void checkChatScreen(); } };
+      document.addEventListener('visibilitychange', visible);
+      stopVisible = () => document.removeEventListener('visibilitychange', visible);
+    }
+    void checkChatScreen().finally(schedule);
   }
   return () => {
     if (!listeners.delete(fn) || listeners.size) return;
     // Nobody left: nothing is asked, and nothing is kept to be told as news later.
-    clearInterval(timer); timer = undefined;
+    clearTimeout(timer); timer = undefined;
     clearTimeout(soonTimer); soonTimer = undefined;
     stopUncovered?.(); stopUncovered = undefined;
+    stopVisible?.(); stopVisible = undefined;
     last = null;
     const held = screen; screen = null; void release(held);
   };
@@ -87,6 +113,8 @@ export function watchChatScreen(fn: Listener): () => void {
 
 /** A tap happened: a check 0.3 s later (Risu's settings open with a tap, and close with one). */
 export function checkChatScreenSoon(): void {
-  if (!listeners.size || soonTimer) return;
+  if (!listeners.size) return;
+  wake();
+  if (soonTimer) return;
   soonTimer = setTimeout(() => { soonTimer = undefined; void checkChatScreen(); }, SOON_MS);
 }

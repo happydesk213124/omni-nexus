@@ -60,7 +60,7 @@ test('chat ♪ / ▶ play their cue; the TTS list carries the cues and reading p
         getDatabase: async () => ({ modules: structuredClone(window.dbModules || []), enabledModules: [] }), setDatabase: async db => { if (db.modules) window.dbModules = structuredClone(db.modules); }, requestPluginPermission: async () => true,
         getRootDocument: async () => new Safe(document.documentElement),
         createMutationObserver: async fn => { const o = new MutationObserver(() => fn([])); return { observe: async (t, opt) => o.observe(t.node, opt), disconnect: async () => o.disconnect() }; },
-        addRisuChatListener: async (_m, fn) => { window.output = fn; }, removeRisuChatListener: async () => {}, onUnload: async () => {},
+        addRisuChatListener: async (_m, fn) => { window.output = async arg => { await fn(arg); await window.__OMNI_CHAT_OUTPUT__?.settled(); }; }, removeRisuChatListener: async () => {}, onUnload: async () => {},
         getCharacter: async () => ({ chaId: 'c', chatPage: 0, chats: [{ id: 'chat', message: window.messages }] }),
         nativeFetch: async url => { if (url.includes('snd.test/bang')) return { ok: true, arrayBuffer: async () => window.paddedWav() }; if (url.includes('snd.test')) return { ok: true, arrayBuffer: async () => id3() }; window.fish++; return { ok: true, arrayBuffer: async () => new Uint8Array(32).buffer }; },
       };

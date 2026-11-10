@@ -101,8 +101,9 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     assert.doesNotMatch(await scene(), /data-vn-busy/, 'the first line came: the spinner went');
     await page.evaluate(() => { window.charDelay = 0; });
     assert.equal(await page.evaluate(() => window.viewerCovering()), true, 'open, it covers the chat (its TTS buttons rest behind it)');
-    // Once each: the chat, and (the first time this session) the TTS roster its bot's lorebook. The viewer reads no second copy for the bot.
-    assert.deepEqual(await page.evaluate(() => ({ ...window.reads })), { getCharacter: 1, getCharacterFromIndex: 1 }, 'opening read the character once');
+    // Once: the chat and its bot in one read. The bot's TTS roster (its lorebook) is taken from that same read (it was
+    // a read of its own the first time in a session), and the viewer reads no second copy for the bot.
+    assert.deepEqual(await page.evaluate(() => ({ ...window.reads })), { getCharacter: 1, getCharacterFromIndex: 0 }, 'opening read the character once');
     // Turning to the next reply: its line goes out before anything else of its scene, 세라's place (new on stage) after it.
     const step = async (key, until) => { for (let i = 0; i < 8 && !until.test(await text()); i++) { await page.keyboard.press(key); await page.waitForTimeout(350); } await shows(until); };
     await step('ArrowRight', /R3 물론이지/);
@@ -118,7 +119,7 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     // Back to R2 and on into R4 again: turning to another reply reads nothing.
     await step('ArrowLeft', /R2 /);
     await step('ArrowRight', /R4 나 왔어/);
-    assert.deepEqual(await page.evaluate(() => ({ ...window.reads })), { getCharacter: 1, getCharacterFromIndex: 1 }, 'no reply turned to read the character again');
+    assert.deepEqual(await page.evaluate(() => ({ ...window.reads })), { getCharacter: 1, getCharacterFromIndex: 0 }, 'no reply turned to read the character again');
     await step('ArrowLeft', /R3 물론이지/);
 
     // Where the reader is goes to the device, never the save file (each write there made Risu rewrite its whole store).

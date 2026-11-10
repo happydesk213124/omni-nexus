@@ -41,6 +41,7 @@ import { normalizeAssetNaiTagsMode } from '../config/schema';
 import {
   dbg,
   dbgSpan,
+  holdStallMonitor,
   eventsForJob,
   getFocusStage,
   getJobContext,
@@ -770,6 +771,8 @@ async function runJob(jobId: string): Promise<void> {
   holdShotAssets();
   // And the bot it reads is read once per write, not once per question (current-bot).
   const releaseBot = [holdBotScope(sessionId), holdBotScope(noteSessionId)];
+  // Freezes of Risu's page are looked for while a job is at work (core/debug), not all session long.
+  const releaseStalls = holdStallMonitor();
   const jobSpan = dbgSpan('job.run');
   dbg('job.start', {
     job_id: jobId,
@@ -1931,6 +1934,7 @@ async function runJob(jobId: string): Promise<void> {
       releaseShotAssets();
       releaseChatNote(noteSessionId);
       for (const release of releaseBot) release();
+      releaseStalls();
     }
   }
 }

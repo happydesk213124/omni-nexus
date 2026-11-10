@@ -14837,7 +14837,7 @@ const VENDOR_CHAT_OUTPUT_BOOT_PATCH =
       t._scriptOutputReady = !1;
       if (typeof k.addRisuChatListener == "function") {
         try {
-          await k.addRisuChatListener("output", onChatOutput);
+          await (globalThis.__OMNI_CHAT_OUTPUT__ ? globalThis.__OMNI_CHAT_OUTPUT__.add(onChatOutput) : k.addRisuChatListener("output", onChatOutput));
           t._chatOutputReady = !0;
           y("info", "chatOutput.ready", "output listener on");
         } catch (err) {
@@ -14863,7 +14863,7 @@ const VENDOR_CHAT_OUTPUT_BOOT_PATCH =
 const VENDOR_CHAT_OUTPUT_UNLOAD_NEEDLE =
   `await D("removeAfter", () => k.removeRisuReplacer?.("afterRequest", _t), null);`;
 const VENDOR_CHAT_OUTPUT_UNLOAD_PATCH =
-  `await D("removeScriptOutput", () => t._scriptOutputReady ? k.removeRisuScriptHandler?.("output", onScriptOutput) : null, null), await D("removeChatOutput", () => t._chatOutputReady ? k.removeRisuChatListener?.("output", onChatOutput) : null, null), await D("removeAfter", () => k.removeRisuReplacer?.("afterRequest", _t), null);`;
+  `await D("removeScriptOutput", () => t._scriptOutputReady ? k.removeRisuScriptHandler?.("output", onScriptOutput) : null, null), await D("removeChatOutput", () => t._chatOutputReady ? (globalThis.__OMNI_CHAT_OUTPUT__ ? globalThis.__OMNI_CHAT_OUTPUT__.remove(onChatOutput) : k.removeRisuChatListener?.("output", onChatOutput)) : null, null), await D("removeAfter", () => k.removeRisuReplacer?.("afterRequest", _t), null);`;
 
 /**
  * On select/rebind: retarget in-flight job save-hash when finished DOM matches (≥60%).

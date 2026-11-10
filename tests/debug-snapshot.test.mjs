@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 
 import {
   debugSnapshot,
+  holdStallMonitor,
+  resetStallWatch,
   setDebugMemory,
   setPrevBootGap,
+  stallMonitoring,
   startStallMonitor,
   stopStallMonitor,
 } from '../.test-build/debug.mjs';
 
 afterEach(() => {
+  resetStallWatch();
   stopStallMonitor();
   setDebugMemory(() => ({}));
   setPrevBootGap(null);
@@ -31,6 +35,25 @@ test('debugSnapshot carries boot identity and injected memory figures', () => {
   // dump has the same shape everywhere.
   assert.ok('js_heap_used' in snap.mem);
   assert.equal(snap.main_thread.monitoring, false);
+});
+
+test('stalls are watched for while a job is at work or the report is being read, not all session long', () => {
+  // Nothing at work, nobody looking: no timer runs (it ran four times a second from start to end before).
+  assert.equal(stallMonitoring(), false);
+  // A job holds the watch from its start to its end; with two at work, until the last one ends.
+  const one = holdStallMonitor(), two = holdStallMonitor();
+  assert.equal(stallMonitoring(), true);
+  one(); one();
+  assert.equal(stallMonitoring(), true, 'one job ended (told twice): the other still holds it');
+  two();
+  assert.equal(stallMonitoring(), false, 'the last job ended');
+  // A look at the report starts the watch, and says it was not being kept until then.
+  assert.equal(debugSnapshot().main_thread.monitoring, false);
+  assert.equal(stallMonitoring(), true);
+  assert.equal(debugSnapshot().main_thread.monitoring, true);
+  // It lingers past a job that ends meanwhile.
+  holdStallMonitor()();
+  assert.equal(stallMonitoring(), true);
 });
 
 test('stall monitor records a blocked main thread and stays quiet otherwise', async () => {

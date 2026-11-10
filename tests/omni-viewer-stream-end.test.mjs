@@ -55,7 +55,7 @@ async function viewerPage(browser) {
       getDatabase: async () => ({ characters: [structuredClone(bot)], modules: [], enabledModules: [] }), getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
       getCharacterFromIndex: async () => structuredClone(bot), getCharacter: async () => structuredClone(bot),
       readImage: async () => bytes, getRootDocument: async () => new Safe(document), registerButton: async (arg, fn) => { window.buttons[arg.id] = fn; return { id: arg.id }; },
-      addRisuChatListener: async (mode, fn) => { if (mode === 'output') window.output = fn; } };
+      addRisuChatListener: async (mode, fn) => { if (mode === 'output') window.output = async arg => { await fn(arg); await window.__OMNI_CHAT_OUTPUT__?.settled(); }; } };
   }, { png: PNG });
   await page.evaluate(() => { window.crypto.randomUUID = undefined; });
   await page.addScriptTag({ content: built.outputFiles[0].text });

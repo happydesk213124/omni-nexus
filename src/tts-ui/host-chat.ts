@@ -3,7 +3,8 @@ import { uuid } from '../core/util/text';
 import { sleep } from '../core/util/async';
 import { ttsData, subscribeTts } from '../storage/tts-store';
 import { omniTts, type TtsRequest } from '../services/tts-runtime';
-import { currentTtsContext, replyStreamingNow, streamEnded, type TtsChatContext } from '../services/tts-context';
+import { currentTtsContext, replyStreamingNow, type TtsChatContext } from '../services/tts-context';
+import { addChatOutputListener, removeChatOutputListener } from '../services/chat-output';
 import { parseTtsMessage, compactHash, cueLineKey, isSoundSegment, type TtsSoundCues } from '../domain/tts/segment';
 import { soundData, soundReady, subscribeSound } from '../storage/sound-store';
 import { omniSound } from '../services/sound-runtime';
@@ -46,11 +47,35 @@ function findLine(list: TtsRequest[], key: string, line: string): number {
   return exactIndex >= 0 ? exactIndex : list.findIndex(r => r.sourceKey === key);
 }
 let installed = false;
+/**
+ * The chat is watched only while TTS or BGM·효과음 is on.
+ *
+ * It was watched from every start, whatever the switches: a mutation watcher over the whole chat screen (Risu wraps
+ * every node of every change for it, and a streaming reply changes with each chunk), listeners for every click,
+ * scroll, mouseover and pointer move on the page, the TTS window with its own listeners and timers, all to find
+ * each time that nothing was switched on. With both off none of it is there; switching one on puts it up (and
+ * scans the chat, as a start did), switching both off takes it all down.
+ */
 export async function installTtsHost(): Promise<void> {
   if (installed) return;
   const host = risuHost(); if (!host?.getRootDocument || !host.createMutationObserver) return;
-  await omniTts.init(); const doc = await host.getRootDocument(); if (!doc) return;
+  // What is switched on is in the two stores: read before anything is asked of the page.
+  await omniTts.init(); await omniSound.init().catch(error => console.warn('OmniSound', error));
   installed = true;
+  let mounted: (() => Promise<void>) | null = null, unloaded = false, tail: Promise<void> = Promise.resolve();
+  const sync = (): Promise<void> => tail = tail.catch(() => {}).then(async () => {
+    const wanted = !unloaded && (ttsData().settings.enabled || soundOn());
+    if (wanted === !!mounted) return;
+    if (mounted) { const dispose = mounted; mounted = null; await dispose(); return; }
+    mounted = await mountTtsHost(host);
+  });
+  const failed = (error: unknown) => console.warn('OmniTTS host', error);
+  const stops = [subscribeTts(() => { void sync().catch(failed); }), subscribeSound(() => { void sync().catch(failed); })];
+  await sync();
+  if (host.onUnload) await host.onUnload(async () => { unloaded = true; installed = false; for (const stop of stops) stop(); await sync().catch(failed); });
+}
+async function mountTtsHost(host: NonNullable<ReturnType<typeof risuHost>>): Promise<(() => Promise<void>) | null> {
+  const doc = await host.getRootDocument!(); if (!doc) return null;
   // Read by every reply's lines (risu64 난독), not only once the viewer has opened.
   await loadViewerPrefs().catch(() => null);
   let flash = (_message: string) => {};
@@ -301,7 +326,7 @@ export async function installTtsHost(): Promise<void> {
   // one a second then, not one after another for as long as it streams.
   const onChange = (records: unknown) => { void releaseHost(records).catch(()=>{}); schedule(replyStreamingNow() ? 1000 : 200); };
   const watchChat = async () => {
-    const screen = await doc.querySelector('.default-chat-screen:not([x-omnitts-watched])');
+    const screen = await doc.querySelector('.default-chat-screen:not([x-omnitts-watched="1"])');
     if (!screen) return;
     // A <details> opened or folded changes no node, only its `open`: heard here, so no tap has to ask for a scan.
     try { await screen.setAttribute('x-omnitts-watched','1'); const watcher = await host.createMutationObserver!(onChange); await watcher.observe(screen,{childList:true,subtree:true,attributes:true,attributeFilter:['open']}); watchers.push(watcher); }
@@ -329,10 +354,19 @@ export async function installTtsHost(): Promise<void> {
     const epoch=++inputEpoch;
     void findHit(e,false).then(row=>{if(epoch===inputEpoch&&row&&(row.illustration||ttsData().settings.clickPlay))return row.play();}).catch(report);
   });
-  await listen('mouseover',e=>{
+  // Risu sends every mouseover on its page across the bridge to whoever listens for one: heard only while hover
+  // play is switched on.
+  const onHover=(e:HostPoint)=>{
     if(!ttsData().settings.hoverPlay||viewerCovering())return;const epoch=++inputEpoch;
     void findHit(e,true).then(row=>{if(epoch!==inputEpoch)return;if(!row){hovered='';return;}if(hovered!==row.key){hovered=row.key;return row.play();}}).catch(report);
+  };
+  let hoverId='',hoverTail:Promise<void>=Promise.resolve();
+  const syncHover=():Promise<void>=>hoverTail=hoverTail.catch(()=>{}).then(async()=>{
+    const wanted=!disposed&&ttsData().settings.hoverPlay===true;
+    if(wanted&&!hoverId)hoverId=await doc.addEventListener('mouseover',onHover);
+    else if(!wanted&&hoverId){const id=hoverId;hoverId='';await doc.removeEventListener('mouseover',id);}
   });
+  await syncHover();
   // A scroll is read once it stops: a scan every 0.4 s while it lasted read every message on screen, its calls queued
   // with the scroll's own frames. (A scan due for another reason waits for the stop too.)
   await listen('scroll',()=>{if(timer){clearTimeout(timer);timer=undefined;}schedule(300);},{capture:true,passive:true});
@@ -344,6 +378,7 @@ export async function installTtsHost(): Promise<void> {
   let lastLinesKey=linesKey();
   const unsubscribe=subscribeTts(()=>{
     void syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));
+    void syncHover().catch(()=>{});
     const key=linesKey();if(key===lastLinesKey)return;lastLinesKey=key;
     lastPrefetch='';bootAttempts=0;schedule();
   });
@@ -353,8 +388,8 @@ export async function installTtsHost(): Promise<void> {
   const unsubscribeUncovered=onViewerUncovered(()=>{lastPrefetch='';if(behind){behind=false;schedule(0);}void syncState().catch(error=>console.warn('OmniTTS playing state',error));});
   const seen = new Map<string,string>();
   const output: (arg:ChatOutputListenerArg)=>Promise<void> = async arg=>{
-    // The reply is saved: the chat is read again, not the one held while it streamed.
-    streamEnded();
+    // The reply is saved: the chat is read again, not the one held while it streamed (chat-output.ts lets that go
+    // before anyone here is told).
     if (disposed || !active()) return;
     try { const context=await currentTtsContext(); if (String(arg.char?.chaId)!==context.characterId || String(arg.chat?.id)!==context.chatId) return;
       const index=arg.messageIndex; let list=requests(context,index); if (!list.length) return;
@@ -373,7 +408,8 @@ export async function installTtsHost(): Promise<void> {
       await requestPlay(list, list.findIndex(r=>(s.continuous||!isSoundSegment(r.segment))&&(s.narration || r.segment.kind!=='narration')));
     } catch(error) { report(error); }
   };
-  if (host.addRisuChatListener) await host.addRisuChatListener('output',output);
+  // One listener of Risu's for all of Omni (chat-output.ts): Risu does not wait on what is read here.
+  await addChatOutputListener(output);
   // ⌖ also centers the line being read in the chat. Near the end of a chat the
   // chat cannot scroll that far, and the browser would push the whole page
   // instead; that shift is detected on the chat screen and undone at once.
@@ -395,5 +431,8 @@ export async function installTtsHost(): Promise<void> {
   };
   await syncVisibility().catch(error=>console.warn('OmniTTS button visibility',error));
   const viewer=await installTtsViewer(doc,revealInChat);flash=viewer.flash;await requestScan();
-  if(host.onUnload)await host.onUnload(async()=>{disposed=true;await syncNarrationRule().catch(()=>{});inputEpoch++;installed=false;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();unsubscribeUncovered();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await host.removeRisuChatListener?.('output',output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();await releaseHost(doc);});
+  return async()=>{disposed=true;await syncNarrationRule().catch(()=>{});await syncHover().catch(()=>{});inputEpoch++;clearTimeout(timer);unsubscribe();unsubscribeSound();unsubscribeState();unsubscribeUncovered();omniTts.stop();for(const watcher of watchers.splice(0))await disconnectHost(watcher);for(const e of events)await doc.removeEventListener(e.type,e.id,e.options);await removeChatOutputListener(output);for(const b of bindings.values()){await releaseHost(b.node);for(const c of b.chips)await releaseHost(c.node);}bindings.clear();await viewer.dispose();
+    // The screens it watched are marked so: unmarked, the next time it is put up watches them again.
+    for(const screen of await safeArray(await doc.querySelectorAll('[x-omnitts-watched="1"]'))){await screen.setAttribute('x-omnitts-watched','0').catch(()=>{});await releaseHost(screen);}
+    await releaseHost(doc);};
 }

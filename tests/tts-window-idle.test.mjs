@@ -19,6 +19,8 @@ test('SafeDOM: with TTS off the TTS window asks Risu nothing; on, its check is o
       const saved=new Map([['omnisound.data','{}']]),local=new Map(),hostUUID=crypto.randomUUID.bind(crypto);
       // Only the chat screen check is counted (the chat scans read the screen too, on their own schedule).
       window.screenCalls={lookups:0,sizes:0};
+      // Every listener on the page and every watcher over it, as they come and go.
+      window.heard=new Map();window.watching=0;
       const theCheck=()=>/lookAtChatScreen/.test(new Error().stack);
       class Safe {
         constructor(node){this.node=node;this.listeners=new Map();}
@@ -39,16 +41,16 @@ test('SafeDOM: with TTS off the TTS window asks Risu nothing; on, its check is o
         async clientHeight(){return this.node.clientHeight;}
         async clientWidth(){return this.node.clientWidth;}
         async getBoundingClientRect(){if(this.node.classList?.contains('default-chat-screen')&&theCheck())window.screenCalls.sizes++;return this.node.getBoundingClientRect().toJSON();}
-        async addEventListener(type,fn,options){const id=hostUUID();const cb=e=>fn({clientX:e.clientX,clientY:e.clientY,button:e.button,buttons:e.buttons,key:e.key});this.listeners.set(id,[type,cb,options]);document.addEventListener(type,cb,options);return id;}
-        async removeEventListener(type,id){const x=this.listeners.get(id);if(x){document.removeEventListener(type,x[1],x[2]);this.listeners.delete(id);}}
+        async addEventListener(type,fn,options){const id=hostUUID();const cb=e=>fn({clientX:e.clientX,clientY:e.clientY,button:e.button,buttons:e.buttons,key:e.key});this.listeners.set(id,[type,cb,options]);window.heard.set(id,type);document.addEventListener(type,cb,options);return id;}
+        async removeEventListener(type,id){const x=this.listeners.get(id);if(x){document.removeEventListener(type,x[1],x[2]);this.listeners.delete(id);}window.heard.delete(id);}
         async createElement(tag){return new Safe(document.createElement(tag));}
       }
       document.body.innerHTML='<div class="default-chat-screen" style="height:400px"><p>하린: "안녕."</p></div>';
       window.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getLocalPluginStorage:async()=>({getItem:async k=>local.get(k),setItem:async(k,v)=>local.set(k,v),removeItem:async k=>local.delete(k)}),
         getDatabase:async()=>({modules:[],enabledModules:[]}),setDatabase:async()=>{},requestPluginPermission:async()=>true,getRootDocument:async()=>new Safe(document.documentElement),
         unwarpSafeArray:async a=>{const result=[];for(let i=0,n=await a.length();i<n;i++)result.push(await a.at(i));return result;},
-        createMutationObserver:async fn=>{const observer=new MutationObserver(rows=>fn(rows.map(row=>({getTarget:async()=>new Safe(row.target)}))));return {observe:async(target,options)=>observer.observe(target.node,options),disconnect:async()=>observer.disconnect()};},
-        addRisuChatListener:async()=>{},removeRisuChatListener:async()=>{},onUnload:async()=>{},
+        createMutationObserver:async fn=>{const observer=new MutationObserver(rows=>fn(rows.map(row=>({getTarget:async()=>new Safe(row.target)}))));return {observe:async(target,options)=>{window.watching++;observer.observe(target.node,options);},disconnect:async()=>{window.watching--;observer.disconnect();}};},
+        addRisuChatListener:async()=>{window.outputListeners=(window.outputListeners||0)+1;},removeRisuChatListener:async()=>{window.outputListeners--;},onUnload:async()=>{},
         getCharacter:async()=>({chaId:'c',chatPage:0,chats:[{id:'chat',message:[{role:'char',chatId:'m0',data:'하린: "안녕."'}]}]}),
         nativeFetch:async()=>({ok:false,status:599,arrayBuffer:async()=>new ArrayBuffer(0)})};
     },blockedSource);
@@ -57,8 +59,21 @@ test('SafeDOM: with TTS off the TTS window asks Risu nothing; on, its check is o
     await page.waitForTimeout(1500);
     const count=async ms=>{await page.evaluate(()=>{window.screenCalls={lookups:0,sizes:0};});await page.waitForTimeout(ms);return page.evaluate(()=>window.screenCalls);};
     assert.deepEqual(await count(2300),{lookups:0,sizes:0},'TTS off: its window never shows, and nothing is asked for it');
+    // TTS and BGM·효과음 both off: nothing of the TTS host is on Risu's page at all.
+    const onPage=()=>page.evaluate(()=>({heard:[...window.heard.values()].sort(),watching:window.watching,output:window.outputListeners||0,
+      nodes:document.querySelectorAll('[x-omnitts-viewer],[x-omnitts-toast],[x-omnitts-shield]').length,watched:document.querySelectorAll('[x-omnitts-watched="1"]').length}));
+    assert.deepEqual(await onPage(),{heard:[],watching:0,output:0,nodes:0,watched:0},'off: no listener, no watcher over the chat, no window');
     await page.evaluate(async()=>{await window.updateTtsSettings({enabled:true});});
+    await page.waitForFunction(()=>window.watching===1&&!!document.querySelector('[x-omnitts-viewer]'));
     await page.waitForTimeout(600);
+    const up=await onPage();
+    assert.equal(up.watching,1,'on: the chat screen is watched');assert.equal(up.output,1);assert.equal(up.watched,1);
+    assert.ok(up.heard.includes('click')&&up.heard.includes('scroll'),'and its taps and scrolls heard');
+    assert.equal(up.heard.includes('mouseover'),false,'no mouseover is sent across the bridge unless hover play is on');
+    await page.evaluate(async()=>{await window.updateTtsSettings({hoverPlay:true});});
+    await page.waitForFunction(()=>[...window.heard.values()].includes('mouseover'));
+    await page.evaluate(async()=>{await window.updateTtsSettings({hoverPlay:false});});
+    await page.waitForFunction(()=>![...window.heard.values()].includes('mouseover'));
     const on=await count(2300);
     assert.equal(on.lookups,0,'on: the chat screen is kept from check to check');
     assert.ok(on.sizes>=1&&on.sizes<=4,`on: its size, about once a second (${on.sizes})`);
@@ -71,6 +86,13 @@ test('SafeDOM: with TTS off the TTS window asks Risu nothing; on, its check is o
     // Off the chat (Risu's other pages): the window goes.
     await page.evaluate(()=>document.querySelector('.default-chat-screen').remove());
     await page.waitForFunction(()=>{const v=document.querySelector('[x-omnitts-viewer]');return !v||getComputedStyle(v).display==='none'||v.getBoundingClientRect().width===0;});
+    // Switched off again: taken down to the last listener, and put up again when switched back on.
+    await page.evaluate(async()=>{document.body.insertAdjacentHTML('afterbegin','<div class="default-chat-screen" style="height:400px"><p>하린: "안녕."</p></div>');await window.updateTtsSettings({enabled:false});});
+    await page.waitForFunction(()=>!window.heard.size&&!window.watching&&!document.querySelector('[x-omnitts-viewer]'));
+    assert.deepEqual(await onPage(),{heard:[],watching:0,output:0,nodes:0,watched:0},'off again: nothing left on the page');
+    await page.evaluate(async()=>{await window.updateTtsSettings({enabled:true});});
+    await page.waitForFunction(()=>window.watching===1&&!!document.querySelector('[x-omnitts-viewer]'));
+    assert.equal((await onPage()).watched,1,'on again: the same chat screen is watched once more');
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });
