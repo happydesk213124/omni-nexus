@@ -136,6 +136,35 @@ test('while 옴니 뷰어 covers the chat the hold rests: nobody reads the chat 
  } finally {delete globalThis.__OMNI_VIEWER_COVERING__;}
 });
 
+// Scrolling while pictures were being made threw the view to the newest line: the hold gave up the moment the reader
+// moved, and Risu's redraw came after that with nobody holding.
+for(const hand of ['finger','wheel'])test('write-scoped scroll: a reader scrolling ('+hand+') as the write lands is followed, and the redraw that throws the view is put back where they were',async()=>{
+ let top=20,corrections=0;
+ const handlers=new Map(),docHandlers=new Map();let mutated;
+ const rect=()=>({top,bottom:top+40,height:40});
+ const paragraph={textContent:async()=> 'same paragraph',getBoundingClientRect:async()=>rect(),getStyleAttribute:async()=> '',setStyle:async(_k,v)=>{paragraph.margin=Number.parseFloat(v);},setStyleAttribute:async()=>{},scrollIntoView:async()=>{top=paragraph.margin;corrections++;}};
+ const body={querySelectorAll:async sel=>sel==='p'?[paragraph]:[]};
+ const bubble={getBoundingClientRect:async()=>rect(),getOuterHTML:async()=>'<div data-chat-index="3"></div>',querySelector:async()=>body};
+ const screen={getBoundingClientRect:async()=>({top:0,bottom:800,height:800}),querySelectorAll:async()=>[bubble],querySelector:async()=>bubble,...listening(handlers)};
+ const doc={querySelector:async()=>screen,...listening(docHandlers)};
+ const {hold:run}=load({hostDoc:doc},()=>true,async()=>'a',{createMutationObserver:async cb=>{mutated=cb;return{observe:async()=>{},disconnect:async()=>{}};}});
+ const fire=kind=>{for(const h of [...handlers.values()])if(h.kind===kind)h.fn({});};
+ const pause=ms=>new Promise(r=>setTimeout(r,ms));
+ // As a bake holds: until Risu has drawn the message again (requireMutation).
+ const held=run(async()=>'saved',{requireMutation:true});
+ await pause(150);
+ // The reader moves the view 100px, a little at a time.
+ if(hand==='finger')fire('pointerdown');
+ for(const at of [45,70,95,120]){top=at;if(hand==='finger')fire('pointermove');fire('scroll');await pause(40);}
+ await pause(120);
+ // Risu draws the message anew: the view is thrown far (most of a screen), and scrolls with it.
+ top=700;mutated();fire('scroll');
+ assert.equal(await held,'saved');
+ assert.equal(top,120,'back where the reader had scrolled to: not where they began, not where Risu threw it');
+ assert.equal(corrections,1);
+ assert.equal(handlers.size,0);
+});
+
 test('a hold marks the scroll busy for the TTS scan until it ends',async()=>{
  const f=screenFixture();
  const {hold}=load({hostDoc:f.doc},()=>true,async()=>'a',f.k);
@@ -176,6 +205,8 @@ function streamFixture() {
   scrollTo:v=>{fire('pointerdown');view=v;fire('scroll');fire('pointerup');},
   // A scroll with no hand on it that is still the reader's place: Risu moving to a new reply, a wheel.
   moveTo:v=>{view=v;fire('scroll');},
+  // A mouse wheel or the scroll bar: no pointer event at all (Risu forwards no wheel), scroll after scroll.
+  wheelTo:async v=>{const from=view;for(let i=1;i<=5;i++){view=from+(v-from)*i/5;fire('scroll');await new Promise(r=>setTimeout(r,25));}},
   // A chunk of the reply: the stream goes on.
   chunk:()=>{api.track();},
   // Risu takes the bubble out and draws a new one; the view lands elsewhere.
@@ -212,6 +243,17 @@ test('streaming scroll hold: a place reached with no hand on the screen is still
  f.chunk();f.redraw(0);
  await f.api.end();
  assert.equal(f.view,400);
+});
+
+test('streaming scroll hold: scrolled up by wheel after the last chunk, the reader is not put back at the bottom they had been following',async()=>{
+ const f=streamFixture();await start(f);
+ f.scrollTo(800);await wait(SETTLE);        // following the newest line
+ f.chunk();await wait(250);                 // the last chunk; Risu takes seconds to end the reply
+ await f.wheelTo(400);await wait(SETTLE);   // meanwhile the reader goes back up to read
+ const done=f.api.end();await wait(60);f.redraw(0);
+ await done;
+ assert.equal(f.view,400,'where the reader scrolled to');
+ assert.equal(f.ends,0,'never pushed to the bottom');
 });
 
 test('streaming scroll hold: reading an earlier message, that message comes back',async()=>{

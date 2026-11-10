@@ -194,15 +194,24 @@ async function omniListen(target,name,fn,into) {
   catch(error) {y('warn','scroll.listen',name+': '+String(error));}
 }
 // Run the work, then keep the anchor where it was for up to two seconds, until the
-// layout settles or the reader moves.
+// layout settles.
+//
+// A reader who scrolled meanwhile used to end the hold: "they moved, so it is theirs". But the
+// write was still on its way, Risu then drew the message anew, and the view went wherever that
+// threw it (the newest line) with nobody holding it: scrolling while pictures were being made
+// was the one sure way to be thrown to the bottom. The reader is followed now. While they move
+// the view, what they moved it by is taken into the anchor (they are where they want to be); a
+// change of half the screen or more in one look is no hand, it is Risu's redraw, and is put
+// back to where the reader last was. No call is added: it is the same measure each look.
+const OMNI_HOLD_MOVING_MS=600;
 async function omniHoldAnchor(anchor,work,options={}) {
   const epoch=++omniScrollEpoch;
   const doc=t.hostDoc || await ue(),screen=doc && await doc.querySelector('.default-chat-screen');
   if(!screen)return work();
   let userMoved=false,own=false,ownAt=-Infinity,dirty=0,observer=null;
   const registered=[],reader=options.reader || omniReaderScrolls();
-  let movedBy='',fixes=0,everFound=false;
-  const input=(why='')=>{if(!userMoved)movedBy=why;userMoved=true;};
+  let movedBy='',fixes=0,everFound=false,movingUntil=-Infinity,follows=0;
+  const input=(why='')=>{if(!userMoved)movedBy=why;userMoved=true;movingUntil=performance.now()+OMNI_HOLD_MOVING_MS;};
   // The scroll our own correction causes arrives a frame after it returns.
   // At a reply's end Risu has already redrawn it: that jump's scroll can cross the
   // bridge late, after this starts listening and before any change is heard to blame
@@ -219,7 +228,7 @@ async function omniHoldAnchor(anchor,work,options={}) {
     const result=await work();
     let stable=0,settled=false,lastDirty=-1,lastHeight=-1,held=null;
     const end=performance.now()+2000;
-    while(epoch===omniScrollEpoch&&!userMoved&&!t.unloading&&performance.now()<end) {
+    while(epoch===omniScrollEpoch&&!t.unloading&&performance.now()<end) {
       // The node found last time is measured directly. Once Risu draws the message
       // again it is detached and measures zero, and only then is it looked up anew.
       let found=held && await omniMeasure(anchor,held,screen,true);
@@ -230,16 +239,20 @@ async function omniHoldAnchor(anchor,work,options={}) {
       }
       if(found) {
         everFound=true;
-        if(found.off) {
+        const moving=reader.pressed() || performance.now()<movingUntil;
+        if(found.off && moving && !anchor.bottom && Math.abs(found.error)<found.sr.height*0.5) {
+          // The reader's own move: where they are now is the place to keep.
+          anchor.offset+=found.error;stable=0;follows++;
+        } else if(found.off) {
           own=true;
           try {
             if(anchor.bottom) {
-              if(!userMoved)await omniScrollInto(found.node,{behavior:'instant',block:'end',inline:'nearest'});
+              await omniScrollInto(found.node,{behavior:'instant',block:'end',inline:'nearest'});
             } else {
               const original=await found.node.getStyleAttribute();
               try {
                 await found.node.setStyle('scrollMarginTop',anchor.offset+'px');
-                if(!userMoved)await omniScrollInto(found.node,{behavior:'instant',block:'start',inline:'nearest'});
+                await omniScrollInto(found.node,{behavior:'instant',block:'start',inline:'nearest'});
               } finally {await found.node.setStyleAttribute(original || '');}
             }
           } finally {own=false;ownAt=performance.now();}
@@ -251,8 +264,8 @@ async function omniHoldAnchor(anchor,work,options={}) {
       await new Promise(resolve=>setTimeout(resolve,32));
     }
     if(!settled&&!userMoved&&anchor.scope===await omniScrollContext())y('warn','scroll.write','anchor did not stabilize');
-    options.report?.(userMoved?'포기: 읽는 사람이 움직임('+movedBy+') · 맞춤 '+fixes+'번'
-      : !everFound?'포기: 그 문단을 못 찾음'
+    options.report?.(!everFound?'포기: 그 문단을 못 찾음'
+      : userMoved?'읽는 사람이 움직임('+movedBy+'): 따라감 '+follows+'번 · 되돌림 '+fixes+'번'
       : (settled?'자리 맞춤 ':'2초 안에 안 멈춤 · ')+fixes+'번 옮김');
     return result;
   } finally {
@@ -303,7 +316,17 @@ globalThis.__OMNI_SCROLL_TRACE__={lines:()=>omniScrollTraceLines.slice(),paint:o
 const omniPlaceText=place=>!place?'없음':place.bottom?'맨 아래(따라보기)':'답변 윗변 '+Math.round(place.top)+'px'+(place.para?' · '+(place.para.index+1)+'번째 문단':'');
 const omniStreamRelease=value=>typeof omniRelease==='function'?omniRelease(value):undefined;
 const omniStreamWait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function omniStreamHandBusy(run) {return !!(run.reader?.pressed() || run.reader?.handWithin(OMNI_STREAM_HAND_MS));}
+// Risu forwards no wheel event, so a mouse wheel or a scroll bar never looked like a hand: on a PC every scroll
+// during a reply was taken for a jump of Risu's and undone, back to the last mark (the bottom, for someone who had
+// been following). A redraw moves the view once; a wheel, a bar or a fling sends scroll after scroll. Three within
+// a quarter of a second are a reader.
+const OMNI_STREAM_BURST=3, OMNI_STREAM_BURST_MS=250;
+function omniStreamScrolled(run) {
+  const now=performance.now();
+  run.scrolls=(run.scrolls || []).filter(at=>now-at<OMNI_STREAM_BURST_MS);run.scrolls.push(now);
+  if(run.scrolls.length>=OMNI_STREAM_BURST)run.wheelAt=now;
+}
+function omniStreamHandBusy(run) {return !!(run.reader?.pressed() || run.reader?.handWithin(OMNI_STREAM_HAND_MS) || performance.now()-(run.wheelAt ?? -Infinity)<OMNI_STREAM_HAND_MS);}
 // People read while slowly scrolling: the hand rarely stops, so waiting for it meant
 // never restoring. Risu's redraw throws the view far (to the newest line); a reading
 // hand moves it a little at a time. So with a hand on the move only a jump of half the
@@ -413,7 +436,8 @@ async function omniStreamMark(run) {
       return;
     }
     const last=run.marks.at(-1)?.place;
-    run.marks.push({chunk,place});
+    // Read with the reader's hand on the view: theirs, whenever it was read.
+    run.marks.push({chunk,place,reader:omniStreamHandBusy(run)});
     if(run.marks.length>OMNI_STREAM_MARKS)run.marks.shift();
     // The trace keeps changes only: the same place at every chunk would fill it.
     if(!last || !!last.bottom!==!!place.bottom || Math.abs((last.top || 0)-(place.top || 0))>40 || last.para?.index!==place.para?.index)
@@ -439,7 +463,9 @@ function omniStreamMoved(run) {
 }
 // The mark the reader's place is taken from: the newest from before the last chunk
 // (whatever came after may be a redraw's jump); with none, the one the stream began with.
-function omniStreamPick(run) {return run.marks.filter(row=>row.chunk<run.chunks).at(-1) || run.marks[0];}
+// A place the reader scrolled to is theirs even after the last chunk: Risu takes seconds to end a reply, and whoever
+// scrolled up in them was put back where they had been before (the bottom).
+function omniStreamPick(run) {return run.marks.filter(row=>row.chunk<run.chunks || row.reader).at(-1) || run.marks[0];}
 // Puts the kept paragraph back where the mark has it (the reply's top edge when there is
 // none or it is not found), then keeps an eye on it for watchMs (one measure each
 // 0.15 s): Risu may redraw the reply just after. Three moves at most (a phone once spent
@@ -579,7 +605,7 @@ function omniStreamScrollTrack() {
     if(!screen || run.closed)return;
     run.screen=screen;run.scope=await omniScrollContext();
     run.reader=omniReaderScrolls(text=>omniScrollTrace(run,text));
-    for(const [name,fn] of [...run.reader.listeners,['scroll',()=>omniStreamMoved(run)]]) {
+    for(const [name,fn] of [...run.reader.listeners,['scroll',()=>{omniStreamScrolled(run);omniStreamMoved(run);}]]) {
       await omniListen(screen,name,fn,run.listeners);
       if(run.closed){await omniStreamScrollStop(run);return;}
     }
