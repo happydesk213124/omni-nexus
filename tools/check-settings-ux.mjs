@@ -332,7 +332,7 @@ try {
       assert.deepEqual(await shown(), [['tts-settings', 'tts-characters', 'tts-voices'], ['tts-characters'], false]);
     }
   }
-  // ⚡ 빠른 설정, left of 🔍: a sheet over the window, a few steps, applied into the settings it asked about.
+  // ⚡ 빠른 설정, left of 🔍: one window over the settings, the same size at every step, applied into the settings it asked about.
   await page.evaluate(async () => { const {t,paint}=globalThis.uxTestRuntime; t.uiTab='dashboard'; await paint(); });
   const headButtons = await page.evaluate(() => [...document.querySelectorAll('#nx-shell .head-actions > button')].map(b => b.id));
   assert.equal(headButtons.indexOf('nx-quick-setup'), headButtons.indexOf('nx-search-toggle') - 1, '⚡ 빠른 설정 left of 🔍: ' + headButtons);
@@ -341,39 +341,88 @@ try {
   const beforeSheet = await page.evaluate(() => { const s = globalThis.uxTestRuntime.t.backendSettings; return JSON.parse(JSON.stringify({ card: s.card, llm: { source: s.llm?.source } })); });
   const sheetStep = () => page.evaluate(() => document.querySelector('.nx-qs-steps')?.textContent || '');
   const qsPress = async selector => { await page.locator(`.nx-qs ${selector}`).first().click(); };
+  // The window's box, read at every step: it once grew and shrank with each one.
+  const sheetSizes = [];
+  const sheetSize = async label => { const b = await page.locator('.nx-qs-card').boundingBox(); sheetSizes.push([label, Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]); };
   await page.locator('#nx-quick-setup').click();
-  await page.waitForSelector('.nx-qs .nx-qs-cards');
+  await page.waitForSelector('.nx-qs .nx-qs-feats');
   assert.match(await sheetStep(), /^1 \/ \d · 무엇을 쓸까요/);
-  // It opens on the settings as they are (earlier checks switched comics on): pressed only where off.
-  for (const feature of ['image', 'comic']) if (await page.locator(`.nx-qs [data-qs-feature="${feature}"]`).getAttribute('aria-pressed') !== 'true') await qsPress(`[data-qs-feature="${feature}"]`);
-  assert.match(await sheetStep(), /^1 \/ 4/, 'pictures wanted: a 그림 step too');
+  await sheetSize('features');
+  // It opens on the settings as they are (earlier checks switched comics on): pressed only where off. BGM and
+  // effects are asked apart, and switched on here so the 소리 step is there to walk through.
+  for (const feature of ['image', 'comic', 'sfx']) if (await page.locator(`.nx-qs [data-qs-feature="${feature}"]`).getAttribute('aria-pressed') !== 'true') await qsPress(`[data-qs-feature="${feature}"]`);
+  assert.equal(await page.locator('.nx-qs [data-qs-feature="bgm"]').count(), 1, 'BGM on its own');
+  assert.match(await sheetStep(), /^1 \/ 6/, 'pictures and sound wanted: all six steps');
+  assert.equal(await page.locator('.nx-qs-step:not(:disabled)').count(), 6);
+  await sheetSize('features, more on');
   await qsPress('[data-qs="next"]');
-  // 연결: the tagging choice says what it is like (the community modules), one OpenRouter key for the helper, JEV and embedding.
+  // 그림: the tagging choice says what it is like (the community modules); 퀄리티 향상 shows what it costs.
+  assert.match(await sheetStep(), /^2 \/ 6 · 그림/);
   assert.match(await page.locator('.nx-qs-body').textContent(), /그림삽화·아르곤 삽화모듈 같은 방식/);
-  await qsPress('[data-qs-choice="helper"][data-value="custom"]');
-  assert.equal(await page.locator('.nx-qs [data-qs-key="routerKey"]').count(), 1);
-  await page.locator('.nx-qs [data-qs-key="routerKey"]').fill('or-probe');
-  await qsPress('[data-qs-choice="helper"][data-value="aux"]');
-  await qsPress('[data-qs="next"]');
-  // 그림: comics only, three to four a reply; 퀄리티 향상 shows what it costs.
   assert.match(await page.locator('.nx-qs-body').textContent(), /약 [\d,]+ 토큰 더 씀/);
+  await page.locator('.nx-qs-body').evaluate(node => { node.scrollTop = 120; });
   await qsPress('[data-qs-choice="comicShare"][data-value="100"]');
-  await qsPress('[data-qs-choice="images"][data-value="3"]');
+  await qsPress('[data-qs-choice="images"][data-value="4"]');
+  assert.equal(await page.locator('.nx-qs-body').evaluate(node => node.scrollTop), 120, 'a choice keeps the pane where it was scrolled');
+  await sheetSize('draw');
   await qsPress('[data-qs="next"]');
-  assert.match(await sheetStep(), /^4 \/ 4 · 확인/);
-  assert.match(await page.locator('.nx-qs-review').textContent(), /만화 100%/);
+  assert.match(await sheetStep(), /^3 \/ 6 · 소리/);
+  await qsPress('[data-qs-choice="sfxMatcher"][data-value="embedding-only"]');
+  await sheetSize('sound');
+  await qsPress('[data-qs="next"]');
+  // 모델: 직접 asks for a model name; the rail jumps anywhere.
+  assert.match(await sheetStep(), /^4 \/ 6 · 모델/);
+  await qsPress('[data-qs-choice="helper"][data-value="custom"]');
+  assert.equal(await page.locator('.nx-qs [data-qs-text="helperModel"]').count(), 1);
+  await sheetSize('models');
+  await qsPress('[data-qs-step="keys"]');
+  // API 키: only the keys the answers call for; a key is typed, shown with 👁, and told when it looks unlike one.
+  assert.match(await sheetStep(), /^5 \/ 6 · API 키/);
+  const routerCard = page.locator('.nx-qs [data-qs-keycard="routerKey"]');
+  assert.match(await routerCard.locator('.nx-qs-key-head small').textContent(), /보조 모델.*임베딩/, 'what the key is for');
+  const routerField = page.locator('.nx-qs [data-qs-key="routerKey"]');
+  await routerField.fill(' or-probe\n');
+  assert.equal(await routerField.inputValue(), 'or-probe', 'a pasted space or line break is dropped');
+  assert.equal(await routerCard.getAttribute('data-state'), 'typed');
+  assert.match(await routerCard.locator('.nx-qs-status').textContent(), /형식이 달라 보여요.*sk-or-/);
+  assert.equal(await routerField.evaluate(node => node === document.activeElement), true, 'typing never takes the field away');
+  assert.equal(await routerField.getAttribute('type'), 'password');
+  await qsPress('[data-qs="reveal"][data-for="routerKey"]');
+  assert.equal(await routerField.getAttribute('type'), 'text', '👁 shows the key');
+  await sheetSize('keys');
+  // Back to 모델 by the rail: with Risu's helper model and effects no longer by 임베딩만, OpenRouter is not asked for.
+  await qsPress('[data-qs-step="models"]');
+  await qsPress('[data-qs-choice="helper"][data-value="aux"]');
+  await qsPress('[data-qs-step="sound"]');
+  await qsPress('[data-qs-choice="sfxMatcher"][data-value="auto"]');
+  await qsPress('[data-qs-step="keys"]');
+  assert.equal(await page.locator('.nx-qs .nx-qs-more [data-qs-keycard="routerKey"]').count(), 1, 'a key not called for sits folded under 지금은 안 쓰는 키');
+  assert.equal(await page.locator('.nx-qs [data-qs-key="routerKey"]').inputValue(), 'or-probe', 'and keeps what was typed');
+  await page.locator('.nx-qs [data-qs-key="routerKey"]').fill('');
+  await qsPress('[data-qs="next"]');
+  assert.match(await sheetStep(), /^6 \/ 6 · 확인/);
+  assert.match(await page.locator('.nx-qs-review').textContent(), /만화 비율100%/);
+  assert.ok(await page.locator('.nx-qs-review [data-changed]').count() >= 1, 'what differs from the settings is marked');
+  await sheetSize('review');
   await qsPress('[data-qs="apply"]');
   await page.waitForFunction(() => /완료/.test(document.querySelector('.nx-qs-steps')?.textContent || ''), null, { timeout: 8000 });
+  await sheetSize('done');
+  assert.equal(new Set(sheetSizes.map(row => row.slice(1).join(','))).size, 1, 'one size from the first step to the last: ' + JSON.stringify(sheetSizes));
   assert.deepEqual(await page.evaluate(() => { const c = globalThis.uxTestRuntime.t.backendSettings.card; return [c.comic_gen, c.comic_gen_ratio, c.image_min, c.image_max, c.stream_inline_tags]; }), ['on', 100, 3, 4, true]);
   await qsPress('[data-qs="close"]');
   assert.equal(await page.locator('.nx-qs').count(), 0);
-  // On a phone it is the whole screen.
+  // On a phone it is the whole screen, at every step.
   await page.setViewportSize({ width: 375, height: 760 });
   await page.locator('#nx-quick-setup').click();
-  await page.waitForSelector('.nx-qs .nx-qs-cards');
-  const sheetBox = await page.locator('.nx-qs-card').boundingBox();
-  assert.ok(sheetBox.x <= 0.5 && Math.abs(sheetBox.width - 375) <= 1 && Math.abs(sheetBox.height - 760) <= 1, 'full screen on a phone: ' + JSON.stringify(sheetBox));
-  await qsPress('[data-qs="close"]');
+  await page.waitForSelector('.nx-qs .nx-qs-feats');
+  for (const label of ['features', 'next']) {
+    const sheetBox = await page.locator('.nx-qs-card').boundingBox();
+    assert.ok(sheetBox.x <= 0.5 && Math.abs(sheetBox.width - 375) <= 1 && Math.abs(sheetBox.height - 760) <= 1, `full screen on a phone (${label}): ` + JSON.stringify(sheetBox));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true, 'nothing wider than the phone');
+    if (label === 'features') await qsPress('[data-qs="next"]');
+  }
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.nx-qs').count(), 0, 'Esc closes it');
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.evaluate(async before => { await globalThis.__OMNI_SETTINGS_ACTIONS__.save(before); }, beforeSheet);
   await page.evaluate(async () => {

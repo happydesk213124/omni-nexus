@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.14';
+const PLUGIN_VERSION = '1.4.15';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -996,6 +996,17 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.15 · ⚡ 빠른 설정을 새로 만들었습니다</strong>
+          <div class="muted" style="margin-top:8px">2026.11.11 · 창 크기가 단계마다 바뀌지 않고, 더 잘게 고를 수 있고, API 키를 넣기 쉬워졌습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>창 크기 고정</strong>: 처음부터 끝까지 같은 크기입니다. 내용이 길면 안쪽만 스크롤되고, 고를 때 스크롤 위치가 그대로 남습니다. 휴대폰에서는 화면 전체를 씁니다.</li>
+            <li><strong>단계 목록</strong>: 왼쪽(휴대폰은 위)에 무엇을 쓸까요 → 그림 → 소리 → 모델 → API 키 → 확인이 늘 보이고, 각 단계에 지금 고른 내용이 적힙니다. 눌러서 바로 이동할 수 있고, 물어볼 게 없는 단계는 건너뜁니다.</li>
+            <li><strong>더 잘게</strong>: BGM과 효과음을 따로 켭니다. 그림은 1장 / 1~2장 / 2~3장 / 3~4장, 만화 비율은 가끔 / 반반 / 자주 / 전부. TTS는 언제 읽을지와 나레이션을 읽을지, 효과음은 자동 / 임베딩만 / 글자만을 고릅니다. 「그림만」「그림 + 목소리」「전부 켜기」로 한 번에 고를 수도 있습니다.</li>
+            <li><strong>API 키</strong>: 고른 기능에 필요한 키만, 무엇에 쓰는지와 함께 보여 줍니다. 저장돼 있는지 표시하고, 👁로 볼 수 있고, NovelAI·OpenRouter·Fish Audio 모두 「확인」으로 바로 연결을 확인합니다. 붙여 넣을 때 섞인 공백·줄바꿈은 지우고, 형식이 달라 보이면 알려 줍니다.</li>
+            <li><strong>확인 화면</strong>: 지금 설정과 달라지는 항목에 「변경」 표시가 붙고, 필요한 키가 없으면 알려 줍니다. 열었다가 손대지 않고 적용하면 세부 값(이미지 수·만화 비율·효과음 고르는 방식)은 그대로 둡니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.14 · 효과음 임베딩만·앞뒤 문단, 효과음 18개 추가, 목소리 겹치지 않게</strong>
@@ -15448,7 +15459,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */
