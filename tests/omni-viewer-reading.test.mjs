@@ -374,14 +374,15 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line ope
   } finally { await browser.close(); }
 });
 
-test('옴니 뷰어 over a restricted SafeDOM: 삽화\'s list scrolls, and a tile tapped after it has is the one under the finger', async () => {
+test('옴니 뷰어 over a restricted SafeDOM: 삽화\'s list holds all ten pictures and scrolls, and a tile tapped after it has is the one under the finger', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
-    const shots = [1, 2, 3, 4, 5, 6].flatMap(n => [`하린: "${n}번째 줄."`, `[[@inray::card${n}::inxshot_${n}::832::1216]]`]);
+    // Ten: the list once stopped at six, and the rest looked cut off below.
+    const shots = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].flatMap(n => [`하린: "${n}번째 줄."`, `[[@inray::card${n}::inxshot_${n}::832::1216]]`]);
     const v = await viewerOn(browser, [...shots, '오미선: "끝."']);
     await v.shows(/번째 줄|끝/);
     await v.press('strip');
-    await v.page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-strip] [x-vn-thumb]').length === 6);
+    await v.page.waitForFunction(() => document.querySelectorAll('[x-omni-vn] [data-vn-strip] [x-vn-thumb]').length === 10);
     await v.page.waitForTimeout(500);
     const strip = await v.rect('[x-omni-vn] [data-vn-strip]');
     assert.ok(await v.page.evaluate(() => { const n = document.querySelector('[x-omni-vn] [data-vn-strip]'); return n.scrollHeight > n.clientHeight + 20; }), 'more tiles than the panel shows');
@@ -397,17 +398,20 @@ test('옴니 뷰어 over a restricted SafeDOM: 삽화\'s list scrolls, and a til
       for (let moved = 12; moved <= 240; moved += 12) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: finger(from + direction * moved) }); await v.page.waitForTimeout(16); }
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     };
-    await swipe(1);
-    await v.page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-strip]').scrollTop === 0);
-    await swipe(-1);
+    // A long list takes more than one swipe each way.
+    const scrollTop = () => v.page.evaluate(() => document.querySelector('[x-omni-vn] [data-vn-strip]').scrollTop);
+    const bottom = () => v.page.evaluate(() => { const n = document.querySelector('[x-omni-vn] [data-vn-strip]'); return n.scrollTop + n.clientHeight >= n.scrollHeight - 1; });
+    for (let i = 0; i < 8 && await scrollTop() > 0; i++) { await swipe(1); await v.page.waitForTimeout(250); }
+    assert.equal(await scrollTop(), 0, 'a finger brings it back to the top');
+    for (let i = 0; i < 8 && !await bottom(); i++) { await swipe(-1); await v.page.waitForTimeout(250); }
     await atEnd();
     await v.page.waitForTimeout(300);
     assert.match(await v.page.evaluate(() => (document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '').includes('[data-vn-strip]{translate:0 0}') ? 'open' : 'closed'), /open/, 'a swipe on the list is no tap: it stays open');
     const last = await v.page.locator('[x-omni-vn] [data-vn-strip] [x-vn-thumb]').last().boundingBox();
     await v.page.mouse.click(last.x + last.width / 2, last.y + last.height / 2);
     await v.page.waitForFunction(() => !/\[data-vn-strip\]\{translate:0 0/.test(document.querySelector('[x-omni-vn-style="scene"]')?.textContent || ''));
-    // The sixth picture's place: the twelfth scene, not that of the tile that stood there before the scroll.
-    await v.page.waitForFunction(() => /^"12 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
+    // The tenth picture's place: the twentieth scene, not that of the tile that stood there before the scroll.
+    await v.page.waitForFunction(() => /^"20 \//.test(getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content));
     assert.deepEqual(v.errors, []);
   } finally { await browser.close(); }
 });

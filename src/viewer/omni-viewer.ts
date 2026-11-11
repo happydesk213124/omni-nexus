@@ -109,7 +109,10 @@ let bgLayer: SafeElement | null = null, castLayer: SafeElement | null = null, cg
 // The right-hand strip: this reply's illustrations, each a way back to its scene.
 interface StripItem { key: string; message: number; asset: string }
 let stripOpen = false, stripItems: StripItem[] = [];
-const STRIP_MAX = 6;
+// 삽화's list holds every picture of the reply (it scrolls). Six were all it took: a reply with ten pictures showed the
+// first six, the rest seemed cut off below, and there was nothing to scroll to. Its tiles are copied all at once, so
+// more of them cost no more waiting; this only bounds a reply with an absurd number of pictures.
+const STRIP_MAX = 60;
 // The left-hand list: the replies around the one on stage, each a way to it; ▲ ▼ rows bring more.
 let msgsOpen = false, msgsRect: DOMRect | null = null, msgRows: number[] = [], msgsSpan: [number, number] | null = null, msgsLoading: 'before' | 'after' | '' = '';
 const MSGS_AROUND = 1, MSGS_MORE = 5, MORE_BEFORE = -1, MORE_AFTER = -2;
