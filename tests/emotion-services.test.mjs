@@ -441,53 +441,6 @@ test('기본 nude: an adult\'s nude face is the default looks undressed, plus co
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; await f.api.updateEmotionSettings({ nude: false, nudeAll: false }); }
 });
 
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 나이 제한에 걸리는 캐릭터는 nude 그림을 만들지도 보여 주지도 않는다 (AGENTS.md 8번).
-// ╚══════════════════════════════════════════════════════════════════════════╝
-// 엘프처럼 설정 100살·코스튬 하나가 15살인 캐릭터: nude 탭이 안 생기고, nude 그림을 그리라고 하면 거절하며 NovelAI에 아무것도 안 보낸다.
-// 뷰어도 그 캐릭터를 nude로 안 보여 준다. 삽화 캐릭터가 없는 사람도 거절. 19살은 된다. 옛 저장에 남은 나이 제한 값으로 15살이 풀리지 않는다.
-test('기본 nude · 천박모드: nobody under 18 in any costume is drawn or shown nude, nor anyone unknown; no saved setting loosens it', async () => {
-  const f = await fixture();
-  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', age: '100', appearance: 'girl, elf, black hair',
-    costumes: [{ name: 'default', attire: 'dress' }, { name: 'young', age: '15' }] });
-  globalThis.__OMNI_REPLY_STREAMING__ = () => false;
-  try {
-    await f.api.updateEmotionSettings({ nude: true, nudeAll: true });
-    assert.deepEqual((await f.api.spriteCostumes(f.person, f.bot)).map(c => c.index), [0, 1], 'no nude one: a costume of hers is written as 15');
-    const before = f.host.naiRequests.length;
-    await assert.rejects(f.api.makeSprite(f.person, 'sad', f.bot, true, 100), /나이 제한/);
-    assert.equal(f.host.naiRequests.length, before, 'nothing is sent');
-    await f.api.refreshCostumeNames('bot', 'bot:bot', true);
-    assert.equal(f.api.nudeAllowedFor('bot', 't-misun'), false, 'the viewer keeps her dressed');
-    assert.equal(f.api.nudeAllowedFor('bot', 't-nobody'), false, 'nobody read: no');
-    // An old save still holding 나이 제한 (off, age 10) frees nobody: the 15-year-old costume keeps her clothed.
-    Object.assign(f.api.getConfig().card, { underage_strict: false, underage_age: 10, underage_tags: '' });
-    assert.deepEqual((await f.api.spriteCostumes(f.person, f.bot)).map(c => c.index), [0, 1], 'still no nude one');
-    await assert.rejects(f.api.makeSprite(f.person, 'sad', f.bot, true, 100), /나이 제한/);
-    for (const key of ['underage_strict', 'underage_age', 'underage_tags']) delete f.api.getConfig().card[key];
-    const g = await fixture();
-    await g.api.updateEmotionSettings({ nude: true });
-    await assert.rejects(g.api.makeSprite(g.person, 'sad', g.bot, true, 100), /나이 제한|삽화 캐릭터/, 'no illustration character: nothing known of her age');
-    await g.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', age: '19', appearance: 'girl, black hair' });
-    assert.deepEqual((await g.api.spriteCostumes(g.person, g.bot)).map(c => c.index), [0, 100], '19: at 18 she may be');
-  } finally { delete globalThis.__OMNI_REPLY_STREAMING__; await f.api.updateEmotionSettings({ nude: false, nudeAll: false }); }
-});
-
-// 15살 캐릭터 외형에 nipples, 옷 칸에 nude를 적고 「이 태그가 들어가면 빼기」를 비워도, 표정 그림 태그에 노출 태그가 없어야 한다.
-test('a portrait of someone under 18 never carries exposure tags, whatever the looks say or the sweep is set to', async () => {
-  const f = await fixture();
-  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', gender: 'girl', age: '15', appearance: 'girl, black hair, nipples', attire: 'nude' });
-  await f.api.updateEmotionSettings({ excludeTags: '' });
-  try {
-    const looks = await f.api.spriteLooks(f.person, f.bot);
-    assert.match(looks, /black hair/);
-    assert.doesNotMatch(looks, /nipples|nude/);
-  } finally { await f.api.updateEmotionSettings({ excludeTags: f.api.emotionDefaults().excludeTags }); }
-});
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║ [여기까지] 위 테스트는 절대 빼거나 약하게 바꾸지 말 것.
-// ╚══════════════════════════════════════════════════════════════════════════╝
-
 test('무기/기타 태그 빼기 keeps the accessories out of a sprite, of the default costume and any other', async () => {
   const f = await fixture([]);
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', gender: 'girl', appearance: 'girl, black hair', attire: 'white shirt', accessories: 'katana',

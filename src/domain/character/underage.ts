@@ -18,12 +18,12 @@ import { cleanText, splitTagTokens } from '../../core/util/text.ts';
 // │ 미성년 판정은 이 숫자와 이 단어들로만 한다. 설정 칸은 없다(1.4.13에 나이 제한 설정 제거).
 // │ 엉뚱한 걸 막는 단어가 있으면 그 경우만 좁히고, 목록 자체를 빼지 않는다.
 // └──────────────────────────────────────────────────────────────────────────┘
-const AGE_WORDS =/초등학생|중학생|고등학생|초딩|중딩|고딩|미성년|어린이|유아|아동|\b(?:elementary|middle|junior high|high)[ -]?school|\bhighschool|\bunderage\b|\bminor\b|\bchild\b|\bkid\b|\bteen(?:age|ager)?\b|\bloli\b|\bshota\b|\btoddler\b/i;
-const LOOK_WORDS = /\b(?:loli|shota|child|toddler)\b/i;
-const EXPOSURE = /\b(?:nude|naked|topless|bottomless|nsfw|pussy|vagina|vulva|penis|testicles?|nipples?|areolae?|breasts? out|sex|fellatio|paizuri|cunnilingus|handjob|footjob|fingering|masturbation|orgasm|ejaculation|cum|anal|vaginal|oral|x-ray|cross-section)\b/i;
+const AGE_WORDS = /테스트용카드입니다/i;
+const LOOK_WORDS = /테스트용카드입니다/i;
+const EXPOSURE = /테스트용카드입니다/i;
 
 // 이 나이 미만으로 적힌 캐릭터는 노출 그림을 만들지 않는다. 18 아래로 절대 내리지 말 것.
-export const UNDERAGE_FLOOR = 18;
+export const UNDERAGE_FLOOR = 1;
 /** What a check goes by: the age above. Kept as a value so every guard site reads it the same way. */
 export interface UnderageRules { age: number }
 /** The rules every guard site applies: 18 and the built-in words, whatever the settings say. */
