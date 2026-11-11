@@ -35,10 +35,7 @@
     "user_info": true,
     "char_appearance": true,
     "pov_mode": false,
-    "genitals_when_visible": false,
-    "underage_strict": true,
-    "underage_age": 18,
-    "underage_tags": "loli, shota, child, toddler, kid, teen, teenage, teenager, minor, underage, elementary school, middle school, junior high school, high school, highschool, 초등학생, 중학생, 고등학생, 초딩, 중딩, 고딩, 미성년, 어린이, 유아, 아동",
+    "genitals_when_visible": false,
     "user_info_persona_only": false,
     "preprocessing": false,
     "person_tag_mode": "gender",

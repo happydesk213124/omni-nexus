@@ -38,10 +38,10 @@ export interface EmotionSettings {
   /**
    * 기본 nude: everyone has a nude costume besides theirs (`이름_nude`, the default one's looks with the clothes and the
    * 무기/기타 left out), and the writer is asked to name it while they are naked. Only with streaming tags (the writer
-   * sees the rule then). Whoever 생성 옵션 › 나이 제한 counts as under it is never drawn in it (nudeForbidden).
+   * sees the rule then). Whoever is written as under 18 (underage.ts) is never drawn in it (nudeForbidden).
    */
   nude: boolean;
-  /** 천박모드: every face shown is the nude one, whatever costume a line names, and no other costume's is drawn. 나이 제한 likewise. */
+  /** 천박모드: every face shown is the nude one, whatever costume a line names, and no other costume's is drawn. Nobody under 18 likewise. */
   nudeAll: boolean;
   /** Base face → its tags, where the user changed them. */
   faceTags: Record<string, string>;

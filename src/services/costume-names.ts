@@ -64,7 +64,7 @@ export function refreshCostumeNames(botId: string, rosterScope: string, now = fa
 
 /**
  * Whether this TTS character may be shown nude (기본 nude, 천박모드), as last read: not until their illustration character
- * has been read, and never one 나이 제한 counts as under it. A face is drawn only after its own fresh check (emotion-assets.ts).
+ * has been read, and never one written as under 18 (underage.ts). A face is drawn only after its own fresh check (emotion-assets.ts).
  */
 export function nudeAllowedFor(botId: string, ttsId: string): boolean {
   return !!known.get(botId)?.names.nude.has(ttsId);

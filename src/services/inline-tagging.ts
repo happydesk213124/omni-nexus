@@ -79,7 +79,7 @@ export function blockRules(min: number, max: number, castFirst = false, costumes
 export const COSTUME_CUE_RULE = '- In a spoken cue line (Name (delivery): "Dialogue"), a registered character who wears a costume other than [0] gets that costume\'s number right after the name: Name_2 (delivery): "Dialogue" for the costume listed as [2]. In [0], write the plain Name. Keep the same name as always; only the number is added. A costume registered in this reply has no number yet: write its name instead, Name_idol_dress.';
 /**
  * 감정 에셋's 기본 nude: a spoken cue names a speaker who is naked (`이름_nude`), for the viewer's nude faces. Whoever
- * 생성 옵션 › 나이 제한 counts as under it is shown dressed whatever the cue says (omni-viewer.ts, nudeForbidden).
+ * written as under 18 (underage.ts) is shown dressed whatever the cue says (omni-viewer.ts, nudeForbidden).
  */
 export const NUDE_CUE_RULE = '- In a spoken cue line, a character who is completely naked at that moment gets _nude right after the name instead of any costume number: Name_nude (delivery): "Dialogue". Only while fully naked; partly undressed or dressed again, write the name as usual.';
 

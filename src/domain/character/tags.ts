@@ -667,7 +667,7 @@ export function composeCharacterCaptionTags(...[stored, shot, options]: Paramete
   return withoutExposureTags(composeCaption(stored ? { ...stored, wear_state: 'clothed' } : stored, { ...shot, wear_state: 'clothed', nude: undefined, sex: '' }, options));
 }
 
-/** The look a shot wears says the person is under 18, or under what 생성 옵션 › 나이 제한 adds (underage.ts). */
+/** The look a shot wears says the person is under 18, its age or look tags say so (underage.ts). */
 export function characterIsUnderage(
   stored: CharacterInput | null | undefined,
   shot: { age?: unknown; appearance?: unknown; costume?: unknown } | null | undefined,
@@ -731,7 +731,7 @@ function composeCaption(
     /** The viewpoint person of a pov shot: what shows of them (pov.ts). */
     pov?: unknown;
   } | null | undefined,
-  options: { character_height?: unknown; character_age?: unknown; genitals_when_visible?: unknown; underage_strict?: unknown; underage_age?: unknown; underage_tags?: unknown } = {},
+  options: { character_height?: unknown; character_age?: unknown; genitals_when_visible?: unknown } = {},
 ): string {
   // 성기 태그는 보일 때만: none from the wear state or the saved looks, only the tagger's own word for this shot.
   const seenOnly = options.genitals_when_visible === true;

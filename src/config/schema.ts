@@ -19,7 +19,6 @@ import { normalizeImagePressInspect, normalizeToastAnchor } from '../domain/toas
 import { normalizeCharacterWeight } from '../domain/prompt/character-weight';
 import { normalizeLocationWeight } from '../domain/prompt/location-weight';
 import { speechBubbleWeight } from '../domain/nai/speech';
-import { normalizeUnderageAge, UNDERAGE_TAGS_DEFAULT, UNDERAGE_TAGS_FIRST } from '../domain/character/underage';
 
 /** NovelAI base natural-language mode (replaces the old boolean toggle). */
 export type NaturalBaseMode = 'off' | 'short' | 'detailed' | 'supplement';
@@ -279,11 +278,8 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   card.message_select_gesture = normalizeMessageSelectGesture(card.message_select_gesture);
   card.pov_mode = card.pov_mode === true;
   card.genitals_when_visible = card.genitals_when_visible === true;
-  // 나이 제한: it only ever adds to the under-18 guard, so a save without it starts on, at 18, with the built-in words.
-  card.underage_strict = card.underage_strict !== false;
-  card.underage_age = normalizeUnderageAge(card.underage_age);
-  // A save holding the box's first value (four words, before it showed them all) gets the whole list.
-  card.underage_tags = typeof card.underage_tags === 'string' && card.underage_tags !== UNDERAGE_TAGS_FIRST ? card.underage_tags.slice(0, 4000) : UNDERAGE_TAGS_DEFAULT;
+  // 나이 제한 (1.4.13 removed): the under-18 guard goes by its built-in age and words alone (underage.ts).
+  delete card.underage_strict; delete card.underage_age; delete card.underage_tags;
   card.user_info_persona_only = card.user_info_persona_only === true;
   // costume: main-tagger catalog inject (char_looks always builds costumes[])
   card.costume =

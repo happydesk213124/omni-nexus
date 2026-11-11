@@ -445,8 +445,8 @@ test('기본 nude: an adult\'s nude face is the default looks undressed, plus co
 // ║ [여기부터] 절대 빼거나 약하게 바꾸지 말 것: 나이 제한에 걸리는 캐릭터는 nude 그림을 만들지도 보여 주지도 않는다 (AGENTS.md 8번).
 // ╚══════════════════════════════════════════════════════════════════════════╝
 // 엘프처럼 설정 100살·코스튬 하나가 15살인 캐릭터: nude 탭이 안 생기고, nude 그림을 그리라고 하면 거절하며 NovelAI에 아무것도 안 보낸다.
-// 뷰어도 그 캐릭터를 nude로 안 보여 준다. 삽화 캐릭터가 없는 사람도 거절. 19살은 되지만 나이 제한을 20으로 올리면 안 된다.
-test('기본 nude · 천박모드: nobody under 18 in any costume is drawn or shown nude, nor anyone unknown; 나이 제한 likewise', async () => {
+// 뷰어도 그 캐릭터를 nude로 안 보여 준다. 삽화 캐릭터가 없는 사람도 거절. 19살은 된다. 옛 저장에 남은 나이 제한 값으로 15살이 풀리지 않는다.
+test('기본 nude · 천박모드: nobody under 18 in any costume is drawn or shown nude, nor anyone unknown; no saved setting loosens it', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', age: '100', appearance: 'girl, elf, black hair',
     costumes: [{ name: 'default', attire: 'dress' }, { name: 'young', age: '15' }] });
@@ -460,15 +460,16 @@ test('기본 nude · 천박모드: nobody under 18 in any costume is drawn or sh
     await f.api.refreshCostumeNames('bot', 'bot:bot', true);
     assert.equal(f.api.nudeAllowedFor('bot', 't-misun'), false, 'the viewer keeps her dressed');
     assert.equal(f.api.nudeAllowedFor('bot', 't-nobody'), false, 'nobody read: no');
+    // An old save still holding 나이 제한 (off, age 10) frees nobody: the 15-year-old costume keeps her clothed.
+    Object.assign(f.api.getConfig().card, { underage_strict: false, underage_age: 10, underage_tags: '' });
+    assert.deepEqual((await f.api.spriteCostumes(f.person, f.bot)).map(c => c.index), [0, 1], 'still no nude one');
+    await assert.rejects(f.api.makeSprite(f.person, 'sad', f.bot, true, 100), /나이 제한/);
+    for (const key of ['underage_strict', 'underage_age', 'underage_tags']) delete f.api.getConfig().card[key];
     const g = await fixture();
     await g.api.updateEmotionSettings({ nude: true });
     await assert.rejects(g.api.makeSprite(g.person, 'sad', g.bot, true, 100), /나이 제한|삽화 캐릭터/, 'no illustration character: nothing known of her age');
     await g.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', age: '19', appearance: 'girl, black hair' });
     assert.deepEqual((await g.api.spriteCostumes(g.person, g.bot)).map(c => c.index), [0, 100], '19: at 18 she may be');
-    Object.assign(g.api.getConfig().card, { underage_strict: true, underage_age: 20 });
-    assert.deepEqual((await g.api.spriteCostumes(g.person, g.bot)).map(c => c.index), [0], '나이 제한 at 20: not any more');
-    await assert.rejects(g.api.makeSprite(g.person, 'sad', g.bot, true, 100), /나이 제한/);
-    Object.assign(g.api.getConfig().card, { underage_age: 18 });
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; await f.api.updateEmotionSettings({ nude: false, nudeAll: false }); }
 });
 

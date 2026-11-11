@@ -20,8 +20,6 @@ const RESET_FLOOR_JSON = fs.readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), './floor.json'),
   'utf8',
 );
-// 나이 제한's box as it starts is read from the defaults, so a longer list never needs this file touched.
-const ROOT_FOR_UNDERAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // The 1.x reader, used as an oracle for both targets so the assertion does not
 // depend on the code under test.
 import { parseStoreZip } from '../../reference/gallery-zip.js';
@@ -268,19 +266,15 @@ export async function runScenario(N, handles) {
     if (off.genitals_when_visible !== false) throw new Error('Must turn off');
     return {defaultOff:true,persists:true};
   });
-  // 나이 제한 only ever adds to the under-18 guard: it starts on, at 18, and its age never goes under 18.
+  // 나이 제한 was removed in 1.4.13: the under-18 guard has no setting. Nothing is stored for it, whoever writes it
+  // (a lower age above all: a setting must never loosen the guard).
   await rec('settings.underage_contract', async () => {
+    const keys = ['underage_strict', 'underage_age', 'underage_tags'];
     const initial = (await get('/v1/settings')).settings.card;
-    if (!('underage_strict' in initial)) return {unsupported:true};
-    const builtIn = JSON.parse(fs.readFileSync(path.join(ROOT_FOR_UNDERAGE, 'src/config/default-settings.json'), 'utf8')).card.underage_tags;
-    if (initial.underage_strict !== true || initial.underage_age !== 18 || initial.underage_tags !== builtIn) throw new Error('Must start on, at 18, with the built-in words');
-    const low = (await put('/v1/settings', {card:{underage_age:12}})).settings.card;
-    if (low.underage_age !== 18) throw new Error('The age must never go under 18');
-    const set = (await put('/v1/settings', {card:{underage_strict:false, underage_age:21, underage_tags:'petite'}})).settings.card;
-    if (set.underage_strict !== false || set.underage_age !== 21 || set.underage_tags !== 'petite') throw new Error('Must persist');
-    const back = (await put('/v1/settings', {card:{underage_strict:true, underage_age:18, underage_tags:builtIn}})).settings.card;
-    if (back.underage_strict !== true || back.underage_age !== 18 || back.underage_tags !== builtIn) throw new Error('Must turn back');
-    return {defaultOn:true,floor:low.underage_age,persists:true};
+    if (keys.some(key => key in initial)) throw new Error('The settings must not carry 나이 제한');
+    const written = (await put('/v1/settings', {card:{underage_strict:false, underage_age:12, underage_tags:'petite'}})).settings.card;
+    if (keys.some(key => key in written)) throw new Error('A write must not store 나이 제한');
+    return {setting:false};
   });
   await rec('job.commit_output_unknown', async () => {
     const result = await post('/v1/jobs/commit-output', {job_id:'missing',stream_id:'missing'});

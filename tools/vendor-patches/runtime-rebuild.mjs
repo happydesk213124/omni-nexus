@@ -69,9 +69,6 @@ export function rebuildMessageRuntime(source) {
     if(await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();`);
   once('  async function P() {','  async function P() {\n    if(t.uiOpen && await globalThis.__INLAY_NATIVE__?.hydrateSettingsPreviews?.(t.uiTab))await le();');
   once('      auto_aspect: document.getElementById("nx-auto-aspect")', `      genitals_when_visible: document.getElementById("nx-genitals-when-visible") ? ee("nx-genitals-when-visible") : e.genitals_when_visible === true,
-      underage_strict: document.getElementById("nx-underage-strict") ? ee("nx-underage-strict") : e.underage_strict !== false,
-      underage_age: document.getElementById("nx-underage-age") ? (() => { const r = N("nx-underage-age"), n = r == null || String(r).trim() === "" ? 18 : Math.round(Number(r)); return Number.isFinite(n) ? Math.min(99, Math.max(18, n)) : 18; })() : (e.underage_age ?? 18),
-      underage_tags: document.getElementById("nx-underage-tags") ? String(N("nx-underage-tags") || "").slice(0, 4000) : (typeof e.underage_tags === "string" ? e.underage_tags : "loli, shota, child, toddler, kid, teen, teenage, teenager, minor, underage, elementary school, middle school, junior high school, high school, highschool, 초등학생, 중학생, 고등학생, 초딩, 중딩, 고딩, 미성년, 어린이, 유아, 아동"),
       character_height: document.getElementById("nx-character-height") ? ee("nx-character-height") : e.character_height !== false,
       character_age: document.getElementById("nx-character-age") ? ee("nx-character-age") : e.character_age !== false,
       speech_bubble_weight: document.getElementById("nx-speech-bubble-weight") ? (() => { const r = N("nx-speech-bubble-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.speech_bubble_weight ?? 1),

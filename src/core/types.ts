@@ -123,15 +123,6 @@ export interface CardSettings {
   pov_mode: boolean;
   /** pussy/penis come only from the tagger, when it judges them seen in the shot. Off, the wear state adds them. */
   genitals_when_visible: boolean;
-  /**
-   * 나이 제한 강화: on, `underage_age` and `underage_tags` add to the under-18 guard (underage.ts). They only add: off,
-   * under 18 and the built-in words still count, and the age never goes under 18.
-   */
-  underage_strict: boolean;
-  /** 18–99: someone written as younger counts as under it. */
-  underage_age: number;
-  /** More words that, in an age or look tags, count as under it; commas between them. */
-  underage_tags: string;
   /** Only the global character the selected Risu persona is takes part in tagging. */
   user_info_persona_only: boolean;
   /** Unused legacy flag — UI removed; keep so old saves do not break. */
