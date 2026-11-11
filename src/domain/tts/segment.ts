@@ -110,6 +110,17 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
    * plays before the line, one in the second half after it
    * (§끼이익§ 문이 열렸다 → effect, line; 문을 닫았다 §쾅§ → line, effect).
    */
+  /**
+   * The story an effect word is matched with: the paragraph before, its own line, the paragraph after, each without
+   * its sound marks. The cue usually stands alone on its line (`§쾅§` above 「문이 닫혔다.」), so its line alone said
+   * nothing; the sound belongs most to the line after it, which is why that one is never left out.
+   */
+  const story = (number: number, line: string): string => {
+    const plain = (text: string) => withoutSfx(text.replace(/\[\[bgm:[^\]\n]{1,200}\]\]/gi, ''), sound!.sfxRules).replace(/\s+/g, ' ').trim();
+    const near = (from: number, step: number) => { for (let i = from; i >= 0 && i < lines.length && Math.abs(i - from) < 6; i += step) { const text = plain(lines[i]!); if (text) return text; } return ''; };
+    const own = plain(line), before = near(number - 2, -1), after = near(number, 1);
+    return [before.slice(-200), own.slice(0, 250), after.slice(0, 250)].filter(Boolean).join('\n');
+  };
   const cues = (line: string, number: number, at: number, spoken?: string): { before: TtsSegment[]; after: TtsSegment[] } => {
     const out = { before: [] as TtsSegment[], after: [] as TtsSegment[] }, from = spoken ? Math.max(0, line.indexOf(spoken)) : line.length - line.trimStart().length;
     const middle = from + (spoken ? spoken.length : line.trimEnd().length - from) / 2;
@@ -118,7 +129,7 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
       ...sfxHits(line, sound!.sfxRules).map(hit => ({ index: hit.index, length: hit.length, kind: 'sfx' as const, text: hit.word, tags: undefined })),
     ].sort((a, b) => a.index - b.index);
     // A BGM cue always comes first: the music is set before the line.
-    found.forEach((cue, k) => { if (cue.text) (cue.kind === 'sfx' && cue.index + cue.length / 2 > middle ? out.after : out.before).push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags } : { context: line.slice(0, 300) }), start: at + cue.index, end: at + cue.index + cue.length }); });
+    found.forEach((cue, k) => { if (cue.text) (cue.kind === 'sfx' && cue.index + cue.length / 2 > middle ? out.after : out.before).push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags } : { context: story(number, line) }), start: at + cue.index, end: at + cue.index + cue.length }); });
     return out;
   };
   const none = { before: [] as TtsSegment[], after: [] as TtsSegment[] };

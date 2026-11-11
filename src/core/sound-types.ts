@@ -1,7 +1,8 @@
 /** BGM and sound effects: their own data, modules and player, next to TTS. */
 export type SoundKind = 'bgm' | 'sfx';
 /** How a BGM tag set or a sound-effect word picks an item. 'auto' = tag, then embedding, then JEV. */
-export type SoundMatcher = 'auto' | 'tag' | 'embedding' | 'jev' | 'llm';
+/** 'embedding-only' (effects only): every word by the embedding, with the story around it; the glossary is neither read nor taught. */
+export type SoundMatcher = 'auto' | 'tag' | 'embedding' | 'embedding-only' | 'jev' | 'llm';
 
 export interface SoundItem {
   key: string;
@@ -9,6 +10,8 @@ export interface SoundItem {
   name: string;
   tags: string[];
   folder: string;
+  /** 상황: when this sound is heard (a kiss, a door in the wind), read by the embedding with the name and tags. */
+  note?: string;
   /**
    * 'url': fetched from a direct audio link. 'asset': stored in the kind's Risu module.
    * 'youtube': a YouTube video (BGM only), played by YouTube's own player, nothing downloaded.
@@ -90,7 +93,7 @@ export interface SoundSettings {
 }
 
 export interface SoundData {
-  version: 2;
+  version: 3;
   settings: SoundSettings;
   bgm: SoundItem[];
   sfx: SoundItem[];

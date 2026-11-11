@@ -18,7 +18,7 @@ test('the example BGM plays from YouTube, each keeping its file as the fallback;
   assert.equal(api.normalizeSoundData({ version: 2, settings: {} }).settings.youtubeHidden, true, "the default itself, not the move");
   assert.equal(api.normalizeSoundData({ version: 1, settings: { youtubeHidden: false } }).settings.youtubeHidden, true);
   const kept = api.normalizeSoundData({ version: 1, settings: { youtubeHidden: false } });
-  assert.equal(kept.version, 2);
+  assert.equal(kept.version, 3, "saved as the current version (3 since the effects learned their 상황)");
   assert.equal(api.normalizeSoundData({ version: 2, settings: { youtubeHidden: false } }).settings.youtubeHidden, false, 'switched off since: the reader\'s, kept');
   const data = api.normalizeSoundData(api.sampleSoundData());
   assert.equal(data.bgm.length, api.SOUND_SAMPLES.bgm.items.length, 'no example is lost');

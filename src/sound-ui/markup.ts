@@ -15,7 +15,11 @@ const EMBED_GROUP = '<div class="group" id="snd-embed-group"><h3>임베딩 · �
   + '<label class="field"><span>모델</span><input id="snd-embed-model" maxlength="200" autocomplete="off"></label>'
   + '<label class="field full"><span>API Key</span><input type="password" id="snd-embed-key" autocomplete="off"></label>'
   + '<label class="field full"><span>주소</span><input id="snd-embed-endpoint" maxlength="500" autocomplete="off"></label>'
-  + '<div class="actions"><button type="button" id="snd-embed-test">연결 테스트</button><small id="snd-embed-status" role="status"></small></div></div></div>';
+  + '<div class="actions"><button type="button" id="snd-embed-test">연결 테스트</button><small id="snd-embed-status" role="status"></small></div>'
+  // 맞춰 보기: what the embedding would play for a word in a scene, with scores, nothing played or learned.
+  + '<label class="field"><span>맞춰 보기 · 효과음 단어</span><input id="snd-embed-try-word" maxlength="40" placeholder="찔걱" autocomplete="off"></label>'
+  + '<label class="field full"><span>앞뒤 문장 (비워도 됩니다)</span><textarea id="snd-embed-try-story" rows="2" maxlength="700" placeholder="젖은 손이 미끄러졌다."></textarea></label>'
+  + '<div class="actions"><button type="button" id="snd-embed-try">맞춰 보기</button><small id="snd-embed-try-result" role="status"></small></div></div></div>';
 
 /**
  * Adds the BGM·효과음 tabs and panels to the TTS root and moves the model panel

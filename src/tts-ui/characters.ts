@@ -1,6 +1,6 @@
 import type { TtsCharacter, TtsSettings, TtsVoice } from '../core/tts-types';
 import { ttsData, saveTtsData, updateTtsSettings, ttsCandidateVoices } from '../storage/tts-store';
-import { blankTtsCharacter, deleteTtsCharacters, voiceEmbedding } from '../services/tts-characters';
+import { blankTtsCharacter, deleteTtsCharacters, voiceAbout, voiceEmbedding, voicePickOptions } from '../services/tts-characters';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { mergeTtsCharacter, ensureTtsRoleCards, resolveTtsRole, TTS_ROLE_NAMES } from '../domain/tts/identity';
 import { fishVoiceId, adoptVoiceTags } from '../domain/tts/library';
@@ -374,7 +374,7 @@ export class TtsCharacters {
     this.chooseCostume(index, null, '음성 추천 중…');
     const asked: TtsCharacter = { ...c, id: `${c.id}#costume${index}`, name: `${c.name} (${costume.name})`, tags: [...new Set([...c.tags, costume.name, costume.note].filter(Boolean))] };
     try {
-      const voices = (await selectTtsVoices([asked], ttsCandidateVoices(), ttsData().settings, engine, undefined, engine === 'embedding' ? await voiceEmbedding() : null)).get(asked.id) || [];
+      const voices = (await selectTtsVoices([asked], ttsCandidateVoices(), ttsData().settings, engine, undefined, engine === 'embedding' ? await voiceEmbedding() : null, voicePickOptions([asked], engine === 'embedding' ? await voiceAbout(this.context, [c]).then(m => new Map([...m].map(([, v]) => [asked.id, v]))) : undefined))).get(asked.id) || [];
       if (voices[0]) this.chooseCostume(index, voices[0]); else this.chooseCostume(index, null, '');
     } catch (error) { this.chooseCostume(index, null, ''); throw error; }
   }
@@ -464,7 +464,8 @@ export class TtsCharacters {
     on('choose-character-voice', () => { this.draft = this.read(); this.choosingVoice = true; dialog('character-dialog',false); this.library.pickVoice(voice => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog');this.choose(voice); }); });
     for (const engine of ['llm','jev','embedding'] as const) on(`recommend-${engine}`, async () => {
       const c = this.read(); text('character-voice-choice','음성 추천 중…');
-      const voices = (await selectTtsVoices([c],ttsCandidateVoices(),ttsData().settings,engine,undefined,engine === 'embedding' ? await voiceEmbedding() : null)).get(c.id)!;
+      // Asked again, the card gets another voice than the one it has: voicePickOptions names it as current.
+      const voices = (await selectTtsVoices([c],ttsCandidateVoices(),ttsData().settings,engine,undefined,engine === 'embedding' ? await voiceEmbedding() : null,voicePickOptions([c],engine === 'embedding' ? await voiceAbout(this.context,[c]) : undefined))).get(c.id)!;
       if (!list(val('c-tags')).length && voices[0]?.tags.length) set('c-tags', voices[0].tags.join(', '));
       if (characterGender(val('c-gender')) === 'unknown' && voices[0] && voices[0].gender !== 'unknown') set('c-gender', genderLabel(voices[0].gender));
       this.choose(voices[0]); const target = el('character-voice-suggestions'); target.hidden = false; target.replaceChildren();
@@ -481,7 +482,7 @@ export class TtsCharacters {
     });
     on('character-jev-apply', async () => { const chars = ttsData().characters.filter(c => this.selected.has(c.id)), before = JSON.stringify(chars);
       text('character-jev-count',`${chars.length}명 추천 중…`);
-      const result = await selectTtsVoices(chars,ttsCandidateVoices(),ttsData().settings,'jev');
+      const result = await selectTtsVoices(chars,ttsCandidateVoices(),ttsData().settings,'jev',undefined,null,voicePickOptions(chars));
       if (JSON.stringify(ttsData().characters.filter(c => this.selected.has(c.id))) !== before) throw new Error('선택 캐릭터가 바뀌었습니다. 다시 요청해 주세요.');
       for (const c of chars) { const voice = result.get(c.id)![0]; c.voiceKey = voice.key; c.fishId = voice.fishId; adoptVoiceTags(c, voice); } await persist(); this.batch = false; this.render();
     });

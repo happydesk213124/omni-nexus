@@ -145,6 +145,13 @@ export function bindSoundSettings(): void {
     try { const result = await testEmbedding(settings); text('snd-embed-status', `연결됨 · ${result.model} · ${result.dims}차원`); }
     catch (error) { text('snd-embed-status', String((error as Error).message || error)); }
   }));
+  el('snd-embed-try')?.addEventListener('click', () => run(async () => {
+    text('snd-embed-try-result', '고르는 중…');
+    try {
+      const rows = await omniSound.tryEffectMatch(val('snd-embed-try-word'), val('snd-embed-try-story'));
+      text('snd-embed-try-result', rows.length ? rows.map((row, i) => `${i + 1}. ${row.name} ${row.score.toFixed(2)}`).join(' · ') : '가까운 효과음이 없습니다 (점수 0.25 미만).');
+    } catch (error) { text('snd-embed-try-result', String((error as Error).message || error)); }
+  }));
   el('snd-rule-add').addEventListener('click', () => run(async () => {
     const rule: SfxRule = { id: uuid(), name: '새 규칙', open: '*', close: '*', enabled: false };
     await updateSoundSettings({ sfxRules: [...soundData().settings.sfxRules, rule] }); renderRules();

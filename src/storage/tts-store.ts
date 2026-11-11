@@ -3,7 +3,7 @@ import { ttsDefaults, TTS_DEFAULT_EXCLUDES } from '../config/tts-defaults';
 import { parseVoiceImport } from '../domain/tts/library';
 import { ensureTtsRoleCards } from '../domain/tts/identity';
 import { psGet, psSet } from './device-store';
-import presets from '../config/tts-presets.json';
+import { presetVoiceRows, upgradedPresetTags } from '../domain/tts/voice-words';
 import { ttsExcludeTerms } from '../domain/tts/filter';
 import { readBotTtsCharacters, writeBotTtsCharacters, ttsBotScope, validTtsCharacter } from './tts-roster';
 
@@ -82,7 +82,7 @@ export function loadTtsData(): Promise<TtsData> {
   loading = (async () => {
     const raw: unknown = await psGet(TTS_DATA_KEY);
     if (raw == null || raw === '') {
-      state = { version: 1, settings: ttsDefaults(), voices: parseVoiceImport(presets), folders: [], characters: [] };
+      state = { version: 1, settings: ttsDefaults(), voices: parseVoiceImport(presetVoiceRows()), folders: [], characters: [] };
     } else {
       const value = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Partial<TtsData>;
       if (value.version !== 1 || !value.settings || !Array.isArray(value.voices) || !Array.isArray(value.characters) || !Array.isArray(value.folders)) throw new Error('TTS 저장 데이터 형식을 확인할 수 없습니다. 원본은 변경하지 않았습니다.');
@@ -92,7 +92,8 @@ export function loadTtsData(): Promise<TtsData> {
       // 1.2.0 scoped characters to one chat. They now belong to the bot and
       // move into its lorebook the first time that bot is opened.
       const characters = value.characters.map(c => { const bot = legacyChatBot(c.scope); return bot ? { ...c, scope: ttsBotScope(bot) } : c; });
-      const voices = value.voices.map(voice => {
+      // A sample voice still on the tags it first shipped with takes the finer ones (age, pitch, timbre).
+      const voices = value.voices.map(row => { const tags = upgradedPresetTags(row); return tags === row.tags ? row : { ...row, tags }; }).map(voice => {
         const error = voice.error;
         if (!error || Number.isInteger(error.count) && error.count > 0 && Number.isFinite(error.lastAt) && error.lastAt >= 0 && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) return voice;
         const clean = { ...voice }; delete clean.error; return clean;

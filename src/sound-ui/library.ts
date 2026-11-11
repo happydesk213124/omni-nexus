@@ -7,6 +7,7 @@ import { el, input, val, set, text, esc, dialog, run, notify, download, readJson
 import { uuid } from '../core/util/text';
 import { setWordsFor, wordsFor } from './glossary';
 import { BGM_SAMPLE_CREDIT, BGM_SAMPLE_HOST, sampleSoundData } from '../config/sound-samples';
+import { ELEVEN_PACK_FOLDER } from '../config/sound-eleven-pack';
 import { youtubeVideoId } from '../domain/sound/youtube';
 
 const LABEL: Record<SoundKind, string> = { bgm: 'BGM', sfx: '효과음' };
@@ -112,7 +113,7 @@ export class SoundLibrary {
     this.editing = item;
     text('snd-item-title', item ? `${LABEL[this.kind]} 수정` : `${LABEL[this.kind]} 추가`);
     text('snd-item-save', item ? '저장' : '추가');
-    set('snd-item-name', item?.name || ''); set('snd-item-tags', item?.tags.join(', ') || '');
+    set('snd-item-name', item?.name || ''); set('snd-item-tags', item?.tags.join(', ') || ''); set('snd-item-note', item?.note || '');
     el('snd-item-terms-wrap').hidden = this.kind !== 'sfx'; set('snd-item-terms', item && this.kind === 'sfx' ? wordsFor(item.key).join(', ') : '');
     const folder = el<HTMLSelectElement>('snd-item-folder');
     folder.innerHTML = ['', ...soundData().folders[this.kind]].map(name => `<option value="${esc(name)}">${esc(name || '미분류')}</option>`).join('');
@@ -137,7 +138,7 @@ export class SoundLibrary {
   }
   edit(item: SoundItem): void { this.openDialog(item); }
   async save(): Promise<void> {
-    const name = val('snd-item-name'), tags = val('snd-item-tags'), folder = val('snd-item-folder'), words = soundTags(val('snd-item-terms'));
+    const name = val('snd-item-name'), tags = val('snd-item-tags'), folder = val('snd-item-folder'), words = soundTags(val('snd-item-terms')), note = val('snd-item-note').trim().slice(0, 300);
     if (this.editing) {
       const link = val('snd-item-url').trim();
       if (!input('snd-item-url').disabled && link !== (this.editing.url || '')) {
@@ -146,6 +147,7 @@ export class SoundLibrary {
         catch (error) { text('snd-item-status', String((error as Error)?.message || error)); return; }
       }
       Object.assign(this.editing, { name: name.trim() || this.editing.name, tags: soundTags(tags), folder });
+      if (note) this.editing.note = note; else delete this.editing.note;
       if (this.kind === 'sfx') setWordsFor(this.editing.key, words);
       await saveSoundData(); dialog('snd-item-dialog', false); this.render(); return;
     }
@@ -155,11 +157,12 @@ export class SoundLibrary {
       if (val('snd-item-source') === 'file' && !file) throw new Error('파일을 골라 주세요.');
       if (val('snd-item-source') === 'eleven') text('snd-item-status', 'ElevenLabs에서 만드는 중…');
       const item = val('snd-item-source') === 'eleven'
-        ? await omniSound.addFromEleven(this.kind, { name, tags, folder, prompt: val('snd-item-prompt'), duration: Number(val('snd-item-duration')) || 0 })
+        ? await omniSound.addFromEleven(this.kind, { name, tags, folder, note, prompt: val('snd-item-prompt'), duration: Number(val('snd-item-duration')) || 0 })
         : val('snd-item-source') === 'file'
         ? await omniSound.addFromFile(this.kind, { name, tags, folder, file: file! })
         // A YouTube link's name comes from YouTube itself (its title), not from the link's last segment.
         : await omniSound.addFromUrl(this.kind, { name: name || (youtubeVideoId(val('snd-item-url')) ? '' : decodeURIComponent(val('snd-item-url').split('/').pop() || '').replace(/\.[^.]+$/, '')), tags, folder, url: val('snd-item-url') });
+      if (note && !item.note) { item.note = note; await saveSoundData(); }
       if (this.kind === 'sfx' && words.length) { setWordsFor(item.key, words); await saveSoundData(); }
       dialog('snd-item-dialog', false); this.render(); notify(`${LABEL[this.kind]} 추가: ${item.name}`);
     } catch (error) { text('snd-item-status', String((error as Error).message || error)); }
@@ -216,6 +219,17 @@ export class SoundLibrary {
       input(this.id('file')).value = '';
       notify(`${LABEL[this.kind]} ${await this.merge(raw.items, raw.folders)}개를 가져왔습니다.`);
     }, 'change');
+    if (this.kind === 'sfx') this.on('eleven-pack', async () => {
+      if (!soundData().settings.elevenKey.trim()) { notify('설정 › 효과음에서 ElevenLabs API 키를 먼저 넣어 주세요.'); return; }
+      const missing = omniSound.elevenPackMissing();
+      if (!missing.length) { notify(`「${ELEVEN_PACK_FOLDER}」 묶음은 이미 모두 목록에 있습니다.`); return; }
+      if (!confirm(`ElevenLabs로 효과음 ${missing.length}개를 만들어 「${ELEVEN_PACK_FOLDER}」 폴더에 넣을까요?\n${missing.map(row => row.name).join(', ')}\n\nElevenLabs 크레딧을 씁니다 (개당 수 초 분량).`)) return;
+      const button = el<HTMLButtonElement>(this.id('eleven-pack')); button.disabled = true;
+      try {
+        const made = await omniSound.makeElevenPack((done, all) => { button.textContent = `만드는 중 · ${done}/${all}`; });
+        notify(`ElevenLabs로 ${made.made}개를 만들었습니다${made.failed ? ` · ${made.failed}개는 실패: ${made.error}` : ''}.`);
+      } finally { button.disabled = false; button.textContent = 'ElevenLabs 묶음 만들기'; this.render(); }
+    });
     this.on('samples', async () => {
       const samples = sampleSoundData(), added = await this.merge(samples[this.kind], samples.folders[this.kind]);
       notify(added ? `예제 ${LABEL[this.kind]} ${added}개를 더했습니다.` : `예제 ${LABEL[this.kind]}은 이미 모두 목록에 있습니다.`);

@@ -39,19 +39,6 @@ async function vectorsFor(settings: EmbeddingSettings, texts: readonly string[])
   return texts.map(text => vectors.get(id(text)) ?? []);
 }
 
-/** For each query, the nearest item and its score, or null when none comes close enough. One request for all that are new. */
-export async function embedPickMany(queries: readonly string[], items: readonly SoundItem[], describe: (item: SoundItem) => string, settings: EmbeddingSettings): Promise<Array<{ item: SoundItem; score: number } | null>> {
-  if (!items.length) return queries.map(() => null);
-  const texts = items.map(describe), all = await vectorsFor(settings, [...queries, ...texts]);
-  const rows = all.slice(queries.length);
-  return queries.map((query, k) => {
-    if (!query.trim()) return null;
-    let best: { item: SoundItem; score: number } | null = null;
-    rows.forEach((row, i) => { const score = cosine(all[k]!, row); if (!best || score > best.score) best = { item: items[i]!, score }; });
-    return best && (best as { score: number }).score >= EMBED_MIN_SCORE ? best : null;
-  });
-}
-
 /** The tracks nearest one query, best first, as many as `limit` that pass the minimum score. */
 export async function embedRank(query: string, items: readonly SoundItem[], describe: (item: SoundItem) => string, settings: EmbeddingSettings, limit: number): Promise<SoundItem[]> {
   if (!items.length || !query.trim()) return [];
@@ -67,6 +54,42 @@ export async function embedNearestTexts(query: string, texts: readonly string[],
   const all = await vectorsFor(settings, [query, ...texts]);
   return all.slice(1).map((row, i) => ({ i, score: cosine(all[0]!, row) })).filter(row => row.score >= minScore)
     .sort((a, b) => b.score - a.score).slice(0, limit).map(row => row.i);
+}
+
+/** How near each text lies to the query (cosine, -1…1), in the texts' order. One request for whatever is new. */
+export async function embedScores(query: string, texts: readonly string[], settings: EmbeddingSettings): Promise<number[]> {
+  if (!texts.length || !query.trim()) return texts.map(() => 0);
+  const all = await vectorsFor(settings, [query, ...texts]);
+  return all.slice(1).map(row => cosine(all[0]!, row));
+}
+
+/** An effect word with the story around it: the paragraph before, its own line, the paragraph after. */
+export interface SfxQuery { word: string; context: string }
+/** How much the sound word decides against the story around it. The word is what is heard; the story says which of
+ * the effects that sound alike fits (쾅 of a door, of a gun, of thunder). */
+export const SFX_WORD_WEIGHT = 0.65;
+/** A word spelled exactly as one of the effect's own tags: a strong hint the vectors may miss for a short Korean word. */
+export const SFX_TAG_BONUS = 0.08;
+/**
+ * The nearest effect for each word, scored on the word and on the story around it apart, so a long passage does not
+ * drown a two-letter sound: score = word·0.65 + story·0.35 (+0.08 when a tag is the word itself). With no story the
+ * word alone. Every word, story and effect text that is new goes in one request.
+ */
+export async function embedPickSfx(queries: readonly SfxQuery[], items: readonly SoundItem[], describe: (item: SoundItem) => string, settings: EmbeddingSettings, exact: (word: string, item: SoundItem) => boolean = () => false, limit = 1): Promise<Array<Array<{ item: SoundItem; score: number }>>> {
+  if (!items.length) return queries.map(() => []);
+  const words = queries.map(q => `효과음 의성어: ${q.word.trim()}`), stories = queries.map(q => q.context.trim() ? `장면: ${q.context.trim()}` : '');
+  const texts = items.map(describe), all = await vectorsFor(settings, [...words, ...stories.filter(Boolean), ...texts]);
+  const vector = new Map<string, number[]>();
+  [...words, ...stories.filter(Boolean), ...texts].forEach((text, i) => vector.set(text, all[i]!));
+  return queries.map((query, k) => {
+    if (!query.word.trim()) return [];
+    const w = vector.get(words[k]!)!, story = stories[k] ? vector.get(stories[k]!)! : null;
+    return items.map((item, i) => {
+      const row = vector.get(texts[i]!)!, byWord = cosine(w, row);
+      const score = (story ? byWord * SFX_WORD_WEIGHT + cosine(story, row) * (1 - SFX_WORD_WEIGHT) : byWord) + (exact(query.word, item) ? SFX_TAG_BONUS : 0);
+      return { item, score };
+    }).filter(row => row.score >= EMBED_MIN_SCORE).sort((a, b) => b.score - a.score).slice(0, limit);
+  });
 }
 
 /** Test seam. */

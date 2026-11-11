@@ -2,7 +2,7 @@ import type { TtsCharacter, TtsSettings } from '../core/tts-types';
 import { fishVoiceId } from '../domain/tts/library';
 import { selectTtsVoices } from '../providers/tts/selection';
 import { saveTtsData, ttsData } from '../storage/tts-store';
-import { voiceEmbedding } from './tts-characters';
+import { voiceEmbedding, voicePickOptions } from './tts-characters';
 
 /** Audio arrived for this Fish ID, so its recorded failures (402, 400…) are history. */
 export async function clearTtsVoiceError(fishId: string): Promise<void> {
@@ -50,7 +50,8 @@ export class TtsVoiceRecovery {
           // The same engine 음성 선택 모델 names for a first pick: a JEV or embedding user has
           // not asked for the helper LLM and may not have one, so a rejected voice must not call it.
           const engine = settings.selector;
-          const selected = await selectTtsVoices([character], candidates, settings, engine, undefined, engine === 'embedding' ? await voiceEmbedding() : null);
+          // The bot's other voices give way here too (the failed one is already out of the candidates).
+          const selected = await selectTtsVoices([character], candidates, settings, engine, undefined, engine === 'embedding' ? await voiceEmbedding() : null, voicePickOptions([character]));
           if (!valid()) return;
           const chosen = selected.get(character.id)![0];
           const voice = ttsData().voices.find(row => row.key === chosen.key && row.fishId === chosen.fishId);

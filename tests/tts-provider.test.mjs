@@ -138,8 +138,9 @@ test('첫 대사 이모지: a new speaker\'s emoji set her gender and age before
     const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'jev',cueEmoji:true});data.settings.jev.key='fake';data.voices=herVoices();data.characters=[];
     const context=emojiContext();
     await api.ensureTtsSpeakers(context,['하린'],()=>true,[],new Map([['하린','👩🥺']]));
-    assert.deepEqual(Object.values(sent.questions[0].criteria),['여성, 청년, 소심한'],'only her gender\'s voices');
-    assert.deepEqual(sent.questions[0].instructions.character,['하린','female',['청년','소심한','부드러운']]);
+    // Sent in English (the voice's name, then its tags), kept in Korean on her card.
+    assert.deepEqual(Object.values(sent.questions[0].criteria),['woman: female, young adult, timid'],'only her gender\'s voices');
+    assert.deepEqual(sent.questions[0].instructions.character,['하린','female',['young adult','timid','gentle']]);
     assert.equal(data.characters[0].gender,'female');assert.equal(data.characters[0].voiceKey,'woman');assert.deepEqual(data.characters[0].tags,['청년','소심한','부드러운']);
     // Switched off, the emoji say nothing: she is unknown and every voice is offered, as before.
     data.settings.cueEmoji=false;data.characters=[];
@@ -149,7 +150,7 @@ test('첫 대사 이모지: a new speaker\'s emoji set her gender and age before
     data.settings.cueEmoji=true;data.characters=[];
     context.messages=[{role:'char',chatId:'m1',data:'👩🥺 하린 (soft tone): "안녕."'},{role:'user',chatId:'u1',data:'응'},{role:'char',chatId:'m2',data:'하린 (calm): "또 왔어?"'}];
     await api.ensureTtsSpeakers(context,['하린'],()=>true,['m2']);
-    assert.deepEqual(Object.values(sent.questions[0].criteria),['여성, 청년, 소심한']);
+    assert.deepEqual(Object.values(sent.questions[0].criteria),['woman: female, young adult, timid']);
   }finally{delete globalThis.risuai;}
 });
 

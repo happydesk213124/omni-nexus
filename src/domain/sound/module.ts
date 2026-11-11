@@ -52,7 +52,7 @@ export const SFX_SECTION_RULE = 'section-sign';
 export function sfxCuePrompt(rule: Pick<SfxRule, 'open' | 'close'>): string {
   return `@@depth 0
 <OmniSFX>
-Sound effect: for a distinct sound (a door slams, thunder, footsteps, a gunshot), write a short sound word between ${rule.open} and ${rule.close} on a line of its own, just before the line it belongs to:
+Sound effect: for a distinct sound (a door slams, thunder, footsteps, a gunshot, a kiss, slurping), write a short sound word between ${rule.open} and ${rule.close} on a line of its own, just before the line it belongs to:
 ${rule.open}쾅${rule.close}
 문이 닫혔다.
 One to four words in the story language, at most five per reply. Never inside a narration or dialogue line, quotes, names or code. Never explain the marks.

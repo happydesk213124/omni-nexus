@@ -14,17 +14,31 @@ import { youtubeWatchUrl } from '../domain/sound/youtube';
  * there is one), nothing downloaded; its incompetech file stays as the fallback for
  * a Risu where YouTube cannot play. Effects: Google's Actions sound library
  * (actions.google.com).
+ *
+ * Each effect carries the sound words it is heard as (its tags), 상황 (`note`: when it is heard, shown and saved)
+ * and `en`, the same in English, which is never saved: the embedding reads it next to the Korean while the
+ * effect's 상황 is still the one shipped (sampleSfxEnglish).
  */
-export const SOUND_SAMPLES: Record<SoundKind, { folders: string[]; items: Array<{ key: string; name: string; tags: string[]; folder: string; url: string; youtube?: string }> }> = { bgm, sfx };
+interface SampleItem { key: string; name: string; tags: string[]; folder: string; url: string; youtube?: string; note?: string; en?: string }
+export const SOUND_SAMPLES: Record<SoundKind, { folders: string[]; items: SampleItem[] }> = { bgm, sfx };
 export const BGM_SAMPLE_CREDIT = 'Music by Kevin MacLeod (incompetech.com) · Licensed under Creative Commons: By Attribution 4.0';
 export const BGM_SAMPLE_HOST = 'incompetech.com';
 
 /** The examples as stored data, before normalisation. */
 export function sampleSoundData(): { bgm: unknown[]; sfx: unknown[]; folders: Record<SoundKind, string[]> } {
-  const items = (kind: SoundKind) => SOUND_SAMPLES[kind].items.map(({ youtube, ...item }) => youtube
+  const items = (kind: SoundKind) => SOUND_SAMPLES[kind].items.map(({ youtube, en: _english, ...item }) => youtube
     ? { ...item, kind, source: 'youtube', url: youtubeWatchUrl(youtube), fallbackUrl: item.url }
     : { ...item, kind, source: 'url' });
   return { bgm: items('bgm'), sfx: items('sfx'), folders: { bgm: [...SOUND_SAMPLES.bgm.folders], sfx: [...SOUND_SAMPLES.sfx.folders] } };
+}
+
+const SFX_BY_URL = new Map(SOUND_SAMPLES.sfx.items.map(item => [item.url, item] as const));
+/** An example effect by its link: its shipped sound words and 상황, for a save made before they were there. */
+export const sampleSfxFor = (url: string): SampleItem | undefined => SFX_BY_URL.get(url);
+/** The English of an example effect's 상황, while the 상황 is still the one shipped (an edited one is the reader's). */
+export function sampleSfxEnglish(url: string, note: string | undefined): string {
+  const sample = SFX_BY_URL.get(url);
+  return sample?.en && note === sample.note ? sample.en : '';
 }
 
 /** An example track's YouTube video, by the file link it was saved with before the examples moved to YouTube. */

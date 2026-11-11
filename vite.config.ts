@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.13';
+const PLUGIN_VERSION = '1.4.14';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -996,6 +996,18 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.14 · 효과음 임베딩만·앞뒤 문단, 효과음 18개 추가, 목소리 겹치지 않게</strong>
+          <div class="muted" style="margin-top:8px">2026.11.11 · 효과음을 장면으로 고르고, 캐릭터마다 다른 목소리가 가도록 바꿨습니다. 업데이트 후 첫 실행에서 예제 효과음에 의성어·상황이 채워지고 새 예제가 더해집니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>효과음 「임베딩만」</strong>: 효과음 고르는 방식에 새로 생겼습니다. 용어집을 쓰지 않고 효과음 단어와 그 앞뒤 문단을 효과음의 이름·의성어 태그·상황과 견줘 고릅니다. 같은 「쾅」도 문인지 총인지 장면으로 가립니다. 임베딩 칸의 「맞춰 보기」로 미리 볼 수 있습니다.</li>
+            <li><strong>앞뒤 문단</strong>: 모든 방식에서 효과음 단어와 함께 앞 문단·그 줄·뒤 문단을 보냅니다. JEV·LLM에는 목록 앞 60개가 아니라 가까운 효과음 60개를 보여 줍니다.</li>
+            <li><strong>예제 효과음</strong>: 244개 모두에 예상 의성어와 상황이 붙었고, 숨소리·새근새근·찔걱찔걱·맨살 찰싹·젖은 마찰음·삐걱임 등 18개가 「친밀」 폴더에 더해졌습니다. 효과음마다 「상황」 칸을 적을 수 있습니다.</li>
+            <li><strong>ElevenLabs 묶음 만들기</strong>: 효과음 목록 › 파일 ⋯에서 무료 예제에 없는 입맞춤·츄릅·찔걱·침대 삐걱 등 17개를 내 ElevenLabs 키로 한 번에 만듭니다(크레딧 사용).</li>
+            <li><strong>목소리</strong>: 같은 봇의 캐릭터끼리 같은 목소리가 가지 않고, 비슷하면 덜 쓰인 목소리를 고릅니다. 추천을 다시 누르면 다른 목소리가 나옵니다. 고를 때 태그를 영어로, 기본 음성은 영어 캐릭터 이름과 함께 보냅니다(화면은 한국어 그대로). 기본 음성 태그가 나이 6단계·음높이·음색으로 세분화됐고, 첫 대사 이모지는 얼굴·하트·동물 등 훨씬 많이 읽습니다.</li>
+            <li><strong>그 밖에</strong>: 스크롤 붙잡기가 그림 생성·스트리밍 중에 내가 스크롤하면 따라갑니다. 옴니 뷰어 삽화 목록이 10장 넘어도 다 보입니다. 생성 옵션 › 나이 제한 칸을 없앴습니다(기본 차단은 그대로). 감정 에셋 기본 nude·천박모드가 들어왔습니다(미성년으로 그려지는 캐릭터는 항상 막힘).</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.13 · 속도·배터리 최적화</strong>
@@ -15436,7 +15448,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

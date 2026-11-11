@@ -5,7 +5,9 @@ import { SoundPlayer } from '../providers/sound/player';
 import { AUDIO_EXTENSIONS, sfxMarksProblem, sniffAudioMime } from '../domain/sound/audio';
 import { BGM_DRAW, drawBgm, exactSfx, glossarySfx, guessSfx, pickBgm } from '../domain/sound/match';
 import { suggestSfx } from '../domain/sound/find';
-import { embedPickMany, embedRank, soundEmbedSettings } from '../providers/sound/embed';
+import { embedPickSfx, embedRank, soundEmbedSettings } from '../providers/sound/embed';
+import { sampleSfxEnglish } from '../config/sound-samples';
+import { ELEVEN_PACK, ELEVEN_PACK_FOLDER, type ElevenPackItem } from '../config/sound-eleven-pack';
 import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound, updateSoundSettings } from '../storage/sound-store';
 import { ensureSoundModules, storeSoundBytes } from '../storage/sound-module';
@@ -19,6 +21,12 @@ import { audioOf, downloadAudio, effectClip, forgetAudio, planClip, prefetchAudi
 import { bgmDeviceCache } from '../storage/bgm-cache';
 import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
 import { ttsFetch, ttsJson } from '../providers/tts/http';
+import type { SfxTerm } from '../core/sound-types';
+
+/** The story an effect word is matched with: before, its own line, after (domain/tts/segment.ts), cut to this. */
+const SFX_CONTEXT_MAX = 700;
+/** JEV and the LLM are shown this many effects at most; a longer list is narrowed to the nearest first. */
+const ENGINE_CANDIDATES = 60;
 
 /** Folder for effects ElevenLabs made on its own, so they are easy to review. */
 export const AUTO_SFX_FOLDER = '자동 생성';
@@ -176,16 +184,33 @@ export class OmniSoundRuntime {
     return this.addBytes(kind, { ...input, name: input.name.trim() || input.file.name.replace(/\.[^.]+$/, '') }, bytes, mime);
   }
   /** Generates an effect (or instrumental BGM) with ElevenLabs and stores it in the kind's ⚛️ module. */
-  async addFromEleven(kind: SoundKind, input: { name: string; tags: string; folder: string; prompt: string; duration: number }): Promise<SoundItem> {
+  async addFromEleven(kind: SoundKind, input: { name: string; tags: string; folder: string; prompt: string; duration: number; note?: string }): Promise<SoundItem> {
     const s = soundData().settings;
     const audio = kind === 'bgm'
       ? await generateMusic(input.prompt, { key: s.elevenKey, lengthSeconds: input.duration })
       : await generateSoundEffect(input.prompt, { key: s.elevenKey, durationSeconds: input.duration || s.sfxDuration });
     return this.addBytes(kind, { ...input, name: input.name.trim() || input.prompt.slice(0, 40) }, audio.bytes, audio.mime);
   }
-  private async addBytes(kind: SoundKind, input: { name: string; tags: string; folder: string }, bytes: ArrayBuffer, mime: string): Promise<SoundItem> {
+  /** The 「ElevenLabs 묶음」 effects not made yet (by name, in its folder). */
+  elevenPackMissing(): ElevenPackItem[] {
+    const made = new Set(soundData().sfx.filter(item => item.folder === ELEVEN_PACK_FOLDER).map(item => item.name));
+    return ELEVEN_PACK.filter(row => !made.has(row.name));
+  }
+  /** Makes the missing 「ElevenLabs 묶음」 effects one after another; one that fails (a refused prompt) does not stop the rest. */
+  async makeElevenPack(progress: (done: number, all: number) => void = () => {}): Promise<{ made: number; failed: number; error: string }> {
+    const rows = this.elevenPackMissing();
+    let made = 0, failed = 0, error = '';
+    for (const [i, row] of rows.entries()) {
+      progress(i, rows.length);
+      try { await this.addFromEleven('sfx', { name: row.name, tags: row.tags.join(', '), folder: ELEVEN_PACK_FOLDER, note: row.note, prompt: row.prompt, duration: row.duration }); made++; }
+      catch (e) { failed++; error = String((e as Error)?.message || e).slice(0, 200); }
+    }
+    progress(rows.length, rows.length);
+    return { made, failed, error };
+  }
+  private async addBytes(kind: SoundKind, input: { name: string; tags: string; folder: string; note?: string }, bytes: ArrayBuffer, mime: string): Promise<SoundItem> {
     const key = uuid(), path = await storeSoundBytes(bytes);
-    const item: SoundItem = { key, kind, name: input.name, tags: soundTags(input.tags), folder: input.folder, source: 'asset',
+    const item: SoundItem = { key, kind, name: input.name, tags: soundTags(input.tags), folder: input.folder, ...(input.note?.trim() ? { note: input.note.trim().slice(0, 300) } : {}), source: 'asset',
       assetName: `omnisound_${kind}_${key.slice(0, 8)}.${AUDIO_EXTENSIONS[mime] || 'mp3'}`, assetPath: path, mime, bytes: bytes.byteLength };
     rememberAudio(item.key, bytes, mime);
     if (input.folder && !soundData().folders[kind].includes(input.folder)) soundData().folders[kind].push(input.folder);
@@ -346,11 +371,17 @@ export class OmniSoundRuntime {
     return this.unmatched;
   }
   private noMatch(): Set<string> { return this.memo().words; }
+  /** 「임베딩만」: the glossary is neither read nor taught, and the same word may be another sound in another story. */
+  private embedOnly(): boolean { return soundData().settings.sfxMatcher === 'embedding-only'; }
+  /** The glossary as matching reads it: none at all for 「임베딩만」. */
+  private glossary(): readonly SfxTerm[] { return this.embedOnly() ? [] : soundData().glossary; }
+  /** This session's pick for a word; with 「임베딩만」 for the word in that story (쾅 of a door is not 쾅 of a gun). */
+  private pickKey(word: string, context: string): string { return this.embedOnly() ? `${normalizeSoundTag(word)}\n${context.slice(0, SFX_CONTEXT_MAX)}` : normalizeSoundTag(word); }
   /** What a word plays with nothing asked: the glossary, or this session's earlier pick. */
-  private known(word: string): SoundItem | null {
-    const data = soundData(), found = glossarySfx(word, data.glossary, data.sfx);
+  private known(word: string, context = ''): SoundItem | null {
+    const data = soundData(), found = glossarySfx(word, this.glossary(), data.sfx);
     if (found) return found;
-    const key = this.memo().picks.get(normalizeSoundTag(word));
+    const key = this.memo().picks.get(this.pickKey(word, context));
     return key ? data.sfx.find(item => item.key === key) ?? null : null;
   }
   private prepared = new Set<string>();
@@ -366,14 +397,16 @@ export class OmniSoundRuntime {
     if (!fresh.length) return;
     for (const word of fresh) this.prepared.add(word.text);
     while (this.prepared.size > 500) this.prepared.delete(this.prepared.values().next().value!);
-    const data = soundData(), ask = new Map<string, string>();
+    const data = soundData(), ask = new Map<string, { word: string; context: string }>();
     for (const word of fresh) {
-      if (exactSfx(word.text, data.glossary, data.sfx)) continue;
+      // 「임베딩만」 asks for every word: an effect's own tag is a hint there, not the answer.
+      if (!this.embedOnly() && exactSfx(word.text, data.glossary, data.sfx)) continue;
       const parts = sfxParts(word.text);
-      for (const part of parts.length > 1 ? parts : [word.text]) if (!this.known(part) && !this.noMatch().has(normalizeSoundTag(part)) && !ask.has(part)) ask.set(part, word.context);
+      // Each word goes with its own story (all of them once went with the first word's).
+      for (const part of parts.length > 1 ? parts : [word.text]) { const id = this.pickKey(part, word.context); if (!this.known(part, word.context) && !this.noMatch().has(normalizeSoundTag(part)) && !ask.has(id)) ask.set(id, { word: part, context: word.context }); }
     }
-    const unknown = [...ask.keys()].slice(0, 20);
-    if (unknown.length) await this.resolveSfx(unknown, ask.get(unknown[0]!) || '');
+    const unknown = [...ask.values()].slice(0, 20);
+    if (unknown.length) await this.resolveSfx(unknown.map(row => row.word), unknown.map(row => row.context));
     for (const word of fresh) { const plan = await this.sfxPlan(word.text, word.context); if (plan.length) await planClip(plan).catch(() => {}); }
   }
   /**
@@ -384,26 +417,31 @@ export class OmniSoundRuntime {
    * setting uses its own step (falling back to the guess); ⚡ (anyEngine) asks JEV
    * or the LLM on purpose and registers only what they pick.
    */
-  private async resolveSfx(words: readonly string[], context: string, anyEngine = false): Promise<Array<SoundItem | null>> {
+  private async resolveSfx(words: readonly string[], contexts: string | readonly string[], anyEngine = false): Promise<Array<SoundItem | null>> {
     const s = soundData().settings, tts = ttsData().settings, items = soundData().sfx, m = s.sfxMatcher, jev = !!tts.jev.key.trim();
+    const storyOf = (i: number) => (typeof contexts === 'string' ? contexts : contexts[i] ?? '').slice(0, SFX_CONTEXT_MAX);
     const engine = m === 'jev' || m === 'llm' ? m : anyEngine ? (jev ? 'jev' : 'llm') : m === 'auto' && jev ? 'jev' : null;
-    const embed = !anyEngine && (m === 'auto' || m === 'embedding') ? soundEmbedSettings(s, tts) : null;
+    const embed = !anyEngine && (m === 'auto' || m === 'embedding' || m === 'embedding-only') ? soundEmbedSettings(s, tts) : null;
+    if (m === 'embedding-only' && !embed && !anyEngine) this.notice = '「임베딩만」인데 임베딩이 설정되지 않았습니다. 설정 › 임베딩을 넣어 주세요 (지금은 이름·태그 글자로 고릅니다).';
     // A compound's unknown parts go in one request: one JEV question per part.
     let choices: Array<SfxChoice | null> = words.map(() => null);
-    if (engine && items.length && words.length) choices = await chooseSfxMany(words, context, items, engine, tts).catch(error => { this.notice = String((error as Error).message || error); return words.map(() => null); });
+    if (engine && items.length && words.length) {
+      const shown = await this.shortlist(words, words.map((_, i) => storyOf(i)), items);
+      choices = await chooseSfxMany(words, typeof contexts === 'string' ? storyOf(0) : words.map((_, i) => storyOf(i)), shown, engine, tts).catch(error => { this.notice = String((error as Error).message || error); return words.map(() => null); });
+    }
     // No answer from JEV (none set up, or it failed): embedding for all of them in one request, then the guess.
     const generates = s.sfxAutoCreate && !!s.elevenKey.trim();
-    const open = anyEngine ? [] : words.filter((_, i) => !choices[i] || (!generates && 'create' in choices[i]!));
+    const open = anyEngine ? [] : words.flatMap((word, i) => !choices[i] || (!generates && 'create' in choices[i]!) ? [{ word, i }] : []);
     const nearest = embed && open.length && items.length
-      ? await embedPickMany(open.map(word => `효과음: ${word}${context ? ` · ${context.slice(0, 200)}` : ''}`), items, item => this.describeSfx(item), embed).catch(error => { this.notice = String((error as Error).message || error); return open.map(() => null); })
-      : open.map(() => null);
-    const fallback = new Map(open.map((word, k) => [word, nearest[k]?.item ?? guessSfx(word, items) ?? suggestSfx(word, soundData().glossary, items, 1)[0] ?? null]));
+      ? await embedPickSfx(open.map(row => ({ word: row.word, context: storyOf(row.i) })), items, item => this.describeSfx(item), embed, (word, item) => this.ownTag(word, item)).catch(error => { this.notice = String((error as Error).message || error); return open.map(() => []); })
+      : open.map(() => []);
+    const fallback = new Map(open.map((row, k) => [row.i, nearest[k]?.[0]?.item ?? guessSfx(row.word, items) ?? suggestSfx(row.word, this.glossary(), items, 1)[0] ?? null]));
     return Promise.all(words.map(async (word, i) => {
       const choice = choices[i] ?? null;
       if (choice && 'key' in choice) { const item = items.find(row => row.key === choice.key); if (item) { await this.learn(word, item.key); return item; } }
       if (choice) this.noMatch().add(normalizeSoundTag(word));
-      const picked = fallback.get(word);
-      if (picked) { this.memo().picks.set(normalizeSoundTag(word), picked.key); return picked; }
+      const picked = fallback.get(i);
+      if (picked) { this.memo().picks.set(this.pickKey(word, storyOf(i)), picked.key); while (this.memo().picks.size > 1000) this.memo().picks.delete(this.memo().picks.keys().next().value!); return picked; }
       const create = !items.length || (!!choice && 'create' in choice);
       if (!create || !s.sfxAutoCreate || !s.elevenKey.trim()) return null;
       const id = normalizeSoundTag(word);
@@ -434,6 +472,36 @@ export class OmniSoundRuntime {
     if (!learned && this.notice) throw new Error(this.notice);
     return { learned, left: soundData().unknownTerms.length };
   }
+  /** A word spelled as one of the effect's own name or tags (up to spacing and marks): a hint for the embedding. */
+  private ownTag(word: string, item: SoundItem): boolean { return exactSfx(word, [], [item]) === item; }
+  /**
+   * The effects JEV or the LLM is shown: all of them when they fit, else the nearest to the words first, by the
+   * embedding when one is set up (else by how they sound), so an effect late in a long list can still be picked.
+   * Once only the first 60 of the 226 examples were ever shown.
+   */
+  private async shortlist(words: readonly string[], stories: readonly string[], items: readonly SoundItem[]): Promise<readonly SoundItem[]> {
+    if (items.length <= ENGINE_CANDIDATES) return items;
+    const embed = soundEmbedSettings(soundData().settings, ttsData().settings), per = Math.max(10, Math.floor(ENGINE_CANDIDATES / Math.max(1, words.length)));
+    const picked = new Map<string, SoundItem>();
+    if (embed) {
+      const ranked = await embedPickSfx(words.map((word, i) => ({ word, context: stories[i] ?? '' })), items, item => this.describeSfx(item), embed, (word, item) => this.ownTag(word, item), per).catch(() => [] as Array<Array<{ item: SoundItem }>>);
+      for (const rows of ranked) for (const row of rows) picked.set(row.item.key, row.item);
+    }
+    for (const word of words) for (const item of suggestSfx(word, this.glossary(), items, per)) picked.set(item.key, item);
+    for (const item of items) { if (picked.size >= ENGINE_CANDIDATES) break; picked.set(item.key, item); }
+    return [...picked.values()].slice(0, ENGINE_CANDIDATES);
+  }
+  /**
+   * 「맞춰 보기」: the effects the embedding puts nearest a word in a story, best first, with their scores, so the
+   * reader sees what it would play and why (nothing is played, learned or kept).
+   */
+  async tryEffectMatch(word: string, story: string): Promise<Array<{ name: string; score: number; folder: string }>> {
+    const s = soundData().settings, embed = soundEmbedSettings(s, ttsData().settings);
+    if (!embed) throw new Error('임베딩이 설정되지 않았습니다. 아래 임베딩 칸을 먼저 채워 주세요.');
+    if (!word.trim()) throw new Error('효과음 단어를 적어 주세요.');
+    const [rows = []] = await embedPickSfx([{ word: word.trim(), context: story.trim().slice(0, SFX_CONTEXT_MAX) }], soundData().sfx, item => this.describeSfx(item), embed, (w, item) => this.ownTag(w, item), 5);
+    return rows.map(row => ({ name: row.item.name, folder: row.item.folder, score: Math.round(row.score * 1000) / 1000 }));
+  }
   /** Plays the effect for a word; an unknown word is kept for the glossary. */
   async playSfxWord(word: string, context = ''): Promise<boolean> {
     if (!soundData().settings.sfxEnabled) return false;
@@ -451,9 +519,10 @@ export class OmniSoundRuntime {
    * on its own, so the glossary keeps one word → one effect.
    */
   private async sfxPlan(word: string, context: string): Promise<Array<{ item: SoundItem; seconds?: number }>> {
-    const data = soundData(), parts = sfxParts(word), exact = exactSfx(word, data.glossary, data.sfx);
-    if (parts.length <= 1 || exact) { const item = exact || await this.sfxFor(word, context); return item ? [{ item }] : []; }
-    const found: Array<SoundItem | null> = parts.map(part => this.known(part));
+    const data = soundData(), parts = sfxParts(word), exact = exactSfx(word, this.glossary(), data.sfx);
+    // 「임베딩만」: a word that is an effect's own name stays whole, but the embedding still says which effect it is.
+    if (parts.length <= 1 || exact) { const item = (!this.embedOnly() && exact) || await this.sfxFor(word, context); return item ? [{ item }] : []; }
+    const found: Array<SoundItem | null> = parts.map(part => this.known(part, context));
     const missing = parts.flatMap((_, i) => found[i] ? [] : [i]);
     const ask = missing.filter(i => !this.noMatch().has(normalizeSoundTag(parts[i]!)));
     if (ask.length) { const resolved = await this.resolveSfx(ask.map(i => parts[i]!), context); ask.forEach((i, k) => { found[i] = resolved[k] ?? null; }); }
@@ -463,13 +532,18 @@ export class OmniSoundRuntime {
     const seconds = sfxPartSeconds(kept.map(row => row.part), data.settings.sfxMaxSec);
     return kept.map((row, i) => ({ item: row.item, seconds: seconds[i] }));
   }
-  /** An effect for the embedding: its name, tags and the glossary words that call it. */
+  /**
+   * An effect for the embedding: its name, the sound words it is heard as (its tags, and the glossary's words unless
+   * 「임베딩만」), when it is heard (상황), and for an example still as shipped the same in English: an onomatopoeia is
+   * Korean only, but the story around it is matched better with both.
+   */
   private describeSfx(item: SoundItem): string {
-    const words = soundData().glossary.filter(row => row.sfxKey === item.key).flatMap(row => row.terms);
-    return `${item.name} · ${soundTags([...item.tags, ...words]).join(', ')}`;
+    const words = this.glossary().filter(row => row.sfxKey === item.key).flatMap(row => row.terms);
+    const english = item.source === 'url' && item.url ? sampleSfxEnglish(item.url, item.note) : '';
+    return [item.name, `의성어: ${soundTags([...item.tags, ...words]).join(', ')}`, item.note ? `상황: ${item.note}` : '', english].filter(Boolean).join(' · ');
   }
   private async sfxFor(word: string, context: string): Promise<SoundItem | null> {
-    const item = this.known(word) || (this.noMatch().has(normalizeSoundTag(word)) ? null : (await this.resolveSfx([word], context))[0]);
+    const item = this.known(word, context) || (this.noMatch().has(normalizeSoundTag(word)) ? null : (await this.resolveSfx([word], context))[0]);
     if (item) return item;
     const data = soundData(), clean = word.trim().slice(0, 60);
     if (clean && !data.unknownTerms.includes(clean)) { data.unknownTerms = [clean, ...data.unknownTerms].slice(0, 200); await saveSoundData(); }

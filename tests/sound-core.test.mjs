@@ -135,7 +135,12 @@ test('cues join the TTS lines in order; effect words are played, not read', () =
   assert.deepEqual(order('하린 (calm): "§쾅§ 깜짝이야."'), ['sfx', 'dialogue'], 'the same inside a dialogue line');
   assert.deepEqual(order('하린 (calm):\n"놀랐잖아. §쾅§"'), ['dialogue', 'sfx'], 'and in a two-line cue');
   assert.deepEqual(rows[4].tags, ['tense', 'chase', 'fast'], 'a second cue changes the music mid-reply');
-  assert.equal(rows[2].context, '그가 문을 열었다. §문 쾅§ 소리가 울렸다.');
+  // The story an effect is matched with: its own line and the paragraphs around it, without the marks
+  // (a music cue is no paragraph). A cue alone on its line is known by its neighbours.
+  assert.equal(rows[2].context, '그가 문을 열었다. 소리가 울렸다.\n하린 (calm): "괜찮아."');
+  assert.equal(rows[5].context, '하린 (calm): "괜찮아."', 'the last cue: the paragraph before it');
+  const alone = api.parseTtsMessage('창밖이 어두워졌다.\n\n§쾅§\n\n문이 거칠게 닫혔다.', [], 1, true, { bgm: true, sfxRules: rules }).find(r => r.kind === 'sfx');
+  assert.equal(alone.context, '창밖이 어두워졌다.\n문이 거칠게 닫혔다.', 'blank lines skipped: before, then after');
   assert.equal(rows.filter(r => r.kind === 'narration').length, 1, 'a line that is only an effect is not read');
   assert.deepEqual(api.parseTtsMessage(reply).map(r => r.kind), ['narration', 'dialogue', 'narration'], 'without sound on, nothing changes');
   // Chat controls exist only for spoken lines: a cue never takes one.

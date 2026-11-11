@@ -7,21 +7,24 @@ import type { TtsCharacter } from '../../core/tts-types';
  * personality as mood tags in the words the sample voices are tagged with (청년, 소심한…).
  *
  * The prompt only names the six age-gender emoji; the model picks the personality one
- * itself, and the table below knows the common ones. One it does not know says nothing.
+ * itself. The table below knows the faces, hearts, animals and things a model reaches for; one it
+ * does not know is kept as it is, a tag of its own: a model that picks the voice reads an emoji
+ * well (only the embedding leaves it out, see voice-words.ts). Tags are the Korean words shown;
+ * they go out to a model in English.
  */
 export interface CueHint { gender?: 'female' | 'male'; tags: string[] }
 
 const ZWJ = String.fromCodePoint(0x200d), VS16 = String.fromCodePoint(0xfe0f);
 const MODIFIER = /\p{Emoji_Modifier}/u;
 
-// The voice library's ages are three, 어린이, 청년 (teens to adults) and 중년, and a few voices are 성숙한. Mature
-// (red hair, 👩‍🦰 👨‍🦰) and elderly people are both 중년 there; they say which with 성숙한 or 노인 (no voice is 노인
-// yet: one tagged so later comes first for them).
-const CHILD = ['어린이'], YOUNG = ['청년'], MATURE = ['중년', '성숙한'], ELDERLY = ['중년', '노인'];
+// The voice library's ages are six since 1.4.14: 어린이, 10대, 청년, 성인, 중년, 노인. A grown-up with red hair
+// (👩‍🦰 👨‍🦰) is a mature adult; white hair (👩‍🦳) and 👵 👴 🧓 are elderly.
+const CHILD = ['어린이'], YOUNG = ['청년'], ADULT = ['성인'], MATURE = ['성인', '성숙한'], ELDERLY = ['노인'];
 const PEOPLE: Record<string, readonly [CueHint['gender'], readonly string[]]> = {
   '👧': ['female', CHILD], '👦': ['male', CHILD], '🧒': [undefined, CHILD], '👶': [undefined, CHILD],
   '👩': ['female', YOUNG], '👨': ['male', YOUNG], '🧑': [undefined, YOUNG], '👱': [undefined, YOUNG],
   '👵': ['female', ELDERLY], '👴': ['male', ELDERLY], '🧓': [undefined, ELDERLY],
+  '🧔': ['male', ADULT], '🤵': ['male', ADULT], '👸': ['female', YOUNG], '🤴': ['male', YOUNG], '👰': ['female', YOUNG],
 };
 const PERSONALITY: Record<string, readonly string[]> = {
   '😊': ['밝은', '친근한'], '🙂': ['차분함', '친근한'], '😄': ['명랑한', '활기찬'], '😁': ['명랑한', '활기찬'],
@@ -41,8 +44,44 @@ const PERSONALITY: Record<string, readonly string[]> = {
   '🦊': ['장난기 있는', '여유로운'], '🐱': ['도도한', '귀여운'], '🐶': ['친근한', '활기찬'], '🐰': ['귀여운', '소심한'],
   '🦁': ['자신감 있는', '권위 있는'], '📚': ['지적인', '차분함'], '💼': ['전문가', '진지한'], '🍷': ['우아한', '성숙한'],
   '🎩': ['고풍스러운', '우아한'], '💋': ['섹시한'],
+  // More faces.
+  '😀': ['밝은', '명랑한'], '😃': ['밝은', '활기찬'], '😅': ['소심한', '친근한'], '🤣': ['텐션 높은', '장난기 있는'],
+  '😂': ['명랑한', '감정 표현이 풍부한'], '😉': ['장난기 있는', '능글맞은'], '🥲': ['슬픈', '부드러운'], '☺': ['수줍은', '상냥한'],
+  '😚': ['다정한', '귀여운'], '😙': ['다정한', '부드러운'], '😗': ['장난기 있는', '귀여운'], '😛': ['장난기 있는', '엉뚱한'],
+  '😜': ['장난기 있는', '엉뚱한'], '😝': ['장난기 있는', '텐션 높은'], '🤑': ['능글맞은', '자신감 있는'], '🤫': ['신비로운', '장난기 있는'],
+  '🤐': ['과묵한', '무덤덤한'], '🤨': ['냉철한', '도도한'], '😬': ['소심한', '엉뚱한'], '🤥': ['능글맞은'], '😔': ['우울한', '차분함'],
+  '🤤': ['엉뚱한', '나른한'], '😷': ['피곤한', '차분함'], '🤒': ['피곤한'], '🤕': ['피곤한'], '🤢': ['피곤한'], '🤮': ['피곤한'],
+  '🥵': ['섹시한', '열정적인'], '🥴': ['엉뚱한', '나른한'], '😵': ['엉뚱한', '허당'], '🤯': ['텐션 높은', '드라마틱'],
+  '🤠': ['당당한', '친근한'], '🥳': ['신난', '활기찬'], '🥸': ['엉뚱한', '능글맞은'], '😕': ['소심한'], '🫤': ['무덤덤한'],
+  '😟': ['소심한', '다정한'], '🙁': ['슬픈'], '☹': ['슬픈', '우울한'], '😮': ['순진한'], '😯': ['순진한', '차분함'],
+  '😲': ['감정 표현이 풍부한'], '😦': ['겁먹은'], '😧': ['겁먹은'], '😥': ['울먹이는', '부드러운'], '😱': ['겁먹은', '드라마틱'],
+  '😖': ['찡찡대는'], '😣': ['찡찡대는'], '😞': ['우울한'], '😓': ['피곤한', '소심한'], '😩': ['찡찡대는', '피곤한'], '😫': ['피곤한'],
+  '👿': ['악당', '광기'], '☠': ['어두운', '악당'], '💩': ['엉뚱한'], '👹': ['거친 목소리', '악당'], '👺': ['거친 목소리', '악당'],
+  '👻': ['장난기 있는', '신비로운'], '👽': ['신비로운', '기계적인'], '🤖': ['기계적인', '단조로운'],
+  '😺': ['명랑한', '귀여운'], '😸': ['명랑한', '장난기 있는'], '😹': ['장난기 있는'], '😻': ['다정한', '귀여운'], '😼': ['능글맞은', '도도한'],
+  '😽': ['다정한'], '🙀': ['겁먹은'], '😿': ['슬픈'], '😾': ['툴툴대는'], '🫠': ['나른한', '수줍은'], '🫢': ['수줍은', '귀여운'],
+  '🫣': ['수줍은', '소심한'], '🫥': ['무덤덤한', '과묵한'], '🫨': ['겁먹은', '텐션 높은'],
+  // Hearts, signs and things.
+  '🫶': ['다정한', '따뜻한'], '❤': ['다정한', '따뜻한'], '💕': ['다정한', '귀여운'], '💖': ['다정한', '귀여운'], '💗': ['다정한', '애교'],
+  '💓': ['다정한', '귀여운'], '💔': ['슬픈', '우울한'], '💙': ['차분함', '상냥한'], '💜': ['신비로운', '우아한'], '💚': ['친근한', '편안한'],
+  '💛': ['밝은', '명랑한'], '🧡': ['따뜻한', '친근한'], '🤍': ['순수한', '부드러운'], '✨': ['밝은', '아이돌'], '⭐': ['밝은', '자신감 있는'],
+  '🌟': ['밝은', '자신감 있는'], '⚡': ['활기찬', '텐션 높은'], '❄': ['차가운', '냉철한'], '☀': ['밝은', '활기찬'], '🌈': ['밝은', '순수한'],
+  '🌹': ['우아한', '요염한'], '🌷': ['상냥한', '부드러운'], '🍀': ['순수한', '친근한'], '🍭': ['귀여운', '애교'], '🍬': ['귀여운', '애교'],
+  '🧸': ['귀여운', '순진한'], '🎀': ['귀여운', '애교'], '🗡': ['진지한', '냉철한'], '⚔': ['진지한', '영웅적인'], '🛡': ['진지한', '위엄 있는'],
+  '🏹': ['냉철한', '차분함'], '🔫': ['냉철한', '쿨함'], '💣': ['텐션 높은', '광기'], '🎮': ['엉뚱한', '신난'], '🎸': ['쿨함', '열정적인'],
+  '🎨': ['몽환적인', '감정 표현이 풍부한'], '🎭': ['드라마틱', '감정 표현이 풍부한'], '📖': ['지적인', '차분함'], '🔬': ['지적인', '전문가'],
+  '🧪': ['지적인', '엉뚱한'], '💻': ['지적인', '무뚝뚝한'], '☕': ['차분함', '편안한'], '🍺': ['친근한', '수다스러운'], '🍻': ['친근한', '수다스러운'],
+  '🚬': ['허스키', '피곤한'], '💤': ['나른한', '피곤한'], '💢': ['화난', '툴툴대는'], '💦': ['소심한', '허당'], '🙏': ['상냥한', '존댓말'],
+  '👍': ['친근한', '당당한'], '💪': ['활기찬', '당당한'], '🫦': ['요염한', '섹시한'], '👅': ['장난기 있는', '요염한'], '👀': ['엉뚱한', '수다스러운'],
+  // Animals.
+  '🐺': ['거친 목소리', '쿨함'], '🐍': ['능글맞은', '요염한'], '🐉': ['위엄 있는', '권위 있는'], '🐲': ['위엄 있는', '권위 있는'],
+  '🦋': ['몽환적인', '우아한'], '🐻': ['다정한', '느릿느릿'], '🐼': ['귀여운', '나른한'], '🐹': ['귀여운', '소심한'], '🦄': ['몽환적인', '순수한'],
+  '🐯': ['당당한', '자신감 있는'], '🦅': ['위엄 있는', '냉철한'], '🐧': ['귀여운', '허당'], '🐸': ['엉뚱한'], '🐷': ['귀여운', '애교'],
+  '🐮': ['느릿느릿', '편안한'], '🦉': ['지적인', '차분함'], '🐦': ['명랑한', '수다스러운'], '🐟': ['무덤덤한'],
 };
 const MOST_TAGS = 4;
+/** Every tag word the table can give (each must have its English: tests/voice-variety). */
+export function cueEmojiWords(): string[] { return [...new Set([...Object.values(PEOPLE).flatMap(([, tags]) => tags), ...Object.values(PERSONALITY).flat()])]; }
 
 /** The emoji one by one: a ZWJ sequence, its variation selector and skin tone stay with it. */
 function graphemes(marks: string): string[] {
@@ -69,7 +108,9 @@ export function cueHint(marks: string | undefined): CueHint | null {
       gender = person[0] ?? (parts.includes('♀') ? 'female' : parts.includes('♂') ? 'male' : undefined);
       continue;
     }
-    for (const tag of PERSONALITY[parts[0]!] ?? []) if (!mood.includes(tag)) mood.push(tag);
+    const known = PERSONALITY[parts[0]!];
+    // One the table does not know goes as it is: whoever picks the voice reads it.
+    for (const tag of known ?? [bare(emoji)]) if (tag && !mood.includes(tag)) mood.push(tag);
   }
   // The age first, whichever emoji came first; a mood word the age already says (🍷's 성숙한) once.
   const tags = [...age, ...mood.filter(tag => !age.includes(tag))];

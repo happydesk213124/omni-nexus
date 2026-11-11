@@ -1,8 +1,9 @@
 import type { SfxRule, SfxTerm, SoundData, SoundItem, SoundKind, SoundSettings } from '../core/sound-types';
 import { soundDefaults } from '../config/sound-defaults';
-import { sampleSoundData, sampleYoutubeFor } from '../config/sound-samples';
+import { sampleSfxFor, sampleSoundData, sampleYoutubeFor } from '../config/sound-samples';
 import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
 import { psGet, psSet } from './device-store';
+import { uuid } from '../core/util/text';
 import { soundTags } from '../domain/sound/tags';
 import { sfxMarksFromPattern, sfxMarksProblem } from '../domain/sound/audio';
 
@@ -22,7 +23,7 @@ export function soundData(): SoundData {
 
 const text = (v: unknown, max = 500) => typeof v === 'string' ? v.slice(0, max) : '';
 const clamp = (n: unknown, min: number, max: number, fallback: number) => Number.isFinite(Number(n)) ? Math.max(min, Math.min(max, Number(n))) : fallback;
-const MATCHERS = ['auto', 'tag', 'embedding', 'jev', 'llm'] as const;
+const MATCHERS = ['auto', 'tag', 'embedding', 'embedding-only', 'jev', 'llm'] as const;
 
 function item(raw: unknown, kind: SoundKind): SoundItem | null {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -44,6 +45,7 @@ function item(raw: unknown, kind: SoundKind): SoundItem | null {
   if (source === 'asset' && (!text(r.assetName) || !text(r.assetPath))) return null;
   return {
     key, kind, name, tags: soundTags(Array.isArray(r.tags) ? r.tags.map(String) : []), folder: text(r.folder, 80), source,
+    ...(text(r.note, 300).trim() ? { note: text(r.note, 300).trim() } : {}),
     ...(source === 'url' ? { url } : source === 'youtube' ? { url, ...(fallbackUrl ? { fallbackUrl } : {}) } : { assetName: text(r.assetName), assetPath: text(r.assetPath) }),
     ...(text(r.mime, 40) ? { mime: text(r.mime, 40) } : {}), ...(Number.isFinite(Number(r.bytes)) ? { bytes: Number(r.bytes) } : {}),
   };
@@ -75,6 +77,8 @@ export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettin
   const embed = (s.embed && typeof s.embed === 'object' ? s.embed : {}) as Partial<SoundSettings['embed']>;
   s.embed = { provider: text(embed.provider, 40) || d.embed.provider, model: text(embed.model, 200).trim() || d.embed.model, endpoint: text(embed.endpoint, 500).trim(), key: text(embed.key, 4000).trim() }; s.sfxPrompt = text(s.sfxPrompt, 400) || d.sfxPrompt;
   for (const key of ['bgmMatcher', 'sfxMatcher'] as const) if (!MATCHERS.includes(s[key])) s[key] = d[key];
+  // Embedding alone is a way of matching effects; BGM has no glossary to leave out, so it is the embedding step.
+  if (s.bgmMatcher === 'embedding-only') s.bgmMatcher = 'embedding';
   if (s.sfxAutoPlay !== 'reply' && s.sfxAutoPlay !== 'button') s.sfxAutoPlay = d.sfxAutoPlay;
   if (!['tags', 'message', 'both'].includes(s.bgmBasis)) s.bgmBasis = d.bgmBasis;
   s.bgmTags = soundTags(Array.isArray(s.bgmTags) ? s.bgmTags : d.bgmTags); if (!s.bgmTags.length) s.bgmTags = d.bgmTags;
@@ -91,11 +95,32 @@ export function normalizeSoundData(raw: unknown): SoundData {
   // not a choice: it is moved to on once; one saved since is the reader's and stays.
   if (!(Number(r.version) >= 2)) settings.youtubeHidden = true;
   return {
-    version: 2, settings,
+    version: 3, settings,
     bgm: list(r.bgm, 'bgm'), sfx: list(r.sfx, 'sfx'),
     glossary: (Array.isArray(r.glossary) ? r.glossary : []).map(term).filter((x): x is SfxTerm => !!x),
     unknownTerms: names(r.unknownTerms).slice(0, 200), folders: { bgm: names(folders.bgm), sfx: names(folders.sfx) },
   };
+}
+/**
+ * Version 3 (1.4.14): the example effects learned the sound words they are heard as and their 상황, and 18 more
+ * came (숨소리, 찔걱찔걱, 맨살 찰싹, 삐걱임…). A save from before keeps every word and 상황 it has and takes the
+ * shipped ones it lacks; a save that still holds example effects gets the new ones too. One whose effects are all
+ * the reader's own (or none) gets nothing added. True when something changed.
+ */
+export function upgradeSampleSfx(data: SoundData): boolean {
+  let changed = false;
+  const own = new Set(data.sfx.map(item => item.url));
+  for (const item of data.sfx) {
+    const sample = item.source === 'url' && item.url ? sampleSfxFor(item.url) : undefined;
+    if (!sample) continue;
+    const tags = soundTags([...item.tags, ...sample.tags]);
+    if (tags.length !== item.tags.length) { item.tags = tags; changed = true; }
+    if (!item.note && sample.note) { item.note = sample.note; changed = true; }
+  }
+  if (!data.sfx.some(item => item.url && sampleSfxFor(item.url))) return changed;
+  const fresh = normalizeSoundData({ sfx: sampleSoundData().sfx }).sfx.filter(item => !own.has(item.url));
+  for (const item of fresh) { data.sfx.push({ ...item, key: uuid() }); if (item.folder && !data.folders.sfx.includes(item.folder)) data.folders.sfx.push(item.folder); }
+  return changed || fresh.length > 0;
 }
 export function loadSoundData(): Promise<SoundData> {
   if (state) return Promise.resolve(state);
@@ -103,7 +128,9 @@ export function loadSoundData(): Promise<SoundData> {
     const raw = await psGet(SOUND_DATA_KEY);
     // Nothing saved yet is a first run: it starts with the example lists. A save
     // whose lists were emptied is not, so the examples never come back by themselves.
-    state = normalizeSoundData(raw == null || raw === '' ? sampleSoundData() : typeof raw === 'string' ? JSON.parse(raw) : raw);
+    const first = raw == null || raw === '', value = first ? sampleSoundData() : typeof raw === 'string' ? JSON.parse(raw) : raw;
+    state = normalizeSoundData(value);
+    if (!first && !(Number((value as { version?: unknown })?.version) >= 3) && upgradeSampleSfx(state)) void saveSoundData().catch(() => {});
     return state;
   })().finally(() => { loading = undefined; });
 }
