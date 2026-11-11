@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.15';
+const PLUGIN_VERSION = '1.4.16';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -996,6 +996,16 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.4.16 · BGM이 같은 곡만 돌지 않게: 태그로 추리고 장면으로 고릅니다</strong>
+          <div class="muted" style="margin-top:8px">2026.11.11 · 같은 태그면 늘 목록 앞쪽 세 곡만 나오던 것을 고쳤습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>원인</strong>: 태그는 30종인데 예제 곡은 187곡이라, 한 큐의 태그와 똑같이 많이 겹치는 곡이 평균 13곡쯤 됩니다. 그중 목록 순서로 앞의 세 곡에서만 뽑았습니다.</li>
+            <li><strong>태그로 추리기</strong>: 태그가 가장 많이 겹치는 곡을 모두 후보로 두고(10곡 넘으면 무작위 10곡), 모자라면 태그 하나만 다른 곡을 채웁니다. 이때 큐가 말한 분위기(romantic, scary …)가 없는 곡은 넣지 않습니다.</li>
+            <li><strong>장면으로 고르기</strong>: 임베딩이 설정돼 있으면(곡 고르는 방식 자동·임베딩) 큐 바로 뒤 400자를 후보 곡의 이름·태그·「상황」과 비교해, 가장 가까운 곡과 점수가 비슷한 곡들 중에서 고릅니다. 요청은 큐 하나에 짧은 글 한 번이고, 같은 큐는 다시 묻지 않습니다. 임베딩이 없으면 후보 중에서 무작위로 고릅니다.</li>
+            <li><strong>곡의 「상황」</strong>: 예제 187곡에 어떤 장면에 어울리는지 적었습니다(BGM 수정 창에서 고칠 수 있음). 전에 저장한 예제 곡에도 채워지고, 직접 적은 상황은 그대로 둡니다. 직접 넣은 곡은 「상황」을 적어 주면 같은 방식으로 고릅니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.4.15 · ⚡ 빠른 설정을 새로 만들었습니다</strong>
@@ -15459,7 +15469,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

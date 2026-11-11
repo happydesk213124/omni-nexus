@@ -3,12 +3,12 @@ import { uuid } from '../core/util/text';
 import { dbg } from '../core/debug';
 import { SoundPlayer } from '../providers/sound/player';
 import { AUDIO_EXTENSIONS, sfxMarksProblem, sniffAudioMime } from '../domain/sound/audio';
-import { BGM_DRAW, drawBgm, exactSfx, glossarySfx, guessSfx, pickBgm } from '../domain/sound/match';
+import { BGM_DRAW, bgmPool, drawBgm, drawBgmByScene, drawBgmFromPool, exactSfx, glossarySfx, guessSfx, tagScore } from '../domain/sound/match';
 import { suggestSfx } from '../domain/sound/find';
-import { embedPickSfx, embedRank, soundEmbedSettings } from '../providers/sound/embed';
+import { embedPickSfx, embedRank, embedScores, soundEmbedSettings } from '../providers/sound/embed';
 import { sampleSfxEnglish } from '../config/sound-samples';
 import { ELEVEN_PACK, ELEVEN_PACK_FOLDER, type ElevenPackItem } from '../config/sound-eleven-pack';
-import { normalizeSoundTag, soundTags } from '../domain/sound/tags';
+import { BGM_CUE_SCENE_MAX, normalizeSoundTag, soundTags } from '../domain/sound/tags';
 import { loadSoundData, saveSoundData, soundData, soundReady, subscribeSound, updateSoundSettings } from '../storage/sound-store';
 import { ensureSoundModules, storeSoundBytes } from '../storage/sound-module';
 import { omniTts, type TtsSoundCuePlayer } from './tts-runtime';
@@ -64,11 +64,17 @@ export class OmniSoundRuntime {
     this.prefetching = run;
     return run;
   }
-  /** The tracks a reply's tags would play, fetched before reading reaches them. */
-  prefetchBgmForTags(tagSets: ReadonlyArray<readonly string[]>): void {
+  /**
+   * The tracks the cues on screen would play, fetched before reading reaches them: the latest few only, one after
+   * another (each pick with a scene may ask the embedding once), and the pick is remembered so the cue plays it.
+   */
+  prefetchBgmForTags(cues: ReadonlyArray<{ tags: readonly string[]; scene?: string }>): void {
     if (!soundReady() || !soundData().settings.bgmEnabled) return;
-    const picks = tagSets.map(tags => soundData().bgm.find(item => item.key === pickBgm(tags, soundData().bgm, '').key)).filter((item): item is SoundItem => !!item);
-    if (picks.length) void this.prefetchBgm(picks);
+    void (async () => {
+      const picks: SoundItem[] = [];
+      for (const cue of cues.slice(-BGM_PREFETCH_CUES)) { const key = await this.bgmForTags(cue.tags, cue.scene || '', ''); const item = soundData().bgm.find(row => row.key === key); if (item) picks.push(item); }
+      if (picks.length) await this.prefetchBgm(picks);
+    })().catch(error => dbg('bgm.prefetch.pick', { message: String((error as Error)?.message || error).slice(0, 160) }, 'warn'));
   }
   /** The viewer list opened: the tracks before and after the current one. */
   prefetchBgmAround(key: string): void {
@@ -270,7 +276,7 @@ export class OmniSoundRuntime {
     play: async request => {
       if (request.segment.kind !== 'bgm') return;
       const tags = request.segment.tags ?? soundTags(request.segment.text);
-      if (soundData().settings.bgmBasis === 'tags') { await this.playBgmForTags(tags); return; }
+      if (soundData().settings.bgmBasis === 'tags') { await this.playBgmForTags(tags, request.segment.context || ''); return; }
       // 메시지 문장 전체 (+ 태그): the row is where the music changes; the reply's text picks it.
       const message = request.context.messages.find(row => String(row.chatId || row.id || '') === request.messageId);
       await this.playBgmForReply(String(message?.data ?? ''), tags);
@@ -310,7 +316,7 @@ export class OmniSoundRuntime {
     if (m === 'jev' || m === 'llm') steps.push(() => chooseBgm(scene, items, m, tts, tags));
     else {
       if (m !== 'embedding' && jev) steps.push(() => chooseBgm(scene, items, 'jev', tts, tags));
-      if (embed) steps.push(async () => (await embedRank(`${tags.length ? `BGM 태그: ${tags.join(', ')}\n` : ''}${scene}`, items, item => `${item.name}: ${item.tags.join(', ')}`, embed, BGM_DRAW)).map(item => item.key));
+      if (embed) steps.push(async () => (await embedRank(`${tags.length ? `BGM 태그: ${tags.join(', ')}\n` : ''}${scene}`, items, describeBgm, embed, BGM_DRAW)).map(item => item.key));
       if (m === 'auto' || (m === 'tag' && !jev)) steps.push(() => chooseBgm(scene, items, 'llm', tts, tags));
       if (m === 'embedding' && !embed) throw new Error('임베딩이 설정되지 않았습니다. TTS·BGM·JEV 모델 설정의 임베딩 키를 넣어 주세요.');
     }
@@ -330,21 +336,48 @@ export class OmniSoundRuntime {
    * when it has none), always its text, or its text with its tags as a hint.
    * Never turns BGM on by itself.
    */
-  async playBgmForReply(reply: string, tags?: readonly string[]): Promise<string> {
+  async playBgmForReply(reply: string, tags?: readonly string[], scene = ''): Promise<string> {
     const s = soundData().settings;
     if (!s.bgmEnabled || !soundData().bgm.length) return '';
-    if (s.bgmBasis === 'tags' && tags?.length) return this.playBgmForTags(tags);
+    if (s.bgmBasis === 'tags' && tags?.length) return this.playBgmForTags(tags, scene);
     const item = await this.bgmForText(reply, s.bgmBasis === 'both' ? tags ?? [] : []);
     await this.play(item);
     return item.key;
   }
-  /** BGM for a reply's tags; free word matching first. Returns the key that plays. */
-  async playBgmForTags(tags: readonly string[]): Promise<string> {
+  /** BGM for a cue's tags and the scene after it (bgmForTags). Returns the key that plays. */
+  async playBgmForTags(tags: readonly string[], scene = ''): Promise<string> {
     if (!soundData().settings.bgmEnabled) return '';
-    const pick = pickBgm(tags, soundData().bgm, this.player.bgmKey);
-    const item = soundData().bgm.find(row => row.key === pick.key);
+    const key = await this.bgmForTags(tags, scene, this.player.bgmKey);
+    const item = soundData().bgm.find(row => row.key === key);
     if (item) await this.play(item);
     return item?.key || '';
+  }
+  /** A cue's pick, by its tags and scene: fetching ahead and playing agree, and the cue played again is the same song. */
+  private cuePicks = new Map<string, Promise<string>>();
+  /**
+   * The track for a cue's tags. The one playing stays while no other shares more tags. Else the tags leave a pool
+   * (bgmPool: the ten that share the most), and in it the scene picks: with an embedding set up and 곡 고르는 방식 on
+   * 자동 or 임베딩, the start of what follows the cue is compared with each track's name, tags and 상황, and the song
+   * is drawn among the nearest. With no embedding, no scene, or a failed request, it is drawn from the pool.
+   */
+  private async bgmForTags(tags: readonly string[], scene: string, current: string): Promise<string> {
+    const s = soundData().settings, items = soundData().bgm, playing = items.find(item => item.key === current);
+    const pool = bgmPool(tags, items);
+    if (!pool.rows.length) return current;
+    if (playing && tagScore(tags, playing) >= pool.best) return current;
+    const text = scene.replace(/\s+/g, ' ').trim().slice(0, BGM_CUE_SCENE_MAX), memo = text ? JSON.stringify([tags, text]) : '';
+    const kept = memo ? await this.cuePicks.get(memo)?.catch(() => '') : '';
+    if (kept && items.some(item => item.key === kept)) return kept;
+    const pick = (async () => {
+      const embed = text && pool.rows.length > 1 && (s.bgmMatcher === 'auto' || s.bgmMatcher === 'embedding') ? soundEmbedSettings(s, ttsData().settings) : null;
+      if (embed) {
+        try { const key = drawBgmByScene(pool, await embedScores(`장면: ${text}`, pool.rows.map(row => describeBgm(row.item)), embed)); if (key) return key; }
+        catch (error) { dbg('bgm.scene', { message: String((error as Error)?.message || error).slice(0, 160) }, 'warn'); }
+      }
+      return drawBgmFromPool(pool);
+    })();
+    if (memo) { this.cuePicks.set(memo, pick); while (this.cuePicks.size > 100) this.cuePicks.delete(this.cuePicks.keys().next().value!); }
+    return pick;
   }
   private creating = new Map<string, Promise<SoundItem | null>>();
   /** Teaches the glossary that `word` means the effect `key`. */
@@ -550,6 +583,10 @@ export class OmniSoundRuntime {
     return null;
   }
 }
+/** A track as the embedding reads it: its name, folder, tags and 상황 (the scene it suits). */
+export const describeBgm = (item: SoundItem): string => [item.name, item.folder, item.tags.join(', '), item.note ? `상황: ${item.note}` : ''].filter(Boolean).join(' · ');
+/** How many of the cues on screen have their track fetched ahead: the latest ones, where reading is. */
+const BGM_PREFETCH_CUES = 4;
 export const omniSound = new OmniSoundRuntime();
 
 /** A YouTube video's title, for a link added without a name ('' when YouTube does not say). */

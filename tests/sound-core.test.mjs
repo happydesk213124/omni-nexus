@@ -36,14 +36,14 @@ test('BGM pick: shared tags decide, the current track stays unless another is st
   const items = [item('chase', ['tense', 'chase', 'fast']), item('calm-day', ['calm', 'daily', 'slow']), item('night', ['tense', 'night', 'slow'])];
   const first = () => 0, last = () => 0.999;
   assert.deepEqual(api.pickBgm(['긴박', '추격', '빠른'], items, '', first), { key: 'chase', score: 3, reason: 'switch' });
-  assert.deepEqual(api.pickBgm(['긴박', '추격', '빠른'], items, '', last), { key: 'night', score: 1, reason: 'switch' }, 'a new song is drawn from the best ranked, not always the first');
+  assert.deepEqual(api.pickBgm(['긴박', '추격', '빠른'], items, '', last), { key: 'chase', score: 3, reason: 'switch' }, 'a track sharing one tag of the three is no candidate (it once was, as one of the first three)');
   // One tag in common with the current song, one with another: keep playing.
   assert.equal(api.pickBgm(['tense', 'school', 'mid'], items, 'night', last).key, 'night');
   assert.equal(api.pickBgm(['tense', 'night', 'slow'], items, 'chase', first).key, 'night', 'a strictly better match switches');
-  // Only the top three are drawn from.
+  // The pool: the track with all three tags and the one a single tag short (with the mood); those sharing one are out.
   const many = [...items, item('rain', ['tense']), item('storm', ['tense', 'night'])];
   const drawn = new Set(Array.from({ length: 20 }, (_, i) => api.pickBgm(['tense', 'night', 'slow'], many, '', () => i / 20).key));
-  assert.deepEqual([...drawn].sort(), ['chase', 'night', 'storm'], 'the three best (night 3, storm 2, then the first of the 1s), never a fourth');
+  assert.deepEqual([...drawn].sort(), ['night', 'storm'], 'night 3 and storm 2; chase, calm-day and rain share one tag');
   // A ranking from JEV, embedding or the LLM: the current song stays when it ranks first, else one of the three is drawn.
   assert.equal(api.drawBgm(['a', 'b', 'c', 'd'], 'a', last), 'a');
   assert.equal(api.drawBgm(['a', 'b', 'c', 'd'], 'c', last), 'c', 'drawn among the three');

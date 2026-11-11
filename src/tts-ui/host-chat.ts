@@ -161,7 +161,7 @@ async function mountTtsHost(host: NonNullable<ReturnType<typeof risuHost>>): Pro
       if (segment.kind === 'bgm') {
         // ♪ spins until the track is fetched and playing.
         await b.node.setAttribute('x-omnitts-state', 'loading');
-        try { if (!await omniSound.playBgmForTags(segment.tags || [])) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); }
+        try { if (!await omniSound.playBgmForTags(segment.tags || [], segment.context || '')) throw new Error(soundData().bgm.length ? '이 태그에 맞는 BGM이 없습니다.' : '등록된 BGM이 없습니다. BGM·효과음에서 추가해 주세요.'); }
         finally { await b.node.setAttribute('x-omnitts-state', ''); }
         return;
       }
@@ -281,7 +281,7 @@ async function mountTtsHost(host: NonNullable<ReturnType<typeof risuHost>>): Pro
       if (effects.length) void omniSound.prepareEffects(effects.map(r => ({ text: r.segment.text, context: r.segment.context || '' }))).catch(error => console.warn('OmniSound prepare', error));
       // The tracks the [[bgm:…]] cues on screen would play are fetched before reading reaches them.
       const cues = [...perMessage.values()].flat().filter(r => r.segment.kind === 'bgm' && r.segment.tags?.length);
-      if (cues.length) omniSound.prefetchBgmForTags(cues.map(r => r.segment.tags!));
+      if (cues.length) omniSound.prefetchBgmForTags(cues.map(r => ({ tags: r.segment.tags!, scene: r.segment.context || '' })));
       for (const node of await safeArray(await doc.querySelectorAll('[data-omnitts-image] [data-omnitts-play],[x-omnitts-image] [x-omnitts-play]'))) live.add(await bind(node, true));
       for (const [key,b] of bindings) if (!live.has(key)) { await releaseHost(b.node);for (const chip of b.chips) await releaseHost(chip.node); bindings.delete(key); }
       nearby.sort((a,b)=>a.distance-b.distance);
@@ -398,7 +398,7 @@ async function mountTtsHost(host: NonNullable<ReturnType<typeof risuHost>>): Pro
       // The reply's music starts now, unless continuous reading reaches its cue itself.
       // With no [[bgm:…]] tag (or with 「메시지 문장 전체」) the reply's text picks the track.
       const bgm=list.find(r=>r.segment.kind==='bgm');
-      if (soundReady() && !(bgm && reads&&s.continuous&&soundData().settings.listBgm)) void omniSound.playBgmForReply(String(context.messages[index]?.data||''),bgm?.segment.tags).catch(report);
+      if (soundReady() && !(bgm && reads&&s.continuous&&soundData().settings.listBgm)) void omniSound.playBgmForReply(String(context.messages[index]?.data||''),bgm?.segment.tags,bgm?.segment.context||'').catch(report);
       // 옴니 뷰어 voices the reply as it is read there (and the chat is behind it): nothing is read from here.
       if (!reads || viewerCovering()) { schedule(); return; }
       // Let Risu render the reply first so panels other modules drew are skipped.

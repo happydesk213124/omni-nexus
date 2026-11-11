@@ -114,6 +114,8 @@ export class SoundLibrary {
     text('snd-item-title', item ? `${LABEL[this.kind]} 수정` : `${LABEL[this.kind]} 추가`);
     text('snd-item-save', item ? '저장' : '추가');
     set('snd-item-name', item?.name || ''); set('snd-item-tags', item?.tags.join(', ') || ''); set('snd-item-note', item?.note || '');
+    text('snd-item-note-label', this.kind === 'bgm' ? '상황 · 어떤 장면에 어울리는 곡인지 (임베딩이 이름·태그와 함께 읽습니다)' : '상황 · 언제 나는 소리인지 (임베딩이 이름·태그와 함께 읽습니다)');
+    input('snd-item-note').placeholder = this.kind === 'bgm' ? '비 오는 밤 창가, 쓸쓸한 둘만의 시간' : '화가 나 문을 세게 닫음';
     el('snd-item-terms-wrap').hidden = this.kind !== 'sfx'; set('snd-item-terms', item && this.kind === 'sfx' ? wordsFor(item.key).join(', ') : '');
     const folder = el<HTMLSelectElement>('snd-item-folder');
     folder.innerHTML = ['', ...soundData().folders[this.kind]].map(name => `<option value="${esc(name)}">${esc(name || '미분류')}</option>`).join('');

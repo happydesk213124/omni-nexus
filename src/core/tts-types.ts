@@ -67,7 +67,7 @@ export interface TtsSegment {
   spoken?: string;
   /** A BGM cue's tags. */
   tags?: string[];
-  /** An effect's line, for JEV/LLM when the word is new. */
+  /** An effect's line with the paragraphs around it, for matching a new word; a BGM cue's scene (what follows it). */
   context?: string;
   start: number;
   end: number;

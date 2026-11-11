@@ -32,7 +32,7 @@ test('a save from before 1.4.14: example effects take the shipped words and 상�
     { key: 'own', name: '내 효과음', tags: ['뿅'], folder: '', source: 'url', url: 'https://example.com/own.mp3' },
   ], folders: { bgm: [], sfx: ['문'] } };
   const data = api.normalizeSoundData(old);
-  assert.equal(data.version, 3);
+  assert.equal(data.version, 4);
   assert.equal(api.upgradeSampleSfx(data), true);
   const kept = data.sfx.find(item => item.key === 'mine');
   assert.ok(kept.tags.includes('내 단어') && kept.tags.includes('콰앙'), kept.tags.join(','));

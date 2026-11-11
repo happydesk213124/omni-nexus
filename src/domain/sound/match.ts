@@ -1,5 +1,5 @@
 import type { SfxTerm, SoundItem } from '../../core/sound-types';
-import { normalizeSoundTag } from './tags';
+import { BGM_MOOD_TAGS, normalizeSoundTag } from './tags';
 
 /** Shared vocabulary tags between what a reply asks for and what an item carries. */
 export function tagScore(wanted: readonly string[], item: Pick<SoundItem, 'tags' | 'name'>): number {
@@ -17,18 +17,65 @@ export function drawBgm(ranked: readonly string[], currentKey = '', random: () =
   const top = ranked.slice(0, BGM_DRAW);
   return top[Math.min(top.length - 1, Math.floor(random() * top.length))]!;
 }
+/** How many tracks a cue's music is picked among. */
+export const BGM_POOL = 10;
+/** Scene scores (cosine) this close to the best are as good as it: the song is drawn among them. */
+export const BGM_NEAR = 0.03;
+/** What a track one tag short of the best gives away in its scene score. */
+export const BGM_TAG_STEP = 0.03;
+export interface BgmCandidate { item: SoundItem; score: number }
+export interface BgmPool { best: number; rows: BgmCandidate[] }
+/** `count` of the list, each as likely as another; all of it, in its order, when it has no more. */
+function sample<T>(list: readonly T[], count: number, random: () => number): T[] {
+  if (list.length <= count) return [...list];
+  const rest = [...list], out: T[] = [];
+  while (out.length < count) out.push(rest.splice(Math.min(rest.length - 1, Math.floor(random() * rest.length)), 1)[0]!);
+  return out;
+}
+/**
+ * The tracks a cue's tags leave to pick among, ten at most: every one that shares the most tags, then the ones a
+ * single tag short. With thirty tags and a few hundred tracks a dozen share the most, and the first three of the
+ * list once took every cue; past ten they are drawn, so each is as likely as another.
+ * A track a tag short joins only when all three tags met somewhere (it still shares two) and it has every mood the
+ * cue asks for: `romantic, night, slow` never brings a `scary, night, slow`.
+ */
+export function bgmPool(wanted: readonly string[], items: readonly SoundItem[], random: () => number = Math.random, limit = BGM_POOL): BgmPool {
+  const scored = items.map(item => ({ item, score: tagScore(wanted, item) })).filter(row => row.score > 0);
+  const best = scored.reduce((most, row) => Math.max(most, row.score), 0);
+  if (!best) return { best: 0, rows: [] };
+  const top = scored.filter(row => row.score === best);
+  if (top.length >= limit || best < 3) return { best, rows: sample(top, limit, random) };
+  const moods = [...new Set(wanted.map(normalizeSoundTag))].filter(tag => BGM_MOOD_TAGS.has(tag));
+  const near = scored.filter(row => row.score === best - 1 && moods.every(mood => row.item.tags.some(tag => normalizeSoundTag(tag) === mood)));
+  return { best, rows: [...top, ...sample(near, limit - top.length, random)] };
+}
+/** One of the pool by its tags alone: each as likely as another. */
+export function drawBgmFromPool(pool: BgmPool, random: () => number = Math.random): string {
+  const rows = pool.rows;
+  return rows.length ? rows[Math.min(rows.length - 1, Math.floor(random() * rows.length))]!.item.key : '';
+}
+/**
+ * One of the pool by the scene: `scenes[i]` is how near the scene lies to the pool's i-th track (cosine). A track a
+ * tag short gives away BGM_TAG_STEP; the song is drawn among those within BGM_NEAR of the best, so the scene decides
+ * and the same scene still need not always get the same song.
+ */
+export function drawBgmByScene(pool: BgmPool, scenes: readonly number[], random: () => number = Math.random): string {
+  const rows = pool.rows.map((row, i) => ({ key: row.item.key, score: (Number(scenes[i]) || 0) - (pool.best - row.score) * BGM_TAG_STEP }));
+  const best = rows.reduce((most, row) => Math.max(most, row.score), -Infinity);
+  const near = rows.filter(row => row.score >= best - BGM_NEAR);
+  return near.length ? near[Math.min(near.length - 1, Math.floor(random() * near.length))]!.key : '';
+}
 /**
  * Picks the BGM for a reply's tags. The current track stays unless another one
  * shares strictly more tags — a scene does not need a new song every reply. A new
- * one is drawn from the three that share the most.
+ * one is drawn from the pool (bgmPool).
  */
 export function pickBgm(wanted: readonly string[], items: readonly SoundItem[], currentKey = '', random: () => number = Math.random): BgmPick {
-  const scored = items.map(item => ({ item, score: tagScore(wanted, item) })).filter(row => row.score > 0);
-  const current = scored.find(row => row.item.key === currentKey);
-  const ranked = scored.sort((a, b) => b.score - a.score), best = ranked[0];
-  if (!best) return { key: currentKey, score: 0, reason: currentKey ? 'keep' : 'none' };
-  if (current && current.score >= best.score) return { key: current.item.key, score: current.score, reason: 'keep' };
-  const key = drawBgm(ranked.map(row => row.item.key), '', random), chosen = ranked.find(row => row.item.key === key)!;
+  const pool = bgmPool(wanted, items, random), current = items.find(item => item.key === currentKey);
+  if (!pool.rows.length) return { key: currentKey, score: 0, reason: currentKey ? 'keep' : 'none' };
+  const held = current ? tagScore(wanted, current) : 0;
+  if (current && held >= pool.best) return { key: current.key, score: held, reason: 'keep' };
+  const key = drawBgmFromPool(pool, random), chosen = pool.rows.find(row => row.item.key === key)!;
   return { key, score: chosen.score, reason: key === currentKey ? 'keep' : 'switch' };
 }
 /** Several equally good tracks: the matcher hands only these to embedding/JEV. */

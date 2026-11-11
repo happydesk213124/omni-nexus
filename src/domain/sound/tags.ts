@@ -3,9 +3,17 @@
  * line before the part of a reply where the music changes, `[[bgm:tense,chase,fast]]`; items carry tags from the
  * same list, so plain word matching settles almost every reply for free.
  */
+const MOODS = ['calm', 'happy', 'sad', 'tense', 'scary', 'romantic', 'mysterious', 'epic', 'comedic', 'melancholic', 'hopeful', 'dark', 'cute'] as const;
+/** The mood words of the vocabulary: a track that lacks the mood a cue asks for is another kind of song. */
+export const BGM_MOOD_TAGS: ReadonlySet<string> = new Set(MOODS);
+/**
+ * How much of the reply after a `[[bgm:…]]` cue is the scene its music is picked by. The cue stands just before the
+ * lines it scores, so the start says what the scene is; the embedding is asked with this much and no more.
+ */
+export const BGM_CUE_SCENE_MAX = 400;
 export const BGM_TAGS: readonly string[] = Object.freeze([
   // mood
-  'calm', 'happy', 'sad', 'tense', 'scary', 'romantic', 'mysterious', 'epic', 'comedic', 'melancholic', 'hopeful', 'dark', 'cute',
+  ...MOODS,
   // place / situation
   'daily', 'school', 'city', 'night', 'nature', 'rain', 'cafe', 'home', 'battle', 'chase', 'dungeon', 'festival', 'fantasy', 'scifi',
   // tempo

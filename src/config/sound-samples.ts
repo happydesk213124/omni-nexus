@@ -15,6 +15,8 @@ import { youtubeWatchUrl } from '../domain/sound/youtube';
  * a Risu where YouTube cannot play. Effects: Google's Actions sound library
  * (actions.google.com).
  *
+ * Each track carries 상황 (`note`: the scene it suits), which the embedding reads next to its name and tags when a
+ * cue's tags leave several tracks to pick among.
  * Each effect carries the sound words it is heard as (its tags), 상황 (`note`: when it is heard, shown and saved)
  * and `en`, the same in English, which is never saved: the embedding reads it next to the Korean while the
  * effect's 상황 is still the one shipped (sampleSfxEnglish).
@@ -40,6 +42,10 @@ export function sampleSfxEnglish(url: string, note: string | undefined): string 
   const sample = SFX_BY_URL.get(url);
   return sample?.en && note === sample.note ? sample.en : '';
 }
+
+const BGM_BY_LINK = new Map(SOUND_SAMPLES.bgm.items.flatMap(item => [[item.url, item] as const, ...(item.youtube ? [[youtubeWatchUrl(item.youtube), item] as const] : [])]));
+/** An example track by its link (its file, or its YouTube video): its shipped 상황, for a save made before it was there. */
+export const sampleBgmFor = (...links: Array<string | undefined>): SampleItem | undefined => { for (const link of links) { const hit = link ? BGM_BY_LINK.get(link) : undefined; if (hit) return hit; } return undefined; };
 
 /** An example track's YouTube video, by the file link it was saved with before the examples moved to YouTube. */
 const SAMPLE_YOUTUBE = new Map(SOUND_SAMPLES.bgm.items.flatMap(item => item.youtube ? [[item.url, item.youtube] as const] : []));

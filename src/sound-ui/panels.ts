@@ -80,7 +80,7 @@ ${library('sfx', '효과음')}
 export const SOUND_DIALOG = `<dialog id="snd-move-dialog"><h2>폴더 이동</h2><label class="field"><span>옮길 폴더</span><select id="snd-move-target"></select></label><div class="dialog-actions"><button type="button" id="snd-move-cancel">취소</button><button type="button" id="snd-move-confirm" class="primary">이동</button></div></dialog><dialog id="snd-item-dialog" class="editor-sheet"><form id="snd-item-form"><div class="dialog-head"><span id="snd-item-title">추가</span></div><div class="editor-scroll"><div class="fields">
 <label class="field full"><span>이름</span><input id="snd-item-name" maxlength="120"></label>
 <label class="field full"><span>태그 · 쉼표로 구분</span><input id="snd-item-tags" maxlength="500" placeholder="tense, chase, fast"></label>
-<label class="field full"><span>상황 · 언제 나는 소리인지 (임베딩이 이름·태그와 함께 읽습니다)</span><input id="snd-item-note" maxlength="300" placeholder="화가 나 문을 세게 닫음"></label>
+<label class="field full"><span id="snd-item-note-label">상황 · 언제 나는 소리인지 (임베딩이 이름·태그와 함께 읽습니다)</span><input id="snd-item-note" maxlength="300" placeholder="화가 나 문을 세게 닫음"></label>
 <label class="field"><span>폴더</span><select id="snd-item-folder"></select></label>
 <label class="field full" id="snd-item-terms-wrap" hidden><span>용어집 단어 · 이 말이 나오면 이 효과음 (쉼표로 구분)</span><input id="snd-item-terms" maxlength="500" placeholder="쾅, 콰앙, 쿵"></label>
 <label class="field"><span>등록 방식</span><select id="snd-item-source"><option value="url">오디오 파일 주소 (https)</option><option value="file">파일 직접 등록 (모듈에 저장)</option><option value="eleven">ElevenLabs로 만들기 (유료)</option></select></label>

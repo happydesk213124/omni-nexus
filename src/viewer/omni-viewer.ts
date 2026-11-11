@@ -454,12 +454,12 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
  * redraws the chat. Paused here, the reply's music cues wait; playing on picks up
  * the latest of them, else the music that was paused.
  */
-let bgmHeld = false, heldTags: string[] | null = null;
+let bgmHeld = false, heldTags: string[] | null = null, heldScene = '';
 async function toggleMusic(): Promise<void> {
   if (omniSound.player.bgmPlaying) { omniSound.player.pauseBgm(); bgmHeld = true; return; }
   bgmHeld = false;
   const tags = heldTags; heldTags = null;
-  if (tags) await omniSound.playBgmForTags(tags); else await omniSound.toggleBgm();
+  if (tags) await omniSound.playBgmForTags(tags, heldScene); else await omniSound.toggleBgm();
 }
 /** Cues up to this scene that have not played: the music changes and effects sound where they are written. */
 function playCues(scene: ViewerScene): void {
@@ -468,9 +468,9 @@ function playCues(scene: ViewerScene): void {
     fired.add(cue.id);
     const tags = (cue as TtsSegment & { tags?: string[] }).tags;
     if (cue.kind === 'bgm' && tags?.length) {
-      if (bgmHeld) heldTags = tags;
+      if (bgmHeld) { heldTags = tags; heldScene = cue.context || ''; }
       // The music starts after the scene's style text went out: the BGM button catches up.
-      else void omniSound.playBgmForTags(tags).then(() => restyle()).catch(error => dbg('viewer.bgm', { message: String(error) }, 'warn'));
+      else void omniSound.playBgmForTags(tags, cue.context || '').then(() => restyle()).catch(error => dbg('viewer.bgm', { message: String(error) }, 'warn'));
     }
     // Only an effect at this scene sounds: ones passed over by a jump are not replayed.
     // 효과음 off: passed over, never kept for later.

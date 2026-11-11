@@ -1,6 +1,6 @@
 import type { SfxRule, SfxTerm, SoundData, SoundItem, SoundKind, SoundSettings } from '../core/sound-types';
 import { soundDefaults } from '../config/sound-defaults';
-import { sampleSfxFor, sampleSoundData, sampleYoutubeFor } from '../config/sound-samples';
+import { sampleBgmFor, sampleSfxFor, sampleSoundData, sampleYoutubeFor } from '../config/sound-samples';
 import { youtubeVideoId, youtubeWatchUrl } from '../domain/sound/youtube';
 import { psGet, psSet } from './device-store';
 import { uuid } from '../core/util/text';
@@ -95,7 +95,7 @@ export function normalizeSoundData(raw: unknown): SoundData {
   // not a choice: it is moved to on once; one saved since is the reader's and stays.
   if (!(Number(r.version) >= 2)) settings.youtubeHidden = true;
   return {
-    version: 3, settings,
+    version: 4, settings,
     bgm: list(r.bgm, 'bgm'), sfx: list(r.sfx, 'sfx'),
     glossary: (Array.isArray(r.glossary) ? r.glossary : []).map(term).filter((x): x is SfxTerm => !!x),
     unknownTerms: names(r.unknownTerms).slice(0, 200), folders: { bgm: names(folders.bgm), sfx: names(folders.sfx) },
@@ -122,6 +122,20 @@ export function upgradeSampleSfx(data: SoundData): boolean {
   for (const item of fresh) { data.sfx.push({ ...item, key: uuid() }); if (item.folder && !data.folders.sfx.includes(item.folder)) data.folders.sfx.push(item.folder); }
   return changed || fresh.length > 0;
 }
+/**
+ * Version 4 (1.4.16): the example tracks learned their 상황 (the scene each suits), which picks among the tracks a
+ * cue's tags leave. A save from before takes the shipped one for each example track that has none; a 상황 the reader
+ * wrote stays, and tracks of their own get nothing. True when something changed.
+ */
+export function upgradeSampleBgm(data: SoundData): boolean {
+  let changed = false;
+  for (const item of data.bgm) {
+    if (item.note) continue;
+    const sample = sampleBgmFor(item.fallbackUrl, item.url);
+    if (sample?.note) { item.note = sample.note; changed = true; }
+  }
+  return changed;
+}
 export function loadSoundData(): Promise<SoundData> {
   if (state) return Promise.resolve(state);
   return loading ||= (async () => {
@@ -130,7 +144,9 @@ export function loadSoundData(): Promise<SoundData> {
     // whose lists were emptied is not, so the examples never come back by themselves.
     const first = raw == null || raw === '', value = first ? sampleSoundData() : typeof raw === 'string' ? JSON.parse(raw) : raw;
     state = normalizeSoundData(value);
-    if (!first && !(Number((value as { version?: unknown })?.version) >= 3) && upgradeSampleSfx(state)) void saveSoundData().catch(() => {});
+    const saved = first ? Infinity : Number((value as { version?: unknown })?.version) || 0;
+    const effects = saved < 3 && upgradeSampleSfx(state), tracks = saved < 4 && upgradeSampleBgm(state);
+    if (effects || tracks) void saveSoundData().catch(() => {});
     return state;
   })().finally(() => { loading = undefined; });
 }
