@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.4.16';
+const PLUGIN_VERSION = '1.5.0';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -998,6 +998,19 @@ const VENDOR_CURATION_PANEL_PATCH =
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
         </div>
         <div class="card" style="margin-top:14px">
+          <strong>1.5.0 · 쓰고 싶은 것만 켜세요 · 1.4.4~1.4.16 정리판</strong>
+          <div class="muted" style="margin-top:8px">2026.11.11 · 삽화·만화·TTS·BGM·효과음·옴니 뷰어는 따로 켜고 끕니다. 하나만 써도 됩니다. 1.4.4부터 바뀐 것을 묶었습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>쓰고 싶은 것만</strong>: 삽화만, TTS만, BGM·효과음만 써도 됩니다. ⚡ 빠른 설정에서 고른 것만 켜지고, 안 쓰는 기능의 키는 묻지 않습니다. TTS·BGM을 꺼 두면 채팅을 지켜보지도 않습니다.</li>
+            <li><strong>⚡ 빠른 설정</strong>: 창 크기가 바뀌지 않고, 6단계가 늘 보입니다. 「그림만」「그림 + 목소리」「전부 켜기」로 한 번에 고르고, API 키는 필요한 것만 묻고 「확인」으로 바로 검사합니다.</li>
+            <li><strong>BGM</strong>: 같은 곡만 돌지 않습니다. 태그가 겹치는 곡들 중에서 큐 뒤 장면과 곡의 「상황」으로 고릅니다. 임베딩이 없으면 그중에서 무작위입니다.</li>
+            <li><strong>효과음·목소리</strong>: 효과음 「임베딩만」은 앞뒤 문단과 상황으로 고르고, 예제 효과음이 18개 늘었습니다. 같은 봇의 캐릭터끼리 목소리가 겹치지 않습니다.</li>
+            <li><strong>속도·배터리</strong>: 시작할 때 채팅을 읽지 않고, 그림 한 장에 봇을 읽는 횟수를 26번에서 3번으로 줄였습니다.</li>
+            <li><strong>그림·캐릭터</strong>: New POV, ComfyUI 캐릭터 위치·마스크·참고 이미지, 코스튬 태그 유지, 전역 캐릭터를 현재 챗으로 옮기기, 감정 에셋·배경 프리셋.</li>
+            <li><strong>옴니 뷰어</strong>: 배속, 요소 접기, 다음 메시지로 넘기기, 작동 창 높이·닫기 바, 10장 넘는 삽화 목록.</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:14px">
           <strong>1.4.16 · BGM이 같은 곡만 돌지 않게: 태그로 추리고 장면으로 고릅니다</strong>
           <div class="muted" style="margin-top:8px">2026.11.11 · 같은 태그면 늘 목록 앞쪽 세 곡만 나오던 것을 고쳤습니다.</div>
           <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
@@ -1027,7 +1040,7 @@ const VENDOR_CURATION_PANEL_PATCH =
             <li><strong>예제 효과음</strong>: 244개 모두에 예상 의성어와 상황이 붙었고, 숨소리·새근새근·찔걱찔걱·맨살 찰싹·젖은 마찰음·삐걱임 등 18개가 「친밀」 폴더에 더해졌습니다. 효과음마다 「상황」 칸을 적을 수 있습니다.</li>
             <li><strong>ElevenLabs 묶음 만들기</strong>: 효과음 목록 › 파일 ⋯에서 무료 예제에 없는 입맞춤·츄릅·찔걱·침대 삐걱 등 17개를 내 ElevenLabs 키로 한 번에 만듭니다(크레딧 사용).</li>
             <li><strong>목소리</strong>: 같은 봇의 캐릭터끼리 같은 목소리가 가지 않고, 비슷하면 덜 쓰인 목소리를 고릅니다. 추천을 다시 누르면 다른 목소리가 나옵니다. 고를 때 태그를 영어로, 기본 음성은 영어 캐릭터 이름과 함께 보냅니다(화면은 한국어 그대로). 기본 음성 태그가 나이 6단계·음높이·음색으로 세분화됐고, 첫 대사 이모지는 얼굴·하트·동물 등 훨씬 많이 읽습니다.</li>
-            <li><strong>그 밖에</strong>: 스크롤 붙잡기가 그림 생성·스트리밍 중에 내가 스크롤하면 따라갑니다. 옴니 뷰어 삽화 목록이 10장 넘어도 다 보입니다. 생성 옵션 › 나이 제한 칸을 없앴습니다(기본 차단은 그대로). 감정 에셋 기본 nude·천박모드가 들어왔습니다(미성년으로 그려지는 캐릭터는 항상 막힘).</li>
+            <li><strong>그 밖에</strong>: 스크롤 붙잡기가 그림 생성·스트리밍 중에 내가 스크롤하면 따라갑니다. 옴니 뷰어 삽화 목록이 10장 넘어도 다 보입니다. 감정 에셋 기본 nude·천박모드가 들어왔습니다.</li>
           </ul>
         </div>
         <div class="card" style="margin-top:14px">
@@ -15469,7 +15482,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.5.0 · 쓰고 싶은 것만 켜세요(삽화만·TTS만·소리만 가능) · ⚡ 빠른 설정 새로 · BGM·효과음·목소리 고르기 개선 · 속도·배터리 · 1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

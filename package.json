@@ -1,7 +1,7 @@
 {
   "name": "omni-nexus",
   "displayName": "Omni Nexus",
-  "version": "1.4.16",
+  "version": "1.5.0",
   "description": "Omni Nexus LLM tagging + NovelAI overlay",
   "type": "module",
   "private": true,
@@ -28,7 +28,8 @@
     "test:tts": "node --test --test-concurrency=4 --test-timeout=60000 --test-skip-pattern=SafeDOM tests/tts-*.test.mjs tests/sound-*.test.mjs tests/float-viewer.test.mjs && node --test --test-timeout=60000 --test-name-pattern=SafeDOM tests/tts-*.test.mjs tests/sound-*.test.mjs tests/float-viewer.test.mjs",
     "test": "node tools/test-all.mjs",
     "test:serial": "npm run typecheck && npm run unit && npm run build && npm run audit && npm run smoke && npm run bench && npm run reads && npm run parity && npm run test:settings-ux",
-    "test:related": "node tools/test-related.mjs"
+    "test:related": "node tools/test-related.mjs",
+    "release": "node tools/release.mjs"
   },
   "keywords": [
     "risuai",
