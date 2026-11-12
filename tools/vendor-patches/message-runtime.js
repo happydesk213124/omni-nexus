@@ -197,6 +197,10 @@ globalThis.__OMNI_MESSAGE_ACTION__ = async (kind, index) => {
     const row = Number.isInteger(at) && at >= 0 ? rows[at] : null;
     // The roster and the presets open with no reply too: only the roster's search wants one.
     if (kind === 'preset' || (kind === 'char' && !row)) { await openSettingsTab(kind === 'char' ? 'characters' : 'style_presets'); return true; }
+    // The 세션 작가의 노트 is the chat's: with no reply yet (a first chat) it opens for the chat, its 캐릭터 list empty.
+    if (kind === 'note' && (!row || (row.role !== 'char' && !(row.role === 'user' && t.backendSettings?.card?.userchat)))) {
+      await openOmniNote({sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId}); return true;
+    }
     if (!row || (row.role !== 'char' && !(row.role === 'user' && t.backendSettings?.card?.userchat))) return '이 답장을 채팅에서 찾지 못했습니다.';
     const text = String(row.data ?? row.saying ?? '');
     const target = {sessionId:scope.sessionId,characterId:scope.characterId,chatId:scope.chatId,charIndex:scope.charIndex,chatIndex:scope.chatIndex,index:at,hostId:omniMessageId(row),token:omniMessageToken(at,text)};

@@ -1668,7 +1668,9 @@ async function messageAction(kind: string): Promise<void> {
   const run = Reflect.get(globalThis, '__OMNI_MESSAGE_ACTION__');
   if (typeof run !== 'function') { sayShot('Omni가 아직 준비되지 않았어요.', 2600); return; }
   // Tags, rerolls and the reply's note need it as saved; a stop, the settings and the roster do not.
-  if ((kind === 'tag' || kind === 'regen' || kind === 'note') && (streaming || messageIndex < 0)) { sayShot('답장을 다 받은 뒤에 할 수 있어요.', 2600); return; }
+  // The note opens on a chat with no reply yet too (its first message), but not while one streams in: the note is
+  // written into the chat, and a chat write during streaming puts back the chat as it was before the reply.
+  if ((kind === 'tag' || kind === 'regen') && (streaming || messageIndex < 0) || kind === 'note' && streaming) { sayShot('답장을 다 받은 뒤에 할 수 있어요.', 2600); return; }
   // One at a time (a stop aside): a second tap while the first is under way would pay for its pictures twice.
   if (messageBusy && kind !== 'stop') { sayShot(MESSAGE_NOTES[messageBusy]?.[0] || '이미 하고 있어요.', 2600); return; }
   const [doing, done] = MESSAGE_NOTES[kind] ?? ['', ''];

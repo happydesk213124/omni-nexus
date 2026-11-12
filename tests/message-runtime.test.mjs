@@ -150,6 +150,21 @@ test('🔢 for 옴니 뷰어 and the 🟪 bar: the counts read back, a step by t
  } finally {globalThis.__OMNI_IMAGE_COUNTS__=before;globalThis.__OMNI_MESSAGE_ACTION__=action;}
 });
 
+test('✒️ for 옴니 뷰어 and the 🟪 bar: the 세션 작가의 노트 opens on a chat with no reply yet, for the chat',async()=>{
+ const t={backendSettings:{card:{}}},opened=[];
+ const scope={sessionId:'s',characterId:'c',chatId:'chat',chat:{message:[]}};
+ const before=globalThis.__OMNI_IMAGE_COUNTS__,action=globalThis.__OMNI_MESSAGE_ACTION__;
+ try {
+  new Function('t','pe','y','omniRelease','nxUnwrapSafeNodes','Z','openOmniNote',runtime)(t,async()=>{},()=>{},async()=>{},async a=>a,async()=>scope,async msg=>opened.push(msg));
+  const run=globalThis.__OMNI_MESSAGE_ACTION__;
+  assert.equal(await run('note',-1),true,'no reply: it opens all the same');
+  scope.chat.message=[{id:'u',data:'첫 메시지',role:'user'}];
+  assert.equal(await run('note',0),true,'only the user\'s first message: it opens too');
+  assert.deepEqual(opened,[{sessionId:'s',characterId:'c',chatId:'chat'},{sessionId:'s',characterId:'c',chatId:'chat'}],'for the chat, with no message (its 캐릭터 list empty)');
+  assert.equal(await run('tag',-1),'이 답장을 채팅에서 찾지 못했습니다.','a tag job still wants a reply');
+ } finally {globalThis.__OMNI_IMAGE_COUNTS__=before;globalThis.__OMNI_MESSAGE_ACTION__=action;}
+});
+
 test('module button renderer regression guard rejects a deliberately removed action',()=>{
  const check=s=>assert.equal((s.match(/data-omni-action=/g)||[]).length,7);
  check(buttons);

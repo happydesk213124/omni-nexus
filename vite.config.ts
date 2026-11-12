@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.5.1';
+const PLUGIN_VERSION = '1.5.2';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -996,6 +996,13 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.5.2 · 첫 채팅의 세션 작가의 노트, 🟪 플로팅 태그와 옴니 뷰어에서도</strong>
+          <div class="muted" style="margin-top:8px">2026.11.12 · 답장이 아직 없는 채팅에서도 🟪 플로팅 태그와 옴니 뷰어 태그 탭의 ✒️로 세션 작가의 노트를 열 수 있습니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>세션 작가의 노트</strong>: 🟪 플로팅 태그와 옴니 뷰어 태그 탭의 ✒️가 답장이 없는 채팅(첫 채팅)에서도 노트를 엽니다. 답장을 받는 중에는 그대로 기다립니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.5.1 · 감정 에셋 nude 태그, 빼기 기본값, 첫 채팅의 세션 작가의 노트</strong>
@@ -15490,7 +15497,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.5.1 · 감정 에셋 nude는 삽화와 같은 노출 태그 + nsfw · 빼기 기본값 줄임, 기본값으로 버튼 · 첫 채팅에서도 세션 작가의 노트 · 1.5.0 · 쓰고 싶은 것만 켜세요(삽화만·TTS만·소리만 가능) · ⚡ 빠른 설정 새로 · BGM·효과음·목소리 고르기 개선 · 속도·배터리 · 1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.5.2 · 첫 채팅에서도 🟪·옴니 뷰어의 ✒️로 세션 작가의 노트 · 1.5.1 · 감정 에셋 nude는 삽화와 같은 노출 태그 + nsfw · 빼기 기본값 줄임, 기본값으로 버튼 · 첫 채팅에서도 세션 작가의 노트 · 1.5.0 · 쓰고 싶은 것만 켜세요(삽화만·TTS만·소리만 가능) · ⚡ 빠른 설정 새로 · BGM·효과음·목소리 고르기 개선 · 속도·배터리 · 1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

@@ -15,7 +15,7 @@ function hook({ rows = [{ role: 'user', chatId: 'u0', data: '보여 줘.' }, { r
   const calls = [], t = { backendSettings: { card: {} } };
   const scope = { sessionId: 'sess', characterId: 'bot', chatId: 'chat', charIndex: 0, chatIndex: 0, chat: { message: rows } };
   const Z = async () => scope;
-  const run = new Function('t', 'Z', 'y', 'optimisticStopJobs', 'openSettingsTab', 'Be', 'omniMessageId', 'omniMessageToken', 'omniMessageCardIds', 'omniMessageAction', `return ${body}`)(
+  const run = new Function('t', 'Z', 'y', 'optimisticStopJobs', 'openSettingsTab', 'Be', 'omniMessageId', 'omniMessageToken', 'omniMessageCardIds', 'omniMessageAction', 'openOmniNote', `return ${body}`)(
     t, Z, () => {},
     async () => { calls.push(['stop']); },
     async tab => { calls.push(['tab', tab]); },
@@ -23,7 +23,8 @@ function hook({ rows = [{ role: 'user', chatId: 'u0', data: '보여 줘.' }, { r
     row => String(row?.chatId || ''),
     (index, text) => `${index}:${text.length}`,
     text => [...String(text).matchAll(/\[\[@inray::([^:\]]+)::/g)].map(m => m[1]),
-    async (kind, target) => { if (fail) throw new Error(fail); calls.push([kind, target.index, target.hostId, target.token]); });
+    async (kind, target) => { if (fail) throw new Error(fail); calls.push([kind, target.index, target.hostId, target.token]); },
+    async msg => { calls.push(['chat note', msg]); });
   return { run, calls };
 }
 
@@ -58,8 +59,12 @@ test('🔃 ✒️ 👨‍👩‍👧‍👦 go through the chat row\'s own check
 test('no such reply, or one that failed: why, for the viewer to say', async () => {
   const { run, calls } = hook();
   assert.match(String(await run('tag', 0)), /찾지 못했습니다/, "the reader's own message is not a reply");
-  assert.match(String(await run('note', 7)), /찾지 못했습니다/);
   assert.deepEqual(calls, []);
+  // ✒️ is the chat's 세션 작가의 노트: with no reply there (a first chat, the reader's own message) it opens for the chat.
+  assert.equal(await run('note', 7), true);
+  assert.equal(await run('note', 0), true);
+  const chat = { sessionId: 'sess', characterId: 'bot', chatId: 'chat' };
+  assert.deepEqual(calls, [['chat note', chat], ['chat note', chat]]);
   const changed = hook({ fail: '메시지가 바뀌었습니다. 다시 눌러 주세요.' });
   assert.equal(await changed.run('note', 1), '메시지가 바뀌었습니다. 다시 눌러 주세요.');
 });

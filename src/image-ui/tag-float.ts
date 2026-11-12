@@ -152,7 +152,8 @@ async function messageAction(kind: string): Promise<void> {
   try {
     // 🟥 and 📚 want no reply; 👨‍👩‍👧‍👦 searches the roster by the reply's people when there is one.
     const index = kind === 'stop' || kind === 'preset' ? -1 : await replyOnScreen();
-    if (NEEDS_REPLY.has(kind) && index < 0) { say('이 채팅에는 답장이 없어요.', 2600); return; }
+    // The note opens with no reply too (a chat's first message): it is the chat's, not a reply's.
+    if (NEEDS_REPLY.has(kind) && kind !== 'note' && index < 0) { say('이 채팅에는 답장이 없어요.', 2600); return; }
     if (kind === 'tag' || kind === 'regen') say(`${kind === 'tag' ? '⚛️ 태그 생성을 거는 중' : '🔃 전체 이미지 리롤 중'}… #${index + 1}`, 60_000);
     result = await run(kind, index);
     if (result === true) { if (NOTES[kind]) say(`${NOTES[kind]}${index >= 0 ? ` · #${index + 1}` : ''}`, 3000); else if (note) say('', 1); }
