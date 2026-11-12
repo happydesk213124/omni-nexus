@@ -98,10 +98,7 @@ export function assetMatchesExpression(assetName: unknown, names: readonly strin
  * 감정 에셋 › 이 태그가 들어가면 빼기, the first value it holds. A standing portrait is shown on every line, and a
  * roster's looks may carry tags meant for scenes; what counts is the user's to change.
  */
-export const EMOTION_EXCLUDE_DEFAULT = ['penis', 'cock', 'dick', 'testicle', 'testicles', 'scrotum', 'erection', 'nipple', 'nipples',
-  'areola', 'areolae', 'pussy', 'vagina', 'vulva', 'clitoris', 'anus', 'nude', 'naked', 'nudity', 'nsfw', 'uncensored', 'explicit', 'sex',
-  'cum', 'semen', 'pubic hair', 'genital', 'genitals', 'crotch', 'cameltoe', 'bulge', 'topless', 'bottomless', 'breast out', 'breasts out',
-  'bare breasts', 'exposed breasts', 'no bra', 'no panties', 'lactation', 'futanari'].map(word => '*' + word).join(', ');
+export const EMOTION_EXCLUDE_DEFAULT = ['penis', 'cock', 'dick', 'testicle', 'testicles', 'scrotum', 'erection'].map(word => '*' + word).join(', ');
 
 const tagWords = (value: string): string => value.toLowerCase().replace(/_/g, ' ').trim();
 

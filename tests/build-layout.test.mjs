@@ -1645,7 +1645,9 @@ test('in-message action bar uses the same H+prepend host path as inline shots', 
   const pickerEnd = body.indexOf('async function clearMsgActionBars', pickerStart);
   assert.ok(pickerStart >= 0 && pickerEnd > pickerStart, 'message character picker section not found');
   const picker = body.slice(pickerStart, pickerEnd);
-  assert.match(picker, /if \(!matched\.length\) \{[\s\S]*await nxHostToast\([\s\S]*return;/);
+  // No character in the message yet (a chat's first one): the picker still opens, for its 세션 작가의 노트.
+  assert.doesNotMatch(picker, /if \(!matched\.length\) \{/);
+  assert.match(picker, /if \(!matched\.length && list\) list\.innerHTML = [^\n]*세션 작가의 노트는 지금 바로 쓸 수 있습니다/);
   assert.match(picker, /root\?\.remove\?\.\(\)/);
   assert.match(picker, /document\.addEventListener\("keydown", onKeyDown\)/);
   assert.match(picker, /document\.removeEventListener\("keydown", onKeyDown\)/);

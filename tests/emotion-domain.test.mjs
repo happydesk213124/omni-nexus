@@ -66,5 +66,7 @@ test('excludeTags: a bare rule is that tag, a star any tag with that word, throu
   assert.equal(sweep('nude, 1girl', '*, , '), 'nude, 1girl', 'a lone star names nothing');
   assert.equal(sweep('a.b, axb', '*a.b'), 'axb', 'rules are words, not patterns');
   assert.match(api.EMOTION_EXCLUDE_DEFAULT, /^\*penis, /);
-  assert.equal(sweep('huge penis, completely nude, uncensored, sexy, long hair', api.EMOTION_EXCLUDE_DEFAULT), 'sexy, long hair', 'the first value covers what was always kept out, and uncensored');
+  // The first value holds the male anatomy words only: a girl's nipples, nude and nsfw are the user's to list.
+  assert.equal(api.EMOTION_EXCLUDE_DEFAULT, '*penis, *cock, *dick, *testicle, *testicles, *scrotum, *erection');
+  assert.equal(sweep('huge penis, erection, nipples, nsfw, large breasts, long hair', api.EMOTION_EXCLUDE_DEFAULT), 'nipples, nsfw, large breasts, long hair');
 });

@@ -7,7 +7,7 @@ import { isWebpBytes, sniffImageMime } from '../core/util/bytes';
 import { encodeWebpQuality } from '../core/util/image';
 import { cleanText, joinTags, unifiedSessionIdForCharacter } from '../core/util/text';
 import { assetMatchesExpression, emotionAssetName, emotionPrompt, excludeTags, expressionOfTone, NUDE_COSTUME } from '../domain/emotion/emotions';
-import { nudeForbidden } from '../domain/character/tags';
+import { nudeAnatomyTagsFromAccessories, nudeForbidden } from '../domain/character/tags';
 import { underageRules } from '../domain/character/underage';
 import { normalizeAssetPath } from '../domain/gallery/shot-assets';
 import { tokensForFamily } from '../domain/nai/keys';
@@ -32,7 +32,8 @@ import { putSharedBackgrounds, removeSharedBackgrounds, sharedBackgroundRows } f
 import { loadTtsData, ttsData } from '../storage/tts-store';
 import { collectAssetNaiTags, listSearchableAssets } from './asset-tags';
 import { characterPreviewTags } from './character-preview';
-import { ensureCostumes } from '../domain/character/costume';
+import { ensureCostumes, resolveCostumeFields } from '../domain/character/costume';
+import { wearTagsForWearState } from '../domain/character/wear-state';
 import { listCharacters } from './characters';
 import { getConfig } from './context';
 
@@ -138,6 +139,12 @@ export async function spriteCostumes(c: TtsCharacter, bot: EmotionBot): Promise<
  * the wear, which 감정 에셋 › 이 태그가 들어가면 빼기 never sweeps (a nude face's own nude tags).
  * A costume other than the default is the illustration character's only: none there, nothing to draw it from.
  */
+/** 기본 nude's wear for this person (see spriteParts). */
+export function nudeWear(person: Partial<CharacterRecord>): string {
+  const base = ensureCostumes(person).costumes[0]!, look = resolveCostumeFields(base, base);
+  const gender = person.gender === 'girl' ? 'f' : person.gender === 'boy' ? 'm' : null;
+  return joinTags(wearTagsForWearState('', 'completely', gender, look.penis_size), nudeAnatomyTagsFromAccessories(base.accessories), 'nsfw');
+}
 async function spriteParts(c: TtsCharacter, bot: EmotionBot, costume = 0): Promise<{ looks: string; wear: string }> {
   const person = await rosterPerson(c, bot);
   const opts = { accessories: !(await loadEmotionData()).settings.dropAccessories };
@@ -149,8 +156,11 @@ async function spriteParts(c: TtsCharacter, bot: EmotionBot, costume = 0): Promi
     // ╔══════════════════════════════════════════════════════════════════════════╗
     // ║ [여기까지] 위 코드는 절대 빼거나 약하게 바꾸지 말 것.
     // ╚══════════════════════════════════════════════════════════════════════════╝
-    // The default one's looks, undressed; a man's nude weighs more, as a shot's completely is captioned (wear-state.ts).
-    return { looks: characterPreviewTags(person, 'default', { ...opts, undressed: true }), wear: person.gender === 'boy' ? '2.5::completely nude::' : '2::completely nude::' };
+    // The default one's looks, undressed, and the wear a shot's `completely` is captioned with (wear-state.ts): a
+    // girl's nipples and pussy, a man's penis by his 자지 크기, the anatomy kept in 무기/기타, and nsfw. It goes on after
+    // 감정 에셋 › 이 태그가 들어가면 빼기, which is for the clothed faces. Breast size is the looks' own (large breasts,
+    // flat chest): nothing is added for it.
+    return { looks: characterPreviewTags(person, 'default', { ...opts, undressed: true }), wear: nudeWear(person) };
   }
   if (costume) {
     if (!person || !ensureCostumes(person).costumes[costume]) throw new Error(`${c.name}에게 ${costume}번 코스튬이 없습니다. 삽화 캐릭터 탭에서 코스튬을 확인해 주세요.`);

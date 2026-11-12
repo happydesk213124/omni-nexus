@@ -1,6 +1,6 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
-import { BASE_EXPRESSIONS, baseExpression, NUDE_COSTUME } from '../domain/emotion/emotions';
+import { BASE_EXPRESSIONS, baseExpression, EMOTION_EXCLUDE_DEFAULT, NUDE_COSTUME } from '../domain/emotion/emotions';
 import { backgroundPlaces, clearMadeSprites, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, madeSpriteCount, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { placeKey, samePlace } from '../domain/viewer/place';
@@ -223,6 +223,14 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   });
   $('tab-emo-assets')?.addEventListener('click', () => void renderPeople());
   // 고아 메모 정리: what would go, told first; only on a yes.
+  // 기본값으로: the list as a first run has it, saved at once (a value set from here fires no input event).
+  $('emo-exclude-reset')?.addEventListener('click', () => void (async () => {
+    const field = $<HTMLTextAreaElement>('emo-exclude'), status = $('emo-exclude-status');
+    if (!field) return;
+    field.value = EMOTION_EXCLUDE_DEFAULT;
+    clearTimeout(saveTimer); await save();
+    if (status) status.textContent = '기본값으로 되돌렸습니다.';
+  })());
   $('emo-tidy')?.addEventListener('click', () => void (async () => {
     const button = $('emo-tidy') as HTMLButtonElement | null, status = $('emo-tidy-status');
     if (!button || button.disabled) return;

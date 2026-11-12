@@ -49,7 +49,7 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
     assert.match(prompt, /2::sad::, frown, downcast eyes/);
     assert.match(prompt, /2::cowboy shot::/);
     const sent = f.host.naiRequests.at(-1).body, body = typeof sent === 'string' ? JSON.parse(sent) : sent;
-    assert.doesNotMatch(String(body.input || ''), /nipples|penis/, 'no sexual anatomy in a portrait shown on every line');
+    assert.doesNotMatch(String(body.input || ''), /penis/, 'the default list keeps the male anatomy words out of a portrait shown on every line (a girl\'s nipples are the user\'s to list)');
     assert.doesNotMatch(JSON.stringify(f.host.naiRequests.at(-1).body), /nude, naked, nipples, penis/, 'the negative is the preset\'s alone');
     const listed = async () => (await risuai.getCharacterFromIndex(0)).additionalAssets;
     await new Promise(r => setTimeout(r, 2000));
@@ -399,7 +399,8 @@ test('이 태그가 들어가면 빼기 sweeps the preset and the looks, never t
     const sent = f.host.naiRequests.at(-1).body, body = typeof sent === 'string' ? JSON.parse(sent) : sent;
     return String(body.input || '');
   };
-  await f.api.updateEmotionSettings({ prefix: 'nude', suffix: '3::uncensored::' });
+  // The sweep itself, with a list of the user's (the first value holds only the male anatomy words).
+  await f.api.updateEmotionSettings({ prefix: 'nude', suffix: '3::uncensored::', excludeTags: '*uncensored, *nipples, *penis' });
   const swept = await input('sad');
   assert.match(swept, /^nude, /, 'written in 선행: it stays');
   assert.match(swept, /3::uncensored::/, 'and in 후행');
@@ -429,7 +430,13 @@ test('기본 nude: an adult\'s nude face is the default looks undressed, plus co
     const sent = f.host.naiRequests.at(-1).body, input = String((typeof sent === 'string' ? JSON.parse(sent) : sent).input || '');
     assert.match(input, /black hair/);
     assert.match(input, /24 years old/);
-    assert.match(input, /2::completely nude::/, 'the default sweep holds *nude: the wear goes on after it');
+    // A girl's nude wear is a shot's `completely` (nipples, pussy) and nsfw, after the sweep; her looks' 1.2::penis:: is still swept.
+    assert.match(input, /2::completely nude::, nipples, pussy, nsfw/);
+    assert.doesNotMatch(input, /penis/);
+    assert.equal(f.api.nudeWear({ gender: 'boy', costumes: [{ name: 'default', penis_size: 'huge penis', accessories: 'sword, 1.2::erection::' }] }), '2.5::completely nude::, huge penis, nsfw',
+      'a man: his 자지 크기; a sword in 무기/기타 stays out');
+    assert.equal(f.api.nudeWear({ gender: 'boy', costumes: [{ name: 'default' }] }), '2.5::completely nude::, penis, nsfw');
+    assert.equal(f.api.nudeWear({ gender: 'girl', costumes: [{ name: 'default', accessories: 'pierced nipples, katana' }] }), '2::completely nude::, nipples, pussy, pierced nipples, nsfw');
     assert.doesNotMatch(input, /school uniform|skirt|katana|bikini/, 'no clothes, no 무기/기타');
     assert.equal(f.api.emotionData().made.at(-1).costume, 100);
     assert.equal((await f.api.findSprite(f.person, 'happy', f.bot, 100))?.path, nude.path);
