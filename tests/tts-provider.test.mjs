@@ -154,6 +154,26 @@ test('첫 대사 이모지: a new speaker\'s emoji set her gender and age before
   }finally{delete globalThis.risuai;}
 });
 
+test('임베딩 선택: a new speaker is voiced by the embedding from her emoji and lore, with no LLM call',async()=>{
+  const saved=new Map(),embedded=[];let llm=0;
+  // A toy embedding: "timid" lights one axis, "low" another; everything has a little of a third.
+  const vector=t=>[/timid/.test(t)?1:0,/low/.test(t)?1:0,0.1];
+  globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[{key:'하린',content:'하린은 수줍은 도서부원이다.'}],getDatabase:async()=>({personas:[]}),
+    runLLMModel:async()=>{llm++;return {success:true,content:'[]'};},
+    nativeFetch:async(_url,options)=>{const input=JSON.parse(options.body).input;embedded.push(...input);return {ok:true,status:200,json:async()=>({data:input.map((t,index)=>({index,embedding:vector(t)}))})};}};
+  try{
+    const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'embedding',cueEmoji:true});data.settings.jev.key='fake';data.voices=herVoices();data.characters=[];
+    await api.ensureTtsSpeakers(emojiContext(),['하린'],()=>true,[],new Map([['하린','👩🥺']]));
+    assert.equal(llm,0,'no model call proposes her or her voice');
+    const query=embedded.find(t=>/character/.test(t));
+    assert.match(query,/female character — 하린 — young adult, timid/,'her emoji\'s gender and tags, in English');
+    assert.match(query,/수줍은 도서부원/,'and a few lines of her lore');
+    assert.ok(!embedded.some(t=>/^male voice/.test(t)),'a man\'s voice is never offered');
+    const harin=data.characters[0];
+    assert.equal(harin.gender,'female');assert.equal(harin.voiceKey,'woman');
+  }finally{delete globalThis.risuai;}
+});
+
 test('첫 대사 이모지: an LLM pick of the other gender is let go, and chosen again among hers alone',async()=>{
   const saved=new Map(),asked=[];
   globalThis.risuai={pluginStorage:{getItem:async k=>saved.get(k),setItem:async(k,v)=>saved.set(k,v)},getCurrentLorebookEntries:async()=>[],getDatabase:async()=>({personas:[]}),
