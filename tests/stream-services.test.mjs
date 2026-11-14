@@ -1319,6 +1319,12 @@ test('comic ratio 100%: the tagger is told every shot is a comic, as at 0% every
   const half = await f.api.inlineTagRules();
   assert.match(half, /About 50% of the shots in this message may be comic/);
   assert.match(half, /Use `comic` only when the moment needs two or more sequential panels/);
+  // Written into the reply, a block's place is the image's: the line range and the list of non-scenes were for
+  // reading a finished message, and every chat request paid for them.
+  assert.doesNotMatch(half, /comic_line_end|Ignore `<img>`/, 'inline: no line range, no list of blocks that are not scenes');
+  const separate = await f.api.taggerRules(card, { imageMin: 1, imageMax: 3 });
+  assert.match(separate, /`comic_line_end` the last prose line its page covers/, 'the reply tagger still gets them');
+  assert.match(separate, /Ignore `<img>`/);
   card.comic_gen_ratio = 0;
   assert.match(await f.api.inlineTagRules(), /Comic ratio is 0%\. Every shot MUST be `illustration`/);
 });

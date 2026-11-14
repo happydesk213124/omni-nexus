@@ -519,13 +519,15 @@ function appearancePayload(
 
 function costumeHowTo(): string {
   return [
+    // Sent with every tagging request (every reply, inline): each rule in as few words as it takes. The look fields
+    // and the owner-name note are in the shared character rules already; only what costumes add is said here.
     '## Costumes (enabled)',
-    'characters[].costume is a string: existing bare name, numeric index string, or catalog name[index]. Omit/empty only to keep the previous set. Reuse matching catalog clothes; never register them again.',
-    'Costume notes may begin with the original person\'s full name (surname + given name), added by the application. Compare that name with the person in the story and select the matching costume, including default. Keep characters[].name as the exact supplied roster name; do not rename the roster or add aliases to represent a costume owner.',
-    'New outfit/transformation: new_costumes=[{name:"exact character name",costumes:[{name:"bare variant id",note:"what the outfit is, not when/where",...lookFields}]}]; wear it via characters[].costume. Never name a set default0/maid1/name[index].',
-    'The catalog\'s default (index 0) is the base look. Never register a base, default, normal or usual look again, and never a set whose note matches one already in the catalog: wear that one by name instead. Only a genuinely different outfit or form is new.',
-    'lookFields: appearance, hair_color, hair_style, eye_color, height, age, penis_size, attire, bottoms, accessories. Apply shared character rules; unchanged variant fields use [base]. Identity/name/aliases/original/gender stay common; never overwrite default.',
-    'A shot\'s attire/bottoms/accessories never change a saved costume. To add to what is worn for that shot alone, write "[base], tag" in the field, never bare tags.',
+    'characters[].costume is a string: existing bare name, index string or catalog name[index]; omit only to keep the previous set. Reuse matching catalog clothes, never register them again.',
+    'A costume note may start with its owner\'s full name. Compare that name with the person in the story to pick the right costume (default included); keep characters[].name as the exact supplied roster name (no renaming, no owner aliases).',
+    'New outfit/transformation: new_costumes=[{name:"exact character name",costumes:[{name:"bare variant id",note:"what the outfit is, not when/where",...lookFields}]}], worn via characters[].costume. Never name a set default0/maid1/name[index].',
+    'Index 0 (default) is the base look: never register a base/default/normal/usual look again, nor a set whose note matches a catalog one (wear that by name). Only a genuinely different outfit or form is new.',
+    'lookFields: the shared look fields; unchanged ones use [base]. Identity/name/aliases/original/gender stay common; never overwrite default.',
+    'A shot\'s attire/bottoms/accessories never change a saved costume: for that shot alone write "[base], tag", never bare tags.',
   ].join('\n');
 }
 
@@ -557,7 +559,7 @@ export async function taggerRules(card: CardSettings, opts: { imageMin: number; 
       charMax,
       normalizeFocusPromptMode(card.focus_prompt),
     ),
-    'ASPECT: required on every shot, including comic. portrait (832×1216): tall/standing; square (1024×1024): equal crop/face; landscape (1216×832): wide groups/scenery. Comic layout copies it. Missing/unknown defaults to portrait.',
+    'ASPECT (every shot, comic too): portrait 832×1216 tall/standing; square 1024×1024 face/equal crop; landscape 1216×832 wide groups/scenery. Comic layout copies it; unknown means portrait.',
   ].filter(Boolean).join('\n');
   const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
   const comicPack = withMain ? stripCbs(await getPrompt('comic')).trim() : '';
@@ -574,7 +576,7 @@ export async function taggerRules(card: CardSettings, opts: { imageMin: number; 
     cardFlagOn(card.nai5_speech, false) ? naiSpeechHowTo() : '',
     cardFlagOn(card.pov_mode, false) ? povHowTo() : '',
     cardFlagOn(card.genitals_when_visible, false) ? genitalsHowTo() : '',
-    comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain) : '',
+    comicGenOn(card) ? comicKindHowTo(card.comic_gen_ratio, card.comic_aspect, withMain, inline) : '',
     comicPack,
     withMain ? comicNaturalInstruction(card.comic_natural_supplement === true) : '',
     withMain ? comicCloseupCharacterInstruction(card.comic_closeup_character_half === true, card.comic_closeup_character_weight) : '',
@@ -718,7 +720,11 @@ export function flattenShots(tagged: unknown, messageText?: unknown): TaggedShot
   return repaired;
 }
 
-function comicKindHowTo(ratioPct: unknown, comicAspect?: unknown, withMain = false): string {
+/**
+ * `inline`: the shots are written into the reply, where a block's place is the image's: the comic page's line range
+ * and the list of blocks that are not scenes were for reading a finished message, and say nothing there.
+ */
+function comicKindHowTo(ratioPct: unknown, comicAspect?: unknown, withMain = false, inline = false): string {
   const share = normalizeComicGenRatio(ratioPct);
   const aspectMode = normalizeComicAspect(comicAspect);
   const aspectLock =
@@ -735,19 +741,15 @@ function comicKindHowTo(ratioPct: unknown, comicAspect?: unknown, withMain = fal
     'KIND: every shot MUST set `kind` to `illustration` or `comic`.',
     all
       ? 'Comic ratio is 100%. Every shot MUST be `comic`: even a single still moment is drawn as a comic page. Do not emit `kind: illustration`.'
-      : 'Use `comic` only when the moment needs two or more sequential panels (dialogue + continuous action). A single still scene is `illustration`.',
+      : 'Use `comic` only when the moment needs two or more sequential panels (dialogue + continuous action); a single still scene is `illustration`.',
     share === 0
       ? 'Comic ratio is 0%. Every shot MUST be `illustration`. Do not emit `kind: comic`.'
-      : all ? '' : `About ${share}% of the shots in this message may be comic (at most that share). Extra comic-worthy beats become illustration.`,
-    'For a comic shot: `line` is the start (image sits immediately above that line, same as illustration). Also set `comic_line_end` to the last prose line this page covers. The next illustration must pick a line after `comic_line_end`.',
-    'Do not infer a comic range from neighboring shot `line` values.',
-    'Ignore `<img>`, `┣ observation/insight/foreshadow ┫`, `<RP-Guide>`, `<AOS>`, HTML comments, and Upcoming lines — they are not scenes.',
+      : all ? '' : `About ${share}% of the shots in this message may be comic (at most); extra comic-worthy beats become illustration.`,
+    inline ? '' : 'A comic shot\'s `line` is its start (image above that line, as for an illustration) and `comic_line_end` the last prose line its page covers; the next illustration picks a line after it. Never infer a range from neighboring shots\' lines.',
+    inline ? '' : 'Ignore `<img>`, `┣ observation/insight/foreshadow ┫`, `<RP-Guide>`, `<AOS>`, HTML comments and Upcoming lines: they are not scenes.',
     withMain
-      ? [
-        'Comic shot characters[].name follows CHARACTER CAP. Put its page in THAT shot\'s comic_page, not root pages/koma/layout/slots.',
-        'Apply the supplied Comic layout rules to comic_page (including locked aspect, location, coords, cuts). Cut entries ignore CHARACTER CAP but keep the page-wide maximum of 6.',
-      ].join(' ')
-      : 'Comic shots still list `characters[].name` for who appears. Do not write panel layout here.',
+      ? 'Comic shot characters[].name follows CHARACTER CAP. Its page goes in THAT shot\'s comic_page (not root pages/koma/layout/slots), by the Comic layout rules (locked aspect, location, coords, cuts); cuts ignore CHARACTER CAP but keep the page-wide maximum of 6.'
+      : 'Comic shots still list `characters[].name` for who appears; no panel layout here.',
     aspectLock,
   ].filter(Boolean).join(' ');
 }
@@ -793,31 +795,23 @@ function v5NaturalHowTo(lang: 'en' | 'ja'): string {
   const langLine = lang === 'ja'
     ? 'Write V5 `natural` and characters[].action (gaze/pose/hands/face) in Japanese natural language.'
     : 'Write V5 `natural` and characters[].action (gaze/pose/hands/face) in English natural language.';
+  // The complexity field itself is defined in the tagger prompt's shot list; only what V5 changes is said here.
   return [
     '## V5 natural (per shot)',
-    'Set shot `complexity`: `simple` (still / one pose / V4) or `dynamic` (motion / contact / V5). Omit complexity → treat as V5.',
-    'For V5-bound shots (complexity empty or dynamic):',
-    '- Main `natural` = POSITIONS ONLY. No acts, no gaze, no hands. Who stands where (left/right/front/behind, lying, standing, above).',
-    '- Put gaze, pose, hands, face, and acts in characters[].action as one comma-separated string. Do not emit gaze/pose/left_hand keys.',
-    '- Apply the shared source/target/mutual contact rules; action contains solo acts only.',
-    '- Never use Korean display names or romanized names in tags. Identify others as one fused chunk: hair color + girl/boy + original tag with NO comma between them.',
-    '- Wrong: `looking at makima, red hair` / `facing him` / `on his hips`.',
-    "- Right: `looking at red hair girl's makima` / `facing black hair boy's monkey d. luffy` / `sitting on black hair boy's monkey d. luffy's hips`.",
-    '- Never him/her/his for other people. OC with no original: `brown hair girl` or `black hair 150cm boy`.',
+    'V5 shots (complexity dynamic or omitted): main `natural` = POSITIONS ONLY, who is where (left/right/front/behind, lying, standing, above); no acts, gaze or hands. Gaze, pose, hands, face and solo acts go in characters[].action as one comma string (no gaze/pose/left_hand keys); contact follows the source/target/mutual rules.',
+    "Never Korean or romanized display names in tags. Name others as one fused chunk, hair color + girl/boy + original tag with NO comma: right `looking at red hair girl's makima`, `facing black hair boy's monkey d. luffy`, `sitting on black hair boy's monkey d. luffy's hips`; wrong `looking at makima, red hair`, `facing him`, `on his hips`.",
+    'Never him/her/his for other people. OC with no original: `brown hair girl` or `black hair 150cm boy`.',
     langLine,
-    'For V4-bound shots (complexity=simple): follow the Natural base mode message; English Danbooru-adjacent phrases.',
+    'V4 shots (complexity=simple): follow the Natural base mode message; English Danbooru-adjacent phrases.',
   ].join('\n');
 }
 
 function naiCoordsHowTo(): string {
   return [
     '## NAI centers (2+ characters only)',
-    'When a shot has 2 or more characters, set characters[].center_x and center_y (0–1). Solo shot: omit or 0.5, 0.5.',
-    'x = left 0 → right 1. y = top 0 → bottom 1. Stay in 0.12–0.88 (avoid edges).',
-    'Do not put everyone at (0.5, 0.5). Standing group: spread left–right.',
-    'Story-fit: lying y≈0.72, standing y≈0.5, face/above y≈0.22, left side x≈0.2, right side x≈0.8.',
-    'Contact sits next to the other person: on belly ≈ same x, y a bit higher; on face ≈ same x, y higher still.',
-    'Centers MUST match main `natural` positions (do not write left and set x=0.8).',
+    'With 2+ characters set characters[].center_x/center_y (0–1; x left 0 → right 1, y top 0 → bottom 1), staying in 0.12–0.88; solo: omit or 0.5, 0.5. Never everyone at 0.5, 0.5; spread a standing group left–right.',
+    'Story-fit: lying y≈0.72, standing y≈0.5, face/above y≈0.22, left x≈0.2, right x≈0.8. Contact sits by the other person: on belly ≈ same x, y a bit higher; on face ≈ same x, higher still.',
+    'Centers MUST match main `natural` positions (never write left and set x=0.8).',
   ].join('\n');
 }
 
@@ -845,8 +839,7 @@ function povHowTo(): string {
 function naiSpeechHowTo(): string {
   return [
     '## Speech (V5 shots)',
-    'If someone speaks in this shot, set that character `speech` to the exact line and optional `speech_lang` (`korean`/`english`/`japanese`).',
-    'Generation appends `speech bubble, korean text:안돼!!` to the end of that character\'s own caption, so each speaker carries their own line.',
+    'A character who speaks in this shot gets `speech` (the exact line) and optional `speech_lang` (`korean`/`english`/`japanese`); generation appends `speech bubble, korean text:안돼!!` to their own caption.',
   ].join('\n');
 }
 
@@ -856,18 +849,18 @@ function naturalBaseSystemMessage(mode: NaturalBaseMode): string {
   }
   if (mode === 'detailed') {
     return [
-      'Natural base mode DETAILED. Every shot MUST include `natural`: a compact English phrase for NovelAI base caption only (NOT Danbooru comma tags, NOT characters[].action).',
-      'Include framing/vantage when useful (side view, close-up, viewed through, reflected in…), then for each visible person in left-to-right (or front-to-back) order: hair color + age band + gender, facial expression, clothing, and pose/action as separate details.',
-      'Multi-person: NEVER use character names — use position (left girl, right boy) or hair. Add shared action and lighting/atmosphere briefly.',
-      'Telegraphic and objective. Example: `side view upper body, left red hair adult woman tense smile in coat pulling right blue hair teen boy startled arms pinned, warm cafe light`. Keep ~12–28 words, English only.',
+      'Natural base mode DETAILED. Every shot MUST include `natural`: a compact English phrase for the NovelAI base caption only (NOT Danbooru comma tags, NOT characters[].action).',
+      'Framing/vantage when useful (side view, close-up, viewed through, reflected in…), then each visible person left to right (or front to back): hair color + age band + gender, expression, clothing, pose/action as separate details.',
+      'Multi-person: NEVER names; use position (left girl, right boy) or hair. Shared action and lighting briefly.',
+      'Telegraphic, objective. Example: `side view upper body, left red hair adult woman tense smile in coat pulling right blue hair teen boy startled arms pinned, warm cafe light`. ~12–28 words, English only.',
     ].join(' ');
   }
   if (mode === 'supplement') {
     return [
-      'Natural base mode SUPPLEMENT. Every shot MUST include `natural`: telegraphic English sentences describing what tags cannot express (composition, framing, actions, atmosphere, lighting) for NovelAI base caption only (NOT Danbooru comma tags, NOT characters[].action).',
-      'Keep tags and natural language clearly separated. Multi-person: NEVER use names — identify by position (left girl, bottom boy) or appearance. For each person include facial expression and clothing as distinct details; also hair and pose unless already obvious.',
-      'Unusual framing welcome (viewed through, reflected in shards of a broken mirror, behind…). Concise, minimal, objective — no subjective interpretation.',
-      'Example: `Side view, upper body. Left: adult woman with red hair, tense smile, coat, pulling. Right: teen boy with blue hair, startled face, arms pinned. Warm cafe lighting.` Prefer ~2–5 short sentences, English only.',
+      'Natural base mode SUPPLEMENT. Every shot MUST include `natural`: telegraphic English sentences for what tags cannot express (composition, framing, actions, atmosphere, lighting), for the NovelAI base caption only (NOT Danbooru comma tags, NOT characters[].action).',
+      'Multi-person: NEVER names; identify by position (left girl, bottom boy) or appearance. Give each person expression and clothing as distinct details, plus hair and pose unless obvious.',
+      'Unusual framing welcome (viewed through, reflected in shards of a broken mirror, behind…). Minimal and objective, no interpretation.',
+      'Example: `Side view, upper body. Left: adult woman with red hair, tense smile, coat, pulling. Right: teen boy with blue hair, startled face, arms pinned. Warm cafe lighting.` ~2–5 short sentences, English only.',
     ].join(' ');
   }
   // short (default)

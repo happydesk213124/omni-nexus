@@ -67,6 +67,6 @@ export function bgmPromptText(tags: readonly string[]): string {
   return [
     'Music cue [[bgm:mood,place,tempo]]: exactly three tags from this list, on a line of its own, only where the music should change (no cue yet in this chat, or the mood or place turns sharply: a sudden attack, a jump in place or time).',
     `Tags: ${tags.join(', ')}`,
-    'Put it just before the first narration or dialogue line it scores, after any title, status panel or header; never at the top of a reply by habit. While the mood holds write none (the music keeps playing). At most three per reply. Never mention cues.',
+    'Put it just before the first narration or dialogue line it scores, after any title, status panel or header; never at the top of a reply by habit. While the mood holds write none (the music plays on). At most three per reply. Never mention cues.',
   ].join('\n');
 }
