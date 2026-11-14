@@ -4,6 +4,7 @@ import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-
 import { TAGGER_LORE_CONTENT_LIMIT, TAGGER_LORE_LIMIT, TAGGER_MESSAGE_LIMIT, TAGGER_REFERENCE_LIMIT } from '../domain/tagging/limits';
 import { scenePromptWithoutLegacyLooks } from '../domain/character/prompt-template';
 import { comicNaturalInstruction } from '../domain/comic/natural';
+import { comicPackForMainTagger } from '../domain/comic/main-pack';
 import { comicCloseupCharacterInstruction } from '../domain/comic/caption';
 /**
  * The tagging request: prose in, a scene/shot plan out.
@@ -562,7 +563,7 @@ export async function taggerRules(card: CardSettings, opts: { imageMin: number; 
     'ASPECT (every shot, comic too): portrait 832×1216 tall/standing; square 1024×1024 face/equal crop; landscape 1216×832 wide groups/scenery. Comic layout copies it; unknown means portrait.',
   ].filter(Boolean).join('\n');
   const withMain = comicGenOn(card) && effectiveComicLlmBatch(card) === 'with_main';
-  const comicPack = withMain ? stripCbs(await getPrompt('comic')).trim() : '';
+  const comicPack = withMain ? comicPackForMainTagger(stripCbs(await getPrompt('comic'))).trim() : '';
   return [
     `${tagger}\n\n${fmt}`.trim(),
     loreHow,
