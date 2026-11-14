@@ -134,6 +134,13 @@ export interface TtsSettings {
    * is the OpenRouter key (empty: JEV's, when JEV goes through OpenRouter).
    */
   fish: { url: string; key: string; model: string; via: 'fish' | 'openrouter'; routerKey: string };
+  /** Which service speaks: Fish Audio, or the user's own Irodori-TTS server. */
+  engine: 'fish' | 'irodori';
+  /**
+   * Irodori-TTS-Server: self-hosted, the OpenAI speech API, Japanese only. `voice` is the server's voice every line
+   * speaks with. The server makes one line at a time unless it is set up for more, hence its own `concurrency`.
+   */
+  irodori: { url: string; key: string; model: string; voice: string; format: 'mp3' | 'wav'; concurrency: number };
   llm: LlmSettings;
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';

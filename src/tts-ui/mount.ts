@@ -17,6 +17,7 @@ import { injectSoundPanels, mountSound } from '../sound-ui/mount';
 import { soundAwareHtml } from '../sound-ui/markup';
 import { takeSoundFocus } from '../sound-ui/page';
 import { mountEmotion } from '../emotion-ui/mount';
+import { bindIrodoriSettings, injectIrodoriSettings } from './irodori';
 
 /** Built for the open menu page (TTS / BGM·효과음 / models) so the first paint is already right. */
 export const ttsSettingsHtml = () => soundAwareHtml(layout.html);
@@ -40,10 +41,11 @@ export async function mountTts(): Promise<void> {
   // The settings iframe owns these normal DOM dialogs; chat markup is module-owned.
   // BGM·효과음 share this root: their panels and tabs exist before the tab buttons bind.
   injectSoundPanels(root);
+  injectIrodoriSettings(root);
   for (const b of el('tts-dialogs').querySelectorAll<HTMLElement>('[data-close]')) b.addEventListener('click',event => { event.preventDefault(); dialog(b.dataset.close!,false); });
   const tab = (name: string) => { for (const panel of root.querySelectorAll<HTMLElement>('section.panel')) panel.hidden = panel.id !== name; for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) { const active = b.dataset.ttsTab === name; b.setAttribute('aria-selected',String(active)); b.tabIndex = active ? 0 : -1; } };
   for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) b.addEventListener('click', () => tab(b.dataset.ttsTab!)); tab([...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id || 'tts-settings');
-  attachTtsHelp(root); bindTtsSettings(); bindTtsConnectionTests();
+  attachTtsHelp(root); bindTtsSettings(); bindIrodoriSettings(); bindTtsConnectionTests();
   on('tts-settings-export', () => download(exportableTtsSettings(ttsData().settings), 'omnitts-settings.json'));
   on('tts-settings-import', () => input('tts-settings-file-input').click());
   el('tts-settings-file-input')?.addEventListener('change', () => run(async () => {

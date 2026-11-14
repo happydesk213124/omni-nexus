@@ -19,7 +19,7 @@ export function ttsData(): TtsData {
 }
 export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   const defaults = ttsDefaults();
-  const result = { ...defaults, ...raw, fish: { ...defaults.fish, ...raw.fish }, llm: { ...defaults.llm, ...raw.llm },
+  const result = { ...defaults, ...raw, fish: { ...defaults.fish, ...raw.fish }, irodori: { ...defaults.irodori, ...raw.irodori }, llm: { ...defaults.llm, ...raw.llm },
     translation: { ...defaults.translation, ...raw.translation, llm: { ...defaults.translation.llm, ...raw.translation?.llm } },
     jev: { ...defaults.jev, ...raw.jev } };
   for (const field of Object.keys(defaults) as (keyof TtsSettings)[]) if (typeof defaults[field] === 'boolean' && typeof result[field] !== 'boolean') Object.assign(result, { [field]: defaults[field] });
@@ -67,6 +67,10 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.fish = { ...defaults.fish, ...result.fish };
   if (result.fish.via !== 'openrouter') result.fish.via = 'fish';
   if (typeof result.fish.routerKey !== 'string') result.fish.routerKey = '';
+  if (result.engine !== 'irodori') result.engine = 'fish';
+  for (const field of ['url', 'key', 'model', 'voice'] as const) if (typeof result.irodori[field] !== 'string') result.irodori[field] = defaults.irodori[field];
+  if (result.irodori.format !== 'wav') result.irodori.format = 'mp3';
+  result.irodori.concurrency = Math.floor(clamp(result.irodori.concurrency, 1, 5, 1));
   if (result.viewerAnchor && (!Number.isFinite(result.viewerAnchor.right) || !Number.isFinite(result.viewerAnchor.top))) result.viewerAnchor = null;
   return result;
 }

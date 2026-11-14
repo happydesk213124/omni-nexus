@@ -3,13 +3,15 @@ import { omniTts } from '../services/tts-runtime';
 import { blankTtsCharacter } from '../services/tts-characters';
 import { callLlm } from '../providers/llm/client';
 import { synthesizeFish } from '../providers/tts/fish';
+import { synthesizeIrodori } from '../providers/tts/irodori';
 import { selectTtsVoices } from '../providers/tts/selection';
 import { translateTts } from '../providers/tts/translation';
 import { input, on, text } from './common';
 
 export function bindTtsConnectionTests(): void {
-  for(const kind of ['fish','llm','jev','translation'] as const){
+  for(const kind of ['fish','irodori','llm','jev','translation'] as const){
     const id=`tts-test-${kind}`,node=input(id);
+    if(!node)continue;
     on(id,async()=>{
       if(node.disabled)return;
       node.disabled=true;text(id+'-result','확인 중…');
@@ -20,6 +22,10 @@ export function bindTtsConnectionTests(): void {
           if(!voice)throw Error('테스트할 음성을 음성 목록에 먼저 추가해 주세요.');
           const bytes=await omniTts.queue.request('connection-fish',()=>synthesizeFish('안녕하세요. 연결 테스트입니다.','',voice.fishId,settings),0);
           if(node.isConnected)text(id+'-result',`연결 성공 · 음성 ${(bytes.byteLength/1024).toFixed(1)} KB`);
+        }else if(kind==='irodori'){
+          // Its own slot: the test never waits behind lines being read, and the server queues the rest.
+          const bytes=await omniTts.queue.request('connection-irodori',()=>synthesizeIrodori('こんにちは。接続テストです。','',settings),0);
+          if(node.isConnected)text(id+'-result',`연결 성공 · 음성 ${(bytes.byteLength/1024).toFixed(1)} KB (${settings.irodori.voice})`);
         }else if(kind==='llm'){
           const answer=await callLlm({...settings.llm,max_tokens:32},[{role:'user',content:'Connection test. Reply only OK.'}]);
           if(!answer.trim())throw Error('모델 응답이 비어 있습니다.');

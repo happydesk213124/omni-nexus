@@ -1,4 +1,11 @@
 export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'blocked' | 'error';
+/** Fish answers in mp3; an Irodori server without FFmpeg answers in wav. A wav labelled mpeg does not play everywhere. */
+export function audioMime(bytes: ArrayBuffer): string {
+  try {
+    const head = new Uint8Array(bytes, 0, Math.min(12, bytes.byteLength)), tag = (at: number) => String.fromCharCode(...head.subarray(at, at + 4));
+    return tag(0) === 'RIFF' && tag(8) === 'WAVE' ? 'audio/wav' : 'audio/mpeg';
+  } catch { return 'audio/mpeg'; }
+}
 export class TtsPlayer {
   private audio?: HTMLAudioElement;
   private context?: AudioContext;
@@ -98,7 +105,7 @@ export class TtsPlayer {
       if (ticket !== this.epoch) return;
       // Not instanceof: bytes from the host bridge are another realm's ArrayBuffer.
       const typed = loaded as { bytes?: ArrayBuffer; mime?: unknown };
-      const { bytes, mime } = typeof typed.mime === 'string' && typed.bytes ? { bytes: typed.bytes, mime: typed.mime } : { bytes: loaded as ArrayBuffer, mime: 'audio/mpeg' };
+      const { bytes, mime } = typeof typed.mime === 'string' && typed.bytes ? { bytes: typed.bytes, mime: typed.mime } : { bytes: loaded as ArrayBuffer, mime: audioMime(loaded as ArrayBuffer) };
       const audio = this.ensure();
       this.configure(this.rate, this.volume, gain ?? this.decibels);
       this.url = URL.createObjectURL(new Blob([bytes], { type: mime }));

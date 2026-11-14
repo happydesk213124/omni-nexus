@@ -22,6 +22,7 @@ export function ttsDefaults(): TtsSettings {
     rate: 1, rates: [...TTS_RATES], volume: .95, normalize: true,
     prefetch: 50, concurrency: 5, background: 5, cacheMb: 10,
     fish: { url: 'https://api.fish.audio/v1/tts', key: '', model: 's2.1-pro', via: 'fish', routerKey: '' },
+    engine: 'fish', irodori: { url: 'http://127.0.0.1:8088', key: '', model: 'irodori-tts', voice: '', format: 'mp3', concurrency: 1 },
     llm: ttsLlmDefaults(),
     translation: { provider: 'google-free', language: 'ja', narrationLanguage: 'original', url: '', key: '', googleKey: '', deeplKey: '', llm: ttsLlmDefaults() },
     jev: { url: 'https://openrouter.ai/api/alpha/decisions', key: '', model: 'typesafe/jev-1.13', format: 'openrouter' },
