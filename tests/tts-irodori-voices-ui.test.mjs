@@ -13,9 +13,10 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     page.on('dialog', d => { if (d.type() === 'alert') alerts.push(d.message()); return d.accept(); });
     await page.route('https://tts.test/', route => route.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="background:#0b0f18;color:#eee;font:14px sans-serif"></body></html>' })); await page.goto('https://tts.test/');
     await page.evaluate(() => {
-      const save = new Map(), local = new Map(); window.asked = [];
+      const save = new Map(), local = new Map(); window.asked = []; window.llm = [];
       window.risuai = { pluginStorage: { getItem: async k => save.get(k), setItem: async (k, v) => save.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
-        requestPluginPermission: async () => true, getDatabase: async () => ({ modules: [], enabledModules: [], characters: [] }), setDatabase: async () => {}, getCurrentCharacterIndex: async () => -1, getCharacterFromIndex: async () => null, getCharacter: async () => null,
+        requestPluginPermission: async () => true, getCurrentLorebookEntries: async () => [],
+        runLLMModel: async options => { window.llm.push(options.messages); return { success: true, content: JSON.stringify({ name: '하린', gender: 'female', tags: ['young adult', 'tsundere', 'high-pitched'], caption: '素直になれない若い女性の声。つんつんと話す。' }) }; }, getDatabase: async () => ({ modules: [], enabledModules: [], characters: [] }), setDatabase: async () => {}, getCurrentCharacterIndex: async () => -1, getCharacterFromIndex: async () => null, getCharacter: async () => null,
         nativeFetch: async (url, options) => {
           if (String(url).includes('translate.googleapis.com')) return { ok: true, json: async () => [[[new URL(url).searchParams.get('q')]]] };
           if (url.endsWith('/v1/audio/voices') && options.method === 'GET') { window.asked.push(['list']); return { ok: true, json: async () => ({ data: [{ id: 'none', no_ref: true }, { id: 'sample' }, { id: 'alice' }] }) }; }
@@ -153,6 +154,51 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await page.waitForFunction(() => /이미 모두 있습니다/.test(document.getElementById('tts-notice')?.textContent || ''));
     assert.equal((await presets()).length, 23);
     if (process.env.IRODORI_VOICES_SHOT) await page.screenshot({ path: process.env.IRODORI_VOICES_SHOT.replace(/\.png$/, '-starter.png'), fullPage: true });
+    // LLM으로 채우기: for the card chosen, the model writes the name, gender, tags and description; the voice is made
+    // and heard at once, and once kept and applied the card speaks with it.
+    await page.locator('#iv-add').click();
+    await page.waitForFunction(() => [...document.getElementById('iv-who').options].some(option => option.textContent === '하린'));
+    assert.equal(await page.locator('#iv-who').evaluate(node => node.selectedOptions[0].textContent), '하린', 'the first one there is chosen');
+    assert.equal(await page.locator('#iv-bind-wrap').isVisible(), true); assert.equal(await page.locator('#iv-bind').isChecked(), true);
+    await page.locator('#iv-request').fill('조금 더 높은 목소리로');
+    await page.evaluate(() => { window.asked.length = 0; });
+    // 만들어 듣기 with no description typed asks the model first.
+    await page.locator('#iv-design').click();
+    await page.waitForFunction(() => !document.getElementById('iv-keep').disabled);
+    assert.deepEqual(await page.evaluate(() => ['iv-name', 'iv-gender', 'iv-tags', 'iv-caption'].map(id => document.getElementById(id).value)), ['하린', '여성', '청년, 츤데레, 높음', '素直になれない若い女性の声。つんつんと話す。']);
+    if (process.env.IRODORI_VOICES_SHOT) await page.screenshot({ path: process.env.IRODORI_VOICES_SHOT.replace(/.png$/, '-llm.png') });
+    const asked = await page.evaluate(() => JSON.parse(window.llm.at(-1).at(-1).content));
+    assert.deepEqual([asked.character, asked.request], ['하린', '조금 더 높은 목소리로']);
+    assert.deepEqual((await last('speech'))[1].irodori, { caption: '素直になれない若い女性の声。つんつんと話す。' }, 'made from what the model wrote');
+    await page.locator('#iv-keep').click();
+    await page.waitForFunction(() => /^voice-/.test(document.getElementById('iv-id').value));
+    await page.locator('#irodori-voice-form button.primary').click();
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 24);
+    assert.equal(await page.evaluate(() => { const data = window.ttsData(), preset = data.irodoriVoices.at(-1); return data.characters.find(row => row.name === '하린').irodoriKey === preset.key && preset.name === '하린' && preset.gender === 'female'; }), true, 'her card speaks with it');
+    // With no character chosen the request alone is written, and nobody is bound.
+    await page.locator('#iv-add').click();
+    await page.waitForFunction(() => document.getElementById('iv-who').options.length > 1);
+    await page.locator('#iv-who').selectOption('');
+    assert.equal(await page.locator('#iv-bind-wrap').isVisible(), false);
+    await page.locator('#iv-write').click();
+    for (let i = 0; i < 100 && !alerts.length; i++) await page.waitForTimeout(50);
+    assert.match(alerts.at(-1) || '', /캐릭터를 고르거나/); alerts.length = 0;
+    await page.locator('#irodori-voice-dialog [data-close]').first().click();
+    // 내보내기: the presets as a file. 불러오기: those not here are added, by key and by server voice; the recordings
+    // are not in the file, so one the server lacks is named.
+    const [saved] = await Promise.all([page.waitForEvent('download'), page.locator('#iv-export').click()]);
+    assert.equal(saved.suggestedFilename(), 'omnitts-irodori-voices.json');
+    const stream = await saved.createReadStream(), chunks = []; for await (const chunk of stream) chunks.push(chunk);
+    const file = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    assert.equal(file.irodoriVoices.length, 24); assert.ok(file.irodoriVoices.every(row => row.key && row.fishId));
+    const incoming = { irodoriVoices: [file.irodoriVoices[0], { ...file.irodoriVoices[1], key: 'other-key' }, { key: 'k-new', name: '옮겨 온 목소리', fishId: 'moved', tags: ['청년'], gender: 'male' }, { key: 'k-alice2', name: 'bad' }] };
+    await page.locator('#iv-import-file').setInputFiles({ name: 'voices.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incoming)) });
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 25);
+    await page.waitForFunction(() => /프리셋 1개를 불러왔습니다.*서버에 소리 파일이 없습니다\(moved\)/.test(document.getElementById('tts-notice')?.textContent || ''));
+    assert.deepEqual((await presets()).at(-1), ['옮겨 온 목소리', 'moved', 'male', '청년', '']);
+    await page.locator('#iv-import-file').setInputFiles({ name: 'voices.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incoming)) });
+    await page.waitForFunction(() => /새로 추가할 프리셋이 없습니다/.test(document.getElementById('tts-notice')?.textContent || ''));
+    assert.equal((await presets()).length, 25);
     // Back on Fish: its library's tab and the sheet's Fish fields return.
     await page.evaluate(() => window.updateTtsSettings({ engine: 'fish' }));
     await open();

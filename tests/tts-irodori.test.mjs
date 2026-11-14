@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/services/tts-runtime';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export * from './src/domain/tts/segment';export * from './src/providers/tts/irodori';export * from './src/providers/tts/speech';export * from './src/providers/tts/http';export * from './src/providers/tts/fish';export {audioMime} from './src/providers/tts/player';export * from './src/tts-ui/settings-transfer';export * from './src/domain/tts/irodori-emoji';export * from './src/domain/tts/irodori-starter';export { englishVoiceWord } from './src/domain/tts/voice-words';export * from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
+const built = await build({ stdin: { contents: `export * from './src/services/tts-runtime';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export * from './src/domain/tts/segment';export * from './src/providers/tts/irodori';export * from './src/providers/tts/speech';export * from './src/providers/tts/http';export * from './src/providers/tts/fish';export {audioMime} from './src/providers/tts/player';export * from './src/tts-ui/settings-transfer';export * from './src/domain/tts/irodori-emoji';export * from './src/domain/tts/irodori-starter';export * from './src/domain/tts/irodori-voice-draft';export * from './src/domain/tts/irodori-presets';export * from './src/services/irodori-voice-writer';export { englishVoiceWord } from './src/domain/tts/voice-words';export * from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text + '\n//# sourceURL=tts-irodori-check.mjs').toString('base64'));
 const fishVoice = '4e118bfbb83e401c84699c09b5f08257';
 const irodori = (over = {}) => ({ irodori: { ...api.ttsDefaults().irodori, voice: 'sample', ...over } });
@@ -360,4 +360,58 @@ test("the starter voices: twenty, both genders at every age, each a server-safe 
   assert.equal(api.missingIrodoriStarters([]).length, 20);
   assert.deepEqual(api.missingIrodoriStarters(rows.slice(1).map(row => ({ fishId: row.id }))).map(row => row.id), [rows[0].id]);
   assert.equal(api.missingIrodoriStarters([{ fishId: 'alice' }]).length, 20);
+});
+
+test("a voice written by the model: the character's own lore first and a few rows of it, the answer read as a preset; a request alone reads no source", async () => {
+  // The sources, cut down: rows naming the character before the rest, eight at most, each and all within a budget.
+  const long = 'あ'.repeat(5000);
+  const lore = [['세계관', long], ['민수', '민수는 과묵하다.'], ['하린 설정', '하린은 고등학생이고 까칠하다.'], ...Array.from({ length: 12 }, (_, i) => [`기타 ${i}`, `기타 설정 ${i} ${long}`])];
+  const cut = api.voiceDraftSources({ lore, character: ['하린 봇', 'x'.repeat(9000)], illustration: Array.from({ length: 30 }, (_, i) => [`c${i}`]), persona: ['me', 'secret'] }, ['하린']);
+  assert.equal(cut.lore[0][0], '하린 설정', 'the entry naming her comes first, wherever it stood');
+  assert.ok(cut.lore.length <= 8); assert.ok(cut.lore.every(row => row[1].length <= 1500));
+  assert.ok(cut.lore.reduce((sum, row) => sum + row[1].length, 0) <= 6000, 'a lorebook is not sent whole');
+  assert.equal(cut.bot[1].length, 3000); assert.equal(cut.illustration.length, 10); assert.equal(cut.persona, undefined);
+  assert.deepEqual(api.voiceDraftSources({}, ['하린']), {});
+  // The answer: tags back in the words shown, a gender it knows or unknown, and no preset without a description.
+  assert.deepEqual(api.parseVoiceDraft({ name: ' 하린 ', gender: 'female', tags: ['young adult', 'tsundere', 'tsundere', 'high-pitched', 7], caption: ' 素直になれない若い女性の声。 ' }),
+    { name: '하린', gender: 'female', tags: ['청년', '츤데레', '높음'], caption: '素直になれない若い女性の声。' });
+  assert.deepEqual(api.parseVoiceDraft({ gender: 'robot', caption: '声' }), { name: '', gender: 'unknown', tags: [], caption: '声' });
+  for (const bad of [null, [], {}, { caption: '  ' }, { caption: 3 }]) assert.throws(() => api.parseVoiceDraft(bad), /목소리 설명/);
+  const asked = []; let loreReads = 0;
+  globalThis.risuai = { getDatabase: async () => ({ personas: [] }),
+    getCurrentLorebookEntries: async () => { loreReads++; return [
+      { comment: '하린 설정', key: '하린, harin', content: '하린은 고등학생이고 까칠하다.' }, { comment: '민수', key: '민수', content: '민수는 과묵하다.' },
+      { comment: '세계관', key: '', alwaysActive: true, content: '마법 학원이 배경이다.' }, { comment: 'omni.nexus.tts.cues', key: '', alwaysActive: true, content: 'internal' }]; },
+    runLLMModel: async options => { asked.push(options.messages); return { success: true, content: '```json\n{"name":"하린","gender":"female","tags":["young adult","tsundere"],"caption":"素直になれない若い女性の声。"}\n```' }; } };
+  try {
+    const context = { scope: 's', rosterScope: 'bot:c', characterId: 'c', chatId: 'chat', sessionId: 's', character: { name: '하린 봇', desc: '츤데레 소꿉친구.' }, chat: {}, messages: [] };
+    const llm = api.ttsDefaults().llm;
+    const draft = await api.writeIrodoriVoice(context, ['하린', 'harin'], '', llm);
+    assert.deepEqual(draft, { name: '하린', gender: 'female', tags: ['청년', '츤데레'], caption: '素直になれない若い女性の声。' });
+    const [system, user] = asked[0], sent = JSON.parse(user.content);
+    assert.match(system.content, /untrusted data/); assert.match(system.content, /若い女性/, 'high-school age and older is a young adult');
+    assert.deepEqual([sent.character, sent.request], ['하린', '']);
+    assert.ok(sent.vocabulary.includes('tsundere') && sent.vocabulary.includes('young adult'));
+    assert.deepEqual(sent.sources.lore.map(row => row[0]), ['하린 설정', '세계관'], 'her entry and what is always in play: not Minsu\'s, not the plugin\'s own');
+    assert.deepEqual(sent.sources.bot, ['하린 봇', '츤데레 소꿉친구.']);
+    // A request alone: written from it, with no source read; nothing at all to go by is refused before any call.
+    const before = loreReads;
+    await api.writeIrodoriVoice(context, [], '차분한 30대 여성', llm);
+    assert.deepEqual(JSON.parse(asked[1][1].content).sources, {}); assert.equal(JSON.parse(asked[1][1].content).character, null);
+    assert.equal(loreReads, before);
+    await api.writeIrodoriVoice(null, ['하린'], '', llm);
+    assert.deepEqual(JSON.parse(asked[2][1].content).sources, {}, 'no chat open: the name alone');
+    await assert.rejects(api.writeIrodoriVoice(context, [' '], '  ', llm), /캐릭터를 고르거나/);
+    assert.equal(asked.length, 3);
+  } finally { delete globalThis.risuai; }
+});
+
+test("presets from a file: those not here are added with their keys; one already here by key or by server voice stays as it is", () => {
+  const mine = [{ key: 'a', name: '내 이름', fishId: 'aoi', tags: ['차분함'], gender: 'female', folder: '' }];
+  const file = { irodoriVoices: [{ key: 'a', name: '남의 이름', fishId: 'other', tags: [], gender: 'male' }, { key: 'b', name: '같은 서버 목소리', fishId: 'aoi', tags: [] },
+    { key: 'c', name: 'Ken', fishId: 'ken', tags: ['낮음', 3], gender: 'male', folder: 'x', caption: '低い声' }, { key: 'c', name: 'Ken again', fishId: 'ken2' }, { key: 'd', name: 'no voice', fishId: ' ' }, { name: 'no key', fishId: 'z' }, null] };
+  const fresh = api.newIrodoriPresets(mine, file);
+  assert.deepEqual(fresh, [{ key: 'c', name: 'Ken', fishId: 'ken', tags: ['낮음'], gender: 'male', folder: '', caption: '低い声' }]);
+  assert.deepEqual(api.newIrodoriPresets(mine, file.irodoriVoices), fresh, 'a bare list too');
+  for (const other of [null, 'x', {}, { voices: [{ key: 'k', name: 'Fish voice', fishId: 'f' }] }]) assert.deepEqual(api.newIrodoriPresets(mine, other), []);
 });

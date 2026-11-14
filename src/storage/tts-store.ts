@@ -1,4 +1,5 @@
 import type { TtsData, TtsSettings, TtsVoice } from '../core/tts-types';
+import { irodoriPresetRows } from '../domain/tts/irodori-presets';
 import { ttsDefaults, TTS_DEFAULT_EXCLUDES } from '../config/tts-defaults';
 import { parseVoiceImport } from '../domain/tts/library';
 import { ensureTtsRoleCards } from '../domain/tts/identity';
@@ -78,17 +79,6 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
 export function ttsEngine(): TtsSettings['engine'] { return state?.settings.engine === 'irodori' ? 'irodori' : 'fish'; }
 /** The voice presets of the engine in use: Fish's library, or Irodori's own. */
 export function ttsEngineVoices(): TtsVoice[] { const data = ttsData(); return data.settings.engine === 'irodori' ? data.irodoriVoices : data.voices; }
-/** An Irodori preset row as saved: anything else in the list is dropped, never a reason to refuse the whole save. */
-function irodoriRows(raw: unknown): TtsVoice[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((value: unknown) => {
-    const row = value && typeof value === 'object' ? value as Partial<TtsVoice> : null;
-    if (!row || typeof row.key !== 'string' || !row.key || typeof row.name !== 'string' || typeof row.fishId !== 'string') return [];
-    const gender: TtsVoice['gender'] = row.gender === 'female' || row.gender === 'male' ? row.gender : 'unknown';
-    const tags = Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 40) : [];
-    return [{ key: row.key, name: row.name.slice(0, 200), fishId: row.fishId.slice(0, 200), tags, gender, folder: '', ...(typeof row.caption === 'string' && row.caption ? { caption: row.caption.slice(0, 2000) } : {}) }];
-  }).slice(0, 2000);
-}
 /**
  * Voices the assignment engines may pick from: the folder chosen in the character tab (all voices if it is empty);
  * with Irodori, its presets (they have no folders).
@@ -121,7 +111,7 @@ export function loadTtsData(): Promise<TtsData> {
         if (!error || Number.isInteger(error.count) && error.count > 0 && Number.isFinite(error.lastAt) && error.lastAt >= 0 && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) return voice;
         const clean = { ...voice }; delete clean.error; return clean;
       });
-      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders, irodoriVoices: irodoriRows(value.irodoriVoices) };
+      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders, irodoriVoices: irodoriPresetRows(value.irodoriVoices) };
     }
     state.characters = ensureTtsRoleCards(state.characters, 'global', state.voices, state.settings.narrationVoice, state.settings.translation.narrationLanguage);
     return state;
