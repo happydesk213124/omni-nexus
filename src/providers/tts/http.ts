@@ -21,7 +21,7 @@ const IRODORI_HINTS: Record<number, string> = {
 export type TtsService = 'fish' | 'irodori';
 /** Fish's own reading of the common failures, so the toast says what to fix. */
 function ttsStatusHint(status: number | undefined, service: TtsService = 'fish'): string {
-  if (service === 'irodori') return status ? IRODORI_HINTS[status] || '' : ' · Irodori 서버에 닿지 못했습니다. 서버가 켜져 있는지, 주소가 맞는지 확인해 주세요(웹 버전 Risu는 내 PC의 서버에 닿지 못합니다)';
+  if (service === 'irodori') return status ? IRODORI_HINTS[status] || '' : ' · Irodori 서버에 닿지 못했습니다. 서버가 켜져 있는지, 주소가 맞는지 확인해 주세요. 브라우저에서 여는 Risu라면 서버를 IRODORI_CORS_ORIGINS=["*"] 설정으로 띄워야 합니다';
   const hints: Record<number, string> = {
     401: ' · API 키를 확인해 주세요',
     402: ' · Fish API 잔액이 없습니다. 웹 구독(Plus 등)과 별개로 API 크레딧을 충전해야 합니다. 무료로 쓰려면 모델을 s2.1-pro-free로 바꿔 주세요',
