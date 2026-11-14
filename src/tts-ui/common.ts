@@ -25,12 +25,13 @@ export async function persist(): Promise<void> { omniTts.stop(); await saveTtsDa
 /** `voice.engine` 'irodori': the id is a voice on the user's Irodori server, heard in Japanese (all it reads). */
 export async function audition(fishId: string, gain = 0, voice: { tone?: string; model?: string; engine?: 'fish' | 'irodori' } = {}): Promise<void> {
   const irodori = voice.engine === 'irodori';
-  if (!fishId) throw new Error(irodori ? 'Irodori 목소리를 먼저 골라 주세요. 프리셋이 없으면 모델 설정의 기본 목소리를 넣어 주세요.' : 'Fish 음성을 먼저 선택해 주세요.');
+  // Irodori with no id: the default voice, which the runtime fills in.
+  if (!fishId && !irodori) throw new Error('Fish 음성을 먼저 선택해 주세요.');
   const reservation = omniTts.reservePlayback();
   await omniTts.player.unlock();
   if (!omniTts.player.ready) return;
   const context = await currentTtsContext().catch(()=>({scope:'audition',rosterScope:'global',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
-  await omniTts.play([{ context, messageId: 'audition', fishId, gain, ...voice, segment: { id: fishId, text: irodori ? 'こんにちは。この声でお話しします。' : '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
+  await omniTts.play([{ context, messageId: 'audition', fishId, gain, ...voice, segment: { id: fishId || 'irodori-default', text: irodori ? 'こんにちは。この声でお話しします。' : '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
   if (omniTts.player.status === 'error' || omniTts.player.status === 'blocked') throw new Error(omniTts.notice || '미리 듣기를 재생하지 못했습니다.');
 }
 const LISTEN_LABEL = '듣기';

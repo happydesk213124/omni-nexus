@@ -1,5 +1,5 @@
 import type { TtsSettings } from '../../core/tts-types';
-import { objectValue, ttsBytes, ttsFetch, ttsJson } from './http';
+import { objectValue, ttsBytes, ttsFetch, ttsJson, TtsHttpError } from './http';
 
 /**
  * Irodori-TTS-Server (github.com/Aratako/Irodori-TTS-Server): the user's own server speaking the OpenAI speech API.
@@ -12,9 +12,19 @@ type Irodori = Pick<TtsSettings, 'irodori'>;
 export function irodoriBase(url: string): string {
   return String(url || '').trim().replace(/\/+$/, '').replace(/\/v1(\/audio(\/(speech|voices))?)?$/i, '');
 }
-/** The server needs no key unless it was started with one; an address and a voice are what speech takes. */
+/**
+ * The server's own voice with no reference recording behind it: it reads at once, on a server holding no voice yet,
+ * though each line may come out in another timbre. What a default voice left empty means.
+ */
+export const IRODORI_NO_REF = 'none';
+// Every spelling the server takes for it (its NO_REF_IDS): none of them is a voice to make a preset of.
+const NO_REF = new Set(['none', 'no_ref', 'no-ref', 'null', 'text-only']);
+export const irodoriNoRef = (id: string): boolean => NO_REF.has(String(id || '').trim().toLowerCase());
+/** The voice a line with no preset speaks with. */
+export const irodoriDefaultVoice = (settings: Irodori): string => settings.irodori.voice.trim() || IRODORI_NO_REF;
+/** The server needs no key unless it was started with one, and has a voice of its own: an address is all speech takes. */
 export function irodoriReady(settings: Irodori): boolean {
-  return !!irodoriBase(settings.irodori.url) && !!settings.irodori.voice.trim();
+  return !!irodoriBase(settings.irodori.url);
 }
 function headers(settings: Irodori, json = false): Record<string, string> {
   const key = settings.irodori.key.trim();
@@ -22,9 +32,8 @@ function headers(settings: Irodori, json = false): Record<string, string> {
 }
 /** `voice`: a server voice id; left empty, the settings' own. */
 export async function synthesizeIrodori(text: string, voice: string, settings: Irodori): Promise<ArrayBuffer> {
-  const base = irodoriBase(settings.irodori.url), id = (voice || settings.irodori.voice).trim();
+  const base = irodoriBase(settings.irodori.url), id = voice.trim() || irodoriDefaultVoice(settings);
   if (!base) throw new Error('TTS 모델 설정에 Irodori 서버 주소를 입력해 주세요.');
-  if (!id) throw new Error('TTS 모델 설정에서 Irodori 목소리를 골라 주세요.');
   if (!text.trim() || text.length > 8000) throw new Error('재생 구간은 1~8000자여야 합니다.');
   const response = await ttsFetch(`${base}/v1/audio/speech`, {
     method: 'POST', headers: headers(settings, true),
@@ -73,6 +82,8 @@ export function irodoriVoiceSlug(name: string, now = Date.now()): string {
 /**
  * Registers a recording as a server voice (`POST /v1/audio/voices`, a multipart form: `file`, `voice_id`) and answers
  * the id the server gave it. The form is built as bytes: Risu's nativeFetch takes a body of bytes, not a FormData.
+ * An id the server already holds is refused there (409) and replaced with PUT, which in turn refuses a new one (404):
+ * a voice made again under its own name takes the old one's place.
  */
 export async function uploadIrodoriVoice(audio: ArrayBuffer, fileName: string, voiceId: string, settings: Irodori): Promise<string> {
   const base = irodoriBase(settings.irodori.url), id = irodoriVoiceSlug(voiceId);
@@ -85,7 +96,8 @@ export async function uploadIrodoriVoice(audio: ArrayBuffer, fileName: string, v
   const tail = encode.encode(`\r\n--${boundary}--\r\n`);
   const body = new Uint8Array(head.length + audio.byteLength + tail.length);
   body.set(head, 0); body.set(new Uint8Array(audio), head.length); body.set(tail, head.length + audio.byteLength);
-  const sent = await ttsFetch(`${base}/v1/audio/voices`, { method: 'POST', headers: { ...headers(settings), 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body }, 'irodori');
+  const send = (method: 'POST' | 'PUT') => ttsFetch(`${base}/v1/audio/voices${method === 'PUT' ? `/${encodeURIComponent(id)}` : ''}`, { method, headers: { ...headers(settings), 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body }, 'irodori');
+  const sent = await send('POST').catch(error => { if (error instanceof TtsHttpError && error.status === 409) return send('PUT'); throw error; });
   // Registered, with an answer that is no JSON or names no id: the id asked for is the one it has.
   const answer: unknown = await ttsJson(sent).catch(() => null);
   return irodoriVoiceIds([answer])[0] || irodoriVoiceIds([objectValue(answer).voice])[0] || id;

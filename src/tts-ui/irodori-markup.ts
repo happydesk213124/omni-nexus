@@ -15,8 +15,9 @@ const CSS = '#tts-irodori-voices .iv-bar{display:flex;flex-wrap:wrap;align-items
 const TAB = `<button role="tab" id="tab-irodori-voices" aria-controls="${IRODORI_VOICES_TAB}" aria-selected="false" tabindex="-1" data-tts-tab="${IRODORI_VOICES_TAB}" hidden>Irodori 목소리</button>`;
 const PANEL = `<section class="panel" id="${IRODORI_VOICES_TAB}" role="tabpanel" aria-labelledby="tab-irodori-voices" hidden><style>${CSS}</style>`
   + '<div class="iv-bar"><input id="iv-search" placeholder="이름·태그·ID 검색" aria-label="Irodori 목소리 검색" maxlength="200"><span id="iv-count"></span>'
-  + '<div class="actions"><button type="button" id="iv-sync" title="서버에 있는 목소리마다 프리셋을 하나씩 만듭니다">서버 목소리 가져오기</button><button type="button" class="primary" id="iv-add">+ 목소리</button></div></div>'
+  + '<div class="actions"><button type="button" id="iv-starter" title="성별·나이·성격별 목소리 20개를 서버에서 만들어 프리셋으로 등록합니다">기본 세트 만들기</button><button type="button" id="iv-sync" title="서버에 있는 목소리마다 프리셋을 하나씩 만듭니다">서버 목소리 가져오기</button><button type="button" class="primary" id="iv-add">+ 목소리</button></div></div>'
   + '<p class="iv-note">Irodori는 내 서버에 둔 참조 음성으로 말합니다. 프리셋 하나가 서버의 목소리 하나를 가리키고, 캐릭터 탭에서 캐릭터마다 고릅니다. 프리셋을 고르지 않은 캐릭터와 나레이션은 모델 설정의 기본 목소리로 읽습니다.</p>'
+  + '<p id="iv-progress" class="iv-note" role="status" hidden></p>'
   + '<div id="iv-list" class="iv-list" role="list" aria-label="Irodori 목소리 프리셋"></div></section>';
 export const IRODORI_VOICE_DIALOG = '<dialog id="irodori-voice-dialog" class="editor-sheet"><form id="irodori-voice-form"><div class="dialog-head"><button type="button" data-close="irodori-voice-dialog" aria-label="편집창 접기" class="editor-fold"><span id="iv-dialog-title">Irodori 목소리 추가</span> ▾</button></div><div class="editor-scroll"><div class="fields">'
   + '<label class="field full"><span>목소리 이름</span><input id="iv-name" required maxlength="120"></label>'

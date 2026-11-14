@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/services/tts-runtime';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export * from './src/domain/tts/segment';export * from './src/providers/tts/irodori';export * from './src/providers/tts/speech';export * from './src/providers/tts/http';export * from './src/providers/tts/fish';export {audioMime} from './src/providers/tts/player';export * from './src/tts-ui/settings-transfer';export * from './src/domain/tts/irodori-emoji';export * from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
+const built = await build({ stdin: { contents: `export * from './src/services/tts-runtime';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export * from './src/domain/tts/segment';export * from './src/providers/tts/irodori';export * from './src/providers/tts/speech';export * from './src/providers/tts/http';export * from './src/providers/tts/fish';export {audioMime} from './src/providers/tts/player';export * from './src/tts-ui/settings-transfer';export * from './src/domain/tts/irodori-emoji';export * from './src/domain/tts/irodori-starter';export { englishVoiceWord } from './src/domain/tts/voice-words';export * from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text + '\n//# sourceURL=tts-irodori-check.mjs').toString('base64'));
 const fishVoice = '4e118bfbb83e401c84699c09b5f08257';
 const irodori = (over = {}) => ({ irodori: { ...api.ttsDefaults().irodori, voice: 'sample', ...over } });
@@ -26,7 +26,10 @@ test('Irodori speech: the OpenAI speech call on the user\'s own server, a key on
       assert.equal(o.headers.Authorization, 'Bearer secret');
       assert.deepEqual([JSON.parse(o.body).voice, JSON.parse(o.body).response_format], ['alice', 'wav']);
     }
-    await assert.rejects(api.synthesizeIrodori('はい。', '', irodori({ voice: '' })), /Irodori 목소리/);
+    // No default voice chosen: the server's own voice with no reference, so a server holding no voice yet reads.
+    await api.synthesizeIrodori('はい。', '', irodori({ voice: ' ' }));
+    assert.equal(JSON.parse(calls.at(-1)[1].body).voice, 'none');
+    assert.deepEqual(['none', ' None ', 'no_ref', 'text-only', 'alice', ''].map(api.irodoriNoRef), [true, true, true, true, false, false]);
     await assert.rejects(api.synthesizeIrodori('はい。', '', irodori({ url: '' })), /서버 주소/);
     await assert.rejects(api.synthesizeIrodori('はい。', '', irodori({ url: 'http://user:pw@127.0.0.1:8088' })), /인증 정보가 없는/);
     // Every other TTS call stays HTTPS only.
@@ -67,8 +70,9 @@ test('settings: Fish stays the engine of every existing save; Irodori\'s block i
   assert.deepEqual([odd.engine, odd.irodori.voice, odd.irodori.format, odd.irodori.concurrency], ['fish', '', 'mp3', 5]);
   const mine = api.normalizeTtsSettings({ engine: 'irodori', irodori: { voice: 'alice', format: 'wav', concurrency: 2 } });
   assert.deepEqual([mine.engine, mine.irodori.voice, mine.irodori.format, mine.irodori.concurrency, mine.irodori.url], ['irodori', 'alice', 'wav', 2, 'http://127.0.0.1:8088']);
-  // What is ready to speak is the chosen engine's: an address and a voice for Irodori, a key for Fish.
-  assert.equal(api.speechReady(mine), true); assert.equal(api.speechReady({ ...mine, irodori: { ...mine.irodori, voice: '' } }), false);
+  // What is ready to speak is the chosen engine's: an address for Irodori (a voice left empty is the server's own), a key for Fish.
+  assert.equal(api.speechReady(mine), true); assert.equal(api.speechReady({ ...mine, irodori: { ...mine.irodori, voice: '' } }), true);
+  assert.equal(api.speechReady({ ...mine, irodori: { ...mine.irodori, url: '' } }), false);
   assert.equal(api.speechReady(old), true); assert.equal(api.speechReady(api.normalizeTtsSettings({})), false);
 });
 
@@ -147,11 +151,11 @@ test('playing with Irodori: every line speaks with the settings\' voice, in Japa
     data.settings.irodori.concurrency = 3; await api.saveTtsData();
     most = 0; await runtime.prefetch(['넷입니다.', '다섯입니다.', '여섯입니다.'].map(text => line(text, '하린'))); await wait(8);
     assert.equal(speech.length, 8); assert.ok(most > 1, `the server set up for more gets more at once (${most})`);
-    // No voice chosen: said so, and nothing is asked of the server.
+    // No default voice chosen: the line is read all the same, with the server's own voice that needs no recording.
     data.settings.irodori.voice = ''; await api.saveTtsData();
-    await runtime.play([line('또 왔어?', '하린')], 0).catch(() => {});
-    assert.equal(speech.length, 8);
-    assert.match(runtime.notice, /Irodori 목소리를 먼저 골라/);
+    await runtime.play([line('또 왔어?', '하린')], 0);
+    assert.equal(speech.length, 9, runtime.notice);
+    assert.equal(speech[8][1].voice, 'none');
   } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
 });
 
@@ -181,6 +185,16 @@ test("a designed voice: no reference, the description as the caption, answered i
     assert.equal(await api.uploadIrodoriVoice(sample, '목소리.wav', 'ken_01', irodori()), 'ken_01');
     globalThis.risuai.nativeFetch = async () => ({ ok: false, status: 400 });
     await assert.rejects(api.uploadIrodoriVoice(sample, 'a.wav', 'x', irodori()), error => error instanceof api.TtsHttpError && error.status === 400);
+    // An id the server already holds is refused (409): the same form goes again as PUT to that voice, replacing it.
+    const tries = [];
+    globalThis.risuai.nativeFetch = async (u, o) => { tries.push([o.method, u, o.body]); return o.method === 'POST' ? { ok: false, status: 409 } : { ok: true, json: async () => ({ id: 'aoi' }) }; };
+    assert.equal(await api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori()), 'aoi');
+    assert.deepEqual(tries.map(([method, u]) => [method, u]), [['POST', 'http://127.0.0.1:8088/v1/audio/voices'], ['PUT', 'http://127.0.0.1:8088/v1/audio/voices/aoi']]);
+    assert.equal(tries[0][2], tries[1][2], 'the same form');
+    // Refused there too: the failure is the caller's to show, with no third try.
+    globalThis.risuai.nativeFetch = async (u, o) => { tries.push([o.method]); return { ok: false, status: o.method === 'POST' ? 409 : 404 }; };
+    await assert.rejects(api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori()), error => error instanceof api.TtsHttpError && error.status === 404);
+    assert.equal(tries.length, 4);
     // A server names a voice's file by its id: letters, digits, - and _ only; a name with none of them is dated.
     assert.equal(api.irodoriVoiceSlug(' Aoi (calm) v2 '), 'Aoi-calm-v2');
     assert.equal(api.irodoriVoiceSlug('아오이', 1700000000000), `voice-${(1700000000000).toString(36)}`);
@@ -324,4 +338,26 @@ test("Irodori is sent a line's voice emoji through the translation; the lorebook
     for (let i = 0; i < 50 && !cues().includes('Fish Audio cue'); i++) await new Promise(r => setImmediate(r));
     assert.ok(cues().includes('Fish Audio cue') && !cues().includes('Voice emoji'), 'the entry follows the engine');
   } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
+});
+
+test("the starter voices: twenty, both genders at every age, each a server-safe id, a Japanese description and tags the assignment engines know", () => {
+  const rows = api.IRODORI_STARTERS;
+  assert.equal(rows.length, 20);
+  assert.equal(new Set(rows.map(row => row.id)).size, 20); assert.equal(new Set(rows.map(row => row.name)).size, 20);
+  const ages = ['어린이', '청년', '중년', '노인'];
+  for (const row of rows) {
+    // The id is the file's name on the server, and what the upload asks for is what it is found by afterwards.
+    assert.equal(api.irodoriVoiceSlug(row.id), row.id, row.id); assert.ok(row.id.startsWith('omni-'), row.id);
+    assert.ok(row.gender === 'female' || row.gender === 'male', row.id);
+    assert.match(row.caption, /[\u3040-\u30ff]/, `${row.id}: described in Japanese, the language the model was taught in`);
+    assert.ok(!/[\uac00-\ud7a3]/.test(row.caption), row.id);
+    // A tag outside the vocabulary would go to the engines in Korean, read less sharply than every other voice's.
+    for (const tag of row.tags) assert.notEqual(api.englishVoiceWord(tag), tag, `${row.id}: ${tag}`);
+    assert.equal(row.tags.filter(tag => [...ages, '10대', '성인'].includes(tag)).length, 1, `${row.id}: one age`);
+  }
+  for (const gender of ['female', 'male']) for (const age of ages) assert.ok(rows.some(row => row.gender === gender && row.tags.includes(age)), `${gender} ${age}`);
+  // Made again, only what no preset stands for yet.
+  assert.equal(api.missingIrodoriStarters([]).length, 20);
+  assert.deepEqual(api.missingIrodoriStarters(rows.slice(1).map(row => ({ fishId: row.id }))).map(row => row.id), [rows[0].id]);
+  assert.equal(api.missingIrodoriStarters([{ fishId: 'alice' }]).length, 20);
 });

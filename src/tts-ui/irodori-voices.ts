@@ -3,7 +3,8 @@ import { uuid } from '../core/util/text';
 import { ttsData } from '../storage/tts-store';
 import { omniTts } from '../services/tts-runtime';
 import { matchesVoiceSearch } from '../domain/tts/library';
-import { designIrodoriVoice, irodoriVoiceSlug, listIrodoriVoices, uploadIrodoriVoice } from '../providers/tts/irodori';
+import { missingIrodoriStarters } from '../domain/tts/irodori-starter';
+import { designIrodoriVoice, irodoriDefaultVoice, irodoriNoRef, irodoriVoiceSlug, listIrodoriVoices, uploadIrodoriVoice } from '../providers/tts/irodori';
 import { el, input, val, set, text, list, gender, genderLabel, esc, on, onForm, dialog, button, persist, listenButton, auditionButton, notify } from './common';
 
 /**
@@ -17,16 +18,19 @@ export class IrodoriVoices {
   /** The designed voice last heard, until it is kept or the sheet is opened for another preset. */
   private sample?: ArrayBuffer;
   private plays = 0;
+  /** The starter set is being made; `halt`: asked to stop after the voice in hand. */
+  private making = false;
+  private halt = false;
 
   private visible(): TtsVoice[] { return ttsData().irodoriVoices.filter(v => matchesVoiceSearch(v, val('iv-search'))); }
   render(): void {
     const root = el('iv-list'); if (!root) return;
-    const all = ttsData().irodoriVoices, visible = this.visible(), fallback = ttsData().settings.irodori.voice.trim();
+    const all = ttsData().irodoriVoices, visible = this.visible(), fallback = irodoriDefaultVoice(this.settings());
     text('iv-count', `${visible.length}개 표시 / 전체 ${all.length}개`);
     root.replaceChildren();
     if (!visible.length) {
       const empty = document.createElement('p'); empty.className = 'iv-empty';
-      empty.textContent = all.length ? '검색에 맞는 목소리가 없습니다.' : `아직 프리셋이 없습니다. 지금은 모든 대사를 기본 목소리${fallback ? `(${fallback})` : ''}로 읽습니다. + 목소리 또는 서버 목소리 가져오기로 추가해 주세요.`;
+      empty.textContent = all.length ? '검색에 맞는 목소리가 없습니다.' : `아직 프리셋이 없습니다. 지금은 모든 대사를 기본 목소리(${fallback})로 읽습니다. 기본 세트 만들기를 누르면 성별·나이·성격별 목소리가 채워지고, + 목소리로 하나씩 만들 수도 있습니다.`;
       root.append(empty); return;
     }
     for (const voice of visible) {
@@ -61,11 +65,37 @@ export class IrodoriVoices {
   /** One preset per server voice that has none yet, named by its id: gender and tags are filled in afterwards. */
   private async sync(): Promise<void> {
     const ids = await listIrodoriVoices(this.settings()), known = new Set(ttsData().irodoriVoices.map(v => v.fishId));
-    const fresh = ids.filter(id => !known.has(id));
-    if (!fresh.length) { notify(ids.length ? '서버의 목소리는 모두 프리셋에 있습니다.' : '서버에 등록된 목소리가 없습니다.'); return; }
+    // The server lists its own voice with no reference (none) among them: that one is no recording to name.
+    const held = ids.filter(id => !irodoriNoRef(id)), fresh = held.filter(id => !known.has(id));
+    if (!fresh.length) { notify(held.length ? '서버의 목소리는 모두 프리셋에 있습니다.' : '서버에 등록된 목소리가 없습니다.'); return; }
     ttsData().irodoriVoices.push(...fresh.map(id => ({ key: uuid(), name: id, fishId: id, tags: [], gender: 'unknown' as const, folder: '' })));
     await persist(); this.render();
     notify(`목소리 ${fresh.length}개를 프리셋으로 가져왔습니다 · 성별과 태그를 넣으면 자동 배정이 더 잘 고릅니다.`);
+  }
+  /**
+   * The starter voices no preset stands for yet, made one at a time (the server speaks one line at a time anyway)
+   * and saved as each is made: stopped or failed halfway, what was made stays and the next press makes the rest.
+   */
+  private async starters(): Promise<void> {
+    const button = el<HTMLButtonElement>('iv-starter'), progress = el('iv-progress');
+    if (this.making) { this.halt = true; button.disabled = true; return; }
+    const todo = missingIrodoriStarters(ttsData().irodoriVoices);
+    if (!todo.length) { notify('기본 세트 목소리는 이미 모두 있습니다.'); return; }
+    if (!confirm(`기본 세트 목소리 ${todo.length}개를 서버에서 만들어 프리셋으로 등록합니다.\n하나에 몇 초에서 수십 초가 걸립니다. 「중지」를 누르면 만든 데까지 남습니다.\n만들 때마다 다른 소리가 나오니, 마음에 안 드는 것은 수정에서 다시 만들어 주세요.`)) return;
+    this.making = true; this.halt = false; button.textContent = '중지'; progress.hidden = false;
+    let made = 0;
+    try {
+      for (const starter of todo) {
+        if (this.halt) break;
+        progress.textContent = `기본 세트 만드는 중 ${made + 1}/${todo.length} · ${starter.name}`;
+        const id = await uploadIrodoriVoice(await designIrodoriVoice(starter.caption, this.settings()), 'design.wav', starter.id, this.settings());
+        ttsData().irodoriVoices.push({ key: uuid(), name: starter.name, fishId: id, tags: [...starter.tags], gender: starter.gender, folder: '', caption: starter.caption });
+        await persist(); this.render(); made++;
+      }
+    } finally {
+      this.making = false; button.textContent = '기본 세트 만들기'; button.disabled = false; progress.hidden = true;
+      if (made) notify(`기본 세트 목소리 ${made}개를 만들었습니다${made < todo.length ? ` · 남은 ${todo.length - made}개는 다시 누르면 이어서 만듭니다` : ''}.`);
+    }
   }
   /** Sends a recording up as a server voice named after the preset, and points the sheet at it. */
   private async register(audio: ArrayBuffer, fileName: string): Promise<void> {
@@ -78,6 +108,7 @@ export class IrodoriVoices {
     on('iv-search', () => this.render(), 'input');
     on('iv-add', () => this.edit());
     on('iv-sync', () => this.sync());
+    on('iv-starter', () => this.starters());
     on('iv-load', async () => { this.status('서버 목록을 불러오는 중…'); const ids = await this.loadIds(); this.status(ids.length ? `서버 목소리 ${ids.length}개: ${ids.slice(0, 12).join(', ')}${ids.length > 12 ? ' …' : ''}` : '서버에 등록된 목소리가 없습니다.'); });
     on('iv-upload', () => input('iv-file').click());
     on('iv-file', async () => {

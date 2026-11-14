@@ -18,12 +18,14 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
         requestPluginPermission: async () => true, getDatabase: async () => ({ modules: [], enabledModules: [], characters: [] }), setDatabase: async () => {}, getCurrentCharacterIndex: async () => -1, getCharacterFromIndex: async () => null, getCharacter: async () => null,
         nativeFetch: async (url, options) => {
           if (String(url).includes('translate.googleapis.com')) return { ok: true, json: async () => [[[new URL(url).searchParams.get('q')]]] };
-          if (url.endsWith('/v1/audio/voices') && options.method === 'GET') { window.asked.push(['list']); return { ok: true, json: async () => ({ data: [{ id: 'sample' }, { id: 'alice' }] }) }; }
+          if (url.endsWith('/v1/audio/voices') && options.method === 'GET') { window.asked.push(['list']); return { ok: true, json: async () => ({ data: [{ id: 'none', no_ref: true }, { id: 'sample' }, { id: 'alice' }] }) }; }
           if (url.endsWith('/v1/audio/voices')) {
             const form = new TextDecoder('latin1').decode(options.body), id = /name="voice_id"\r\n\r\n([^\r]+)/.exec(form)?.[1], file = /filename="([^"]+)"/.exec(form)?.[1];
             window.asked.push(['upload', id, file, options.body.length]); return { ok: true, json: async () => ({ id }) };
           }
-          window.asked.push(['speech', JSON.parse(options.body)]); return { ok: true, arrayBuffer: async () => new Uint8Array(2048).buffer };
+          window.asked.push(['speech', JSON.parse(options.body)]);
+          if (window.slow) await new Promise(done => setTimeout(done, 150));
+          return { ok: true, arrayBuffer: async () => new Uint8Array(2048).buffer };
         } };
       window.Audio = class { play() { return Promise.resolve(); } pause() {} load() {} removeAttribute() {} };
       window.AudioContext = class { state = 'running'; destination = {}; resume() { return Promise.resolve(); } createGain() { return { gain: { value: 1 }, connect() { return this; } }; } createMediaElementSource() { return { connect(n) { return n; } }; } };
@@ -50,7 +52,7 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     assert.equal(await page.locator('#tts-irodori-voices').isVisible(), true);
     assert.equal(await page.locator('#tts-voices').isVisible(), false);
     assert.match(await page.locator('#iv-list .iv-empty').textContent(), /기본 목소리\(sample\)/);
-    // 서버 목소리 가져오기: one preset per server voice, once.
+    // 서버 목소리 가져오기: one preset per server voice, once; the server's own "none" is no recording and gets none.
     await page.locator('#iv-sync').click();
     await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 2);
     assert.deepEqual(await presets(), [['sample', 'sample', 'unknown', '', ''], ['alice', 'alice', 'unknown', '', '']]);
@@ -122,6 +124,35 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 3);
     await page.locator('#tab-characters').click();
     assert.match(await page.locator('#tts-characters .char-card', { hasText: '하린' }).textContent(), /기본 목소리/);
+    // 기본 세트 만들기: each starter is designed from its description, kept on the server under its own id and listed
+    // with its gender and tags. Stopped partway, what was made stays and the next press makes only the rest.
+    await page.locator('#tab-irodori-voices').click();
+    await page.evaluate(() => { window.asked.length = 0; window.slow = true; });
+    await page.locator('#iv-starter').click();
+    await page.waitForFunction(() => document.getElementById('iv-starter').textContent === '중지' && !document.getElementById('iv-progress').hidden);
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length >= 5);
+    assert.match(await page.locator('#iv-progress').textContent(), /기본 세트 만드는 중 \d+\/20 · /);
+    await page.locator('#iv-starter').click();
+    await page.waitForFunction(() => document.getElementById('iv-starter').textContent === '기본 세트 만들기' && !document.getElementById('iv-starter').disabled);
+    const partial = (await presets()).length;
+    assert.ok(partial >= 5 && partial < 23, `stopped partway (${partial})`);
+    assert.equal(await page.locator('#iv-progress').isVisible(), false);
+    await page.evaluate(() => { window.slow = false; });
+    await page.locator('#iv-starter').click();
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 23);
+    await page.waitForFunction(() => document.getElementById('iv-starter').textContent === '기본 세트 만들기');
+    const made = await page.evaluate(() => ({ designs: window.asked.filter(row => row[0] === 'speech').map(row => [row[1].voice, row[1].irodori?.caption]), uploads: window.asked.filter(row => row[0] === 'upload').map(row => row[1]) }));
+    assert.equal(made.designs.length, 20, 'each made once across both presses');
+    assert.ok(made.designs.every(([voice, caption]) => voice === 'none' && /[\u3040-\u30ff]/.test(caption)));
+    assert.equal(new Set(made.uploads).size, 20); assert.ok(made.uploads.every(id => /^omni-[fm]-[a-z-]+$/.test(id)), made.uploads.join(' '));
+    const starters = await presets();
+    assert.deepEqual(starters.find(row => row[1] === 'omni-f-young-tsundere').slice(0, 4), ['여성 · 츤데레', 'omni-f-young-tsundere', 'female', '청년|츤데레|툴툴대는|높음']);
+    assert.deepEqual(starters.find(row => row[1] === 'omni-m-elder').slice(0, 4), ['할아버지', 'omni-m-elder', 'male', '노인|차분함|느림']);
+    assert.equal(await page.locator('#iv-list .iv-row').count(), 23);
+    await page.locator('#iv-starter').click();
+    await page.waitForFunction(() => /이미 모두 있습니다/.test(document.getElementById('tts-notice')?.textContent || ''));
+    assert.equal((await presets()).length, 23);
+    if (process.env.IRODORI_VOICES_SHOT) await page.screenshot({ path: process.env.IRODORI_VOICES_SHOT.replace(/\.png$/, '-starter.png'), fullPage: true });
     // Back on Fish: its library's tab and the sheet's Fish fields return.
     await page.evaluate(() => window.updateTtsSettings({ engine: 'fish' }));
     await open();
