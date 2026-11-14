@@ -74,8 +74,27 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   if (result.viewerAnchor && (!Number.isFinite(result.viewerAnchor.right) || !Number.isFinite(result.viewerAnchor.top))) result.viewerAnchor = null;
   return result;
 }
-/** Voices the assignment engines may pick from: the folder chosen in the character tab (all voices if it is empty). */
+/** The engine in use; Fish until the data is read (the settings markup is built before the mount reads it). */
+export function ttsEngine(): TtsSettings['engine'] { return state?.settings.engine === 'irodori' ? 'irodori' : 'fish'; }
+/** The voice presets of the engine in use: Fish's library, or Irodori's own. */
+export function ttsEngineVoices(): TtsVoice[] { const data = ttsData(); return data.settings.engine === 'irodori' ? data.irodoriVoices : data.voices; }
+/** An Irodori preset row as saved: anything else in the list is dropped, never a reason to refuse the whole save. */
+function irodoriRows(raw: unknown): TtsVoice[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((value: unknown) => {
+    const row = value && typeof value === 'object' ? value as Partial<TtsVoice> : null;
+    if (!row || typeof row.key !== 'string' || !row.key || typeof row.name !== 'string' || typeof row.fishId !== 'string') return [];
+    const gender: TtsVoice['gender'] = row.gender === 'female' || row.gender === 'male' ? row.gender : 'unknown';
+    const tags = Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 40) : [];
+    return [{ key: row.key, name: row.name.slice(0, 200), fishId: row.fishId.slice(0, 200), tags, gender, folder: '', ...(typeof row.caption === 'string' && row.caption ? { caption: row.caption.slice(0, 2000) } : {}) }];
+  }).slice(0, 2000);
+}
+/**
+ * Voices the assignment engines may pick from: the folder chosen in the character tab (all voices if it is empty);
+ * with Irodori, its presets (they have no folders).
+ */
 export function ttsCandidateVoices(): TtsVoice[] {
+  if (ttsData().settings.engine === 'irodori') return ttsData().irodoriVoices;
   const { voices, settings } = ttsData(), folder = settings.characterFolder;
   const pool = folder === '*' ? voices : voices.filter(v => v.folder === folder);
   return pool.length ? pool : voices;
@@ -86,7 +105,7 @@ export function loadTtsData(): Promise<TtsData> {
   loading = (async () => {
     const raw: unknown = await psGet(TTS_DATA_KEY);
     if (raw == null || raw === '') {
-      state = { version: 1, settings: ttsDefaults(), voices: parseVoiceImport(presetVoiceRows()), folders: [], characters: [] };
+      state = { version: 1, settings: ttsDefaults(), voices: parseVoiceImport(presetVoiceRows()), folders: [], characters: [], irodoriVoices: [] };
     } else {
       const value = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Partial<TtsData>;
       if (value.version !== 1 || !value.settings || !Array.isArray(value.voices) || !Array.isArray(value.characters) || !Array.isArray(value.folders)) throw new Error('TTS 저장 데이터 형식을 확인할 수 없습니다. 원본은 변경하지 않았습니다.');
@@ -102,7 +121,7 @@ export function loadTtsData(): Promise<TtsData> {
         if (!error || Number.isInteger(error.count) && error.count > 0 && Number.isFinite(error.lastAt) && error.lastAt >= 0 && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) return voice;
         const clean = { ...voice }; delete clean.error; return clean;
       });
-      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders };
+      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders, irodoriVoices: irodoriRows(value.irodoriVoices) };
     }
     state.characters = ensureTtsRoleCards(state.characters, 'global', state.voices, state.settings.narrationVoice, state.settings.translation.narrationLanguage);
     return state;

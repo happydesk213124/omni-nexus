@@ -18,6 +18,7 @@ import { soundAwareHtml } from '../sound-ui/markup';
 import { takeSoundFocus } from '../sound-ui/page';
 import { mountEmotion } from '../emotion-ui/mount';
 import { bindIrodoriSettings, injectIrodoriSettings } from './irodori';
+import { IrodoriVoices } from './irodori-voices';
 
 /** Built for the open menu page (TTS / BGM·효과음 / models) so the first paint is already right. */
 export const ttsSettingsHtml = () => soundAwareHtml(layout.html);
@@ -55,7 +56,8 @@ export async function mountTts(): Promise<void> {
     const holder = document.createElement('div'); holder.innerHTML = ttsSettingsHtml(); const fresh = holder.firstElementChild as HTMLElement;
     fresh.style.cssText = root.style.cssText; root.replaceWith(fresh); await mountTts(); notify('TTS 설정을 불러왔습니다 · API 키는 그대로입니다.');
   })); const library = new TtsLibrary(tab); library.bind(); const characters = new TtsCharacters(library,tab);
-  const refresh = () => { if(live()){library.render(); characters.render();} };
+  const irodoriVoices = new IrodoriVoices(); irodoriVoices.bind();
+  const refresh = () => { if(live()){library.render(); irodoriVoices.render(); characters.render();} };
   observer.observe(document.body,{childList:true,subtree:true});
   await characters.bind(live); if(!live())return;
   // Opened for some people (옴니 뷰어's 👨‍👩‍👧‍👦), or one person's sheet (a name over a line): the 캐릭터 tab, them searched.

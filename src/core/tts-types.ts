@@ -6,10 +6,13 @@ export type TtsCharacterGender = TtsGender | 'other';
 export interface TtsVoice {
   key: string;
   name: string;
+  /** The voice's id on its engine: a Fish model id; for an Irodori preset, the voice's id on the user's server. */
   fishId: string;
   tags: string[];
   gender: TtsGender;
   folder: string;
+  /** Irodori preset only: the description (Japanese) the voice was designed from, kept to design it again. */
+  caption?: string;
   /** Language codes the voice speaks (Fish metadata, else guessed from its title). */
   languages?: string[];
   error?: { count: number; lastAt: number; status: number };
@@ -27,6 +30,8 @@ export interface TtsCharacter {
   gender: TtsCharacterGender;
   voiceKey: string;
   fishId: string;
+  /** The Irodori preset the card speaks with while Irodori is the engine; its Fish voice above is kept beside it. */
+  irodoriKey?: string;
   fixed: boolean;
   gain: number;
   /** true: leave loudness to automatic normalization and ignore gain. Absent on older rows (nonzero gain = manual). */
@@ -163,4 +168,6 @@ export interface TtsData {
   voices: TtsVoice[];
   folders: string[];
   characters: TtsCharacter[];
+  /** Irodori's own voice presets (Fish's are `voices`): each names a voice kept on the user's server. */
+  irodoriVoices: TtsVoice[];
 }

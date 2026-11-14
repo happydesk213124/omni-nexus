@@ -18,6 +18,8 @@ import { uuid } from '../core/util/text';
 import { sleep } from '../core/util/async';
 import { characterAvatar, roleAvatar } from './character-avatar';
 import { currentEmotionBot, spriteCostumes } from '../services/emotion-assets';
+import { bindVoice } from '../domain/tts/engine-voice';
+import { IRODORI_CARD_FIELD } from './irodori-markup';
 
 /**
  * 코스튬에 따라 음성 변경, at the top of the voice page: a costume of the card's illustration character (past the
@@ -33,6 +35,18 @@ function characterVoice(character: Pick<TtsCharacter, 'voiceKey' | 'fishId'>): T
   const voices = ttsData().voices;
   return voices.find(v => v.key === character.voiceKey && (!id || fishVoiceId(v.fishId) === id))
     || (id ? voices.find(v => fishVoiceId(v.fishId) === id) : undefined);
+}
+
+const irodoriOn = (): boolean => ttsData().settings.engine === 'irodori';
+/** The Irodori preset a card speaks with, when it has one that still exists. */
+function irodoriPreset(character: Pick<TtsCharacter, 'irodoriKey'> | undefined): TtsVoice | undefined {
+  return character?.irodoriKey ? ttsData().irodoriVoices.find(v => v.key === character.irodoriKey) : undefined;
+}
+/** What a card's listen button plays under the engine in use: with Irodori, its preset, else the default voice. */
+function cardAudition(c: TtsCharacter | undefined): { fishId: string; gain: number; engine?: 'irodori' } {
+  const gain = c ? ttsCharacterGain(c) : 0;
+  if (irodoriOn()) return { fishId: irodoriPreset(c)?.fishId || ttsData().settings.irodori.voice.trim(), gain, engine: 'irodori' };
+  return { fishId: c ? c.fishId || characterVoice(c)?.fishId || '' : '', gain };
 }
 
 export class TtsCharacters {
@@ -111,7 +125,7 @@ export class TtsCharacters {
       const selected=this.batch?this.selected.has(c.id):this.picked===c.id;
       const tile = tiles.get(c.id) || this.createTile(c.id);
       tile.className = 'char-card' + (selected ? ' tile-selected' : '');tile.setAttribute('aria-pressed',String(selected));tile.setAttribute('aria-label',`${c.name} · ${this.batch?'음성 배정 대상 선택':'선택 후 다시 누르면 편집'}`);
-      const voiceName=voice?.name || (voiceOwner.fishId ? '직접 지정 음성' : '음성 미지정');
+      const voiceName=irodoriOn() ? irodoriPreset(voiceOwner)?.name || '기본 목소리' : voice?.name || (voiceOwner.fishId ? '직접 지정 음성' : '음성 미지정');
       const check = tile.querySelector<HTMLElement>('.char-batch-check')!; check.hidden = !this.batch; check.textContent = selected ? '✓' : '';
       const triggers = JSON.stringify(c.triggers); if (tile.dataset.triggers !== triggers) { tile.dataset.triggers = triggers; tile.querySelector('.char-triggers')!.innerHTML = c.triggers.map(t => `<span>${esc(t)}</span>`).join(''); }
       const scopeLabel = tile.querySelector<HTMLElement>('.scope-label')!; scopeLabel.hidden = c.scope !== 'global' && !c.role;
@@ -150,7 +164,7 @@ export class TtsCharacters {
     tile.style.backgroundSize = 'cover'; tile.style.backgroundPosition = 'center';
     tile.innerHTML = '<span class="char-batch-check" hidden></span><div class="char-triggers"></div><div class="char-head"><div><small class="scope-label">글로벌</small><b></b><span class="char-voice-label"></span></div></div>';
     const current = () => ttsData().characters.find(c => c.id === id);
-    const listen = listenButton(() => { const own = current(), c = own && this.effective(own); return { fishId: c ? c.fishId || characterVoice(c)?.fishId || '' : '', gain: c ? ttsCharacterGain(c) : 0 }; }); listen.classList.add('tile-audition'); tile.append(listen);
+    const listen = listenButton(() => { const own = current(); return cardAudition(own && this.effective(own)); }); listen.classList.add('tile-audition'); tile.append(listen);
     const act = (event: MouseEvent | KeyboardEvent) => {
       const c = current(); if (!c || !ttsData().settings.enabled) return;
       if (this.batch) {
@@ -228,6 +242,7 @@ export class TtsCharacters {
     input('c-gain-manual').checked = !autoGain; input('c-gain').disabled = autoGain;
     text('c-gain-value', autoGain ? '자동' : `${c.gain} dB`); el('character-voice-suggestions').replaceChildren(); el('character-voice-suggestions').hidden = true;
     text('character-voice-choice',voice?.name || '직접 지정');
+    this.fillIrodori(c);
     const role = c.role, form = el('character-form');
     form.dataset.role = role || '';
     // A role card is only a voice: its name, triggers, scope and lock are fixed.
@@ -261,14 +276,34 @@ export class TtsCharacters {
   /** The card whose voice is actually heard: a following bot role card sounds like the global one. */
   private effective(c: TtsCharacter): TtsCharacter { return (c.role && resolveTtsRole(c.role, ttsData().characters, c.scope)) || c; }
   private followed(id: string | undefined): TtsCharacter | undefined { return id ? ttsData().characters.find(x => x.id === id && !x.role) : undefined; }
+  /** While Irodori is the engine the sheet offers its presets, and Fish's own voice fields step aside. */
+  private fillIrodori(c: TtsCharacter): void {
+    const on = irodoriOn(), select = el<HTMLSelectElement>('c-irodori-voice');
+    if (!select) return;
+    el('c-irodori-wrap').hidden = !on;
+    select.innerHTML = '<option value="">기본 목소리 · 모델 설정에 따름</option>' + ttsData().irodoriVoices.map(v => `<option value="${esc(v.key)}">${esc(v.name)}</option>`).join('');
+    set('c-irodori-voice', irodoriPreset(c)?.key || '');
+    for (const node of [el('choose-character-voice'), el('c-id')?.closest('label'), el('c-fetch')?.closest('.field'), el('c-tone')?.closest('label'), el('c-model')?.closest('label'), el('c-language')?.closest('label')]) if (node) (node as HTMLElement).hidden = on;
+    if (!on) return;
+    // Fish's model, its typed name and the costumes' Fish voices have nothing to say to Irodori; nor has a language,
+    // which reads Japanese alone.
+    el('c-model-custom-wrap').hidden = true; el('c-language-custom-wrap').hidden = true;
+    const costumes = document.getElementById('c-costume-voice-wrap'); if (costumes) costumes.hidden = true;
+    text('character-voice-choice', this.voiceLabel(c));
+  }
+  /** The preset chosen in the sheet; under Fish the card keeps the one it had. */
+  private readIrodori(): Pick<TtsCharacter, 'irodoriKey'> {
+    return irodoriOn() && el('c-irodori-voice') ? { irodoriKey: val('c-irodori-voice') || undefined } : {};
+  }
   private voiceLabel(c: TtsCharacter): string {
     const lead = this.followed(c.followId);
+    if (irodoriOn()) return `${lead ? `${lead.name} 따라가는 중 · ` : ''}${irodoriPreset(lead || c)?.name || '기본 목소리'}`;
     return lead ? `${lead.name} 따라가는 중 · ${characterVoice(lead)?.name || (lead.fishId ? '직접 지정' : '음성 미지정')}` : characterVoice(c)?.name || (c.fishId ? '직접 지정' : '음성 미지정');
   }
   private globalCard(c: TtsCharacter): TtsCharacter | undefined { return c.role ? ttsData().characters.find(x => x.role === c.role && x.scope === 'global') : undefined; }
   /** Writes a card's voice, tags, gain, language and speed into the popup controls. */
   private fillVoiceFields(src: TtsCharacter): void {
-    set('c-id', src.fishId); set('c-tags', src.tags.join(', ')); set('c-gender', genderLabel(src.gender));
+    set('c-id', src.fishId); set('c-tags', src.tags.join(', ')); set('c-gender', genderLabel(src.gender)); set('c-irodori-voice', irodoriPreset(src)?.key || '');
     const language = src.language || '', known = ['', 'original', 'en', 'ja', 'ko'].includes(language);
     set('c-language', known ? language : 'custom'); set('c-language-custom', known ? '' : language); el('c-language-custom-wrap').hidden = val('c-language') !== 'custom';
     const auto = src.autoGain ?? src.gain === 0;
@@ -327,8 +362,8 @@ export class TtsCharacters {
     if (this.draft.role && this.draft.scope !== 'global' && input('c-follow-global').checked) return { ...this.draft, followGlobal: true };
     const fishId=fishVoiceId(val('c-id')),voice=fishId ? characterVoice({voiceKey:this.draft.voiceKey,fishId}) : undefined;
     const language = val('c-language') === 'custom' ? val('c-language-custom').trim() : val('c-language'), rate = input('c-rate-on').checked ? Number(val('c-rate')) : undefined;
-    if (this.draft.role) return { ...this.draft, tags: list(val('c-tags')), gender: characterGender(val('c-gender')), fishId, voiceKey: voice?.key || '', gain: Number(val('c-gain')), autoGain: !input('c-gain-manual').checked, language, rate, ...this.readToneModel(), followGlobal: this.draft.scope === 'global' ? undefined : input('c-follow-global').checked, followId: val('c-follow-char') || undefined };
-    return { ...this.draft, ...this.readCostumeVoices(), name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:characterGender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true', autoGain:!input('c-gain-manual').checked, language, rate, ...this.readToneModel() };
+    if (this.draft.role) return { ...this.draft, tags: list(val('c-tags')), gender: characterGender(val('c-gender')), fishId, voiceKey: voice?.key || '', gain: Number(val('c-gain')), autoGain: !input('c-gain-manual').checked, language, rate, ...this.readIrodori(), ...this.readToneModel(), followGlobal: this.draft.scope === 'global' ? undefined : input('c-follow-global').checked, followId: val('c-follow-char') || undefined };
+    return { ...this.draft, ...this.readCostumeVoices(), name:val('c-name').trim(), surname:val('c-surname').trim(), givenName:val('c-given_name').trim(), surnameAliases:list(val('c-surname_variants')), givenAliases:list(val('c-given_name_variants')), triggers:list([val('c-name'),val('c-triggers')].join(',')), tags:list(val('c-tags')), gender:characterGender(val('c-gender')), fishId,voiceKey:voice?.key||'', scope:val('c-scope') === 'global' ? 'global' : this.context?.rosterScope || 'global', gain:Number(val('c-gain')), fixed:val('c-lock') === 'true', autoGain:!input('c-gain-manual').checked, language, rate, ...this.readIrodori(), ...this.readToneModel() };
   }
   private save(commitIdentity = false): boolean {
     if (!this.draft || !ttsData().settings.enabled) return false;
@@ -359,7 +394,11 @@ export class TtsCharacters {
     try { await saveTtsData(); feedback('저장됨'); }
     catch(error) { feedback(`저장 실패: ${String((error as Error).message)}`); }
   }
-  private choose(voice: TtsVoice): void { if (!this.draft) return; this.draft.voiceKey = voice.key; set('c-id',voice.fishId); text('character-voice-choice',voice.name); this.save(); }
+  private choose(voice: TtsVoice): void {
+    if (!this.draft) return;
+    // Under Irodori the voice chosen is one of its presets: the card's Fish voice stays as it was.
+    if (irodoriOn()) { this.draft.irodoriKey = voice.key; set('c-irodori-voice', voice.key); text('character-voice-choice', voice.name); this.save(); return; }
+    this.draft.voiceKey = voice.key; set('c-id',voice.fishId); text('character-voice-choice',voice.name); this.save(); }
   /** A costume's voice set (or emptied back to the card's): its field, the voice's name under it, saved. */
   private chooseCostume(index: number, voice: TtsVoice | null, note = voice?.name || ''): void {
     const field = document.querySelector<HTMLInputElement>(`#c-costume-voice-list [data-costume-fish="${index}"]`), named = document.querySelector(`#c-costume-voice-list [data-costume-voice-name="${index}"]`);
@@ -428,6 +467,8 @@ export class TtsCharacters {
     const scroll = el('character-form').querySelector('.editor-scroll'), sheetSwitch = scroll?.querySelector('.emo-sheet-switch');
     if (scroll && !el('c-costume-voice-wrap')) { if (sheetSwitch) sheetSwitch.insertAdjacentHTML('afterend', COSTUME_VOICE); else scroll.insertAdjacentHTML('afterbegin', COSTUME_VOICE); }
     el('c-costume-voice')?.addEventListener('change', () => { el('c-costume-voice-list').hidden = !input('c-costume-voice').checked; });
+    // The Irodori preset choice sits above 음성 프리셋; it is in the form before the fields below are listened to.
+    if (!el('c-irodori-wrap')) el('choose-character-voice')?.closest('.field')?.insertAdjacentHTML('beforebegin', IRODORI_CARD_FIELD);
     // Its costume fields come and go with the card: listened to where they are put.
     el('c-costume-voice-list')?.addEventListener('input', event => { if ((event.target as Element).matches('[data-costume-fish]') && ttsData().characters.some(c => c.id === this.draft?.id)) this.save(); });
     el('c-costume-voice-list')?.addEventListener('change', event => { if ((event.target as Element).matches('[data-costume-fish]')) this.save(); });
@@ -456,6 +497,10 @@ export class TtsCharacters {
     auditionButton(el<HTMLButtonElement>('test-character-editor'), () => {
       // A card that follows another character is heard with that character's voice and loudness.
       const lead = this.draft?.role ? this.followed(val('c-follow-char') || undefined) : undefined;
+      if (irodoriOn()) {
+        const preset = lead ? irodoriPreset(lead) : ttsData().irodoriVoices.find(v => v.key === val('c-irodori-voice'));
+        return { fishId: preset?.fishId || ttsData().settings.irodori.voice.trim(), gain: lead ? ttsCharacterGain(lead) : input('c-gain-manual').checked ? Number(val('c-gain')) : 0, engine: 'irodori' as const };
+      }
       // The unsaved base delivery and model are heard too.
       if (lead) return { fishId: lead.fishId || characterVoice(lead)?.fishId || '', gain: ttsCharacterGain(lead), ...this.readToneModel() };
       return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0, ...this.readToneModel() };
@@ -484,7 +529,7 @@ export class TtsCharacters {
       text('character-jev-count',`${chars.length}명 추천 중…`);
       const result = await selectTtsVoices(chars,ttsCandidateVoices(),ttsData().settings,'jev',undefined,null,voicePickOptions(chars));
       if (JSON.stringify(ttsData().characters.filter(c => this.selected.has(c.id))) !== before) throw new Error('선택 캐릭터가 바뀌었습니다. 다시 요청해 주세요.');
-      for (const c of chars) { const voice = result.get(c.id)![0]; c.voiceKey = voice.key; c.fishId = voice.fishId; adoptVoiceTags(c, voice); } await persist(); this.batch = false; this.render();
+      for (const c of chars) { const voice = result.get(c.id)![0]; bindVoice(c, voice, ttsData().settings.engine); adoptVoiceTags(c, voice); } await persist(); this.batch = false; this.render();
     });
     this.render();
   }

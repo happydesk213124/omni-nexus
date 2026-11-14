@@ -45,7 +45,7 @@ test('모델 설정: the engine choice shows one engine\'s fields; Irodori\'s ar
     await page.locator('#tts-irodori-list').click();
     await page.waitForFunction(() => window.ttsData().settings.irodori.voice === 'sample');
     assert.match(await page.locator('#tts-test-irodori-result').textContent(), /목소리 2개: sample, alice/);
-    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#tts-irodori-voices option')].map(o => o.value)), ['sample', 'alice']);
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#tts-irodori-voice-list option')].map(o => o.value)), ['sample', 'alice']);
     assert.deepEqual(await page.evaluate(() => window.asked.at(-1).slice(0, 3)), ['http://127.0.0.1:8088/v1/audio/voices', 'GET', 'Bearer secret']);
     // Every field is saved as it is changed.
     await page.locator('#tts-irodori-voice').fill('alice'); await page.locator('#tts-irodori-voice').dispatchEvent('change');

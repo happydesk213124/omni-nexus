@@ -1,0 +1,43 @@
+/**
+ * Irodori's own voice presets: a tab that stands where 음성 목록 (Fish's library) does while Irodori is the engine,
+ * and the sheet a preset is made in. Plain markup with no imports: the page markup is built from it before any
+ * script binds (sound-ui/markup.ts), so the right tab is there from the first paint.
+ */
+export const IRODORI_VOICES_TAB = 'tts-irodori-voices';
+const CSS = '#tts-irodori-voices .iv-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}'
+  + '#tts-irodori-voices .iv-bar input{flex:1 1 180px;min-width:0}#tts-irodori-voices .iv-bar .actions{padding:0;flex-wrap:wrap}'
+  + '#tts-irodori-voices .iv-note{margin:0 0 12px;font-size:12px;line-height:1.5;color:var(--muted)}'
+  + '#tts-irodori-voices .iv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}'
+  + '#tts-irodori-voices .iv-row{display:flex;flex-direction:column;gap:4px;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px}'
+  + '#tts-irodori-voices .iv-row strong,#tts-irodori-voices .iv-row small{overflow-wrap:anywhere}#tts-irodori-voices .iv-row small{font-size:11px;color:var(--muted)}'
+  + '#tts-irodori-voices .iv-row .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:0}#tts-irodori-voices .iv-row button{min-height:36px;padding:6px 9px;font-size:12px}'
+  + '#tts-irodori-voices .iv-empty{grid-column:1/-1;padding:28px 12px;text-align:center;font-size:13px;color:var(--muted)}';
+const TAB = `<button role="tab" id="tab-irodori-voices" aria-controls="${IRODORI_VOICES_TAB}" aria-selected="false" tabindex="-1" data-tts-tab="${IRODORI_VOICES_TAB}" hidden>Irodori 목소리</button>`;
+const PANEL = `<section class="panel" id="${IRODORI_VOICES_TAB}" role="tabpanel" aria-labelledby="tab-irodori-voices" hidden><style>${CSS}</style>`
+  + '<div class="iv-bar"><input id="iv-search" placeholder="이름·태그·ID 검색" aria-label="Irodori 목소리 검색" maxlength="200"><span id="iv-count"></span>'
+  + '<div class="actions"><button type="button" id="iv-sync" title="서버에 있는 목소리마다 프리셋을 하나씩 만듭니다">서버 목소리 가져오기</button><button type="button" class="primary" id="iv-add">+ 목소리</button></div></div>'
+  + '<p class="iv-note">Irodori는 내 서버에 둔 참조 음성으로 말합니다. 프리셋 하나가 서버의 목소리 하나를 가리키고, 캐릭터 탭에서 캐릭터마다 고릅니다. 프리셋을 고르지 않은 캐릭터와 나레이션은 모델 설정의 기본 목소리로 읽습니다.</p>'
+  + '<div id="iv-list" class="iv-list" role="list" aria-label="Irodori 목소리 프리셋"></div></section>';
+export const IRODORI_VOICE_DIALOG = '<dialog id="irodori-voice-dialog" class="editor-sheet"><form id="irodori-voice-form"><div class="dialog-head"><button type="button" data-close="irodori-voice-dialog" aria-label="편집창 접기" class="editor-fold"><span id="iv-dialog-title">Irodori 목소리 추가</span> ▾</button></div><div class="editor-scroll"><div class="fields">'
+  + '<label class="field full"><span>목소리 이름</span><input id="iv-name" required maxlength="120"></label>'
+  + '<label class="field"><span>성별 분류</span><select id="iv-gender"><option>여성</option><option>남성</option><option>미지정</option></select></label>'
+  + '<label class="field"><span>특징 태그 · 쉼표로 구분</span><input id="iv-tags" maxlength="250" placeholder="젊은, 차분한, 부드러운"></label>'
+  + '<label class="field full"><span>서버의 목소리 ID</span><input id="iv-id" list="iv-ids" maxlength="200" placeholder="서버 voices 폴더의 파일 이름 · 예: sample" autocomplete="off"><datalist id="iv-ids"></datalist></label>'
+  + '<div class="field full"><div class="actions"><button type="button" id="iv-load">서버 목록 불러오기</button><button type="button" id="iv-upload">참조 음성 파일 올리기</button></div><input type="file" id="iv-file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" hidden><small>서버에 이미 있는 목소리는 목록에서 고르고, 없으면 녹음 파일(2분 이내)을 올려 등록합니다.</small></div>'
+  + '<label class="field full"><span>설명글로 목소리 만들기 · 일본어로</span><textarea id="iv-caption" rows="3" maxlength="2000" placeholder="例: 落ち着いた低めの声の若い女性。やさしく、ゆっくり話す。"></textarea></label>'
+  + '<div class="field full"><div class="actions"><button type="button" id="iv-design">만들어 듣기</button><button type="button" id="iv-keep" disabled>이 소리로 등록</button></div><small>누를 때마다 다른 목소리가 나옵니다. 마음에 드는 소리가 나오면 「이 소리로 등록」을 눌러 서버에 저장해야 같은 목소리로 계속 읽습니다.</small></div>'
+  + '<small id="iv-status" role="status" class="field full" style="overflow-wrap:anywhere"></small>'
+  + '</div></div><div class="dialog-actions"><button type="button" id="iv-listen">▶ 듣기</button><button type="button" data-close="irodori-voice-dialog">취소</button><button class="primary" type="submit">적용</button></div></form></dialog>';
+/** The card sheet's own choice of Irodori preset, shown in place of Fish's voice fields while Irodori is the engine. */
+export const IRODORI_CARD_FIELD = '<label class="field full" id="c-irodori-wrap" hidden><span>Irodori 목소리</span><select id="c-irodori-voice" aria-label="Irodori 목소리"></select><small>프리셋은 「Irodori 목소리」 탭에서 만듭니다. 고르지 않으면 모델 설정의 기본 목소리로 읽습니다.</small></label>';
+
+/** Adds the tab button (after 음성 목록) and its panel (after Fish's library). Idempotent. */
+export function addIrodoriVoicesStructure(root: ParentNode): void {
+  if (root.querySelector(`#${IRODORI_VOICES_TAB}`)) return;
+  root.querySelector('#tab-voices')?.insertAdjacentHTML('afterend', TAB);
+  root.querySelector('#tts-voices')?.insertAdjacentHTML('afterend', PANEL);
+}
+/** A page's tabs under the engine in use: Irodori's presets stand where Fish's library does. */
+export function engineTabs(tabs: readonly string[], engine: 'fish' | 'irodori'): readonly string[] {
+  return engine === 'irodori' ? tabs.map(tab => tab === 'tts-voices' ? IRODORI_VOICES_TAB : tab) : tabs;
+}

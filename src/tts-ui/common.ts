@@ -22,31 +22,33 @@ export function button(label: string, action: () => void | Promise<unknown>): HT
 export function download(value: unknown, name: string): void { const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 export async function readJson(file: File): Promise<unknown> { if (file.size > 5 * 1024 * 1024) throw new Error('JSON 파일은 5 MB 이하로 가져와 주세요.'); return JSON.parse(await file.text()); }
 export async function persist(): Promise<void> { omniTts.stop(); await saveTtsData(); document.dispatchEvent(new Event('omnitts-library')); }
-export async function audition(fishId: string, gain = 0, voice: { tone?: string; model?: string } = {}): Promise<void> {
-  if (!fishId) throw new Error('Fish 음성을 먼저 선택해 주세요.');
+/** `voice.engine` 'irodori': the id is a voice on the user's Irodori server, heard in Japanese (all it reads). */
+export async function audition(fishId: string, gain = 0, voice: { tone?: string; model?: string; engine?: 'fish' | 'irodori' } = {}): Promise<void> {
+  const irodori = voice.engine === 'irodori';
+  if (!fishId) throw new Error(irodori ? 'Irodori 목소리를 먼저 골라 주세요. 프리셋이 없으면 모델 설정의 기본 목소리를 넣어 주세요.' : 'Fish 음성을 먼저 선택해 주세요.');
   const reservation = omniTts.reservePlayback();
   await omniTts.player.unlock();
   if (!omniTts.player.ready) return;
   const context = await currentTtsContext().catch(()=>({scope:'audition',rosterScope:'global',characterId:'',chatId:'',sessionId:'',character:{},chat:{},messages:[]}));
-  await omniTts.play([{ context, messageId: 'audition', fishId, gain, ...voice, segment: { id: fishId, text: '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
+  await omniTts.play([{ context, messageId: 'audition', fishId, gain, ...voice, segment: { id: fishId, text: irodori ? 'こんにちは。この声でお話しします。' : '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
   if (omniTts.player.status === 'error' || omniTts.player.status === 'blocked') throw new Error(omniTts.notice || '미리 듣기를 재생하지 못했습니다.');
 }
 const LISTEN_LABEL = '듣기';
 // Fish has to synthesize before anything is heard, so the ▶ turns into a spinner.
-export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number; tone?: string; model?: string }): HTMLButtonElement {
+export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number; tone?: string; model?: string; engine?: 'fish' | 'irodori' }): HTMLButtonElement {
   node.classList.add('tts-listen');
   node.innerHTML = `<span class="tts-listen-icon" aria-hidden="true">▶</span> ${LISTEN_LABEL}`;
   node.addEventListener('click', event => {
     event.preventDefault(); event.stopPropagation();
     if (node.getAttribute('aria-busy') === 'true') return;
-    const { fishId, gain, tone, model } = read();
+    const { fishId, gain, tone, model, engine } = read();
     node.setAttribute('aria-busy', 'true'); node.classList.add('is-loading');
     const done = () => { node.removeAttribute('aria-busy'); node.classList.remove('is-loading'); };
-    run(async () => { try { await audition(fishId, gain ?? 0, { tone, model }); } finally { done(); } });
+    run(async () => { try { await audition(fishId, gain ?? 0, { tone, model, engine }); } finally { done(); } });
   });
   return node;
 }
-export function listenButton(read: () => { fishId: string; gain?: number }): HTMLButtonElement { const node = document.createElement('button'); node.type = 'button'; return auditionButton(node, read); }
+export function listenButton(read: () => { fishId: string; gain?: number; engine?: 'fish' | 'irodori' }): HTMLButtonElement { const node = document.createElement('button'); node.type = 'button'; return auditionButton(node, read); }
 export const LISTEN_CSS = '.tts-listen-icon{display:inline-block;width:1em;text-align:center}.tts-listen.is-loading .tts-listen-icon{width:.85em;height:.85em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;font-size:0;vertical-align:-.1em;animation:tts-listen-spin .8s linear infinite}@keyframes tts-listen-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.tts-listen.is-loading .tts-listen-icon{animation-duration:2s}}';
 /**
  * Risu sandboxes the plugin frame without allow-forms, so a submit button never

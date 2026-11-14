@@ -1,6 +1,7 @@
 import type { TtsVoice } from '../core/tts-types';
 import type { LlmSettings } from '../core/types';
-import { ttsData } from '../storage/tts-store';
+import { ttsData, ttsEngineVoices } from '../storage/tts-store';
+import { boundVoiceKey } from '../domain/tts/engine-voice';
 import { callLlm } from '../providers/llm/client';
 import { parseLlmJson } from '../providers/tts/translation';
 import { parseVoiceImport } from '../domain/tts/library';
@@ -34,8 +35,8 @@ export function bindTtsLlmActions(refresh: () => void): void {
     const context = await currentTtsContext();
     proposals = await proposeTtsCharacters(context,val('source-command') || '자료에서 등장인물을 정리하고 캐릭터와 음성을 배정하세요.',{ lore:checked('source-lore'), persona:checked('source-persona'), illustration:checked('source-illustration') },val('source-scope') === 'global' ? 'global' : context.rosterScope,[],model('source-model'));
     proposals = proposals.filter(p => p.previous ? checked('source-update-existing') : checked('source-add-new'));
-    if (!checked('source-assign-voice')) for (const p of proposals) { const old = ttsData().characters.find(c => c.id === p.draft.id); p.draft.voiceKey = old?.voiceKey || ''; p.draft.fishId = old?.fishId || ''; }
-    review('source-results',proposals.map(p => `${p.previous ? '수정' : '추가'} · ${esc(p.draft.name)} · ${esc(p.draft.tags.join(', '))} · ${esc(ttsData().voices.find(v => v.key === p.draft.voiceKey)?.name || '음성 미지정')}`));
+    if (!checked('source-assign-voice')) for (const p of proposals) { const old = ttsData().characters.find(c => c.id === p.draft.id); p.draft.voiceKey = old?.voiceKey || ''; p.draft.fishId = old?.fishId || ''; if (old?.irodoriKey) p.draft.irodoriKey = old.irodoriKey; else delete p.draft.irodoriKey; }
+    review('source-results',proposals.map(p => `${p.previous ? '수정' : '추가'} · ${esc(p.draft.name)} · ${esc(p.draft.tags.join(', '))} · ${esc(ttsEngineVoices().find(v => v.key === boundVoiceKey(p.draft, ttsData().settings.engine))?.name || '음성 미지정')}`));
     text('source-status',`${proposals.length}명 · 선택한 결과만 적용`); input('source-apply').disabled = !proposals.length;
   }));
   on('source-apply', async () => { await applyTtsCharacterProposals(selected('source-results').map(i => proposals[i])); refresh(); dialog('character-source-dialog',false); });

@@ -154,3 +154,116 @@ test('playing with Irodori: every line speaks with the settings\' voice, in Japa
     assert.match(runtime.notice, /Irodori 목소리를 먼저 골라/);
   } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
 });
+
+test("a designed voice: no reference, the description as the caption, answered in wav; kept by sending the recording up as a multipart form", async () => {
+  const calls = [];
+  globalThis.risuai = { nativeFetch: async (url, options) => { calls.push([url, options]); return String(url).endsWith('/voices') ? { ok: true, json: async () => ({ id: 'aoi' }) } : { ok: true, data: new Uint8Array(64).fill(7) }; } };
+  try {
+    const sample = await api.designIrodoriVoice(' 落ち着いた若い女性 ', irodori({ voice: '', key: 'k' }));
+    assert.equal(sample.byteLength, 64);
+    assert.equal(calls[0][0], 'http://127.0.0.1:8088/v1/audio/speech');
+    assert.deepEqual(JSON.parse(calls[0][1].body), { model: 'irodori-tts', input: api.IRODORI_SAMPLE_TEXT, voice: 'none', response_format: 'wav', irodori: { caption: '落ち着いた若い女性' } });
+    await assert.rejects(api.designIrodoriVoice('  ', irodori()), /목소리 설명/);
+    // Kept: the bytes go up whole, between the form's parts, under the id asked for.
+    assert.equal(await api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori({ key: 'k' })), 'aoi');
+    const [url, options] = calls.at(-1), type = options.headers['Content-Type'];
+    assert.equal(url, 'http://127.0.0.1:8088/v1/audio/voices'); assert.equal(options.method, 'POST'); assert.equal(options.headers.Authorization, 'Bearer k');
+    const boundary = /^multipart\/form-data; boundary=(.+)$/.exec(type)?.[1];
+    assert.ok(boundary, type); assert.ok(options.body instanceof Uint8Array, 'bytes, not a FormData: nativeFetch takes no other');
+    const form = Buffer.from(options.body).toString('latin1');
+    assert.ok(form.startsWith(`--${boundary}\r\nContent-Disposition: form-data; name="voice_id"\r\n\r\naoi\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="design.wav"\r\n`), form.slice(0, 200));
+    assert.ok(form.endsWith(`\r\n--${boundary}--\r\n`));
+    const start = form.indexOf('\r\n\r\n', form.indexOf('name="file"')) + 4;
+    assert.deepEqual([...options.body.slice(start, start + 64)], Array(64).fill(7), 'the recording, untouched');
+    assert.equal(options.body.length, start + 64 + `\r\n--${boundary}--\r\n`.length);
+    // An answer naming no id: the id asked for is the one it has.
+    globalThis.risuai.nativeFetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+    assert.equal(await api.uploadIrodoriVoice(sample, '목소리.wav', 'ken_01', irodori()), 'ken_01');
+    globalThis.risuai.nativeFetch = async () => ({ ok: false, status: 400 });
+    await assert.rejects(api.uploadIrodoriVoice(sample, 'a.wav', 'x', irodori()), error => error instanceof api.TtsHttpError && error.status === 400);
+    // A server names a voice's file by its id: letters, digits, - and _ only; a name with none of them is dated.
+    assert.equal(api.irodoriVoiceSlug(' Aoi (calm) v2 '), 'Aoi-calm-v2');
+    assert.equal(api.irodoriVoiceSlug('아오이', 1700000000000), `voice-${(1700000000000).toString(36)}`);
+  } finally { delete globalThis.risuai; }
+});
+
+test("a save's Irodori presets and each card's Irodori voice are read back beside Fish's; a broken preset row is dropped, not the save", async () => {
+  const fresh = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text + '\n//# sourceURL=tts-irodori-load.mjs').toString('base64'));
+  const card = { id: 'c1', scope: 'global', name: '하린', surname: '', givenName: '', surnameAliases: [], givenAliases: [], triggers: ['하린'], tags: [], gender: 'female', voiceKey: 'fv', fishId: fishVoice, irodoriKey: 'p1', fixed: false, gain: 0 };
+  const stored = { version: 1, settings: { ...fresh.ttsDefaults(), engine: 'irodori' }, folders: [], characters: [card],
+    voices: [{ key: 'fv', name: 'Fish voice', fishId: fishVoice, tags: [], gender: 'female', folder: '' }],
+    irodoriVoices: [{ key: 'p1', name: '아오이', fishId: 'aoi', tags: ['차분한'], gender: 'female', folder: 'x', caption: '落ち着いた声' }, { key: 'p2', name: 'ken', fishId: 'ken', tags: 'nope', gender: 'robot' }, { name: 'no key' }, null] };
+  const saved = new Map([['omnitts.data', JSON.stringify(stored)]]), local = new Map();
+  globalThis.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) },
+    getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k), keys: async () => [...local.keys()] }) };
+  try {
+    assert.equal(fresh.ttsEngine(), 'fish', 'before the save is read: Fish');
+    const data = await fresh.loadTtsData();
+    assert.equal(fresh.ttsEngine(), 'irodori');
+    assert.deepEqual(data.irodoriVoices, [{ key: 'p1', name: '아오이', fishId: 'aoi', tags: ['차분한'], gender: 'female', folder: '', caption: '落ち着いた声' }, { key: 'p2', name: 'ken', fishId: 'ken', tags: [], gender: 'unknown', folder: '' }]);
+    const read = data.characters.find(c => c.id === 'c1');
+    assert.deepEqual([read.voiceKey, read.fishId, read.irodoriKey], ['fv', fishVoice, 'p1'], 'one voice per engine, both kept');
+    assert.deepEqual(fresh.ttsCandidateVoices().map(v => v.key), ['p1', 'p2'], 'the engine in use chooses among its own presets');
+    data.settings.engine = 'fish';
+    assert.deepEqual(fresh.ttsCandidateVoices().map(v => v.key), ['fv']);
+  } finally { delete globalThis.risuai; }
+});
+
+test("Irodori presets: a card speaks with its own preset and the rest with the default voice; a new speaker is given a preset of her gender; Fish's voices come back with Fish", async () => {
+  const originalAudio = globalThis.Audio, originalContext = globalThis.AudioContext;
+  const local = new Map(), saved = new Map(), speech = [], fish = [], picks = [];
+  globalThis.Audio = class { src = ''; pause() {} load() {} removeAttribute() {} async play() {} };
+  globalThis.AudioContext = class { state = 'running'; destination = {}; createGain() { return { gain: { value: 1 }, connect() { return this; } }; } createMediaElementSource() { return { connect(node) { return node; } }; } };
+  globalThis.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) },
+    getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k), keys: async () => [...local.keys()] }),
+    getDatabase: async () => ({ modules: [], enabledModules: [], personas: [] }), setDatabase: async () => {}, getCurrentLorebookEntries: async () => [],
+    runLLMModel: async () => ({ success: true, content: '[]' }),
+    nativeFetch: async (url, options) => {
+      if (String(url).includes('translate.googleapis.com')) return { ok: true, json: async () => [[['訳:' + new URL(url).searchParams.get('q')]]] };
+      const body = JSON.parse(options.body);
+      if (String(url).startsWith('http://127.0.0.1:8088/')) { speech.push(body); return { ok: true, data: new Uint8Array(64) }; }
+      // JEV: the first voice it was offered, so the test sees which ones those were.
+      if (body.questions) { picks.push(body.questions); return { ok: true, json: async () => ({ answers: Object.fromEntries(Object.entries(body.questions).map(([i, q]) => [i, { choice: Object.keys(q.criteria)[0], probabilities: {} }])) }) }; }
+      fish.push(body); return { ok: true, data: new Uint8Array(64) };
+    } };
+  try {
+    const data = await api.loadTtsData();
+    Object.assign(data.settings, { enabled: true, autoAssign: true, cueEmoji: true, selector: 'jev', continuous: false, engine: 'irodori' });
+    data.settings.translation.provider = 'off'; data.settings.fish.key = 'fake'; data.settings.jev.key = 'fake';
+    data.settings.irodori = { ...api.ttsDefaults().irodori, voice: 'sample' };
+    data.voices = [{ key: 'fv', name: 'Fish voice', fishId: fishVoice, gender: 'female', tags: [], folder: '' }];
+    data.irodoriVoices = [{ key: 'p-aoi', name: '아오이', fishId: 'aoi', gender: 'female', tags: ['차분한'], folder: '' }, { key: 'p-ken', name: '켄', fishId: 'ken', gender: 'male', tags: [], folder: '' }];
+    const card = (name, more) => ({ ...api.blankTtsCharacter('bot:preset', name), ...more });
+    data.characters = [card('하린', { voiceKey: 'fv', fishId: fishVoice, irodoriKey: 'p-aoi' }), card('민수', { fixed: true }), card('사라', { fixed: true, irodoriKey: 'gone' })];
+    await api.saveTtsData();
+    const runtime = new api.OmniTtsRuntime(); await runtime.init();
+    const context = { scope: 'preset', rosterScope: 'bot:preset', characterId: 'preset', chatId: 'chat', sessionId: 's', character: {}, chat: {}, messages: [] };
+    const line = (text, speaker, more = {}) => ({ context, messageId: text, segment: { id: text, kind: speaker ? 'dialogue' : 'narration', speaker, tone: '', text, start: 0, end: text.length, ...more } });
+    const voiceOf = async request => { await runtime.play([request], 0); return speech.at(-1)?.voice; };
+    assert.equal(await voiceOf(line('안녕.', '하린')), 'aoi', runtime.notice);
+    assert.equal(await voiceOf(line('왔어?', '민수')), 'sample', 'no preset of his own: the default voice');
+    assert.equal(await voiceOf(line('응.', '사라')), 'sample', 'a preset since deleted: the default voice');
+    assert.equal(await voiceOf(line('비가 내렸다.', '')), 'sample', 'narration: the default voice');
+    assert.equal(picks.length, 0, 'nobody needed a voice chosen');
+    // An Irodori voice auditioned by its id is asked of Irodori, as named.
+    await runtime.play([{ ...line('こんにちは。', '', { kind: 'audition' }), fishId: 'ken', engine: 'irodori' }], 0);
+    assert.equal(speech.at(-1).voice, 'ken'); assert.equal(speech.at(-1).input, 'こんにちは。'); assert.equal(fish.length, 0);
+    // Someone new, a woman by her first line's emoji: a card of her own, and a preset among the women's.
+    assert.equal(await voiceOf(line('처음 뵙겠습니다.', '유나', { marks: '👩🥺' })), 'aoi', runtime.notice);
+    assert.equal(picks.length, 1); assert.equal(Object.keys(picks[0]['0'].criteria).length, 1, 'only the female preset was offered');
+    const yuna = data.characters.find(c => c.name === '유나');
+    assert.deepEqual([yuna.irodoriKey, yuna.voiceKey, yuna.fishId, yuna.gender], ['p-aoi', '', '', 'female'], 'her Irodori voice alone was chosen');
+    assert.equal(fish.length, 0);
+    // A man, with no male preset left: a card of his own and the default voice, with no pick asked and nothing reported.
+    data.irodoriVoices = data.irodoriVoices.filter(v => v.gender !== 'male'); await api.saveTtsData();
+    for (const text of ['누구세요?', '저는 처음입니다.']) assert.equal(await voiceOf(line(text, '도윤', { marks: '👨😠' })), 'sample', runtime.notice);
+    assert.equal(picks.length, 1, 'no preset suits him: none is asked for, on his first line or his next');
+    assert.equal(runtime.notice, '');
+    assert.deepEqual([data.characters.find(c => c.name === '도윤').gender, data.characters.find(c => c.name === '도윤').irodoriKey], ['male', undefined]);
+    // Back on Fish: each card's Fish voice, as it was left; the Irodori choice stays for the next switch.
+    data.settings.engine = 'fish'; await api.saveTtsData();
+    await runtime.play([line('다시 안녕.', '하린')], 0);
+    assert.equal(fish.length, 1, runtime.notice); assert.equal(fish[0].reference_id, fishVoice);
+    assert.equal(data.characters.find(c => c.name === '하린').irodoriKey, 'p-aoi');
+  } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
+});

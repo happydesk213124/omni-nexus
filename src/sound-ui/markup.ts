@@ -5,6 +5,8 @@ import layout from '../tts-ui/layout.json';
 import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
 import { attachSoundHelp } from './help';
 import { addEmotionStructure, emotionStyleText } from '../emotion-ui/mount';
+import { addIrodoriVoicesStructure, engineTabs } from '../tts-ui/irodori-markup';
+import { ttsEngine } from '../storage/tts-store';
 
 /**
  * The embedding behind 「자동」 matching (after JEV) and the 「임베딩」 setting. An
@@ -43,7 +45,8 @@ export function addSoundStructure(root: ParentNode): void {
  * the height, and a hidden-by-panels but present container took half of it.
  */
 export function markSoundPage(root: HTMLElement, openPanel?: string): void {
-  const page = soundPage(), allowed = SOUND_PAGE_TABS[page];
+  // Irodori's presets stand where Fish's library does: one voice tab, the engine's own.
+  const page = soundPage(), allowed = engineTabs(SOUND_PAGE_TABS[page], ttsEngine());
   root.dataset.soundPage = page;
   const focus = soundFocus()?.panel;
   const open = openPanel && allowed.includes(openPanel) ? openPanel : focus && allowed.includes(focus) ? focus : SOUND_PAGE_OPENS[page] ?? allowed[0]!;
@@ -69,6 +72,7 @@ export function soundAwareHtml(html: string): string {
   if (!root) return html;
   addSoundStructure(root);
   addEmotionStructure(root);
+  addIrodoriVoicesStructure(root);
   markSoundPage(root);
   // Both style sheets travel with the markup; the mount refreshes them in place.
   root.insertAdjacentHTML('afterbegin', `<style id="omnitts-settings-style">${layout.css}</style><style id="omnisound-page-style">${SOUND_STYLE()}</style>`);
