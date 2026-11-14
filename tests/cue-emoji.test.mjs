@@ -66,10 +66,11 @@ test('the cue prompt asks for the emoji only with the switch on, and stays short
   assert.equal(off, api.TTS_CUE_PROMPT);
   assert.doesNotMatch(off, /emoji/);
   assert.match(on, /Each character's first cue in every reply starts with two emoji/);
-  assert.match(on, /Their later cues in that reply have none/);
+  assert.match(on, /Later cues in that reply have none/);
   assert.doesNotMatch(on, /in the story/, 'never "first in the story": the model cannot know that');
-  assert.match(on, /👧 girl, 👦 boy: elementary school age or younger only; 👩 woman, 👨 man: middle schooler to young adult, students included; 👩‍🦰, 👨‍🦰: mature, 30s-40s; 👵, 👴: elderly/);
+  assert.match(on, /👧👦 elementary school age or younger only; 👩👨 middle schooler to young adult, students included; 👩‍🦰👨‍🦰 30s-40s; 👵👴 elderly/);
   assert.ok(on.startsWith(off.replace('\n</OmniTTS>', '')), 'the same rules, one line more');
-  // It goes with every reply: 1261 characters before it was cut down. A rule added back should earn its words.
-  assert.ok(off.length <= 760, `the cue prompt grew to ${off.length} characters`);
+  // It goes with every reply: 1261 characters before it was cut down, 735 after the first cut. A rule added back
+  // should earn its words.
+  assert.ok(off.length <= 630, `the cue prompt grew to ${off.length} characters`);
 });

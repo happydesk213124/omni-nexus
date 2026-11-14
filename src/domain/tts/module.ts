@@ -4,15 +4,14 @@ import { quietFlag } from '../inray-display';
 
 export const OMNI_TTS_MODULE = 'omni-tts';
 // Sent with every reply: each line keeps a rule a reply once broke, in as few words as it takes.
-const CUE_RULES = `Spoken dialogue: one cue per line, Name (delivery): "Dialogue". Inner thoughts: Name (delivery): 'Thought'.
-Use each speaker's established full name; never invent a name, identity or gender.
-In a first-person story the viewpoint character's own speech and thoughts still take the cue with their actual name and delivery, never I/나/저: I said hi -> Harin (happy): "Hi." First-person actions and descriptions remain plain prose.
-Delivery: short English Fish Audio cues (happy, sad, angry, calm, curious, soft tone, whispering); calm when neutral.
-Keep both quotation marks on the same line. Narration stays plain prose. Never cue code, hidden reasoning, images or status panels. Preserve the story language.`;
+const CUE_RULES = `Dialogue, one cue per line: Name (delivery): "Dialogue". Thoughts: Name (delivery): 'Thought'. Both quotes on the same line.
+Name: the speaker's established full name; never invent a name, identity or gender. In first person too, the narrator's own lines take their real name, never I/나/저: I said hi -> Harin (happy): "Hi." Their actions stay plain prose.
+Delivery: a short English Fish Audio cue (happy, sad, angry, calm, curious, soft tone, whispering); calm if neutral.
+Narration stays plain prose, in the reply's language. Never cue code, hidden reasoning, images or status panels.`;
 // 첫 대사 이모지: each speaker's first cue in a reply. The model knows its own reply, where "first in the story" was a guess
 // (an early reply cut from its prompt). The six age-gender emoji are named (they become the voice library's ages); the
 // personality one is the model's own pick.
-const CUE_EMOJI = `Each character's first cue in every reply starts with two emoji: age-gender (👧 girl, 👦 boy: elementary school age or younger only; 👩 woman, 👨 man: middle schooler to young adult, students included; 👩‍🦰, 👨‍🦰: mature, 30s-40s; 👵, 👴: elderly), then one for personality: 👩🥺 Harin (soft tone): "Hi." Their later cues in that reply have none.`;
+const CUE_EMOJI = `Each character's first cue in every reply starts with two emoji, age-gender then personality: 👩🥺 Harin (soft tone): "Hi." Age-gender: 👧👦 elementary school age or younger only; 👩👨 middle schooler to young adult, students included; 👩‍🦰👨‍🦰 30s-40s; 👵👴 elderly. Later cues in that reply have none.`;
 export const ttsCuePrompt = (emoji = false): string => `@@depth 0\n<OmniTTS>\n${CUE_RULES}${emoji ? `\n${CUE_EMOJI}` : ''}\n</OmniTTS>`;
 export const TTS_CUE_PROMPT = ttsCuePrompt();
 

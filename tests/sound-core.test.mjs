@@ -24,12 +24,13 @@ test('BGM tags: thirty vocabulary words, synonyms fold in, the marker yields thr
   assert.equal(api.parseBgmMarker('그냥 본문'), null);
   assert.match(api.bgmPromptText(api.BGM_TAGS), /exactly three tags/);
   assert.doesNotMatch(api.bgmPromptText(api.BGM_TAGS), /https?:/, 'the prompt never carries the track list');
-  // Both go with every reply. Cut down from 853 and 475 characters, every rule kept: one added back should earn its words.
+  // Both go with every reply. Cut down from 853 and 475 characters (then 706 and 397), every rule kept: one added back
+  // should earn its words.
   const bgm = api.bgmPromptText(api.BGM_TAGS);
   for (const rule of [/on a line of its own/, /after any title, status panel or header/, /At most three per reply/, /While the mood holds write none/]) assert.match(bgm, rule);
-  assert.ok(bgm.length <= 730, `the BGM prompt grew to ${bgm.length} characters`);
+  assert.ok(bgm.length <= 680, `the BGM prompt grew to ${bgm.length} characters`);
   for (const rule of [/on a line of its own, just before the line it belongs to/, /at most five per reply/, /Never inside a narration or dialogue line/]) assert.match(api.SFX_CUE_PROMPT, rule);
-  assert.ok(api.SFX_CUE_PROMPT.length <= 400, `the effect prompt grew to ${api.SFX_CUE_PROMPT.length} characters`);
+  assert.ok(api.SFX_CUE_PROMPT.length <= 360, `the effect prompt grew to ${api.SFX_CUE_PROMPT.length} characters`);
 });
 
 test('BGM pick: shared tags decide, the current track stays unless another is strictly better', () => {

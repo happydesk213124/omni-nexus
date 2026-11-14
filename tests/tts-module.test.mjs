@@ -50,12 +50,12 @@ const controls=text=>runRules(text,api.messageControlsRules(true,false),{index:2
 
 test('module display name and first-person speech instructions preserve module identity',()=>{
   assert.equal(module.name,'⚛️ omni tts');assert.equal(module.id,'omni-tts');
-  assert.match(api.TTS_CUE_PROMPT,/first-person story/);
-  assert.match(api.TTS_CUE_PROMPT,/actual name and delivery/);
-  assert.match(api.TTS_CUE_PROMPT,/actions and descriptions remain plain prose/);
-  assert.match(api.TTS_CUE_PROMPT,/Inner thoughts: Name \(delivery\): 'Thought'/);
+  assert.match(api.TTS_CUE_PROMPT,/In first person too/);
+  assert.match(api.TTS_CUE_PROMPT,/narrator's own lines take their real name, never I\/나\/저/);
+  assert.match(api.TTS_CUE_PROMPT,/Their actions stay plain prose/);
+  assert.match(api.TTS_CUE_PROMPT,/Thoughts: Name \(delivery\): 'Thought'/);
   assert.match(api.TTS_CUE_PROMPT,/never invent a name, identity or gender/);
-  assert.match(api.TTS_CUE_PROMPT,/Keep both quotation marks on the same line/);
+  assert.match(api.TTS_CUE_PROMPT,/Both quotes on the same line/);
   assert.equal(api.ttsDefaults().hideName,false);assert.equal(api.ttsDefaults().translation.provider,'google-free');
 });
 
