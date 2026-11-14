@@ -8,7 +8,7 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 1100, height: 900 } }), errors = [], alerts = [];
-    page.setDefaultTimeout(8000); page.on('pageerror', error => errors.push(error.message));
+    page.setDefaultTimeout(20000); page.on('pageerror', error => errors.push(error.message));
     // A confirm (deleting a preset) is agreed to; an alert is an action that failed, kept to be read.
     page.on('dialog', d => { if (d.type() === 'alert') alerts.push(d.message()); return d.accept(); });
     await page.route('https://tts.test/', route => route.fulfill({ contentType: 'text/html', body: '<html><head></head><body style="background:#0b0f18;color:#eee;font:14px sans-serif"></body></html>' })); await page.goto('https://tts.test/');

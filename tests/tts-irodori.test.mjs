@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const built = await build({ stdin: { contents: `export * from './src/services/tts-runtime';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export * from './src/domain/tts/segment';export * from './src/providers/tts/irodori';export * from './src/providers/tts/speech';export * from './src/providers/tts/http';export * from './src/providers/tts/fish';export {audioMime} from './src/providers/tts/player';export * from './src/tts-ui/settings-transfer';export * from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
+const built = await build({ stdin: { contents: `export * from './src/services/tts-runtime';export * from './src/services/tts-characters';export * from './src/storage/tts-store';export * from './src/domain/tts/segment';export * from './src/providers/tts/irodori';export * from './src/providers/tts/speech';export * from './src/providers/tts/http';export * from './src/providers/tts/fish';export {audioMime} from './src/providers/tts/player';export * from './src/tts-ui/settings-transfer';export * from './src/domain/tts/irodori-emoji';export * from './src/config/tts-defaults';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'esm' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text + '\n//# sourceURL=tts-irodori-check.mjs').toString('base64'));
 const fishVoice = '4e118bfbb83e401c84699c09b5f08257';
 const irodori = (over = {}) => ({ irodori: { ...api.ttsDefaults().irodori, voice: 'sample', ...over } });
@@ -125,11 +125,11 @@ test('playing with Irodori: every line speaks with the settings\' voice, in Japa
     data.voices = [{ key: 'voice', name: 'voice', fishId: fishVoice, gender: 'female', tags: [], folder: '' }]; data.characters = [];
     const runtime = new api.OmniTtsRuntime(); await runtime.init();
     const context = { scope: 'iro', rosterScope: 'bot:iro', characterId: 'iro', chatId: 'chat', sessionId: 's', character: {}, chat: {}, messages: [] };
-    const line = (text, speaker, kind = 'dialogue') => ({ context, messageId: text, segment: { id: text, kind, speaker, tone: 'happy', text, start: 0, end: text.length } });
+    const line = (text, speaker, kind = 'dialogue') => ({ context, messageId: text, segment: { id: text, kind, speaker, tone: kind === 'narration' ? '' : 'happy', text, start: 0, end: text.length } });
     await runtime.play([line('안녕하세요.', '처음 보는 사람')], 0);
     assert.equal(speech.length, 1, runtime.notice);
     assert.equal(speech[0][0], 'http://127.0.0.1:8088/v1/audio/speech');
-    assert.deepEqual(speech[0][1], { model: 'irodori-tts', input: '訳:안녕하세요.', voice: 'sample', response_format: 'mp3' }, 'the one voice, the line in Japanese, no [happy] tag');
+    assert.deepEqual(speech[0][1], { model: 'irodori-tts', input: '😆訳:안녕하세요.', voice: 'sample', response_format: 'mp3' }, 'the one voice, the line in Japanese, no [happy] tag: its delivery as the emoji Irodori reads');
     assert.ok(translated.some(url => url.includes('tl=ja')), 'translation off still goes to Japanese: Irodori reads nothing else');
     assert.equal(models, 0, 'nobody new needs a Fish voice chosen');
     assert.equal(data.characters.length, 0);
@@ -265,5 +265,63 @@ test("Irodori presets: a card speaks with its own preset and the rest with the d
     await runtime.play([line('다시 안녕.', '하린')], 0);
     assert.equal(fish.length, 1, runtime.notice); assert.equal(fish[0].reference_id, fishVoice);
     assert.equal(data.characters.find(c => c.name === '하린').irodoriKey, 'p-aoi');
+  } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
+});
+
+test("voice emoji: Irodori's 39 in its own form, any other emoji out; one a translation lost goes back; a Fish delivery becomes its nearest emoji", () => {
+  const PAUSE = '\u23F8', WIND = '\u{1F32C}', VS = '\uFE0F';
+  assert.equal(api.IRODORI_EMOJI.length, 39);
+  assert.deepEqual(api.IRODORI_EMOJI.filter(row => row.emoji.includes(VS)).map(row => row.label), ['pause', 'heavy breathing'], 'as its own list writes them');
+  // Either form a reply wrote is sent in the form Irodori knows; a sigh is one emoji, not a gasp and a puff.
+  assert.equal(api.irodoriSpeech(`はい${PAUSE}そう${WIND}ね😊${VS}。`), `はい${PAUSE}${VS}そう${WIND}${VS}ね😊。`);
+  assert.equal(api.irodoriSpeech('まぁ😮‍💨いいよ😮'), 'まぁ😮‍💨いいよ😮');
+  assert.deepEqual(api.irodoriEmojiIn('まぁ😮‍💨いいよ😮🤭🤭'), ['😮‍💨', '😮', '🤭', '🤭']);
+  assert.equal(api.irodoriSpeech('好き ❤️ だよ 👩‍🦰 ねえ 👍🏽 ほんと🤭'), '好き だよ ねえ ほんと🤭', 'what it was never trained on is not sent');
+  // A translator that kept them: as it left them. One that dropped some: those, back at the start.
+  assert.equal(api.keepIrodoriEmoji('하하🤭, 정말? 😮‍💨', 'あはは🤭、本当？😮‍💨'), 'あはは🤭、本当？😮‍💨');
+  assert.equal(api.keepIrodoriEmoji('하하🤭, 정말? 😮‍💨 응🤭', 'あはは🤭、本当？うん'), '😮‍💨🤭あはは🤭、本当？うん');
+  assert.equal(api.keepIrodoriEmoji('그래.', 'そう。'), 'そう。');
+  // A line written for Fish: its delivery, as the nearest emoji, two at most; calm has none; its own emoji win.
+  assert.equal(api.irodoriToneEmoji('whispering'), '👂'); assert.equal(api.irodoriToneEmoji('soft tone, sad, angry'), '🫶😭');
+  assert.equal(api.irodoriToneEmoji('calm'), ''); assert.equal(api.irodoriToneEmoji('languid'), '😪'); assert.equal(api.irodoriToneEmoji('angry'), '😠');
+  assert.equal(api.irodoriLine('안녕.', 'こんにちは。', 'whispering'), '👂こんにちは。');
+  assert.equal(api.irodoriLine('안녕🤭', 'こんにちは🤭', 'whispering'), 'こんにちは🤭');
+  assert.equal(api.irodoriLine('안녕.', 'こんにちは。'), 'こんにちは。');
+});
+
+test("Irodori is sent a line's voice emoji through the translation; the lorebook entry follows the engine", async () => {
+  const originalAudio = globalThis.Audio, originalContext = globalThis.AudioContext;
+  const local = new Map(), saved = new Map(), speech = [], written = []; let drop = false;
+  globalThis.Audio = class { src = ''; pause() {} load() {} removeAttribute() {} async play() {} };
+  globalThis.AudioContext = class { state = 'running'; destination = {}; createGain() { return { gain: { value: 1 }, connect() { return this; } }; } createMediaElementSource() { return { connect(node) { return node; } }; } };
+  globalThis.risuai = { pluginStorage: { getItem: async k => saved.get(k), setItem: async (k, v) => saved.set(k, v) },
+    getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k), keys: async () => [...local.keys()] }),
+    getDatabase: async () => ({ modules: [], enabledModules: [], personas: [] }), setDatabase: async patch => { written.push(JSON.stringify(patch)); }, getCurrentLorebookEntries: async () => [],
+    runLLMModel: async () => ({ success: true, content: '[]' }),
+    nativeFetch: async (url, options) => {
+      // A translator that keeps emoji where they are, or (drop) one that loses them all.
+      if (String(url).includes('translate.googleapis.com')) { const q = new URL(url).searchParams.get('q'); return { ok: true, json: async () => [[['訳:' + (drop ? q.replace(/\p{Extended_Pictographic}\u200D?/gu, '') : q)]]] }; }
+      speech.push(JSON.parse(options.body)); return { ok: true, data: new Uint8Array(64) };
+    } };
+  try {
+    const data = await api.loadTtsData();
+    Object.assign(data.settings, { enabled: true, autoAssign: false, continuous: false, engine: 'irodori' });
+    data.settings.translation.provider = 'off'; data.settings.irodori = { ...api.ttsDefaults().irodori, voice: 'sample' };
+    data.irodoriVoices = []; data.characters = []; await api.saveTtsData();
+    const runtime = new api.OmniTtsRuntime(); await runtime.init();
+    const cues = () => written.filter(patch => patch.includes('omnitts-cues')).at(-1) || '';
+    assert.ok(cues().includes('Voice emoji go inside the quotes'), 'the entry Irodori needs, once it is the engine');
+    const context = { scope: 'emoji', rosterScope: 'bot:emoji', characterId: 'emoji', chatId: 'chat', sessionId: 's', character: {}, chat: {}, messages: [] };
+    const said = async (text, tone = '') => { await runtime.play([{ context, messageId: text, segment: { id: text, kind: 'dialogue', speaker: '하린', tone, text, start: 0, end: text.length } }], 0); return speech.at(-1).input; };
+    assert.equal(await said('하하🤭, 정말? ❤️ …😮‍💨 알았어.'), '訳:하하🤭, 정말? …😮‍💨 알았어.', runtime.notice);
+    drop = true;
+    assert.equal(await said('뭐라고? 😠 다시 말해 봐 😮‍💨'), '😠😮‍💨訳:뭐라고? 다시 말해 봐', 'lost in translation: back at the start');
+    drop = false;
+    assert.equal(await said('여기야.', 'whispering'), '👂訳:여기야.', 'a line still written for Fish');
+    assert.equal(await said('그래.', 'calm'), '訳:그래.');
+    // Back on Fish the entry is Fish's again.
+    data.settings.engine = 'fish'; data.settings.fish.key = 'fake'; await api.saveTtsData();
+    for (let i = 0; i < 50 && !cues().includes('Fish Audio cue'); i++) await new Promise(r => setImmediate(r));
+    assert.ok(cues().includes('Fish Audio cue') && !cues().includes('Voice emoji'), 'the entry follows the engine');
   } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
 });

@@ -488,3 +488,40 @@ test('a cue naming the nude one (이름_nude): the person, kept under its own nu
     assert.deepEqual(bound(html, '하린_nude (soft tone): "봐도 돼."').map(s => s?.text), ['봐도 돼.'], 'the line keeps its control');
   }
 });
+
+test("Irodori's cue entry: no delivery word, the 39 voice emoji inside the quote; Fish's entry is as it was", () => {
+  const irodori = api.ttsCuePrompt(false, 'irodori');
+  assert.equal(api.ttsCuePrompt(false, 'fish'), api.TTS_CUE_PROMPT); assert.equal(api.ttsCuePrompt(), api.TTS_CUE_PROMPT);
+  assert.match(irodori, /^@@depth 0\n<OmniTTS>\nDialogue, one cue per line: Name: "Dialogue"\. Thoughts: Name: 'Thought'\./);
+  assert.doesNotMatch(irodori, /delivery|Fish/i, 'nothing of Fish\'s delivery cue');
+  for (const kept of ['never invent a name, identity or gender', 'never I/나/저', 'Their actions stay plain prose', 'Both quotes on the same line', 'Never cue code, hidden reasoning, images or status panels', 'inside the quotes', 'Only these:']) assert.ok(irodori.includes(kept), kept);
+  // Every emoji Irodori knows, each once, and the two that carry a variation selector in its own list with it.
+  const listed = /Only these: ([^\n]+)\./.exec(irodori)[1].split(', ').map(row => row.split(' ')[0]);
+  assert.equal(listed.length, 39); assert.equal(new Set(listed).size, 39);
+  for (const emoji of ['👂', '😮‍💨', '🤭', '🫶', '🤔']) assert.ok(listed.includes(emoji), emoji);
+  assert.ok(listed.includes('\u23F8\uFE0F') && listed.includes('\u{1F32C}\uFE0F'));
+  assert.ok(irodori.length <= 1200, `the entry rides every request: ${irodori.length} characters`);
+  // 첫 대사 이모지: before the name, with no delivery in its example.
+  const first = api.ttsCuePrompt(true, 'irodori');
+  assert.match(first, /starts with two emoji before the name, age-gender then personality: 👩🥺 Harin: "Hi\."/);
+  assert.equal(api.ttsModule({ ...visible, engine: 'irodori' }).lorebook[0].content, irodori);
+  assert.equal(api.ttsModule({ ...visible, engine: 'fish' }).lorebook[0].content, api.TTS_CUE_PROMPT);
+  assert.equal(api.ttsModule(visible).lorebook[0].content, api.TTS_CUE_PROMPT);
+});
+
+test("Irodori: a cue without a delivery is a line of its speaker's, emoji and all; 이모지 숨기기 takes the voice emoji off the screen and the line still plays", () => {
+  const cue = '👩🥺 하린: "하하🤭, 정말? …😮‍💨 알았어. \u23F8\uFE0F 그럼."', narration = '비가 내렸다 😊 조용히.';
+  const [line] = api.parseTtsMessage(cue);
+  assert.deepEqual([line.kind, line.speaker, line.tone, line.marks, line.text], ['dialogue', '하린', '', '👩🥺', '하하🤭, 정말? …😮‍💨 알았어. \u23F8\uFE0F 그럼.']);
+  const shown = (settings, text) => strip(apply(text, api.ttsModule({ ...visible, engine: 'irodori', ...settings }).regex));
+  assert.equal(shown({}, cue), cue, 'shown as written unless hidden');
+  assert.equal(shown({ hideEmoji: true }, cue), '하린: "하하, 정말? …알았어. 그럼."');
+  assert.equal(shown({ hideEmoji: true }, narration), narration, 'an emoji in narration is the story\'s own');
+  assert.equal(shown({ hideEmoji: true }, '하린: "좋아 ❤️ 정말."'), '하린: "좋아 ❤️ 정말."', 'only the emoji Irodori reads');
+  // Under Fish the same switch leaves the quote alone, as before.
+  assert.equal(strip(apply(cue, api.ttsModule({ ...visible, engine: 'fish', hideEmoji: true }).regex)), '하린: "하하🤭, 정말? …😮‍💨 알았어. \u23F8\uFE0F 그럼."');
+  assert.equal(api.ttsModule({ ...visible, hideEmoji: true }).regex.some(rule => rule.comment === 'omnitts-hide-voice-emoji'), false);
+  // Hidden on screen, the control still finds its line: letters and digits alone are compared.
+  const html = apply(cue, api.ttsModule({ ...visible, engine: 'irodori', hideEmoji: true }).regex);
+  assert.deepEqual(api.matchTtsAnchors(api.ttsAnchorTexts(html), [line]), [0]);
+});

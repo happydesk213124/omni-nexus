@@ -1,6 +1,7 @@
 import type { TtsCharacter, TtsSegment, TtsSettings } from '../core/tts-types';
 import { TtsQueue } from '../domain/tts/queue';
 import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/segment';
+import { irodoriLine } from '../domain/tts/irodori-emoji';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
@@ -110,7 +111,7 @@ export class OmniTtsRuntime {
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
     const marks = this.sound?.marks?.() ?? [];
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, marks]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, s.engine, marks]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s, marks); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
@@ -310,6 +311,9 @@ export class OmniTtsRuntime {
     }
     for (const p of prepared) {
       p.text = spokenText(p.text, settings);
+      // Irodori: its voice emoji in the form it knows, through the translation too; every other emoji out; a line
+      // still written for Fish gives its delivery as the nearest emoji. An audition is said as it is.
+      if (japanese(p) && p.request.segment.kind !== 'audition') p.text = irodoriLine(p.request.segment.spoken ?? p.request.segment.text, p.text, p.request.segment.tone);
       p.signature = synthesisSignature(p.text, p.tone, p.fishId, p.settings);
     }
     return prepared;
