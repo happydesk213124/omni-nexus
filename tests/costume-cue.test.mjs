@@ -21,10 +21,14 @@ test('a character once made of such a cue does not stand in the way of the perso
   assert.deepEqual(api.costumeCue('메타몽_melony_form', costumesOf), { speaker: '메타몽', costume: 1 });
 });
 
-test('never split: a rest that names none of their costumes, no one known', () => {
+test('someone known with a costume name not theirs (yet): that person in their default, never someone new', () => {
+  assert.deepEqual(api.costumeCue('하린_pajamas', costumesOf), { speaker: '하린', costume: 0 }, 'as 하린_2 makes no one new, neither does this');
+  assert.deepEqual(api.costumeCue('소라_melony_form', costumesOf), { speaker: '소라', costume: 0 }, 'no costume of theirs read yet (a cast block registering it in the same reply)');
+  assert.deepEqual(api.costumeCue('하린_night_robe', costumesOf), { speaker: '하린', costume: 0 });
+});
+
+test('never split: a whole name that is someone, no one known', () => {
   assert.equal(api.costumeCue('Dark_Knight', costumesOf), null, 'Dark wears no knight: Dark_Knight stays who they are');
-  assert.equal(api.costumeCue('하린_pajamas', costumesOf), null);
-  assert.equal(api.costumeCue('소라_melony_form', costumesOf), null, 'no costume of theirs known');
   assert.equal(api.costumeCue('유나_melony_form', costumesOf), null);
   assert.equal(api.costumeCue('하린', costumesOf), null);
   assert.equal(api.costumeCue('_melony_form', costumesOf), null);
