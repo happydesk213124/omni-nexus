@@ -310,11 +310,12 @@ test('원본으로 저장: a NAI PNG is stored bare, and its reroll finds the ca
   assert.ok(reads.includes(ref.path), 'the reroll read 하나\'s reference, named only by the file name');
 });
 
-test('박제는 PNG 원본: a NAI reroll stores the PNG as delivered and previews a WebP; ComfyUI never', async () => {
+test('박제는 PNG 원본: a NAI reroll stores the PNG as delivered and previews a WebP; a ComfyUI original is one that must hold Omni data', async () => {
   const f = await fixture();
   Object.assign(f.config.card, { image_png_bake: true }); f.api.setConfig(f.config);
-  assert.equal(f.api.keepsOriginalPng(), false, 'ComfyUI keeps its Omni data');
-  assert.equal(f.api.previewsWebp(), false);
+  assert.equal(f.api.keepsOriginalPng(), true, 'ComfyUI keeps its file as delivered too');
+  assert.equal(f.api.comfyOriginal(), true, 'with the recipe written into it');
+  assert.equal(f.api.previewsWebp(), true);
   f.config.nai = { ...f.config.nai, backend: 'nai', api_key: 'test' }; f.api.setConfig(f.config);
   assert.equal(f.api.keepsOriginalPng(), true);
   assert.equal(f.api.previewsWebp(), true);
@@ -416,4 +417,41 @@ test('Comfy: each character gets its box, mask and reference picture from the ce
   assert.equal(wf[5].inputs.weight, 0, 'and its weight is 0');
   assert.deepEqual(uploads.map(u => u.name.replace(/-\d+\.png$/, '')), ['inlay-char1-mask', 'inlay-blank']);
   assert.equal(uploads[0].bytes.readUInt32BE(16), 832); assert.equal(uploads[0].bytes.readUInt32BE(20), 1216);
+});
+
+test('a ComfyUI original is stored byte for byte when ComfyUI wrote its data, and gets the data as one more chunk when it did not', async () => {
+  const f = await fixture();
+  const comfyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAznRFWHRwcm9tcHQAeyIxIjogeyJjbGFzc190eXBlIjogIkVtcHR5SW1hZ2UiLCAiaW5wdXRzIjogeyJ3aWR0aCI6IDgsICJoZWlnaHQiOiA4LCAiYmF0Y2hfc2l6ZSI6IDEsICJjb2xvciI6IDB9fSwgIjIiOiB7ImNsYXNzX3R5cGUiOiAiU2F2ZUltYWdlIiwgImlucHV0cyI6IHsiaW1hZ2VzIjogWyIxIiwgMF0sICJmaWxlbmFtZV9wcmVmaXgiOiAicHJvYmUtcG5nIn19fSWoOS8AAADxdEVYdG9tbmlfbmV4dXMAeyJ2ZXJzaW9uIjogMSwgInJlY2lwZSI6IHsicHJvbXB0IjogIlx1YWQ1MFx1YzJlNCwgc3Vuc2V0IiwgIm5lZ2F0aXZlX3Byb21wdCI6ICJsb3dyZXMiLCAic2VlZCI6IDc3LCAid2lkdGgiOiA2NCwgImhlaWdodCI6IDY0fSwgImNoYXJhY3RlcnMiOiBbeyJzY29wZSI6ICJjaGF0LWEiLCAiaWQiOiAiMiIsICJuYW1lIjogIlx1ZDU1OFx1YjliMCJ9XSwgImdlbmVyYXRlZEF0IjogMTcwMDAwMDAwMDEyM30WtOOLAAAADElEQVR4XmNgGB4AAADIAAFUheOTAAAAAElFTkSuQmCC', 'base64');
+  const held = { recipe: { prompt: '교실, sunset', negative_prompt: 'lowres', seed: 77, width: 64, height: 64 }, characters: [{ scope: 'chat-a', id: '2', name: '하린' }] };
+  const exact = buf => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const location = { session_id: 's', chat_id: 'c', message_index: 0, shot_index: 0 };
+  await f.api.publishImage('comfy_same', exact(comfyPng), location, { original: true, ensureData: true, ...held, generatedAt: 1 });
+  assert.deepEqual(Buffer.from((await f.api.idbGet('images', 'comfy_same')).png), comfyPng, 'untouched');
+  // The cast learned a costume after the request went out: the file gains Omni's chunk, its pixels and ComfyUI's text stay.
+  const dressed = [{ ...held.characters[0], costume: 'school' }];
+  await f.api.publishImage('comfy_more', exact(comfyPng), location, { original: true, ensureData: true, recipe: held.recipe, characters: dressed, generatedAt: 1 });
+  const more = Buffer.from((await f.api.idbGet('images', 'comfy_more')).png);
+  assert.ok(more.length > comfyPng.length); assert.ok(more.includes('omni_nexus')); assert.ok(more.includes(comfyPng.subarray(comfyPng.indexOf('IDAT') - 4, comfyPng.indexOf('IEND') - 4)), 'the same image data');
+  assert.deepEqual(f.api.readGenerationImageData(more).characters, dressed);
+  // A file ComfyUI wrote nothing into (metadata off): the recipe goes in on storing.
+  const png = () => exact(PNG_NAI_1X1);
+  await f.api.publishImage('comfy_bare', png(), location, { original: true, ensureData: true, ...held, generatedAt: 9 });
+  assert.deepEqual(f.api.readGenerationImageData((await f.api.idbGet('images', 'comfy_bare')).png).recipe, held.recipe);
+  // NovelAI's original is never given a chunk.
+  await f.api.publishImage('nai_same', png(), location, { original: true, ...held, generatedAt: 9 });
+  assert.deepEqual(Buffer.from((await f.api.idbGet('images', 'nai_same')).png), Buffer.from(png()));
+});
+
+test('Comfy: the request carries the recipe as extra_pnginfo, for ComfyUI to write into the file it saves', async () => {
+  const f = await fixture();
+  const bodies = [];
+  const inner = risuai.nativeFetch;
+  risuai.nativeFetch = async (url, options) => { if (String(url) === 'http://test-comfy:8188/prompt') bodies.push(JSON.parse(options.body)); return inner(url, options); };
+  const out = await f.api.rerollCard('root');
+  assert.equal(out.ok, true);
+  const data = bodies[0].extra_data.extra_pnginfo.omni_nexus;
+  assert.equal(data.version, 1);
+  assert.equal(typeof data.recipe.prompt, 'string'); assert.ok(data.recipe.prompt.length > 0);
+  assert.equal(data.recipe.seed, out.card.seed, 'the seed the picture was drawn with');
+  assert.ok(Array.isArray(data.characters)); assert.ok(data.generatedAt > 0);
 });

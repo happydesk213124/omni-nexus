@@ -55,8 +55,9 @@ export async function mountTts(): Promise<void> {
     // Rebuild the tab from the loaded values; API keys on this device are kept.
     const holder = document.createElement('div'); holder.innerHTML = ttsSettingsHtml(); const fresh = holder.firstElementChild as HTMLElement;
     fresh.style.cssText = root.style.cssText; root.replaceWith(fresh); await mountTts(); notify('TTS 설정을 불러왔습니다 · API 키는 그대로입니다.');
-  })); const library = new TtsLibrary(tab); library.bind(); const characters = new TtsCharacters(library,tab);
-  const irodoriVoices = new IrodoriVoices(); irodoriVoices.bind();
+  })); const library = new TtsLibrary(tab); library.bind();
+  const irodoriVoices = new IrodoriVoices(tab); irodoriVoices.bind();
+  const characters = new TtsCharacters(library,tab,(done,cancel)=>irodoriVoices.pickVoice(done,cancel));
   const refresh = () => { if(live()){library.render(); irodoriVoices.render(); characters.render();} };
   observer.observe(document.body,{childList:true,subtree:true});
   await characters.bind(live); if(!live())return;

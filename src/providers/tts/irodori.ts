@@ -97,7 +97,11 @@ export async function uploadIrodoriVoice(audio: ArrayBuffer, fileName: string, v
   const body = new Uint8Array(head.length + audio.byteLength + tail.length);
   body.set(head, 0); body.set(new Uint8Array(audio), head.length); body.set(tail, head.length + audio.byteLength);
   const send = (method: 'POST' | 'PUT') => ttsFetch(`${base}/v1/audio/voices${method === 'PUT' ? `/${encodeURIComponent(id)}` : ''}`, { method, headers: { ...headers(settings), 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body }, 'irodori');
-  const sent = await send('POST').catch(error => { if (error instanceof TtsHttpError && error.status === 409) return send('PUT'); throw error; });
+  // The server refuses POST for an id it holds (409) and PUT for one it does not (404). Risu's nativeFetch can hand
+  // back that refusal with no status, which reads as an unreachable server, so the list decides first; the 409 retry
+  // stays for a host that does pass the status, or a list that could not be read.
+  const held = await listIrodoriVoices(settings).then(ids => ids.includes(id), () => false);
+  const sent = held ? await send('PUT') : await send('POST').catch(error => { if (error instanceof TtsHttpError && error.status === 409) return send('PUT'); throw error; });
   // Registered, with an answer that is no JSON or names no id: the id asked for is the one it has.
   const answer: unknown = await ttsJson(sent).catch(() => null);
   return irodoriVoiceIds([answer])[0] || irodoriVoiceIds([objectValue(answer).voice])[0] || id;

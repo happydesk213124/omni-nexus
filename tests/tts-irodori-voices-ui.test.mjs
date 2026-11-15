@@ -104,7 +104,7 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await page.locator('#add-character').click();
     assert.equal(await page.locator('#c-irodori-wrap').isVisible(), true);
     assert.equal(await page.locator('#c-id').isVisible(), false, 'no Fish ID field');
-    assert.equal(await page.locator('#choose-character-voice').isVisible(), false, 'no way into Fish\'s library');
+    assert.equal(await page.locator('#choose-character-voice').isVisible(), true, '목록에서 선택 leads to Irodori\'s own list');
     assert.equal(await page.locator('#recommend-jev').isVisible(), true, 'the engines still recommend, among Irodori\'s presets');
     await page.locator('#c-name').fill('하린'); await page.locator('#c-name').dispatchEvent('change');
     await page.locator('#c-irodori-voice').selectOption({ label: 'Aoi 아오이' });
@@ -121,7 +121,10 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await page.waitForFunction(() => window.asked.at(-1)[0] === 'speech' && window.asked.at(-1)[1].voice === 'Aoi');
     // A preset deleted: its card speaks with the default voice again.
     await page.locator('#tab-irodori-voices').click();
-    await page.locator('#iv-list .iv-row', { hasText: 'Aoi 아오이' }).locator('button.danger').click();
+    // Chosen with a click, then 삭제 in the selection bar, as in 음성 목록.
+    await page.locator('#iv-list .iv-row', { hasText: 'Aoi 아오이' }).click();
+    assert.equal(await page.locator('#iv-selected-count').textContent(), '선택 1개');
+    await page.locator('#iv-delete-selected').click();
     await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 3);
     await page.locator('#tab-characters').click();
     assert.match(await page.locator('#tts-characters .char-card', { hasText: '하린' }).textContent(), /기본 목소리/);
@@ -132,27 +135,27 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await page.locator('#iv-starter').click();
     await page.waitForFunction(() => document.getElementById('iv-starter').textContent === '중지' && !document.getElementById('iv-progress').hidden);
     await page.waitForFunction(() => window.ttsData().irodoriVoices.length >= 5);
-    assert.match(await page.locator('#iv-progress').textContent(), /기본 세트 만드는 중 \d+\/20 · /);
+    assert.match(await page.locator('#iv-progress').textContent(), /기본 세트 만드는 중 \d+\/33 · /);
     await page.locator('#iv-starter').click();
     await page.waitForFunction(() => document.getElementById('iv-starter').textContent === '기본 세트 만들기' && !document.getElementById('iv-starter').disabled);
     const partial = (await presets()).length;
-    assert.ok(partial >= 5 && partial < 23, `stopped partway (${partial})`);
+    assert.ok(partial >= 5 && partial < 36, `stopped partway (${partial})`);
     assert.equal(await page.locator('#iv-progress').isVisible(), false);
     await page.evaluate(() => { window.slow = false; });
     await page.locator('#iv-starter').click();
-    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 23);
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 36);
     await page.waitForFunction(() => document.getElementById('iv-starter').textContent === '기본 세트 만들기');
     const made = await page.evaluate(() => ({ designs: window.asked.filter(row => row[0] === 'speech').map(row => [row[1].voice, row[1].irodori?.caption]), uploads: window.asked.filter(row => row[0] === 'upload').map(row => row[1]) }));
-    assert.equal(made.designs.length, 20, 'each made once across both presses');
+    assert.equal(made.designs.length, 33, 'each made once across both presses');
     assert.ok(made.designs.every(([voice, caption]) => voice === 'none' && /[\u3040-\u30ff]/.test(caption)));
-    assert.equal(new Set(made.uploads).size, 20); assert.ok(made.uploads.every(id => /^omni-[fm]-[a-z-]+$/.test(id)), made.uploads.join(' '));
+    assert.equal(new Set(made.uploads).size, 33); assert.ok(made.uploads.every(id => /^omni-[fm]-[a-z-]+$/.test(id)), made.uploads.join(' '));
     const starters = await presets();
     assert.deepEqual(starters.find(row => row[1] === 'omni-f-young-tsundere').slice(0, 4), ['여성 · 츤데레', 'omni-f-young-tsundere', 'female', '청년|츤데레|툴툴대는|높음']);
     assert.deepEqual(starters.find(row => row[1] === 'omni-m-elder').slice(0, 4), ['할아버지', 'omni-m-elder', 'male', '노인|차분함|느림']);
-    assert.equal(await page.locator('#iv-list .iv-row').count(), 23);
+    assert.equal(await page.locator('#iv-list .iv-row').count(), 36);
     await page.locator('#iv-starter').click();
     await page.waitForFunction(() => /이미 모두 있습니다/.test(document.getElementById('tts-notice')?.textContent || ''));
-    assert.equal((await presets()).length, 23);
+    assert.equal((await presets()).length, 36);
     if (process.env.IRODORI_VOICES_SHOT) await page.screenshot({ path: process.env.IRODORI_VOICES_SHOT.replace(/\.png$/, '-starter.png'), fullPage: true });
     // LLM으로 채우기: for the card chosen, the model writes the name, gender, tags and description; the voice is made
     // and heard at once, and once kept and applied the card speaks with it.
@@ -173,7 +176,7 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await page.locator('#iv-keep').click();
     await page.waitForFunction(() => /^voice-/.test(document.getElementById('iv-id').value));
     await page.locator('#irodori-voice-form button.primary').click();
-    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 24);
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 37);
     assert.equal(await page.evaluate(() => { const data = window.ttsData(), preset = data.irodoriVoices.at(-1); return data.characters.find(row => row.name === '하린').irodoriKey === preset.key && preset.name === '하린' && preset.gender === 'female'; }), true, 'her card speaks with it');
     // With no character chosen the request alone is written, and nobody is bound.
     await page.locator('#iv-add').click();
@@ -190,15 +193,90 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     assert.equal(saved.suggestedFilename(), 'omnitts-irodori-voices.json');
     const stream = await saved.createReadStream(), chunks = []; for await (const chunk of stream) chunks.push(chunk);
     const file = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    assert.equal(file.irodoriVoices.length, 24); assert.ok(file.irodoriVoices.every(row => row.key && row.fishId));
+    assert.equal(file.irodoriVoices.length, 37); assert.ok(file.irodoriVoices.every(row => row.key && row.fishId));
     const incoming = { irodoriVoices: [file.irodoriVoices[0], { ...file.irodoriVoices[1], key: 'other-key' }, { key: 'k-new', name: '옮겨 온 목소리', fishId: 'moved', tags: ['청년'], gender: 'male' }, { key: 'k-alice2', name: 'bad' }] };
     await page.locator('#iv-import-file').setInputFiles({ name: 'voices.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incoming)) });
-    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 25);
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.length === 38);
     await page.waitForFunction(() => /프리셋 1개를 불러왔습니다.*서버에 소리 파일이 없습니다\(moved\)/.test(document.getElementById('tts-notice')?.textContent || ''));
     assert.deepEqual((await presets()).at(-1), ['옮겨 온 목소리', 'moved', 'male', '청년', '']);
     await page.locator('#iv-import-file').setInputFiles({ name: 'voices.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incoming)) });
     await page.waitForFunction(() => /새로 추가할 프리셋이 없습니다/.test(document.getElementById('tts-notice')?.textContent || ''));
-    assert.equal((await presets()).length, 25);
+    assert.equal((await presets()).length, 38);
+    // A voice made again for a preset and applied straight away, with no 「이 소리로 등록」: it is kept first, and under
+    // a new id, since lines already spoken are kept by voice id and would go on playing the old recording.
+    await page.locator('.iv-row', { hasText: 'ID alice' }).dblclick();
+    await page.locator('#iv-caption').fill('明るい少女');
+    await page.locator('#iv-design').click();
+    await page.waitForFunction(() => !document.getElementById('iv-keep').disabled);
+    await page.locator('#irodori-voice-form button.primary').click();
+    await page.waitForFunction(() => window.ttsData().irodoriVoices.some(v => /^alice-[a-z0-9]{5}$/.test(v.fishId)));
+    const remade = await page.evaluate(() => window.ttsData().irodoriVoices.find(v => v.fishId.startsWith('alice-')).fishId);
+    assert.equal((await last('upload'))[1], remade, 'the voice heard went up under the id the preset now names');
+    assert.equal(await page.evaluate(() => window.ttsData().irodoriVoices.some(v => v.fishId === 'alice')), false);
+    // The bot with no TTS card of its own: applying gives it one, under its name, speaking with the voice.
+    await page.evaluate(() => { window.risuai.getCharacter = async () => ({ name: '유키', chaId: 'b1', chats: [{ id: 'c1', message: [] }], chatPage: 0 }); });
+    await page.locator('#iv-add').click();
+    await page.waitForFunction(() => [...document.getElementById('iv-who').options].some(option => option.value === '@bot'));
+    await page.locator('#iv-who').selectOption('@bot');
+    assert.equal(await page.locator('#iv-bind-wrap').isVisible(), true);
+    await page.locator('#iv-name').fill('유키 목소리'); await page.locator('#iv-id').fill('sample');
+    await page.locator('#irodori-voice-form button.primary').click();
+    await page.waitForFunction(() => window.ttsData().characters.some(row => row.name === '유키'));
+    assert.equal(await page.evaluate(() => { const data = window.ttsData(), preset = data.irodoriVoices.find(v => v.name === '유키 목소리'); return data.characters.find(row => row.name === '유키').irodoriKey === preset.key; }), true, 'the bot speaks with it');
+    // 캐릭터 › 목록에서 선택: Irodori's list opens in its choosing mode; the voice chosen there is the card's.
+    await page.locator('#tab-characters').click();
+    await page.locator('#tts-characters .char-card', { hasText: '하린' }).dblclick();
+    await page.waitForFunction(() => document.getElementById('character-dialog').open);
+    await page.locator('#choose-character-voice').click();
+    await page.waitForFunction(() => !document.getElementById('tts-irodori-voices').hidden && !document.getElementById('iv-apply-picked').hidden);
+    assert.equal(await page.locator('#tab-irodori-voices').textContent(), 'Irodori 목소리 (선택 중)');
+    assert.equal(await page.locator('#tab-voices').isVisible(), false, 'never Fish\'s library');
+    await page.locator('#iv-list .iv-row', { hasText: 'ID sample' }).first().click();
+    await page.locator('#iv-apply-picked').click();
+    await page.waitForFunction(() => document.getElementById('character-dialog').open);
+    assert.equal(await page.evaluate(() => { const data = window.ttsData(); return data.irodoriVoices.find(v => v.key === data.characters.find(row => row.name === '하린').irodoriKey).fishId; }), 'sample');
+    assert.equal(await page.locator('#tab-irodori-voices').textContent(), 'Irodori 목소리');
+    // 선택 취소 returns to the card with nothing changed.
+    await page.locator('#choose-character-voice').click();
+    await page.waitForFunction(() => !document.getElementById('iv-cancel-picked').hidden);
+    await page.locator('#iv-cancel-picked').click();
+    await page.waitForFunction(() => document.getElementById('character-dialog').open);
+    assert.equal(await page.evaluate(() => { const data = window.ttsData(); return data.irodoriVoices.find(v => v.key === data.characters.find(row => row.name === '하린').irodoriKey).fishId; }), 'sample');
+    await page.locator('#character-done').click();
+    await page.locator('#tab-irodori-voices').click();
+    // 일본어로 번역: the description as typed goes to the translator with Japanese as its target, and comes back into the field.
+    await page.evaluate(() => { const inner = window.risuai.nativeFetch; window.translated = []; window.risuai.nativeFetch = async (url, options) => { if (String(url).includes('translate.googleapis.com')) { const q = new URL(url).searchParams; window.translated.push([q.get('tl'), q.get('q')]); return { ok: true, json: async () => [[['低くて落ち着いた声']]] }; } return inner(url, options); }; });
+    await page.locator('#iv-add').click();
+    await page.locator('#iv-caption').fill('낮고 차분한 목소리');
+    await page.locator('#iv-translate').click();
+    await page.waitForFunction(() => document.getElementById('iv-caption').value === '低くて落ち着いた声');
+    assert.deepEqual(await page.evaluate(() => window.translated), [['ja', '낮고 차분한 목소리']]);
+    await page.locator('#irodori-voice-dialog [data-close]').first().click();
+    // The list works as 음성 목록 does: filtered by gender, sorted, and chosen by click, Shift and Ctrl, with ▶ no choice.
+    const names = () => page.locator('#iv-list .iv-row strong').allTextContents();
+    const total = await page.locator('#iv-list .iv-row').count();
+    await page.locator('#iv-gender-filter').selectOption('남성');
+    assert.equal(await page.locator('#iv-list .iv-row').count(), await page.evaluate(() => window.ttsData().irodoriVoices.filter(v => v.gender === 'male').length));
+    await page.locator('#iv-gender-filter').selectOption('all');
+    await page.locator('#iv-sort').selectOption('name');
+    const sorted = await names();
+    assert.deepEqual(sorted, [...sorted].sort((a, b) => a.localeCompare(b, 'ko')));
+    await page.locator('#iv-sort').selectOption('added');
+    const rows = page.locator('#iv-list .iv-row');
+    await rows.nth(0).click(); await rows.nth(2).click({ modifiers: ['Shift'] });
+    assert.equal(await page.locator('#iv-selected-count').textContent(), '선택 3개');
+    await rows.nth(1).click({ modifiers: ['Control'] });
+    assert.equal(await page.locator('#iv-selected-count').textContent(), '선택 2개');
+    assert.equal(await page.locator('#iv-edit-selected').isDisabled(), true, '수정 takes one');
+    await rows.nth(5).locator('.tts-listen').click();
+    assert.equal(await page.locator('#iv-selected-count').textContent(), '선택 2개', 'hearing one does not choose it');
+    await page.locator('#iv-delete-selected').click();
+    await page.waitForFunction(n => document.querySelectorAll('#iv-list .iv-row').length === n, total - 2);
+    await page.locator('#iv-multiselect').click();
+    await rows.nth(0).click(); await rows.nth(1).click();
+    assert.equal(await page.locator('#iv-selected-count').textContent(), '선택 2개', '다중선택 adds with a plain click');
+    await page.locator('#iv-clear-selection').click();
+    assert.equal(await page.locator('#iv-selected-count').textContent(), '선택 없음');
     // Back on Fish: its library's tab and the sheet's Fish fields return.
     await page.evaluate(() => window.updateTtsSettings({ engine: 'fish' }));
     await open();

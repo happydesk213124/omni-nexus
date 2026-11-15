@@ -508,6 +508,9 @@ function expectedAssetChange(a,b,at) {
   // 플로팅 태그 and 바로가기툴 접어두기 are new and opt-in (1.x had neither); settings.chat_tools asserts
   // that they start off, save, export and switch back off.
   if (/\.value\.(?:settings|json)\.card\.(?:floating_tag_bar|inline_msg_fan_folded)$/.test(at)) return a === undefined && b === false;
+  // WebP 무손실 is new and opt-in: a ComfyUI marker ([[webp_lossless]]) 1.x had no setting for. settings.image_output
+  // asserts it starts off, saves and exports; tests/comfy-regions asserts it reaches the workflow as a boolean.
+  if (/\.value\.(?:settings|json)\.card\.image_webp_lossless$/.test(at)) return a === undefined && b === false;
   // WebP 메타데이터 쓰기 is on by default, which is the old behaviour; settings.image_output
   // asserts turning it off saves and exports, generation-image-data asserts what it skips.
   if (/\.value\.(?:settings|json)\.card\.image_webp_metadata$/.test(at)) return a === undefined && b === true;

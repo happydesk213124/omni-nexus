@@ -16,6 +16,29 @@ export interface GenerationImageData {
   generatedAt: number | null;
 }
 const tag = 'onxD';
+/**
+ * The same data as ComfyUI writes it for us: sent with the request as `extra_pnginfo`, its save nodes put every key
+ * into the file they write (a PNG `tEXt` chunk named by the key; in a WebP, an EXIF string `key:json`). The file is
+ * then stored exactly as ComfyUI delivered it and still carries its recipe.
+ */
+export const COMFY_PNGINFO_KEY = 'omni_nexus';
+const latin1 = (bytes: Uint8Array): string => { let out = ''; for (let i = 0; i < bytes.length; i += 0x8000) out += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return out; };
+/** ComfyUI's copy, or null: written by another program, so anything odd in it is no data rather than an error. */
+function readComfyWritten(src: Uint8Array): GenerationImageData | null {
+  try {
+    let json = '';
+    if (isPngBytes(src)) {
+      const head = `${COMFY_PNGINFO_KEY}\0`;
+      const chunk = pngChunks(src).find(c => c.name === 'tEXt' && c.data.length > head.length && latin1(c.data.subarray(0, head.length)) === head);
+      if (chunk) json = latin1(chunk.data.subarray(head.length));
+    } else {
+      const exif = chunks(src).find(c => c.name === 'EXIF');
+      const text = exif ? latin1(exif.data) : '', at = text.indexOf(`${COMFY_PNGINFO_KEY}:{`);
+      if (at >= 0) { const from = at + COMFY_PNGINFO_KEY.length + 1, end = text.indexOf('\0', from); json = text.slice(from, end < 0 ? undefined : end); }
+    }
+    return json && json.length <= maxPayload ? validate(JSON.parse(json)) : null;
+  } catch { return null; }
+}
 const maxPayload = 16 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const encoder = new TextEncoder();
@@ -56,9 +79,16 @@ export function readGenerationImageData(bytes: BytesLike): GenerationImageData |
   const src = asU8(bytes);
   if (!isWebpBytes(src) && !isPngBytes(src)) return null;
   const found = isPngBytes(src) ? pngChunks(src).filter(c => c.name === PNG_GENERATION_CHUNK) : chunks(src).filter(c => c.name === tag);
-  if (!found.length) return null;
+  if (!found.length) return readComfyWritten(src);
   if (found.length !== 1 || found[0]!.data.length > maxPayload) throw new Error('Invalid generation chunk');
   return validate(JSON.parse(decoder.decode(found[0]!.data)));
+}
+
+/** The data as it is stored: the recipe's known fields only, each character's known fields only. */
+export function storedGenerationImageData(metadata: GenerationImageData): GenerationImageData {
+  return { version: 1, recipe: safeGenerationRecipe(metadata.recipe),
+    characters: metadata.characters.map(({ scope, id, name, costume, wear_state }) => ({ scope, id, name,
+      ...(costume !== undefined ? { costume } : {}), ...(wear_state !== undefined ? { wear_state } : {}) })), generatedAt: metadata.generatedAt };
 }
 
 /** WebP allows unknown RIFF chunks; image/EXIF/XMP chunks remain byte-identical.
@@ -69,9 +99,7 @@ export function writeGenerationImageData(bytes: BytesLike, metadata: GenerationI
   const src = asU8(bytes);
   // Reject a future version instead of replacing data we do not understand.
   readGenerationImageData(src);
-  metadata = { version: 1, recipe: safeGenerationRecipe(metadata.recipe),
-    characters: metadata.characters.map(({ scope, id, name, costume, wear_state }) => ({ scope, id, name,
-      ...(costume !== undefined ? { costume } : {}), ...(wear_state !== undefined ? { wear_state } : {}) })), generatedAt: metadata.generatedAt };
+  metadata = storedGenerationImageData(metadata);
   const body = encoder.encode(JSON.stringify(metadata));
   if (body.length > maxPayload) throw new Error('Generation metadata too large');
   if (isPngBytes(src)) {

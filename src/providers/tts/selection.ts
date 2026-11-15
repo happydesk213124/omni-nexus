@@ -32,6 +32,8 @@ const ASKED = 5;
 const EMOJI = /\p{Extended_Pictographic}/u;
 /** Tags as a model reads them: English. `noEmoji`: for the embedding, which makes nothing of 🫠. */
 const modelTags = (tags: readonly string[], noEmoji = false) => englishVoiceTags(noEmoji ? tags.filter(tag => !EMOJI.test(tag)) : tags);
+/** A voice with no tags, as the embedding is told it: the description it was made from (an Irodori preset's). */
+const voiceCaption = (voice: TtsVoice): string => (voice.caption || '').trim().slice(0, 300);
 /** A voice as a model is told it: its gender, the known character it is (English), its tags (English). */
 function voiceLine(voice: TtsVoice): string { return [voiceNameForModel(voice), modelTags(voice.tags).join(', ')].filter(Boolean).join(': ').slice(0, 200); }
 /** A stable shuffle by a seed: the list is not always read from its first voice, and the same people get the same order. */
@@ -70,7 +72,7 @@ export async function selectTtsVoices(characters: TtsCharacter[], voices: TtsVoi
     for (let i = 0; i < characters.length; i++) {
       const c = characters[i]!, rows = allowed[i]!;
       const query = [`${c.gender} character`, c.name, modelTags(c.tags, true).join(', '), options.about?.get(c.id)?.slice(0, 400)].filter(Boolean).join(' — ');
-      const scores = await embedScores(query, rows.map(r => [`${r.voice.gender} voice`, voiceNameForModel(r.voice), modelTags(r.voice.tags, true).join(', ')].filter(Boolean).join(' — ')), embed);
+      const scores = await embedScores(query, rows.map(r => [`${r.voice.gender} voice`, voiceNameForModel(r.voice), modelTags(r.voice.tags, true).join(', ') || voiceCaption(r.voice)].filter(Boolean).join(' — ')), embed);
       const best = rows.map((row, k) => ({ voice: row.voice, score: scores[k] ?? 0 })).sort((a, b) => b.score - a.score).slice(0, ASKED);
       if (!best.length) throw new Error(`${c.name}: 유효한 음성 추천 결과가 없습니다.`);
       // Near equals by how often they are already used, fewest first.

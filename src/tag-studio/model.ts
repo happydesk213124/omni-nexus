@@ -67,6 +67,8 @@ export interface StudioState {
     model: string;
     imageModel: string;
     effort: 'high' | 'medium';
+    /** The picture is redrawn by ComfyUI, which has no Effort: its workflow decides steps and sampler. */
+    comfy?: boolean;
     w: number;
     h: number;
     steps: string;
@@ -350,6 +352,9 @@ export function assemble(state: StudioState, roster: CharacterInput[]): Assemble
 }
 
 export function studioUsesV5Full(state: StudioState): boolean {
+  // Effort is NovelAI's. Under ComfyUI a picture once drawn at Medium would otherwise send Medium's fixed
+  // 14 steps and sampler into the workflow on every edit.
+  if (state.gen.comfy) return false;
   const model = state.gen.model || state.gen.imageModel;
   return model === 'nai-diffusion-5-full' || model === 'nai-diffusion-5-full-medium';
 }

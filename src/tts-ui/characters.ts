@@ -71,7 +71,8 @@ export class TtsCharacters {
   /** Told when the sheet 옴니 뷰어 opened closes for good; 목소리 고르기 closes it only to come back to it. */
   private sheetDone?: () => void;
   private choosingVoice = false;
-  constructor(private library: TtsLibrary, private tab: (name: string) => void) {}
+  /** `irodoriPick`: Irodori's own list in its choosing mode, the place a card's voice is chosen from under Irodori. */
+  constructor(private library: TtsLibrary, private tab: (name: string) => void, private irodoriPick?: (done: (voice: TtsVoice) => void, cancel: () => void) => void) {}
   dispose(): void { this.visibility?.disconnect(); void this.flushSave(); }
   /** Role cards lead the list (this bot's pair, then the global pair); everyone else keeps roster order. */
   visible(): TtsCharacter[] { const rank = (c: TtsCharacter) => c.role ? (c.scope === 'global' ? 2 : 0) + (c.role === 'monologue' ? 1 : 0) : 4; return this.matching().map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i).map(r => r.c); }
@@ -283,7 +284,7 @@ export class TtsCharacters {
     el('c-irodori-wrap').hidden = !on;
     select.innerHTML = '<option value="">기본 목소리 · 모델 설정에 따름</option>' + ttsData().irodoriVoices.map(v => `<option value="${esc(v.key)}">${esc(v.name)}</option>`).join('');
     set('c-irodori-voice', irodoriPreset(c)?.key || '');
-    for (const node of [el('choose-character-voice'), el('c-id')?.closest('label'), el('c-fetch')?.closest('.field'), el('c-tone')?.closest('label'), el('c-model')?.closest('label'), el('c-language')?.closest('label')]) if (node) (node as HTMLElement).hidden = on;
+    for (const node of [el('c-id')?.closest('label'), el('c-fetch')?.closest('.field'), el('c-tone')?.closest('label'), el('c-model')?.closest('label'), el('c-language')?.closest('label')]) if (node) (node as HTMLElement).hidden = on;
     if (!on) return;
     // Fish's model, its typed name and the costumes' Fish voices have nothing to say to Irodori; nor has a language,
     // which reads Japanese alone.
@@ -506,7 +507,10 @@ export class TtsCharacters {
       return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0, ...this.readToneModel() };
     });
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
-    on('choose-character-voice', () => { this.draft = this.read(); this.choosingVoice = true; dialog('character-dialog',false); this.library.pickVoice(voice => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog');this.choose(voice); }); });
+    on('choose-character-voice', () => { this.draft = this.read(); this.choosingVoice = true; dialog('character-dialog',false);
+      const back = () => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog'); };
+      if (irodoriOn() && this.irodoriPick) { this.irodoriPick(voice => { back(); this.choose(voice); }, back); return; }
+      this.library.pickVoice(voice => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog');this.choose(voice); }); });
     for (const engine of ['llm','jev','embedding'] as const) on(`recommend-${engine}`, async () => {
       const c = this.read(); text('character-voice-choice','음성 추천 중…');
       // Asked again, the card gets another voice than the one it has: voicePickOptions names it as current.

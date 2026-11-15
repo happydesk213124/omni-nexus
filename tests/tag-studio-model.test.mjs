@@ -7,6 +7,7 @@ import {
   hydrateFromNai,
   mergeStudioRosterPayloads,
   studioModelChoice,
+  studioUsesV5Full,
   studioCharacterLookTags,
   applyStudioWearState,
   studioRowIsGlobal,
@@ -499,4 +500,15 @@ describe('studio costume upper and lower fields', () => {
     prompt = assembleOverrides(state, []).characters[0].prompt;
     assert.equal(prompt, 'black hair, smile');
   });
+});
+
+it('under ComfyUI a picture drawn at Medium sends no Medium steps or sampler, and shows no Effort', () => {
+  const state = emptyState();
+  Object.assign(state.gen, { model: 'nai-diffusion-5-full', imageModel: 'nai-diffusion-5-full-medium', effort: 'medium', steps: '28', sampler: 'k_euler', rescale: 0.2 });
+  const nai = assembleOverrides(state, []);
+  assert.deepEqual([nai.model, nai.steps, nai.sampler, nai.cfg_rescale], ['nai-diffusion-5-full-medium', 14, 'k_euler_ancestral', 0]);
+  state.gen.comfy = true;
+  assert.equal(studioUsesV5Full(state), false);
+  const comfy = assembleOverrides(state, []);
+  assert.deepEqual([comfy.model, comfy.steps, comfy.sampler, comfy.cfg_rescale], ['nai-diffusion-5-full', '28', 'k_euler', 0.2]);
 });

@@ -7,10 +7,13 @@ import { missingIrodoriStarters } from '../domain/tts/irodori-starter';
 import { newIrodoriPresets } from '../domain/tts/irodori-presets';
 import { ttsNameKey } from '../domain/tts/identity';
 import { writeIrodoriVoice } from '../services/irodori-voice-writer';
+import { blankTtsCharacter } from '../services/tts-characters';
 import { currentTtsContext, type TtsChatContext } from '../services/tts-context';
 import { LLM_MODEL_CHOICES, llmForChoice } from './llm-actions';
+import { translateTts } from '../providers/tts/translation';
+import { IRODORI_VOICES_TAB } from './irodori-markup';
 import { designIrodoriVoice, irodoriDefaultVoice, irodoriNoRef, irodoriVoiceSlug, listIrodoriVoices, uploadIrodoriVoice } from '../providers/tts/irodori';
-import { el, input, val, set, text, list, gender, genderLabel, esc, on, onForm, dialog, button, persist, listenButton, auditionButton, notify, checked, download, readJson } from './common';
+import { el, input, val, set, text, list, gender, genderLabel, esc, on, onForm, dialog, persist, listenButton, auditionButton, notify, checked, download, readJson } from './common';
 
 /** The open bot itself, where it has no TTS card of its own to name. */
 const BOT = '@bot';
@@ -31,27 +34,78 @@ export class IrodoriVoices {
   private halt = false;
   /** The open chat, as read when the sheet was opened: whose description and lorebook a voice is written from. */
   private context: TtsChatContext | null = null;
+  /** Chosen presets, as in 음성 목록: a click picks one, Ctrl/⌘ or 다중선택 adds, Shift takes the run between. */
+  private selected = new Set<string>();
+  private multi = false;
+  private anchor = '';
+  /** A card is choosing its voice here (캐릭터 › 목록에서 선택), as 음성 목록 is chosen from under Fish. */
+  private picking?: { done: (voice: TtsVoice) => void; cancel: () => void };
+  constructor(private tab: (name: string) => void = () => undefined) {}
+  pickVoice(done: (voice: TtsVoice) => void, cancel: () => void): void {
+    this.picking = { done, cancel }; this.selected.clear(); text('tab-irodori-voices', 'Irodori 목소리 (선택 중)');
+    this.tab(IRODORI_VOICES_TAB); this.render();
+  }
+  private endPick(): { done: (voice: TtsVoice) => void; cancel: () => void } | undefined {
+    const picking = this.picking; this.picking = undefined; text('tab-irodori-voices', 'Irodori 목소리'); return picking;
+  }
+  private applyPick(): void {
+    const voice = ttsData().irodoriVoices.find(v => this.selected.has(v.key));
+    if (voice && this.picking) { this.endPick()!.done(voice); this.selected.clear(); this.render(); }
+  }
 
-  private visible(): TtsVoice[] { return ttsData().irodoriVoices.filter(v => matchesVoiceSearch(v, val('iv-search'))); }
+  private visible(): TtsVoice[] {
+    const all = ttsData().irodoriVoices, sort = val('iv-sort'), wanted = val('iv-gender-filter') || 'all';
+    const shown = all.filter(v => (wanted === 'all' || v.gender === gender(wanted)) && matchesVoiceSearch(v, val('iv-search')));
+    const order = { female: 0, male: 1, unknown: 2 } as const;
+    return sort === 'name' ? shown.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+      : sort === 'gender' ? shown.sort((a, b) => order[a.gender] - order[b.gender] || a.name.localeCompare(b.name, 'ko')) : shown;
+  }
   render(): void {
     const root = el('iv-list'); if (!root) return;
     const all = ttsData().irodoriVoices, visible = this.visible(), fallback = irodoriDefaultVoice(this.settings());
+    this.selected = new Set([...this.selected].filter(key => all.some(v => v.key === key)));
     text('iv-count', `${visible.length}개 표시 / 전체 ${all.length}개`);
+    this.renderSelection();
     root.replaceChildren();
     if (!visible.length) {
       const empty = document.createElement('p'); empty.className = 'iv-empty';
       empty.textContent = all.length ? '검색에 맞는 목소리가 없습니다.' : `아직 프리셋이 없습니다. 지금은 모든 대사를 기본 목소리(${fallback})로 읽습니다. 기본 세트 만들기를 누르면 성별·나이·성격별 목소리가 채워지고, + 목소리로 하나씩 만들 수도 있습니다.`;
       root.append(empty); return;
     }
+    const numbers = new Map(all.map((v, i) => [v.key, i + 1]));
     for (const voice of visible) {
-      const row = document.createElement('div'); row.className = 'iv-row'; row.setAttribute('role', 'listitem'); row.dataset.key = voice.key;
-      const users = ttsData().characters.filter(c => c.irodoriKey === voice.key).length;
-      row.innerHTML = `<strong>${esc(voice.name)}</strong><small>${esc([genderLabel(voice.gender), ...voice.tags].join(', '))}</small><small>ID ${esc(voice.fishId || '없음')}${users ? ` · 캐릭터 ${users}명` : ''}</small><div class="actions"></div>`;
-      const actions = row.querySelector('.actions')!;
-      const edit = button('수정', () => this.edit(voice)), remove = button('삭제', () => this.remove(voice)); remove.className = 'danger';
-      actions.append(listenButton(() => ({ fishId: voice.fishId, engine: 'irodori' })), edit, remove);
+      const picked = this.selected.has(voice.key), users = ttsData().characters.filter(c => c.irodoriKey === voice.key).length;
+      const row = document.createElement('div'); row.className = 'voice-row iv-row'; row.tabIndex = 0; row.dataset.key = voice.key;
+      row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(picked));
+      row.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(voice.name)} 선택" ${picked ? 'checked' : ''}><small>${numbers.get(voice.key)}</small></div><strong>${esc(voice.name)}</strong><small>${esc([genderLabel(voice.gender), ...voice.tags].join(', '))}</small><small>ID ${esc(voice.fishId || '없음')}${users ? ` · 캐릭터 ${users}명` : ''}</small><div class="actions"></div>`;
+      const listen = listenButton(() => ({ fishId: voice.fishId, engine: 'irodori' }));
+      // Hearing a voice is not choosing it.
+      listen.addEventListener('click', event => event.stopPropagation()); listen.addEventListener('dblclick', event => event.stopPropagation());
+      row.querySelector('.actions')!.append(listen);
+      row.addEventListener('click', event => this.pick(voice, visible, event));
+      row.addEventListener('keydown', event => { if (event.target === row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); this.pick(voice, visible, event); } });
+      row.addEventListener('dblclick', () => { if (this.picking) { this.selected.clear(); this.selected.add(voice.key); this.applyPick(); } else this.edit(voice); });
       root.append(row);
     }
+  }
+  private pick(voice: TtsVoice, visible: TtsVoice[], event: MouseEvent | KeyboardEvent): void {
+    const toggle = this.multi || event.ctrlKey || event.metaKey || event.target instanceof HTMLInputElement;
+    if (event.shiftKey && this.anchor) {
+      const a = visible.findIndex(v => v.key === this.anchor), b = visible.indexOf(voice);
+      if (a >= 0) visible.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(v => this.selected.add(v.key));
+    } else if (toggle) { if (!this.selected.delete(voice.key)) this.selected.add(voice.key); }
+    // A second click on the one already chosen opens it, as in 음성 목록.
+    else if (this.selected.size === 1 && this.selected.has(voice.key)) { if (this.picking) this.applyPick(); else this.edit(voice); return; }
+    else { this.selected.clear(); this.selected.add(voice.key); }
+    this.anchor = voice.key; this.render();
+  }
+  private renderSelection(): void {
+    const count = this.selected.size;
+    text('iv-selected-count', count ? `선택 ${count}개` : '선택 없음');
+    el('iv-multiselect').setAttribute('aria-pressed', String(this.multi));
+    input('iv-edit-selected').disabled = count !== 1;
+    el('iv-apply-picked').hidden = !this.picking; el('iv-cancel-picked').hidden = !this.picking; input('iv-apply-picked').disabled = count !== 1;
+    for (const id of ['iv-clear-selection', 'iv-delete-selected']) input(id).disabled = !count;
   }
   private status(message: string): void { text('iv-status', message); }
   private settings() { return { irodori: ttsData().settings.irodori }; }
@@ -78,7 +132,20 @@ export class IrodoriVoices {
   }
   /** The card chosen in the sheet, when it is one (not the bot by its title, which has no card). */
   private card() { const id = val('iv-who'); return id && id !== BOT ? ttsData().characters.find(c => c.id === id) : undefined; }
-  private showBind(): void { el('iv-bind-wrap').hidden = !this.card(); }
+  private botName(): string { return val('iv-who') === BOT ? String(this.context?.character.name || '').trim() : ''; }
+  private showBind(): void { el('iv-bind-wrap').hidden = !this.card() && !this.botName(); }
+  /**
+   * The card a kept voice is given to. The bot with no card of its own gets one now, under its name in this bot's
+   * roster: without it the voice was saved and spoken by nobody, and the bot kept whatever voice it was given before.
+   */
+  private bindTarget() {
+    const card = this.card(); if (card) return card;
+    const name = this.botName(); if (!name) return undefined;
+    const scope = this.context?.rosterScope || 'global';
+    const found = ttsData().characters.find(c => !c.role && (c.scope === scope || c.scope === 'global') && ttsNameKey(c.name) === ttsNameKey(name));
+    if (found) return found;
+    const made = blankTtsCharacter(scope, name); ttsData().characters.push(made); return made;
+  }
   /** The model writes the sheet (name if empty, gender, tags, description), and the voice is made and heard at once. */
   private async write(): Promise<void> {
     const card = this.card(), who = card ? [card.name, ...card.triggers] : val('iv-who') === BOT ? [String(this.context?.character.name || '')] : [];
@@ -87,6 +154,18 @@ export class IrodoriVoices {
     if (!val('iv-name').trim()) set('iv-name', draft.name || card?.name || '');
     set('iv-gender', genderLabel(draft.gender)); set('iv-tags', draft.tags.join(', ')); set('iv-caption', draft.caption);
     await this.design();
+  }
+  /** The description as typed (Korean, or any language) put into Japanese, the only language the model was taught in. */
+  private async translate(): Promise<void> {
+    const words = val('iv-caption').trim();
+    if (!words) throw new Error('번역할 설명글을 먼저 적어 주세요.');
+    const settings = ttsData().settings, via = val('iv-translate-via');
+    const own = settings.translation.provider === 'off' ? 'google-free' : settings.translation.provider;
+    const provider = via === 'google-free' || via === 'llm' ? via : own;
+    this.status('설명글을 일본어로 번역하는 중…');
+    const [translated] = await translateTts([{ id: 'caption', text: words, speaker: '', tone: '', kind: 'narration', start: 0, end: words.length }], { ...settings, translation: { ...settings.translation, provider, language: 'ja' } });
+    set('iv-caption', String(translated || '').trim().slice(0, 2000));
+    this.status('일본어로 바꿨습니다. 「만들어 듣기」로 들어 보세요.');
   }
   private async design(): Promise<void> {
     const design = el<HTMLButtonElement>('iv-design');
@@ -111,10 +190,13 @@ export class IrodoriVoices {
     const gone = held ? fresh.filter(voice => !held.includes(voice.fishId)) : [];
     notify(`프리셋 ${fresh.length}개를 불러왔습니다${gone.length ? ` · 그중 ${gone.length}개는 서버에 소리 파일이 없습니다(${gone.slice(0, 3).map(voice => voice.fishId).join(', ')}${gone.length > 3 ? ' …' : ''}). 서버의 voices 폴더에 파일을 넣어 주세요` : ''}.`);
   }
-  private async remove(voice: TtsVoice): Promise<void> {
-    const users = ttsData().characters.filter(c => c.irodoriKey === voice.key).length;
-    if (!confirm(`「${voice.name}」 프리셋을 삭제할까요?${users ? `\n이 목소리를 쓰던 캐릭터 ${users}명은 기본 목소리로 읽습니다.` : ''}\n서버에 있는 음성 파일은 지우지 않습니다.`)) return;
-    ttsData().irodoriVoices = ttsData().irodoriVoices.filter(v => v.key !== voice.key);
+  private async remove(voices: TtsVoice[]): Promise<void> {
+    if (!voices.length) return;
+    const keys = new Set(voices.map(v => v.key)), users = ttsData().characters.filter(c => c.irodoriKey && keys.has(c.irodoriKey)).length;
+    const what = voices.length === 1 ? `「${voices[0]!.name}」 프리셋을` : `프리셋 ${voices.length}개를`;
+    if (!confirm(`${what} 삭제할까요?${users ? `\n이 목소리를 쓰던 캐릭터 ${users}명은 기본 목소리로 읽습니다.` : ''}\n서버에 있는 음성 파일은 지우지 않습니다.`)) return;
+    ttsData().irodoriVoices = ttsData().irodoriVoices.filter(v => !keys.has(v.key));
+    voices.forEach(v => this.selected.delete(v.key));
     await persist(); this.render();
   }
   private async loadIds(): Promise<string[]> {
@@ -157,15 +239,30 @@ export class IrodoriVoices {
       if (made) notify(`기본 세트 목소리 ${made}개를 만들었습니다${made < todo.length ? ` · 남은 ${todo.length - made}개는 다시 누르면 이어서 만듭니다` : ''}.`);
     }
   }
-  /** Sends a recording up as a server voice named after the preset, and points the sheet at it. */
+  /**
+   * Sends a recording up as a server voice named after the preset, and points the sheet at it. A name the server
+   * already holds gets a short tail instead of being replaced: lines already spoken are kept by voice id, so a voice
+   * replaced under its old id would go on playing its old recordings for every line heard before.
+   */
   private async register(audio: ArrayBuffer, fileName: string): Promise<void> {
     this.status('서버에 등록하는 중…');
-    const id = await uploadIrodoriVoice(audio, fileName, irodoriVoiceSlug(val('iv-id').trim() || val('iv-name')), this.settings());
+    const slug = irodoriVoiceSlug(val('iv-id').trim() || val('iv-name'));
+    const held = await listIrodoriVoices(this.settings()).catch(() => [] as string[]);
+    const target = held.includes(slug) ? `${slug.slice(0, 50)}-${Date.now().toString(36).slice(-5)}` : slug;
+    const id = await uploadIrodoriVoice(audio, fileName, target, this.settings());
     set('iv-id', id); this.status(`서버에 「${id}」로 등록했습니다. 적용을 누르면 프리셋에 저장됩니다.`);
   }
   bind(): void {
     if (!el('iv-list')) return;
     on('iv-search', () => this.render(), 'input');
+    on('iv-gender-filter', () => this.render(), 'change');
+    on('iv-sort', () => this.render(), 'change');
+    on('iv-multiselect', () => { this.multi = !this.multi; this.render(); });
+    on('iv-select-all', () => { this.visible().forEach(v => this.selected.add(v.key)); this.render(); });
+    on('iv-clear-selection', () => { this.selected.clear(); this.render(); });
+    const chosen = () => ttsData().irodoriVoices.filter(v => this.selected.has(v.key));
+    on('iv-edit-selected', () => { const [voice] = chosen(); if (voice) this.edit(voice); });
+    on('iv-delete-selected', () => this.remove(chosen()));
     on('iv-add', () => this.edit());
     on('iv-sync', () => this.sync());
     on('iv-starter', () => this.starters());
@@ -185,6 +282,12 @@ export class IrodoriVoices {
     });
     // No description typed: the model writes one first, for the character chosen above.
     on('iv-design', () => val('iv-caption').trim() ? this.design() : this.write());
+    on('iv-translate', async () => {
+      const translate = el<HTMLButtonElement>('iv-translate'); translate.disabled = true;
+      try { await this.translate(); } catch (error) { this.status(''); throw error; } finally { translate.disabled = false; }
+    });
+    on('iv-apply-picked', () => this.applyPick());
+    on('iv-cancel-picked', () => { const picking = this.endPick(); this.selected.clear(); this.render(); picking?.cancel(); });
     on('iv-export', () => download({ irodoriVoices: ttsData().irodoriVoices }, 'omnitts-irodori-voices.json'));
     on('iv-import', () => input('iv-import-file').click());
     on('iv-import-file', async () => { const file = input('iv-import-file').files?.[0]; input('iv-import-file').value = ''; if (file) await this.importFile(file); }, 'change');
@@ -195,14 +298,17 @@ export class IrodoriVoices {
     });
     auditionButton(el<HTMLButtonElement>('iv-listen'), () => ({ fishId: val('iv-id').trim(), engine: 'irodori' }));
     onForm('irodori-voice-form', async () => {
-      const name = val('iv-name').trim(), id = val('iv-id').trim();
+      const name = val('iv-name').trim();
       if (!name) throw new Error('목소리 이름을 입력해 주세요.');
+      // A voice made and heard but not yet kept is what the reader means to apply: keep it first.
+      if (this.sample) { await this.register(this.sample, 'design.wav'); this.sample = undefined; input('iv-keep').disabled = true; }
+      const id = val('iv-id').trim();
       if (!id) throw new Error('서버의 목소리 ID가 비어 있습니다. 목록에서 고르거나, 파일을 올리거나, 만든 소리를 「이 소리로 등록」해 주세요.');
       const old = ttsData().irodoriVoices.find(v => v.key === this.editing), caption = val('iv-caption').trim();
       const voice: TtsVoice = { key: old?.key || uuid(), name, fishId: id, tags: list(val('iv-tags')), gender: gender(val('iv-gender')), folder: '', ...(caption ? { caption } : {}) };
       if (old) { delete old.caption; Object.assign(old, voice); } else ttsData().irodoriVoices.push(voice);
-      // Written for a card: that card speaks with it from now on.
-      const card = this.card(); if (card && checked('iv-bind')) card.irodoriKey = voice.key;
+      // Written for a card (or the bot): that one speaks with it from now on.
+      const card = checked('iv-bind') ? this.bindTarget() : undefined; if (card) card.irodoriKey = voice.key;
       await persist(); dialog('irodori-voice-dialog', false); this.render();
     });
     this.render();

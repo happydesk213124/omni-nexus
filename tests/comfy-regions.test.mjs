@@ -8,6 +8,11 @@ import {
   comfyRegionImageValues,
   comfyRegionValues,
   encodeMaskPng,
+  applyConvertEdits,
+  convertComfyWorkflow,
+  convertMessages,
+  mossBox,
+  mossPrompt,
   pixelBox,
 } from '../.test-build/comfy-regions.mjs';
 import { buildComfyPlaceholderValues, buildComfyWorkflowFromTemplate } from '../.test-build/comfy-client.mjs';
@@ -138,4 +143,103 @@ test('region numbers reach a workflow as numbers', () => {
   }), values);
   assert.deepEqual(wf[2].inputs, { x: 416, y: 0, width: 416, height: 1216, strength: 1 });
   assert.deepEqual(wf[3].inputs, { x: 0, width: 0.5, strength: 0 });
+});
+
+test('MOSS boxes reach past their region and keep head room when the region is full height', () => {
+  assert.deepEqual(mossBox({ x: 0, y: 0, w: 0.5, h: 1 }), { x: 0, y: 0.05, w: 0.6, h: 0.95 });
+  const top = mossBox({ x: 0, y: 0, w: 1, h: 0.5 });
+  assert.deepEqual([top.y, top.h], [0, 0.6]);
+});
+
+test('MOSS prompt: boxes in centred pixels with positions on, plain characters with AI choice', () => {
+  const people = [
+    { center_x: 0.3, center_y: 0.5, positive: '1girl, smile' },
+    { center_x: 0.7, center_y: 0.5, positive: '1boy' },
+  ];
+  const layout = JSON.parse(mossPrompt('library', people, true, 1000, 1000));
+  assert.deepEqual(layout.summary, { caption: 'library' });
+  assert.deepEqual(layout.items.map(i => [i.caption, i.bbox]), [['1girl, smile', [-450, -500, 500, 100]], ['1boy', [-450, -100, 500, 500]]]);
+  assert.equal(layout.bbox_coord_space, 'abs_centralized');
+  assert.equal(mossPrompt('library', people, false, 1000, 1000), 'library\n\nCharacter 1: 1girl, smile.\nCharacter 2: 1boy.');
+});
+
+test('MOSS prompt gives no boxes for one character, and skips characters whose tags went into the main prompt', () => {
+  assert.equal(mossPrompt('park', [{ center_x: 0.5, center_y: 0.5, positive: '1girl' }], true, 1024, 1024), 'park\n\nCharacter 1: 1girl.');
+  assert.equal(mossPrompt('park, 1girl', [{ center_x: 0.3, positive: '' }, { center_x: 0.7, positive: '1boy' }], true, 1024, 1024), 'park, 1girl\n\nCharacter 1: 1boy.');
+  assert.equal(mossPrompt('park', [], true, 1024, 1024), 'park');
+});
+
+test('[[moss_prompt]] follows the AI choice flag through the placeholder table', () => {
+  const nai = { width: 832, height: 1216 };
+  const captions = [{ name: 'A', prompt: '1girl, {smile}', center_x: 0.3, center_y: 0.5 }, { name: 'B', prompt: '1boy', center_x: 0.7, center_y: 0.5 }];
+  // No [[pos]] here: [[moss_prompt]] alone is a complete positive prompt.
+  const wf = { 1: { class_type: 'CLIPTextEncode', inputs: { text: '[[moss_prompt]]' } } };
+  const placed = buildComfyWorkflowFromTemplate(JSON.stringify(wf), buildComfyPlaceholderValues({ main: 'park', neg: '', captions, nai, seed: 1, useCoords: true }));
+  assert.deepEqual(JSON.parse(placed[1].inputs.text).items.map(i => i.caption), ['1girl, (smile)', '1boy']);
+  const free = buildComfyWorkflowFromTemplate(JSON.stringify(wf), buildComfyPlaceholderValues({ main: 'park', neg: '', captions, nai, seed: 1 }));
+  assert.equal(free[1].inputs.text, 'park\n\nCharacter 1: 1girl, (smile).\nCharacter 2: 1boy.');
+});
+
+test('[[webp_quality]] and [[webp_lossless]] reach a save node as a number and a boolean', () => {
+  const wf = { 1: { inputs: { text: '[[pos]]' } }, 2: { class_type: 'SaveAnimatedWEBP', inputs: { quality: '[[webp_quality]]', lossless: '[[webp_lossless]]' } } };
+  const build = webp => buildComfyWorkflowFromTemplate(JSON.stringify(wf), buildComfyPlaceholderValues({ main: 'park', neg: '', captions: [], nai: {}, seed: 1, webp }))[2].inputs;
+  assert.deepEqual(build({ quality: 75, lossless: true }), { quality: 75, lossless: true });
+  assert.deepEqual(build(undefined), { quality: 90, lossless: false }, 'the defaults, for a preview drawn outside a shot');
+  assert.deepEqual(build({ quality: 500, lossless: 'yes' }), { quality: 100, lossless: false });
+});
+
+const plainExport = () => ({
+  1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'a.safetensors' } },
+  2: { class_type: 'CLIPTextEncode', inputs: { text: '1girl, park', clip: ['1', 1] }, _meta: { title: '긍정' } },
+  3: { class_type: 'CLIPTextEncode', inputs: { text: 'lowres', clip: ['1', 1] } },
+  4: { class_type: 'EmptyLatentImage', inputs: { width: 832, height: 1216, batch_size: 1 } },
+  5: { class_type: 'KSampler', inputs: { seed: 5, steps: 20, cfg: 6, model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['4', 0] } },
+  6: { class_type: 'VAEDecode', inputs: { samples: ['5', 0], vae: ['1', 2] } },
+  7: { class_type: 'SaveImage', inputs: { images: ['6', 0], filename_prefix: 'mine' } },
+});
+
+test('convert: a plain export gets its prompts, size and a WebP save by the links alone, and nothing else changes', () => {
+  const source = plainExport(), out = convertComfyWorkflow(source);
+  assert.deepEqual(out.missing, []);
+  assert.equal(out.workflow[2].inputs.text, '[[pos]]'); assert.equal(out.workflow[3].inputs.text, '[[neg]]');
+  assert.deepEqual([out.workflow[4].inputs.width, out.workflow[4].inputs.height], ['[[width]]', '[[height]]']);
+  assert.deepEqual(out.workflow[7], { class_type: 'SaveAnimatedWEBP', inputs: { images: ['6', 0], filename_prefix: 'mine', fps: 6, lossless: '[[webp_lossless]]', quality: '[[webp_quality]]', method: 'default' }, _meta: { title: 'WebP 저장 (대시보드의 WebP 품질 · 무손실)' } });
+  assert.deepEqual(out.workflow[5], source[5], 'steps, cfg and the links stay the workflow itself');
+  assert.equal(source[2].inputs.text, '1girl, park', 'the input is not changed');
+  assert.equal(out.changes.length, 5);
+  // The result is one Omni runs: the markers fill and the values are typed.
+  const run = buildComfyWorkflowFromTemplate(JSON.stringify(out.workflow), buildComfyPlaceholderValues({ main: 'beach', neg: 'bad', captions: [], nai: { width: 1024, height: 1024 }, seed: 9, webp: { quality: 80 } }));
+  assert.deepEqual([run[2].inputs.text, run[3].inputs.text, run[4].inputs.width, run[7].inputs.quality, run[7].inputs.lossless, run[5].inputs.seed], ['beach', 'bad', 1024, 80, false, 9]);
+  // Converted again: nothing left to do.
+  assert.deepEqual(convertComfyWorkflow(out.workflow).changes, []);
+});
+
+test('convert: MOSS takes [[moss_prompt]], a seed held by another node gets [[seed]], a preview becomes the save', () => {
+  const wf = plainExport();
+  wf[1] = { class_type: 'CLIPLoader', inputs: { clip_name: 'q.safetensors', type: 'moss_image' } };
+  wf[8] = { class_type: 'PrimitiveInt', inputs: { value: 77 } }; wf[5].inputs.seed = ['8', 0];
+  wf[7] = { class_type: 'PreviewImage', inputs: { images: ['6', 0] } };
+  wf[9] = { class_type: 'PreviewImage', inputs: { images: ['1', 0] } };
+  const out = convertComfyWorkflow(wf);
+  assert.equal(out.workflow[2].inputs.text, '[[moss_prompt]]');
+  assert.equal(out.workflow[8].inputs.value, '[[seed]]');
+  assert.equal(out.workflow[7].class_type, 'SaveAnimatedWEBP', 'the preview of the finished picture');
+  assert.equal(out.workflow[9].class_type, 'PreviewImage');
+});
+
+test('convert: a prompt assembled by other nodes is left to the model, whose edits are checked before they are applied', () => {
+  const wf = plainExport();
+  wf[10] = { class_type: 'PrimitiveStringMultiline', inputs: { value: 'a girl in a park' } };
+  wf[11] = { class_type: 'StringFormat', inputs: { f_string: 'best, {a}', 'values.a': ['10', 0] } };
+  wf[2].inputs.text = ['11', 0];
+  const out = convertComfyWorkflow(wf);
+  assert.deepEqual(out.missing, ['pos']);
+  const asked = JSON.parse(convertMessages(out.workflow, out.missing)[1].content);
+  assert.deepEqual(asked.find, ['pos']);
+  assert.deepEqual(asked.workflow.find(row => row[0] === '2')[3].text, '<from node 11>');
+  const done = applyConvertEdits(out, { edits: [['2', 'text', 'pos'], ['99', 'text', 'pos'], ['5', 'steps', 'neg'], ['10', 'value', 'pos'], ['10', 'value', 'pos']] });
+  assert.equal(done.workflow[10].inputs.value, '[[pos]]', 'only the edit naming a literal string is taken, once');
+  assert.deepEqual(done.workflow[2].inputs.text, ['11', 0]); assert.equal(done.workflow[5].inputs.steps, 20);
+  assert.deepEqual(done.missing, []);
+  assert.deepEqual(applyConvertEdits(convertComfyWorkflow(wf), 'nonsense').missing, ['pos']);
 });

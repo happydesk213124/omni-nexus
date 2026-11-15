@@ -2423,6 +2423,7 @@ export async function openTagStudio(card: unknown): Promise<void> {
     ]);
 
     cardSettings = { ...asRecord(asRecord(settingsRes).card) };
+    state.gen.comfy = asRecord(asRecord(settingsRes).nai).backend === 'comfy';
     paintUpscaleButtons();
     const rawPresets = Array.isArray(cardSettings.presets) ? cardSettings.presets : [];
     stylePresets = rawPresets.filter((p): p is StyleRow => !!p && typeof p === 'object');

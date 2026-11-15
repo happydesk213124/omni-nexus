@@ -1210,6 +1210,7 @@
             <label class="row" data-nx-help-id="nx-image-webp-metadata"><span class="row-text"><b>WebP 메타데이터 쓰기</b><small>캐릭터·코스튬·생성시각 · 꺼도 리롤은 알파값으로</small></span><span class="sw"><input id="nx-image-webp-metadata" type="checkbox" checked></span></label>
             <label class="row" data-nx-help-id="nx-image-png-original"><span class="row-text"><b>원본으로 저장</b><small>NAI PNG 그대로 · WebP 변환·메타데이터 없음</small></span><span class="sw"><input id="nx-image-png-original" type="checkbox"></span></label>
             <label class="row" data-nx-help-id="nx-image-png-bake"><span class="row-text"><b>박제는 PNG 원본</b><small>박제·저장은 PNG 그대로 · 채팅 미리보기만 위 WebP 품질로 가볍게</small></span><span class="sw"><input id="nx-image-png-bake" type="checkbox"></span></label>
+            <label class="row" data-nx-help-id="nx-image-webp-lossless"><span class="row-text"><b>WebP 무손실</b><small>ComfyUI · 워크플로의 [[webp_lossless]]로 전달</small></span><span class="sw"><input id="nx-image-webp-lossless" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>생성완료 시 채팅에 박제</b><small>끝나면 Risu 에셋으로 남김</small></span><span class="sw"><input id="nx-persist-chat" type="checkbox" checked disabled></span></label>
             <label class="row"><span class="row-text"><b>박제이미지 접혀있는게 기본</b></span><span class="sw"><input id="nx-persist-fold" type="checkbox"></span></label>
             <label class="row"><span class="row-text"><b>채팅안에 바로가기툴 추가</b></span><span class="sw"><input id="nx-inline-msg-fan" type="checkbox"></span></label>
@@ -1625,8 +1626,10 @@
                   <li><strong>File 또는 Workflow → Export (API)</strong>로 JSON을 받습니다. 구버전에서는 <strong>Save (API Format)</strong>으로 표시될 수 있습니다. 일반 저장 JSON은 사용할 수 없습니다.</li>
                   <li>내보낸 JSON을 이 입력란에 붙여넣거나 <strong>JSON 파일 불러오기</strong>로 불러옵니다. 각 노드의 <code>inputs</code> 안에서 바꾸고 싶은 값에 아래 마커를 넣습니다. 숫자 칸은 내보낸 JSON에서 직접 수정하세요.</li>
                   <li><strong>ComfyUI URL</strong>에 실행 중인 서버 주소를 넣습니다. 같은 기기라면 보통 <code>http://localhost:8188</code>입니다. 다른 기기에서 Risu를 쓰면 ComfyUI 기기의 주소와 외부 접속 설정이 필요합니다.</li>
-                  <li>설정이 저장된 뒤 <strong>지금 생성</strong>으로 확인합니다. 현재 ComfyUI의 <strong>연결 테스트</strong> 버튼은 설정을 저장하고 실제 연결 검사는 생략합니다. 성공 표시만으로 생성 가능 여부를 확인할 수는 없습니다.</li>
+                  <li>설정이 저장된 뒤 <strong>지금 생성</strong>으로 확인합니다. 현재 ComfyUI의 <strong>연결 테스트 및 저장</strong> 버튼은 설정을 저장하고 실제 연결 검사는 생략합니다. 성공 표시만으로 생성 가능 여부를 확인할 수는 없습니다.</li>
                 </ol>
+                <h3>Omni용으로 변환</h3>
+                <p>ComfyUI에서 내보낸 API JSON을 그대로 붙여넣고 <strong>Omni용으로 변환</strong>을 누르면, 긍정·부정 프롬프트 칸과 크기·시드 자리에 마커를 넣고 저장 노드를 WebP 저장으로 바꿉니다. 노드와 연결은 건드리지 않고 값만 바꿉니다. 연결을 따라가 찾을 수 있는 자리는 바로 넣고, 프롬프트를 여러 노드로 조립하는 워크플로처럼 애매한 자리만 LLM(모델 설정의 LLM)에게 묻습니다. 바꾼 곳은 아래에 목록으로 나오고 <strong>되돌리기</strong>로 원래 JSON으로 돌아갑니다. 캐릭터 위치·참고이미지 마커는 넣지 않으니 필요하면 아래 설명을 보고 직접 넣으세요.</p>
                 <h3>프롬프트 · 캐릭터</h3>
                 <p>긍정 프롬프트를 받는 텍스트 입력에는 <code>[[pos]]</code>, 부정에는 <code>[[neg]]</code>를 넣습니다. <strong>[[pos]]는 필수</strong>이며, 호환 표기 <code>{{risu_prompt}}</code> / <code>{{risu_neg}}</code>도 지원합니다.</p>
                 <p>캐릭터 태그를 따로 넣으려면 <code>[[char1]]</code>부터 <code>[[char6]]</code>까지 사용합니다. 번호는 이번 샷의 캐릭터 순서이며, 해당 캐릭터가 없으면 빈 문자열입니다. <code>[[neg]]</code>에는 캐릭터의 부정 태그도 합쳐집니다.</p>
@@ -1659,6 +1662,22 @@
                 <pre><code>"inputs": { "conditioning": ["7", 0], "x": "[[char1_x]]", "y": "[[char1_y]]",
   "width": "[[char1_w]]", "height": "[[char1_h]]", "strength": "[[char1_on]]" }</code></pre>
                 <p>워크플로에 쓴 그림 자리만 업로드합니다. 안 쓰면 아무것도 올리지 않습니다.</p>
+                <h3>저장 형식 · WebP 화질</h3>
+                <p>ComfyUI가 준 파일은 다시 압축하지 않고 <strong>받은 그대로</strong> 저장합니다. 그러니 형식과 화질은 워크플로의 저장 노드가 정합니다. WebP로 저장하는 노드(예: <strong>SaveAnimatedWEBP</strong>)에 아래 마커를 넣으면 대시보드의 값이 그대로 전달됩니다.</p>
+                <ul>
+                  <li><code>[[webp_quality]]</code> — 대시보드 › <strong>이미지 WebP 품질</strong> (1~100).</li>
+                  <li><code>[[webp_lossless]]</code> — 대시보드 › <strong>WebP 무손실</strong> (켬/끔).</li>
+                </ul>
+                <pre><code>"inputs": { "images": ["10", 0], "filename_prefix": "omni", "fps": 6,
+  "lossless": "[[webp_lossless]]", "quality": "[[webp_quality]]", "method": "default" }</code></pre>
+                <p>WebP는 PNG보다 훨씬 작아서(832×1216 한 장이 약 100KB, PNG는 약 2MB) 받아 오는 것도 빠릅니다. 샷 태그·시드 같은 Omni 정보는 요청에 실어 보내 ComfyUI가 파일에 적어 주고, 적지 못한 파일에는 Omni가 덧붙입니다. PNG로 저장하는 워크플로도 그대로 쓸 수 있습니다.</p>
+                <h3>MOSS-Image</h3>
+                <p>MOSS-Image용 프롬프트 전체는 <code>[[moss_prompt]]</code> 하나로 받습니다. CLIPTextEncode의 text에 넣으세요. <code>[[pos]]</code>와 캐릭터 태그가 모두 그 안에 들어가므로 <code>[[pos]]</code>·<code>[[char1]]</code> 등은 따로 넣지 않아도 됩니다.</p>
+                <ul>
+                  <li><strong>캐릭터 위치를 쓸 때</strong>(2명 이상): 캐릭터마다 네모를 넣은 MOSS 레이아웃 글이 됩니다. 네모는 위의 캐릭터 영역보다 양옆·위아래로 그림의 10%씩 넓혀 서로 겹치게 하고, 위쪽은 머리 위 여백을 조금 남깁니다. 딱 맞닿으면 MOSS가 칸을 나눈 그림처럼 그리기 때문입니다.</li>
+                  <li><strong>AI choice일 때, 또는 1명일 때</strong>: 네모 없이 <code>[[pos]]</code> 뒤에 <code>Character 1: …</code>처럼 캐릭터를 적기만 합니다. 배치는 MOSS가 알아서 정합니다.</li>
+                </ul>
+                <p>크기는 <code>[[width]]</code>·<code>[[height]]</code>로 계산하니 Empty Latent에도 그 둘을 넣으세요.</p>
                 <h3>조건부 마커</h3>
                 <p>텍스트 입력 안에서 <code>[[#char1]]</code>…<code>[[/char1]]</code>로 감싸면 캐릭터 값이 있을 때만 그 안의 내용이 남습니다. 없으면 헤더까지 함께 지워집니다. <code>char2</code>~<code>char6</code>, <code>ref</code>에도 같은 형식을 쓸 수 있습니다.</p>
                 <pre><code>"text": "[[pos]]\n[[#char1]]\n## Character 1\n### Outfit, Appearance Design &amp; Facial Expression\n[[char1]]\n[[/char1]]"</code></pre>
@@ -1677,11 +1696,14 @@
             </dialog>
             <div class="actions" data-nx-backend-pane="comfy">
               <button class="btn-ghost" type="button" id="nx-comfy-wf-pick">JSON 파일 불러오기</button>
+              <button class="btn-ghost" type="button" id="nx-comfy-convert" title="붙여넣은 API JSON에 Omni 마커를 넣고 WebP 저장으로 바꿉니다">Omni용으로 변환</button>
+              <button class="btn-ghost" type="button" id="nx-comfy-convert-undo" hidden>되돌리기</button>
               <input id="nx-comfy-wf-file" type="file" accept="application/json,.json" hidden>
             </div>
+            <div class="block" id="nx-comfy-convert-result" role="status" hidden></div>
             <div class="row" data-nx-backend-pane="comfy"><span class="row-text"><b>Timeout (sec)</b></span><input class="ctrl" id="nx-backend-timeout" type="number" value="300"></div>
             <div class="actions">
-              <button class="btn" type="button" id="nx-test-nai">연결 테스트</button>
+              <button class="btn" type="button" id="nx-test-nai">연결 테스트 및 저장</button>
             </div>
             <div class="block" id="nx-test-result-nai">아직 테스트하지 않았습니다.</div>
           </div>
@@ -2687,6 +2709,10 @@
   "nx-nai5-speech": {
     "title": "NAI5 대사삽입",
     "body": "V5 샷에서 말한 캐릭터의 캡션 끝에 말풍선을 넣습니다. 여러 명이 말하면 각자 자기 대사만 가집니다. 프리셋의 spoken bubble 억제는 그 샷에서 빼입니다."
+  },
+  "nx-image-webp-lossless": {
+    "title": "WebP 무손실",
+    "body": "ComfyUI로 그릴 때만 쓰입니다. 워크플로의 저장 노드에 [[webp_quality]](위 이미지 WebP 품질)와 [[webp_lossless]](이 스위치)를 넣어 두면 ComfyUI가 그 화질의 WebP로 저장하고, Omni는 받은 파일을 다시 압축하지 않고 그대로 씁니다. 무손실은 화질 손실이 없는 대신 파일이 몇 배 큽니다. 마커를 쓰지 않은 워크플로에는 아무 영향이 없습니다."
   },
   "nx-image-webp-metadata": {
     "title": "WebP 메타데이터 쓰기",

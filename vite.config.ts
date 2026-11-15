@@ -49,7 +49,7 @@ const PROMPTS_DIR = resolve(configRoot, 'prompts');
 const PLUGIN_ID = 'omni-nexus';
 const VENDOR_PLUGIN_ID_NEEDLE = 'var Zt = "inlay-nexus-native"';
 const VENDOR_PLUGIN_ID_PATCH = `var Zt = "${PLUGIN_ID}"`;
-const PLUGIN_VERSION = '1.5.3';
+const PLUGIN_VERSION = '1.6.0';
 
 /** The version string the frozen UI bundle hardcodes for its footer. */
 const VENDOR_VERSION_NEEDLE = 'He = "1.3.0"';
@@ -996,6 +996,21 @@ const VENDOR_CURATION_PANEL_PATCH =
         <div class="card">
           <strong>Omni Nexus 업데이트 내역</strong>
           <div class="muted" style="margin-top:8px">정식 출시 안내와 주요 기능을 먼저 확인하세요. 이전 개발 버전 기록은 아래에서 펼칠 수 있습니다.</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <strong>1.6.0 · Irodori TTS · ComfyUI MOSS와 원본 저장</strong>
+          <div class="muted" style="margin-top:8px">2026.11.15 · 내 PC에서 돌리는 Irodori TTS를 두 번째 음성 엔진으로 쓰고, ComfyUI는 MOSS-Image 레이아웃과 받은 파일 그대로 저장을 지원합니다.</div>
+          <ul style="margin:10px 0 0;padding-left:18px;line-height:1.55;color:#c9d4e6;font-size:13px">
+            <li><strong>Irodori TTS</strong>: 내 PC의 Irodori 서버로 대사를 읽는 두 번째 TTS 엔진입니다(일본어). TTS 모델 설정에서 고르고, 목소리를 고르지 않아도 기본 목소리로 바로 읽습니다.</li>
+            <li><strong>Irodori 목소리 탭</strong>: 설명글로 목소리를 만들어 듣고 프리셋으로 등록합니다. 설명글은 LLM이 캐릭터 설명과 로어북을 보고 쓰거나, 한글로 적고 일본어로 번역할 수 있습니다. 성별·나이·성격별 기본 세트 33개, 내보내기·불러오기, 선택·정렬·일괄 삭제가 있습니다.</li>
+            <li><strong>캐릭터별 Irodori 목소리</strong>: 캐릭터 탭에서 프리셋을 고르거나 목록에서 선택합니다. 자동 배정(LLM·JEV·임베딩)도 Irodori 프리셋 중에서 고릅니다.</li>
+            <li><strong>ComfyUI · MOSS-Image</strong>: [[moss_prompt]] 마커 하나로 MOSS 프롬프트를 받습니다. 캐릭터 위치를 쓰면 캐릭터별 상자가, AI choice면 위치 없는 설명이 들어갑니다.</li>
+            <li><strong>ComfyUI · 받은 그대로 저장</strong>: ComfyUI가 준 파일을 다시 압축하지 않고 저장합니다. 워크플로의 저장 노드에 [[webp_quality]]·[[webp_lossless]]를 넣으면 대시보드의 WebP 품질과 무손실 스위치가 전달됩니다. 샷 태그와 시드는 파일에 함께 남습니다.</li>
+            <li><strong>ComfyUI · Omni용으로 변환</strong>: 모델 설정에서 내보낸 API JSON을 붙여넣고 버튼을 누르면 프롬프트·크기·시드 자리에 마커를 넣고 WebP 저장으로 바꿉니다. 애매한 자리만 LLM에게 묻고, 바꾼 곳을 목록으로 보여 주며 되돌릴 수 있습니다.</li>
+            <li><strong>ComfyUI 설정 유지</strong>: NovelAI로 바꿨다 돌아와도 워크플로 JSON과 주소가 지워지지 않습니다.</li>
+            <li><strong>샷 태그 수정</strong>: ComfyUI로 다시 그릴 때 Medium Effort의 고정 Steps·샘플러가 넘어가지 않습니다.</li>
+            <li><strong>프롬프트 다이어트</strong>: 채팅 요청에 실리는 이미지 규칙과 TTS·BGM·SFX 로어북 항목을 더 짧게 줄였습니다.</li>
+          </ul>
         </div>
         <div class="card" style="margin-top:14px">
           <strong>1.5.3 · 새 화자도 임베딩으로 목소리 고르기</strong>
@@ -10137,6 +10152,7 @@ const VENDOR_INLINE_SAVE_PATCH =
       inline_chat_dom_radius: Math.max(3, Math.min(20, Math.round(Ne(N("nx-inline-dom-radius"), 4)) || 4)),
       progress_toast: ee("nx-progress-toast"),
       image_webp_quality: document.getElementById("nx-image-webp-quality") ? Math.min(100, Math.max(1, Number(N("nx-image-webp-quality")) || 90)) : (t.backendSettings?.card?.image_webp_quality ?? 90),
+      image_webp_lossless: document.getElementById("nx-image-webp-lossless") ? ee("nx-image-webp-lossless") : t.backendSettings?.card?.image_webp_lossless === true,
       image_webp_metadata: document.getElementById("nx-image-webp-metadata") ? ee("nx-image-webp-metadata") : t.backendSettings?.card?.image_webp_metadata !== false,
       image_png_original: document.getElementById("nx-image-png-original") ? ee("nx-image-png-original") : t.backendSettings?.card?.image_png_original === true,
       image_png_bake: document.getElementById("nx-image-png-bake") ? ee("nx-image-png-bake") : t.backendSettings?.card?.image_png_bake === true,
@@ -15505,7 +15521,7 @@ const VENDOR_HEAD_HELP_DEFAULT_NEEDLE =
 const VENDOR_HEAD_HELP_DEFAULT_PATCH =
   `  const HEAD_HELP_DEFAULT = {
     title: "${PLUGIN_VERSION}",
-    body: "1.5.3 · 1.5.3 · 음성 선택이 임베딩이면 새 화자도 LLM 없이 이모지·로어북으로 목소리 · 1.5.2 · 첫 채팅에서도 🟪·옴니 뷰어의 ✒️로 세션 작가의 노트 · 1.5.1 · 감정 에셋 nude는 삽화와 같은 노출 태그 + nsfw · 빼기 기본값 줄임, 기본값으로 버튼 · 첫 채팅에서도 세션 작가의 노트 · 1.5.0 · 쓰고 싶은 것만 켜세요(삽화만·TTS만·소리만 가능) · ⚡ 빠른 설정 새로 · BGM·효과음·목소리 고르기 개선 · 속도·배터리 · 1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
+    body: "1.6.0 · Irodori TTS(내 PC 음성 엔진)·목소리 프리셋 · ComfyUI MOSS 레이아웃과 받은 그대로 저장 · 1.5.3 · 1.5.3 · 음성 선택이 임베딩이면 새 화자도 LLM 없이 이모지·로어북으로 목소리 · 1.5.2 · 첫 채팅에서도 🟪·옴니 뷰어의 ✒️로 세션 작가의 노트 · 1.5.1 · 감정 에셋 nude는 삽화와 같은 노출 태그 + nsfw · 빼기 기본값 줄임, 기본값으로 버튼 · 첫 채팅에서도 세션 작가의 노트 · 1.5.0 · 쓰고 싶은 것만 켜세요(삽화만·TTS만·소리만 가능) · ⚡ 빠른 설정 새로 · BGM·효과음·목소리 고르기 개선 · 속도·배터리 · 1.4.16 · BGM이 같은 곡만 돌지 않게: 태그가 겹치는 곡 최대 10곡 중에서 큐 뒤 400자(임베딩)와 곡의 「상황」으로 고르고, 임베딩이 없으면 그중 무작위 · 예제 187곡에 상황 추가 · 1.4.15 · ⚡ 빠른 설정 새로 만듦: 창 크기 고정·단계 목록·BGM/효과음 따로·이미지 수와 만화 비율 더 잘게·API 키는 필요한 것만, 👁와 확인 버튼 · 1.4.14 · 효과음 「임베딩만」·앞뒤 문단과 상황으로 고르기·예제 효과음에 의성어·상황, 18개 추가·ElevenLabs 묶음 만들기·같은 봇 캐릭터끼리 목소리 안 겹침·태그는 영어로, 기본 음성은 영어 이름과 함께 · 1.4.13 · 속도·배터리 최적화: 시작할 때 채팅을 읽지 않음·그림 생성 중 봇 읽기 26→3번·스타일을 페이지에 한 번만·바로가기툴 Lua 트리거를 정규식으로·TTS/BGM 꺼지면 채팅 감시 안 함 · 1.4.12 · LLM이 등록된 코스튬을 못 바꿈([base], 태그로 그 그림만 추가)·전역 캐릭터는 현재 페르소나만(UserInfo 아래 토글)·전역 캐릭터를 현재 챗으로 이동(여러 명 가능)·TTS에 JEV 작가의 노트·첫 대사 이모지에서 학생은 어린이로 안 잡힘·감정 에셋 태그 빼기 칸과 무기/기타 빼기 스위치 · 1.4.11 · 스트리밍에서 이 채팅에 안 나온 전역 캐릭터는 명단에서 제외(깡통봇 엑스트라 방지)·POV 시점 인물은 LLM이 고른 것만(옷 상태 태그 없음, completely만 nude)·생성 옵션에 Effort(모델 설정과 같은 값)·프리셋 참고컷 태그 변경"
   };`;
 
 /** Message select gesture: options + help + save + reader. */

@@ -47,6 +47,7 @@ import {
 } from '../domain/character/tags';
 import { resolveStoredContentHash } from '../domain/gallery/unlink-match';
 import { canvasDimsForShot } from '../domain/nai-meta/aspect.ts';
+import { COMFY_PNGINFO_KEY, storedGenerationImageData } from '../domain/nai-meta/generation-data.ts';
 import { composeComicSlotCaption } from '../domain/comic/caption';
 import { resolveComicUseCoords } from '../domain/comic/coords';
 import { normalizeShotKind } from '../domain/comic/kind';
@@ -569,6 +570,11 @@ export async function generateImage(
     };
     const wantsRef = /\[\[\s*ref\s*\]\]/i.test(String(nai.comfy_workflow_json || ''));
     const refBytes = wantsRef ? await getReferenceImageBytes() : null;
+    const comfyRecipe = (seed: number) => ({prompt:plan.main,negative_prompt:plan.neg,
+      width:dims.width,height:dims.height,seed,steps:naiSized.steps,
+      cfg_scale:Number(naiSized.cfg_scale),cfg_rescale:Number(naiSized.cfg_rescale || 0),
+      sampler:naiSized.sampler,scheduler:String(naiSized.noise_schedule || 'native'),model:routeModelEarly,
+      var_plus:false,use_coords:Boolean(plan.use_coords),characters});
     const [comfyBytes, comfySeed] = await generateViaComfy(
       naiSized,
       comfyPlan.main,
@@ -576,14 +582,15 @@ export async function generateImage(
       comfyPlan.captions as unknown as ShotCharacter[],
       refBytes,
       await comfyRegionImageSources(nai, plan, active?.id),
+      // ComfyUI writes this into the file it saves, so that file can be kept exactly as delivered (원본으로 저장).
+      { useCoords: Boolean(plan.use_coords), webp: { quality: card.image_webp_quality, lossless: card.image_webp_lossless }, pngInfo: seed => ({ [COMFY_PNGINFO_KEY]: storedGenerationImageData({ version: 1, recipe: comfyRecipe(seed),
+        characters: (plan.characters || []).map(c => ({ scope: String(c.scope || ''), id: String(c.id || ''), name: String(c.name || '') })),
+        generatedAt: Date.now() }) }) },
     );
-    return { bytes: comfyBytes, seed: comfySeed, recipe:{prompt:plan.main,negative_prompt:plan.neg,
-      width:dims.width,height:dims.height,seed:comfySeed,steps:naiSized.steps,
-      cfg_scale:Number(naiSized.cfg_scale),cfg_rescale:Number(naiSized.cfg_rescale || 0),
-      sampler:naiSized.sampler,scheduler:String(naiSized.noise_schedule || 'native'),model:routeModelEarly,
-      var_plus:false,use_coords:Boolean(plan.use_coords),characters} };
+    return { bytes: comfyBytes, seed: comfySeed, recipe: comfyRecipe(comfySeed) };
   }
   const routePreset = plan.preset ?? null;
+
   const routeModel = routeModelEarly;
   const token = cleanText(plan.token)
     || tokensForFamily(nai, routeFamily)[0]
@@ -796,18 +803,26 @@ export async function generateImage(
 }
 
 /**
- * 원본으로 저장, for NAI only. A NAI PNG carries its own recipe, so a reroll still
- * replays it. A ComfyUI PNG carries only its workflow: its recipe exists nowhere but in
- * the Omni data we embed, so ComfyUI images are always encoded with it.
+ * 원본으로 저장. A NAI PNG carries its own recipe, so a reroll still replays it. A ComfyUI
+ * file carries only its workflow, so its recipe travels as Omni data: ComfyUI writes it
+ * into the file itself (the request's extra_pnginfo), else it is added on storing
+ * (`comfyOriginal`). Either way the pixels are the ones ComfyUI delivered.
  */
 export function keepsOriginalPng(): boolean {
   const card = getConfig().card;
-  return (card.image_png_original === true || card.image_png_bake === true) && imageBackendKind(getConfig().nai) !== 'comfy';
+  // ComfyUI's file is always kept as delivered: its workflow already chose the format and quality
+  // ([[webp_quality]], [[webp_lossless]]), and encoding it again here would only lose from that.
+  return comfyOriginal() || card.image_png_original === true || card.image_png_bake === true;
+}
+/** The kept original is ComfyUI's: it must hold Omni's data, having no recipe of its own. */
+export function comfyOriginal(): boolean {
+  return imageBackendKind(getConfig().nai) === 'comfy';
 }
 
 /** 박제는 PNG 원본: the PNG is stored and baked as delivered; only the chat preview is a WebP. */
 export function previewsWebp(): boolean {
-  return getConfig().card.image_png_bake === true && keepsOriginalPng();
+  // A ComfyUI PNG is previewed light as well; its WebP is the preview as it is.
+  return comfyOriginal() || (getConfig().card.image_png_bake === true && keepsOriginalPng());
 }
 
 /** 메타데이터 쓰기 off, for NAI only, for the same reason: ComfyUI has no stealth alpha. */

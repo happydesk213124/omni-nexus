@@ -13,6 +13,7 @@ import { sniffImageMime } from '../../core/util/bytes.ts';
 import { cleanText } from '../../core/util/text.ts';
 import { networkFetch, readResponseBytes, type NetworkFetchOptions, type ReadBytesOptions } from '../nai/http.ts';
 import { comfyRegionValues } from '../../domain/comfy/regions.ts';
+import { mossPrompt } from '../../domain/comfy/moss-layout.ts';
 import { comfyRegionImageValues, type ComfyRegionImages } from './region-images.ts';
 
 /** One node of an API-format workflow: `{ class_type, inputs }` keyed by node id. */
@@ -25,7 +26,7 @@ export interface ComfyNode {
 export type ComfyWorkflow = Record<string, ComfyNode>;
 
 /** Placeholder name → replacement. Numbers stay numbers when the value is a whole `[[name]]`. */
-export type ComfyPlaceholderValues = Record<string, string | number>;
+export type ComfyPlaceholderValues = Record<string, string | number | boolean>;
 
 /** An image as `/history` reports it, which is what `/view` takes as query args. */
 export interface ComfyImageRef {
@@ -37,6 +38,9 @@ export interface ComfyImageRef {
 export interface ComfyRequestOptions {
   signal?: AbortSignal | null;
 }
+
+/** `extra_pnginfo` of a `/prompt` request: ComfyUI's save nodes write each key into the image file. */
+export type ComfyPngInfo = Record<string, unknown>;
 
 export interface ComfyWaitOptions extends ComfyRequestOptions {
   timeoutMs?: number;
@@ -55,6 +59,10 @@ export interface ComfyPlaceholderInput {
   seed: number;
   /** LoadImage filename after `/upload/image`. Empty when no reference. */
   ref?: string;
+  /** False for NovelAI's AI choice: `[[moss_prompt]]` then gives no boxes. */
+  useCoords?: boolean;
+  /** 이미지 WebP 품질 and WebP 무손실, for a save node that writes the WebP on ComfyUI's side. */
+  webp?: { quality?: unknown; lossless?: unknown };
 }
 
 interface ComfyPromptResponse {
@@ -158,13 +166,13 @@ export async function fetchJsonCompat<T = unknown>(
 export async function comfySubmitPrompt(
   baseUrl: string,
   promptData: ComfyWorkflow,
-  opts: ComfyRequestOptions = {},
+  opts: ComfyRequestOptions & { pngInfo?: ComfyPngInfo } = {},
 ): Promise<string> {
   const clientId = `inlay-nexus-${Math.random().toString(36).slice(2, 10)}`;
   const { status, data } = await fetchJsonCompat<ComfyPromptResponse>(`${trimBaseUrl(baseUrl)}/prompt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client_id: clientId, prompt: promptData }),
+    body: JSON.stringify({ client_id: clientId, prompt: promptData, ...(opts.pngInfo ? { extra_data: { extra_pnginfo: opts.pngInfo } } : {}) }),
     signal: opts.signal,
   });
   if (status >= 400 || !data?.prompt_id) {
@@ -317,9 +325,9 @@ export function applyComfyRandomSeeds(wf: ComfyWorkflow, seed: unknown): void {
   }
 }
 
-/** Builds the placeholder table a workflow can reference: prompts, dimensions, `char1`…`char6`, `ref`. */
+/** Builds the placeholder table a workflow can reference: prompts, dimensions, `char1`…`char6`, `ref`, `moss_prompt`. */
 export function buildComfyPlaceholderValues(
-  { main, neg, captions, nai, seed, ref }: ComfyPlaceholderInput,
+  { main, neg, captions, nai, seed, ref, useCoords = false, webp }: ComfyPlaceholderInput,
 ): ComfyPlaceholderValues {
   const pair = comfyPromptPair(main, neg);
   const chars = (captions || []).map(c => comfyPromptPair(c.prompt, c.uc));
@@ -332,11 +340,15 @@ export function buildComfyPlaceholderValues(
     steps: Number(nai.steps ?? 28) || 28,
     cfg: Number(nai.cfg_scale ?? 7) || 7,
     ref: cleanText(ref, 300),
+    webp_quality: Math.max(1, Math.min(100, Math.round(Number(webp?.quality)) || 90)),
+    webp_lossless: webp?.lossless === true,
   };
   for (let i = 0; i < 6; i += 1) {
     values[`char${i + 1}`] = chars[i]?.positive || '';
   }
   Object.assign(values, comfyRegionValues(captions || [], Number(values.width), Number(values.height)));
+  const moss = (captions || []).map((c, i) => ({ center_x: c.center_x, center_y: c.center_y, positive: chars[i]?.positive || '' }));
+  values.moss_prompt = mossPrompt(pair.positive, moss, useCoords, Number(values.width), Number(values.height));
   return values;
 }
 
@@ -407,8 +419,9 @@ export function buildComfyWorkflowFromTemplate(templateJson: unknown, values: Co
     throw new Error("UI 저장 포맷 워크플로입니다. ComfyUI에서 'Export (API)'로 내보낸 JSON을 넣으세요.");
   }
   const raw = JSON.stringify(wf);
-  if (!/\[\[\s*pos\s*\]\]/.test(raw) && !/\{\{\s*risu_prompt\s*\}\}/i.test(raw)) {
-    throw new Error('워크플로에 [[pos]] 또는 {{risu_prompt}}가 없습니다. 긍정 프롬프트를 넣는 칸에 적어 주세요.');
+  // [[moss_prompt]] carries the positive prompt inside it, so it stands in for [[pos]].
+  if (!/\[\[\s*(pos|moss_prompt)\s*\]\]/.test(raw) && !/\{\{\s*risu_prompt\s*\}\}/i.test(raw)) {
+    throw new Error('워크플로에 [[pos]] 또는 {{risu_prompt}}가 없습니다. 긍정 프롬프트를 넣는 칸에 적어 주세요. MOSS-Image라면 [[moss_prompt]]도 됩니다.');
   }
   wf = JSON.parse(raw) as ComfyWorkflow;
   substituteComfyPlaceholders(wf, values);
@@ -424,6 +437,7 @@ export async function generateViaComfy(
   captions: readonly ShotCharacter[],
   refBytes?: ArrayBuffer | null,
   regionImages: ComfyRegionImages = {},
+  opts: { useCoords?: boolean; pngInfo?: (seed: number) => ComfyPngInfo; webp?: { quality?: unknown; lossless?: unknown } } = {},
 ): Promise<[ArrayBuffer, number]> {
   const baseUrl = comfyBaseUrl(nai);
   const timeoutMs = backendTimeoutMs(nai);
@@ -433,7 +447,7 @@ export async function generateViaComfy(
   if (wantsRef && refBytes && refBytes.byteLength > 0) {
     refName = await comfyUploadImage(baseUrl, refBytes);
   }
-  const values = buildComfyPlaceholderValues({ main, neg, captions, nai, seed, ref: refName });
+  const values = buildComfyPlaceholderValues({ main, neg, captions, nai, seed, ref: refName, useCoords: opts.useCoords, webp: opts.webp });
   Object.assign(values, await comfyRegionImageValues(
     nai.comfy_workflow_json,
     captions || [],
@@ -453,7 +467,7 @@ export async function generateViaComfy(
     focus: true,
   });
   return generateMutex.run<[ArrayBuffer, number]>(async () => {
-    const promptId = await comfySubmitPrompt(baseUrl, wf);
+    const promptId = await comfySubmitPrompt(baseUrl, wf, { pngInfo: opts.pngInfo?.(seed) });
     dbg('comfy.generate.submitted', { message: promptId.slice(0, 8), focus: true });
     const ref = await comfyWaitForImage(baseUrl, promptId, { timeoutMs });
     const bytes = await comfyFetchViewImage(baseUrl, ref);

@@ -135,6 +135,13 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     pick('nx-nai-model-v5', v5Model(nai));
     pick('nx-nai-model-v4', nai.model_v4 || (!active.includes('nai-diffusion-5') ? active : 'nai-diffusion-4-5-full'));
     pick('nx-nai-effort-v5', nai.effort_v5 === 'medium' ? 'medium' : 'high');
+    // The vendor page draws ComfyUI's fields only while ComfyUI is the backend, so on NovelAI they are not filled
+    // from it. They are still in this page, hidden, and the form's save sends whatever they hold: left empty, the
+    // next save under NovelAI wrote that emptiness over the stored workflow, and the default address over the saved one.
+    const workflow = out.querySelector<HTMLTextAreaElement>('#nx-comfy-workflow');
+    if (workflow && !vendor.querySelector('#nx-comfy-workflow')) workflow.textContent = String(nai.comfy_workflow_json ?? '');
+    const address = out.querySelector<HTMLInputElement>('#nx-comfy-url');
+    if (address && !vendor.querySelector('#nx-comfy-url') && String(nai.comfy_url ?? '').trim()) address.setAttribute('value', String(nai.comfy_url));
   }
   if (tab === 'gen_options' && settings?.nai) {
     const nai = settings.nai;
@@ -182,6 +189,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-stream-inline-asset-meta', 'stream_inline_asset_meta', true],
     ['nx-omni-helper', 'omni_helper_prompt', false],
     ['nx-speech-huge-text', 'speech_huge_text', false],
+    ['nx-image-webp-lossless', 'image_webp_lossless', false],
     ['nx-image-webp-metadata', 'image_webp_metadata', true],
     ['nx-image-png-original', 'image_png_original', false],
     ['nx-image-png-bake', 'image_png_bake', false],
@@ -223,6 +231,13 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     vendor.querySelector('#nx-prompt-' + key)?.remove();
   }
   if (card && keywords) keywords.textContent = String(card.stream_keywords || '');
+  // ComfyUI's file is kept as delivered, so NovelAI's three storing switches do nothing there; the lossless switch
+  // is a ComfyUI marker and does nothing for NovelAI. Each backend shows only the switches that act.
+  const comfy = settings?.nai?.backend === 'comfy';
+  for (const [id, forComfy] of [['nx-image-webp-lossless', true], ['nx-image-webp-metadata', false], ['nx-image-png-original', false], ['nx-image-png-bake', false]] as const) {
+    const row = out.querySelector<HTMLElement>('#' + id)?.closest<HTMLElement>('.row');
+    if (row) row.hidden = forComfy !== comfy;
+  }
   if (tab === 'dashboard' && card) {
     const charLimit = out.querySelector<HTMLInputElement>('#nx-auto-gen-char-limit');
     if (charLimit) charLimit.setAttribute('value', String(card.auto_gen_char_limit ?? 500));

@@ -185,16 +185,34 @@ test("a designed voice: no reference, the description as the caption, answered i
     assert.equal(await api.uploadIrodoriVoice(sample, '목소리.wav', 'ken_01', irodori()), 'ken_01');
     globalThis.risuai.nativeFetch = async () => ({ ok: false, status: 400 });
     await assert.rejects(api.uploadIrodoriVoice(sample, 'a.wav', 'x', irodori()), error => error instanceof api.TtsHttpError && error.status === 400);
-    // An id the server already holds is refused (409): the same form goes again as PUT to that voice, replacing it.
-    const tries = [];
-    globalThis.risuai.nativeFetch = async (u, o) => { tries.push([o.method, u, o.body]); return o.method === 'POST' ? { ok: false, status: 409 } : { ok: true, json: async () => ({ id: 'aoi' }) }; };
+    // An id the server already lists goes straight up as PUT to that voice, replacing it. Risu can hand back a
+    // refused POST with no status at all, which once read as an unreachable server.
+    let tries = [];
+    const server = (held, refusal) => async (u, o) => {
+      tries.push([o.method, u, o.body]);
+      if (o.method === 'GET') return { ok: true, json: async () => ({ data: held.map(id => ({ id })) }) };
+      if (o.method === 'POST') return held.includes('aoi') ? refusal : { ok: true, json: async () => ({ id: 'aoi' }) };
+      return held.includes('aoi') ? { ok: true, json: async () => ({ id: 'aoi' }) } : { ok: false, status: 404 };
+    };
+    globalThis.risuai.nativeFetch = server(['none', 'aoi'], { ok: false });
     assert.equal(await api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori()), 'aoi');
-    assert.deepEqual(tries.map(([method, u]) => [method, u]), [['POST', 'http://127.0.0.1:8088/v1/audio/voices'], ['PUT', 'http://127.0.0.1:8088/v1/audio/voices/aoi']]);
-    assert.equal(tries[0][2], tries[1][2], 'the same form');
-    // Refused there too: the failure is the caller's to show, with no third try.
+    assert.deepEqual(tries.map(([method, u]) => [method, u]), [['GET', 'http://127.0.0.1:8088/v1/audio/voices'], ['PUT', 'http://127.0.0.1:8088/v1/audio/voices/aoi']]);
+    // A new id is a POST, as before.
+    tries = [];
+    globalThis.risuai.nativeFetch = server(['none'], { ok: false });
+    assert.equal(await api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori()), 'aoi');
+    assert.deepEqual(tries.map(([method]) => method), ['GET', 'POST']);
+    // The list unreadable and the POST refused with its 409: the same form goes again as PUT.
+    tries = [];
+    globalThis.risuai.nativeFetch = async (u, o) => { tries.push([o.method, u, o.body]); return o.method === 'GET' ? { ok: false, status: 500 } : o.method === 'POST' ? { ok: false, status: 409 } : { ok: true, json: async () => ({ id: 'aoi' }) }; };
+    assert.equal(await api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori()), 'aoi');
+    assert.deepEqual(tries.map(([method]) => method), ['GET', 'POST', 'PUT']);
+    assert.equal(tries[1][2], tries[2][2], 'the same form');
+    // Refused there too: the failure is the caller's to show, with no further try.
+    tries = [];
     globalThis.risuai.nativeFetch = async (u, o) => { tries.push([o.method]); return { ok: false, status: o.method === 'POST' ? 409 : 404 }; };
     await assert.rejects(api.uploadIrodoriVoice(sample, 'design.wav', 'aoi', irodori()), error => error instanceof api.TtsHttpError && error.status === 404);
-    assert.equal(tries.length, 4);
+    assert.deepEqual(tries.map(([method]) => method), ['GET', 'POST', 'PUT']);
     // A server names a voice's file by its id: letters, digits, - and _ only; a name with none of them is dated.
     assert.equal(api.irodoriVoiceSlug(' Aoi (calm) v2 '), 'Aoi-calm-v2');
     assert.equal(api.irodoriVoiceSlug('아오이', 1700000000000), `voice-${(1700000000000).toString(36)}`);
@@ -342,8 +360,8 @@ test("Irodori is sent a line's voice emoji through the translation; the lorebook
 
 test("the starter voices: twenty, both genders at every age, each a server-safe id, a Japanese description and tags the assignment engines know", () => {
   const rows = api.IRODORI_STARTERS;
-  assert.equal(rows.length, 20);
-  assert.equal(new Set(rows.map(row => row.id)).size, 20); assert.equal(new Set(rows.map(row => row.name)).size, 20);
+  assert.equal(rows.length, 33);
+  assert.equal(new Set(rows.map(row => row.id)).size, 33); assert.equal(new Set(rows.map(row => row.name)).size, 33);
   const ages = ['어린이', '청년', '중년', '노인'];
   for (const row of rows) {
     // The id is the file's name on the server, and what the upload asks for is what it is found by afterwards.
@@ -357,9 +375,9 @@ test("the starter voices: twenty, both genders at every age, each a server-safe 
   }
   for (const gender of ['female', 'male']) for (const age of ages) assert.ok(rows.some(row => row.gender === gender && row.tags.includes(age)), `${gender} ${age}`);
   // Made again, only what no preset stands for yet.
-  assert.equal(api.missingIrodoriStarters([]).length, 20);
+  assert.equal(api.missingIrodoriStarters([]).length, 33);
   assert.deepEqual(api.missingIrodoriStarters(rows.slice(1).map(row => ({ fishId: row.id }))).map(row => row.id), [rows[0].id]);
-  assert.equal(api.missingIrodoriStarters([{ fishId: 'alice' }]).length, 20);
+  assert.equal(api.missingIrodoriStarters([{ fishId: 'alice' }]).length, 33);
 });
 
 test("a voice written by the model: the character's own lore first and a few rows of it, the answer read as a preset; a request alone reads no source", async () => {

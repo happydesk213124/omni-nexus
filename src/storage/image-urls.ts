@@ -16,6 +16,7 @@ import { dbg, dbgSpan } from '../core/debug';
 import { abToBase64, bytesToDataUrlAsync, sniffImageMime } from '../core/util/bytes';
 import { sleep } from '../core/util/async';
 import { encodeGenerationWebp, type GenerationEncodingOptions } from '../domain/nai-meta/encode-generation';
+import { readGenerationImageData, storedGenerationImageData, writeGenerationImageData } from '../domain/nai-meta/generation-data';
 import { workPool } from '../core/util/work-pool';
 import { dropBlobUrl, getBlobUrl, idbGet, idbPut, pinBlobUrls, retainBlobUrls, setBlobUrl } from './stores';
 import { notifyImageUrl, subscribeImageUrl as subscribeUrl, type ImageUrlListener } from './image-url-subs';
@@ -132,15 +133,27 @@ export async function publishImage(
   id: string,
   png: ArrayBuffer,
   location: Record<string, unknown> | null = null,
-  options: GenerationEncodingOptions & { warmUrl?: boolean; original?: boolean; webpPreview?: boolean; onPreview?: (url: string) => Promise<void> } = {},
+  options: GenerationEncodingOptions & { warmUrl?: boolean; original?: boolean; ensureData?: boolean; webpPreview?: boolean; onPreview?: (url: string) => Promise<void> } = {},
 ): Promise<string> {
   const span = dbgSpan('image.publish');
   dropBlobUrl(id);
   let bytes: ArrayBuffer = png;
   let mime = sniffImageMime(png);
+  // A ComfyUI original has no recipe of its own. Where ComfyUI already wrote the very data
+  // wanted, the file stays byte for byte; otherwise the data goes in as one more chunk, the
+  // pixels untouched. A format that takes no chunk (JPEG) is encoded as usual instead.
+  let original = options.original === true;
+  if (original && options.ensureData && options.recipe !== undefined) try {
+    const held = readGenerationImageData(png);
+    const wanted = storedGenerationImageData({ version: 1, recipe: options.recipe, characters: (options.characters || []).map(c => ({ ...c })), generatedAt: held?.generatedAt ?? options.generatedAt ?? null });
+    if (!held || JSON.stringify(storedGenerationImageData(held)) !== JSON.stringify(wanted)) bytes = writeGenerationImageData(png, wanted);
+  } catch (err) {
+    dbg('image.original_data', { message: String((err as Error)?.message || err), id }, 'warn');
+    original = false;
+  }
   // 원본으로 저장: NAI's PNG is stored and previewed as delivered. Its own text chunks
   // and stealth alpha still carry the recipe a reroll reads.
-  if (!options.original) try {
+  if (!original) try {
     const webp = await encodePublishedImage(() => encodeGenerationWebp(png, options));
     if (webp) {
       bytes = webp;
@@ -153,7 +166,7 @@ export async function publishImage(
   // per picture on its way into the chat. The preview is a WebP at the quality
   // setting instead, never stored; this session's viewers keep showing it.
   let previewBytes = bytes, previewMime = mime;
-  if (options.original && options.webpPreview) try {
+  if (original && options.webpPreview) try {
     const webp = await encodePublishedImage(() => encodeGenerationWebp(png, { qualityPercent: options.qualityPercent, withoutData: true }));
     // A failed encode hands back the PNG; then the PNG is the preview, as before.
     if (webp && sniffImageMime(webp) === 'image/webp') {

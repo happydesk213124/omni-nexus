@@ -1,11 +1,13 @@
 import { bindVertexCredentials } from './vertex-bindings';
 import { bindComfyHelp } from './comfy-help';
+import { bindComfyConvert } from './comfy-convert';
 
 type Credentials = { api_key_configured?: boolean; service_account_configured?: boolean; api_keys_v4_configured?: boolean; api_keys_v5_configured?: boolean; backend?: string };
 let referenceOpen = false;
 type Actions = {config: () => { nai?: Credentials; llm?: Credentials; llm_roles?: Record<string, Credentials> }; save: (patch: unknown) => Promise<void>};
 export function bindModels(): void {
   bindComfyHelp();
+  bindComfyConvert();
   const fold = document.getElementById('nx-nai-ref-fold');
   const foldButton = document.getElementById('nx-nai-ref-fold-btn');
   if (fold && foldButton && !foldButton.dataset.boundFold) {

@@ -136,13 +136,13 @@ export async function runScenario(N, handles) {
   await rec('settings.image_output', async () => {
     const initial=(await get('/v1/settings')).settings.card;
     if (initial.image_webp_quality === undefined) return {unsupported:true};
-    await post('/v1/settings',{card:{image_webp_quality:73,nai_auto_upscale:true,upscale_button_mode:'upscale',image_webp_metadata:false,image_png_original:true,image_png_bake:true}});
+    await post('/v1/settings',{card:{image_webp_quality:73,nai_auto_upscale:true,upscale_button_mode:'upscale',image_webp_metadata:false,image_png_original:true,image_png_bake:true,image_webp_lossless:true}});
     const saved=(await get('/v1/settings')).settings.card;
     const exported=JSON.parse((await get('/v1/settings/export')).json).card;
-    await post('/v1/settings',{card:{image_webp_quality:90,nai_auto_upscale:false,upscale_button_mode:'original',image_webp_metadata:true,image_png_original:false,image_png_bake:false}});
-    return {defaults:initial.image_webp_quality===90 && initial.nai_auto_upscale===false && initial.upscale_button_mode==='original' && initial.image_png_original===false && initial.image_png_bake===false && initial.image_webp_metadata===true,
-      saved:saved.image_webp_quality===73 && saved.nai_auto_upscale===true && saved.upscale_button_mode==='upscale' && saved.image_png_original===true && saved.image_png_bake===true && saved.image_webp_metadata===false,
-      exported:exported.image_webp_quality===73 && exported.nai_auto_upscale===true && exported.upscale_button_mode==='upscale' && exported.image_png_original===true && exported.image_png_bake===true && exported.image_webp_metadata===false};
+    await post('/v1/settings',{card:{image_webp_quality:90,nai_auto_upscale:false,upscale_button_mode:'original',image_webp_metadata:true,image_png_original:false,image_png_bake:false,image_webp_lossless:false}});
+    return {defaults:initial.image_webp_quality===90 && initial.nai_auto_upscale===false && initial.upscale_button_mode==='original' && initial.image_png_original===false && initial.image_png_bake===false && initial.image_webp_metadata===true && initial.image_webp_lossless===false,
+      saved:saved.image_webp_quality===73 && saved.nai_auto_upscale===true && saved.upscale_button_mode==='upscale' && saved.image_png_original===true && saved.image_png_bake===true && saved.image_webp_metadata===false && saved.image_webp_lossless===true,
+      exported:exported.image_webp_quality===73 && exported.nai_auto_upscale===true && exported.upscale_button_mode==='upscale' && exported.image_png_original===true && exported.image_png_bake===true && exported.image_webp_metadata===false && exported.image_webp_lossless===true};
   });
   // 플로팅 태그 and 바로가기툴 접어두기: off unless switched on, saved, exported.
   await rec('settings.chat_tools', async () => {

@@ -285,6 +285,8 @@ export interface CardSettings {
   toast_anchor?: 'tl' | 'bl' | 'tr' | 'br' | 'tc';
   /** Play a one-shot completion sound when an image generation job completes. */
   image_webp_quality?: number;
+  /** ComfyUI only: `[[webp_lossless]]`, for a workflow whose save node writes the WebP itself. */
+  image_webp_lossless?: boolean;
   /** Off: WebP without embedded Omni data. NAI's stealth alpha survives the encode and still carries the recipe. */
   image_webp_metadata?: boolean;
   /** Keep NAI's PNG as delivered: no decode, no WebP, no embedded generation data. */

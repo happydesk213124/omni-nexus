@@ -215,3 +215,24 @@ test('explicit requests cannot copy secret, pixel or workflow fields into metada
     v4_prompt: { caption: { base_caption: 'scene', char_captions: [{ char_caption: 'first' }] } } });
   assert.doesNotMatch(JSON.stringify(saved), /SECRET|PIXELS|WORKFLOW/);
 });
+
+// Files exactly as ComfyUI saved them (SaveImage, SaveAnimatedWEBP) for a request whose extra_pnginfo carried
+// omni_nexus: a PNG tEXt chunk named by the key, and in the WebP an EXIF string "omni_nexus:{json}".
+const comfyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAznRFWHRwcm9tcHQAeyIxIjogeyJjbGFzc190eXBlIjogIkVtcHR5SW1hZ2UiLCAiaW5wdXRzIjogeyJ3aWR0aCI6IDgsICJoZWlnaHQiOiA4LCAiYmF0Y2hfc2l6ZSI6IDEsICJjb2xvciI6IDB9fSwgIjIiOiB7ImNsYXNzX3R5cGUiOiAiU2F2ZUltYWdlIiwgImlucHV0cyI6IHsiaW1hZ2VzIjogWyIxIiwgMF0sICJmaWxlbmFtZV9wcmVmaXgiOiAicHJvYmUtcG5nIn19fSWoOS8AAADxdEVYdG9tbmlfbmV4dXMAeyJ2ZXJzaW9uIjogMSwgInJlY2lwZSI6IHsicHJvbXB0IjogIlx1YWQ1MFx1YzJlNCwgc3Vuc2V0IiwgIm5lZ2F0aXZlX3Byb21wdCI6ICJsb3dyZXMiLCAic2VlZCI6IDc3LCAid2lkdGgiOiA2NCwgImhlaWdodCI6IDY0fSwgImNoYXJhY3RlcnMiOiBbeyJzY29wZSI6ICJjaGF0LWEiLCAiaWQiOiAiMiIsICJuYW1lIjogIlx1ZDU1OFx1YjliMCJ9XSwgImdlbmVyYXRlZEF0IjogMTcwMDAwMDAwMDEyM30WtOOLAAAADElEQVR4XmNgGB4AAADIAAFUheOTAAAAAElFTkSuQmCC', 'base64');
+const comfyWebp = Buffer.from('UklGRnICAABXRUJQVlA4WAoAAAAIAAAABwAABwAAVlA4IBgAAAAwAQCdASoIAAgAAQAcJaQAA3AA/v4G0ABFWElGNAIAAE1NACoAAAAIAAIBDwACAAAA8gAAACYBEAACAAABGwAAARgAAAAAb21uaV9uZXh1czp7InZlcnNpb24iOiAxLCAicmVjaXBlIjogeyJwcm9tcHQiOiAiXHVhZDUwXHVjMmU0LCBzdW5zZXQiLCAibmVnYXRpdmVfcHJvbXB0IjogImxvd3JlcyIsICJzZWVkIjogNzcsICJ3aWR0aCI6IDY0LCAiaGVpZ2h0IjogNjR9LCAiY2hhcmFjdGVycyI6IFt7InNjb3BlIjogImNoYXQtYSIsICJpZCI6ICIyIiwgIm5hbWUiOiAiXHVkNTU4XHViOWIwIn1dLCAiZ2VuZXJhdGVkQXQiOiAxNzAwMDAwMDAwMTIzfQBwcm9tcHQ6eyIxIjogeyJjbGFzc190eXBlIjogIkVtcHR5SW1hZ2UiLCAiaW5wdXRzIjogeyJ3aWR0aCI6IDgsICJoZWlnaHQiOiA4LCAiYmF0Y2hfc2l6ZSI6IDEsICJjb2xvciI6IDB9fSwgIjIiOiB7ImNsYXNzX3R5cGUiOiAiU2F2ZUFuaW1hdGVkV0VCUCIsICJpbnB1dHMiOiB7ImltYWdlcyI6IFsiMSIsIDBdLCAiZmlsZW5hbWVfcHJlZml4IjogInByb2JlLWF3ZWJwIiwgImZwcyI6IDYuMCwgImxvc3NsZXNzIjogZmFsc2UsICJxdWFsaXR5IjogODUsICJtZXRob2QiOiAiZGVmYXVsdCJ9fX0AAA==', 'base64');
+const comfyData = { version: 1, recipe: { prompt: '교실, sunset', negative_prompt: 'lowres', seed: 77, width: 64, height: 64 },
+  characters: [{ scope: 'chat-a', id: '2', name: '하린' }], generatedAt: 1700000000123 };
+
+test('the data ComfyUI wrote into its own file is read from that file as delivered, PNG and WebP', async () => {
+  for (const bytes of [comfyPng, comfyWebp]) {
+    assert.deepEqual(api.readGenerationImageData(bytes), comfyData);
+    assert.deepEqual(await api.extractNaiMetadata(bytes), comfyData.recipe);
+  }
+  // Omni's own chunk, once written, is the one read: an edit's new recipe wins over ComfyUI's first one.
+  const edited = api.writeGenerationImageData(comfyPng, { ...comfyData, recipe: { prompt: 'edited', seed: 5 } });
+  assert.equal(api.readGenerationImageData(edited).recipe.prompt, 'edited');
+  // Another program's text under the key that is not this data is no data, never an error.
+  const odd = Buffer.from(comfyPng); odd[odd.indexOf('"version": 1') + 11] = 0x39;
+  assert.equal(api.readGenerationImageData(odd), null);
+  assert.equal(api.readGenerationImageData(png), null);
+});

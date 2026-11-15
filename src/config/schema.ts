@@ -269,6 +269,7 @@ export function migrateSettings(input: unknown = {}): MigratedSettings {
   // person_tag_weight: NAI emphasis on Inlay person-count tags (0 = plain, 1–5 = N::…::)
   card.person_tag_weight = normalizePersonTagWeight(card.person_tag_weight);
   card.image_webp_quality = webpQualityPercent(card.image_webp_quality);
+  card.image_webp_lossless = card.image_webp_lossless === true;
   card.image_webp_metadata = card.image_webp_metadata !== false;
   card.image_png_original = card.image_png_original === true;
   card.image_png_bake = card.image_png_bake === true;
