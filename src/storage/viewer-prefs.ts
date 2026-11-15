@@ -25,10 +25,12 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * elements: its 요소 button, as AUTO and VOICE are: on, the bot's registered elements come up (any bot, any chat).
  * backTile: a floating 이전 tile on the stage (a step back, as ◀; a phone's next is a tap anywhere, its back the small
  * ◀), off unless switched on; backX, backY: where it was dragged to, as shares of the frame (percent).
+ * bgBlur: 배경 흐림, the stage background's blur in px (3 as it always was; 0 sharp).
  */
-export interface ViewerPrefs { auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean; elements: boolean; backTile: boolean; backX: number; backY: number }
+export interface ViewerPrefs { bgBlur: number; auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean; elements: boolean; backTile: boolean; backX: number; backY: number }
 export type CgSize = 1 | 2 | 3;
 export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
+export const BG_BLURS: readonly number[] = [0, 1, 2, 3, 5, 8, 12];
 const TEXT_SIZES: readonly ViewerTextSize[] = ['small', 'normal', 'large', 'xlarge'];
 /** The box's letters, against 'normal' (the size the viewer had before it was a choice). */
 export const TEXT_SCALE: Record<ViewerTextSize, number> = { small: 0.88, normal: 1, large: 1.16, xlarge: 1.34 };
@@ -41,6 +43,7 @@ const share = (v: unknown, fallback: number) => { const n = Number(v); return Nu
 function normalize(raw: unknown): ViewerPrefs {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof ViewerPrefs, unknown>>;
   return {
+    bgBlur: typeof r.bgBlur === 'number' && BG_BLURS.includes(r.bgBlur) ? r.bgBlur : 3,
     auto: r.auto === true, voice: r.voice !== false, sfx: r.sfx !== false,
     skipWords: typeof r.skipWords === 'string' ? r.skipWords.slice(0, 2000) : '',
     speed: SPEEDS.includes(r.speed as ViewerSpeed) ? r.speed as ViewerSpeed : 'fast',

@@ -1,5 +1,6 @@
 import { BASE_EXPRESSIONS, DEFAULT_POSE } from '../domain/emotion/emotions';
 import { SHORTCUT_LOOK, type ViewerFrom } from '../viewer/shortcuts';
+import { BG_PREFIX_DEFAULT } from '../storage/emotion-store';
 
 /**
  * 뷰어 및 감정 에셋: three tabs like BGM·효과음's, the same classes. 뷰어 is the
@@ -44,6 +45,9 @@ ${row('장소 배경', sw('emo-places', '장소 배경'))}
 <fieldset class="snd-gate" id="emo-bg-gate">
 ${row('장소 태그 쓰게 하기 · ⚛️ omni place', sw('emo-place-module', '장소 태그 쓰게 하기'), '<span id="emo-place-module-status" role="status"></span>')}
 ${row('장소 없는 메시지', select('emo-bg-pick', '장소 없는 메시지', [['auto', '자동 · JEV → 임베딩'], ['jev', 'JEV'], ['embedding', '임베딩'], ['off', '고르지 않음 · 작가노트 장소']]))}
+${row('배경 흐림', select('emo-bg-blur', '배경 흐림', [['0', '선명하게'], ['1', '아주 약하게'], ['2', '약하게'], ['3', '보통 (기본)'], ['5', '강하게'], ['8', '아주 강하게'], ['12', '최대']]))}
+${row('그림 프리셋', select('emo-bg-preset', '그림 프리셋', [['bot', '봇의 프리셋 그대로'], ['none', '프리셋 없이 · 배경 태그만']]))}
+<div class="fields"><label class="field full"><span>배경 선행 태그 · 장소 태그 앞에 붙음</span><textarea id="emo-bg-prefix" rows="2" maxlength="2000" placeholder="${esc(BG_PREFIX_DEFAULT)}"></textarea></label></div>
 </fieldset></div></div>
 <div class="tts-settings-column"><div class="group"><h3>이 봇의 배경 <small id="emo-bg-count"></small></h3>
 <div id="emo-bg-list" class="emo-bg-grid" role="list"></div></div>

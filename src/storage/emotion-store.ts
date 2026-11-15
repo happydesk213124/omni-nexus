@@ -16,6 +16,10 @@ export interface EmotionSettings {
   autoGenerate: boolean;
   /** The place each reply opens in becomes a background with nobody in it (the viewer's stage). */
   placeBackgrounds: boolean;
+  /** 배경 그림 프리셋: 'bot' the preset the bot draws with (its tags, negative and sampler), 'none' only the background's own tags. */
+  bgPreset: 'bot' | 'none';
+  /** 배경 선행 태그: before the place's tags in every background. Empty: none (the place's tags alone). */
+  bgPrefix: string;
   family: EmotionFamily;
   /** NAI V5 effort for faces: the illustration settings', or its own (medium: faster, uses less). */
   effort: 'follow' | 'high' | 'medium';
@@ -52,8 +56,10 @@ export interface EmotionSettings {
 export interface EmotionMade { bot: string; person: string; face: string; name: string; path: string; registered: boolean; at: number; costume?: number }
 export interface EmotionData { settings: EmotionSettings; seen: Record<string, string[]>; made: EmotionMade[] }
 
+/** What every background began with before it was a setting: nobody in it, and a wide place. */
+export const BG_PREFIX_DEFAULT = '2::no humans::, scenery, wide shot, detailed background';
 export const emotionDefaults = (): EmotionSettings => ({
-  enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, family: 'v5', effort: 'follow', width: 832, height: 1216,
+  enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, bgPreset: 'bot', bgPrefix: BG_PREFIX_DEFAULT, family: 'v5', effort: 'follow', width: 832, height: 1216,
   prefix: '', suffix: '', excludeTags: EMOTION_EXCLUDE_DEFAULT, dropAccessories: false, pose: '', transparent: true, costumes: false, nude: false, nudeAll: false, faceTags: {}, words: {},
 });
 
@@ -81,6 +87,7 @@ export function normalizeEmotionSettings(raw: unknown): EmotionSettings {
     .filter(([k, value]) => k && value && keep(k, value)).slice(0, 200));
   return {
     enabled: r.enabled !== false, useExisting: r.useExisting !== false, autoGenerate: r.autoGenerate !== false, placeBackgrounds: r.placeBackgrounds !== false,
+    bgPreset: r.bgPreset === 'none' ? 'none' : 'bot', bgPrefix: typeof r.bgPrefix === 'string' ? text(r.bgPrefix, 2000) : d.bgPrefix,
     family: r.family === 'v4' ? 'v4' : 'v5', effort: r.effort === 'high' || r.effort === 'medium' ? r.effort : 'follow', width: size(r.width, d.width), height: size(r.height, d.height),
     prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), excludeTags: typeof r.excludeTags === 'string' ? text(r.excludeTags, 2000) : d.excludeTags, dropAccessories: r.dropAccessories === true, pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
     nude: r.nude === true, nudeAll: r.nudeAll === true,

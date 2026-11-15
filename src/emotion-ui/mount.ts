@@ -58,6 +58,7 @@ function fillSettings(s: EmotionSettings): void {
   nudeGate();
   value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
+  value('emo-bg-preset', s.bgPreset); value('emo-bg-prefix', s.bgPrefix);
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-exclude', s.excludeTags); value('emo-pose', s.pose);
   for (const e of BASE_EXPRESSIONS) value(`emo-face-${e.key}`, s.faceTags[e.key] || '');
   gates(s);
@@ -95,6 +96,7 @@ function readSettings(): Partial<EmotionSettings> {
   for (const line of val('emo-words').split('\n')) { const [w, face] = line.split('=').map(s => s.trim()); if (w && face && baseExpression(face)) words[w] = face; }
   return {
     enabled: !!$<HTMLInputElement>('emo-enabled')?.checked, useExisting: !!$<HTMLInputElement>('emo-existing')?.checked, autoGenerate: !!$<HTMLInputElement>('emo-auto')?.checked, placeBackgrounds: !!$<HTMLInputElement>('emo-places')?.checked,
+    bgPreset: val('emo-bg-preset') === 'none' ? 'none' : 'bot', bgPrefix: val('emo-bg-prefix'),
     costumes: !!$<HTMLInputElement>('emo-costumes')?.checked, dropAccessories: !!$<HTMLInputElement>('emo-drop-accessories')?.checked,
     nude: !!$<HTMLInputElement>('emo-nude')?.checked, nudeAll: !!$<HTMLInputElement>('emo-nude-all')?.checked,
     family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0',
@@ -164,6 +166,10 @@ export async function mountEmotion(root: HTMLElement, live: () => boolean): Prom
   const reach = root.querySelector<HTMLSelectElement>('#emo-reach');
   if (reach) reach.value = String(viewerPrefs().stageReach);
   reach?.addEventListener('change', event => { event.stopPropagation(); void saveViewerPrefs({ stageReach: Number(reach.value) }); });
+  // 배경 흐림: the viewer's own (its store), shown on its next draw.
+  const blur = root.querySelector<HTMLSelectElement>('#emo-bg-blur');
+  if (blur) blur.value = String(viewerPrefs().bgBlur);
+  blur?.addEventListener('change', event => { event.stopPropagation(); void saveViewerPrefs({ bgBlur: Number(blur.value) }); });
   // 바로가기: its button goes up or down as it is switched (the viewer listens to these settings).
   for (const [id, key] of [['emo-breathe', 'breathe'], ['emo-bounce', 'bounce'], ['emo-base64', 'revealBase64'], ['emo-back-tile', 'backTile'],
     ['emo-float-resume', 'floatResume'], ['emo-float-center', 'floatCenter'], ['emo-menu-resume', 'menuResume'], ['emo-menu-center', 'menuCenter']] as const) {

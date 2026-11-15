@@ -333,6 +333,8 @@ export interface StageState {
   motion?: { breathe: boolean; bounce: boolean };
   /** 글자 크기: the box's letters and name against their usual size (1 = as designed). */
   textScale?: number;
+  /** 배경 흐림: the background's blur in px (3 = as designed, 0 sharp). */
+  bgBlur?: number;
   /** Why the stage has no background (being drawn, failed, no place said): shown after the clock. */
   bgNote?: string;
   /** The story so far ends on this CG: its end cue shows with it. */
@@ -458,6 +460,8 @@ export function stageCss(s: StageState): string {
     s.boxHeight ? `[x-omni-vn] [data-vn-box]{min-height:${Math.round(s.boxHeight)}px}` : '',
     s.msgs && s.msgsLoading ? `[x-omni-vn] [data-vn-msg][data-more="${s.msgsLoading}"]::after{content:"";display:inline-block;width:10px;height:10px;margin-left:7px;vertical-align:-1px;border-radius:50%;border:2px solid rgba(227,194,122,.3);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}` : '',
     s.textScale && s.textScale !== 1 ? `[x-omni-vn] [data-vn-text]{font-size:${(16.5 * s.textScale).toFixed(1)}px}[x-omni-vn] [data-vn-name]{font-size:${(15 * s.textScale).toFixed(1)}px}` : '',
+    // Sharp, the scale that hides a blur's soft edge is dropped too: the picture shows whole.
+    typeof s.bgBlur === 'number' && s.bgBlur !== 3 ? `[x-omni-vn] div[x-vn-bg] img{filter:${s.bgBlur > 0 ? `blur(${s.bgBlur}px) ` : ''}brightness(.7) saturate(1.05);transform:scale(${s.bgBlur > 0 ? 1.06 : 1})}` : '',
     s.bgNote ? `[x-omni-vn] [data-vn-clock]::after{content:${JSON.stringify(s.bgNote)}}[x-omni-vn] [data-vn-clock]:empty::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:#8a8496}` : '',
     `[x-omni-vn] [data-vn-act="auto"]{color:${s.auto ? 'var(--gold)' : '#efe9da'}${s.auto ? ';text-shadow:0 0 8px var(--gold)' : ''}}[x-omni-vn] [data-vn-act="voice"]{opacity:${s.voice ? 1 : .4}}[x-omni-vn] [data-vn-act="narr"]{opacity:${s.narrVoice === false ? .4 : 1}}[x-omni-vn] [data-vn-act="sfx"]{opacity:${s.sfx === false ? .4 : 1}}`,
     s.bgm ? '[x-omni-vn] [data-vn-menu] [data-vn-act="bgm"]{color:var(--gold)}[x-omni-vn] [data-vn-act="bgm"]::after{content:"❚❚"}' : '',

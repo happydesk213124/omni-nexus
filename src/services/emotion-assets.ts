@@ -248,7 +248,7 @@ function openChatId(bot: EmotionBot): string {
  * a picture every bot shares, Omni's), saved as a Risu asset. Waits for NovelAI to be free first (one generation at a
  * time per account: an illustration job running alongside would make one of them fail).
  */
-async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number; bot: EmotionBot | null }): Promise<{ bytes: Uint8Array; path: string }> {
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number; bot: EmotionBot | null; noPreset?: boolean }): Promise<{ bytes: Uint8Array; path: string }> {
   const settings = (await loadEmotionData()).settings, config = getConfig();
   const nai = input.effort ? { ...config.nai, effort_v5: input.effort } : config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
@@ -256,7 +256,8 @@ async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5
   if (!token) throw new Error('NovelAI API 키를 먼저 넣어 주세요.');
   const card = config.card, presets = Array.isArray(card.presets) ? card.presets : [];
   const presetId = input.bot ? await drawingPresetId(input.bot.id, openChatId(input.bot)) : cleanText(card.active_preset_id, 120);
-  const preset = findPresetById(presets, presetId) ?? findPresetById(presets, cleanText(card.active_preset_id, 120)) ?? presets[0] ?? null;
+  // 프리셋 없이: neither its tags nor its negative nor its sampler; the illustration settings' own steps and sampler draw.
+  const preset = input.noPreset ? null : findPresetById(presets, presetId) ?? findPresetById(presets, cleanText(card.active_preset_id, 120)) ?? presets[0] ?? null;
   const familyNai = { ...nai, steps: naiStepsForFamily(nai, family), sampler: naiSamplerForFamily(nai, family) };
   const params = resolveGenerationCfgParams(familyNai, { cfg_scale: preset?.cfg_scale, cfg_rescale: preset?.cfg_rescale, steps: preset?.steps, sampler: preset?.sampler, scheduler: preset?.scheduler });
   const req: T2iRequest = {
@@ -365,11 +366,11 @@ export function makeBackground(place: string, bot: EmotionBot | null, force = fa
   const k = placeKey(place), owner = ownerOf(k, bot), shared = owner === SHARED_BOT;
   if (!owner) return Promise.reject(new Error('이 장소의 배경은 봇과의 채팅을 연 뒤 그릴 수 있습니다.'));
   return queueJob(spriteJobKey(owner, PLACE_PERSON, k), async () => {
-    const v5 = !!tokensForFamily(getConfig().nai, 'v5')[0];
+    const v5 = !!tokensForFamily(getConfig().nai, 'v5')[0], settings = (await loadEmotionData()).settings;
     // Wide (the stage is), WebP at 50: blurred behind the cast, the detail is never seen.
-    // A background every bot shares draws with Omni's preset; a bot's own, with the bot's (its session's).
+    // A background every bot shares draws with Omni's preset; a bot's own, with the bot's (its session's); 프리셋 없이, with neither.
     const { bytes, path } = await drawAndSave({ bot: shared ? null : bot, width: 1216, height: 832, family: v5 ? 'v5' : undefined, effort: 'medium', webp: 0.5, negative: '1girl, 1boy, people, person, character, crowd, text',
-      prompt: style => joinTags(style, '2::no humans::, scenery, wide shot, detailed background', k) });
+      noPreset: settings.bgPreset === 'none', prompt: style => joinTags(style, settings.bgPrefix, k) });
     const name = backgroundName(k, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png');
     await remember(owner, PLACE_PERSON, k, name, path);
     dbg('emotion.background', { message: `${shared ? '(shared) ' : ''}${k}`, path });
