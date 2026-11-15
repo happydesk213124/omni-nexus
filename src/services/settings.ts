@@ -256,6 +256,8 @@ export async function importSettingsJson(json: string): Promise<ApiResult> {
   await idbPut('meta', { key: 'settings_backup', value: previous, updated_at: Date.now() / 1000 });
   const next = deepMerge(DEFAULT_CONFIG, imported);
   retainLocalCredentials(next, previous);
+  // A shared file carries no private server address (export-secrets): the one this device has stays.
+  if (next.nai && !String((imported as { nai?: { comfy_url?: unknown } }).nai?.comfy_url ?? '').trim()) next.nai.comfy_url = previous.nai?.comfy_url ?? next.nai.comfy_url;
   setConfig(next);
   await saveConfig({ flush: true });
   // Embedded pack (known keys only — importPromptsPack skips the rest).

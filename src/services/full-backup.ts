@@ -89,6 +89,8 @@ export async function importFullBackup(json: string): Promise<ApiResult> {
     await idbPut('meta', { key: 'settings_backup', value: previous, updated_at: Date.now() / 1000 });
     const next = deepMerge(DEFAULT_CONFIG, imported);
     if (keyless) retainLocalCredentials(next, previous);
+    // A keyless file carries no private server address either (export-secrets): this device's stays.
+    if (keyless && next.nai && !String((imported as { nai?: { comfy_url?: unknown } }).nai?.comfy_url ?? '').trim()) next.nai.comfy_url = previous.nai?.comfy_url ?? next.nai.comfy_url;
     setConfig(next);
     await saveConfig({ flush: true });
     restored.push('삽화 설정');
@@ -104,6 +106,8 @@ export async function importFullBackup(json: string): Promise<ApiResult> {
   if (tts) {
     await loadTtsData();
     if (keyless) retainLocalCredentials(tts, ttsData().settings, isVoiceKey);
+    const irodori = object(tts.irodori);
+    if (keyless && irodori && !String(irodori.url ?? '').trim()) irodori.url = ttsData().settings.irodori.url;
     await updateTtsSettings(tts as Partial<TtsSettings>); restored.push('TTS');
   }
   const sound = object(doc.sound);

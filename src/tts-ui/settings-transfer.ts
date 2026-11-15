@@ -1,5 +1,6 @@
 import type { TtsSettings } from '../core/tts-types';
 import { ttsData, updateTtsSettings } from '../storage/tts-store';
+import { withoutPrivateAddresses } from '../core/util/export-secrets';
 
 export const TTS_SETTINGS_FILE = 'omnitts-settings';
 type Secrets = Pick<TtsSettings, 'fish' | 'irodori' | 'llm' | 'translation' | 'jev'>;
@@ -9,8 +10,12 @@ export function exportableTtsSettings(settings: TtsSettings): Record<string, unk
   const copy = JSON.parse(JSON.stringify(settings)) as TtsSettings;
   copy.fish.key = ''; copy.fish.routerKey = ''; copy.irodori.key = ''; copy.jev.key = ''; copy.translation.key = ''; copy.translation.googleKey = ''; copy.translation.deeplKey = '';
   for (const llm of [copy.llm, copy.translation.llm]) { llm.api_key = ''; llm.service_account_json = ''; }
+  // The Irodori server is this device's own (a home or Tailscale address): a shared file names none, and an import
+  // keeps the reader's. Any other address that is a private one goes the same way.
+  copy.irodori.url = '';
+  const scrubbed = JSON.parse(JSON.stringify(copy, (_key, value: unknown) => typeof value === 'string' ? withoutPrivateAddresses(value) : value)) as TtsSettings;
   // Window placement belongs to this screen, not to the shared preset.
-  const { viewerAnchor: _anchor, minimized: _minimized, panel: _panel, enabled: _enabled, ...rest } = copy;
+  const { viewerAnchor: _anchor, minimized: _minimized, panel: _panel, enabled: _enabled, ...rest } = scrubbed;
   return { type: TTS_SETTINGS_FILE, version: 1, settings: rest };
 }
 

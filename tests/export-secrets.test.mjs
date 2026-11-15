@@ -72,3 +72,17 @@ test('frozen UI download guard covers all six exporters and refuses broken or un
   assert.throws(() => jsonParts([new Uint8Array([1])]));
   assert.throws(() => jsonParts([]));
 });
+
+test('a shared file names no private server: Tailscale and home-network addresses go, localhost and public ones stay', () => {
+  const out = sanitizeForExport({ nai: { comfy_url: 'https://cloud-1.tail56deb9.ts.net:10000', request_url: 'https://image.novelai.net/ai/generate-image' },
+    tts: { irodori: { url: 'http://100.77.122.106:8088' }, jev: { url: 'http://192.168.0.10:5000/v1' } },
+    local: 'http://localhost:8188', loop: 'http://127.0.0.1:8088', lan: 'http://nas.local/x', ten: 'http://10.0.0.5:8188',
+    note: 'server is at https://cloud-1.tail56deb9.ts.net:8443/v1 for now', outside: 'http://100.20.1.1/x and http://172.32.0.1/y' });
+  assert.equal(out.nai.comfy_url, ''); assert.equal(out.nai.request_url, 'https://image.novelai.net/ai/generate-image');
+  assert.equal(out.tts.irodori.url, ''); assert.equal(out.tts.jev.url, '');
+  assert.equal(out.local, 'http://localhost:8188'); assert.equal(out.loop, 'http://127.0.0.1:8088');
+  assert.equal(out.lan, ''); assert.equal(out.ten, '');
+  assert.equal(out.note, 'server is at [주소 제거됨] for now');
+  assert.equal(out.outside, 'http://100.20.1.1/x and http://172.32.0.1/y', 'only the private ranges');
+  assert.equal(JSON.stringify(out).includes('tail56deb9'), false);
+});

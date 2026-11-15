@@ -5,6 +5,19 @@ export function isCredentialField(name: string): boolean {
 }
 
 const REDACTED = '[인증정보 제거됨]';
+const ADDRESS_REMOVED = '[주소 제거됨]';
+/**
+ * The address of a server of the user's own: a Tailscale name or address (*.ts.net, 100.64.0.0/10), a home network
+ * one (10/8, 172.16/12, 192.168/16, *.local, *.lan). A shared file carrying one tells the reader the device's name
+ * and tailnet. localhost stays: it names nobody, and it is the default a file is expected to hold.
+ */
+const PRIVATE_URL = /\bhttps?:\/\/(?:[a-z0-9-]+\.)*(?:[a-z0-9-]+\.ts\.net|[a-z0-9-]+\.(?:local|lan)|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2})(?::\d{1,5})?(?:\/[^\s"'<>]*)?/gi;
+/** A field that is such an address and nothing else is emptied; inside other text the address alone is taken out. */
+export function withoutPrivateAddresses(text: string): string {
+  const hits = text.match(PRIVATE_URL);
+  if (!hits) return text;
+  return hits.length === 1 && hits[0] === text.trim() ? '' : text.replace(PRIVATE_URL, ADDRESS_REMOVED);
+}
 
 /** Also removes saved credentials accidentally pasted into notes or other free text. */
 export function sanitizeForExport(value: unknown, credentials?: unknown): unknown {
@@ -48,7 +61,7 @@ export function sanitizeForExport(value: unknown, credentials?: unknown): unknow
           if (JSON.stringify(safe) !== JSON.stringify(parsed)) return JSON.stringify(safe);
         } catch { /* ordinary prompt text */ }
       }
-      return scrub(node);
+      return withoutPrivateAddresses(scrub(node));
     }
     if (Array.isArray(node)) return node.map(visit);
     if (!node || typeof node !== 'object') return node;
