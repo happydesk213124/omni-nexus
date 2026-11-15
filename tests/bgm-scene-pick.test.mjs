@@ -174,3 +174,11 @@ test('the runtime: the scene after the cue picks among the tied tracks; one smal
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+test('an effect word carries the paragraphs around it: one each side, or as many as 앞뒤 문단 asks (up to three)', () => {
+  const effect = (text, storySpan) => api.parseTtsMessage(text, [], 1, true, { bgm: false, sfxRules: [{ id: 's', name: 's', open: '§', close: '§', enabled: true }], storySpan }).find(row => row.kind === 'sfx');
+  const text = '첫째 문단.\n\n둘째 문단.\n\n셋째 문단.\n\n문이 §쾅§ 닫혔다.\n\n넷째 문단.\n\n다섯째 문단.\n\n여섯째 문단.\n\n일곱째 문단.';
+  assert.deepEqual(effect(text).context.split('\n'), ['셋째 문단.', '문이 닫혔다.', '넷째 문단.'], 'absent: one each side, as before');
+  assert.deepEqual(effect(text, 2).context.split('\n'), ['둘째 문단.', '셋째 문단.', '문이 닫혔다.', '넷째 문단.', '다섯째 문단.']);
+  assert.deepEqual(effect(text, 9).context.split('\n'), ['첫째 문단.', '둘째 문단.', '셋째 문단.', '문이 닫혔다.', '넷째 문단.', '다섯째 문단.', '여섯째 문단.'], 'three at most');
+});

@@ -27,7 +27,7 @@ interface Binding { node: SafeElement; play:()=>Promise<void>; chips: {node:Safe
 function soundCues(): TtsSoundCues | undefined {
   if (!soundReady()) return undefined;
   const s = soundData().settings;
-  return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [] } : undefined;
+  return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [], storySpan: s.sfxStorySpan } : undefined;
 }
 const soundOn = () => !!soundCues();
 /** Messages a scan reads at once: their calls cross the bridge back to back, a wave never holding Risu long. */

@@ -59,6 +59,7 @@ ${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과�
 ${row('TTS 목록·이어 읽기에 효과음', sw('snd-list-sfx', 'TTS 목록·이어 읽기에 효과음'))}
 ${row('자동 재생', `<select id="snd-sfx-auto" aria-label="효과음 자동 재생"><option value="reply">새 답변 · 이어 읽기 중</option><option value="button">버튼을 눌렀을 때만</option></select>`)}
 ${row('효과음 고르는 방식', matcher('snd-sfx-matcher', true))}
+${row('함께 보는 앞뒤 문단', `<select id="snd-sfx-story" aria-label="함께 보는 앞뒤 문단"><option value="1">앞뒤 1문단 (기본)</option><option value="2">앞뒤 2문단</option><option value="3">앞뒤 3문단</option></select>`)}
 ${row('맞는 효과음이 없으면 ElevenLabs로 만들기', sw('snd-sfx-autocreate', '맞는 효과음이 없으면 ElevenLabs로 만들기'))}
 ${row('생성 길이', `<div class="control"><input id="snd-sfx-duration" type="number" min="0" max="30" step="0.5" aria-label="생성 길이 초" style="width:72px"><span>초 · 0이면 자동</span></div>`)}
 <div class="snd-rules-box"><div class="snd-rules-head" id="snd-rules-head"><b>효과음 규칙</b><small>앞 글자 · 효과음 · 뒤 글자</small><button type="button" id="snd-rule-add">+ 규칙</button></div><div class="snd-rules" id="snd-rules"></div></div>

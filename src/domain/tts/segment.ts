@@ -7,7 +7,8 @@ import { INLINE_CAST_MASK_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOU
 import { NUDE_COSTUME } from '../emotion/emotions';
 
 /** Sound cues to list with the spoken lines: BGM markers and the effect rules in use. */
-export interface TtsSoundCues { bgm: boolean; sfxRules: readonly SfxRule[] }
+/** storySpan: paragraphs with words each side of an effect's line in its story (1 to 3; absent, 1). */
+export interface TtsSoundCues { bgm: boolean; sfxRules: readonly SfxRule[]; storySpan?: number }
 export const isSoundSegment = (segment: Pick<TtsSegment, 'kind'>): boolean => segment.kind === 'bgm' || segment.kind === 'sfx';
 // The emoji a cue may open with (`👨 Sora:`), as cueHeader takes them off the name.
 const LEAD_EMOJI = new RegExp(`^[\\s*\\p{Extended_Pictographic}\\p{Emoji_Modifier}${String.fromCodePoint(0xfe0f, 0x200d)}]+`, 'u');
@@ -133,10 +134,16 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
     for (let i = number - 2; i >= 0 && before.length < BGM_CUE_SCENE_MAX; i--) { const text = prose(lines[i]!); if (text) before = text + (before ? ' ' : '') + before; }
     return [before.slice(-(BGM_CUE_SCENE_MAX - after.length)).trim(), after].filter(Boolean).join(' ');
   };
+  // 앞뒤 문단 수: how many paragraphs with words in them each side, each side's length growing with it.
+  const span = Math.min(3, Math.max(1, Math.round(Number(sound?.storySpan) || 1)));
   const story = (number: number, line: string): string => {
-    const near = (from: number, step: number) => { for (let i = from; i >= 0 && i < lines.length && Math.abs(i - from) < 6; i += step) { const text = plain(lines[i]!); if (text) return text; } return ''; };
+    const near = (from: number, step: number) => {
+      const found: string[] = [];
+      for (let i = from; i >= 0 && i < lines.length && Math.abs(i - from) < 6 * span && found.length < span; i += step) { const text = plain(lines[i]!); if (text) found.push(text); }
+      return (step < 0 ? found.reverse() : found).join('\n');
+    };
     const own = plain(line), before = near(number - 2, -1), after = near(number, 1);
-    return [before.slice(-200), own.slice(0, 250), after.slice(0, 250)].filter(Boolean).join('\n');
+    return [before.slice(-200 * span), own.slice(0, 250), after.slice(0, 250 * span)].filter(Boolean).join('\n');
   };
   const cues = (line: string, number: number, at: number, spoken?: string): { before: TtsSegment[]; after: TtsSegment[] } => {
     const out = { before: [] as TtsSegment[], after: [] as TtsSegment[] }, from = spoken ? Math.max(0, line.indexOf(spoken)) : line.length - line.trimStart().length;

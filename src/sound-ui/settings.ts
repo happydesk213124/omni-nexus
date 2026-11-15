@@ -96,7 +96,7 @@ export function paintSoundSettings(rules = true): void {
   for (const [id, key] of SELECTS) put(id, s[key]);
   put('snd-bgm-cache', s.bgmCacheMb);
   const usage = omniSound.bgmCacheUsage(); text('snd-bgm-cache-usage', `지금 ${usage.count}곡 · ${(usage.bytes / 1048576).toFixed(1)} MB`);
-  put('snd-crossfade', s.crossfadeMs / 1000); put('snd-sfx-max', s.sfxMaxSec); put('snd-max-mb', s.maxFileMb);
+  put('snd-crossfade', s.crossfadeMs / 1000); put('snd-sfx-max', s.sfxMaxSec); put('snd-sfx-story', String(s.sfxStorySpan)); put('snd-max-mb', s.maxFileMb);
   put('snd-sfx-duration', s.sfxDuration); put('snd-eleven-key', s.elevenKey);
   put('snd-bgm-tags', s.bgmTags.join(', '));
   put('snd-embed-provider', s.embed.provider); put('snd-embed-model', s.embed.model); put('snd-embed-key', s.embed.key); put('snd-embed-endpoint', s.embed.endpoint);
@@ -127,6 +127,7 @@ export function bindSoundSettings(): void {
     await omniSound.clearBgmCache(); paintSoundSettings(false); notify('기기에 받아 둔 BGM을 비웠습니다.');
   }));
   commit('snd-sfx-max', () => ({ sfxMaxSec: Number(val('snd-sfx-max')) }), s => s.sfxMaxSec);
+  commit('snd-sfx-story', () => ({ sfxStorySpan: Number(val('snd-sfx-story')) }), s => String(s.sfxStorySpan));
   commit('snd-max-mb', () => ({ maxFileMb: Number(val('snd-max-mb')) }), s => s.maxFileMb);
   commit('snd-sfx-duration', () => ({ sfxDuration: Number(val('snd-sfx-duration')) || 0 }), s => s.sfxDuration);
   el('snd-eleven-key')?.addEventListener('change', () => run(() => updateSoundSettings({ elevenKey: val('snd-eleven-key').trim() })));

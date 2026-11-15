@@ -417,7 +417,7 @@ const fired = new Set<string>();
 function soundCues() {
   if (!soundReady()) return undefined;
   const s = soundData().settings;
-  return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [] } : undefined;
+  return s.bgmEnabled || s.sfxEnabled ? { bgm: s.bgmEnabled, sfxRules: s.sfxEnabled ? s.sfxRules : [], storySpan: s.sfxStorySpan } : undefined;
 }
 function setSource(text: string, keepPlace: boolean, shown = ''): void {
   source = text;

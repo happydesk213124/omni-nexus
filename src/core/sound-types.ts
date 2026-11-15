@@ -58,6 +58,8 @@ export interface SoundSettings {
   sfxAutoPlay: 'reply' | 'button';
   /** Longest effect in seconds (a longer one fades out there); 0 plays it to the end. */
   sfxMaxSec: number;
+  /** 앞뒤 문단 수: paragraphs each side of an effect word that go with it to the embedding, JEV or LLM (1 to 3). */
+  sfxStorySpan: number;
   /** ▶ goes on before any other module restyles the effect marks (see SOUND_DISPLAY_ORDER). */
   sfxFirst: boolean;
   /** Skip the silence before and after each effect. */
