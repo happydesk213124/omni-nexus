@@ -8,7 +8,7 @@ const sw = (id: string, label: string) => `<label class="switch"><input type="ch
 const row = (title: string, control: string, status = '') => `<div class="row"><div class="copy"><b>${title}</b>${status ? `<small>${status}</small>` : ''}</div>${control}</div>`;
 const range = (id: string, label: string) => `<div class="control"><input id="${id}" type="range" min="0" max="100" aria-label="${label}"><output class="value" id="${id}-value"></output></div>`;
 // 「임베딩만」 is for effects alone: BGM has no glossary to leave out.
-const matcher = (id: string, effects = false) => `<select id="${id}" aria-label="고르는 방식"><option value="auto">자동 · 용어집 → JEV → 임베딩 → 글자</option><option value="tag">용어집·글자만 (무료)</option><option value="embedding">용어집 → 임베딩</option>${effects ? '<option value="embedding-only">임베딩만 · 용어집 안 씀 (앞뒤 문단과 함께)</option>' : ''}<option value="jev">용어집 → JEV</option><option value="llm">용어집 → LLM</option></select>`;
+const matcher = (id: string, effects = false) => `<select id="${id}" aria-label="고르는 방식"><option value="auto">자동 · 용어집 → JEV → 임베딩 → 글자</option><option value="tag">용어집·글자만 (무료)</option><option value="embedding">용어집 → 임베딩</option>${effects ? '<option value="embedding-only">임베딩만 · 용어집 안 씀 (앞뒤 문단과 함께)</option>' : ''}<option value="jev">용어집 → JEV</option>${effects ? '<option value="jev-only">JEV만 · 용어집 안 씀 (앞뒤 문단과 함께)</option>' : ''}<option value="llm">용어집 → LLM</option></select>`;
 
 export const SOUND_TABS = [
   ['sound-settings', '설정'], ['sound-bgm', 'BGM 목록'], ['sound-sfx', '효과음 목록'], ['sound-glossary', '효과음 용어집'],

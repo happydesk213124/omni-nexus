@@ -23,7 +23,7 @@ export function soundData(): SoundData {
 
 const text = (v: unknown, max = 500) => typeof v === 'string' ? v.slice(0, max) : '';
 const clamp = (n: unknown, min: number, max: number, fallback: number) => Number.isFinite(Number(n)) ? Math.max(min, Math.min(max, Number(n))) : fallback;
-const MATCHERS = ['auto', 'tag', 'embedding', 'embedding-only', 'jev', 'llm'] as const;
+const MATCHERS = ['auto', 'tag', 'embedding', 'embedding-only', 'jev', 'jev-only', 'llm'] as const;
 
 function item(raw: unknown, kind: SoundKind): SoundItem | null {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -80,6 +80,7 @@ export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettin
   for (const key of ['bgmMatcher', 'sfxMatcher'] as const) if (!MATCHERS.includes(s[key])) s[key] = d[key];
   // Embedding alone is a way of matching effects; BGM has no glossary to leave out, so it is the embedding step.
   if (s.bgmMatcher === 'embedding-only') s.bgmMatcher = 'embedding';
+  if (s.bgmMatcher === 'jev-only') s.bgmMatcher = 'jev';
   if (s.sfxAutoPlay !== 'reply' && s.sfxAutoPlay !== 'button') s.sfxAutoPlay = d.sfxAutoPlay;
   if (!['tags', 'message', 'both'].includes(s.bgmBasis)) s.bgmBasis = d.bgmBasis;
   s.bgmTags = soundTags(Array.isArray(s.bgmTags) ? s.bgmTags : d.bgmTags); if (!s.bgmTags.length) s.bgmTags = d.bgmTags;

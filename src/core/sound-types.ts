@@ -2,7 +2,8 @@
 export type SoundKind = 'bgm' | 'sfx';
 /** How a BGM tag set or a sound-effect word picks an item. 'auto' = tag, then embedding, then JEV. */
 /** 'embedding-only' (effects only): every word by the embedding, with the story around it; the glossary is neither read nor taught. */
-export type SoundMatcher = 'auto' | 'tag' | 'embedding' | 'embedding-only' | 'jev' | 'llm';
+/** 'jev-only' (effects only): every word asked of JEV with the story around it; likewise no glossary. */
+export type SoundMatcher = 'auto' | 'tag' | 'embedding' | 'embedding-only' | 'jev' | 'jev-only' | 'llm';
 
 export interface SoundItem {
   key: string;

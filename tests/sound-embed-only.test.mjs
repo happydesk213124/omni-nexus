@@ -81,3 +81,51 @@ test('임베딩만: the scene decides which 쾅; the glossary is not read or tau
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+test('JEV만: every word asked of JEV with its scene; the glossary is not read or taught; one scene asked once', { timeout: 90000 }, async () => {
+  const built = await build({ stdin: { contents: `import {soundData,updateSoundSettings} from './src/storage/sound-store';import {omniSound} from './src/services/sound-runtime';import {ttsData,updateTtsSettings,loadTtsData} from './src/storage/tts-store';Object.assign(window,{soundData,updateSoundSettings,omniSound,ttsData,updateTtsSettings,loadTtsData});`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', loader: { '.txt': 'text' }, logLevel: 'silent' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const page = await browser.newPage(), errors = [];
+    page.setDefaultTimeout(8000); page.on('pageerror', error => errors.push(error.message));
+    await page.route('https://jev.test/', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
+    await page.goto('https://jev.test/');
+    await page.evaluate(() => {
+      const save = new Map([['omnisound.data', JSON.stringify({ version: 3, sfx: [
+        { key: 'door', name: '문 쾅', tags: ['쾅'], folder: '', source: 'url', url: 'https://snd.test/door.mp3' },
+        { key: 'gun', name: '총성', tags: ['쾅'], folder: '', source: 'url', url: 'https://snd.test/gun.mp3' },
+        { key: 'thunder', name: '천둥', tags: ['쾅'], folder: '', source: 'url', url: 'https://snd.test/thunder.mp3' },
+      ], glossary: [{ id: 'g', terms: ['쾅'], sfxKey: 'door', enabled: true }], settings: { sfxEnabled: true, sfxMatcher: 'jev-only' } })]]);
+      // JEV answers by the scene it was sent: the effect named for what happens there.
+      window.jevAsked = [];
+      window.risuai = {
+        pluginStorage: { getItem: async k => save.get(k), setItem: async (k, v) => save.set(k, v) },
+        getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async () => {}, requestPluginPermission: async () => true,
+        nativeFetch: async (url, options = {}) => {
+          if (url.includes('decisions')) {
+            const body = JSON.parse(options.body); window.jevAsked.push(body);
+            const answer = q => { const text = JSON.stringify({ ...q, criteria: null }), want = text.includes('방아쇠') ? '총성' : text.includes('번개') ? '천둥' : '문 쾅'; return Object.entries(q.criteria).find(([, line]) => String(line).startsWith(want))?.[0]; };
+            return { ok: true, json: async () => ({ answers: Object.fromEntries(Object.entries(body.questions).map(([k, q]) => [k, { choice: answer(q) }])) }) };
+          }
+          return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+        },
+      };
+    });
+    await page.addScriptTag({ content: built.outputFiles[0].text });
+    await page.evaluate(async () => { await window.loadTtsData(); await window.omniSound.init(); await window.updateTtsSettings({ jev: { ...window.ttsData().settings.jev, key: 'jev-key' } }); });
+    const plan = (word, story) => page.evaluate(async ([w, s]) => (await window.omniSound.sfxPlan(w, s)).map(row => row.item.key), [word, story]);
+    const asked = () => page.evaluate(() => window.jevAsked.length);
+
+    assert.deepEqual(await plan('쾅', '그가 방아쇠를 당겼다.\n총을 쐈다.'), ['gun'], 'the gun, though the glossary says the door and 쾅 is every effect\'s tag');
+    assert.equal(await asked(), 1);
+    assert.deepEqual(await plan('쾅', '하늘이 갈라지며 번개가 쳤다.'), ['thunder'], 'another scene is asked again');
+    assert.equal(await asked(), 2);
+    assert.deepEqual(await plan('쾅', '그가 방아쇠를 당겼다.\n총을 쐈다.'), ['gun']);
+    assert.equal(await asked(), 2, 'the same word in the same scene is remembered');
+    assert.deepEqual(await page.evaluate(() => window.soundData().glossary.flatMap(row => row.terms.map(term => `${term}>${row.sfxKey}`))), ['쾅>door'], 'nothing is taught');
+    // 「용어집 → JEV」: the glossary answers first, as before.
+    await page.evaluate(() => window.updateSoundSettings({ sfxMatcher: 'jev' }));
+    assert.deepEqual(await plan('쾅', '그가 방아쇠를 당겼다.\n총을 쐈다.'), ['door']);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
