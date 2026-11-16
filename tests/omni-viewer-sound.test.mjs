@@ -145,6 +145,32 @@ test('옴니 뷰어 · an effect\'s word rides over the box while it sounds — 
   } finally { await browser.close(); }
 });
 
+test('옴니 뷰어 · ◀ back to a line sounds its effect again; the line before it does not', async () => {
+  const browser = await launch();
+  try {
+    const { page, errors, count } = await viewerPage(browser);
+    const at = n => page.waitForFunction(n => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-box]'), '::after').content === `"${n} / 4"`, n);
+    await page.keyboard.press('ArrowRight'); await at(2);
+    await page.waitForFunction(() => window.sfxPlayed.length === 1);
+    await page.waitForTimeout(400);
+    await page.keyboard.press('ArrowRight'); await at(3);
+    await page.waitForTimeout(400);
+    await page.keyboard.press('ArrowLeft'); await at(2);
+    await page.waitForFunction(() => window.sfxPlayed.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.sfxPlayed), ['쾅', '쾅']);
+    // The line before it is not where the effect sounds.
+    await page.waitForTimeout(400);
+    await page.keyboard.press('ArrowLeft'); await at(1);
+    await page.waitForTimeout(600);
+    assert.equal(await page.evaluate(() => window.sfxPlayed.length), 2);
+    // Forward onto it again: once more.
+    await page.keyboard.press('ArrowRight'); await at(2);
+    await page.waitForFunction(() => window.sfxPlayed.length === 3);
+    assert.match(await count(), /^"2 \/ 4"$/);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
 test('옴니 뷰어 · VOICE opens 소리: each sound\'s switch, and its level set where a bar is pressed and where the finger lets go — the settings\' own values', async () => {
   const browser = await launch();
   try {

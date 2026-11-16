@@ -453,7 +453,7 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   scenes = buildScenes(settled, segments, emotionData().settings.words);
   clockMarks = clockLines(settled);
   // The stage keeps its background until the new reply's place is up (or the reply says none).
-  if (!keepPlace) { at = 0; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
+  if (!keepPlace) { at = 0; fired.clear(); cuedScene = ''; lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
   else {
     const i = keptPlace(before, was, scenes), old = before[was];
     if (i >= 0) at = i;
@@ -477,11 +477,28 @@ async function toggleMusic(): Promise<void> {
   const tags = heldTags; heldTags = null;
   if (tags) await omniSound.playBgmForTags(tags, heldScene); else await omniSound.toggleBgm();
 }
-/** Cues up to this scene that have not played: the music changes and effects sound where they are written. */
-function playCues(scene: ViewerScene): void {
+/**
+ * The scene whose cues were played last, by what it is (its kind, speaker and words: the saved reply numbers its
+ * scenes otherwise than the stream did). Another one shown is the reader come to it; the same one is it drawn again.
+ * Not the box's line: a picture shown between leaves the box as it was, and ◀ back from it found the line "the same".
+ */
+let cuedScene = '';
+const sceneKey = (scene: ViewerScene): string => `${scene.kind}|${scene.speaker ?? ''}|${scene.text}`;
+const cameTo = (scene: ViewerScene): boolean => sceneKey(scene) !== cuedScene;
+/**
+ * Cues up to this scene that have not played: the music changes and effects sound where they are written. `again`:
+ * the reader came (back) to this line, not the same line drawn again (a streaming look, the saved reply): its own
+ * effects sound once more (◀ to a line found it silent; 기록's jump forward played it). The music never plays twice:
+ * back and forth, it would change each time.
+ */
+function playCues(scene: ViewerScene, again = false): void {
+  cuedScene = sceneKey(scene);
+  // An effect is this line's when no line before it reaches it (the slack below is for one written just before).
+  const before = scenes[scenes.indexOf(scene) - 1]?.end ?? -Infinity;
   for (const cue of cues) {
     const key = cueKeys.get(cue.id) ?? cue.id;
-    if (cue.start > scene.end || fired.has(key)) continue;
+    if (cue.start > scene.end) continue;
+    if (fired.has(key) && !(again && cue.kind === 'sfx' && cue.start > before)) continue;
     fired.add(key);
     const tags = (cue as TtsSegment & { tags?: string[] }).tags;
     if (cue.kind === 'bgm' && tags?.length) {
@@ -1477,7 +1494,7 @@ async function render(force = false): Promise<void> {
     // The reply ends on this picture: the cue to write the next message comes with it. Its calls go out together.
     await Promise.all([elementsAtEnd(end), writeStage(state(lastCast, { cg, cgView: cgView === 'none' ? undefined : cgView })), endCue ? box.setInnerHTML(boxHtml({ speaker: '', text: '', narration: true, end: true }).html) : null]);
     void measureCgControls().catch(error => dbg('viewer.cg', { message: String(error) }, 'warn'));
-    playCues(scene);
+    playCues(scene, cameTo(scene));
     elementsAfter();
     behind(mine, later);
     // A look that came meanwhile arms it itself: this one's step would find the epoch moved on and be lost.
@@ -1517,6 +1534,8 @@ async function render(force = false): Promise<void> {
       // The same line drawn again (a streaming reply's look each second, its save at the end): AUTO's step keeps its
       // time. It was cleared on every look and never set again, so AUTO stopped while a reply streamed in.
       if (viewerPrefs().auto && autoWas > 0) armAuto(mine, Math.max(0, autoWas - Date.now()));
+      // Back on it from a picture (the box kept it meanwhile): its effects sound again.
+      if (cameTo(scene)) playCues(scene, true);
       await Promise.all([elementsAtEnd(end), writeStage(stage)]);
       elementsAfter();
       behind(mine, later);
@@ -1532,7 +1551,7 @@ async function render(force = false): Promise<void> {
     // only the end cue new (the reply saved at its end) keeps the voice it has: asked again under the saved reply's
     // message id, it started over from the top.
     if (sig !== shownWas || force) voice(scene);
-    playCues(scene);
+    playCues(scene, cameTo(scene));
     await out;
     // A tap that came while the box went out: the line is complete now too.
     if (askReveal === draw && revealedAt !== at) await reveal();
