@@ -354,7 +354,7 @@ function bindCharacterSheet(live: () => boolean): void {
     if (edit && person && bot) {
       event.preventDefault();
       openSpriteEditor({ person, face: edit, label: baseExpression(edit)?.label || edit, bot, costume, path: shown.get(edit) ?? null },
-        { over: form.closest('dialog'), thumb, done: message => { status(message); void render(); } });
+        { over: form.closest('dialog'), done: message => { status(message); void render(); } });
     }
   });
   const missing = async (faces: string[]) => {

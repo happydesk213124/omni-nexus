@@ -46,6 +46,8 @@ export interface AssetDialogOptions {
   /** False once what the dialog was opened for is gone (another card chosen). */
   current?: () => boolean;
   onCharacter?: (character: Record<string, unknown> | undefined) => void;
+  /** The character's assets to list, in place of its additionalAssets alone (감정 에셋 adds its emotion images). */
+  rows?: (character: Record<string, unknown> | undefined) => RisuNamedAsset[];
   /** A tile was tapped. The dialog stays open unless this closes it. */
   pick: (asset: RisuNamedAsset, blob: Blob, ui: AssetDialogUi) => Promise<void>;
 }
@@ -204,7 +206,7 @@ export async function openAssetDialog(opts: AssetDialogOptions): Promise<void> {
       status.textContent = modules.length ? '모듈을 선택하세요.' : '활성 모듈이 없습니다.';
       return;
     }
-    assets = parseRisuAssetRows(character?.additionalAssets);
+    assets = opts.rows ? opts.rows(character) : parseRisuAssetRows(character?.additionalAssets);
     render();
   } catch (error) { if (!closed) status.textContent = '에셋 불러오기 실패: ' + String(error); }
 }

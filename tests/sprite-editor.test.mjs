@@ -23,9 +23,9 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
       return { asset: await draw(60, 90), file: await draw(120, 180) };
     });
     await page.evaluate(({ asset }) => {
-      const save = new Map(), local = new Map(), files = new Map([['assets/sad.png', new Uint8Array(asset)]]);
+      const save = new Map(), local = new Map(), files = new Map([['assets/sad.png', new Uint8Array(asset)], ['assets/joy.png', new Uint8Array(asset)]]);
       window.saved = [];
-      window.bots = [{ chaId: 'test-char', name: '봇', additionalAssets: [['미선_sad', 'assets/sad.png', 'png'], ['배경음', 'assets/bgm.mp3', 'mp3']], globalLore: [], chats: [{ id: 'test-chat', message: [{ role: 'char', data: '오미선 (sobbing): "흑흑, 미안해"' }] }] }];
+      window.bots = [{ chaId: 'test-char', name: '봇', additionalAssets: [['미선_sad', 'assets/sad.png', 'png'], ['미선_bgm', 'assets/bgm.mp3', 'mp3'], ...Array.from({ length: 70 }, (_, i) => [`미선_extra${i}`, `assets/extra${i}.png`, 'png']), ['배경', 'assets/room.png', 'png']], emotionImages: [['미선 joy', 'assets/joy.png']], globalLore: [], chats: [{ id: 'test-chat', message: [{ role: 'char', data: '오미선 (sobbing): "흑흑, 미안해"' }] }] }];
       window.risuai = { pluginStorage: { getItem: async k => save.get(k), setItem: async (k, v) => save.set(k, v) }, getLocalPluginStorage: async () => ({ getItem: async k => local.get(k), setItem: async (k, v) => local.set(k, v), removeItem: async k => local.delete(k) }),
         requestPluginPermission: async () => true, getDatabase: async () => ({ modules: [], enabledModules: [] }), setDatabase: async () => {}, getCurrentCharacterIndex: async () => 0, getCurrentChatIndex: async () => 0,
         getCharacterFromIndex: async i => structuredClone(window.bots[i] ?? null), setCharacterToIndex: async (i, c) => { window.bots[i] = structuredClone(c); },
@@ -65,12 +65,25 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
     await page.locator('[data-nx-peek-close]').click();
     await page.waitForFunction(() => !document.querySelector('[data-nx-peek]'));
     assert.equal(await page.evaluate(() => document.getElementById('character-dialog').open), true, 'the sheet stays');
-    // 편집 › 에셋에서: the bot's pictures (its sound left out).
+    // 편집 › 에셋에서: a window of its own over it (as 삽화 캐릭터's), every picture of the bot's and its emotion images,
+    // looked for by their names and trigger words; its sound left out. The edit window keeps its height.
     await sad.locator('[data-emo-edit]').click();
     await page.waitForSelector('.emo-edit');
     await page.waitForFunction(() => !document.querySelector('.emo-edit [data-ee-img]').hidden);
+    const tall = (await page.locator('.emo-edit').boundingBox()).height;
     await page.locator('.emo-edit [data-ee="assets"]').click();
-    assert.deepEqual(await page.locator('.emo-edit [data-ee-asset] small').allTextContents(), ['미선_sad']);
+    const picker = page.locator('dialog[aria-label="감정 에셋 · 에셋 선택"]');
+    await picker.waitFor();
+    assert.equal(await picker.locator('input[type="search"]').inputValue(), '오미선, 미선');
+    await page.waitForFunction(() => document.querySelectorAll('dialog[aria-label="감정 에셋 · 에셋 선택"] [data-asset-key]').length > 0);
+    const names = await picker.locator('[data-asset-key]').evaluateAll(list => list.map(n => n.title));
+    assert.equal(names.length, 72, 'all of them: 미선_sad, 70 more and the emotion image (the sound and the unnamed room left out by the search)');
+    assert.ok(names.includes('미선 joy') && !names.includes('미선_bgm'));
+    assert.equal(Math.round((await page.locator('.emo-edit').boundingBox()).height), Math.round(tall), 'the edit window stays as it was');
+    // A picture tapped: in, its white taken; the window goes.
+    await picker.locator('[data-asset-key]', { hasText: '미선 joy' }).click();
+    await page.waitForFunction(() => !document.querySelector('dialog[aria-label="감정 에셋 · 에셋 선택"]'));
+    await page.waitForFunction(() => document.querySelector('.emo-edit [data-ee-note]').textContent === '흰 배경을 지웠어요.');
     // 내 파일에서: a file on white, its white taken by itself; the white inside the figure stays.
     await page.locator('.emo-edit [data-ee-file]').setInputFiles({ name: 'face.png', mimeType: 'image/png', buffer: Buffer.from(drawn.file) });
     await page.waitForFunction(() => document.querySelector('.emo-edit [data-ee-note]').textContent === '흰 배경을 지웠어요.');

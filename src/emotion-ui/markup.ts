@@ -153,15 +153,10 @@ export const EMOTION_CSS = `
 .emo-edit-preview{position:relative;height:min(46vh,360px);border-radius:10px;display:flex;align-items:center;justify-content:center;background:#2a2f3c conic-gradient(#3a4050 25%,#2a2f3c 0 50%,#3a4050 0 75%,#2a2f3c 0) 0 0/20px 20px}
 .emo-edit-preview img{max-width:100%;max-height:100%;object-fit:contain}
 .emo-edit-preview span{font-size:12px;opacity:.7}
-.emo-edit-note{margin:0;font-size:12px;min-height:1.4em;opacity:.85}
+.emo-edit-note{margin:0;font-size:12px;line-height:1.4;min-height:2.8em;opacity:.85}
 .emo-edit-row{display:flex;flex-wrap:wrap;gap:6px}
 .emo-edit-row button{flex:1;min-height:36px}
 .emo-edit-row button[aria-pressed="true"]{border-color:#7132f5;background:#7132f533}
-.emo-edit-assets{display:flex;flex-direction:column;gap:6px}
-.emo-edit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;max-height:220px;overflow:auto}
-.emo-edit-grid button{display:flex;flex-direction:column;gap:2px;padding:4px;min-height:0}
-.emo-edit-grid span{aspect-ratio:2/3;border-radius:6px;background:#0b0e14 center/contain no-repeat}
-.emo-edit-grid small{font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .emo-edit-cut{display:flex;flex-direction:column;gap:6px}
 .emo-edit-cut b{font-size:12px}
 .emo-edit-tol{display:flex;align-items:center;gap:8px;font-size:12px}

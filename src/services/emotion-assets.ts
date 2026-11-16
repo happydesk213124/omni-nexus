@@ -338,8 +338,6 @@ const recordFor = (m: EmotionMade, k: string) => m.person === PLACE_PERSON && (m
  * enabled module's too, and the 참고이미지 module's shared backgrounds would pass for the bot's.
  */
 const ownAssets = (bot: EmotionBot): RisuNamedAsset[] => parseRisuAssetRows(bot.character.additionalAssets);
-/** The bot's own pictures (its sounds left out), for 감정 에셋 › 편집 › 에셋에서. */
-export const botPictureAssets = (bot: EmotionBot): RisuNamedAsset[] => ownAssets(bot).filter(asset => !/\.(mp3|ogg|wav|m4a|aac|flac|opus|webm|mp4)$/i.test(asset.key));
 /** Every place this bot has its own background for: Omni's records and its assets named by their tags. */
 export async function backgroundPlaces(bot: EmotionBot): Promise<string[]> {
   const out: string[] = [];
