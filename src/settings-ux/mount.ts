@@ -18,6 +18,7 @@ import { bindPresetSheet } from './preset-bindings';
 import { fillRisuTiles } from './risu-bindings';
 import { replaceMain } from './character-render';
 import { mountTts } from '../tts-ui/mount';
+import { armSilentUnlock } from '../tts-ui/activation';
 import { bindSoundNav, markSoundNav } from '../sound-ui/page';
 import { settingsUxCss } from './styles';
 import { previewChrome, tabHtml, previewHelp } from './tab-html';
@@ -377,5 +378,7 @@ export function afterPaint(): void {
 
 export function installSettingsUx(): void {
   installSearchClear();
+  // A tap anywhere in the plugin's own window (any settings page, not only TTS) unlocks the voice by itself.
+  if (typeof document !== 'undefined') armSilentUnlock(document);
   Reflect.set(globalThis, '__INLAY_SETTINGS_UX__', { afterPaint, tabHtml, replaceShell, replaceMain, openCharacterEditor, previewHelp });
 }

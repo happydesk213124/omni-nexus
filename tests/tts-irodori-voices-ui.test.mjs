@@ -39,9 +39,8 @@ test('Irodori 목소리: the tab stands where 음성 목록 does; presets are ma
     await open();
     await page.locator('#tts-power').check();
     await page.waitForFunction(() => !document.getElementById('tts-controls').disabled);
-    await page.waitForFunction(() => document.getElementById('audio-unlock-dialog').open);
-    await page.locator('#audio-unlock-confirm').click();
-    await page.waitForFunction(() => !document.getElementById('audio-unlock-dialog').open);
+    // The tap on the switch unlocked the voice by itself: no popup.
+    await page.waitForFunction(() => window.omniTts.player.ready && !document.getElementById('audio-unlock-dialog').open);
     // Fish, as every save was: its library's tab, and no Irodori one.
     assert.equal(await page.locator('#tab-voices').isVisible(), true);
     assert.equal(await page.locator('#tab-irodori-voices').isVisible(), false);

@@ -30,7 +30,9 @@ async function showChatActivation(): Promise<void> {
   confirm.style.background='#7132f5';
   let closed=false;
   const close=async()=>{if(closed)return;closed=true;node.remove();if(chatPopup===node)chatPopup=undefined;if(!settingsOpen())await host.hideContainer?.();};
-  confirm.addEventListener('click',()=>{confirm.disabled=true;const activated=confirmAudioActivation();void Promise.all([close(),activated]).catch(error=>omniTts.report(error));});
+  // The window is hidden only once the unlock has settled (or three seconds passed): WebKit stopped the sound of a
+  // window hidden while it was still starting, and the next line asked for the tap again.
+  confirm.addEventListener('click',()=>{confirm.disabled=true;const activated=confirmAudioActivation();void Promise.race([activated.catch(error=>omniTts.report(error)),new Promise(done=>setTimeout(done,3000))]).finally(()=>void close().catch(error=>omniTts.report(error)));});
   cancel.addEventListener('click',()=>{cancelAudioActivation();void close().catch(error=>omniTts.report(error));});
   node.addEventListener('cancel',()=>{cancelAudioActivation();void close().catch(error=>omniTts.report(error));});
   document.body.append(node);chatPopup=node;prompted=true;
@@ -42,8 +44,34 @@ export function bindAudioActivation(show: () => void): () => void {
   mounted?.();
   return () => { if (popup === show) { popup = undefined; waiting = undefined; } };
 }
+/**
+ * The popup asking for a tap to unlock the voice, when it is still locked: a click a moment ago may be unlocking it
+ * already (armSilentUnlock), and a context WebKit stopped is woken first. Asked only if neither does it.
+ */
 export function promptAudioActivation(): void {
-  if (!omniTts.player.ready) { prompted = true; popup?.(); }
+  if (omniTts.player.ready) return;
+  void (async () => {
+    await omniTts.player.pending?.catch(() => undefined);
+    if (await omniTts.player.wake()) return;
+    prompted = true; popup?.();
+  })();
+}
+let armed = false;
+/**
+ * Any tap in the plugin's own window (the TTS tab, a switch, a list) is a tap inside the plugin: the voice is unlocked
+ * there and then, silently (a tenth of a second of silence), so the popup is needed only when no tap here came first
+ * (a line played from the chat). touchend and click: what an iPhone counts as a tap that may start sound.
+ */
+export function armSilentUnlock(doc: Document = document): void {
+  if (armed) return;
+  armed = true;
+  const tap = () => {
+    const player = omniTts.player;
+    if (player.ready || player.pending || player.status === 'playing' || player.status === 'loading') return;
+    void player.unlock(true).catch(() => undefined);
+  };
+  doc.addEventListener('touchend', tap, true);
+  doc.addEventListener('click', tap, true);
 }
 export function promptInitialAudioActivation(): void {
   if (!prompted) promptAudioActivation();
@@ -58,7 +86,9 @@ export async function confirmAudioActivation(): Promise<void> {
 }
 export async function withTtsAudio(action: () => Promise<void> | void, reservation = omniTts.reservePlayback()): Promise<void> {
   if (!omniTts.playbackReserved(reservation)) return;
-  if (omniTts.player.ready) { await action(); return; }
+  // Unlocking already (a tap a moment ago), or unlocked and only stopped by WebKit since: no popup for that.
+  await omniTts.player.pending?.catch(() => undefined);
+  if (omniTts.player.ready || await omniTts.player.wake()) { if (omniTts.playbackReserved(reservation)) await action(); return; }
   waiting = { action, reservation };
   if(!settingsOpen()&&risuHost()?.showContainer){try{await showChatActivation();}catch(error){waiting=undefined;throw error;}return;}
   if (!popup) {

@@ -11,7 +11,7 @@ import { el, dialog, on, LISTEN_CSS } from './common';
 import { attachTtsHelp } from './help';
 import { exportableTtsSettings, importTtsSettings } from './settings-transfer';
 import { download, readJson, notify, run, input } from './common';
-import { bindAudioActivation, cancelAudioActivation, confirmAudioActivation, promptInitialAudioActivation } from './activation';
+import { armSilentUnlock, bindAudioActivation, cancelAudioActivation, confirmAudioActivation, promptInitialAudioActivation } from './activation';
 import { ttsData } from '../storage/tts-store';
 import { injectSoundPanels, mountSound } from '../sound-ui/mount';
 import { soundAwareHtml } from '../sound-ui/markup';
@@ -37,6 +37,8 @@ export async function mountTts(): Promise<void> {
   el('tts-dialogs')?.remove(); const holder = document.createElement('div'); holder.innerHTML = layout.dialogs; const dialogs=holder.firstElementChild!; document.body.append(dialogs);
   const live=()=>root.isConnected && document.getElementById('tts-settings-root')===root;
   const unbindActivation=bindAudioActivation(()=>dialog('audio-unlock-dialog'));
+  // A tap anywhere in this window unlocks the voice by itself: the popup is for when none came first.
+  armSilentUnlock();
   on('audio-unlock-confirm', async () => { const activated=confirmAudioActivation(); dialog('audio-unlock-dialog',false); await activated; });
   on('audio-unlock-cancel', () => { cancelAudioActivation(); dialog('audio-unlock-dialog',false); });
   el<HTMLDialogElement>('audio-unlock-dialog').addEventListener('cancel',cancelAudioActivation);

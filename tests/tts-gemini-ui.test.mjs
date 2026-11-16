@@ -35,8 +35,9 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     await page.evaluate(async () => { document.documentElement.classList.add('nx-ux-on'); document.documentElement.dataset.theme = 'dark'; const style = document.createElement('style'); style.textContent = window.settingsUxCss; document.head.append(style); document.body.innerHTML = '<div id="nx-shell" class="nx-ux">' + window.previewChrome() + '</div>'; });
     await open('tts');
     await page.locator('#tts-power').check();
-    await page.waitForFunction(() => document.getElementById('audio-unlock-dialog').open);
-    await page.locator('#audio-unlock-cancel').click();
+    // The tap on the switch unlocked the voice by itself: no popup.
+    await page.waitForFunction(() => window.omniTts.player.ready);
+    assert.equal(await page.evaluate(() => document.getElementById('audio-unlock-dialog').open), false);
     await open('models');
     await page.waitForFunction(() => !document.getElementById('tts-models').hidden);
     assert.equal(await page.locator('#tts-gemini-group').isVisible(), false, 'Fish first, as every save was');

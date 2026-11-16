@@ -23,8 +23,8 @@ test('모델 설정: the engine choice shows one engine\'s fields; Irodori\'s ar
     await page.evaluate(async () => { document.documentElement.classList.add('nx-ux-on'); document.documentElement.dataset.theme = 'dark'; const style = document.createElement('style'); style.textContent = window.settingsUxCss; document.head.append(style); document.body.innerHTML = '<div id="nx-shell" class="nx-ux">' + window.previewChrome() + '</div>'; window.setSoundPage('tts'); document.getElementById('nx-main').innerHTML = window.ttsSettingsHtml(); await window.mountTts(); });
     await page.locator('#tts-power').check();
     await page.waitForFunction(() => !document.getElementById('tts-controls').disabled);
-    await page.waitForFunction(() => document.getElementById('audio-unlock-dialog').open);
-    await page.locator('#audio-unlock-cancel').click();
+    // The tap on the switch unlocked the voice by itself: no popup.
+    await page.waitForFunction(() => window.omniTts.player.ready);
     // 모델 설정 is a page of its own in the side menu.
     const models = () => page.evaluate(async () => { window.setSoundPage('models'); document.getElementById('nx-main').innerHTML = window.ttsSettingsHtml(); await window.mountTts(); });
     await models();

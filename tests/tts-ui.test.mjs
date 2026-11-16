@@ -21,10 +21,14 @@ test('production settings persist independently, edit voice tiles and survive re
     assert.equal(await page.locator('#speed').isDisabled(),true);
     await page.locator('#tts-power').check();
     await page.waitForFunction(()=>!document.getElementById('tts-controls').disabled,undefined,{timeout:8000});
-    await page.waitForFunction(()=>document.getElementById('audio-unlock-dialog').open);
+    // The tap on the switch is a tap inside the plugin: the voice is unlocked by it, silently, and no popup asks for it.
+    await page.waitForFunction(()=>window.omniTts.player.ready);
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('#audio-unlock-dialog').evaluate(node=>node.open),false,'no popup: the tap itself unlocked the voice');
     assert.equal(await page.locator('#audio-enable-settings').evaluate(node=>!!node.closest('#tts-settings .group')),true,'activation is inside settings content');
-    await page.locator('#audio-unlock-cancel').click();
-    await page.evaluate(async()=>{window.resumed=[];await window.withTtsAudio(()=>{window.resumed.push('stopped');});window.omniTts.stop();});
+    // Locked again (a new page), a line asked to play with no tap here: the popup asks.
+    await page.evaluate(async()=>{window.omniTts.player.unlocked=false;window.resumed=[];await window.withTtsAudio(()=>{window.resumed.push('stopped');});window.omniTts.stop();});
+    await page.waitForFunction(()=>document.getElementById('audio-unlock-dialog').open);
     await page.locator('#audio-unlock-confirm').click();
     assert.deepEqual(await page.evaluate(()=>window.resumed),[],'stopping while the popup is open cancels its pending playback');
     await page.evaluate(async()=>{window.omniTts.player.unlocked=false;await window.withTtsAudio(()=>{window.resumed.push('old');});await window.withTtsAudio(()=>{window.resumed.push('latest');});});
@@ -38,6 +42,15 @@ test('production settings persist independently, edit voice tiles and survive re
     await page.waitForFunction(()=>window.resumed.includes('chat')&&!document.getElementById('omnitts-chat-activation'));
     assert.deepEqual(await page.evaluate(()=>window.containerEvents),['fullscreen','hidden'],'activation returns to chat automatically');
     await page.evaluate(()=>{delete window.__OMNI_TTS_SETTINGS_OPEN__;delete window.__OMNI_OPEN_TTS__;});
+    // Unlocked once, then stopped by WebKit (the window hidden, the phone locked): woken with no popup and no tap.
+    await page.evaluate(async()=>{const ctx=window.omniTts.player.context;ctx.state='suspended';ctx.resume=async()=>{ctx.state='running';};await window.withTtsAudio(()=>{window.resumed.push('woken');});});
+    assert.equal(await page.evaluate(()=>window.resumed.at(-1)),'woken','a stopped context is resumed before anyone is asked to tap');
+    assert.equal(await page.evaluate(()=>document.getElementById('audio-unlock-dialog').open||!!document.getElementById('omnitts-chat-activation')),false,'no popup for a context only stopped');
+    // Locked, any tap in the window (not a TTS control) unlocks the voice silently.
+    await page.evaluate(()=>{window.omniTts.player.unlocked=false;});
+    await page.locator('body').click({position:{x:1,y:1}});
+    await page.waitForFunction(()=>window.omniTts.player.ready);
+    assert.equal(await page.evaluate(()=>document.getElementById('audio-unlock-dialog').open),false,'a quiet unlock asks nothing');
 
     // 첫 대사 이모지로 음성 고르기: off unless switched on, and kept.
     assert.equal(await page.locator('#cue-emoji').isChecked(),false);

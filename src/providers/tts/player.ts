@@ -37,22 +37,41 @@ export class TtsPlayer {
     }
     return this.audio;
   }
-  unlock(): Promise<void> {
+  /**
+   * `quiet`: a click anywhere in the plugin's own window (its TTS tab, a switch) tries this by itself, so the popup
+   * asking for it is rarely needed: refused, nothing is said (the popup still comes when a line wants to play).
+   */
+  unlock(quiet = false): Promise<void> {
     if (this.ready) return Promise.resolve();
-    return this.unlocking ||= this.activate().finally(() => { this.unlocking = undefined; });
+    return this.unlocking ||= this.activate(quiet).finally(() => { this.unlocking = undefined; });
   }
-  private async activate(): Promise<void> {
+  /** An unlock under way (begun by a click a moment ago): what a prompt waits on before it asks. */
+  get pending(): Promise<void> | undefined { return this.unlocking; }
+  /**
+   * Once unlocked, WebKit (every iPhone browser) still stops the context when the page or the plugin's window is
+   * hidden, the phone locked, or another app's sound cuts in ('suspended', or its own 'interrupted'). It can be
+   * resumed with no new tap then: tried before anyone is asked to tap again. True when it runs.
+   */
+  async wake(): Promise<boolean> {
+    if (this.ready) return true;
+    if (!this.unlocked || !this.context) return false;
+    try { await Promise.race([this.context.resume(), new Promise(done => setTimeout(done, 600))]); } catch { /* still stopped */ }
+    return this.ready;
+  }
+  private async activate(quiet = false): Promise<void> {
     const audio = this.ensure();
     // Both calls happen synchronously inside the iframe's own click handler.
     // No permission or activation flag is assumed before they resolve.
     const resumed = this.context!.resume();
-    const empty = new Uint8Array(46);
+    // A tenth of a second of silence (800 samples at 8 kHz): WebKit refused a clip of one sample as no media at all,
+    // and the unlock failed every time on an iPhone.
+    const samples = 800, empty = new Uint8Array(44 + samples * 2);
     const view = new DataView(empty.buffer);
     const ascii = (at: number, value: string) => [...value].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
-    ascii(0, 'RIFF'); view.setUint32(4, 38, true); ascii(8, 'WAVEfmt '); view.setUint32(16, 16, true);
+    ascii(0, 'RIFF'); view.setUint32(4, 36 + samples * 2, true); ascii(8, 'WAVEfmt '); view.setUint32(16, 16, true);
     view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 16000, true);
-    view.setUint16(32, 2, true); view.setUint16(34, 16, true); ascii(36, 'data'); view.setUint32(40, 2, true);
-    this.stop();
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true); ascii(36, 'data'); view.setUint32(40, samples * 2, true);
+    if (quiet) this.halt(); else this.stop();
     const ticket = this.epoch;
     this.url = URL.createObjectURL(new Blob([empty], { type: 'audio/wav' }));
     audio.src = this.url;
@@ -62,10 +81,10 @@ export class TtsPlayer {
       if (ticket !== this.epoch) return;
       this.unlocked = this.context!.state === 'running';
       if (!this.unlocked) throw new Error('음성 재생 활성화 버튼을 다시 눌러 주세요.');
-      this.stop();
+      if (quiet) this.halt(); else this.stop();
     } catch (error) {
       if (ticket !== this.epoch) return;
-      this.unlocked = false; this.stop(); this.emit('blocked'); throw error;
+      this.unlocked = false; this.halt(); if (!quiet) this.emit('blocked'); throw error;
     }
   }
   configure(rate: number, volume: number, gain = this.decibels): void {
@@ -76,11 +95,16 @@ export class TtsPlayer {
     if (this.audio) { this.audio.defaultPlaybackRate = this.rate; this.audio.playbackRate = this.rate; this.audio.preservesPitch = true; }
     if (this.gain) this.gain.gain.value = this.volume * 10 ** (this.decibels / 20);
   }
-  stop(): void {
+  stop(): void { this.halt(); this.emit('idle'); }
+  /**
+   * stop() with nothing told: a quiet unlock (a tap anywhere in the window) runs inside that tap, before the tapped
+   * switch's own change; a state told then redraws the settings from what is saved, and the switch springs back.
+   */
+  private halt(): void {
     this.epoch++;
     if (this.audio) { this.audio.onended = null; this.audio.onerror = null; this.audio.pause(); this.audio.removeAttribute('src'); this.audio.load(); }
     if (this.url) URL.revokeObjectURL(this.url);
-    this.url = ''; this.current = ''; this.emit('idle');
+    this.url = ''; this.current = '';
   }
   pause(): void {
     if (this.state === 'loading') { this.stop(); return; }
@@ -113,6 +137,8 @@ export class TtsPlayer {
       this.configure(this.rate, this.volume, gain ?? this.decibels);
       audio.onended = () => { if (ticket === this.epoch) { this.stop(); this.onEnded(key); } };
       audio.onerror = () => { if (ticket === this.epoch) { this.stop(); this.emit('error', '음성 파일을 재생하지 못했습니다.'); } };
+      // A context WebKit stopped (the window was hidden a moment) plays silence: woken first, never waited on.
+      if (this.context && this.context.state !== 'running') void this.context.resume().catch(() => undefined);
       await audio.play();
       // Some engines settle the rate only once media is playing.
       if (audio.playbackRate !== this.rate) audio.playbackRate = this.rate;
