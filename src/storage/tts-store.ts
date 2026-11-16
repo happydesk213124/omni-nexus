@@ -75,6 +75,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.gemini = { ...defaults.gemini, ...result.gemini };
   for (const field of ['key', 'serviceAccountJson', 'location', 'model', 'voice'] as const) if (typeof result.gemini[field] !== 'string') result.gemini[field] = defaults.gemini[field];
   if (result.gemini.via !== 'vertex') result.gemini.via = 'studio';
+  result.gemini.persona = result.gemini.persona !== false; result.gemini.design = result.gemini.design === true; result.gemini.listed = result.gemini.listed === true;
   result.gemini.concurrency = Math.floor(clamp(result.gemini.concurrency, 1, 5, 3));
   for (const field of ['url', 'key', 'model', 'voice'] as const) if (typeof result.irodori[field] !== 'string') result.irodori[field] = defaults.irodori[field];
   if (result.irodori.format !== 'wav') result.irodori.format = 'mp3';
@@ -90,9 +91,18 @@ export function ttsEngineVoices(): TtsVoice[] { const data = ttsData(); return d
  * Voices the assignment engines may pick from: the folder chosen in the character tab (all voices if it is empty);
  * with Irodori, its presets (they have no folders).
  */
+const GEMINI_CANDIDATES = 240;
 export function ttsCandidateVoices(): TtsVoice[] {
   if (ttsData().settings.engine === 'irodori') return ttsData().irodoriVoices;
-  if (ttsData().settings.engine === 'gemini') return ttsData().geminiVoices;
+  // Gemini's list can be hundreds long: a model is asked among the designed ones, then the least used, a couple of
+  // hundred in all (the whole list in one prompt is more than it reads well).
+  if (ttsData().settings.engine === 'gemini') {
+    const all = ttsData().geminiVoices;
+    if (all.length <= GEMINI_CANDIDATES) return all;
+    const uses = new Map<string, number>();
+    for (const c of ttsData().characters) if (c.geminiKey) uses.set(c.geminiKey, (uses.get(c.geminiKey) ?? 0) + 1);
+    return all.map((voice, i) => ({ voice, i, used: uses.get(voice.key) ?? 0 })).sort((a, b) => a.used - b.used || a.i - b.i).slice(0, GEMINI_CANDIDATES).map(row => row.voice);
+  }
   const { voices, settings } = ttsData(), folder = settings.characterFolder;
   const pool = folder === '*' ? voices : voices.filter(v => v.folder === folder);
   return pool.length ? pool : voices;

@@ -1,3 +1,5 @@
+import { designVoiceFor } from './gemini-voices';
+import { dbg } from '../core/debug';
 import type { TtsCharacter, TtsVoice } from '../core/tts-types';
 import { uuid } from '../core/util/text';
 import { mergeTtsCharacter, resolveTtsSpeaker, ttsNameKey } from '../domain/tts/identity';
@@ -128,6 +130,33 @@ const failed = new Map<string, number>();
  */
 export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
+  const data = ttsData();
+  if (data.settings.engine === 'gemini' && data.settings.gemini.design) return ensureOwnVoices(context, names, current, messageIds, marks);
+  return ensureListedVoices(context, names, current, messageIds, marks);
+}
+/**
+ * Gemini › 새 화자마다 목소리 만들기: a speaker with no voice gets one designed for them (voice design), one after
+ * another. Someone not yet a card is made one the usual way first (their gender and traits are what the voice is
+ * designed from). A design that fails (the project's 200 voices used up, a model that designs none) leaves them the
+ * voice the list gave, or the default one, and is not tried again for a while.
+ */
+const designFailed = new Map<string, number>();
+async function ensureOwnVoices(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[], marks: ReadonlyMap<string, string>): Promise<void> {
+  const known = (name: string) => resolveTtsSpeaker(name, ttsData().characters, context.rosterScope);
+  const unknown = [...new Set(names)].filter(name => !known(name));
+  if (unknown.length) await ensureListedVoices(context, unknown, current, messageIds, marks).catch(error => dbg('tts.gemini', { message: String((error as Error)?.message || error) }, 'warn'));
+  const fresh = new Set(unknown.map(ttsNameKey));
+  for (const name of new Set(names)) {
+    const c = known(name);
+    if (!c || c.fixed || !current()) continue;
+    // Their own already, or one given before this was switched on: kept. One the list gave a moment ago is replaced.
+    if (c.geminiKey && !fresh.has(ttsNameKey(name))) continue;
+    if ((designFailed.get(c.id) ?? 0) > Date.now() - 5 * 60_000) continue;
+    try { await designVoiceFor(c); }
+    catch (error) { designFailed.set(c.id, Date.now()); if (designFailed.size > 200) designFailed.delete(designFailed.keys().next().value!); dbg('tts.gemini', { message: `${c.name} 목소리 만들기: ${String((error as Error)?.message || error)}` }, 'warn'); }
+  }
+}
+function ensureListedVoices(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   const data = ttsData();
   // Irodori with no presets: there is nothing to choose among, and every line has the default voice.
   if (data.settings.engine === 'irodori' && !data.irodoriVoices.length || data.settings.engine === 'gemini' && !data.geminiVoices.length) return Promise.resolve();

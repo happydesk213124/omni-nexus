@@ -4,6 +4,7 @@ import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/se
 import { irodoriLine } from '../domain/tts/irodori-emoji';
 import { irodoriDefaultVoice } from '../providers/tts/irodori';
 import { geminiDefaultVoice } from '../providers/tts/gemini';
+import { ensureGeminiVoiceList, geminiPersona } from './gemini-voices';
 import { boundVoiceKey, ownVoiceEngine } from '../domain/tts/engine-voice';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
@@ -254,6 +255,8 @@ export class OmniTtsRuntime {
     // An engine of presets (Irodori, Gemini) with none: every line speaks with the settings' one voice, so nobody needs
     // a voice chosen.
     const current = ttsData().settings.engine, irodori = ownVoiceEngine(current);
+    // Gemini's catalog, once, behind: the thirty prebuilt voices are all a cast has until it is read.
+    if (current === 'gemini') void ensureGeminiVoiceList();
     const presetsOf = (engine: 'irodori' | 'gemini') => engine === 'gemini' ? ttsData().geminiVoices : ttsData().irodoriVoices;
     const speaking = irodori && !presetsOf(current).length ? [] : requests.filter(r => !r.fishId && r.segment.speaker);
     // 첫 대사 이모지: the emoji a speaker's line opened with tell a new voice's gender and age.
@@ -286,7 +289,7 @@ export class OmniTtsRuntime {
       const base = word(request.tone) || word(character?.tone) || settings.tone, model = word(request.model) || word(character?.model);
       const engine: TtsSettings['engine'] = own ? ownEngine : 'fish';
       const voiceSettings = model || engine !== settings.engine ? { ...settings, engine, fish: model ? { ...settings.fish, model } : settings.fish } : settings;
-      return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: speechTone(request.segment.tone, base), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
+      return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: [engine === 'gemini' && settings.gemini.persona ? geminiPersona(character ?? undefined, fishId) : '', speechTone(request.segment.tone, base)].filter(Boolean).join('; '), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error(irodori ? `TTS 모델 설정에서 ${current === 'gemini' ? 'Gemini' : 'Irodori'} 목소리를 먼저 골라 주세요.` : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];

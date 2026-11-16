@@ -39,7 +39,7 @@ export const IRODORI_VOICE_DIALOG = '<dialog id="irodori-voice-dialog" class="ed
   + '<small id="iv-status" role="status" class="field full" style="overflow-wrap:anywhere"></small>'
   + '</div></div><div class="dialog-actions"><button type="button" id="iv-listen">▶ 듣기</button><button type="button" data-close="irodori-voice-dialog">취소</button><button class="primary" type="submit">적용</button></div></form></dialog>';
 /** The card sheet's own choice of Irodori preset, shown in place of Fish's voice fields while Irodori is the engine. */
-export const IRODORI_CARD_FIELD = '<label class="field full" id="c-irodori-wrap" hidden><span>Irodori 목소리</span><select id="c-irodori-voice" aria-label="Irodori 목소리"></select><small>프리셋은 「Irodori 목소리」 탭에서 만듭니다. 고르지 않으면 모델 설정의 기본 목소리로 읽습니다.</small></label>';
+export const IRODORI_CARD_FIELD = '<label class="field full" id="c-irodori-wrap" hidden><span>Irodori 목소리</span><select id="c-irodori-voice" aria-label="Irodori 목소리"></select><button type="button" id="c-gemini-design" hidden style="margin-top:6px">이 캐릭터만의 목소리 새로 만들기</button><small>프리셋은 「Irodori 목소리」 탭에서 만듭니다. 고르지 않으면 모델 설정의 기본 목소리로 읽습니다.</small></label>';
 
 /** Adds the tab button (after 음성 목록) and its panel (after Fish's library). Idempotent. */
 export function addIrodoriVoicesStructure(root: ParentNode): void {

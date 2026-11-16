@@ -129,22 +129,76 @@ export async function synthesizeGemini(text: string, tone: string, voice: string
 }
 
 /**
- * The voices this key can speak with (`GET /v1beta/voices`): its own designed or replicated ones first, then the
- * library. AI Studio only; up to `max`, a page of 1000 at a time. `language`: a code to narrow it to (ko, ja …).
+ * The voices resource, by either way in: the Gemini API's (`/v1beta/voices`, snake_case, the key) or Vertex AI's
+ * (`/v1beta1/projects/…/locations/…/voices`, camelCase, the service account's token). `location`: Vertex's, when
+ * another than the settings' is tried.
  */
-export async function listGeminiVoices(s: Gemini, language = '', max = 3000): Promise<TtsVoice[]> {
-  if (s.gemini.via === 'vertex') throw new Error('목소리 목록은 AI Studio 키로만 불러올 수 있습니다. Vertex는 기본 목소리 30개로 읽습니다.');
-  const key = s.gemini.key.trim();
-  if (!key) throw new Error('TTS 모델 설정에 Gemini API 키(AI Studio)를 넣어 주세요.');
-  const out: TtsVoice[] = [], seen = new Set<string>();
-  let page = '';
-  for (let i = 0; i < 10 && out.length < max; i++) {
-    const query = new URLSearchParams({ page_size: '1000', ...(language ? { language_code: language } : {}), ...(page ? { page_token: page } : {}) });
-    const answer = objectValue(await ttsJson(await ttsFetch(`${STUDIO}/voices?${query}`, { method: 'GET', headers: { 'x-goog-api-key': key } }, 'gemini')));
-    const rows = Array.isArray(answer.voices) ? answer.voices : [];
-    for (const row of rows) { const voice = geminiListedVoice(objectValue(row)); if (voice && !seen.has(voice.key)) { seen.add(voice.key); out.push(voice); } }
-    page = String(answer.next_page_token ?? answer.nextPageToken ?? '');
-    if (!page || !rows.length) break;
+async function voicesEndpoint(s: Gemini, location = ''): Promise<{ url: string; headers: Record<string, string>; camel: boolean }> {
+  if (s.gemini.via !== 'vertex') {
+    const key = s.gemini.key.trim();
+    if (!key) throw new Error('TTS 모델 설정에 Gemini API 키(AI Studio)를 넣어 주세요.');
+    return { url: `${STUDIO}/voices`, headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, camel: false };
   }
-  return out.slice(0, max);
+  const account = parseServiceAccount(s.gemini.serviceAccountJson);
+  if (!account) throw new Error('TTS 모델 설정에 Vertex 서비스 계정 JSON을 넣어 주세요.');
+  const where = location || s.gemini.location.trim() || 'global', host = where === 'global' ? 'aiplatform.googleapis.com' : `${where}-aiplatform.googleapis.com`;
+  return { url: `https://${host}/v1beta1/projects/${encodeURIComponent(account.project_id)}/locations/${encodeURIComponent(where)}/voices`,
+    headers: { Authorization: `Bearer ${await vertexToken(account)}`, 'Content-Type': 'application/json' }, camel: true };
+}
+/** Vertex's voices may not be served from `global`: refused there as not found, a region is tried once. */
+async function withVoices<T>(s: Gemini, work: (at: { url: string; headers: Record<string, string>; camel: boolean }) => Promise<T>): Promise<T> {
+  try { return await work(await voicesEndpoint(s)); }
+  catch (error) {
+    if (s.gemini.via !== 'vertex' || (s.gemini.location.trim() || 'global') !== 'global' || !(error instanceof TtsHttpError) || error.status !== 404) throw error;
+    return work(await voicesEndpoint(s, 'us-central1'));
+  }
+}
+
+/**
+ * The voices this key or account can speak with: its own designed or replicated ones first, then Google's catalog.
+ * Up to `max`, a page of 1000 at a time. `language`: a code to narrow it to (ko, ja …).
+ */
+export async function listGeminiVoices(s: Gemini, language = '', max = 1000): Promise<TtsVoice[]> {
+  return withVoices(s, async ({ url, headers, camel }) => {
+    const out: TtsVoice[] = [], seen = new Set<string>();
+    let page = '';
+    for (let i = 0; i < 10 && out.length < max; i++) {
+      const query = new URLSearchParams(camel ? { pageSize: '1000', ...(language ? { languageCode: language } : {}), ...(page ? { pageToken: page } : {}) } : { page_size: '1000', ...(language ? { language_code: language } : {}), ...(page ? { page_token: page } : {}) });
+      const answer = objectValue(await ttsJson(await ttsFetch(`${url}?${query}`, { method: 'GET', headers }, 'gemini')));
+      const rows = Array.isArray(answer.voices) ? answer.voices : [];
+      for (const row of rows) { const voice = geminiListedVoice(objectValue(row)); if (voice && !seen.has(voice.key)) { seen.add(voice.key); out.push(voice); } }
+      page = String(answer.next_page_token ?? answer.nextPageToken ?? '');
+      if (!page || !rows.length) break;
+    }
+    return out.slice(0, max);
+  });
+}
+
+export interface GeminiVoiceDesign { name: string; description: string; gender?: 'female' | 'male'; language?: string }
+/**
+ * Voice design: a new voice from a description in words, kept by Google under this project (`store`: a designed voice
+ * must be; 200 at most, each a year from its last use) and named by the id that comes back (`voice_…`). Its sample,
+ * when one comes with it, is the voice heard at once. Gemini 3.8 and after; an older model named in the settings is
+ * not sent (Google's newest design model makes it).
+ */
+export async function designGeminiVoice(s: Gemini, design: GeminiVoiceDesign): Promise<{ voice: TtsVoice; sample?: ArrayBuffer }> {
+  const input = design.description.trim(), name = design.name.trim().slice(0, 80) || 'Omni voice';
+  if (!input || input.length > 2000) throw new Error('목소리 설명은 1~2000자여야 합니다.');
+  const model = modelOf(s);
+  return withVoices(s, async ({ url, headers, camel }) => {
+    const voice: Record<string, unknown> = { type: 'prompted', ...(geminiNewShape(model) ? { model } : {}), [camel ? 'displayName' : 'display_name']: name,
+      ...(design.gender ? { gender: design.gender } : {}), ...(design.language ? { [camel ? 'languageCode' : 'language_code']: design.language } : {}), description: input.slice(0, 300), prompted: { input } };
+    const made = objectValue(await ttsJson(await ttsFetch(url, { method: 'POST', headers, body: JSON.stringify({ store: true, voice }) }, 'gemini')));
+    const row = objectValue(made.voice ?? made), listed = geminiListedVoice({ ...row, display_name: name, description: '' });
+    if (!listed) throw new Error('Gemini가 만든 목소리의 ID를 받지 못했습니다.');
+    const audio = objectValue(row.sample_audio ?? row.sampleAudio), data = typeof audio.data === 'string' ? audio.data : '';
+    let sample: ArrayBuffer | undefined;
+    if (data) { const bytes = base64ToBytes(data); sample = bytes.length > 12 && String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' ? bytes.slice().buffer as ArrayBuffer : wavOf(bytes); }
+    return { voice: { ...listed, name, gender: design.gender ?? listed.gender, caption: input }, ...(sample ? { sample } : {}) };
+  });
+}
+/** A stored voice let go (a designed one no card speaks with): its place in the project's 200 is free again. */
+export async function deleteGeminiVoice(s: Gemini, id: string): Promise<void> {
+  if (!/^voice(key)?_/.test(id)) return;
+  await withVoices(s, async ({ url, headers }) => { (await ttsFetch(`${url}/${encodeURIComponent(id)}`, { method: 'DELETE', headers }, 'gemini')).finish?.(); });
 }

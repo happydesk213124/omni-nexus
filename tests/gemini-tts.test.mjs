@@ -19,6 +19,12 @@ function host(reply) {
   return calls;
 }
 const settings = gemini => ({ gemini: { ...api.ttsDefaults().gemini, ...gemini } });
+/** A service account's JSON with a real RSA key (each its own account: tokens are kept by account). */
+async function serviceAccount(project) {
+  const keys = await webcrypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+  const der = Buffer.from(await webcrypto.subtle.exportKey('pkcs8', keys.privateKey)).toString('base64').match(/.{1,64}/g).join('\n');
+  return JSON.stringify({ type: 'service_account', project_id: project, client_email: `tts@${project}.iam.gserviceaccount.com`, private_key: `-----BEGIN PRIVATE KEY-----\n${der}\n-----END PRIVATE KEY-----\n` });
+}
 
 test('the request shape follows the model: 3.8 and after take voice and speech_metadata.style, older ones prebuiltVoiceConfig and a written style', () => {
   assert.equal(api.geminiNewShape('gemini-3.8-flash-tts'), true);
@@ -79,14 +85,43 @@ test('Vertex: a JWT signed with the service account key is traded for a token, w
   delete globalThis.risuai;
 });
 
-test('the voice list (AI Studio): its rows as presets, every page read; Vertex is told it reads the prebuilt ones', async () => {
+test('the voice list: its rows as presets, every page read, by a key (snake_case) or a Vertex account (camelCase; a region when global has none)', async () => {
   const calls = host((url, init, n) => ({ status: 200, json: n === 1 ? { voices: [{ id: 'voice_abc', display_name: '내 목소리', gender: 'FEMALE', description: 'calm, low', language_code: 'ko-KR' }], next_page_token: 'p2' } : { voices: [{ name: 'voices/Leda', displayName: 'Leda', gender: 'female' }] } }));
   const voices = await api.listGeminiVoices(settings({ key: 'AIza-test' }), 'ko');
   assert.deepEqual(voices.map(v => [v.key, v.fishId, v.gender]), [['gemini:voice_abc', 'voice_abc', 'female'], ['gemini:Leda', 'Leda', 'female']]);
   assert.deepEqual(voices[0].languages, ['ko']);
   assert.match(calls[0].url, /\/v1beta\/voices\?page_size=1000&language_code=ko$/);
   assert.match(calls[1].url, /page_token=p2/);
-  await assert.rejects(api.listGeminiVoices(settings({ via: 'vertex' })), /AI Studio 키로만/);
+  // Vertex: its own path and casing; global refusing the resource as not found, a region is tried once.
+  const vertex = host(url => url.startsWith('https://oauth2') ? { status: 200, json: { access_token: 'ya29.list', expires_in: 3599 } }
+    : url.startsWith('https://aiplatform.googleapis.com/') ? { status: 404, json: {} } : { status: 200, json: { voices: [{ id: 'cat_1', displayName: 'Aria', gender: 'female', languageCode: 'ko-KR', description: 'warm' }] } });
+  const listed = await api.listGeminiVoices(settings({ via: 'vertex', serviceAccountJson: await serviceAccount('list-proj') }), 'ko');
+  assert.deepEqual(listed.map(v => [v.fishId, v.gender, v.languages]), [['cat_1', 'female', ['ko']]]);
+  const asked = vertex.filter(c => c.url.includes('/voices')).map(c => c.url);
+  assert.deepEqual(asked, ['https://aiplatform.googleapis.com/v1beta1/projects/list-proj/locations/global/voices?pageSize=1000&languageCode=ko', 'https://us-central1-aiplatform.googleapis.com/v1beta1/projects/list-proj/locations/us-central1/voices?pageSize=1000&languageCode=ko']);
+  delete globalThis.risuai;
+});
+
+test('voice design: a description becomes a stored voice (its id the voice from then on), its sample heard; a designed voice can be let go', async () => {
+  const sample = Buffer.from(new Uint8Array(api.wavOf(pcm))).toString('base64');
+  const calls = host((url, init) => init.method === 'DELETE' ? { status: 200, json: {} } : { status: 200, json: { id: 'voice_made1', type: 'prompted', sample_audio: { mime_type: 'audio/wav', data: sample } } });
+  const made = await api.designGeminiVoice(settings({ key: 'AIza-test' }), { name: '하루', description: 'A soft, sleepy young woman', gender: 'female', language: 'ko-KR' });
+  assert.deepEqual([made.voice.key, made.voice.fishId, made.voice.name, made.voice.gender, made.voice.caption], ['gemini:voice_made1', 'voice_made1', '하루', 'female', 'A soft, sleepy young woman']);
+  assert.equal(made.sample.byteLength, 44 + pcm.length);
+  assert.equal(calls[0].url, 'https://generativelanguage.googleapis.com/v1beta/voices');
+  assert.deepEqual(JSON.parse(calls[0].body), { store: true, voice: { type: 'prompted', model: 'gemini-3.8-flash-tts', display_name: '하루', gender: 'female', language_code: 'ko-KR', description: 'A soft, sleepy young woman', prompted: { input: 'A soft, sleepy young woman' } } });
+  await api.deleteGeminiVoice(settings({ key: 'AIza-test' }), 'voice_made1');
+  assert.deepEqual([calls[1].init.method, calls[1].url], ['DELETE', 'https://generativelanguage.googleapis.com/v1beta/voices/voice_made1']);
+  await api.deleteGeminiVoice(settings({ key: 'AIza-test' }), 'Kore');
+  assert.equal(calls.length, 2, 'a prebuilt voice is nothing to delete');
+  // Vertex: camelCase, and an older model named in the settings is not sent (Google's design model makes it).
+  const vertex = host(url => url.startsWith('https://oauth2') ? { status: 200, json: { access_token: 'ya29.make', expires_in: 3599 } } : { status: 200, json: { id: 'voice_v1' } });
+  const other = await api.designGeminiVoice(settings({ via: 'vertex', serviceAccountJson: await serviceAccount('make-proj'), model: 'gemini-2.5-flash-preview-tts' }), { name: 'Mina', description: 'bright' });
+  assert.equal(other.voice.fishId, 'voice_v1');
+  assert.equal(other.sample, undefined);
+  const post = vertex.find(c => c.url.includes('/voices'));
+  assert.equal(post.url, 'https://aiplatform.googleapis.com/v1beta1/projects/make-proj/locations/global/voices');
+  assert.deepEqual(JSON.parse(post.body).voice, { type: 'prompted', displayName: 'Mina', description: 'bright', prompted: { input: 'bright' } });
   delete globalThis.risuai;
 });
 

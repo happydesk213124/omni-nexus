@@ -153,8 +153,11 @@ export interface TtsSettings {
   /**
    * Gemini TTS: by an AI Studio key (`via` 'studio') or a Vertex AI service account's JSON key (`serviceAccountJson`, in
    * `location`). `voice` is the voice a card with no preset speaks with (a prebuilt name, or a `voice_…` id).
+   * `persona`: a card's traits go with each of its lines as their style (two cards on one voice sound apart).
+   * `design`: a speaker with no voice yet gets one designed for them, not one picked from the list. `listed`: the
+   * voice list was read in by itself once.
    */
-  gemini: { via: 'studio' | 'vertex'; key: string; serviceAccountJson: string; location: string; model: string; voice: string; concurrency: number };
+  gemini: { via: 'studio' | 'vertex'; key: string; serviceAccountJson: string; location: string; model: string; voice: string; concurrency: number; persona: boolean; design: boolean; listed: boolean };
   llm: LlmSettings;
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';

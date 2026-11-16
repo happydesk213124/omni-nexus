@@ -1,3 +1,5 @@
+import { designVoiceFor } from '../services/gemini-voices';
+import { omniTts } from '../services/tts-runtime';
 import type { TtsCharacter, TtsSettings, TtsVoice } from '../core/tts-types';
 import { ttsData, saveTtsData, updateTtsSettings, ttsCandidateVoices } from '../storage/tts-store';
 import { blankTtsCharacter, deleteTtsCharacters, voiceAbout, voiceEmbedding, voicePickOptions } from '../services/tts-characters';
@@ -290,6 +292,7 @@ export class TtsCharacters {
     el('c-irodori-wrap').hidden = !on;
     const label = el('c-irodori-wrap').querySelector('span'), note = el('c-irodori-wrap').querySelector('small');
     if (label) label.textContent = `${ownName()} 목소리`;
+    const design = el('c-gemini-design'); if (design) design.hidden = !gemini || !!c.role;
     if (note) note.textContent = `목소리는 「${ownName()} 목소리」 탭에서 ${gemini ? '고르거나 불러옵니다' : '만듭니다'}. 고르지 않으면 모델 설정의 기본 목소리로 읽습니다.`;
     select.innerHTML = '<option value="">기본 목소리 · 모델 설정에 따름</option>' + ownPresets().map(v => `<option value="${esc(v.key)}">${esc(v.name)}</option>`).join('');
     set('c-irodori-voice', irodoriPreset(c)?.key || '');
@@ -519,6 +522,21 @@ export class TtsCharacters {
       return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0, ...this.readToneModel() };
     });
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
+    // Gemini: a voice designed from what the sheet says of them (gender, traits), theirs alone, heard at once.
+    on('c-gemini-design', async () => {
+      if (!this.draft) return;
+      const button = input('c-gemini-design'); button.disabled = true; text('character-voice-choice', '목소리 만드는 중…');
+      try {
+        const card = this.read(); clearTimeout(this.saveTimer); this.saveTimer = undefined;
+        ttsData().characters = ttsData().characters.map(row => row.id === card.id ? card : row);
+        const made = await designVoiceFor(card);
+        this.draft = { ...card, geminiKey: made.voice.key };
+        this.fillIrodori(this.draft); this.save(); text('character-voice-choice', `${made.voice.name} · 새로 만든 목소리`);
+        if (made.sample && omniTts.player.ready) await omniTts.playBytes(`gemini-design:${made.voice.fishId}`, made.sample);
+        this.render();
+      } catch (error) { text('character-voice-choice', String((error as Error)?.message || error)); }
+      finally { button.disabled = false; }
+    });
     on('choose-character-voice', () => { this.draft = this.read(); this.choosingVoice = true; dialog('character-dialog',false);
       const back = () => { this.choosingVoice = false; this.tab('tts-characters'); dialog('character-dialog'); };
       if (irodoriOn() && this.irodoriPick) { this.irodoriPick(voice => { back(); this.choose(voice); }, back); return; }
