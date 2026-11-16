@@ -6,6 +6,7 @@ import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
 import { attachSoundHelp } from './help';
 import { addEmotionStructure, emotionStyleText } from '../emotion-ui/mount';
 import { addIrodoriVoicesStructure, engineTabs } from '../tts-ui/irodori-markup';
+import { addGeminiVoicesStructure } from '../tts-ui/gemini-voices';
 import { ttsEngine } from '../storage/tts-store';
 
 /**
@@ -73,6 +74,7 @@ export function soundAwareHtml(html: string): string {
   addSoundStructure(root);
   addEmotionStructure(root);
   addIrodoriVoicesStructure(root);
+  addGeminiVoicesStructure(root);
   markSoundPage(root);
   // Both style sheets travel with the markup; the mount refreshes them in place.
   root.insertAdjacentHTML('afterbegin', `<style id="omnitts-settings-style">${layout.css}</style><style id="omnisound-page-style">${SOUND_STYLE()}</style>`);

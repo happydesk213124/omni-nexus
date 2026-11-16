@@ -3,6 +3,8 @@ import { TtsQueue } from '../domain/tts/queue';
 import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/segment';
 import { irodoriLine } from '../domain/tts/irodori-emoji';
 import { irodoriDefaultVoice } from '../providers/tts/irodori';
+import { geminiDefaultVoice } from '../providers/tts/gemini';
+import { boundVoiceKey, ownVoiceEngine } from '../domain/tts/engine-voice';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
@@ -99,11 +101,11 @@ export class OmniTtsRuntime {
   private async changed(): Promise<void> {
     const s = ttsData().settings;
     // Irodori's server makes one line at a time unless it was set up for more: requests past that only wait in its queue.
-    const slots = s.engine === 'irodori' ? s.irodori.concurrency : s.concurrency;
+    const slots = s.engine === 'irodori' ? s.irodori.concurrency : s.engine === 'gemini' ? s.gemini.concurrency : s.concurrency;
     this.queue.configure(slots, Math.min(s.background, slots));
     // The line playing keeps its own kind's level (a narration line, narration's): a level moved meanwhile is heard at once.
     this.player.configure(s.rate, ttsVolumeOf(s, this.current?.segment.kind));
-    const generation = JSON.stringify([s.enabled, s.engine, s.irodori, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly]);
+    const generation = JSON.stringify([s.enabled, s.engine, s.irodori, { ...s.gemini, concurrency: 0 }, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
@@ -249,9 +251,11 @@ export class OmniTtsRuntime {
     if (!requests.length || !valid()) return [];
     const context = requests[0].context;
     this.stage = '화자 확인'; this.emit();
-    // Irodori with no presets made: every line speaks with the settings' one voice, so nobody needs a voice chosen.
-    const irodori = ttsData().settings.engine === 'irodori';
-    const speaking = irodori && !ttsData().irodoriVoices.length ? [] : requests.filter(r => !r.fishId && r.segment.speaker);
+    // An engine of presets (Irodori, Gemini) with none: every line speaks with the settings' one voice, so nobody needs
+    // a voice chosen.
+    const current = ttsData().settings.engine, irodori = ownVoiceEngine(current);
+    const presetsOf = (engine: 'irodori' | 'gemini') => engine === 'gemini' ? ttsData().geminiVoices : ttsData().irodoriVoices;
+    const speaking = irodori && !presetsOf(current).length ? [] : requests.filter(r => !r.fishId && r.segment.speaker);
     // 첫 대사 이모지: the emoji a speaker's line opened with tell a new voice's gender and age.
     const marks = new Map(speaking.flatMap(r => r.segment.marks ? [[r.segment.speaker, r.segment.marks] as const] : []));
     const chosen = ensureTtsSpeakers(context, speaking.map(r => r.segment.speaker), valid, [...new Set(speaking.map(r => r.messageId))], marks);
@@ -269,19 +273,22 @@ export class OmniTtsRuntime {
       const worn = costumeVoiceOf(character, request.segment);
       // A voice named outright (a Fish voice auditioned in the library) is Fish's whatever engine is chosen, unless
       // the request says whose it is. Otherwise Irodori speaks with the card's preset, else the settings' default voice.
-      const own = request.engine ? request.engine === 'irodori' : irodori && !request.fishId;
-      const preset = own && !request.fishId ? ttsData().irodoriVoices.find(v => v.key === character?.irodoriKey) : undefined;
-      const fishId = own ? (request.fishId || preset?.fishId || '').trim() || irodoriDefaultVoice(settings) : request.fishId || worn || character?.fishId || voice?.fishId || '';
+      const own = request.engine ? ownVoiceEngine(request.engine) : irodori && !request.fishId;
+      const ownEngine: 'irodori' | 'gemini' = request.engine && ownVoiceEngine(request.engine) ? request.engine : current === 'gemini' ? 'gemini' : 'irodori';
+      const presetKey = character ? boundVoiceKey(character, ownEngine) : '';
+      const preset = own && !request.fishId && presetKey ? presetsOf(ownEngine).find(v => v.key === presetKey) : undefined;
+      const fallback = ownEngine === 'gemini' ? geminiDefaultVoice(settings) : irodoriDefaultVoice(settings);
+      const fishId = own ? (request.fishId || preset?.fishId || '').trim() || fallback : request.fishId || worn || character?.fishId || voice?.fishId || '';
       // A costume's voice that fails is not replaced by another for the whole card.
       const recoverable = !own && !request.fishId && !worn && character && request.segment.kind !== 'audition' && !role;
       // The speaker's own base delivery and model, else the settings' ones.
       const word = (value: unknown) => typeof value === 'string' ? value.trim() : '';
       const base = word(request.tone) || word(character?.tone) || settings.tone, model = word(request.model) || word(character?.model);
-      const engine: TtsSettings['engine'] = own ? 'irodori' : 'fish';
+      const engine: TtsSettings['engine'] = own ? ownEngine : 'fish';
       const voiceSettings = model || engine !== settings.engine ? { ...settings, engine, fish: model ? { ...settings.fish, model } : settings.fish } : settings;
       return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: speechTone(request.segment.tone, base), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
-    if (!prepared.length) throw new Error(irodori ? 'TTS 모델 설정에서 Irodori 목소리를 먼저 골라 주세요.' : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
+    if (!prepared.length) throw new Error(irodori ? `TTS 모델 설정에서 ${current === 'gemini' ? 'Gemini' : 'Irodori'} 목소리를 먼저 골라 주세요.` : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
     // A character's own language wins over the setting; with translation OFF
     // it still translates through the key-free Google service.
@@ -336,12 +343,12 @@ export class OmniTtsRuntime {
         this.failedAudio.set(p.signature, Date.now());
         if (this.failedAudio.size > 100) this.failedAudio.delete(this.failedAudio.keys().next().value!);
         // The error record is a Fish voice's (the library marks it); an Irodori failure is the server's.
-        if (error instanceof TtsHttpError && error.status && p.settings.engine !== 'irodori') await recordTtsVoiceError(p.fishId, error.status);
+        if (error instanceof TtsHttpError && error.status && p.settings.engine === 'fish') await recordTtsVoiceError(p.fishId, error.status);
         throw error;
       }
       this.failedAudio.delete(p.signature);
       // Real audio came back: an earlier error notice and this voice's error record no longer apply.
-      if (p.settings.engine !== 'irodori') void clearTtsVoiceError(p.fishId).catch(error => this.report(error));
+      if (p.settings.engine === 'fish') void clearTtsVoiceError(p.fishId).catch(error => this.report(error));
       if (this.notice) { this.notice = ''; this.emit(); }
       // Publish bytes immediately; persistent storage must not hold a Fish slot
       // or delay playback. The cache exposes pending writes for deduplication.
@@ -375,7 +382,7 @@ export class OmniTtsRuntime {
       for (const request of selected) {
         const character = ttsSegmentOwner(request.segment, ttsData().characters, request.context.rosterScope);
         const voiceKey = ttsSegmentRole(request.segment) === 'narrator' ? character?.voiceKey || s.narrationVoice : character?.voiceKey;
-        const assigned = s.engine === 'irodori' || request.fishId || character?.fishId || ttsData().voices.find(v => v.key === voiceKey)?.fishId;
+        const assigned = ownVoiceEngine(s.engine) || request.fishId || character?.fishId || ttsData().voices.find(v => v.key === voiceKey)?.fishId;
         (assigned ? ready : unassigned).push(request);
       }
       // Preparing unknown speakers can take a model round trip; known voices

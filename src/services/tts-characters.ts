@@ -108,6 +108,7 @@ export function deleteTtsCharacters(rows: readonly TtsCharacter[]): void {
 function voiced(character: TtsCharacter, listed = false): boolean {
   const data = ttsData();
   if (data.settings.engine === 'irodori') return data.irodoriVoices.some(v => v.key === character.irodoriKey);
+  if (data.settings.engine === 'gemini') return data.geminiVoices.some(v => v.key === character.geminiKey);
   return !!character.fishId || data.voices.some(v => v.key === character.voiceKey && (listed || v.fishId));
 }
 /**
@@ -115,7 +116,7 @@ function voiced(character: TtsCharacter, listed = false): boolean {
  * instead of failing the pick on every line it speaks. Fish's library always has both, and says so when a folder has not.
  */
 function suited(character: TtsCharacter): boolean {
-  if (ttsData().settings.engine !== 'irodori') return true;
+  if (ttsData().settings.engine === 'fish') return true;
   return character.gender === 'unknown' || character.gender === 'other' || ttsCandidateVoices().some(v => v.gender === character.gender || v.gender === 'unknown');
 }
 const assignments = new Map<string, Promise<void>>();
@@ -129,7 +130,7 @@ export function ensureTtsSpeakers(context: TtsChatContext, names: string[], curr
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
   const data = ttsData();
   // Irodori with no presets: there is nothing to choose among, and every line has the default voice.
-  if (data.settings.engine === 'irodori' && !data.irodoriVoices.length) return Promise.resolve();
+  if (data.settings.engine === 'irodori' && !data.irodoriVoices.length || data.settings.engine === 'gemini' && !data.geminiVoices.length) return Promise.resolve();
   // A ready voice must not join the scope-wide queue for unrelated new people.
   names = [...new Set(names)].filter(name => {
     const character = resolveTtsSpeaker(name, data.characters, context.rosterScope);

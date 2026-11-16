@@ -18,7 +18,7 @@ import { uuid } from '../core/util/text';
 import { sleep } from '../core/util/async';
 import { characterAvatar, roleAvatar } from './character-avatar';
 import { currentEmotionBot, spriteCostumes } from '../services/emotion-assets';
-import { bindVoice } from '../domain/tts/engine-voice';
+import { bindVoice, boundVoiceKey, ownVoiceEngine } from '../domain/tts/engine-voice';
 import { IRODORI_CARD_FIELD } from './irodori-markup';
 
 /**
@@ -37,15 +37,21 @@ function characterVoice(character: Pick<TtsCharacter, 'voiceKey' | 'fishId'>): T
     || (id ? voices.find(v => fishVoiceId(v.fishId) === id) : undefined);
 }
 
-const irodoriOn = (): boolean => ttsData().settings.engine === 'irodori';
-/** The Irodori preset a card speaks with, when it has one that still exists. */
-function irodoriPreset(character: Pick<TtsCharacter, 'irodoriKey'> | undefined): TtsVoice | undefined {
-  return character?.irodoriKey ? ttsData().irodoriVoices.find(v => v.key === character.irodoriKey) : undefined;
+/** An engine of presets of its own is in use (Irodori, Gemini): the sheet offers its presets, not Fish's library. */
+const irodoriOn = (): boolean => ownVoiceEngine(ttsData().settings.engine);
+const ownEngine = (): 'irodori' | 'gemini' => ttsData().settings.engine === 'gemini' ? 'gemini' : 'irodori';
+const ownPresets = (): TtsVoice[] => ownEngine() === 'gemini' ? ttsData().geminiVoices : ttsData().irodoriVoices;
+const ownDefault = (): string => ownEngine() === 'gemini' ? ttsData().settings.gemini.voice.trim() : ttsData().settings.irodori.voice.trim();
+const ownName = (): string => ownEngine() === 'gemini' ? 'Gemini' : 'Irodori';
+/** The preset (of the engine in use) a card speaks with, when it has one that still exists. */
+function irodoriPreset(character: Pick<TtsCharacter, 'voiceKey' | 'irodoriKey' | 'geminiKey'> | undefined): TtsVoice | undefined {
+  const key = character ? boundVoiceKey(character, ownEngine()) : '';
+  return key ? ownPresets().find(v => v.key === key) : undefined;
 }
-/** What a card's listen button plays under the engine in use: with Irodori, its preset, else the default voice. */
-function cardAudition(c: TtsCharacter | undefined): { fishId: string; gain: number; engine?: 'irodori' } {
+/** What a card's listen button plays under the engine in use: its preset, else the default voice. */
+function cardAudition(c: TtsCharacter | undefined): { fishId: string; gain: number; engine?: 'irodori' | 'gemini' } {
   const gain = c ? ttsCharacterGain(c) : 0;
-  if (irodoriOn()) return { fishId: irodoriPreset(c)?.fishId || ttsData().settings.irodori.voice.trim(), gain, engine: 'irodori' };
+  if (irodoriOn()) return { fishId: irodoriPreset(c)?.fishId || ownDefault(), gain, engine: ownEngine() };
   return { fishId: c ? c.fishId || characterVoice(c)?.fishId || '' : '', gain };
 }
 
@@ -279,22 +285,28 @@ export class TtsCharacters {
   private followed(id: string | undefined): TtsCharacter | undefined { return id ? ttsData().characters.find(x => x.id === id && !x.role) : undefined; }
   /** While Irodori is the engine the sheet offers its presets, and Fish's own voice fields step aside. */
   private fillIrodori(c: TtsCharacter): void {
-    const on = irodoriOn(), select = el<HTMLSelectElement>('c-irodori-voice');
+    const on = irodoriOn(), select = el<HTMLSelectElement>('c-irodori-voice'), gemini = on && ownEngine() === 'gemini';
     if (!select) return;
     el('c-irodori-wrap').hidden = !on;
-    select.innerHTML = '<option value="">기본 목소리 · 모델 설정에 따름</option>' + ttsData().irodoriVoices.map(v => `<option value="${esc(v.key)}">${esc(v.name)}</option>`).join('');
+    const label = el('c-irodori-wrap').querySelector('span'), note = el('c-irodori-wrap').querySelector('small');
+    if (label) label.textContent = `${ownName()} 목소리`;
+    if (note) note.textContent = `목소리는 「${ownName()} 목소리」 탭에서 ${gemini ? '고르거나 불러옵니다' : '만듭니다'}. 고르지 않으면 모델 설정의 기본 목소리로 읽습니다.`;
+    select.innerHTML = '<option value="">기본 목소리 · 모델 설정에 따름</option>' + ownPresets().map(v => `<option value="${esc(v.key)}">${esc(v.name)}</option>`).join('');
     set('c-irodori-voice', irodoriPreset(c)?.key || '');
-    for (const node of [el('c-id')?.closest('label'), el('c-fetch')?.closest('.field'), el('c-tone')?.closest('label'), el('c-model')?.closest('label'), el('c-language')?.closest('label')]) if (node) (node as HTMLElement).hidden = on;
+    // Gemini reads any language and takes the delivery as words: its tone and language fields stay.
+    for (const node of [el('c-id')?.closest('label'), el('c-fetch')?.closest('.field'), el('c-model')?.closest('label')]) if (node) (node as HTMLElement).hidden = on;
+    for (const node of [el('c-tone')?.closest('label'), el('c-language')?.closest('label')]) if (node) (node as HTMLElement).hidden = on && !gemini;
     if (!on) return;
     // Fish's model, its typed name and the costumes' Fish voices have nothing to say to Irodori; nor has a language,
     // which reads Japanese alone.
-    el('c-model-custom-wrap').hidden = true; el('c-language-custom-wrap').hidden = true;
+    el('c-model-custom-wrap').hidden = true; if (!gemini) el('c-language-custom-wrap').hidden = true;
     const costumes = document.getElementById('c-costume-voice-wrap'); if (costumes) costumes.hidden = true;
     text('character-voice-choice', this.voiceLabel(c));
   }
   /** The preset chosen in the sheet; under Fish the card keeps the one it had. */
-  private readIrodori(): Pick<TtsCharacter, 'irodoriKey'> {
-    return irodoriOn() && el('c-irodori-voice') ? { irodoriKey: val('c-irodori-voice') || undefined } : {};
+  private readIrodori(): Pick<TtsCharacter, 'irodoriKey' | 'geminiKey'> {
+    if (!irodoriOn() || !el('c-irodori-voice')) return {};
+    return ownEngine() === 'gemini' ? { geminiKey: val('c-irodori-voice') || undefined } : { irodoriKey: val('c-irodori-voice') || undefined };
   }
   private voiceLabel(c: TtsCharacter): string {
     const lead = this.followed(c.followId);
@@ -398,7 +410,7 @@ export class TtsCharacters {
   private choose(voice: TtsVoice): void {
     if (!this.draft) return;
     // Under Irodori the voice chosen is one of its presets: the card's Fish voice stays as it was.
-    if (irodoriOn()) { this.draft.irodoriKey = voice.key; set('c-irodori-voice', voice.key); text('character-voice-choice', voice.name); this.save(); return; }
+    if (irodoriOn()) { bindVoice(this.draft, voice, ownEngine()); set('c-irodori-voice', voice.key); text('character-voice-choice', voice.name); this.save(); return; }
     this.draft.voiceKey = voice.key; set('c-id',voice.fishId); text('character-voice-choice',voice.name); this.save(); }
   /** A costume's voice set (or emptied back to the card's): its field, the voice's name under it, saved. */
   private chooseCostume(index: number, voice: TtsVoice | null, note = voice?.name || ''): void {
@@ -499,8 +511,8 @@ export class TtsCharacters {
       // A card that follows another character is heard with that character's voice and loudness.
       const lead = this.draft?.role ? this.followed(val('c-follow-char') || undefined) : undefined;
       if (irodoriOn()) {
-        const preset = lead ? irodoriPreset(lead) : ttsData().irodoriVoices.find(v => v.key === val('c-irodori-voice'));
-        return { fishId: preset?.fishId || ttsData().settings.irodori.voice.trim(), gain: lead ? ttsCharacterGain(lead) : input('c-gain-manual').checked ? Number(val('c-gain')) : 0, engine: 'irodori' as const };
+        const preset = lead ? irodoriPreset(lead) : ownPresets().find(v => v.key === val('c-irodori-voice'));
+        return { fishId: preset?.fishId || ownDefault(), gain: lead ? ttsCharacterGain(lead) : input('c-gain-manual').checked ? Number(val('c-gain')) : 0, engine: ownEngine(), ...(ownEngine() === 'gemini' ? { tone: val('c-tone').trim() } : {}) };
       }
       // The unsaved base delivery and model are heard too.
       if (lead) return { fishId: lead.fishId || characterVoice(lead)?.fishId || '', gain: ttsCharacterGain(lead), ...this.readToneModel() };

@@ -28,6 +28,7 @@ export function synthesisSignature(text: string, tone: string, fishId: string, s
   // Message id, character spelling, local volume and playback speed don't affect bytes.
   // Irodori takes no delivery tags, so the tone is no part of what it makes.
   if (settings.engine === 'irodori') return JSON.stringify([1, 'irodori', settings.irodori.url.trim(), settings.irodori.model, fishId, text, settings.irodori.format]);
+  if (settings.engine === 'gemini') return JSON.stringify([1, 'gemini', settings.gemini.via, settings.gemini.model.trim(), fishId, tone, text]);
   return JSON.stringify([1, settings.fish.url, settings.fish.model, fishId, tone.trim().toLowerCase(), text, settings.normalize, 'mp3']);
 }
 /** Fish delivery cues from a comma list: short English words only, each once. */

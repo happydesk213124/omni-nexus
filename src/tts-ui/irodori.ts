@@ -3,12 +3,14 @@ import { ttsData, updateTtsSettings } from '../storage/tts-store';
 import { irodoriNoRef, listIrodoriVoices } from '../providers/tts/irodori';
 import { el, esc, on, set, text, val } from './common';
 import { addIrodoriVoicesStructure, IRODORI_VOICE_DIALOG } from './irodori-markup';
+import { GEMINI_GROUP } from './gemini';
+import { addGeminiVoicesStructure } from './gemini-voices';
 
 /**
  * 모델 설정's engine choice and the Irodori server's fields. Added to the page here, as the BGM·효과음 panels are:
  * the tab's own markup is generated from the review layout (tools/extract-tts-ui.mjs) and stays as it is.
  */
-const ENGINE_GROUP = `<div class="group" id="tts-engine-group"><h3>TTS 엔진</h3><div class="fields"><label class="field full"><span>음성을 만드는 곳</span><select id="tts-engine" aria-label="TTS 엔진"><option value="fish">Fish Audio</option><option value="irodori">Irodori TTS (내 서버)</option></select></label></div></div><hr>`;
+const ENGINE_GROUP = `<div class="group" id="tts-engine-group"><h3>TTS 엔진</h3><div class="fields"><label class="field full"><span>음성을 만드는 곳</span><select id="tts-engine" aria-label="TTS 엔진"><option value="fish">Fish Audio</option><option value="irodori">Irodori TTS (내 서버)</option><option value="gemini">Gemini TTS (AI Studio · Vertex)</option></select></label></div></div><hr>`;
 const IRODORI_GROUP = `<div class="group" id="tts-irodori-group" hidden><h3>Irodori TTS · 음성 생성</h3><div class="fields">`
   + `<label class="field full"><span>서버 주소</span><input id="tts-irodori-url" type="url" placeholder="http://127.0.0.1:8088" aria-label="Irodori 서버 주소"></label>`
   + `<label class="field full"><span>API Key (서버에 설정한 경우만)</span><input id="tts-irodori-key" type="password" autocomplete="off" placeholder="비워 두면 보내지 않습니다" aria-label="Irodori API Key"></label>`
@@ -24,10 +26,11 @@ const IRODORI_GROUP = `<div class="group" id="tts-irodori-group" hidden><h3>Irod
  */
 export function injectIrodoriSettings(root: HTMLElement): void {
   addIrodoriVoicesStructure(root);
+  addGeminiVoicesStructure(root);
   if (!el('irodori-voice-dialog')) el('tts-dialogs')?.insertAdjacentHTML('beforeend', IRODORI_VOICE_DIALOG);
   const fish = root.querySelector<HTMLElement>('#tts-fish-via')?.closest<HTMLElement>('.group');
   if (!fish || root.querySelector('#tts-engine')) return;
-  fish.insertAdjacentHTML('beforebegin', ENGINE_GROUP + IRODORI_GROUP);
+  fish.insertAdjacentHTML('beforebegin', ENGINE_GROUP + IRODORI_GROUP + GEMINI_GROUP);
 }
 
 export function bindIrodoriSettings(): void {
@@ -35,14 +38,15 @@ export function bindIrodoriSettings(): void {
   const s = ttsData().settings, fish = el('tts-fish-via')?.closest<HTMLElement>('.group');
   // One engine's fields at a time: the rule after Fish's group goes with it.
   const show = () => {
-    const irodori = val('tts-engine') === 'irodori';
+    const engine = val('tts-engine'), irodori = engine === 'irodori', gemini = engine === 'gemini', other = irodori || gemini;
     el('tts-irodori-group').hidden = !irodori; el('tts-irodori-rule').hidden = !irodori;
-    if (fish) { fish.hidden = irodori; if (fish.nextElementSibling?.tagName === 'HR') (fish.nextElementSibling as HTMLElement).hidden = irodori; }
+    const geminiGroup = el('tts-gemini-group'); if (geminiGroup) { geminiGroup.hidden = !gemini; el('tts-gemini-rule').hidden = !gemini; }
+    if (fish) { fish.hidden = other; if (fish.nextElementSibling?.tagName === 'HR') (fish.nextElementSibling as HTMLElement).hidden = other; }
   };
   set('tts-engine', s.engine); set('tts-irodori-url', s.irodori.url); set('tts-irodori-key', s.irodori.key); set('tts-irodori-voice', s.irodori.voice);
   set('tts-irodori-model', s.irodori.model); set('tts-irodori-format', s.irodori.format); set('tts-irodori-concurrency', s.irodori.concurrency);
   show();
-  on('tts-engine', () => { show(); return updateTtsSettings({ engine: val('tts-engine') === 'irodori' ? 'irodori' : 'fish' }); }, 'change');
+  on('tts-engine', () => { show(); const engine = val('tts-engine'); return updateTtsSettings({ engine: engine === 'irodori' || engine === 'gemini' ? engine : 'fish' }); }, 'change');
   const read = (): TtsSettings['irodori'] => ({ url: val('tts-irodori-url').trim(), key: val('tts-irodori-key'), voice: val('tts-irodori-voice').trim(), model: val('tts-irodori-model').trim() || 'irodori-tts',
     format: val('tts-irodori-format') === 'wav' ? 'wav' : 'mp3', concurrency: Number(val('tts-irodori-concurrency')) || 1 });
   for (const id of ['tts-irodori-url', 'tts-irodori-key', 'tts-irodori-voice', 'tts-irodori-model', 'tts-irodori-format', 'tts-irodori-concurrency']) on(id, () => updateTtsSettings({ irodori: read() }), 'change');

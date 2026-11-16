@@ -22,10 +22,10 @@ const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&am
 const SOUND = /\.(mp3|ogg|wav|m4a|aac|flac|opus|webm|mp4)$/i;
 /** Who to look for among the bot's assets: their names and trigger words, comma-separated (as 삽화 캐릭터's 에셋에서 searches). */
 export const spriteSearch = (c: TtsCharacter): string => [...new Set([c.name, c.givenName, ...(c.givenAliases || []), ...(c.triggers || [])].map(s => String(s || '').trim()).filter(Boolean))].join(', ');
-/** The bot's pictures: its assets and its Risu emotion images, each once, its sounds left out. */
+/** The bot's pictures: its assets and its Risu emotion images, each once, its sounds and Omni's own copies (omni_…) left out. */
 export function spriteRows(character: Record<string, unknown> | undefined): RisuNamedAsset[] {
   const seen = new Set<string>();
-  return [...parseRisuAssetRows(character?.additionalAssets), ...parseRisuAssetRows(character?.emotionImages)].filter(a => !SOUND.test(a.key) && !seen.has(a.key) && !!seen.add(a.key));
+  return [...parseRisuAssetRows(character?.additionalAssets), ...parseRisuAssetRows(character?.emotionImages)].filter(a => !SOUND.test(a.key) && !/^omni_/i.test(a.name) && !seen.has(a.key) && !!seen.add(a.key));
 }
 
 async function readPicture(path: string): Promise<Uint8Array | null> {

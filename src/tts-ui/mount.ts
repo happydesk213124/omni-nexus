@@ -19,6 +19,8 @@ import { takeSoundFocus } from '../sound-ui/page';
 import { mountEmotion } from '../emotion-ui/mount';
 import { bindIrodoriSettings, injectIrodoriSettings } from './irodori';
 import { IrodoriVoices } from './irodori-voices';
+import { GeminiVoices } from './gemini-voices';
+import { bindGeminiSettings } from './gemini';
 
 /** Built for the open menu page (TTS / BGM·효과음 / models) so the first paint is already right. */
 export const ttsSettingsHtml = () => soundAwareHtml(layout.html);
@@ -46,7 +48,7 @@ export async function mountTts(): Promise<void> {
   for (const b of el('tts-dialogs').querySelectorAll<HTMLElement>('[data-close]')) b.addEventListener('click',event => { event.preventDefault(); dialog(b.dataset.close!,false); });
   const tab = (name: string) => { for (const panel of root.querySelectorAll<HTMLElement>('section.panel')) panel.hidden = panel.id !== name; for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) { const active = b.dataset.ttsTab === name; b.setAttribute('aria-selected',String(active)); b.tabIndex = active ? 0 : -1; } };
   for (const b of root.querySelectorAll<HTMLElement>('[data-tts-tab]')) b.addEventListener('click', () => tab(b.dataset.ttsTab!)); tab([...root.querySelectorAll<HTMLElement>('section.panel')].find(panel => !panel.hidden)?.id || 'tts-settings');
-  attachTtsHelp(root); bindTtsSettings(); bindIrodoriSettings(); bindTtsConnectionTests();
+  attachTtsHelp(root); bindTtsSettings(); bindIrodoriSettings(); bindGeminiSettings(); bindTtsConnectionTests();
   on('tts-settings-export', () => download(exportableTtsSettings(ttsData().settings), 'omnitts-settings.json'));
   on('tts-settings-import', () => input('tts-settings-file-input').click());
   el('tts-settings-file-input')?.addEventListener('change', () => run(async () => {
@@ -57,8 +59,10 @@ export async function mountTts(): Promise<void> {
     fresh.style.cssText = root.style.cssText; root.replaceWith(fresh); await mountTts(); notify('TTS 설정을 불러왔습니다 · API 키는 그대로입니다.');
   })); const library = new TtsLibrary(tab); library.bind();
   const irodoriVoices = new IrodoriVoices(tab); irodoriVoices.bind();
-  const characters = new TtsCharacters(library,tab,(done,cancel)=>irodoriVoices.pickVoice(done,cancel));
-  const refresh = () => { if(live()){library.render(); irodoriVoices.render(); characters.render();} };
+  const geminiVoices = new GeminiVoices(tab); geminiVoices.bind();
+  // A card picks its voice in its engine's own presets: Irodori's or Gemini's (Fish's library otherwise).
+  const characters = new TtsCharacters(library,tab,(done,cancel)=>ttsData().settings.engine==='gemini'?geminiVoices.pickVoice(done,cancel):irodoriVoices.pickVoice(done,cancel));
+  const refresh = () => { if(live()){library.render(); irodoriVoices.render(); geminiVoices.render(); characters.render();} };
   observer.observe(document.body,{childList:true,subtree:true});
   await characters.bind(live); if(!live())return;
   // Opened for some people (옴니 뷰어's 👨‍👩‍👧‍👦), or one person's sheet (a name over a line): the 캐릭터 tab, them searched.

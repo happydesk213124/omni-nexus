@@ -1,3 +1,4 @@
+import { geminiPrebuiltVoices } from '../domain/tts/gemini-voices';
 import type { TtsData, TtsSettings, TtsVoice } from '../core/tts-types';
 import { irodoriPresetRows } from '../domain/tts/irodori-presets';
 import { ttsDefaults, TTS_DEFAULT_EXCLUDES } from '../config/tts-defaults';
@@ -70,7 +71,11 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.fish = { ...defaults.fish, ...result.fish };
   if (result.fish.via !== 'openrouter') result.fish.via = 'fish';
   if (typeof result.fish.routerKey !== 'string') result.fish.routerKey = '';
-  if (result.engine !== 'irodori') result.engine = 'fish';
+  if (result.engine !== 'irodori' && result.engine !== 'gemini') result.engine = 'fish';
+  result.gemini = { ...defaults.gemini, ...result.gemini };
+  for (const field of ['key', 'serviceAccountJson', 'location', 'model', 'voice'] as const) if (typeof result.gemini[field] !== 'string') result.gemini[field] = defaults.gemini[field];
+  if (result.gemini.via !== 'vertex') result.gemini.via = 'studio';
+  result.gemini.concurrency = Math.floor(clamp(result.gemini.concurrency, 1, 5, 3));
   for (const field of ['url', 'key', 'model', 'voice'] as const) if (typeof result.irodori[field] !== 'string') result.irodori[field] = defaults.irodori[field];
   if (result.irodori.format !== 'wav') result.irodori.format = 'mp3';
   result.irodori.concurrency = Math.floor(clamp(result.irodori.concurrency, 1, 5, 1));
@@ -78,18 +83,27 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   return result;
 }
 /** The engine in use; Fish until the data is read (the settings markup is built before the mount reads it). */
-export function ttsEngine(): TtsSettings['engine'] { return state?.settings.engine === 'irodori' ? 'irodori' : 'fish'; }
+export function ttsEngine(): TtsSettings['engine'] { const engine = state?.settings.engine; return engine === 'irodori' || engine === 'gemini' ? engine : 'fish'; }
 /** The voice presets of the engine in use: Fish's library, or Irodori's own. */
-export function ttsEngineVoices(): TtsVoice[] { const data = ttsData(); return data.settings.engine === 'irodori' ? data.irodoriVoices : data.voices; }
+export function ttsEngineVoices(): TtsVoice[] { const data = ttsData(); return data.settings.engine === 'irodori' ? data.irodoriVoices : data.settings.engine === 'gemini' ? data.geminiVoices : data.voices; }
 /**
  * Voices the assignment engines may pick from: the folder chosen in the character tab (all voices if it is empty);
  * with Irodori, its presets (they have no folders).
  */
 export function ttsCandidateVoices(): TtsVoice[] {
   if (ttsData().settings.engine === 'irodori') return ttsData().irodoriVoices;
+  if (ttsData().settings.engine === 'gemini') return ttsData().geminiVoices;
   const { voices, settings } = ttsData(), folder = settings.characterFolder;
   const pool = folder === '*' ? voices : voices.filter(v => v.folder === folder);
   return pool.length ? pool : voices;
+}
+/**
+ * Gemini's presets as saved; none saved (an older save, or every one removed), the prebuilt ones: Gemini speaks with
+ * them whatever a list holds.
+ */
+function geminiPresetRows(raw: unknown): TtsVoice[] {
+  const rows = irodoriPresetRows(raw).map((row, i) => { const langs = (raw as Array<{ languages?: unknown }>)[i]?.languages; return Array.isArray(langs) ? { ...row, languages: langs.filter((l): l is string => typeof l === 'string').slice(0, 8) } : row; });
+  return rows.length ? rows : geminiPrebuiltVoices();
 }
 export function loadTtsData(): Promise<TtsData> {
   if (state) return Promise.resolve(state);
@@ -97,7 +111,7 @@ export function loadTtsData(): Promise<TtsData> {
   loading = (async () => {
     const raw: unknown = await psGet(TTS_DATA_KEY);
     if (raw == null || raw === '') {
-      state = { version: 1, settings: ttsDefaults(), voices: parseVoiceImport(presetVoiceRows()), folders: [], characters: [], irodoriVoices: [] };
+      state = { version: 1, settings: ttsDefaults(), voices: parseVoiceImport(presetVoiceRows()), folders: [], characters: [], irodoriVoices: [], geminiVoices: geminiPrebuiltVoices() };
     } else {
       const value = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Partial<TtsData>;
       if (value.version !== 1 || !value.settings || !Array.isArray(value.voices) || !Array.isArray(value.characters) || !Array.isArray(value.folders)) throw new Error('TTS 저장 데이터 형식을 확인할 수 없습니다. 원본은 변경하지 않았습니다.');
@@ -113,7 +127,7 @@ export function loadTtsData(): Promise<TtsData> {
         if (!error || Number.isInteger(error.count) && error.count > 0 && Number.isFinite(error.lastAt) && error.lastAt >= 0 && Number.isInteger(error.status) && error.status >= 400 && error.status <= 599) return voice;
         const clean = { ...voice }; delete clean.error; return clean;
       });
-      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders, irodoriVoices: irodoriPresetRows(value.irodoriVoices) };
+      state = { version: 1, settings: normalizeTtsSettings(value.settings), voices, characters, folders: value.folders, irodoriVoices: irodoriPresetRows(value.irodoriVoices), geminiVoices: geminiPresetRows(value.geminiVoices) };
     }
     state.characters = ensureTtsRoleCards(state.characters, 'global', state.voices, state.settings.narrationVoice, state.settings.translation.narrationLanguage);
     return state;

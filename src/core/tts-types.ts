@@ -32,6 +32,8 @@ export interface TtsCharacter {
   fishId: string;
   /** The Irodori preset the card speaks with while Irodori is the engine; its Fish voice above is kept beside it. */
   irodoriKey?: string;
+  /** The Gemini preset the card speaks with while Gemini is the engine (its Fish and Irodori voices kept beside it). */
+  geminiKey?: string;
   fixed: boolean;
   gain: number;
   /** true: leave loudness to automatic normalization and ignore gain. Absent on older rows (nonzero gain = manual). */
@@ -141,13 +143,18 @@ export interface TtsSettings {
    * is the OpenRouter key (empty: JEV's, when JEV goes through OpenRouter).
    */
   fish: { url: string; key: string; model: string; via: 'fish' | 'openrouter'; routerKey: string };
-  /** Which service speaks: Fish Audio, or the user's own Irodori-TTS server. */
-  engine: 'fish' | 'irodori';
+  /** Which service speaks: Fish Audio, the user's own Irodori-TTS server, or Gemini TTS. */
+  engine: 'fish' | 'irodori' | 'gemini';
   /**
    * Irodori-TTS-Server: self-hosted, the OpenAI speech API, Japanese only. `voice` is the server's voice every line
    * speaks with. The server makes one line at a time unless it is set up for more, hence its own `concurrency`.
    */
   irodori: { url: string; key: string; model: string; voice: string; format: 'mp3' | 'wav'; concurrency: number };
+  /**
+   * Gemini TTS: by an AI Studio key (`via` 'studio') or a Vertex AI service account's JSON key (`serviceAccountJson`, in
+   * `location`). `voice` is the voice a card with no preset speaks with (a prebuilt name, or a `voice_…` id).
+   */
+  gemini: { via: 'studio' | 'vertex'; key: string; serviceAccountJson: string; location: string; model: string; voice: string; concurrency: number };
   llm: LlmSettings;
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';
@@ -172,4 +179,6 @@ export interface TtsData {
   characters: TtsCharacter[];
   /** Irodori's own voice presets (Fish's are `voices`): each names a voice kept on the user's server. */
   irodoriVoices: TtsVoice[];
+  /** Gemini's voice presets: the prebuilt ones from the start, and those read from its voice list. */
+  geminiVoices: TtsVoice[];
 }

@@ -18,9 +18,20 @@ const IRODORI_HINTS: Record<number, string> = {
   500: ' · Irodori 서버 안에서 오류가 났습니다. mp3는 서버에 FFmpeg가 있어야 합니다(없으면 출력 형식을 wav로)',
   503: ' · Irodori 서버가 앞선 생성을 기다리다 시간을 넘겼습니다. 잠시 뒤 다시 시도해 주세요',
 };
-export type TtsService = 'fish' | 'irodori';
+/** Gemini TTS: the Gemini API (an AI Studio key) or Vertex AI. */
+const GEMINI_HINTS: Record<number, string> = {
+  400: ' · Gemini가 요청을 거절했습니다. 모델 이름과 목소리를 확인해 주세요',
+  401: ' · Gemini API 키(또는 Vertex 서비스 계정)를 확인해 주세요',
+  403: ' · 이 키(서비스 계정)로는 이 모델을 쓸 수 없습니다. API 사용 설정과 권한을 확인해 주세요',
+  404: ' · 그 모델이나 목소리가 없습니다. 모델 이름(Vertex는 지역도)을 확인해 주세요',
+  429: ' · Gemini 요청 한도에 걸렸습니다. 동시 생성 수를 줄이거나 잠시 뒤 다시 시도해 주세요',
+  500: ' · Gemini 서버 오류입니다. 잠시 뒤 다시 시도해 주세요',
+  503: ' · Gemini 서버가 바쁩니다. 잠시 뒤 다시 시도해 주세요',
+};
+export type TtsService = 'fish' | 'irodori' | 'gemini';
 /** Fish's own reading of the common failures, so the toast says what to fix. */
 function ttsStatusHint(status: number | undefined, service: TtsService = 'fish'): string {
+  if (service === 'gemini') return status ? GEMINI_HINTS[status] || '' : '';
   if (service === 'irodori') return status ? IRODORI_HINTS[status] || '' : ' · Irodori 서버에 닿지 못했습니다. 서버가 켜져 있는지, 주소가 맞는지 확인해 주세요. 브라우저에서 여는 Risu라면 서버를 IRODORI_CORS_ORIGINS=["*"] 설정으로 띄워야 합니다';
   const hints: Record<number, string> = {
     401: ' · API 키를 확인해 주세요',
