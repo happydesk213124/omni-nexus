@@ -98,6 +98,11 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     // 캐릭터 특징을 말투에: a card's traits as the style of its lines, on a shared voice; none on a voice made for it.
     assert.equal(await page.evaluate(() => window.geminiPersona({ tags: ['차분함'], voiceKey: '', gender: 'female' }, 'Kore')), 'female character voice: calm');
     assert.equal(await page.evaluate(() => window.geminiPersona({ tags: ['차분함'], voiceKey: '', gender: 'female' }, 'voice_x')), '');
+    // 어린이: Google designs no voice called a child's; asked for by its sound (high-pitched, bright), it does.
+    const child = await page.evaluate(() => window.voiceDesignOf({ id: 'k', name: '꼬마', tags: ['어린이', '높음', '귀여운'], voiceKey: '', gender: 'male' }, { translation: { enabled: false } }).description);
+    assert.equal(child, 'A distinctive male voice for a story character: bright, cute, high-pitched. Natural and expressive, as a voice actor would play them.');
+    assert.doesNotMatch(child, /child/i);
+    assert.equal(await page.evaluate(() => window.geminiPersona({ tags: ['어린이'], voiceKey: '', gender: 'female' }, 'Kore')), 'female character voice: high-pitched, bright');
     // A card: its Gemini voice chosen in the sheet (its delivery kept), saved apart from its Fish voice.
     await page.evaluate(async () => { window.ttsData().characters.push({ id: 't-haru', scope: 'global', name: '하루', surname: '', givenName: '하루', surnameAliases: [], givenAliases: [], triggers: ['하루'], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }); await window.saveTtsData(); });
     await open('people');
@@ -112,14 +117,17 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     // Heard with it.
     await page.locator('#test-character-editor').click();
     await page.waitForFunction(() => window.asked.some(a => a.body?.generationConfig?.speechConfig?.voiceConfig?.voice === 'voice_haru'));
-    // 이 캐릭터만의 목소리 새로 만들기: designed from the sheet (her gender, her traits), hers from then on.
+    // 태그로 목소리 만들기: designed from the sheet (her gender, her tags), named by the tags, never by her name.
     await page.locator('#c-tags').fill('차분함'); await page.locator('#c-tags').dispatchEvent('change');
     await page.locator('#c-gemini-design').click();
     await page.waitForFunction(() => window.ttsData().characters.find(c => c.id === 't-haru')?.geminiKey === 'gemini:voice_new2');
     const designed = await page.evaluate(() => window.asked.filter(a => a.method === 'POST' && a.url.endsWith('/v1beta/voices')).at(-1).body.voice);
-    assert.deepEqual([designed.display_name, designed.gender, designed.language_code], ['하루', 'female', 'ja-JP']);
+    assert.deepEqual([designed.display_name, designed.gender, designed.language_code], ['여성 · 차분함', 'female', 'ja-JP'], 'named by the tags, not 하루');
     assert.match(designed.prompted.input, /^A distinctive female voice for a story character: calm\./);
     assert.equal(await page.locator('#c-irodori-voice').inputValue(), 'gemini:voice_new2');
+    // Heard at once in the short test line (not Google's long sample paragraph).
+    await page.waitForFunction(() => window.asked.some(a => a.body?.generationConfig?.speechConfig?.voiceConfig?.voice === 'voice_new2'));
+    assert.match(JSON.stringify(await page.evaluate(() => window.asked.filter(a => a.body?.generationConfig?.speechConfig?.voiceConfig?.voice === 'voice_new2').at(-1).body.contents)), /Nice to meet you|こんにちは|안녕하세요/);
     // 캐릭터마다 새 목소리: only who has none of their own (하루 has hers now).
     await page.evaluate(async () => { document.getElementById('character-dialog').close(); window.ttsData().characters.push({ id: 't-mina', scope: 'global', name: '미나', surname: '', givenName: '미나', surnameAliases: [], givenAliases: [], triggers: ['미나'], tags: [], gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 }); await window.saveTtsData(); });
     await open('tts');
@@ -140,7 +148,7 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     const keys = await page.evaluate(() => ['t-a', 't-b', 't-c'].map(id => window.ttsData().characters.find(c => c.id === id).geminiKey));
     assert.equal(keys[0], keys[1], 'the same traits: one voice');
     assert.notEqual(keys[0], keys[2]);
-    assert.equal(await page.evaluate(key => window.ttsData().geminiVoices.find(v => v.key === key).name, keys[0]), '여성 · 소심한 · 부드러운');
+    assert.equal(await page.evaluate(key => window.ttsData().geminiVoices.find(v => v.key === key).name, keys[0]), '여성 · 부드러운 · 소심한', 'the tags in one order: the same name whatever order a card holds them in');
     assert.match(await page.evaluate(key => window.ttsData().geminiVoices.find(v => v.key === key).caption, keys[0]), /^A distinctive female voice for a story character: gentle, timid\./);
     assert.equal(await page.evaluate(() => window.ttsData().settings.gemini.assign), 'design', 'a speaker with no voice gets the voice of their traits unless switched to the list');
     assert.deepEqual(errors, []);

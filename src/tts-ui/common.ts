@@ -34,6 +34,15 @@ export async function audition(fishId: string, gain = 0, voice: { tone?: string;
   await omniTts.play([{ context, messageId: 'audition', fishId, gain, ...voice, segment: { id: fishId || `${voice.engine}-default`, text: irodori ? 'こんにちは。この声でお話しします。' : '안녕하세요, こんにちは, Nice to meet you.', speaker: '', tone: '', kind: 'audition', start: 0, end: 0 } }], 0, reservation);
   if (omniTts.player.status === 'error' || omniTts.player.status === 'blocked') throw new Error(omniTts.notice || '미리 듣기를 재생하지 못했습니다.');
 }
+/**
+ * A voice just designed, heard at once: the short test line in it (one synthesis), not the sample Google sends back,
+ * which reads a long paragraph of its own. The sample only when the line cannot be made.
+ */
+export async function hearNewVoice(made: { voice: { fishId: string }; sample?: ArrayBuffer }, tone = ''): Promise<void> {
+  if (!omniTts.player.ready) return;
+  try { await audition(made.voice.fishId, 0, { engine: 'gemini', ...(tone ? { tone } : {}) }); }
+  catch (error) { if (!made.sample) throw error; await omniTts.playBytes(`gemini-design:${made.voice.fishId}`, made.sample); }
+}
 const LISTEN_LABEL = '듣기';
 // Fish has to synthesize before anything is heard, so the ▶ turns into a spinner.
 export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number; tone?: string; model?: string; engine?: 'fish' | 'irodori' | 'gemini' }): HTMLButtonElement {

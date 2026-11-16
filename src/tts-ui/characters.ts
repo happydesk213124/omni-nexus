@@ -1,5 +1,4 @@
 import { designVoiceFor } from '../services/gemini-voices';
-import { omniTts } from '../services/tts-runtime';
 import type { TtsCharacter, TtsSettings, TtsVoice } from '../core/tts-types';
 import { ttsData, saveTtsData, updateTtsSettings, ttsCandidateVoices } from '../storage/tts-store';
 import { blankTtsCharacter, deleteTtsCharacters, voiceAbout, voiceEmbedding, voicePickOptions } from '../services/tts-characters';
@@ -14,7 +13,7 @@ import { unifiedSessionIdForCharacter } from '../core/util/text';
 import { getCharRefAssetPreviewUrl } from '../services/char-ref-module';
 import { resolveTtsSpeaker, ttsCharacterGain } from '../domain/tts/identity';
 import type { CharacterRecord } from '../core/types';
-import { el, input, val, set, text, list, characterGender, genderLabel, esc, on, run, dialog, button, persist, listenButton, auditionButton } from './common';
+import { el, input, val, set, text, list, characterGender, genderLabel, esc, on, run, dialog, button, persist, listenButton, auditionButton, hearNewVoice } from './common';
 import type { TtsLibrary } from './library';
 import { uuid } from '../core/util/text';
 import { sleep } from '../core/util/async';
@@ -522,18 +521,23 @@ export class TtsCharacters {
       return { fishId: fishVoiceId(val('c-id')), gain: input('c-gain-manual').checked ? Number(val('c-gain')) : 0, ...this.readToneModel() };
     });
     on('c-fetch', async () => { const info = await fetchFishVoice(val('c-id'),ttsData().settings); set('c-id',info.fishId); set('c-gender',genderLabel(info.gender)); set('c-tags',list([val('c-tags'), ...info.tags].join(',')).join(', ')); text('c-metadata',info.name); this.save(); });
-    // Gemini: a voice designed from what the sheet says of them (gender, traits), theirs alone, heard at once.
+    // Gemini: the voice of what the sheet says of them (gender, tags), heard at once. Made from the tags and named by
+    // them, never by the character: a voice saved as 「간호순」 is no use to anyone else, one named 「여성 · 차분함」 is
+    // whoever has those tags (in any order), made once and shared after.
     on('c-gemini-design', async () => {
       if (!this.draft) return;
-      const button = input('c-gemini-design'); button.disabled = true; text('character-voice-choice', '목소리 만드는 중…');
+      const button = input('c-gemini-design');
+      const card = this.read();
+      if (!list(val('c-tags')).length) { text('character-voice-choice', '태그를 먼저 적어 주세요. 같은 태그의 캐릭터가 이 목소리를 같이 씁니다.'); return; }
+      button.disabled = true; text('character-voice-choice', '목소리 만드는 중…');
       try {
-        const card = this.read(); clearTimeout(this.saveTimer); this.saveTimer = undefined;
+        clearTimeout(this.saveTimer); this.saveTimer = undefined;
         ttsData().characters = ttsData().characters.map(row => row.id === card.id ? card : row);
-        const made = await designVoiceFor(card, true);
+        const made = await designVoiceFor(card);
         this.draft = { ...card, geminiKey: made.voice.key };
-        this.fillIrodori(this.draft); this.save(); text('character-voice-choice', `${made.voice.name} · 새로 만든 목소리`);
-        if (made.sample && omniTts.player.ready) await omniTts.playBytes(`gemini-design:${made.voice.fishId}`, made.sample);
+        this.fillIrodori(this.draft); this.save(); text('character-voice-choice', `${made.voice.name} · ${made.reused ? '같은 태그로 이미 만든 목소리' : '새로 만든 목소리'}`);
         this.render();
+        await hearNewVoice(made, val('c-tone').trim());
       } catch (error) { text('character-voice-choice', String((error as Error)?.message || error)); }
       finally { button.disabled = false; }
     });

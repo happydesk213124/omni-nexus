@@ -3,9 +3,8 @@ import { geminiPrebuiltVoices } from '../domain/tts/gemini-voices';
 import { matchesVoiceSearch } from '../domain/tts/library';
 import { cardsWithoutOwnVoice, designVoice, designVoiceFor, ensureGeminiVoiceList, loadGeminiVoiceList, removeGeminiVoice } from '../services/gemini-voices';
 import { currentTtsContext } from '../services/tts-context';
-import { omniTts } from '../services/tts-runtime';
 import { saveTtsData, ttsData } from '../storage/tts-store';
-import { el, esc, genderLabel, input, listenButton, on, text, val } from './common';
+import { el, esc, genderLabel, hearNewVoice, input, listenButton, on, text, val } from './common';
 
 /**
  * Gemini's voice presets: a tab standing where 음성 목록 (Fish's library) does while Gemini is the engine. The 30
@@ -135,7 +134,7 @@ export class GeminiVoices {
       try {
         const made = await designVoice({ name: val('gv-new-name').trim() || about.slice(0, 24), description: about, ...(gender === 'female' || gender === 'male' ? { gender } : {}) });
         text('gv-status', `「${made.voice.name}」 목소리를 만들었습니다.`); this.render();
-        if (made.sample && omniTts.player.ready) await omniTts.playBytes(`gemini-design:${made.voice.fishId}`, made.sample);
+        await hearNewVoice(made);
       } catch (error) { text('gv-status', String((error as Error)?.message || error)); }
       finally { button.disabled = false; }
     });

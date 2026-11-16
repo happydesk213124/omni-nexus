@@ -20,10 +20,18 @@ function readLanguage(c?: Pick<TtsCharacter, 'language'>, settings: Pick<TtsSett
 }
 const own = (voice: Pick<TtsVoice, 'fishId'>): boolean => /^voice(key)?_/.test(voice.fishId);
 const prebuilt = new Set(GEMINI_PREBUILT_NAMES);
+/**
+ * Google refuses to design a voice described as a child's (어린이 → "child"), and the refusal names no field. The same
+ * voice asked for by its sound — high-pitched and bright — is made. Korean words for a small child that are not in
+ * the word table go the same way.
+ */
+const CHILD_WORDS = new Set(['child', 'kid', 'toddler', 'baby', '아이', '꼬마', '아기', '유아']);
+const CHILD_SOUND = ['high-pitched', 'bright'];
 /** A card's traits as a model reads them: English, no emoji, a handful. With none of its own, its Fish voice's. */
 function traits(c: Pick<TtsCharacter, 'tags' | 'voiceKey'>): string[] {
   const tags = c.tags.length ? c.tags : ttsData().voices.find(v => v.key === c.voiceKey)?.tags ?? [];
-  return englishVoiceTags(tags.filter(tag => !EMOJI.test(tag))).filter(tag => tag.length <= 30).slice(0, 6);
+  const words = englishVoiceTags(tags.filter(tag => !EMOJI.test(tag))).flatMap(tag => CHILD_WORDS.has(tag.toLowerCase()) ? CHILD_SOUND : [tag]);
+  return [...new Set(words)].filter(tag => tag.length <= 30).slice(0, 6);
 }
 /**
  * 캐릭터 특징을 말투에: who speaks, in a few words, sent as the style of each of their lines. Two cards given the same
@@ -63,7 +71,7 @@ export function cardsWithoutOwnVoice(scope: string): TtsCharacter[] {
   return ttsData().characters.filter(c => !c.role && !c.fixed && (c.scope === scope || c.scope === 'global') && !hasTraitVoice(c));
 }
 /** A shared voice's name in the list: the traits it is the voice of (Korean, as the card shows them). */
-const traitName = (c: TtsCharacter): string => [c.gender === 'female' ? '여성' : c.gender === 'male' ? '남성' : '', ...c.tags.filter(tag => !EMOJI.test(tag)).slice(0, 4)].filter(Boolean).join(' · ').slice(0, 80) || c.name.slice(0, 80);
+const traitName = (c: TtsCharacter): string => [c.gender === 'female' ? '여성' : c.gender === 'male' ? '남성' : '', ...c.tags.filter(tag => !EMOJI.test(tag)).slice(0, 4).sort()].filter(Boolean).join(' · ').slice(0, 80) || c.name.slice(0, 80);
 const designing = new Map<string, Promise<{ voice: TtsVoice; sample?: ArrayBuffer; reused?: boolean }>>();
 /**
  * The voice of the card's traits, the card's from now on: the one already made for that combination (`reused`), else
