@@ -5,6 +5,7 @@ import { currentTtsContext } from '../services/tts-context';
 import { getConfig } from '../services/context';
 import { inlineWaitCount, subscribeInlineWaits } from '../storage/inline-wait-store';
 import { hitHost, releaseHost, safeArray, type HostPoint } from '../tts-ui/host-utils';
+import { focusTaps, noteFocusTap, omniWindowUp } from '../services/viewer-presence';
 
 /**
  * Pink waiting slots (streaming tags): a double tap generates that slot. Chat clicks are
@@ -75,7 +76,22 @@ export function installWaitTaps(): void {
       // Every slot measured at once: one after another, a long chat's slots cost a round trip each, in a row.
       const hits = await Promise.all(nodes.map(node => hitHost(node, event).catch(() => false)));
       const hit = nodes[hits.indexOf(true)];
-      if (!hit) return null;
+      return hit ? await slotOf(hit) : null;
+    } finally { for (const item of owned) await releaseHost(item); }
+  };
+  /**
+   * The slot the browser gave the tap to (viewer-presence.ts, focusTaps): undefined when no slot is focused. Where
+   * taps focus, a tap that focused none landed on something lying over the point, never on the slot beneath.
+   */
+  const focusedSlot = async (): Promise<{ id: string; index: number } | null | undefined> => {
+    const node = await doc!.querySelector('[data-inray-wait]:focus,[data-inray-spinner]:focus');
+    if (!node) return undefined;
+    noteFocusTap();
+    try { return await slotOf(node); } finally { await releaseHost(node); }
+  };
+  const slotOf = async (hit: SafeElement): Promise<{ id: string; index: number } | null> => {
+    const owned: unknown[] = [];
+    try {
       const id = /\bdata-inray-(?:wait|spinner)="([a-zA-Z0-9_-]{1,64})"/.exec(String(await hit.getOuterHTML()).split('>')[0] || '')?.[1];
       if (!id) return null;
       // The slot's message: only the matching wrapper's opening tag is read.
@@ -132,7 +148,8 @@ export function installWaitTaps(): void {
       return;
     }
     last = null;
-    const slot = await slotAt(event);
+    const focused = await focusedSlot();
+    const slot = focused !== undefined ? focused : focusTaps() ? null : await slotAt(event);
     if (!slot) return;
     busy = true;
     try {
@@ -195,7 +212,7 @@ export function installWaitTaps(): void {
       if (!doc) return;
       const report = (name: string) => (error: unknown) => dbg(name, { message: String(error) }, 'warn');
       // 옴니 뷰어 lies over the chat: its taps are not taps on a pink slot beneath.
-      const underViewer = (event: HostPoint) => { const covers = Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__'); return typeof covers === 'function' && !!covers(event.clientX, event.clientY); };
+      const underViewer = (event: HostPoint) => { const covers = Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__'); return omniWindowUp() || (typeof covers === 'function' && !!covers(event.clientX, event.clientY)); };
       await listen('click', event => { if (!underViewer(event)) void tap(event).catch(report('wait.tap')); });
       await listen('pointerdown', event => { if (!underViewer(event)) down(event); });
       await listen('pointerup', lift);

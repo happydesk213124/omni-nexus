@@ -6389,6 +6389,23 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
         } catch {
         }
       }
+      // A press is a point only, and a point is true of a 🎲/⛶ under a panel, a menu or a toggle too. Where taps
+      // focus the button they land on (__OMNI_FOCUS_TAPS__, learned in viewer-presence.ts), the press counts only
+      // once the browser has focused this very button: a finger lifts after pointerdown, so it is waited for.
+      // Where they never do (WebKit: every iPhone browser), the point is all there is and acts at once, as before;
+      // a look a moment later learns which kind of device this is.
+      const nxPressedOn = async (node) => {
+        const focused = async () => { try { return typeof node.matches == "function" && !!await node.matches(":focus"); } catch { return !1; } };
+        if (globalThis.__OMNI_FOCUS_TAPS__ !== !0) {
+          setTimeout(() => { void focused().then((on) => { if (on) globalThis.__OMNI_FOCUS_TAPS__ = !0; }); }, 450);
+          return !0;
+        }
+        for (let i = 0; i < 24; i++) {
+          if (await focused()) return !0;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return !1;
+      };
       // Baked Inray fullscreen chip → same inspect sheet as triple-tap / hold.
       if (!inspectOpen) {
         try {
@@ -6415,6 +6432,7 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
             // Falling through would let the inline-shot block below open
             // the shot div behind the button as the wrong card (R2).
             if (!card) return;
+            if (!await nxPressedOn(node)) return;
             // Mirror the image beside this control. The file name is used
             // only for cast identity; no pixels are read through the backend.
             try {
@@ -6466,6 +6484,7 @@ const VENDOR_INLINE_LONGPRESS_PATCH =
               }
             }
             if (!cardId) continue;
+            if (!await nxPressedOn(node)) return;
             try { if (typeof f.preventDefault == "function") await f.preventDefault(); } catch {}
             cancelMobilePress();
             (async () => {
@@ -18402,6 +18421,10 @@ const loadVendorUi = (): string => {
     }
     if (!out.includes('[x-inray-refresh],[data-inray-refresh]') || !out.includes('bake.refresh')) {
       throw new Error('[build] baked overlay must restamp via refresh, not tag/regen');
+    }
+    // 🎲 and ⛶ act only for the button the tap focused, where taps focus (a covered one never).
+    if (out.split('if (!await nxPressedOn(node)) return;').length !== 3) {
+      throw new Error('[build] 🎲 and ⛶ must each wait for their own focused press (nxPressedOn)');
     }
     if (out.includes('[x-inray-tag],[data-inray-tag],[x-inray-regen],[data-inray-regen]')) {
       throw new Error('[build] baked overlay must not plant tag/regen on the image');

@@ -17,7 +17,7 @@ import { costumesOf, refreshCostumeNames } from '../services/costume-names';
 import { loadViewerPrefs, viewerPrefs } from '../storage/viewer-prefs';
 import { TTS_NARRATION_OFF_CSS } from '../domain/tts/module';
 import { illustrationTtsRequests } from '../services/tts-illustration';
-import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
+import { focusTaps, noteFocusTap, onViewerUncovered, viewerCovering } from '../services/viewer-presence';
 import { safeArray, hitHost, hostAttributes, releaseHost, disconnectHost, type HostPoint } from './host-utils';
 import { withTtsAudio } from './activation';
 import { installTtsViewer } from './host-viewer';
@@ -347,12 +347,44 @@ async function mountTtsHost(host: NonNullable<ReturnType<typeof risuHost>>): Pro
     ]);
     const hits=await Promise.all(rows.map(r=>hitHost(r.node,e)));return rows[hits.indexOf(true)];
   };
+  const rowOf=(key:string)=>{const b=bindings.get(key);if(!b||hidden(b)||b.dead||!(b.sound||ttsData().settings.enabled))return null;return {key,node:b.node,play:b.play,illustration:b.illustration||!!b.sound};};
+  /**
+   * The button the browser gave the tap to (viewer-presence.ts, focusTaps): undefined when none of ours is focused,
+   * null when one is but plays nothing. A reply streaming in is drawn again with every chunk, its buttons new
+   * nodes each time: one not bound yet is bound by a scan right then, not at the next one a second away.
+   */
+  const focusedRow=async()=>{
+    for(let pass=0;pass<2;pass++){
+      const node=await doc.querySelector('[data-omnitts-play]:focus,[x-omnitts-play]:focus,[data-omni-bgm]:focus,[data-omni-sfx]:focus');
+      if(!node)return undefined;
+      noteFocusTap();
+      let key='';try{key=String(await node.getAttribute('x-omnitts-bound')||'');}finally{await releaseHost(node);}
+      if(key&&bindings.has(key))return rowOf(key);
+      if(!pass)await requestScan();
+    }
+    return null;
+  };
+  const tapped=async(e:HostPoint)=>{
+    if(!allowed()||underViewer(e))return undefined;
+    const focused=await focusedRow();
+    if(focused!==undefined)return focused||undefined;
+    // Where taps focus, a tap that focused none of ours landed on something else lying over the point (a panel, a
+    // menu, a toggle of the message's own). The cast chips are ours too, and a chunk drawn between the tap and this
+    // question takes the focus with the node: while a reply streams, the point is asked after all.
+    const streaming=replyStreamingNow();
+    if(focusTaps()&&!streaming){const chip=await doc.querySelector('[data-omnitts-cast] button:focus');if(!chip)return undefined;await releaseHost(chip);}
+    const row=await findHit(e,false);
+    if(row||!streaming)return row;
+    // The buttons known are a second old while a reply streams: the ones on screen now are found and asked again.
+    await requestScan();
+    return findHit(e,false);
+  };
   await listen('click',e=>{
     if(viewerCovering())return;
     // Every tap asked for a whole chat scan (for a <details> it might have folded), a tap on the floating viewer
     // too, right as the viewer asked Risu for its own work; the watcher hears a fold itself now.
     const epoch=++inputEpoch;
-    void findHit(e,false).then(row=>{if(epoch===inputEpoch&&row&&(row.illustration||ttsData().settings.clickPlay))return row.play();}).catch(report);
+    void tapped(e).then(row=>{if(epoch===inputEpoch&&row&&(row.illustration||ttsData().settings.clickPlay))return row.play();}).catch(report);
   });
   // Risu sends every mouseover on its page across the bridge to whoever listens for one: heard only while hover
   // play is switched on.

@@ -83,7 +83,7 @@ test('fullscreen button cancels the event, never the SafeDOM document', async ()
   const c={inspectOpen:false,x:0,I:0,t:{gallery:[{id:'card'}]},k:{},hitEl:async()=>true,
     e:{querySelectorAll:async()=>[node],preventDefault:()=>{documentCalls++;throw new Error('Not an event');}},
     f:{preventDefault:async()=>{await Promise.resolve();eventSettled=true;throw new Error('Method missing');}},
-    cancelMobilePress:()=>{},nxAssetNameOf:async()=> 'filename',
+    cancelMobilePress:()=>{},nxAssetNameOf:async()=> 'filename',nxPressedOn:async()=>true,
     nxOpenAssetInspect:async(card,name)=>{assert.equal(await name,'filename');assert.ok(eventSettled);opened=true;}};
   runInNewContext('this.press=async()=>{'+config.slice(start,end)+'};',c);
   await c.press(); assert.equal(documentCalls,0);assert.ok(opened);

@@ -40,3 +40,16 @@ export function chatCovered(x: number, y: number): boolean {
   for (const fn of covers) if (fn(x, y)) return true;
   return false;
 }
+
+/**
+ * Whether a tap focuses the button it lands on here. A press arrives as a point only (no target), and the point is
+ * true of whatever lies beneath it too: a button under a panel, a menu or another button answered a press on those.
+ * The focused button is the one the browser itself gave the press to, so where taps focus, the focused one is asked
+ * first and nothing else counts. WebKit (every iPhone browser) never focuses a tapped <button>: there the point is
+ * all there is. Learned from the first of our buttons found focused; shared with the frozen UI's patches by global.
+ */
+export const FOCUS_TAPS_KEY = '__OMNI_FOCUS_TAPS__';
+export const focusTaps = (): boolean => Reflect.get(globalThis, FOCUS_TAPS_KEY) === true;
+export function noteFocusTap(): void { Reflect.set(globalThis, FOCUS_TAPS_KEY, true); }
+/** Omni's own windows over the chat (its settings, the inspect sheet, a modal it raised): no tap reaches the chat. */
+export function omniWindowUp(): boolean { const blocked = Reflect.get(globalThis, '__OMNI_TTS_HOST_BLOCKED__'); return typeof blocked === 'function' && !!blocked(); }

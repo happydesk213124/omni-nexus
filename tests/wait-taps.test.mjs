@@ -29,6 +29,7 @@ test('a double tap on a pink slot generates that slot in its message; a single t
   let queries = 0;
   const doc = {
     async querySelectorAll() { queries++; return [slot]; },
+    async querySelector() { return null; },
     async addEventListener(type, fn) { const id = 'l' + (listeners.size + 1); listeners.set(id, { type, fn }); return id; },
     async removeEventListener(_type, id) { listeners.delete(id); },
   };
@@ -129,5 +130,52 @@ test('a press held 1.5 s on a pink slot makes every pink slot of its message; a 
   // The finger lifting after the run started is not a tap of its own.
   fire('pointerup'); fire('click'); await sleep(30); fire('click'); await sleep(30);
   assert.equal(globalThis.generated.length, 0, 'the lift after a press does not count as a double tap');
+  await fresh.dropInlineWait('w123'); await fresh.syncWaitTaps();
+});
+
+// A tap is a point only, true of a slot beneath a panel too. Where taps focus what they land on, the focused slot is
+// the one pressed and no other; where they never focus (an iPhone), the point is all there is.
+test('a double tap counts for the slot the browser focused; where taps focus, a slot under something else is not pressed', async () => {
+  const kv = new Map(), listeners = new Map();
+  globalThis.generated = []; globalThis.tracked = [];
+  delete globalThis.__OMNI_FOCUS_TAPS__;
+  const chat = node('<div class="risu-chat" data-chat-index="2">', { left: 0, top: 0, right: 500, bottom: 900, width: 500, height: 900 }, null, ['risu-chat']);
+  const slot = node('<div class="omni-spinner" data-inray-wait="w123" role="button" tabindex="0">', { left: 100, top: 100, right: 300, bottom: 400, width: 200, height: 300 }, chat);
+  const spinner = node('<div class="omni-spinner" data-inray-spinner="k7" tabindex="-1">', { left: 100, top: 500, right: 300, bottom: 800, width: 200, height: 300 }, chat);
+  let focused = null;
+  const doc = {
+    async querySelectorAll() { return [slot, spinner]; },
+    async querySelector(selector) { return selector.includes(':focus') ? focused : null; },
+    async addEventListener(type, fn) { const id = 'f' + (listeners.size + 1); listeners.set(id, { type, fn }); return id; },
+    async removeEventListener(_type, id) { listeners.delete(id); },
+  };
+  globalThis.risuai = { pluginStorage: { getItem: async k => kv.get(k), setItem: async (k, v) => kv.set(k, v) }, getRootDocument: async () => doc,
+    getCurrentCharacterIndex: async () => 4, getCurrentChatIndex: async () => 1 };
+  globalThis.ctx = { sessionId: 'risu_s', characterId: 'c', chatId: 'chat', messages: [{}, {}, { chatId: 'm2', data: 'reply' }] };
+  globalThis.__OMNI_TRACK_JOB__ = (session, job) => globalThis.tracked.push([session, job]);
+  const fresh = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text + '\n//focus').toString('base64'));
+  fresh.installWaitTaps();
+  await fresh.putInlineWaits([{ id: 'w123', tagged: null, line: 2, characterId: 'c', chatId: 'chat', hostMessageId: 'm2', createdAt: 1 }]);
+  await fresh.syncWaitTaps();
+  const twice = async (x, y) => { for (let i = 0; i < 2; i++) { for (const l of listeners.values()) if (l.type === 'click') l.fn({ clientX: x, clientY: y }); await new Promise(r => setTimeout(r, 20)); } };
+  const pause = () => new Promise(r => setTimeout(r, fresh.DOUBLE_TAP_MS + 50));
+  // Nothing focused yet, nothing learned: the point decides, as on an iPhone.
+  await twice(150, 200);
+  assert.deepEqual(globalThis.generated.map(g => g.wait_id), ['w123'], 'no focus seen: the slot under the point');
+  // The browser focused the spinner: that is the one, wherever the point fell.
+  await pause(); focused = spinner;
+  await twice(150, 200);
+  assert.deepEqual(globalThis.generated.map(g => g.wait_id), ['w123', 'k7'], 'the focused slot is the one pressed');
+  assert.equal(globalThis.__OMNI_FOCUS_TAPS__, true, 'and taps here are known to focus');
+  // Then a double tap on a panel over the pink slot: the point is inside the slot, the focus is not on it.
+  await pause(); focused = null;
+  await twice(150, 200);
+  assert.equal(globalThis.generated.length, 2, 'a slot under something else is not pressed');
+  // One of Omni's own windows up: no tap reaches the chat at all.
+  await pause(); focused = slot; globalThis.__OMNI_TTS_HOST_BLOCKED__ = () => true;
+  await twice(150, 200);
+  delete globalThis.__OMNI_TTS_HOST_BLOCKED__;
+  assert.equal(globalThis.generated.length, 2, 'Omni\'s settings over the chat: no slot is pressed');
+  delete globalThis.__OMNI_FOCUS_TAPS__;
   await fresh.dropInlineWait('w123'); await fresh.syncWaitTaps();
 });

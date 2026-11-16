@@ -180,7 +180,7 @@ export const WAIT_CENTER = '#ec4899';
 const pink = (out: string) => out.replace('stroke="#7132f5" stroke-width="10"', `stroke="${WAIT_CENTER}" stroke-width="22"`);
 export function waitDisplayRegexScript(scalePct: unknown = 100) {
   const out = pink(spinnerDisplayRegexScript(scalePct).out)
-    .replace('data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1"', 'data-inray-wait="$1" data-inray-preview-slot="wait_$1" role="button" tabindex="0" aria-label="이미지 대기 · 눌러서 생성"')
+    .replace('data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1" tabindex="-1"', 'data-inray-wait="$1" data-inray-preview-slot="wait_$1" role="button" tabindex="0" aria-label="이미지 대기 · 눌러서 생성"')
     .replace('aria-label="이미지 슬롯 · 다시 생성 가능"', 'aria-label="이미지 대기 · 눌러서 생성"')
     // 꾹 누르기 (wait-taps): a held finger must not select the slot or open the phone's image menu.
     .replace('style="position:relative;display:block;', 'style="position:relative;display:block;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;');
@@ -250,7 +250,7 @@ export function spinnerDisplayRegexScript(scalePct:unknown=100) {
   const frame=chatImageFrameStyle('$2','$3',scalePct);
   const css=inrayDisplayOut(false,scalePct).split('</style>')[0]+'</style>';
   return {comment:'omni-spinner-display',in:'\\[\\[@inrayspinner::([a-zA-Z0-9_-]{1,256})::([0-9]{1,6})::([0-9]{1,6})\\]\\](?!\\s{0,128}\\[\\[@inray::)',out:css+
-    '<br><div class="omni-spinner" data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1" style="position:relative;display:block;text-align:center;margin:10px auto;overflow:hidden;overflow-anchor:none;border-radius:10px;'+frame+'">'+
+    '<br><div class="omni-spinner" data-inlay-inline-shot="pending_$1" data-shot="$1" data-inray-spinner="$1" data-inray-preview-slot="$1" tabindex="-1" style="position:relative;display:block;text-align:center;margin:10px auto;overflow:hidden;overflow-anchor:none;border-radius:10px;'+frame+'">'+
     '<svg x-inray-spinner-wheel="$1" viewBox="0 0 $2 $3" width="$2" height="$3" style="display:block;width:100%;height:auto;border-radius:10px;background:#101620" role="img" aria-label="이미지 슬롯 · 다시 생성 가능"><circle cx="50%" cy="50%" r="54" fill="none" stroke="#7132f5" stroke-width="10" stroke-dasharray="180 160"></circle></svg>'+
     '</div><br>',type:'editdisplay' as const,ableFlag:true,flag:'g'};
 }

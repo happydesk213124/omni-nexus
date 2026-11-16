@@ -82,6 +82,20 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.locator('[data-omnitts-kind="dialogue"]').nth(7).click();await page.waitForFunction(()=>window.played.length===1,undefined,{timeout:12000});
     assert.equal(await page.evaluate(()=>window.requests.length),before);
     assert.deepEqual(await page.evaluate(()=>({narration:window.ttsData().settings.narration,continuous:window.ttsData().settings.continuous,volume:window.ttsData().settings.volume,minimized:window.ttsData().settings.minimized})),controlsBefore,'chat clicks must not execute viewer controls registered on the document');
+    // A press is a point only. Here taps focus what they land on, so a button under a panel is not pressed by a tap
+    // on the panel, though the point is inside its box; a button drawn anew (as a streaming reply's are with every
+    // chunk) is pressed at once, not at the next scan.
+    await page.evaluate(()=>{window.omniTts.stop();const play=window.omniTts.play.bind(window.omniTts);window.plays=0;window.omniTts.play=(...a)=>{window.plays++;return play(...a);};});
+    const pressed=page.locator('[data-chat-index="7"] [data-omnitts-kind="dialogue"]'),box=await pressed.boundingBox(),at=[box.x+box.width/2,box.y+box.height/2];
+    await page.evaluate(b=>{const p=document.createElement('div');p.id='over';p.style.cssText=`position:fixed;left:${b.x-20}px;top:${b.y-20}px;width:${b.width+40}px;height:${b.height+40}px;z-index:2147483646;background:#0004`;document.body.append(p);},box);
+    await page.mouse.click(...at);await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(()=>window.plays),0,'a tap on a panel over the button plays nothing');
+    await page.evaluate(()=>document.getElementById('over').remove());
+    await page.mouse.click(...at);await page.waitForFunction(()=>window.plays===1);
+    // The scan the change would bring is held back (as a drag holds it): only the press itself can find the new button.
+    await page.evaluate(()=>{window.omniTts.stop();window.__OMNI_VIEWER_DRAGGING__=true;const block=document.querySelector('[data-chat-index="7"] .regex-quote-block');block.innerHTML=block.innerHTML.replace(/ x-omnitts-[a-z]+="[^"]*"/g,'');});
+    await page.mouse.click(...at);await page.waitForFunction(()=>window.plays===2,undefined,{timeout:3000});
+    await page.evaluate(()=>{window.omniTts.stop();delete window.omniTts.play;window.__OMNI_VIEWER_DRAGGING__=false;});
     assert.ok(await page.evaluate(()=>window.apiEvents.length)<15,'listeners must not grow with dialogue count or viewer repaint');
     assert.equal(await page.evaluate(()=>window.requests.every(r=>r.text.startsWith('[happy]')&&r.reference_id&&r.prosody.speed===1)),true);
     const independent = await page.evaluate(async()=>{

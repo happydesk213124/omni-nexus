@@ -39,6 +39,8 @@ function harness(clickSource=click) {
     const hitEl=async(el,x,y)=>{const [l,t,r,b]=el.box;return x>=l&&x<=r&&y>=t&&y<=b;};
     const nxAssetNameOf=async()=> 'inxshot_card.webp';
     const nxInspectAllowed=()=>true,nxTapNeed=()=>3;
+    // A tap that focuses nothing is no press only once taps are known to focus here (press-focus.test.mjs).
+    const nxPressedOn=async()=>true;
     const cancelMobilePress=()=>{if(mobilePress?.timer)clearTimeout(mobilePress.timer);mobilePress=null;};
     const hidePressFill=async()=>{};
     const nxFloatHide=async()=>{};
