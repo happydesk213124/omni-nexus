@@ -89,7 +89,7 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     await page.locator('#gv-new-about').fill('낮고 나른한 20대 여성');
     await page.locator('#gv-new-make').click();
     await page.waitForFunction(() => window.ttsData().geminiVoices.some(v => v.fishId === 'voice_new1'));
-    assert.deepEqual(await page.evaluate(() => window.asked.filter(a => a.method === 'POST' && a.url.endsWith('/v1beta/voices')).at(-1).body), { store: true, voice: { type: 'prompted', model: 'gemini-3.8-flash-tts', display_name: '나른한 언니', gender: 'female', language_code: 'ja-JP', description: '낮고 나른한 20대 여성', prompted: { input: '낮고 나른한 20대 여성' } } });
+    assert.deepEqual(await page.evaluate(() => window.asked.filter(a => a.method === 'POST' && a.url.endsWith('/v1beta/voices')).at(-1).body), { store: true, voice: { type: 'prompted', display_name: '나른한 언니', gender: 'female', language_code: 'ja-JP', description: '낮고 나른한 20대 여성', prompted: { input: '낮고 나른한 20대 여성' } } });
     assert.equal(await page.locator('#gv-list .gv-row[data-own="1"]').count(), 2, 'voice_haru and the one just made');
     await page.locator('#gv-list .gv-row[data-key="gemini:voice_new1"] button.danger').click();
     await page.waitForFunction(() => !window.ttsData().geminiVoices.some(v => v.fishId === 'voice_new1'));

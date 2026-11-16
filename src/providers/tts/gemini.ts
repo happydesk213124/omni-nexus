@@ -179,26 +179,27 @@ export interface GeminiVoiceDesign { name: string; description: string; gender?:
 /**
  * Voice design: a new voice from a description in words, kept by Google under this project (`store`: a designed voice
  * must be; 200 at most, each a year from its last use) and named by the id that comes back (`voice_…`). Its sample,
- * when one comes with it, is the voice heard at once. Gemini 3.8 and after; an older model named in the settings is
- * not sent (Google's newest design model makes it).
+ * when one comes with it, is the voice heard at once. No model is named: Google refuses one on a voice it stores
+ * ("Model should not be set when store is true") and designs it with its own; any 3.8 model speaks with it after.
  */
 export async function designGeminiVoice(s: Gemini, design: GeminiVoiceDesign): Promise<{ voice: TtsVoice; sample?: ArrayBuffer }> {
   const input = design.description.trim(), name = design.name.trim().slice(0, 80) || 'Omni voice';
   if (!input || input.length > 2000) throw new Error('목소리 설명은 1~2000자여야 합니다.');
-  const model = modelOf(s);
   return withVoices(s, async ({ url, headers, camel }) => {
     // What a voice is asked with, from all that is known of it down to the least a design takes (its type, its name,
-    // the description): a field one side refuses (a model name it does not design with, a language) is left out and
-    // the voice asked for again. The first refusal is the one told.
+    // the description), then with its type as an enum's name (Vertex's JSON may want that): a field one side refuses
+    // (a language, a gender's spelling) is left out and the voice asked for again.
     const base: Record<string, unknown> = { type: 'prompted', [camel ? 'displayName' : 'display_name']: name, prompted: { input } };
     const extras = { ...(design.gender ? { gender: design.gender } : {}), ...(design.language ? { [camel ? 'languageCode' : 'language_code']: design.language } : {}), description: input.slice(0, 300) };
-    const bodies = [...(geminiNewShape(model) ? [{ ...base, model, ...extras }] : []), { ...base, ...extras }, base];
-    let made: Record<string, unknown> | undefined, refused: unknown;
+    const bodies = [{ ...base, ...extras }, base, { ...base, type: 'PROMPTED' }];
+    let made: Record<string, unknown> | undefined;
+    const refusals: TtsHttpError[] = [];
     for (const voice of bodies) {
       try { made = objectValue(await ttsJson(await ttsFetch(url, { method: 'POST', headers, body: JSON.stringify({ store: true, voice }) }, 'gemini'))); break; }
-      catch (error) { if (!(error instanceof TtsHttpError) || error.status !== 400) throw error; refused ??= error; }
+      catch (error) { if (!(error instanceof TtsHttpError) || error.status !== 400) throw error; refusals.push(error); }
     }
-    if (!made) throw refused;
+    // Every form refused: each one's own reason is told (each may be refused for another field), once each.
+    if (!made) throw new TtsHttpError(400, 'gemini', [...new Set(refusals.map(r => r.detail).filter(Boolean))].join(' | ').slice(0, 600));
     const row = objectValue(made.voice ?? made), listed = geminiListedVoice({ ...row, display_name: name, description: '' });
     if (!listed) throw new Error('Gemini가 만든 목소리의 ID를 받지 못했습니다.');
     const audio = objectValue(row.sample_audio ?? row.sampleAudio), data = typeof audio.data === 'string' ? audio.data : '';

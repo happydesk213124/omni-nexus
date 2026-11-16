@@ -109,7 +109,7 @@ test('voice design: a description becomes a stored voice (its id the voice from 
   assert.deepEqual([made.voice.key, made.voice.fishId, made.voice.name, made.voice.gender, made.voice.caption], ['gemini:voice_made1', 'voice_made1', '하루', 'female', 'A soft, sleepy young woman']);
   assert.equal(made.sample.byteLength, 44 + pcm.length);
   assert.equal(calls[0].url, 'https://generativelanguage.googleapis.com/v1beta/voices');
-  assert.deepEqual(JSON.parse(calls[0].body), { store: true, voice: { type: 'prompted', model: 'gemini-3.8-flash-tts', display_name: '하루', gender: 'female', language_code: 'ko-KR', description: 'A soft, sleepy young woman', prompted: { input: 'A soft, sleepy young woman' } } });
+  assert.deepEqual(JSON.parse(calls[0].body), { store: true, voice: { type: 'prompted', display_name: '하루', gender: 'female', language_code: 'ko-KR', description: 'A soft, sleepy young woman', prompted: { input: 'A soft, sleepy young woman' } } });
   await api.deleteGeminiVoice(settings({ key: 'AIza-test' }), 'voice_made1');
   assert.deepEqual([calls[1].init.method, calls[1].url], ['DELETE', 'https://generativelanguage.googleapis.com/v1beta/voices/voice_made1']);
   await api.deleteGeminiVoice(settings({ key: 'AIza-test' }), 'Kore');
@@ -122,13 +122,16 @@ test('voice design: a description becomes a stored voice (its id the voice from 
   const post = vertex.find(c => c.url.includes('/voices'));
   assert.equal(post.url, 'https://aiplatform.googleapis.com/v1beta1/projects/make-proj/locations/global/voices');
   assert.deepEqual(JSON.parse(post.body).voice, { type: 'prompted', displayName: 'Mina', description: 'bright', prompted: { input: 'bright' } });
-  // Refused as a bad request, the voice is asked for again with less (no model, then its name and description alone);
-  // Google's own words for what was wrong are told when every form is refused.
-  const picky = host((url, init) => JSON.parse(init.body).voice.model ? { status: 400, json: { error: { status: 'INVALID_ARGUMENT', message: 'Unsupported model for voice design.' } } } : { status: 200, json: { id: 'voice_less' } });
+  // Never a model (Google refuses one on a stored voice). Refused as a bad request, the voice is asked for again with
+  // less: its name and description alone, then its type as an enum's name.
+  const picky = host((url, init) => JSON.parse(init.body).voice.gender ? { status: 400, json: { error: { status: 'INVALID_ARGUMENT', message: 'Invalid gender.' } } } : { status: 200, json: { id: 'voice_less' } });
   assert.equal((await api.designGeminiVoice(settings({ key: 'AIza-test' }), { name: 'A', description: 'calm', gender: 'female' })).voice.fishId, 'voice_less');
-  assert.deepEqual(picky.map(c => Object.keys(JSON.parse(c.body).voice)), [['type', 'display_name', 'prompted', 'model', 'gender', 'description'], ['type', 'display_name', 'prompted', 'gender', 'description']]);
-  host(() => ({ status: 400, json: { error: { status: 'INVALID_ARGUMENT', message: 'Voice design is not enabled for this project.' } } }));
-  await assert.rejects(api.designGeminiVoice(settings({ key: 'AIza-test' }), { name: 'A', description: 'calm' }), /\(400\).*INVALID_ARGUMENT: Voice design is not enabled for this project\./);
+  assert.deepEqual(picky.map(c => Object.keys(JSON.parse(c.body).voice)), [['type', 'display_name', 'prompted', 'gender', 'description'], ['type', 'display_name', 'prompted']]);
+  // Every form refused: each one's own reason is told, once each.
+  const refused = host((url, init, n) => ({ status: 400, json: { error: { status: 'INVALID_ARGUMENT', message: n === 1 ? 'Invalid language.' : 'Voice design is not enabled for this project.' } } }));
+  await assert.rejects(api.designGeminiVoice(settings({ key: 'AIza-test' }), { name: 'A', description: 'calm', language: 'ko-KR' }), /\(400\).*INVALID_ARGUMENT: Invalid language\. \| INVALID_ARGUMENT: Voice design is not enabled for this project\.$/);
+  assert.deepEqual(refused.map(c => JSON.parse(c.body).voice.type), ['prompted', 'prompted', 'PROMPTED']);
+  assert.equal(refused.some(c => 'model' in JSON.parse(c.body).voice), false, 'never a model');
   delete globalThis.risuai;
 });
 
