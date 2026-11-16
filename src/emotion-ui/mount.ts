@@ -1,7 +1,7 @@
 import type { TtsCharacter } from '../core/tts-types';
 import { risuHost } from '../core/host';
 import { BASE_EXPRESSIONS, baseExpression, EMOTION_EXCLUDE_DEFAULT, NUDE_COSTUME } from '../domain/emotion/emotions';
-import { backgroundPlaces, clearMadeSprites, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, madeSpriteCount, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
+import { backgroundPlaces, clearMadeSprites, deleteSprite, collectFaces, currentEmotionBot, deleteBackground, forgetOrphans, madeSpriteCount, orphanMade, findBackground, findSharedBackground, findSprite, makeBackground, makeSprite, PLACE_PERSON, redrawBackground, SHARED_BOT, sharedBackgroundPlaces, spriteCostumes, spriteJobKey, spriteJobs, spriteLooks, subscribeSprites, type EmotionBot } from '../services/emotion-assets';
 import { PLACE_SAMPLES } from '../config/place-samples';
 import { placeKey, samePlace } from '../domain/viewer/place';
 import { ensurePlaceModule } from '../storage/place-module';
@@ -326,7 +326,7 @@ function bindCharacterSheet(live: () => boolean): void {
     // What a face is, said on its picture's corners (its name, whose picture, its key, seen in a line): the tile is
     // the picture and its two buttons.
     grid.innerHTML = tiles.map(({ face, sprite, busy: running }) => `<div class="emo-tile" data-seen="${seen.has(face) ? 1 : 0}"><div class="emo-pic" data-face="${esc(face)}" data-busy="${running ? 1 : 0}"><span class="emo-pic-note">${running ? '만드는 중…' : sprite ? '' : '없음'}</span>
-<span class="emo-chip" data-at="tl">${esc(baseExpression(face)?.label || face)}</span>${sprite ? `<span class="emo-chip" data-at="tr">${sprite.source === 'bot' ? '봇 에셋' : '옴니'}</span>` : ''}<span class="emo-chip" data-at="bl">${esc(face)}</span>${seen.has(face) ? '<span class="emo-chip" data-at="br" data-seen>대사에 나옴</span>' : ''}</div>
+<span class="emo-chips-tl"><span class="emo-chip">${esc(baseExpression(face)?.label || face)}</span>${sprite ? `<span class="emo-chip" data-src>${sprite.source === 'bot' ? '봇 에셋' : '옴니'}</span>` : ''}</span>${sprite?.source === 'omni' && !running ? `<button type="button" class="emo-del" data-emo-del="${esc(face)}">지우기</button>` : ''}<span class="emo-chip" data-at="bl">${esc(face)}</span>${seen.has(face) ? '<span class="emo-chip" data-at="br" data-seen>대사에 나옴</span>' : ''}</div>
 <button type="button" data-emo-make="${esc(face)}" ${running ? 'disabled' : ''}>${sprite ? '다시 만들기' : '만들기'}</button><button type="button" data-emo-edit="${esc(face)}" ${running ? 'disabled' : ''}>편집</button></div>`).join('');
     for (const { face, sprite } of tiles) if (sprite) void thumb(sprite.path).then(url => { const pic = grid.querySelector<HTMLElement>(`.emo-pic[data-face="${CSS.escape(face)}"]`); if (url && pic && mine === epoch) pic.style.backgroundImage = `url("${url}")`; }).catch(() => {});
     const looks = await spriteLooks(person, bot, worn).catch(() => '');
@@ -341,6 +341,17 @@ function bindCharacterSheet(live: () => boolean): void {
   };
   form.addEventListener('click', event => {
     const target = event.target as Element | null;
+    // 지우기 lies on the picture: it is its own, not a tap that shows the picture big.
+    const del = target?.closest?.('[data-emo-del]')?.getAttribute('data-emo-del');
+    if (del) {
+      event.preventDefault();
+      if (!person || !bot) return;
+      const who = person, where = bot, worn = costume, label = baseExpression(del)?.label || del;
+      const back = emotionData().settings.useExisting ? ' 봇에 원래 그림이 있으면 그 그림으로 돌아갑니다.' : '';
+      if (!confirm(`${who.name}의 「${label}」 그림을 지울까요?${back}`)) return;
+      void deleteSprite(who, del, where, worn).then(done => { status(done ? `${label} 그림을 지웠어요.` : '지울 그림이 없어요.'); void render(); }).catch(error => status(String((error as Error)?.message || error)));
+      return;
+    }
     if (openPicture(target)) return;
     // The form itself carries data-emo-view: only the switch's own buttons count here.
     const switchTo = target?.closest?.('[data-emo-tab]')?.getAttribute('data-emo-tab');

@@ -87,6 +87,22 @@ test('자동 누끼: a face drawn on white (V4.5) is read to take its white; one
   } finally { delete globalThis.createImageBitmap; }
 });
 
+test('지우기: Omni\'s picture of one face goes from the records and the bot\'s assets; the bot\'s own picture of it is the face again', async () => {
+  const f = await fixture([['오미선_sad.png', 'assets/old.png', 'png']]);
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair' });
+  const made = await f.api.makeSprite(f.person, 'sad', f.bot, true);
+  const listed = async () => (await risuai.getCharacterFromIndex(0)).additionalAssets.map(a => a[0]);
+  for (let i = 0; i < 40 && !(await listed()).includes(made.name); i++) await new Promise(r => setTimeout(r, 100));
+  assert.equal((await f.api.findSprite(f.person, 'sad', f.bot)).source, 'omni');
+  assert.equal(await f.api.deleteSprite(f.person, 'sad', f.bot), true);
+  const rows = await listed();
+  assert.ok(!rows.includes(made.name) && rows.includes('오미선_sad.png'), "Omni's row went, the bot's own stays: " + rows);
+  assert.equal(f.api.emotionData().made.some(m => m.face === 'sad'), false);
+  const now = await f.api.findSprite(f.person, 'sad', f.bot);
+  assert.deepEqual([now.source, now.path], ['bot', 'assets/old.png'], "the bot's own picture again");
+  assert.equal(await f.api.deleteSprite(f.person, 'sad', f.bot), false, 'nothing of Omni\'s left to take');
+});
+
 test('a failed draw is tried again after a wait (not on every redraw, not never); 만들기 tries at once', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair, blue eyes' });

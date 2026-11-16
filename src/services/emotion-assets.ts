@@ -555,6 +555,28 @@ export async function clearMadeSprites(bot: EmotionBot): Promise<number> {
   // In turn with the registrations: none under way puts a face back after it is taken off.
   return inTurn(() => clearNow(bot, theirs, place));
 }
+/**
+ * 지우기 on one face: Omni's picture of it (drawn, or put in by 편집) goes from the records and from the bot's assets.
+ * With 기존 에셋 쓰기 on, the bot's own picture of that face (if it has one) is the face again; else it has none (made
+ * anew when 자동 생성 asks for it). The bot's own pictures are never taken. False when Omni had none of it.
+ */
+export async function deleteSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<boolean> {
+  if (replyStreaming()) throw new Error('응답이 오는 중에는 봇을 고치지 않습니다. 끝난 뒤 다시 눌러 주세요.');
+  const key = spriteJobKey(bot.id, c.id, face, costume);
+  if (jobs.has(key)) throw new Error('만드는 중인 그림이 끝난 뒤 다시 눌러 주세요.');
+  return inTurn(async () => {
+    const data = await loadEmotionData();
+    const gone = data.made.filter(m => m.bot === bot.id && m.person === c.id && m.face === face && (m.costume ?? 0) === costume);
+    if (!gone.length) return false;
+    await removeCharacterAssetRows({ id: bot.id, index: bot.index }, [...new Set(gone.map(m => m.name))]);
+    data.made = data.made.filter(m => !gone.includes(m));
+    failures.delete(key);
+    forgetEmotionPool();
+    await saveEmotionData();
+    notify();
+    return true;
+  });
+}
 async function clearNow(bot: EmotionBot, theirs: string, place: string): Promise<number> {
   const data = await loadEmotionData(), gone = madeFaces(data, bot.id);
   if (!gone.length) return 0;

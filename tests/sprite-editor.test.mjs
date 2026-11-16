@@ -52,8 +52,12 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
     // 자동 누끼 is on unless switched off, beside 투명 배경.
     assert.equal(await page.evaluate(() => window.emotionData().settings.autoCutout), true);
     const sad = page.locator('.emo-tile', { has: page.locator('[data-face="sad"]') });
-    const chips = () => sad.locator('.emo-chip').evaluateAll(list => list.map(n => `${n.dataset.at}:${n.textContent}`));
-    assert.deepEqual((await chips()).filter(c => !c.startsWith('tl:')), ['tr:봇 에셋', 'bl:sad']);
+    // Top-left: its name and, under it, whose picture; bottom-left its key. The bot's own picture has no 지우기.
+    const chips = () => sad.locator('.emo-chip').evaluateAll(list => list.map(n => `${n.dataset.at || (n.hasAttribute('data-src') ? 'src' : 'name')}:${n.textContent}`));
+    assert.deepEqual((await chips()).filter(c => !c.startsWith('name:')), ['src:봇 에셋', 'bl:sad']);
+    const [nameChip, srcChip] = await Promise.all([sad.locator('.emo-chips-tl .emo-chip').first().boundingBox(), sad.locator('.emo-chip[data-src]').boundingBox()]);
+    assert.ok(srcChip.y >= nameChip.y + nameChip.height - 0.5 && Math.abs(srcChip.x - nameChip.x) < 1, 'under the name');
+    assert.equal(await sad.locator('[data-emo-del]').count(), 0, "the bot's own picture is never taken");
     // The chips lie on the picture, and the tile is the picture and its two buttons.
     const [pic, chip] = await Promise.all([sad.locator('.emo-pic').boundingBox(), sad.locator('.emo-chip[data-at="bl"]').boundingBox()]);
     assert.ok(chip.y >= pic.y && chip.y + chip.height <= pic.y + pic.height + 0.5, 'on the picture');
@@ -104,8 +108,22 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
       return { corner: at(1, 1), body: at(60, 150), eye: at(60, 60) };
     });
     assert.deepEqual(pixels, { corner: 0, body: 255, eye: 255 });
-    await page.waitForFunction(() => document.querySelector('.emo-tile .emo-pic[data-face="sad"]')?.parentElement.querySelector('.emo-chip[data-at="tr"]')?.textContent === '옴니');
+    await page.waitForFunction(() => document.querySelector('.emo-pic[data-face="sad"] .emo-chip[data-src]')?.textContent === '옴니');
     assert.match(await page.locator('#emo-char-status').textContent(), /그림을 바꿨어요/);
+    // 지우기 (Omni's picture only), told first: gone from the records and the bot's assets, and with 기존 에셋 쓰기 on the
+    // bot's own picture is the face again.
+    await page.waitForFunction(() => document.querySelectorAll('#emo-char-grid .emo-pic[data-face="sad"] [data-emo-del]').length === 1);
+    assert.equal(await sad.locator('[data-emo-del]').textContent(), '지우기');
+    page.removeAllListeners('dialog');
+    let asked = '';
+    page.once('dialog', d => { asked = d.message(); void d.accept(); });
+    await sad.locator('[data-emo-del]').click();
+    await page.waitForFunction(() => document.querySelector('.emo-pic[data-face="sad"] .emo-chip[data-src]')?.textContent === '봇 에셋');
+    assert.match(asked, /오미선의 「.+」 그림을 지울까요\? 봇에 원래 그림이 있으면 그 그림으로 돌아갑니다\./);
+    assert.deepEqual(await page.evaluate(() => window.emotionData().made), []);
+    assert.equal(await page.locator('[data-nx-peek]').count(), 0);
+    assert.match(await page.locator('#emo-char-status').textContent(), /그림을 지웠어요/);
+    page.on('dialog', d => d.dismiss());
     // A picture the size a face is drawn at: once, well under a second.
     const ms = await page.evaluate(async () => {
       const c = new OffscreenCanvas(832, 1216), g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 832, 1216); g.fillStyle = '#c33'; g.fillRect(200, 200, 432, 900);

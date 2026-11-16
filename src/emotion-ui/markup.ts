@@ -138,11 +138,14 @@ export const EMOTION_CSS = `
 .emo-tile .emo-pic{position:relative;overflow:hidden}
 .emo-pic-note:empty{display:none}
 .emo-chip{position:absolute;max-width:calc(100% - 8px);padding:1px 5px;border-radius:6px;background:rgba(6,8,14,.72);color:#f1eefa;font-size:9.5px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.emo-chip[data-at="tl"]{top:4px;left:4px;font-weight:700;font-size:10.5px}
-.emo-chip[data-at="tr"]{top:4px;right:4px;opacity:.85}
+.emo-chips-tl{position:absolute;top:4px;left:4px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:calc(100% - 52px)}
+.emo-chips-tl .emo-chip{position:static;max-width:100%}
+.emo-chips-tl .emo-chip:first-child{font-weight:700;font-size:10.5px}
+.emo-chips-tl .emo-chip[data-src]{opacity:.85}
+/* 지우기: Omni's picture of this face goes (the bot's own, if it has one, is the face again). */
+.emo-del{position:absolute;top:4px;right:4px;min-height:0!important;height:22px;padding:0 7px!important;border-radius:6px;font-size:10.5px!important;line-height:20px;background:rgba(6,8,14,.78);border:1px solid #ef444499;color:#fecaca;cursor:pointer}
 .emo-chip[data-at="bl"]{bottom:4px;left:4px;opacity:.85}
 .emo-chip[data-at="br"]{bottom:4px;right:4px;background:rgba(236,72,153,.78)}
-.emo-chip[data-at="tl"]:has(+ .emo-chip[data-at="tr"]){max-width:calc(60% - 6px)}
 .emo-tile button{min-height:30px;font-size:12px}
 /* 편집: over the sheet, a picture on a checkerboard (its see-through parts show as such). */
 .emo-edit-veil{position:fixed;inset:0;z-index:200000;background:rgba(4,8,16,.72);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
