@@ -53,11 +53,11 @@ async function thumb(path: string): Promise<string> {
 function fillSettings(s: EmotionSettings): void {
   const check = (id: string, on: boolean) => { const node = $<HTMLInputElement>(id); if (node) node.checked = on; };
   const value = (id: string, v: string) => { const node = $<HTMLInputElement>(id); if (node && document.activeElement !== node) node.value = v; };
-  check('emo-enabled', s.enabled); check('emo-existing', s.useExisting); check('emo-auto', s.autoGenerate); check('emo-places', s.placeBackgrounds); check('emo-costumes', s.costumes); check('emo-drop-accessories', s.dropAccessories);
+  check('emo-enabled', s.enabled); check('emo-existing', s.useExisting); check('emo-cutout', s.autoCutout); check('emo-auto', s.autoGenerate); check('emo-places', s.placeBackgrounds); check('emo-costumes', s.costumes); check('emo-drop-accessories', s.dropAccessories);
   check('emo-nude', s.nude); check('emo-nude-all', s.nudeAll);
   costumeGate();
   nudeGate();
-  value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0'); value('emo-cutout', s.autoCutout ? '1' : '0');
+  value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
   value('emo-bg-preset', s.bgPreset); value('emo-bg-prefix', s.bgPrefix);
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-exclude', s.excludeTags); value('emo-pose', s.pose);
@@ -100,7 +100,7 @@ function readSettings(): Partial<EmotionSettings> {
     bgPreset: val('emo-bg-preset') === 'none' ? 'none' : 'bot', bgPrefix: val('emo-bg-prefix'),
     costumes: !!$<HTMLInputElement>('emo-costumes')?.checked, dropAccessories: !!$<HTMLInputElement>('emo-drop-accessories')?.checked,
     nude: !!$<HTMLInputElement>('emo-nude')?.checked, nudeAll: !!$<HTMLInputElement>('emo-nude-all')?.checked,
-    family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0', autoCutout: val('emo-cutout') !== '0',
+    family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0', autoCutout: !!$<HTMLInputElement>('emo-cutout')?.checked,
     width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), excludeTags: val('emo-exclude'), pose: val('emo-pose'),
     faceTags: Object.fromEntries(BASE_EXPRESSIONS.map(e => [e.key, val(`emo-face-${e.key}`).trim()]).filter(([, tags]) => tags)), words,
   };

@@ -49,9 +49,26 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
     await page.locator('[data-emo-open="t-misun"]').click();
     await page.waitForFunction(() => document.getElementById('character-dialog').open && document.getElementById('character-form').dataset.emoView === 'faces');
     await page.waitForFunction(() => /url\("blob:/.test(document.querySelector('.emo-pic[data-face="sad"]')?.style.backgroundImage || ''));
-    // 자동 누끼 is on unless switched off, beside 투명 배경.
+    // 자동 누끼 is on unless switched off, a switch under 기존 에셋 쓰기.
     assert.equal(await page.evaluate(() => window.emotionData().settings.autoCutout), true);
+    assert.equal(await page.evaluate(() => { const rows = [...document.querySelectorAll('#emo-faces-gate .row')]; const at = id => rows.findIndex(r => r.querySelector('#' + id)); return at('emo-cutout') === at('emo-existing') + 1 && document.getElementById('emo-cutout').type === 'checkbox'; }), true);
     const sad = page.locator('.emo-tile', { has: page.locator('[data-face="sad"]') });
+    // The bot's own 「미선_sad」 is on white: the first time it is the face, its copy without the white is Omni's face of
+    // it (the bot's picture stays as it was).
+    await page.waitForFunction(() => document.querySelector('.emo-pic[data-face="sad"] .emo-chip[data-src]')?.textContent === '옴니');
+    // (Her emotion image 「미선 joy」, on white too, is her happy face's: the same.)
+    await page.waitForFunction(() => window.emotionData().checked.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.emotionData().made.map(m => [m.face, m.name]).sort()), [['happy', 'omni_오미선_happy.png'], ['sad', 'omni_오미선_sad.png']]);
+    assert.equal(await page.evaluate(async () => { const b = await createImageBitmap(new Blob([window.saved.at(-1)])), c = new OffscreenCanvas(b.width, b.height), g = c.getContext('2d'); g.drawImage(b, 0, 0); return g.getImageData(1, 1, 1, 1).data[3]; }), 0, 'its white gone');
+    // 지우기 on that copy: the bot's own picture again, and it is not taken a second time.
+    page.removeAllListeners('dialog'); page.once('dialog', d => void d.accept());
+    await sad.locator('[data-emo-del]').click();
+    await page.waitForFunction(() => document.querySelector('.emo-pic[data-face="sad"] .emo-chip[data-src]')?.textContent === '봇 에셋');
+    page.on('dialog', d => d.dismiss());
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator('.emo-pic[data-face="sad"] .emo-chip[data-src]').textContent(), '봇 에셋', 'looked at once only');
+    assert.deepEqual(await page.evaluate(() => window.emotionData().made.map(m => m.face)), ['happy']);
+    assert.deepEqual(await page.evaluate(() => window.emotionData().checked.sort()), ['assets/joy.png', 'assets/sad.png']);
     // Top-left: its name and, under it, whose picture; bottom-left its key. The bot's own picture has no 지우기.
     const chips = () => sad.locator('.emo-chip').evaluateAll(list => list.map(n => `${n.dataset.at || (n.hasAttribute('data-src') ? 'src' : 'name')}:${n.textContent}`));
     assert.deepEqual((await chips()).filter(c => !c.startsWith('name:')), ['src:봇 에셋', 'bl:sad']);
@@ -100,7 +117,7 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
     await page.locator('.emo-edit [data-ee="save"]').click();
     await page.waitForFunction(() => !document.querySelector('.emo-edit'));
     // Kept as Omni's own face under a drawn one's name, see-through where the white was, the figure and its white eye kept.
-    const made = await page.evaluate(() => window.emotionData().made.map(m => [m.person, m.face, m.name]));
+    const made = await page.evaluate(() => window.emotionData().made.filter(m => m.face === 'sad').map(m => [m.person, m.face, m.name]));
     assert.deepEqual(made, [['t-misun', 'sad', 'omni_오미선_sad.png']]);
     const pixels = await page.evaluate(async () => {
       const bitmap = await createImageBitmap(new Blob([window.saved.at(-1)])), c = new OffscreenCanvas(bitmap.width, bitmap.height), g = c.getContext('2d');
@@ -120,7 +137,7 @@ test('감정 에셋 · a face\'s name, source, key and 대사에 나옴 ride its
     await sad.locator('[data-emo-del]').click();
     await page.waitForFunction(() => document.querySelector('.emo-pic[data-face="sad"] .emo-chip[data-src]')?.textContent === '봇 에셋');
     assert.match(asked, /오미선의 「.+」 그림을 지울까요\? 봇에 원래 그림이 있으면 그 그림으로 돌아갑니다\./);
-    assert.deepEqual(await page.evaluate(() => window.emotionData().made), []);
+    assert.deepEqual(await page.evaluate(() => window.emotionData().made.map(m => m.face)), ['happy']);
     assert.equal(await page.locator('[data-nx-peek]').count(), 0);
     assert.match(await page.locator('#emo-char-status').textContent(), /그림을 지웠어요/);
     page.on('dialog', d => d.dismiss());

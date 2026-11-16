@@ -59,7 +59,11 @@ export interface EmotionSettings {
 }
 /** A sprite Omni saved. `registered`: it is in the bot's asset list (writes wait for a reply to end). `costume`: not the default one's. */
 export interface EmotionMade { bot: string; person: string; face: string; name: string; path: string; registered: boolean; at: number; costume?: number }
-export interface EmotionData { settings: EmotionSettings; seen: Record<string, string[]>; made: EmotionMade[] }
+/**
+ * checked: the bot's own pictures 자동 누끼 has looked at already (their paths), each once: taken (its copy is Omni's
+ * face now, and 지우기 on that copy leaves the bot's as it is) or left (see-through already, no one colour behind).
+ */
+export interface EmotionData { settings: EmotionSettings; seen: Record<string, string[]>; made: EmotionMade[]; checked: string[] }
 
 /** What every background began with before it was a setting: nobody in it, and a wide place. */
 export const BG_PREFIX_DEFAULT = '2::no humans::, scenery, wide shot, detailed background';
@@ -109,7 +113,8 @@ export function normalizeEmotionData(raw: unknown): EmotionData {
     registered: m.registered === true, at: Number(m.at) || 0,
     ...(Number.isInteger(m.costume) && Number(m.costume) > 0 && (Number(m.costume) < 100 || m.costume === NUDE_COSTUME) ? { costume: Number(m.costume) } : {}),
   })).filter(m => m.bot && m.name && m.path).slice(-2000);
-  return { settings: normalizeEmotionSettings(r.settings), seen, made };
+  const checked = [...new Set((Array.isArray(r.checked) ? r.checked : []).map(p => text(p, 800)).filter(Boolean))].slice(-1000);
+  return { settings: normalizeEmotionSettings(r.settings), seen, made, checked };
 }
 
 export function loadEmotionData(): Promise<EmotionData> {

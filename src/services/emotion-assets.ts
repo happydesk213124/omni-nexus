@@ -109,7 +109,33 @@ export function spriteNow(c: TtsCharacter, face: string, bot: EmotionBot, costum
   // A costume's are Omni's own (`omni_이름_c2_happy`, in the bot once registered): its number reads as part of the name.
   const names = costume ? emotionNames(c).map(name => `${name}_c${costume}`) : emotionNames(c);
   const hit = assets.find(asset => assetMatchesExpression(asset.name, names, face));
+  if (hit) cutBotPicture(c, face, bot, costume, hit.key);
   return hit ? { face, name: hit.name, path: hit.key, source: 'bot', ...worn } : null;
+}
+/**
+ * 자동 누끼 on the bot's own picture, the first time it is the face: read once (behind, one at a time, never while a reply
+ * streams in), and if its background is one plain colour its copy without it becomes Omni's face of it. The bot's
+ * picture stays as it was; one see-through already or with a room behind is left, and none is looked at twice.
+ */
+let cutting: Promise<void> = Promise.resolve();
+const cutQueued = new Set<string>();
+function cutBotPicture(c: TtsCharacter, face: string, bot: EmotionBot, costume: number, path: string): void {
+  const data = emotionData();
+  if (!data.settings.autoCutout || data.checked.includes(path) || cutQueued.has(path)) return;
+  cutQueued.add(path);
+  cutting = cutting.catch(() => {}).then(async () => {
+    while (replyStreaming()) await sleep(1500);
+    const now = await loadEmotionData();
+    if (now.checked.includes(path) || !now.settings.autoCutout) return;
+    const raw = await risuHost()?.readImage?.(path).catch(() => null);
+    const bytes = raw instanceof Uint8Array ? raw : raw instanceof ArrayBuffer ? new Uint8Array(raw) : null;
+    const out = bytes?.byteLength ? await cutoutBytes(bytes) : null;
+    now.checked = [...now.checked.filter(p => p !== path), path].slice(-1000);
+    if (out?.result === 'cut' && !now.made.some(m => m.bot === bot.id && m.person === c.id && m.face === face && (m.costume ?? 0) === costume)) {
+      await replaceSprite(c, face, bot, out.bytes, costume);
+      dbg('emotion.cutout', { message: `${c.name} · ${face}: 봇 그림의 배경을 지운 복사본`, path });
+    } else await saveEmotionData();
+  }).catch(error => { dbg('emotion.cutout', { message: String((error as Error)?.message || error) }, 'warn'); }).finally(() => cutQueued.delete(path));
 }
 export async function findSprite(c: TtsCharacter, face: string, bot: EmotionBot, costume = 0): Promise<EmotionSprite | null> {
   await loadEmotionData();

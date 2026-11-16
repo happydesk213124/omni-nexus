@@ -62,6 +62,7 @@ const FACES_PANEL = `<section class="panel" id="emo-assets" role="tabpanel" hidd
 ${row('감정 에셋 사용', sw('emo-enabled', '감정 에셋 사용'))}
 <fieldset class="snd-gate" id="emo-faces-gate">
 ${row('봇에 있는 기존 에셋 쓰기', sw('emo-existing', '봇에 있는 기존 에셋 쓰기'))}
+${row('자동 누끼 · 흰/검은 배경 지움', sw('emo-cutout', '자동 누끼'))}
 ${row('없는 그림 자동 생성', sw('emo-auto', '없는 그림 자동 생성'))}
 ${row('코스튬별 에셋 · 이름_번호', sw('emo-costumes', '코스튬별 에셋'), '<span id="emo-costumes-status" role="status"></span>')}
 ${row('기본 nude · 이름_nude', sw('emo-nude', '기본 nude'), '<span id="emo-nude-status" role="status"></span>')}
@@ -74,7 +75,6 @@ ${row('이 봇 감정 에셋 비우기 · 그림체 바꿀 때', '<button type="
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
 <label class="field"><span>Effort (V5)</span><select id="emo-effort"><option value="follow">삽화 설정 따름</option><option value="high">high</option><option value="medium">medium · 빠르고 덜 씀</option></select></label>
 <label class="field"><span>투명 배경 (V5)</span><select id="emo-transparent"><option value="1">투명</option><option value="0">흰 배경</option></select></label>
-<label class="field"><span>자동 누끼</span><select id="emo-cutout"><option value="1">켜기 · 흰/검은 배경 지움</option><option value="0">끄기</option></select></label>
 <label class="field"><span>가로</span><input id="emo-width" type="number" min="512" max="1600" step="64"></label>
 <label class="field"><span>세로</span><input id="emo-height" type="number" min="512" max="1600" step="64"></label>
 <label class="field full"><span>선행 프롬프트</span><textarea id="emo-prefix" rows="2" maxlength="2000"></textarea></label>
