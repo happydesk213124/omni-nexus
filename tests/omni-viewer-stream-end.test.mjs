@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-const built = await build({ stdin: { contents: "import {installOmniViewer} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {messageBaked} from './src/services/bake-events';Object.assign(window,{installOmniViewer,loadTtsData,ttsData,loadEmotionData,emotionData,messageBaked});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+const built = await build({ stdin: { contents: "import {installOmniViewer} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';import {messageBaked} from './src/services/bake-events';import {omniTts} from './src/services/tts-runtime';import {omniSound} from './src/services/sound-runtime';import {updateSoundSettings} from './src/storage/sound-store';Object.assign(window,{installOmniViewer,loadTtsData,ttsData,loadEmotionData,emotionData,messageBaked,omniTts,omniSound,updateSoundSettings});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 
 /**
  * A chat whose newest reply the viewer opens on, drawn as Risu draws it: a reply's lines as paragraphs, a baked
@@ -220,6 +220,35 @@ test('옴니 뷰어 over a restricted SafeDOM, AUTO while a reply streams in: a 
       await page.evaluate(t => { window.bot.chats[0].message[2].data = t; window.renderChat(); }, settled);
       await page.waitForFunction(() => (document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '').includes('둘이야'), null, { timeout: 6000 });
     } finally { flowing = false; await chunks; }
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+test('옴니 뷰어 over a restricted SafeDOM, a reply that ends while its last line speaks: the voice goes on, the music is not picked again', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const { page, errors, shows, tick } = await viewerPage(browser);
+    // What the viewer asks of the voice and the music, as it asks it (nothing is made or played).
+    await page.evaluate(async () => {
+      window.voiced = []; window.picked = [];
+      window.omniTts.play = async requests => { window.voiced.push(requests[0].segment.text); };
+      window.omniTts.prefetch = async () => {};
+      window.omniSound.playBgmForTags = async tags => { window.picked.push(tags.join(',')); };
+      window.ttsData().settings.enabled = true;
+      await window.updateSoundSettings({ bgmEnabled: true });
+    });
+    const part = '[[bgm:calm,cafe,slow]]\n하린: "하나야."\n';
+    await page.evaluate(t => { window.bot.chats[0].message.push({ role: 'char', chatId: 'r1', data: t.trim() }); window.renderChat(); }, part);
+    await tick(part);
+    await shows(/하나야/);
+    await page.waitForFunction(() => window.voiced.length === 1 && window.picked.length === 1);
+    // Saved, the reply's lines stand elsewhere than they streamed (a line before them): its cue's id is another.
+    await page.evaluate(t => { window.bot.chats[0].message[2].data = t; window.renderChat(); }, '\n\n' + part.trim());
+    await page.waitForTimeout(5600);
+    await page.waitForFunction(() => document.querySelector('[x-omni-vn] [data-vn-end]'));
+    await page.waitForTimeout(600);
+    assert.deepEqual(await page.evaluate(() => window.voiced), ['하나야.'], "the line's voice is not asked again at the reply's end");
+    assert.deepEqual(await page.evaluate(() => window.picked), ['calm,cafe,slow'], 'the music cue does not play again');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

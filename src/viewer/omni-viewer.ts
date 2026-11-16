@@ -413,7 +413,15 @@ function bgNote(): string {
 const effectsOn = (): boolean => viewerPrefs().sfx && soundReady() && soundData().settings.sfxEnabled;
 /** BGM tags and effect words in the reply, played where the reading reaches them. */
 let cues: TtsSegment[] = [];
+// By what the cue says and which of its kind it is, not by its id (its line's number): the saved reply puts its lines
+// elsewhere than the stream did, and every cue it held played again at its end (the music picked anew, effects twice).
 const fired = new Set<string>();
+let cueKeys = new Map<string, string>();
+function keyCues(list: readonly TtsSegment[]): Map<string, string> {
+  const seen = new Map<string, number>(), out = new Map<string, string>();
+  for (const cue of list) { const what = `${cue.kind}|${cue.text}`, n = seen.get(what) ?? 0; seen.set(what, n + 1); out.set(cue.id, `${what}|${n}`); }
+  return out;
+}
 function soundCues() {
   if (!soundReady()) return undefined;
   const s = soundData().settings;
@@ -437,7 +445,7 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   }
   // risu64 난독: matched against the chat as it shows them, the hidden words are shown and read as words.
   if (viewerPrefs().revealBase64) segments = revealSegments(segments, true);
-  cues = segments.filter(isSoundSegment);
+  cues = segments.filter(isSoundSegment); cueKeys = keyCues(cues);
   // Kept by what was read, not by its number or offset (keep-place.ts): the saved reply holds fewer scenes than the
   // stream did, and shorter text before them.
   const before = keepPlace ? scenes : [], was = at;
@@ -445,7 +453,14 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   clockMarks = clockLines(settled);
   // The stage keeps its background until the new reply's place is up (or the reply says none).
   if (!keepPlace) { at = 0; fired.clear(); lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
-  else { const i = keptPlace(before, was, scenes); if (i >= 0) at = i; }
+  else {
+    const i = keptPlace(before, was, scenes), old = before[was];
+    if (i >= 0) at = i;
+    // The line on screen, found again in the saved reply under another id (its line's number moved): still the line
+    // shown. Taken for a new one, its voice started over and its letters came in again.
+    const now = scenes[at];
+    if (i >= 0 && old && now && shownSig === `${old.id}|${old.text}` && old.kind === now.kind && old.text === now.text && (old.speaker ?? '') === (now.speaker ?? '')) shownSig = `${now.id}|${now.text}`;
+  }
   placeMarks = placeMarkers(source);
   at = Math.max(0, Math.min(at, scenes.length - 1));
 }
@@ -464,8 +479,9 @@ async function toggleMusic(): Promise<void> {
 /** Cues up to this scene that have not played: the music changes and effects sound where they are written. */
 function playCues(scene: ViewerScene): void {
   for (const cue of cues) {
-    if (cue.start > scene.end || fired.has(cue.id)) continue;
-    fired.add(cue.id);
+    const key = cueKeys.get(cue.id) ?? cue.id;
+    if (cue.start > scene.end || fired.has(key)) continue;
+    fired.add(key);
     const tags = (cue as TtsSegment & { tags?: string[] }).tags;
     if (cue.kind === 'bgm' && tags?.length) {
       if (bgmHeld) { heldTags = tags; heldScene = cue.context || ''; }
@@ -1476,13 +1492,16 @@ async function render(force = false): Promise<void> {
       behind(mine, later);
       return;
     }
+    const shownWas = shownSig;
     shownSig = sig; shownEnd = end;
     const { html, revealMs, readMs } = boxHtml({ speaker: scene.kind === 'line' ? resolveName(scene.speaker) : '', costume: scene.kind === 'line' ? costumeName(scene) : '', text: scene.text, narration: scene.kind !== 'line', end, pace: SPEED_PACE[viewerPrefs().speed] });
     revealUntil = revealedAt === at ? 0 : Date.now() + revealMs;
     // The line and its stage go out first, together (the bridge keeps their order): all else follows them.
     const out = Promise.all([elementsAtEnd(end), box.setInnerHTML(html), writeStage(stage)]);
-    // The voice and the music start as it goes: whatever they ask of Risu queues behind it.
-    voice(scene);
+    // The voice and the music start as it goes: whatever they ask of Risu queues behind it. The same line again with
+    // only the end cue new (the reply saved at its end) keeps the voice it has: asked again under the saved reply's
+    // message id, it started over from the top.
+    if (sig !== shownWas || force) voice(scene);
     playCues(scene);
     await out;
     // A tap that came while the box went out: the line is complete now too.
