@@ -43,10 +43,22 @@ function ttsStatusHint(status: number | undefined, service: TtsService = 'fish')
   return status ? hints[status] || '' : '';
 }
 export class TtsHttpError extends Error {
-  constructor(readonly status: number | undefined, readonly service: TtsService = 'fish') {
-    super(`음성 API 요청 실패 (${status || 'network'})${ttsStatusHint(status, service)}`);
+  /** `detail`: what the service itself said was wrong (Google's error message), when it said. */
+  constructor(readonly status: number | undefined, readonly service: TtsService = 'fish', readonly detail = '') {
+    super(`음성 API 요청 실패 (${status || 'network'})${ttsStatusHint(status, service)}${detail ? ` · ${detail}` : ''}`);
     this.name = 'TtsHttpError';
   }
+}
+/**
+ * What a refusal's body says is wrong: Google answers `{ error: { message, status } }`. Read for Gemini only (a 400
+ * there is "something in the request", and only the message says what); never thrown from.
+ */
+async function refusalDetail(response: TtsResponse): Promise<string> {
+  try {
+    const body: unknown = response.json ? await response.json() : typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+    const error = objectValue(objectValue(Array.isArray(body) ? body[0] : body).error);
+    return [typeof error.status === 'string' ? error.status : '', typeof error.message === 'string' ? error.message : ''].filter(Boolean).join(': ').replace(/\s+/g, ' ').slice(0, 300);
+  } catch { return ''; }
 }
 /**
  * `service` 'irodori': the user's own server, usually this PC or one on the LAN, so plain http is allowed (as for
@@ -71,7 +83,7 @@ export async function ttsFetch(url: string, options: RequestInit = {}, service: 
     // translation must explicitly use GET or Risu rejects the missing body.
     const request:RequestInit & {requestTimeoutMs:number}={method:'GET',...options,signal:controller.signal,requestTimeoutMs:90_000};
     const response: TtsResponse = await host.nativeFetch(url, request);
-    if (response.ok === false || (response.status != null && response.status >= 400)) throw new TtsHttpError(response.status, service);
+    if (response.ok === false || (response.status != null && response.status >= 400)) throw new TtsHttpError(response.status, service, service === 'gemini' ? await refusalDetail(response) : '');
     return { ok:response.ok, status:response.status, data:response.data, headers:response.headers,
       json:response.json ? () => response.json!() : undefined, arrayBuffer:response.arrayBuffer ? () => response.arrayBuffer!() : undefined, finish };
   } catch(error) {

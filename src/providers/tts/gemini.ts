@@ -145,12 +145,13 @@ async function voicesEndpoint(s: Gemini, location = ''): Promise<{ url: string; 
   return { url: `https://${host}/v1beta1/projects/${encodeURIComponent(account.project_id)}/locations/${encodeURIComponent(where)}/voices`,
     headers: { Authorization: `Bearer ${await vertexToken(account)}`, 'Content-Type': 'application/json' }, camel: true };
 }
-/** Vertex's voices may not be served from `global`: refused there as not found, a region is tried once. */
+/** Vertex's voices may not be served from `global`: refused there (not found, or a bad request), a region is tried once. */
 async function withVoices<T>(s: Gemini, work: (at: { url: string; headers: Record<string, string>; camel: boolean }) => Promise<T>): Promise<T> {
   try { return await work(await voicesEndpoint(s)); }
   catch (error) {
-    if (s.gemini.via !== 'vertex' || (s.gemini.location.trim() || 'global') !== 'global' || !(error instanceof TtsHttpError) || error.status !== 404) throw error;
-    return work(await voicesEndpoint(s, 'us-central1'));
+    if (s.gemini.via !== 'vertex' || (s.gemini.location.trim() || 'global') !== 'global' || !(error instanceof TtsHttpError) || (error.status !== 404 && error.status !== 400)) throw error;
+    // The region's own refusal says less than the first one: that is the one told.
+    try { return await work(await voicesEndpoint(s, 'us-central1')); } catch { throw error; }
   }
 }
 
@@ -186,9 +187,18 @@ export async function designGeminiVoice(s: Gemini, design: GeminiVoiceDesign): P
   if (!input || input.length > 2000) throw new Error('목소리 설명은 1~2000자여야 합니다.');
   const model = modelOf(s);
   return withVoices(s, async ({ url, headers, camel }) => {
-    const voice: Record<string, unknown> = { type: 'prompted', ...(geminiNewShape(model) ? { model } : {}), [camel ? 'displayName' : 'display_name']: name,
-      ...(design.gender ? { gender: design.gender } : {}), ...(design.language ? { [camel ? 'languageCode' : 'language_code']: design.language } : {}), description: input.slice(0, 300), prompted: { input } };
-    const made = objectValue(await ttsJson(await ttsFetch(url, { method: 'POST', headers, body: JSON.stringify({ store: true, voice }) }, 'gemini')));
+    // What a voice is asked with, from all that is known of it down to the least a design takes (its type, its name,
+    // the description): a field one side refuses (a model name it does not design with, a language) is left out and
+    // the voice asked for again. The first refusal is the one told.
+    const base: Record<string, unknown> = { type: 'prompted', [camel ? 'displayName' : 'display_name']: name, prompted: { input } };
+    const extras = { ...(design.gender ? { gender: design.gender } : {}), ...(design.language ? { [camel ? 'languageCode' : 'language_code']: design.language } : {}), description: input.slice(0, 300) };
+    const bodies = [...(geminiNewShape(model) ? [{ ...base, model, ...extras }] : []), { ...base, ...extras }, base];
+    let made: Record<string, unknown> | undefined, refused: unknown;
+    for (const voice of bodies) {
+      try { made = objectValue(await ttsJson(await ttsFetch(url, { method: 'POST', headers, body: JSON.stringify({ store: true, voice }) }, 'gemini'))); break; }
+      catch (error) { if (!(error instanceof TtsHttpError) || error.status !== 400) throw error; refused ??= error; }
+    }
+    if (!made) throw refused;
     const row = objectValue(made.voice ?? made), listed = geminiListedVoice({ ...row, display_name: name, description: '' });
     if (!listed) throw new Error('Gemini가 만든 목소리의 ID를 받지 못했습니다.');
     const audio = objectValue(row.sample_audio ?? row.sampleAudio), data = typeof audio.data === 'string' ? audio.data : '';

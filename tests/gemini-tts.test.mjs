@@ -122,6 +122,13 @@ test('voice design: a description becomes a stored voice (its id the voice from 
   const post = vertex.find(c => c.url.includes('/voices'));
   assert.equal(post.url, 'https://aiplatform.googleapis.com/v1beta1/projects/make-proj/locations/global/voices');
   assert.deepEqual(JSON.parse(post.body).voice, { type: 'prompted', displayName: 'Mina', description: 'bright', prompted: { input: 'bright' } });
+  // Refused as a bad request, the voice is asked for again with less (no model, then its name and description alone);
+  // Google's own words for what was wrong are told when every form is refused.
+  const picky = host((url, init) => JSON.parse(init.body).voice.model ? { status: 400, json: { error: { status: 'INVALID_ARGUMENT', message: 'Unsupported model for voice design.' } } } : { status: 200, json: { id: 'voice_less' } });
+  assert.equal((await api.designGeminiVoice(settings({ key: 'AIza-test' }), { name: 'A', description: 'calm', gender: 'female' })).voice.fishId, 'voice_less');
+  assert.deepEqual(picky.map(c => Object.keys(JSON.parse(c.body).voice)), [['type', 'display_name', 'prompted', 'model', 'gender', 'description'], ['type', 'display_name', 'prompted', 'gender', 'description']]);
+  host(() => ({ status: 400, json: { error: { status: 'INVALID_ARGUMENT', message: 'Voice design is not enabled for this project.' } } }));
+  await assert.rejects(api.designGeminiVoice(settings({ key: 'AIza-test' }), { name: 'A', description: 'calm' }), /\(400\).*INVALID_ARGUMENT: Voice design is not enabled for this project\./);
   delete globalThis.risuai;
 });
 
