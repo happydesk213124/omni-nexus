@@ -7,7 +7,7 @@ import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParenthetical
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
-import { loadTtsData, ttsData, subscribeTts, updateTtsSettings } from '../storage/tts-store';
+import { loadTtsData, ttsData, ttsVolumeOf, subscribeTts, updateTtsSettings } from '../storage/tts-store';
 import { ensureTtsModule } from '../storage/tts-module';
 import { speechReady, synthesizeSpeech } from '../providers/tts/speech';
 import { TtsHttpError } from '../providers/tts/http';
@@ -101,7 +101,8 @@ export class OmniTtsRuntime {
     // Irodori's server makes one line at a time unless it was set up for more: requests past that only wait in its queue.
     const slots = s.engine === 'irodori' ? s.irodori.concurrency : s.concurrency;
     this.queue.configure(slots, Math.min(s.background, slots));
-    this.player.configure(s.rate, s.volume);
+    // The line playing keeps its own kind's level (a narration line, narration's): a level moved meanwhile is heard at once.
+    this.player.configure(s.rate, ttsVolumeOf(s, this.current?.segment.kind));
     const generation = JSON.stringify([s.enabled, s.engine, s.irodori, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
@@ -164,7 +165,7 @@ export class OmniTtsRuntime {
     await this.player.play(key, async () => {
       const prepared = await this.prepare([request], valid);
       if (!valid() || !prepared[0]) throw new Error('재생 요청이 변경되었습니다.');
-      this.player.configure(prepared[0].rate ?? ttsData().settings.rate, ttsData().settings.volume, prepared[0].gain);
+      this.player.configure(prepared[0].rate ?? ttsData().settings.rate, ttsVolumeOf(ttsData().settings, request.segment.kind), prepared[0].gain);
       return this.audio(prepared[0], 0, valid);
     });
   }

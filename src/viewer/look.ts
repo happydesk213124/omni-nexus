@@ -94,6 +94,9 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-text],[x-omni-vn] [data-vn-log] p{user-select:text!important;-webkit-user-select:text!important;-webkit-touch-callout:default}
 [x-omni-vn] [data-vn-text] ::selection,[x-omni-vn] [data-vn-log] ::selection{background:rgba(227,194,122,.42);color:#fff}
 /* The line's voice is being made: a spinner at the box's corner, by the arrow. */
+/* The effect sounding, its word above the counter (소리 › 글자 표시): up as it starts, down as it stops. In the box, so it
+   rides the box's top however tall the line makes it; the stage's style text says what it reads and whether it is up. */
+[x-omni-vn] [data-vn-sfx]{position:absolute;right:14px;bottom:calc(100% + 16px);max-width:min(64%,260px);padding:5px 13px;border-radius:999px;font:600 12.5px/1.35 system-ui,sans-serif;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#9ff0de;background:rgba(10,9,17,.9);border:1px solid rgba(127,227,208,.5);box-shadow:0 0 16px -5px rgba(127,227,208,.7);pointer-events:none;opacity:0;translate:0 12px;transition:opacity .3s ease,translate .3s ease}
 [x-omni-vn] [data-vn-voicewait]{display:none;position:absolute;right:36px;bottom:46px;width:14px;height:14px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite;pointer-events:none}
 [x-omni-vn] [data-vn-next]{position:absolute;right:18px;bottom:50px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--gold);opacity:0;animation:vn-next .5s ease-in-out 13 alternate forwards}
 /* The story so far has ended: Risu's input below is where it goes on. */
@@ -206,8 +209,30 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-strip] [x-vn-thumb]{position:static!important;inset:auto!important;flex:none;display:block;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;aspect-ratio:3/2;object-fit:cover;margin:0!important;border-radius:8px!important;border:1px solid rgba(255,255,255,.18)!important}
 [x-omni-vn] [data-vn-strip] div[x-vn-thumb]{display:flex;align-items:center;justify-content:center;font-size:11px;color:#bdb4cf;background:rgba(255,255,255,.05)}
 [x-omni-vn] [data-vn-strip]:empty::before{content:"";align-self:center;width:18px;height:18px;margin:10px;border-radius:50%;border:2px solid rgba(227,194,122,.25);border-top-color:var(--gold);animation:vn-spin .8s linear infinite}
-[x-omni-vn] [data-vn-msgs]{position:absolute;top:56px;left:0;width:min(56%,250px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding:10px;z-index:5;display:flex;flex-direction:column;gap:6px;
-  background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0;translate:-105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
+/* 소리 (VOICE): each sound's switch and level, sliding in under the top bar from the right as 메시지 does from the left.
+   A level is set where it is pressed and where the finger lets go; dragged, its fill and figure follow the finger. */
+[x-omni-vn] [data-vn-sound]{position:absolute;top:56px;right:0;width:min(86%,320px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);overflow:auto;overscroll-behavior:contain;z-index:6;padding:8px 10px 10px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;
+  background:rgba(10,9,17,.95);border:1px solid var(--line);border-right:0;border-radius:14px 0 0 14px;box-shadow:0 8px 26px rgba(0,0,0,.5);translate:105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
+[x-omni-vn] [data-vn-sound] h5{margin:2px 4px 6px;font:600 12px/1.4 system-ui,sans-serif;letter-spacing:.05em;color:var(--gold)}
+[x-omni-vn] [data-vn-srow]{display:grid;grid-template-columns:40px 64px 1fr 40px;align-items:center;gap:4px;min-height:44px}
+[x-omni-vn] [data-vn-srow][data-sub]{min-height:36px}
+[x-omni-vn] [data-vn-srow] b{font:600 12.5px/1.2 system-ui,sans-serif;color:#efe9da;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[x-omni-vn] [data-vn-srow][data-sub] b{font-weight:500;font-size:11.5px;color:#bdb4c8}
+[x-omni-vn] [data-vn-srow] em{font:500 11px/1 system-ui,sans-serif;font-style:normal;color:#cfc6b2;text-align:right}
+[x-omni-vn] [data-vn-snd$="-mute"]{width:36px;height:36px;min-width:0;padding:0;border-radius:10px;font-size:16px;line-height:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+[x-omni-vn] [data-vn-srow][data-off] [data-vn-snd$="-mute"]{opacity:.55}
+[x-omni-vn] [data-vn-srow][data-off] b,[x-omni-vn] [data-vn-srow][data-off] [data-vn-snd$="-bar"],[x-omni-vn] [data-vn-srow][data-off] em{opacity:.45}
+[x-omni-vn] [data-vn-snd$="-bar"]{position:relative;height:32px;cursor:pointer;touch-action:none}
+[x-omni-vn] [data-vn-snd$="-bar"]::before{content:"";position:absolute;left:0;right:0;top:50%;height:6px;margin-top:-3px;border-radius:3px;background:rgba(255,255,255,.14)}
+[x-omni-vn] [data-vn-snd$="-bar"] span{position:absolute;left:0;top:50%;height:6px;margin-top:-3px;border-radius:3px;background:var(--gold)}
+[x-omni-vn] [data-vn-snd$="-bar"] span::after{content:"";position:absolute;right:-8px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;background:#f6e7c4;box-shadow:0 1px 6px rgba(0,0,0,.5)}
+[x-omni-vn] [data-vn-snd="sfxtext-mute"]{width:auto;padding:0 10px;font-size:11.5px;grid-column:3 / span 2;justify-self:start}
+/* 메시지 slides in with 최신 beside its foot, by the newest reply listed: away from 기록 in the bottom row, where a
+   finger meant for 기록 took the reader to the newest reply. The list scrolls inside; 최신 rides outside it. */
+[x-omni-vn] [data-vn-msgwrap]{position:absolute;top:56px;left:0;width:min(56%,250px);max-height:calc(100% - 56px - clamp(136px,26%,200px) - 24px);display:flex;flex-direction:column;z-index:5;translate:-105% 0;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
+[x-omni-vn] [data-vn-msgs]{flex:0 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding:10px;display:flex;flex-direction:column;gap:6px;
+  background:rgba(10,9,17,.94);border:1px solid var(--line);border-left:0;border-radius:0 14px 14px 0}
+[x-omni-vn] [data-vn-msgwrap] [data-vn-act="newest"]{display:none;position:absolute;left:calc(100% + 8px);bottom:6px;align-items:center;gap:4px;white-space:nowrap;color:var(--gold);background:rgba(10,9,17,.9);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.45)}
 [x-omni-vn] [data-vn-msg]{flex:none;padding:7px 10px;border-radius:9px;cursor:pointer;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);transition:background .15s,border-color .15s}
 [x-omni-vn] [data-vn-msg][data-now]{background:rgba(227,194,122,.1);border-color:var(--gold)}
 [x-omni-vn] [data-vn-msg] b{margin-right:6px;font-size:11px;color:var(--gold)}
@@ -220,6 +245,9 @@ export const STATIC_CSS = `
 [x-omni-vn] [data-vn-log] p{margin:0 0 6px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:background .15s}
 [x-omni-vn] [data-vn-log]{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 [x-omni-vn] [data-vn-log] b{color:var(--gold);margin-right:6px}
+[x-omni-vn] [data-vn-log] i{font:500 11px/1 system-ui,sans-serif;font-style:normal;color:#8f86a3;margin-right:7px;letter-spacing:.02em}
+[x-omni-vn] [data-vn-log] [data-cg]{color:#e3c27a;font:500 13px/1.6 system-ui,sans-serif}
+[x-omni-vn] [data-vn-log] [data-sfx]{margin-left:18px;padding:2px 8px;color:#9ff0de;font:500 12.5px/1.6 system-ui,sans-serif}
 [x-omni-vn] [data-vn-log] h5{margin:0 0 10px;font:600 12px/1.4 system-ui,sans-serif;letter-spacing:.05em;color:var(--gold)}
 [x-omni-vn] [data-vn-log] p{color:#cbc3d6}
 [x-omni-vn] [data-vn-log] [data-now]{color:#fff;background:rgba(227,194,122,.16);border-left:3px solid var(--gold);padding-left:8px}
@@ -265,17 +293,18 @@ export const COUNT_STEPS = [['cmindown', '−', '최소 줄이기'], ['cminup', 
 const countButton = ([act, glyph, label]: typeof COUNT_STEPS[number]) => `<button data-vn-act="${act}" type="button" title="${label}" aria-label="${label}">${glyph}</button>`;
 const COUNT_BAR = `${countButton(COUNT_STEPS[0])}${countButton(COUNT_STEPS[1])}<span data-vn-range></span>${countButton(COUNT_STEPS[2])}${countButton(COUNT_STEPS[3])}`;
 const CHIPS = Array.from({ length: CAST_CHIPS }, (_, i) => `<button data-vn-act="cgc${i + 1}" type="button"></button>`).join('');
-// VOICE and AUTO sit up top: the bottom row keeps 최신 · 기록 · 나레이션 · BGM and the arrows, big enough for a finger on a phone.
+// VOICE and AUTO sit up top: the bottom row keeps 기록 · 나레이션 · BGM · 효과음 and the arrows, big enough for a finger on a phone.
+// 최신 is beside 메시지's foot (it was next to 기록, and a finger meant for 기록 took it); VOICE opens 소리's panel under it.
 export const FRAME = `<div data-vn-bg></div><div data-vn-cast></div><div data-vn-cg></div><button data-vn-act="zoom" type="button" aria-label="접힌 삽화 크기"></button><button data-vn-act="back" type="button" aria-label="이전"><b>◀</b><span>이전</span></button><div data-vn-stickers></div><div data-vn-pop><b data-vn-spin></b><i data-vn-popx>닫기</i></div><div data-vn-groupbar><div data-vn-gb="select"><b>☑️</b><span>선택</span></div><div data-vn-gb="group"><b>🔗</b><span>그룹화</span></div><div data-vn-gb="split"><b>✂️</b><span>분리</span></div><div data-vn-gb="absent"><b>🙈</b><span>없는것 숨김</span></div></div>
-<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="eledit" type="button">요소 편집</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div>
+<div data-vn-hud><div data-vn-clock></div><div data-vn-busy></div><button data-vn-act="pink" type="button" title="이 답장의 분홍 칸 전체 생성" aria-label="이 답장의 분홍 칸 전체 생성">전체 생성</button><button data-vn-act="eledit" type="button">요소 편집</button><button data-vn-act="set" type="button" aria-label="뷰어 설정">⚙</button><button data-vn-act="cast" type="button" aria-label="이 답장의 TTS 캐릭터 설정">👨‍👩‍👧‍👦</button><button data-vn-act="voice" type="button">VOICE</button><button data-vn-act="auto" type="button">AUTO</button><button data-vn-act="close" type="button" aria-label="닫기">✕</button></div><div data-vn-sound></div>
 <div data-vn-box></div><div data-vn-log></div>
-<button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgs></div>
+<button data-vn-act="msgs" type="button">메시지</button><div data-vn-msgwrap><div data-vn-msgs></div><button data-vn-act="newest" type="button" aria-label="최신 답장으로">최신 ▸</button></div>
 <button data-vn-act="tags" type="button">태그</button><div data-vn-tagbar>${TAG_BAR}<div data-vn-counts>${COUNT_BAR}</div></div>
 <button data-vn-act="strip" type="button">삽화</button><div data-vn-strip></div>
 <button data-vn-act="elems" type="button">요소</button><div data-vn-edit></div><div data-vn-choices></div>
 <div data-vn-note></div><div data-vn-cgchips>${CHIPS}</div><div data-vn-cgbar><button data-vn-act="cgfull" type="button">⛶ 전체화면</button><button data-vn-act="cgroll" type="button" aria-label="이 삽화 리롤">🎲 리롤</button><button data-vn-act="cgtags" type="button" aria-label="샷 태그 수정">🔮 샷 태그</button><button data-vn-act="cgclose" type="button">▲ 접기</button></div>
 <div data-vn-dock><button data-vn-act="cgprev" type="button" aria-label="이전 삽화">◀</button><button data-vn-act="cgfit" type="button" aria-label="맞춤 / 채움">🔍</button><button data-vn-act="cgnext" type="button" aria-label="다음 삽화">▶</button><button data-vn-act="cgback" type="button">닫기</button></div>
-<div data-vn-menu><button data-vn-act="newest" type="button">최신</button><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="rate" type="button" aria-label="음성 배속"></button><button data-vn-act="first" type="button" aria-label="이 답장의 처음">◀</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button><button data-vn-act="last" type="button" aria-label="이 답장의 끝">▶</button></div><div data-vn-rates></div>`;
+<div data-vn-menu><button data-vn-act="log" type="button">기록</button><button data-vn-act="narr" type="button">나레이션</button><button data-vn-act="bgm" type="button">BGM</button><button data-vn-act="sfx" type="button">효과음</button><button data-vn-act="rate" type="button" aria-label="음성 배속"></button><button data-vn-act="first" type="button" aria-label="이 답장의 처음">◀</button><button data-vn-act="prev" type="button" aria-label="이전">◀</button><button data-vn-act="next" type="button" aria-label="다음">▶</button><button data-vn-act="last" type="button" aria-label="이 답장의 끝">▶</button></div><div data-vn-rates></div>`;
 
 /** A person's place on stage: an oval with their name until their picture comes. */
 export const personHtml = (name: string): string => `<div data-vn-sil style="--c:${accentOf(name)}"><b>${esc(name)}</b></div>`;
@@ -303,6 +332,10 @@ export interface StageState {
   strip?: boolean;
   /** The left-hand list of the chat's replies is open. */
   msgs?: boolean;
+  /** 소리 (VOICE) is open: each sound's switch and level. */
+  sound?: boolean;
+  /** The last effect word heard over the box, and whether its effect still sounds (up) or stopped (sliding down). */
+  sfxNote?: { text: string; on: boolean };
   /** "3 / 12": drawn by the style text itself, so it costs no call of its own. */
   count?: string;
   /** The reply's last CG: coming in, folded at the top, shown again, or full screen. */
@@ -383,7 +416,8 @@ function breathing(s: StageState): string {
 const SPOTS: Record<number, number[]> = { 1: [50], 2: [33, 67], 3: [24, 50, 76] };
 /**
  * A folded picture's height at each of its + button's sizes, 60px down from the top: the small thumb, then a
- * share of the stage that stays clear of the line's box at the bottom (a wide picture is fitted inside it).
+ * share of the stage that stays clear of the line's box at the bottom (a wide picture meets the width limit first,
+ * and its box is only as tall as it then is).
  */
 const foldHeight = (size: number | undefined): string => size === 3 ? '45%' : size === 2 ? '30%' : '84px';
 /**
@@ -438,7 +472,11 @@ export function stageCss(s: StageState): string {
     // Folded, the picture is a thumb above the people (their z-index is at most 3): a head in front of it hid it.
     // Every place is !important, here and below: the picture is the chat's <img> cloned with its inline style, and a
     // picture drawn in a spinner's slot carries inset:0 and object-fit there (it put the big one's middle on the frame's corner).
-    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:${foldHeight(s.cgSize)}!important;width:auto!important;max-width:${s.cgSize === 2 || s.cgSize === 3 ? '60%' : '120px'}!important;max-height:${foldHeight(s.cgSize)}!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}${foldZoom(s.cgSize, s.zoomAt)}`
+    s.cg && s.cgView === 'fold' ? `[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{display:block;left:auto!important;right:12px!important;top:60px!important;bottom:auto!important;height:${foldHeight(s.cgSize)}!important;width:auto!important;max-width:${s.cgSize === 2 || s.cgSize === 3 ? '60%' : '120px'}!important;max-height:${foldHeight(s.cgSize)}!important;translate:0 0;rotate:0deg;border-width:2px!important;animation:none;opacity:.92;z-index:4}`
+      // A picture's box is the picture: both sides auto under both limits keeps its own shape (a replaced element's
+      // limits are met keeping its ratio). With the height set, a wide one held to the width limit stood in a box
+      // as tall as ever, blank above and below it. The frame of one still being drawn has no shape but its own.
+      + `[x-omni-vn] img[x-vn-cg="${s.cg}"]{height:auto!important}${foldZoom(s.cgSize, s.zoomAt)}`
       // With a mouse the folded picture takes the pointer, so its + shows while it is over it (a tap is still read by
       // where it is). Not on a phone: a press held on a picture that takes the pointer brings up its save sheet.
       + `@media (hover:hover){[x-omni-vn] :is(img,div)[x-vn-cg="${s.cg}"]{pointer-events:auto;-webkit-user-drag:none}}`
@@ -451,7 +489,10 @@ export function stageCss(s: StageState): string {
     // The menu's own colour rule is [data-vn-menu] button: these outrank it, or they never show.
     s.log ? `[x-omni-vn] [data-vn-log]{display:block}[x-omni-vn] [data-vn-menu] [data-vn-act="log"]{color:var(--gold)}${(s.logSel ?? -1) >= 0 ? `[x-omni-vn] [data-vn-log] p:nth-of-type(${s.logSel! + 1}){outline:2px solid var(--gold);outline-offset:-2px}` : ''}` : '',
     s.strip ? '[x-omni-vn] [data-vn-strip]{translate:0 0}[x-omni-vn] [data-vn-act="strip"]{opacity:0}' : '',
-    s.msgs ? '[x-omni-vn] [data-vn-msgs]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}' : '',
+    s.sound ? '[x-omni-vn] [data-vn-sound]{translate:0 0}[x-omni-vn] [data-vn-hud] [data-vn-act="voice"]{color:var(--gold);border-color:var(--gold)}' : '',
+    // Its word stays written while it slides down: only whether it is up changes when the effect stops.
+    s.sfxNote ? `[x-omni-vn] [data-vn-sfx]::after{content:${JSON.stringify(`🔊 ${s.sfxNote.text}`)}}${s.sfxNote.on ? '[x-omni-vn] [data-vn-sfx]{opacity:1;translate:0 0}' : ''}` : '',
+    s.msgs ? '[x-omni-vn] [data-vn-msgwrap]{translate:0 0}[x-omni-vn] [data-vn-act="msgs"]{opacity:0}[x-omni-vn] [data-vn-msgwrap] [data-vn-act="newest"]{display:inline-flex}' : '',
     s.count ? `[x-omni-vn] [data-vn-box]::after{content:"${s.count.replace(/["\\]/g, '')}"}` : '',
     breathing(s),
     s.busy ? '[x-omni-vn] [data-vn-busy]{display:block}' : '',
@@ -488,7 +529,7 @@ export function boxHtml(input: { speaker: string; text: string; narration: boole
   const name = input.narration || !input.speaker ? '' : esc(input.speaker) + (input.costume ? `<span data-vn-costume> · ${esc(input.costume)}</span>` : '');
   const tail = input.end ? `<div data-vn-end style="animation-delay:${revealMs}ms">메시지를 입력해 주세요 ▼</div>` : `<div data-vn-next style="animation-delay:${revealMs}ms"></div>`;
   return {
-    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="animation-duration:${revealMs}ms">${esc(shown.join(''))}</div>${tail}<div data-vn-voicewait></div>`,
+    html: `<div data-vn-name style="--c:${accentOf(input.speaker || '?')}">${name}</div><div data-vn-text${input.narration ? ' data-narr' : ''} style="animation-duration:${revealMs}ms">${esc(shown.join(''))}</div>${tail}<div data-vn-voicewait></div><div data-vn-sfx></div>`,
     revealMs, readMs,
   };
 }

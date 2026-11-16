@@ -123,7 +123,10 @@ test('요소: a sticker over the people and under the box, the 요소 button kep
     // makes slow: the stage is put up one at a time, so one sticker (two at once left one out of the list, twice over
     // on the stage and not to be dragged).
     await page.evaluate(() => { window.slowCreate = 120; });
-    await press('newest'); await press('newest');
+    // 최신 is beside 메시지's foot: two presses at once, before the first has read the reply in (the list goes with it).
+    await press('msgs'); await page.waitForTimeout(450);
+    const newest = await page.locator('[x-omni-vn] [data-vn-act="newest"]').boundingBox();
+    await page.evaluate(({ x, y }) => { for (let i = 0; i < 2; i++) document.dispatchEvent(new MouseEvent('click', { clientX: x, clientY: y, bubbles: true })); }, { x: newest.x + newest.width / 2, y: newest.y + newest.height / 2 });
     await page.waitForTimeout(2500);
     await page.evaluate(() => { window.slowCreate = 0; });
     await page.waitForTimeout(500);

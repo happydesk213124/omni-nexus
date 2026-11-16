@@ -162,7 +162,7 @@ test("the picture's bar: 🎲 리롤 and 🔮 샷 태그 beside 전체화면, di
   assert.match(api.FRAME, /<div data-vn-cgbar><button data-vn-act="cgfull"[^>]*>⛶ 전체화면<\/button><button data-vn-act="cgroll"[^>]*>🎲 리롤<\/button><button data-vn-act="cgtags"[^>]*>🔮 샷 태그<\/button><button data-vn-act="cgclose"/);
   assert.match(stage({ cg: 'p1', cgView: 'show', cgLocked: true }), /\[data-vn-act="cgroll"\],\[x-omni-vn\] \[data-vn-cgbar\] \[data-vn-act="cgtags"\]\{opacity:\.35\}/);
   assert.doesNotMatch(stage({ cg: 'p1', cgView: 'show', cgLocked: false }), /cgroll/);
-  assert.match(api.boxHtml({ speaker: '하린', text: '응.', narration: false }).html, /<div data-vn-voicewait><\/div>$/);
+  assert.match(api.boxHtml({ speaker: '하린', text: '응.', narration: false }).html, /<div data-vn-voicewait><\/div><div data-vn-sfx><\/div>$/);
   assert.match(stage({ voiceWait: true }), /\[x-omni-vn\] \[data-vn-voicewait\]\{display:block\}/);
   assert.doesNotMatch(stage({}), /data-vn-voicewait/);
   assert.match(api.STATIC_CSS, /\[data-vn-voicewait\]\{display:none;position:absolute;right:36px;bottom:46px;[^}]*animation:vn-spin/);

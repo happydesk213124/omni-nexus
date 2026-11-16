@@ -55,6 +55,8 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.rate = clamp(result.rate, .25, 4, 1);
   result.skipChars = Math.floor(clamp(result.skipChars, 0, 8000, 1));
   result.volume = clamp(result.volume, 0, 1, .8);
+  // Until it is set, narration is as loud as the voice (older saves have none).
+  result.narrationVolume = typeof result.narrationVolume === 'number' && Number.isFinite(result.narrationVolume) ? clamp(result.narrationVolume, 0, 1, result.volume) : null;
   result.concurrency = Math.floor(clamp(result.concurrency, 1, 5, 5));
   result.background = Math.floor(clamp(result.background, 1, result.concurrency, 5));
   result.prefetch = Math.floor(clamp(result.prefetch, 0, 50, 50));
@@ -157,6 +159,8 @@ export function saveTtsData(): Promise<void> {
   saveTail = result;
   return result;
 }
+/** How loud a line of this kind plays: narration at its own level once set, everything else (and it until then) at the voice's. */
+export const ttsVolumeOf = (s: Pick<TtsSettings, 'volume' | 'narrationVolume'>, kind?: string): number => kind === 'narration' && s.narrationVolume !== null ? s.narrationVolume : s.volume;
 export function updateTtsSettings(patch: Partial<TtsSettings>): Promise<void> {
   ttsData().settings = normalizeTtsSettings({ ...ttsData().settings, ...patch });
   return saveTtsData();

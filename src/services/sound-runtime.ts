@@ -549,14 +549,18 @@ export class OmniSoundRuntime {
     const [rows = []] = await embedPickSfx([{ word: word.trim(), context: story.trim().slice(0, SFX_CONTEXT_MAX) }], soundData().sfx, item => this.describeSfx(item), embed, (w, item) => this.ownTag(w, item), 5);
     return rows.map(row => ({ name: row.item.name, folder: row.item.folder, score: Math.round(row.score * 1000) / 1000 }));
   }
-  /** Plays the effect for a word; an unknown word is kept for the glossary. */
-  async playSfxWord(word: string, context = ''): Promise<boolean> {
+  /**
+   * Plays the effect for a word; an unknown word is kept for the glossary. `started` hears when it sounds, with when
+   * it stops (it ends, or something cuts it: the next effect, a line spoken): 옴니 뷰어 shows the word meanwhile.
+   */
+  async playSfxWord(word: string, context = '', started?: (ended: Promise<void>) => void): Promise<boolean> {
     if (!soundData().settings.sfxEnabled) return false;
     const plan = await this.sfxPlan(word, context);
     if (!plan.length) return false;
     const clip = await planClip(plan);
     if (['playing', 'loading', 'paused'].includes(omniTts.player.status)) omniTts.stop();
-    await this.player.playSfx(clip.bytes, clip.mime);
+    const { ended } = await this.player.playSfx(clip.bytes, clip.mime);
+    started?.(ended);
     return true;
   }
   /**

@@ -39,7 +39,8 @@ import { omniTts, type TtsRequest } from '../services/tts-runtime';
 import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
 import { chatCovered, setViewerCovering } from '../services/viewer-presence';
-import { loadTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
+import { loadTtsData, ttsData, ttsVolumeOf, updateTtsSettings } from '../storage/tts-store';
+import { levelAt, levelText, levelWidth, SOUND_CONTROLS, soundPanelHtml, type SoundControl, type SoundLevel, type SoundLevels, type SoundSwitches } from './sound-panel';
 import { boxHtml, CAST_CHIPS, COUNT_STEPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, inSightNow, quiet, release, rowAt, unwrap } from './safe-dom';
 import { backTileAttach, backTileBlocked, backTileDetach, backTileDown, backTileUp } from './back-tile';
@@ -114,7 +115,7 @@ let stripOpen = false, stripItems: StripItem[] = [];
 // more of them cost no more waiting; this only bounds a reply with an absurd number of pictures.
 const STRIP_MAX = 60;
 // The left-hand list: the replies around the one on stage, each a way to it; ▲ ▼ rows bring more.
-let msgsOpen = false, msgsRect: DOMRect | null = null, msgRows: number[] = [], msgsSpan: [number, number] | null = null, msgsLoading: 'before' | 'after' | '' = '';
+let msgsOpen = false, msgsIn: Promise<void> = Promise.resolve(), msgsRect: DOMRect | null = null, msgRows: number[] = [], msgsSpan: [number, number] | null = null, msgsLoading: 'before' | 'after' | '' = '';
 const MSGS_AROUND = 1, MSGS_MORE = 5, MORE_BEFORE = -1, MORE_AFTER = -2;
 let open = false, rect = { left: 0, top: 0, width: 0, height: 0 }, controls: Array<{ act: string; r: DOMRect }> = [];
 // The box the line is in: a drag there selects, no swipe.
@@ -490,8 +491,29 @@ function playCues(scene: ViewerScene): void {
     }
     // Only an effect at this scene sounds: ones passed over by a jump are not replayed.
     // 효과음 off: passed over, never kept for later.
-    else if (cue.kind === 'sfx' && cue.start >= scene.start - 400 && viewerPrefs().sfx) void omniSound.playSfxWord(cue.text, scene.text).catch(() => {});
+    else if (cue.kind === 'sfx' && cue.start >= scene.start - 400 && viewerPrefs().sfx) playEffect(cue.text, scene.text);
   }
+}
+/**
+ * The effect word over the box's corner while its effect sounds (소리 › 글자 표시): it slides up as the effect starts
+ * and down as it stops. Kept by which play showed it: the effect it cut stops just before it starts, and hid it then.
+ */
+let sfxNote = '', sfxNoteOn = false, sfxNoteTurn = 0, sfxShownTurn = 0;
+function playEffect(word: string, context: string): void {
+  const turn = ++sfxNoteTurn;
+  void omniSound.playSfxWord(word, context, ended => {
+    if (!open) return;
+    sfxShownTurn = turn;
+    // 글자 표시 off, the word of the effect this one cut goes (its own end is no longer this one's to tell).
+    if (viewerPrefs().sfxText) { sfxNote = word; sfxNoteOn = true; void restyle().catch(() => {}); }
+    else if (sfxNoteOn) { sfxNoteOn = false; void restyle().catch(() => {}); }
+    // A moment's grace: the next effect stops this one an instant before it starts, and the word would dip and rise.
+    void ended.then(() => setTimeout(() => {
+      if (sfxShownTurn !== turn || !sfxNoteOn) return;
+      sfxNoteOn = false;
+      if (open) void restyle().catch(() => {});
+    }, 150));
+  }).catch(() => {});
 }
 const charIndexes = (): number[] => (context?.messages ?? []).flatMap((m, i) => m?.role === 'char' ? [i] : []);
 /** The reply before or after this one; false when there is none that way. */
@@ -1301,7 +1323,7 @@ const state = (cast: CastEntry[], extra: Partial<StageState> = {}): StageState =
   cgView: cgView === 'none' ? undefined : cgView, cgSize: viewerPrefs().cgSize, cast, narration: false, bg, bgPrev, cg: cgView === 'none' ? '' : lastCg, revealed: revealedAt === at,
   zoomAt: cgView === 'fold' && cgThumb ? { left: cgThumb.left - rect.left, top: cgThumb.top + cgThumb.height - rect.top } : undefined, chips: shownCast(),
   rate: ttsData().settings.rate, rates: ratesOpen, tags: tagsOpen, counts: tagsOpen && countsOpen ? countRange || '…' : undefined, pink: pinkCount() > 0, pinkBusy: pinkRun, back: viewerPrefs().backTile ? { x: viewerPrefs().backX, y: viewerPrefs().backY } : undefined,
-  log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], bgBlur: viewerPrefs().bgBlur, motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
+  log: logOpen, logSel: logOpen ? logSel : -1, bgNote: bgNote(), textScale: TEXT_SCALE[viewerPrefs().textSize], bgBlur: viewerPrefs().bgBlur, motion: { breathe: viewerPrefs().breathe, bounce: viewerPrefs().bounce }, strip: stripOpen, msgs: msgsOpen, sound: soundOpen, sfxNote: sfxNote ? { text: sfxNote, on: sfxNoteOn } : undefined, auto: viewerPrefs().auto, voice: viewerPrefs().voice, narrVoice: ttsData().settings.narration !== false,
   bgm: omniSound.player.bgmPlaying, sfx: effectsOn(), cgFill, cgPending: lastCg === PENDING, endCg: cgView === 'open' && scenes[at]?.kind === 'cg' && atEnd(), cgNav: cgView === 'full' ? { prev: cgNeighbour(-1) >= 0, next: cgNeighbour(1) >= 0 } : undefined,
   busy: busy > 0, msgsLoading, cgLocked: shotLocked(), cgRolling: rolling, cgNote: shotNote, voiceWait: voiceWaiting, boxHeight: boxFit,
   count: scenes.length ? `${at + 1} / ${scenes.length}${streaming ? ' · 받는 중' : ''}` : '', ...extra });
@@ -1392,7 +1414,15 @@ async function moreMsgs(side: 'before' | 'after'): Promise<void> {
   msgsSpan = side === 'before' ? [Math.max(0, from - MSGS_MORE), to] : [from, Math.min(total, to + MSGS_MORE)];
   try { await buildMsgs(); } finally { msgsLoading = ''; }
   await restyle();
-  if (msgsOpen && msgsEl) msgsRect = await msgsEl.getBoundingClientRect();
+  // Taller now: 최신 at its foot went down with it.
+  await measureMsgs();
+}
+async function measureMsgs(): Promise<void> {
+  // Its left edge on the frame's: where it slides to (최신 beside it is read only then).
+  const list = await settled(() => msgsOpen ? msgsEl : null, box => box.left - rect.left);
+  if (!list || !msgsOpen) return;
+  msgsRect = list;
+  await remeasure('newest');
 }
 let lastCast: CastEntry[] = [];
 
@@ -1628,6 +1658,135 @@ async function pickRate(rate: number): Promise<void> {
   await restyle();
 }
 /**
+ * 소리 (VOICE): Voice, 나레이션, BGM and 효과음, each its switch (the bottom row's, VOICE's old one) and its level (the
+ * settings window's). It slides in under the top bar; its controls are read once it is in, and a tap or press is
+ * found among them by where it is. A level is set where a bar is pressed and where the finger lets go, its fill
+ * following the finger between (one listener for the moves, only while a bar is held).
+ */
+let soundOpen = false, soundEl: SafeElement | null = null, soundRows: Array<{ key: SoundControl; r: DOMRect }> = [], soundRect: DOMRect | null = null;
+let soundIn: Promise<void> = Promise.resolve(), soundShown = '', soundDrop: { x: number; y: number; until: number } | null = null;
+let barHeld: { key: SoundLevel; r: DOMRect; fill: SafeElement | null; figure: SafeElement | null; level: number; from: { x: number; y: number } } | null = null, barMoveId: Promise<string> | null = null;
+function soundSwitches(): SoundSwitches {
+  const ready = soundReady(), t = ttsData().settings;
+  return { ready, voice: viewerPrefs().voice, narr: t.narration !== false, bgm: ready && omniSound.player.bgmPlaying, sfx: effectsOn(), sfxtext: viewerPrefs().sfxText };
+}
+function soundLevels(): SoundLevels {
+  const t = ttsData().settings, s = soundReady() ? soundData().settings : null;
+  return { voice: t.volume, narr: ttsVolumeOf(t, 'narration'), bgm: s?.bgmVolume ?? 0, duck: s?.duck ?? 0, sfx: s?.sfxVolume ?? 0 };
+}
+/** Drawn again only when what it shows changed (a switch, a level moved here or in the settings window, music started). */
+async function syncSound(): Promise<void> {
+  if (!soundOpen || !soundEl || barHeld) return;
+  const switches = soundSwitches(), levels = soundLevels(), next = JSON.stringify([switches, levels]);
+  if (next === soundShown) return;
+  soundShown = next;
+  await soundEl.setInnerHTML(soundPanelHtml(switches, levels));
+}
+async function toggleSound(): Promise<void> {
+  soundOpen = !soundOpen; soundRows = []; soundRect = null; soundShown = '';
+  if (soundOpen) { msgsOpen = false; msgsRect = null; stripOpen = false; logOpen = false; ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; }
+  await Promise.all([restyle(), soundOpen ? syncSound() : null]);
+  // Read once it has slid in (settled): a tap meanwhile waits for it.
+  if (soundOpen) soundIn = measureSound().catch(() => {});
+}
+function closeSound(): void {
+  soundOpen = false; soundRows = []; soundRect = null;
+  void restyle().catch(() => {});
+}
+async function measureSound(): Promise<void> {
+  // Its right edge on the frame's: where it slides to.
+  const panel = await settled(() => soundOpen ? soundEl : null, box => box.left + box.width - (rect.left + rect.width));
+  if (!panel || !soundEl) return;
+  const found = await measureIn(soundEl, '[data-vn-snd]', SOUND_CONTROLS);
+  if (soundOpen) { soundRect = panel; soundRows = found; }
+}
+/**
+ * A panel's rectangle once it stands where it slides to (`off`: how far it still is from there, px). A timer is no
+ * way to know: read on its way (a busy phone starts the slide late), every control in it was off by the rest of the
+ * slide, and a tap on one missed it. Null when it went away meanwhile; where it last stood if it never got there
+ * (the frame moved meanwhile, say): read as it is, rather than not at all.
+ */
+async function settled(panel: () => SafeElement | null, off: (box: DOMRect) => number): Promise<DOMRect | null> {
+  let box: DOMRect | null = null;
+  for (let i = 0; i < 20; i++) {
+    const node = panel();
+    if (!node) return null;
+    box = await node.getBoundingClientRect();
+    if (Math.abs(off(box)) <= 1) return box;
+    await new Promise(done => setTimeout(done, 60));
+  }
+  return panel() ? box : null;
+}
+async function measureIn<K extends string>(within: SafeElement, selector: string, names: readonly K[]): Promise<Array<{ key: K; r: DOMRect }>> {
+  const found: Array<{ key: K; r: DOMRect }> = [], nodes = await unwrap(await within.querySelectorAll(selector));
+  for (let i = 0; i < nodes.length; i++) {
+    try { if (names[i]) found.push({ key: names[i]!, r: await nodes[i]!.getBoundingClientRect() }); } finally { await release(nodes[i]); }
+  }
+  return found;
+}
+const soundAt = (p: HostPoint) => soundRows.find(row => inside(p, row.r));
+/** A tap on 소리: a switch flips (the panel stays open, drawn as it now stands); anywhere else on it, nothing. */
+async function soundTap(p: HostPoint): Promise<void> {
+  await soundIn;
+  if (!soundOpen) return;
+  if (!soundRect || !inside(p, soundRect)) { closeSound(); return; }
+  const key = soundAt(p)?.key;
+  if (key === 'voice-mute') await toggleVoice();
+  else if (key === 'narr-mute') await toggleNarration();
+  else if (key === 'bgm-mute' && soundReady()) await toggleBgm();
+  else if (key === 'sfx-mute' && soundReady()) await toggleEffects();
+  else if (key === 'sfxtext-mute') {
+    await saveViewerPrefs({ sfxText: !viewerPrefs().sfxText });
+    if (!viewerPrefs().sfxText && sfxNoteOn) sfxNoteOn = false;
+    await restyle();
+  }
+}
+async function setLevel(key: SoundLevel, level: number): Promise<void> {
+  if (key === 'voice') await updateTtsSettings({ volume: level });
+  else if (key === 'narr') await updateTtsSettings({ narrationVolume: level });
+  else if (!soundReady()) return;
+  else await updateSoundSettings(key === 'bgm' ? { bgmVolume: level } : key === 'duck' ? { duck: level } : { sfxVolume: level });
+}
+/** A press on a bar: the level is set there at once, and the bar follows the finger until it lets go. */
+function soundDown(p: HostPoint): void {
+  const row = soundAt(p);
+  if (!row?.key.endsWith('-bar') || !doc || !soundEl) return;
+  const key = row.key.slice(0, -4) as SoundLevel, level = levelAt(p.clientX, row.r), within = soundEl;
+  if (key !== 'voice' && key !== 'narr' && !soundReady()) return;
+  barHeld = { key, r: row.r, fill: null, figure: null, level, from: { x: p.clientX, y: p.clientY } };
+  void (async () => {
+    const [fill, figure] = await Promise.all([within.querySelector(`[data-vn-snd="${row.key}"] span`), within.querySelector(`[data-vn-srow="${key}"] em`)]);
+    if (barHeld?.key !== key) { await release(fill); await release(figure); return; }
+    barHeld.fill = fill; barHeld.figure = figure;
+    await paintBar();
+  })().catch(() => {});
+  barMoveId = doc.addEventListener('pointermove', (e: HostPoint) => { if (barHeld && Number.isFinite(e?.clientX)) { barHeld.level = levelAt(e.clientX, barHeld.r); void paintBar().catch(() => {}); } });
+  void setLevel(key, level).catch(error => dbg('viewer.level', { message: String(error) }, 'warn'));
+}
+async function paintBar(): Promise<void> {
+  const held = barHeld;
+  if (!held) return;
+  await Promise.all([held.fill?.setStyleAttribute(levelWidth(held.level)), held.figure?.setTextContent(levelText(held.level))]);
+}
+/** The finger let go: the level where it is now, kept; the click a drag ends with is no tap (off the panel, or a switch). */
+async function soundUp(p: HostPoint): Promise<void> {
+  const held = barHeld;
+  if (!held) return;
+  barHeld = null;
+  if (Number.isFinite(p?.clientX)) {
+    held.level = levelAt(p.clientX, held.r);
+    if (Math.hypot(p.clientX - held.from.x, p.clientY - held.from.y) > DRAG_SLOP) soundDrop = { x: p.clientX, y: p.clientY, until: Date.now() + 450 };
+  }
+  await dropBarMove();
+  await release(held.fill); await release(held.figure);
+  await setLevel(held.key, held.level);
+  await syncSound();
+}
+async function dropBarMove(): Promise<void> {
+  const id = barMoveId; barMoveId = null;
+  if (id && doc) { const resolved = await id.catch(() => ''); if (resolved) await quiet(doc.removeEventListener('pointermove', resolved)); }
+}
+/**
  * 태그: its row slides out over its tab (the other panels make room); its buttons are read once it is out. A phone busy
  * when it was pressed starts the slide late: read still on its way (its first button short of the frame's edge), it is
  * read again a moment later.
@@ -1726,8 +1885,45 @@ async function makePinks(): Promise<void> {
   } catch (error) { pinkRun = false; sayShot(String((error as Error)?.message || error).slice(0, 120), 4000); }
 }
 
+/** The voice on or off: the viewer's own switch (소리 › Voice, VOICE's before it opened 소리). */
+async function toggleVoice(): Promise<void> {
+  await saveViewerPrefs({ voice: !viewerPrefs().voice });
+  if (!viewerPrefs().voice) omniTts.stop();
+  await restyle();
+}
+async function toggleNarration(): Promise<void> {
+  // TTS 나레이션 itself: one style outside the chat, no module write (the TTS viewer's own switch).
+  const on = ttsData().settings.narration === false;
+  await updateTtsSettings({ narration: on });
+  if (!on && scenes[at]?.kind === 'narration') omniTts.stop();
+  parsedFor = '';
+  if (on && !streaming && messageIndex >= 0) await load(messageIndex, true);
+  await restyle();
+  const scene = scenes[at];
+  if (on && scene?.kind === 'narration') voice(scene);
+}
+async function toggleBgm(): Promise<void> {
+  await toggleMusic().catch(error => dbg('viewer.bgm', { message: String(error) }, 'warn'));
+  await restyle();
+}
+async function toggleEffects(): Promise<void> {
+  // The viewer's own switch, as VOICE is. Off in the sound settings, a press turns them on there
+  // too (Risu's sound module is written once): the reader asked for effects.
+  const on = !effectsOn(), saving = saveViewerPrefs({ sfx: on });
+  if (!on) omniSound.player.stopSfx();
+  else if (soundReady() && !soundData().settings.sfxEnabled) {
+    await updateSoundSettings({ sfxEnabled: true });
+    // The reply's effects are cues only with them on: read again (from the chat as read).
+    if (messageIndex >= 0 && !streaming) await load(messageIndex, true);
+  }
+  await restyle();
+  await saving;
+}
+
 async function act(name: string): Promise<void> {
   if (name === 'close') { await closeViewer(); return; }
+  // Any other button puts 소리 away first, as it does 배속's list (VOICE itself opens and closes it).
+  if (soundOpen && name !== 'voice') closeSound();
   // A button pressed while 배속's list or 태그's row is out puts it away (its own buttons are its business).
   if (ratesOpen && name !== 'rate') { ratesOpen = false; rateRows = []; void restyle().catch(() => {}); }
   if (tagsOpen && name !== 'tags' && !TAG_BAR.has(name) && !COUNT_BAR.has(name)) { tagsOpen = false; countsOpen = false; void restyle().catch(() => {}); }
@@ -1753,7 +1949,8 @@ async function act(name: string): Promise<void> {
   else if (TAG_BAR.has(name)) { tagsOpen = false; countsOpen = false; await restyle(); await messageAction(name.slice(1)); }
   else if (name === 'pink') await makePinks();
   else if (name === 'auto') { await saveViewerPrefs({ auto: !viewerPrefs().auto }); await render(true); }
-  else if (name === 'voice') { await saveViewerPrefs({ voice: !viewerPrefs().voice }); if (!viewerPrefs().voice) omniTts.stop(); await restyle(); }
+  // VOICE opens 소리: each sound's switch and level (its own old switch is Voice's there).
+  else if (name === 'voice') await toggleSound();
   // Its settings live on a page of the settings window (감정 에셋 › 옴니 뷰어), see toSettings.
   else if (name === 'set') await toSettings('asset', { panel: '', search: '' });
   else if (name === 'cast') {
@@ -1763,32 +1960,12 @@ async function act(name: string): Promise<void> {
     if (people.length === 1) await toSheetOf(people[0]!);
     else await toSettings('people', { panel: 'tts-characters', search: people.join(', ') });
   }
-  else if (name === 'narr') {
-    // TTS 나레이션 itself: one style outside the chat, no module write (the TTS viewer's own switch).
-    const on = ttsData().settings.narration === false;
-    await updateTtsSettings({ narration: on });
-    if (!on && scenes[at]?.kind === 'narration') omniTts.stop();
-    parsedFor = '';
-    if (on && !streaming && messageIndex >= 0) await load(messageIndex, true);
-    await restyle();
-    const scene = scenes[at];
-    if (on && scene?.kind === 'narration') voice(scene);
-  }
-  else if (name === 'bgm') { await toggleMusic().catch(error => dbg('viewer.bgm', { message: String(error) }, 'warn')); await restyle(); }
-  else if (name === 'sfx') {
-    // The viewer's own switch, as VOICE is. Off in the sound settings, a press turns them on there
-    // too (Risu's sound module is written once): the reader asked for effects.
-    const on = !effectsOn(), saving = saveViewerPrefs({ sfx: on });
-    if (!on) omniSound.player.stopSfx();
-    else if (soundReady() && !soundData().settings.sfxEnabled) {
-      await updateSoundSettings({ sfxEnabled: true });
-      // The reply's effects are cues only with them on: read again (from the chat as read).
-      if (messageIndex >= 0 && !streaming) await load(messageIndex, true);
-    }
-    await restyle();
-    await saving;
-  }
-  else if (name === 'newest') await waitOn(async () => { await load(undefined, false, 'fresh'); await render(); });
+  else if (name === 'narr') await toggleNarration();
+  else if (name === 'bgm') await toggleBgm();
+  else if (name === 'sfx') await toggleEffects();
+  // 최신, beside 메시지's foot: the list stays while the newest reply is read in (the spinner turning), and goes with
+  // it on stage.
+  else if (name === 'newest') await waitOn(async () => { await load(undefined, false, 'fresh'); if (msgsOpen) { msgsOpen = false; msgsRect = null; } await render(); });
   else if (name === 'strip') {
     stripOpen = !stripOpen;
     if (stripOpen) { msgsOpen = false; logOpen = false; }
@@ -1809,8 +1986,8 @@ async function act(name: string): Promise<void> {
     if (msgsOpen) { stripOpen = false; logOpen = false; }
     // It slides in at once, its few tiles right behind it (sent together).
     await Promise.all([restyle(), msgsOpen ? buildMsgs() : null]);
-    // Once it has slid in: its rectangle for the taps.
-    if (msgsOpen) setTimeout(() => void (async () => { if (msgsOpen && msgsEl) msgsRect = await msgsEl.getBoundingClientRect(); })().catch(() => {}), 380);
+    // Once it has slid in: its rectangle for the taps, and 최신's beside its foot (hidden while it is away).
+    if (msgsOpen) msgsIn = measureMsgs().catch(() => {});
   }
   else if (name === 'log') {
     logOpen = !logOpen; logRows = []; logRect = null; logSel = -1;
@@ -1851,7 +2028,7 @@ function liveHit(p: HostPoint): { act: string; r: DOMRect } | undefined {
   const editing = elementsEditing();
   // A CG's bar and full-screen sheet keep the rectangles they had when last shown: hidden, they take no tap
   // (the sheet's ▶ and 닫기 lay over the menu's ◀ and took its taps). The bar is up while the picture is big.
-  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show' && cgView !== 'open') && !(c.act === 'msgs' && msgsOpen)
+  return controls.find(c => inside(p, c.r) && (cgView !== 'full' || DOCK.has(c.act)) && !(DOCK.has(c.act) && cgView !== 'full') && !(CG_BAR.has(c.act) && cgView !== 'show' && cgView !== 'open') && !(c.act === 'msgs' && msgsOpen) && !(c.act === 'newest' && !msgsOpen)
     && !((c.act === 'strip' || c.act === 'elems') && (stripOpen || editing)) && !(c.act === 'eledit' && !elementsShown()) && !(c.act === 'zoom' && (cgView !== 'fold' || !lastCg || !cgThumb))
     // 태그's row out: its buttons, over its tab; none of it while 편집 is open (on a phone ✎ 편집 steps out over the tab).
     // 전체 생성 only while it shows (it keeps the rectangle it had then).
@@ -1891,6 +2068,15 @@ function onClick(p: HostPoint): void {
   // The click a drag of the 이전 tile ended with: no step back.
   if (hit?.act === 'back' && backTileBlocked()) return;
   const report = (what: string) => (error: unknown) => dbg(what, { message: String(error) }, 'warn');
+  // 소리 lies over what is under it: a tap on it is its own, a tap off it puts it away and is only that, unless it
+  // is on a button (which puts it away and does its own). The click a bar's drag ended with is neither.
+  if (soundOpen && hit?.act !== 'voice') {
+    // Only the click the drag ends with, where it let go (a browser sends none for some drags, so it is known by its
+    // place: a switch tapped right after is a tap).
+    const drop = soundDrop; soundDrop = null;
+    if (drop && Date.now() < drop.until && Math.hypot(p.clientX - drop.x, p.clientY - drop.y) <= 2) return;
+    if (!(soundRect && !inside(p, soundRect) && hit)) { void soundTap(p).catch(report('viewer.sound')); return; }
+  }
   // 배속's list is over what it lies on (a big picture's bar): a speed in it is picked whatever is under it.
   const rateRow = ratesOpen ? rateRows.find(r => inside(p, r.r)) : undefined;
   if (rateRow) { void pickRate(rateRow.rate).catch(report('viewer.rate')); return; }
@@ -1904,7 +2090,17 @@ function onClick(p: HostPoint): void {
   if (ratesOpen && !hit) { void toggleRates().catch(report('viewer.rate')); return; }
   if (tagsOpen && !hit) { void toggleTags().catch(report('viewer.tags')); return; }
   // An open panel takes the tap: a tile or row jumps to its place, anywhere else closes it.
-  if (msgsOpen && !hit) { void (msgsRect && inside(p, msgsRect) ? jumpFromMsgs(p.clientY) : act('msgs')).catch(report('viewer.msgs')); return; }
+  // Tapped while it still slides in: once it is read, the tap is a tile's, 최신's (beside it), or off it.
+  if (msgsOpen && !hit) {
+    void (async () => {
+      if (!msgsRect) await msgsIn;
+      if (!msgsOpen) return;
+      if (liveHit(p)?.act === 'newest') await act('newest');
+      else if (msgsRect && inside(p, msgsRect)) await jumpFromMsgs(p.clientY);
+      else await act('msgs');
+    })().catch(report('viewer.msgs'));
+    return;
+  }
   if (stripOpen && !hit) { void thumbUnder(p).then(tile => tile ? jumpTo(tile) : act('strip')).catch(report('viewer.strip')); return; }
   if (logOpen && !hit) { void (logRect && inside(p, logRect) ? jumpFromLog(p.clientY) : act('log')).catch(report('viewer.log')); return; }
   // A tap on the folded CG opens it; a tap on an open or full CG folds it again.
@@ -1952,22 +2148,54 @@ async function waitOn(work: () => Promise<void>): Promise<void> {
 /** Only the stage's style text: buttons' state, panels. */
 async function restyle(): Promise<void> {
   await writeStage(state(lastCast, { narration: scenes[at]?.kind === 'narration' }));
+  // 소리 shows the switches and levels as they now stand (whatever flipped them: its own taps, the bottom row, music).
+  if (soundOpen) await syncSound();
 }
-/** The tapped line of the open 기록: its rows are in reading order, so a binary search finds it in a few calls. */
-let logRows: number[] = [], logRect: DOMRect | null = null, logSel = -1;
-/** 기록: this reply's lines under its number and clock (as its tile shows them), the line on screen lit. */
+/**
+ * The rows of the open 기록, in reading order (a binary search finds the tapped one in a few calls): a scene (a line,
+ * a picture), or an effect word, listed before the scene it plays at.
+ */
+interface LogRow { at: number; sfx?: TtsSegment }
+let logRows: LogRow[] = [], logRect: DOMRect | null = null, logSel = -1;
+const sceneRow = (i: number): number => logRows.findIndex(row => row.at === i && !row.sfx);
+/**
+ * 기록: this reply's rows under its number and clock (as its tile shows them), the line on screen lit. Each scene is
+ * numbered as the box counts it (3 / 51 is #3), a picture is 삽화 #1 … in its place, and an effect word sits where
+ * it sounds: before the first scene that reaches it, as playCues plays it (one past the last scene never plays).
+ */
+function logRowsNow(): LogRow[] {
+  const effects = cues.filter(cue => cue.kind === 'sfx'), rows: LogRow[] = [];
+  let next = 0;
+  scenes.forEach((scene, i) => {
+    while (next < effects.length && effects[next]!.start <= scene.end) rows.push({ at: i, sfx: effects[next++]! });
+    rows.push({ at: i });
+  });
+  return rows;
+}
 async function buildLog(): Promise<void> {
   if (!logBox) return;
-  const rows = scenes.flatMap((s, i) => s.kind === 'cg' ? [] : [i]), clock = storyClock(source);
+  const clock = storyClock(source), pictures = new Map<number, number>();
+  scenes.forEach((s, i) => { if (s.kind === 'cg') pictures.set(i, pictures.size + 1); });
   const head = messageIndex >= 0 ? `<h5>#${messageIndex + 1}${clock ? ` · ${esc(clock)}` : ''}</h5>` : '';
-  logRows = rows;
-  logSel = rows.indexOf(at);
-  await logBox.setInnerHTML(head + (rows.map(i => { const s = scenes[i]!; return `<p${i === at ? ' data-now' : ''}>${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`; }).join('') || '<p>기록이 없습니다.</p>'));
+  logRows = logRowsNow();
+  logSel = sceneRow(at);
+  await logBox.setInnerHTML(head + (logRows.map(row => {
+    if (row.sfx) return `<p data-sfx>🔊 ${esc(row.sfx.text)}</p>`;
+    const i = row.at, s = scenes[i]!, n = `<i>#${i + 1}</i>`, now = i === at ? ' data-now' : '';
+    if (s.kind === 'cg') return `<p data-cg${now}>${n}🖼 삽화 #${pictures.get(i)}</p>`;
+    return `<p${now}>${n}${s.kind === 'line' ? `<b>${esc(resolveName(s.speaker))}</b>` : ''}${esc(s.text)}</p>`;
+  }).join('') || '<p>기록이 없습니다.</p>'));
+}
+/** An effect word picked in 기록: heard again (기록 stays open), unless 효과음 is off. */
+function playLogEffect(cue: TtsSegment): void {
+  if (!effectsOn()) { sayShot('효과음이 꺼져 있어요.', 2200); return; }
+  const scene = scenes[logRows.find(row => row.sfx === cue)?.at ?? -1];
+  playEffect(cue.text, scene?.text ?? '');
 }
 /** ↑ ↓ in 기록: the line picked moves (lit by the style text), and scrolls into sight. */
 async function moveLogSel(delta: number): Promise<void> {
   if (!logBox || !logRows.length) return;
-  logSel = Math.max(0, Math.min(logRows.length - 1, (logSel < 0 ? logRows.indexOf(at) : logSel) + delta));
+  logSel = Math.max(0, Math.min(logRows.length - 1, (logSel < 0 ? sceneRow(at) : logSel) + delta));
   await restyle();
   const row = await logBox.querySelector(`p:nth-of-type(${logSel + 1})`);
   if (row) { await centerIn(row); await release(row); }
@@ -1982,9 +2210,14 @@ async function logReply(dir: 1 | -1): Promise<void> {
 }
 async function jumpFromLog(y: number): Promise<void> {
   if (!logBox || !logRows.length) return;
-  const found = await rowAt(logBox, 'p', y);
-  if (found < 0 || logRows[found] === undefined) return;
-  at = logRows[found]!; logOpen = false; logRows = []; logRect = null; logSel = -1;
+  const found = await rowAt(logBox, 'p', y), row = logRows[found];
+  if (found < 0 || !row) return;
+  await pickLogRow(row);
+}
+/** A row of 기록 picked (tapped, or Enter on it): an effect is heard again; a scene is gone to, and 기록 closes. */
+async function pickLogRow(row: LogRow): Promise<void> {
+  if (row.sfx) { playLogEffect(row.sfx); return; }
+  at = row.at; logOpen = false; logRows = []; logRect = null; logSel = -1;
   await render(true);
 }
 /**
@@ -2022,12 +2255,13 @@ function onKey(event: { key?: unknown; repeat?: unknown }): void {
   if (logOpen) {
     if (key === 'ArrowUp' || key === 'ArrowDown') queueLogMove(key === 'ArrowUp' ? -1 : 1, report);
     else if (held) return;
-    else if (key === 'Enter' && logSel >= 0 && logRows[logSel] !== undefined) { at = logRows[logSel]!; logOpen = false; logRows = []; logRect = null; logSel = -1; void render(true).catch(report); }
+    else if (key === 'Enter' && logSel >= 0 && logRows[logSel]) void pickLogRow(logRows[logSel]!).catch(report);
     else if (key === 'ArrowLeft' || key === 'ArrowRight') void logReply(key === 'ArrowLeft' ? -1 : 1).catch(report);
     else if (key === 'Escape') void act('log').catch(report);
     return;
   }
   if (ratesOpen || tagsOpen) { if (key === 'Escape') void (ratesOpen ? toggleRates() : toggleTags()).catch(report); return; }
+  if (soundOpen) { if (key === 'Escape') closeSound(); return; }
   if (msgsOpen || stripOpen || elementsEditing()) { if (key === 'Escape') void act(msgsOpen ? 'msgs' : stripOpen ? 'strip' : 'eledit').catch(report); return; }
   // 작동's popup: Escape folds it; the story's keys go on as ever.
   if (key === 'Escape' && elementsPopOpen()) { void closeElementPop().catch(report); return; }
@@ -2057,6 +2291,8 @@ function onDown(p: HostPoint): void {
   pressFrom = { x: p.clientX, y: p.clientY };
   // The floating 이전 tile: a press on it is its own (a tap a step back, a drag moves it).
   if (backShown && backTileDown(p, controls.find(c => c.act === 'back')?.r ?? null)) return;
+  // 소리 open: a press is only ever its bars' (no swipe, no line completed under it).
+  if (soundOpen) { soundDown(p); return; }
   if (elementsDown(p, !!liveHit(p)) || logOpen || stripOpen || msgsOpen) return;
   // (A picture up front hides the box, or leaves only the end cue there: no line to select, the swipe is the stage's.)
   const lineBox = boxNow();
@@ -2068,6 +2304,7 @@ function onDown(p: HostPoint): void {
 }
 function onUp(p: HostPoint): void {
   const from = swipeFrom, press = pressFrom; swipeFrom = null; pressFrom = null;
+  if (barHeld) { void soundUp(p).catch(error => dbg('viewer.level', { message: String(error) }, 'warn')); return; }
   if (open && !away && backTileUp(p)) return;
   if (open && !away && elementsUp(p)) return;
   if (!open || away || !Number.isFinite(p?.clientY)) return;
@@ -2174,7 +2411,7 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     await dyn.setTextContent('[x-omni-vn] [data-vn-busy]{display:block}');
     for (const node of [css, fold, dyn, root]) await body.appendChild(node);
     await release(css); await release(body);
-    [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl, ratesEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]', '[data-vn-rates]'].map(s => root!.querySelector(s)));
+    [bgLayer, castLayer, cgLayer, box, logBox, stripEl, msgsEl, ratesEl, soundEl] = await Promise.all(['[data-vn-bg]', '[data-vn-cast]', '[data-vn-cg]', '[data-vn-box]', '[data-vn-log]', '[data-vn-strip]', '[data-vn-msgs]', '[data-vn-rates]', '[data-vn-sound]'].map(s => root!.querySelector(s)));
     await elementsOpen({ doc: () => doc, root: () => root, frame: () => rect, atEnd, restyle,
       reply: () => context && messageIndex >= 0 && !streaming ? { index: messageIndex, bot: context.characterId } : null,
       charAfter: (index, n) => charIndexes().filter(i => i > index)[n - 1] ?? -1,
@@ -2195,10 +2432,11 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
         await putPageBack();
       },
       // No hole is cut through what is over the stage: 작동's popup waits while a panel, the picture big or 크게보기 is up.
-      hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen,
+      hideLive: () => away || (cgView !== 'none' && cgView !== 'fold') || logOpen || msgsOpen || stripOpen || tagsOpen || ratesOpen || soundOpen,
       say: (text, ms) => sayShot(text, ms) });
     backTileAttach({ doc: () => doc, root: () => root, frame: () => rect, restyle, remeasure: () => remeasure('back') });
     stripOpen = false; stripItems = []; msgsOpen = false; msgsRect = null; msgRows = [];
+    soundOpen = false; soundRows = []; soundRect = null; soundShown = ''; barHeld = null; sfxNote = ''; sfxNoteOn = false; sfxShownTurn = 0;
     ratesOpen = false; rateRows = []; tagsOpen = false; countsOpen = false; countRange = ''; pinkShown = false; backShown = false; rateShown = undefined; castNames.clear(); castReading.clear();
     shownSig = ''; shownEnd = false; drawing = -1; askReveal = 0; revealedAt = -1; tapRun = 0; lastTapAt = 0; pressAt = 0; pressRevealAt = 0;
     away = false; cgFill = false; heldTags = null; bgmHeld = omniSound.player.bgmPaused; pendingMade = false; stopPending();
@@ -2248,6 +2486,7 @@ async function takeDown(): Promise<void> {
   if (doc && clickId) { await quiet(doc.removeEventListener('click', clickId)); clickId = ''; }
   if (doc && downId) { await quiet(doc.removeEventListener('pointerdown', downId)); downId = ''; }
   if (doc && upId) { await quiet(doc.removeEventListener('pointerup', upId)); upId = ''; }
+  barHeld = null; await dropBarMove();
   if (doc && keyId) { await quiet(doc.removeEventListener('keydown', keyId)); keyId = ''; }
   for (const node of [root, dyn, fold]) if (node) { await quiet(node.remove()); await release(node); }
   if (doc) for (const old of await unwrap(await doc.querySelectorAll('[x-omni-vn-style]'))) { await old.remove(); await release(old); }
@@ -2256,7 +2495,7 @@ async function takeDown(): Promise<void> {
   chatWatchStop();
   for (const place of people.values()) await release(place);
   people.clear(); placing.clear();
-  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = ratesEl = null;
+  root = dyn = fold = bgLayer = castLayer = cgLayer = box = logBox = stripEl = msgsEl = ratesEl = soundEl = null;
 }
 export const viewerOpen = (): boolean => open;
 

@@ -1,7 +1,7 @@
 import { psGet, psSet } from './device-store';
 
 /**
- * 옴니 뷰어's own settings, on this device: AUTO and VOICE (its buttons), the words
+ * 옴니 뷰어's own settings, on this device: AUTO (its button) and the voice (소리's Voice, under VOICE), the words
  * whose lines it leaves out, how fast the letters come and how large they are. The viewer and its page in
  * 감정 에셋 share them.
  */
@@ -14,7 +14,8 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
 /**
  * placeModule: ⚛️ omni place installed and on (the writer marks places). breathe: the
  * people on stage breathe; bounce: one comes in, changes face or steps forward with a spring.
- * sfx: its 효과음 button, the effects of the lines read played (off, passed over).
+ * sfx: its 효과음 button, the effects of the lines read played (off, passed over). sfxText: while one sounds, its word
+ * shows over the line's box (소리 › 글자 표시; on unless switched off).
  * stageReach: a person stays on stage this many lines after their latest line (0: to the
  * reply's end, as the stage once was).
  * revealBase64: risu64 난독's [base64] words read as words, by the viewer and by the voice in the chat too.
@@ -22,12 +23,12 @@ const BG_PICKS: readonly ViewerBgPick[] = ['auto', 'jev', 'embedding', 'off'];
  * floatResume, floatCenter, menuResume, menuCenter: 바로가기, the viewer's two ways in (where the reader left this chat,
  * the message in the middle of the chat screen) as Risu's floating buttons (off unless switched on) and in the chat's
  * ☰ menu (on unless switched off), each up while on.
- * elements: its 요소 button, as AUTO and VOICE are: on, the bot's registered elements come up (any bot, any chat).
+ * elements: its 요소 button, as AUTO is: on, the bot's registered elements come up (any bot, any chat).
  * backTile: a floating 이전 tile on the stage (a step back, as ◀; a phone's next is a tap anywhere, its back the small
  * ◀), off unless switched on; backX, backY: where it was dragged to, as shares of the frame (percent).
  * bgBlur: 배경 흐림, the stage background's blur in px (3 as it always was; 0 sharp).
  */
-export interface ViewerPrefs { bgBlur: number; auto: boolean; voice: boolean; sfx: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean; elements: boolean; backTile: boolean; backX: number; backY: number }
+export interface ViewerPrefs { bgBlur: number; auto: boolean; voice: boolean; sfx: boolean; sfxText: boolean; skipWords: string; speed: ViewerSpeed; textSize: ViewerTextSize; placeModule: boolean; bgPick: ViewerBgPick; breathe: boolean; bounce: boolean; stageReach: number; revealBase64: boolean; cgSize: CgSize; floatResume: boolean; floatCenter: boolean; menuResume: boolean; menuCenter: boolean; elements: boolean; backTile: boolean; backX: number; backY: number }
 export type CgSize = 1 | 2 | 3;
 export const STAGE_REACHES: readonly number[] = [1, 2, 3, 4, 5, 0];
 export const BG_BLURS: readonly number[] = [0, 1, 2, 3, 5, 8, 12];
@@ -44,7 +45,7 @@ function normalize(raw: unknown): ViewerPrefs {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof ViewerPrefs, unknown>>;
   return {
     bgBlur: typeof r.bgBlur === 'number' && BG_BLURS.includes(r.bgBlur) ? r.bgBlur : 3,
-    auto: r.auto === true, voice: r.voice !== false, sfx: r.sfx !== false,
+    auto: r.auto === true, voice: r.voice !== false, sfx: r.sfx !== false, sfxText: r.sfxText !== false,
     skipWords: typeof r.skipWords === 'string' ? r.skipWords.slice(0, 2000) : '',
     speed: SPEEDS.includes(r.speed as ViewerSpeed) ? r.speed as ViewerSpeed : 'fast',
     textSize: TEXT_SIZES.includes(r.textSize as ViewerTextSize) ? r.textSize as ViewerTextSize : 'normal',

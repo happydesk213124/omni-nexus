@@ -209,12 +209,14 @@ test('옴니 뷰어 over a restricted SafeDOM, AUTO while a reply streams in: a 
     await page.evaluate(t => { window.bot.chats[0].message.push({ role: 'char', chatId: 'r1', data: t }); window.renderChat(); }, settled);
     const chunks = (async () => { for (let n = 0; flowing; n++) { await tick(settled + '.'.repeat(n % 3)); await page.waitForTimeout(300); } })();
     try {
-      // This 1×1 picture is smaller open (a few px) than folded (the top's fixed 84 px thumbnail).
-      const height = () => page.evaluate(() => Math.round(document.querySelector('[x-omni-vn] img[x-vn-cg]')?.getBoundingClientRect().height ?? 0));
-      await page.waitForFunction(() => { const h = document.querySelector('[x-omni-vn] img[x-vn-cg]')?.getBoundingClientRect().height ?? 0; return h > 0 && h < 40; }, null, { timeout: 7000 });
-      await page.waitForFunction(() => (document.querySelector('[x-omni-vn] img[x-vn-cg]')?.getBoundingClientRect().height ?? 0) > 40, null, { timeout: 6000 });
+      // Open, the picture stands mid-stage; folded, at the top's corner, 60 px down (a 1×1 picture keeps its own size there,
+      // so where it is tells the two apart).
+      const where = () => page.evaluate(() => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg]'); if (!img || getComputedStyle(img).display === 'none') return 'none'; const r = img.getBoundingClientRect(), f = document.querySelector('[x-omni-vn]').getBoundingClientRect(); return Math.abs(r.top - f.top - 60) < 4 ? 'folded' : 'open'; });
+      const reaches = state => page.waitForFunction(state => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg]'); if (!img || getComputedStyle(img).display === 'none') return state === 'none'; const r = img.getBoundingClientRect(), f = document.querySelector('[x-omni-vn]').getBoundingClientRect(); return (Math.abs(r.top - f.top - 60) < 4 ? 'folded' : 'open') === state; }, state, { timeout: 7000 });
+      await reaches('open');
+      await reaches('folded');
       await page.waitForTimeout(2200);
-      assert.ok(await height() > 40, 'the looks that came after it did not open it again');
+      assert.equal(await where(), 'folded', 'the looks that came after it did not open it again');
       // A line comes after it: AUTO is done with the picture, so it goes on by itself.
       settled += '하린: "둘이야."\n';
       await page.evaluate(t => { window.bot.chats[0].message[2].data = t; window.renderChat(); }, settled);

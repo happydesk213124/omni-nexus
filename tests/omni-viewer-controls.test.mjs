@@ -5,22 +5,25 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-// 40 × 60: a portrait illustration, so the folded picture is narrower than its box.
-const TALL = 'iVBORw0KGgoAAAANSUhEUgAAACgAAAA8CAIAAACb22+3AAAAOElEQVR4nO3NQQkAAAgEsMtpEiMayxgiDPZfputExGKxWCwWi8VisVgsFovFYrFYLBaLxWLxp3gBypUEov8J6RgAAAAASUVORK5CYII=';
 const built = await build({ stdin: { contents: "import {installOmniViewer} from './src/viewer/omni-viewer';import {loadTtsData,ttsData} from './src/storage/tts-store';import {loadEmotionData,emotionData} from './src/storage/emotion-store';Object.assign(window,{installOmniViewer,loadTtsData,ttsData,loadEmotionData,emotionData});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 
 // The newest reply: a picture whose file name carries two cast ids (the roster names one of them), and a pink slot.
 const reply = ['하린: "그림 보여 줄게."', '[[@inray::card1::inxshot_abc.c1a2b-3c4d.webp]]', '하린: "어때?"', '[[@inraywait::w1::832::1216]]', '하린: "다음 장도 있어."'].join('\n');
 
 /** A chat the viewer opens on its newest reply, drawn as Risu draws it, with Omni's own window answering as a stand-in. */
-async function viewerPage(browser, { width = 420, height = 860, mobile = false } = {}) {
+// The chat's picture is drawn in the page at a size an illustration has (a portrait one unless asked): the folded
+// picture is fitted to its box keeping its shape, as large as the box lets it be.
+async function viewerPage(browser, { width = 420, height = 860, mobile = false, picture = { width: 400, height: 600 } } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
   const page = await context.newPage(), errors = [];
   page.setDefaultTimeout(8000); page.on('pageerror', e => errors.push(e.message));
   // Risu's page is laid out at the device's width (a phone's page without this is 980 px wide).
   await page.route('https://vn.test/', r => r.fulfill({ contentType: 'text/html', body: '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0"></body></html>' })); await page.goto('https://vn.test/');
   await page.addScriptTag({ content: readFileSync('node_modules/dompurify/dist/purify.min.js', 'utf8') });
-  await page.evaluate(({ png, tall, reply }) => {
+  await page.evaluate(({ png, picture, reply }) => {
+    const canvas = document.createElement('canvas'); canvas.width = picture.width; canvas.height = picture.height;
+    const pen = canvas.getContext('2d'); pen.fillStyle = '#c9a46a'; pen.fillRect(0, 0, picture.width, picture.height);
+    const drawn = canvas.toDataURL('image/png');
     window.buttons = {}; window.shotCalls = []; window.messageCalls = [];
     const node = n => n === document ? document.documentElement : n;
     class Safe {
@@ -48,7 +51,7 @@ async function viewerPage(browser, { width = 420, height = 860, mobile = false }
     const messages = [{ role: 'user', chatId: 'u0', data: '시작하자.' }, { role: 'char', chatId: 'r0', data: '하린: "옛 답장이야."' }, { role: 'user', chatId: 'u1', data: '보여 줘.' }, { role: 'char', chatId: 'r1', data: reply }];
     const bot = { chaId: 'bot', name: 'Bot', globalLore: [roster], additionalAssets: [['하린_neutral', 'assets/h.png', 'png']], chats: [{ id: 'chat', message: messages }], chatPage: 0 };
     window.bot = bot;
-    const line = l => /^\[\[@inray::/.test(l) ? `<div data-inray-asset="${/^\[\[@inray::[^:]+::([^:\]]+)/.exec(l)[1]}"><img src="data:image/png;base64,${tall}"></div>`
+    const line = l => /^\[\[@inray::/.test(l) ? `<div data-inray-asset="${/^\[\[@inray::[^:]+::([^:\]]+)/.exec(l)[1]}"><img src="${drawn}"></div>`
       : /^\[\[@inraywait::/.test(l) ? `<div data-inray-wait="${/^\[\[@inraywait::([^:]+)/.exec(l)[1]}" style="width:60px;height:90px"></div>` : `<p>${l}</p>`;
     const row = (m, i) => `<div class="chat-message-container"><div class="risu-chat" data-chat-index="${i}"><div class="chattext">${m.data.split('\n').map(line).join('')}</div></div></div>`;
     document.body.innerHTML = `<div class="default-chat-screen" style="position:absolute;left:0;top:0;width:100%;height:100vh;overflow:auto;display:flex;flex-direction:column-reverse"><div style="height:90px;flex:none"><textarea id="risu-input"></textarea></div><div class="flex-col-reverse" style="display:flex;flex-direction:column-reverse;flex:none"></div></div>`;
@@ -73,7 +76,7 @@ async function viewerPage(browser, { width = 420, height = 860, mobile = false }
       if (kind === 'max-up') c.max++; else if (kind === 'min-up' && c.min < c.max) c.min++; else if (kind === 'min-down' && c.min > 1) c.min--; else if (kind === 'max-down' && c.max > c.min) c.max--;
       return { ...c };
     };
-  }, { png: PNG, tall: TALL, reply });
+  }, { png: PNG, picture, reply });
   await page.evaluate(() => { window.crypto.randomUUID = undefined; });
   await page.addScriptTag({ content: built.outputFiles[0].text });
   await page.evaluate(async () => {
@@ -279,6 +282,36 @@ test('옴니 뷰어 · a picture shown big has its cast chips (c1·하쿠키), e
   } finally { await browser.close(); }
 });
 
+test('옴니 뷰어 · a wide picture folded is a box of its own shape at every size (no blank above and below it), its + still in its corner', async () => {
+  const browser = await launch();
+  try {
+    const { page, errors, box, tap, shown } = await viewerPage(browser, { width: 400, height: 860, picture: { width: 600, height: 400 } });
+    const frame = await box('');
+    await page.keyboard.press('ArrowRight');
+    await shown('[data-vn-cgbar] [data-vn-act="cgfull"]');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => /어때/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await shown('[data-vn-act="zoom"]');
+    const folded = () => page.evaluate(() => document.querySelector('[x-omni-vn] img[x-vn-cg]:not([style*="display: none"])').getBoundingClientRect().toJSON());
+    for (const size of [1, 2, 3]) {
+      // A size bigger: its height limit grows (30%, 45% of the stage); a wide picture is held by its width at both.
+      if (size > 1) {
+        await page.waitForTimeout(300);
+        await tap('[data-vn-act="zoom"]');
+        await page.waitForFunction(limit => (document.querySelector('[x-omni-vn-style="scene"]')?.textContent || '').includes(`max-height:${limit}!important`), size === 2 ? '30%' : '45%');
+        await page.waitForTimeout(200);
+      }
+      const r = await folded(), border = 4;
+      // Its border (2 px a side) aside, the box is the picture's 3:2.
+      assert.ok(Math.abs((r.width - border) / (r.height - border) - 1.5) < .03, `size ${size}: ${r.width}×${r.height} is 3:2`);
+      assert.ok(r.width <= (size === 1 ? 120 : frame.width * .6) + 1, `size ${size}: held to its width: ${r.width}`);
+    }
+    // Its + at the bottom-left corner of the picture itself.
+    await page.waitForFunction(() => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg]:not([style*="display: none"])').getBoundingClientRect(), plus = document.querySelector('[x-omni-vn] [data-vn-act="zoom"]').getBoundingClientRect(); return Math.abs(img.bottom - plus.bottom - 4) <= 1 && Math.abs(plus.left - img.left - 4) <= 1; });
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
 test('옴니 뷰어 on a 360 px phone: the bottom row fits 배속 beside the rest, the top bar keeps ✕ with 전체 생성 and the spinner, the + shows with no mouse', async () => {
   const browser = await launch();
   try {
@@ -286,13 +319,14 @@ test('옴니 뷰어 on a 360 px phone: the bottom row fits 배속 beside the res
     const frame = await box('');
     assert.equal(Math.round(frame.width), 360);
     const row = await page.evaluate(() => [...document.querySelectorAll('[x-omni-vn] [data-vn-menu] button')].filter(b => getComputedStyle(b).display !== 'none').map(b => b.getBoundingClientRect().toJSON()));
-    assert.equal(row.length, 10);
+    // 최신 is beside 메시지's foot now, not in this row.
+    assert.equal(row.length, 9);
     for (const [i, r] of row.entries()) {
       assert.ok(r.left >= frame.x - 0.5 && r.right <= frame.x + frame.width + 0.5, `menu button ${i} inside the frame: ${JSON.stringify(r)}`);
       if (i) assert.ok(r.left >= row[i - 1].right - 0.5, `menu buttons ${i - 1} and ${i} side by side`);
     }
     // Room to spare between 배속 and |◀ (its auto margin): a row out of room squeezes its buttons over their words instead.
-    assert.ok(row[6].left - row[5].right > 0.5, `room left in the row: ${Math.round(row[6].left - row[5].right)} px`);
+    assert.ok(row[5].left - row[4].right > 0.5, `room left in the row: ${Math.round(row[5].left - row[4].right)} px`);
     // Busy and with pink slots at once, the widest the top bar gets.
     await page.evaluate(() => { document.querySelector('[x-omni-vn] [data-vn-busy]').style.display = 'block'; });
     assert.notEqual(await style('[data-vn-act="pink"]', 'display'), 'none');

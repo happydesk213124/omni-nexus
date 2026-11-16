@@ -99,7 +99,7 @@ test('옴니 뷰어 over a restricted SafeDOM: risu64 난독 — off, a [base64]
     const v = await viewerOn(browser, ['하린: "[7IKs6rO8] 먹을래?"', '오미선: "응, 하나만."']);
     await v.shows(/\[7IKs6rO8\] 먹을래/);
     await v.page.evaluate(() => window.saveViewerPrefs({ revealBase64: true }));
-    await v.page.waitForTimeout(300); await v.press('newest');
+    await v.page.waitForTimeout(300); await v.press('msgs'); await v.page.waitForTimeout(450); await v.press('newest');
     // Matched against the chat as drawn ([7IKs6rO8]) first: revealed before that, the line was no line the chat shows.
     await v.shows(/사과 먹을래/);
     await v.page.waitForTimeout(300); await v.page.keyboard.press('ArrowRight');

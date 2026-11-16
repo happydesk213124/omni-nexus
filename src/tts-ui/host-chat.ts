@@ -405,7 +405,7 @@ async function mountTtsHost(host: NonNullable<ReturnType<typeof risuHost>>): Pro
   // The TTS window's own place, panel, folding, volume and speed change no line, binding or prefetch: the window
   // repaints for them itself (host-viewer.ts listens too). Each of them (every drag of the window, every step of its
   // volume) read the whole chat again before.
-  const windowOnly=new Set<string>(['viewerAnchor','panel','minimized','viewer','volume','rate','rates','toast','characterFilter','characterFolder']);
+  const windowOnly=new Set<string>(['viewerAnchor','panel','minimized','viewer','volume','narrationVolume','rate','rates','toast','characterFilter','characterFolder']);
   const linesKey=()=>{const d=ttsData();return JSON.stringify([Object.entries(d.settings).filter(([key])=>!windowOnly.has(key)),d.characters,d.voices.length]);};
   let lastLinesKey=linesKey();
   const unsubscribe=subscribeTts(()=>{

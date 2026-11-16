@@ -1,6 +1,6 @@
 import type { LlmSettings } from '../core/types';
 import type { TtsSettings } from '../core/tts-types';
-import { ttsData, updateTtsSettings } from '../storage/tts-store';
+import { ttsData, ttsVolumeOf, updateTtsSettings } from '../storage/tts-store';
 import { parseRates } from '../domain/tts/library';
 import { omniTts } from '../services/tts-runtime';
 import { el, input, val, set, text, on, run } from './common';
@@ -44,6 +44,13 @@ export function bindTtsSettings(): void {
   speedOptions();
   el('volume')?.addEventListener('input', () => text('volume-value', `${Math.round(Number(val('volume')))}%`));
   text('speed-value', `${s.rate.toFixed(2)}×`); text('volume-value', `${Math.round(s.volume * 100)}%`);
+  // 나레이션 볼륨: as loud as the voice until it is moved (옴니 뷰어's 소리 moves the same one); until then it follows
+  // 재생 볼륨 as that is moved.
+  const narrationShown = (level: number) => { set('narration-volume', Math.round(level * 100)); text('narration-volume-value', `${Math.round(level * 100)}%`); };
+  narrationShown(ttsVolumeOf(s, 'narration'));
+  el('narration-volume')?.addEventListener('input', () => text('narration-volume-value', `${Math.round(Number(val('narration-volume')))}%`));
+  on('narration-volume', () => updateTtsSettings({ narrationVolume: Number(val('narration-volume')) / 100 }), 'change');
+  el('volume')?.addEventListener('input', () => { if (ttsData().settings.narrationVolume === null) narrationShown(Number(val('volume')) / 100); });
   set('speed-presets', s.rates.join(', ')); on('speed-presets', async () => { await updateTtsSettings({ rates: parseRates(val('speed-presets'), ttsData().settings.rates) }); speedOptions(); }, 'change');
   set('voice-selector-engine', s.selector); on('voice-selector-engine', () => updateTtsSettings({ selector: val('voice-selector-engine') as TtsSettings['selector'] }), 'change');
   on('tts-power', async () => { await omniTts.power(input('tts-power').checked); if(input('tts-power').checked)promptAudioActivation(); }, 'change');

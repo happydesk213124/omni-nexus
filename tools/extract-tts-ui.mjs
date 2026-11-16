@@ -27,6 +27,8 @@ try {
     const activation=root.querySelector('#audio-enable-settings'),reading=root.querySelector('#tts-help-4');
     if(activation&&reading){const row=doc.createElement('div');row.className='row';row.innerHTML='<div class="copy"><b>음성 재생</b></div>';row.append(activation);reading.querySelector('h3').after(row);}
     reading?.insertAdjacentHTML('beforeend','<label class="row"><div class="copy"><b>생성에서 제외할 글자 수</b></div><div class="control"><input id="tts-skip-chars" type="number" min="0" max="8000" step="1" aria-label="TTS 생성에서 제외할 글자 수" style="width:76px"><span>자 이하</span></div></label>');
+    // Narration's own level, under the voice's (옴니 뷰어's 소리 sets the same one).
+    root.querySelector('#volume')?.closest('.row')?.insertAdjacentHTML('afterend','<div class="row"><div class="copy"><b>나레이션 볼륨</b></div><div class="control"><input id="narration-volume" type="range" min="0" max="100" aria-label="나레이션 볼륨"><output class="value" id="narration-volume-value">80%</output></div></div>');
     // Same comma list as the dashboard field; both write settings.excludeText.
     reading?.insertAdjacentHTML('beforeend','<div class="row tts-exclude-row" style="flex-direction:column;align-items:stretch;gap:6px"><div class="copy"><b>이 텍스트 포함하면 생성 안 함</b></div><textarea id="tts-exclude-text" rows="3" maxlength="4000" aria-label="이 텍스트 포함하면 TTS 생성 안 함 · 쉼표로 구분" placeholder="예: 상태창, 시스템 안내" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>');
     // Descriptions live in the ? help panel, not under the controls.

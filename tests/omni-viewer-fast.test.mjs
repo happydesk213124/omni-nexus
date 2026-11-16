@@ -174,7 +174,7 @@ test('옴니 뷰어 over a restricted SafeDOM gets out of its own way: opened at
     const oldest = await page.locator('[x-omni-vn] [data-vn-msg]').first().boundingBox();
     await page.mouse.click(oldest.x + oldest.width / 2, oldest.y + oldest.height / 2);
     await shows(/R0 첫 번째/);
-    assert.doesNotMatch(await scene(), /\[data-vn-msgs\]\{translate:0 0\}/);
+    assert.doesNotMatch(await scene(), /\[data-vn-msgwrap\]\{translate:0 0\}/);
     await page.waitForTimeout(400);
     assert.deepEqual(await page.evaluate(() => window.sfxPlayed), [], "off, the line's effect is passed over");
 
@@ -233,7 +233,7 @@ test('the bottom row keeps every button on a phone, 효과음, 배속 and |◀ �
       assert.equal(row.coarse, true);
       assert.ok(row.box <= width, 'laid out at the phone width: ' + row.box);
       // Under 360 px there is no room for |◀ ▶|: ◀ ▶ alone. Up to 380 px 배속 drops its ×.
-      assert.deepEqual(row.names, ['최신', '기록', '나레이션', 'BGM', '효과음', width > 380 ? '1.75×' : '1.75', ...(width >= 360 ? ['◀', '◀', '▶', '▶'] : ['◀', '▶'])]);
+      assert.deepEqual(row.names, ['기록', '나레이션', 'BGM', '효과음', width > 380 ? '1.75×' : '1.75', ...(width >= 360 ? ['◀', '◀', '▶', '▶'] : ['◀', '▶'])]);
       // |◀ and ▶| stand off from ◀ ▶: a slip of the finger is never a jump.
       if (width >= 360) assert.ok(row.gaps[0] >= 8 && row.gaps[1] >= 8, width + 'px, the ends stood off: ' + JSON.stringify(row.gaps));
       assert.ok(row.fits && row.right <= row.box && row.left >= row.boxLeft, width + 'px: ' + JSON.stringify(row));

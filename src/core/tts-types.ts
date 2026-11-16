@@ -129,6 +129,8 @@ export interface TtsSettings {
   rate: number;
   rates: number[];
   volume: number;
+  /** Narration's own level (옴니 뷰어 › 소리, TTS 설정); null: as the voice's. */
+  narrationVolume: number | null;
   normalize: boolean;
   prefetch: number;
   concurrency: number;

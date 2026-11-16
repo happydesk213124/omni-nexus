@@ -7,6 +7,7 @@ export const TTS_HELP: Record<string, Tip> = {
   speed: { title: '음성 배속', body: '재생 속도입니다. 이미 만든 음성에도 바로 적용되고 캐시는 다시 만들지 않습니다.' },
   'speed-presets': { title: '커스텀 배속 목록', body: '플로팅 뷰어의 배속 버튼에 나올 값입니다. 쉼표로 구분해 0.25~4 사이 숫자를 적습니다.' },
   volume: { title: '재생 볼륨', body: 'TTS 음성만의 볼륨입니다. 캐릭터별 음량 보정(dB)과 함께 적용됩니다.' },
+  'narration-volume': { title: '나레이션 볼륨', body: '나레이션 줄만의 볼륨입니다. 움직이기 전에는 재생 볼륨을 따라갑니다. 옴니 뷰어의 VOICE 소리 창에서도 같은 값을 바꿉니다.' },
   'tts-normalize': { title: '목소리 크기 자동 조절', body: 'Fish가 음성마다 크기를 맞춰서 생성합니다. 바꾸면 새로 만드는 음성부터 적용됩니다.' },
   'click-play': { title: '버튼 눌렀을 때 재생하기', body: '채팅 줄 끝의 ▶ 버튼을 누르면 그 줄을 읽습니다. 끄면 버튼은 보이지만 눌러도 읽지 않습니다.' },
   'hover-play': { title: '마우스오버 시 바로 재생하기', body: 'PC에서 ▶ 버튼 위에 마우스를 올리기만 해도 읽습니다.' },
