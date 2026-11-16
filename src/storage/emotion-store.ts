@@ -35,6 +35,11 @@ export interface EmotionSettings {
   /** V5 only: a transparent background instead of a white one. */
   transparent: boolean;
   /**
+   * 자동 누끼: a face drawn on a plain background (V4·V4.5, or V5 with 투명 배경 off) has it taken away before it is
+   * saved. One drawn transparent (V5) is saved as it comes: never read at all.
+   */
+  autoCutout: boolean;
+  /**
    * 코스튬별 에셋: a cue naming a costume (`이름_2`) shows that costume's faces, and the writer is asked to name
    * it. Only with streaming tags and costumes on (the writer sees the costume list then).
    */
@@ -60,7 +65,7 @@ export interface EmotionData { settings: EmotionSettings; seen: Record<string, s
 export const BG_PREFIX_DEFAULT = '2::no humans::, scenery, wide shot, detailed background';
 export const emotionDefaults = (): EmotionSettings => ({
   enabled: true, useExisting: true, autoGenerate: true, placeBackgrounds: true, bgPreset: 'bot', bgPrefix: BG_PREFIX_DEFAULT, family: 'v5', effort: 'follow', width: 832, height: 1216,
-  prefix: '', suffix: '', excludeTags: EMOTION_EXCLUDE_DEFAULT, dropAccessories: false, pose: '', transparent: true, costumes: false, nude: false, nudeAll: false, faceTags: {}, words: {},
+  prefix: '', suffix: '', excludeTags: EMOTION_EXCLUDE_DEFAULT, dropAccessories: false, pose: '', transparent: true, autoCutout: true, costumes: false, nude: false, nudeAll: false, faceTags: {}, words: {},
 });
 
 let state: EmotionData | undefined;
@@ -89,7 +94,7 @@ export function normalizeEmotionSettings(raw: unknown): EmotionSettings {
     enabled: r.enabled !== false, useExisting: r.useExisting !== false, autoGenerate: r.autoGenerate !== false, placeBackgrounds: r.placeBackgrounds !== false,
     bgPreset: r.bgPreset === 'none' ? 'none' : 'bot', bgPrefix: typeof r.bgPrefix === 'string' ? text(r.bgPrefix, 2000) : d.bgPrefix,
     family: r.family === 'v4' ? 'v4' : 'v5', effort: r.effort === 'high' || r.effort === 'medium' ? r.effort : 'follow', width: size(r.width, d.width), height: size(r.height, d.height),
-    prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), excludeTags: typeof r.excludeTags === 'string' ? text(r.excludeTags, 2000) : d.excludeTags, dropAccessories: r.dropAccessories === true, pose: text(r.pose, 600), transparent: r.transparent !== false, costumes: r.costumes === true,
+    prefix: text(r.prefix, 2000), suffix: text(r.suffix, 2000), excludeTags: typeof r.excludeTags === 'string' ? text(r.excludeTags, 2000) : d.excludeTags, dropAccessories: r.dropAccessories === true, pose: text(r.pose, 600), transparent: r.transparent !== false, autoCutout: r.autoCutout !== false, costumes: r.costumes === true,
     nude: r.nude === true, nudeAll: r.nudeAll === true,
     faceTags: strings(r.faceTags, () => true), words: strings(r.words, (_k, value) => !!baseExpression(value)),
   };

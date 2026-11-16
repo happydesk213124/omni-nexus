@@ -34,7 +34,16 @@ export function openImagePeek(src: string, over?: Element | null): void {
   };
   document.addEventListener('keydown', onKey, true);
   releaseKey = () => document.removeEventListener('keydown', onKey, true);
+  // 닫기: on a phone the picture fills the screen, and the dark around it (or Esc) was all that closed it.
+  const shut = document.createElement('button');
+  shut.type = 'button';
+  shut.setAttribute('data-nx-peek-close', '1');
+  shut.setAttribute('aria-label', '닫기');
+  shut.textContent = '✕';
+  shut.style.cssText = 'position:fixed;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:44px;height:44px;min-width:0;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(10,12,20,.82);color:#fff;font:600 20px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.5);z-index:1';
+  shut.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); close(); });
   veil.appendChild(img);
+  veil.appendChild(shut);
   (over ?? document.body).appendChild(veil);
   active = veil;
 }

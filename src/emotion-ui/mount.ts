@@ -13,6 +13,7 @@ import { EMOTION_CSS, EMOTION_PANEL, EMOTION_SHEET, EMOTION_SHEET_SWITCH, EMOTIO
 import { attachSoundHelp } from '../sound-ui/help';
 import { getConfig } from '../services/context';
 import { openImagePeek } from '../char-command/peek';
+import { openSpriteEditor } from './sprite-editor';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -56,7 +57,7 @@ function fillSettings(s: EmotionSettings): void {
   check('emo-nude', s.nude); check('emo-nude-all', s.nudeAll);
   costumeGate();
   nudeGate();
-  value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0');
+  value('emo-family', s.family); value('emo-effort', s.effort); value('emo-transparent', s.transparent ? '1' : '0'); value('emo-cutout', s.autoCutout ? '1' : '0');
   value('emo-width', String(s.width)); value('emo-height', String(s.height));
   value('emo-bg-preset', s.bgPreset); value('emo-bg-prefix', s.bgPrefix);
   value('emo-prefix', s.prefix); value('emo-suffix', s.suffix); value('emo-exclude', s.excludeTags); value('emo-pose', s.pose);
@@ -99,7 +100,7 @@ function readSettings(): Partial<EmotionSettings> {
     bgPreset: val('emo-bg-preset') === 'none' ? 'none' : 'bot', bgPrefix: val('emo-bg-prefix'),
     costumes: !!$<HTMLInputElement>('emo-costumes')?.checked, dropAccessories: !!$<HTMLInputElement>('emo-drop-accessories')?.checked,
     nude: !!$<HTMLInputElement>('emo-nude')?.checked, nudeAll: !!$<HTMLInputElement>('emo-nude-all')?.checked,
-    family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0',
+    family: val('emo-family') === 'v4' ? 'v4' : 'v5', effort: (['high', 'medium'].includes(val('emo-effort')) ? val('emo-effort') : 'follow') as EmotionSettings['effort'], transparent: val('emo-transparent') !== '0', autoCutout: val('emo-cutout') !== '0',
     width: Number(val('emo-width')), height: Number(val('emo-height')), prefix: val('emo-prefix'), suffix: val('emo-suffix'), excludeTags: val('emo-exclude'), pose: val('emo-pose'),
     faceTags: Object.fromEntries(BASE_EXPRESSIONS.map(e => [e.key, val(`emo-face-${e.key}`).trim()]).filter(([, tags]) => tags)), words,
   };
@@ -292,7 +293,7 @@ function bindCharacterSheet(live: () => boolean): void {
   if (link) form.querySelector('.emo-sheet-switch')?.append(link);
   linkRow?.remove();
   // costume: the one the faces show and are made in (0 the default), picked on the bar over them.
-  let person: TtsCharacter | null = null, bot: EmotionBot | null = null, epoch = 0, costume = 0;
+  let person: TtsCharacter | null = null, bot: EmotionBot | null = null, epoch = 0, costume = 0, shown = new Map<string, string | null>();
   const view = (name: 'voice' | 'faces') => {
     form.dataset.emoView = name;
     for (const b of form.querySelectorAll<HTMLElement>('[data-emo-tab]')) b.setAttribute('aria-selected', String(b.dataset.emoTab === name));
@@ -321,9 +322,12 @@ function bindCharacterSheet(live: () => boolean): void {
     const busy = spriteJobs();
     const tiles = await Promise.all(faces.map(async face => ({ face, sprite: await findSprite(person!, face, bot!, worn).catch(() => null), busy: busy.has(spriteJobKey(bot!.id, person!.id, face, worn)) })));
     if (mine !== epoch) return;
-    grid.innerHTML = tiles.map(({ face, sprite, busy: running }) => `<div class="emo-tile" data-seen="${seen.has(face) ? 1 : 0}"><div class="emo-pic" data-face="${esc(face)}" data-busy="${running ? 1 : 0}">${running ? '만드는 중…' : sprite ? '' : '없음'}</div>
-<b>${esc(baseExpression(face)?.label || face)}</b><small>${esc(face)}${sprite ? ` · ${sprite.source === 'bot' ? '봇 에셋' : '옴니'}` : ''}${seen.has(face) ? ' · 대사에 나옴' : ''}</small>
-<button type="button" data-emo-make="${esc(face)}" ${running ? 'disabled' : ''}>${sprite ? '다시 만들기' : '만들기'}</button></div>`).join('');
+    shown = new Map(tiles.map(({ face, sprite }) => [face, sprite?.path ?? null]));
+    // What a face is, said on its picture's corners (its name, whose picture, its key, seen in a line): the tile is
+    // the picture and its two buttons.
+    grid.innerHTML = tiles.map(({ face, sprite, busy: running }) => `<div class="emo-tile" data-seen="${seen.has(face) ? 1 : 0}"><div class="emo-pic" data-face="${esc(face)}" data-busy="${running ? 1 : 0}"><span class="emo-pic-note">${running ? '만드는 중…' : sprite ? '' : '없음'}</span>
+<span class="emo-chip" data-at="tl">${esc(baseExpression(face)?.label || face)}</span>${sprite ? `<span class="emo-chip" data-at="tr">${sprite.source === 'bot' ? '봇 에셋' : '옴니'}</span>` : ''}<span class="emo-chip" data-at="bl">${esc(face)}</span>${seen.has(face) ? '<span class="emo-chip" data-at="br" data-seen>대사에 나옴</span>' : ''}</div>
+<button type="button" data-emo-make="${esc(face)}" ${running ? 'disabled' : ''}>${sprite ? '다시 만들기' : '만들기'}</button><button type="button" data-emo-edit="${esc(face)}" ${running ? 'disabled' : ''}>편집</button></div>`).join('');
     for (const { face, sprite } of tiles) if (sprite) void thumb(sprite.path).then(url => { const pic = grid.querySelector<HTMLElement>(`.emo-pic[data-face="${CSS.escape(face)}"]`); if (url && pic && mine === epoch) pic.style.backgroundImage = `url("${url}")`; }).catch(() => {});
     const looks = await spriteLooks(person, bot, worn).catch(() => '');
     const line = $('emo-char-looks');
@@ -344,7 +348,14 @@ function bindCharacterSheet(live: () => boolean): void {
     const pick = target?.closest?.('[data-emo-costume]')?.getAttribute('data-emo-costume');
     if (pick != null) { event.preventDefault(); costume = Number(pick) || 0; void render(); return; }
     const face = target?.closest?.('[data-emo-make]')?.getAttribute('data-emo-make');
-    if (face) { event.preventDefault(); make([face]); }
+    if (face) { event.preventDefault(); make([face]); return; }
+    // 편집: this face's picture from the bot's assets or a file, or its background taken.
+    const edit = target?.closest?.('[data-emo-edit]')?.getAttribute('data-emo-edit');
+    if (edit && person && bot) {
+      event.preventDefault();
+      openSpriteEditor({ person, face: edit, label: baseExpression(edit)?.label || edit, bot, costume, path: shown.get(edit) ?? null },
+        { over: form.closest('dialog'), thumb, done: message => { status(message); void render(); } });
+    }
   });
   const missing = async (faces: string[]) => {
     if (!person || !bot) return [];

@@ -17,14 +17,14 @@ import {
 } from './bytes.ts';
 import { CHAR_REF_STORE_MAX_WIDTH, CHAR_REF_STORE_WEBP_QUALITY, charRefStoreSize } from './char-ref-size.ts';
 
-interface DecodedImage {
+export interface DecodedImage {
   readonly source: ImageBitmap | HTMLImageElement;
   readonly width: number;
   readonly height: number;
   close(): void;
 }
 
-type DrawnCanvas =
+export type DrawnCanvas =
   | { readonly kind: 'offscreen'; readonly canvas: OffscreenCanvas }
   | { readonly kind: 'dom'; readonly canvas: HTMLCanvasElement };
 
@@ -32,7 +32,7 @@ type DrawnCanvas =
  * Decodes bytes to something drawable. `allowImageElement` opts into the
  * `<img>` + object-URL path, which only the WebP encoder uses.
  */
-async function decodeImage(
+export async function decodeImage(
   src: Uint8Array,
   mime: string,
   allowImageElement: boolean,
@@ -85,7 +85,7 @@ async function decodeImage(
  * Paints the whole image into a `w`×`h` canvas. Returns `null` when no canvas
  * flavour is reachable or the 2d context is refused.
  */
-function drawToCanvas(
+export function drawToCanvas(
   image: DecodedImage,
   w: number,
   h: number,

@@ -63,6 +63,30 @@ test('a sprite is drawn from the roster looks with fixed tags, saved, and regist
   } finally { delete globalThis.__OMNI_REPLY_STREAMING__; }
 });
 
+test('자동 누끼: a face drawn on white (V4.5) is read to take its white; one drawn transparent (V5) is saved as it comes, never read', async () => {
+  const f = await fixture();
+  await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair' });
+  let reads = 0;
+  // Decoding a picture starts here; a host with none leaves the picture as it was (it is saved all the same).
+  globalThis.createImageBitmap = async () => { reads++; throw new Error('no decoder in this host'); };
+  try {
+    await f.api.makeSprite(f.person, 'sad', f.bot, true);
+    assert.equal(reads, 1, 'V4.5: read once, for its white');
+    f.api.emotionData().settings.family = 'v5';
+    await f.api.makeSprite(f.person, 'happy', f.bot, true);
+    assert.equal(reads, 1, 'V5 transparent: not read at all');
+    assert.match(JSON.stringify(f.host.naiRequests.at(-1).body), /transparent background/);
+    // 투명 배경 off: drawn on white, so read; 자동 누끼 off: never read.
+    f.api.emotionData().settings.transparent = false;
+    await f.api.makeSprite(f.person, 'angry', f.bot, true);
+    assert.equal(reads, 2);
+    f.api.emotionData().settings.autoCutout = false;
+    await f.api.makeSprite(f.person, 'cry', f.bot, true);
+    assert.equal(reads, 2, '자동 누끼 off');
+    assert.equal(f.api.emotionData().made.length, 4, 'every face saved');
+  } finally { delete globalThis.createImageBitmap; }
+});
+
 test('a failed draw is tried again after a wait (not on every redraw, not never); 만들기 tries at once', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair, blue eyes' });

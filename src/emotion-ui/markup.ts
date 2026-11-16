@@ -74,6 +74,7 @@ ${row('이 봇 감정 에셋 비우기 · 그림체 바꿀 때', '<button type="
 <label class="field"><span>모델</span><select id="emo-family"><option value="v5">NAI V5</option><option value="v4">NAI V4.5</option></select></label>
 <label class="field"><span>Effort (V5)</span><select id="emo-effort"><option value="follow">삽화 설정 따름</option><option value="high">high</option><option value="medium">medium · 빠르고 덜 씀</option></select></label>
 <label class="field"><span>투명 배경 (V5)</span><select id="emo-transparent"><option value="1">투명</option><option value="0">흰 배경</option></select></label>
+<label class="field"><span>자동 누끼</span><select id="emo-cutout"><option value="1">켜기 · 흰/검은 배경 지움</option><option value="0">끄기</option></select></label>
 <label class="field"><span>가로</span><input id="emo-width" type="number" min="512" max="1600" step="64"></label>
 <label class="field"><span>세로</span><input id="emo-height" type="number" min="512" max="1600" step="64"></label>
 <label class="field full"><span>선행 프롬프트</span><textarea id="emo-prefix" rows="2" maxlength="2000"></textarea></label>
@@ -134,7 +135,37 @@ export const EMOTION_CSS = `
 .emo-tile .emo-pic{aspect-ratio:832/1216;border-radius:8px;background:#0b0e14 center/contain no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.9}
 .emo-tile .emo-pic[data-busy="1"]{outline:2px solid #22c55e;outline-offset:-2px}
 .emo-tile .emo-pic[style*="background-image"]{cursor:zoom-in}
-.emo-tile b{font-size:12px}
-.emo-tile small{font-size:10px;opacity:.7}
+.emo-tile .emo-pic{position:relative;overflow:hidden}
+.emo-pic-note:empty{display:none}
+.emo-chip{position:absolute;max-width:calc(100% - 8px);padding:1px 5px;border-radius:6px;background:rgba(6,8,14,.72);color:#f1eefa;font-size:9.5px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.emo-chip[data-at="tl"]{top:4px;left:4px;font-weight:700;font-size:10.5px}
+.emo-chip[data-at="tr"]{top:4px;right:4px;opacity:.85}
+.emo-chip[data-at="bl"]{bottom:4px;left:4px;opacity:.85}
+.emo-chip[data-at="br"]{bottom:4px;right:4px;background:rgba(236,72,153,.78)}
+.emo-chip[data-at="tl"]:has(+ .emo-chip[data-at="tr"]){max-width:calc(60% - 6px)}
 .emo-tile button{min-height:30px;font-size:12px}
+/* 편집: over the sheet, a picture on a checkerboard (its see-through parts show as such). */
+.emo-edit-veil{position:fixed;inset:0;z-index:200000;background:rgba(4,8,16,.72);display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
+.emo-edit{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:#141824;border:1px solid #ffffff22;box-shadow:0 24px 80px rgba(0,0,0,.55);box-sizing:border-box}
+.emo-edit-head{display:flex;align-items:center;gap:8px}
+.emo-edit-head small{opacity:.7;flex:1}
+.emo-edit-head button{width:36px;height:36px;min-width:0;padding:0;border-radius:50%}
+.emo-edit-preview{position:relative;height:min(46vh,360px);border-radius:10px;display:flex;align-items:center;justify-content:center;background:#2a2f3c conic-gradient(#3a4050 25%,#2a2f3c 0 50%,#3a4050 0 75%,#2a2f3c 0) 0 0/20px 20px}
+.emo-edit-preview img{max-width:100%;max-height:100%;object-fit:contain}
+.emo-edit-preview span{font-size:12px;opacity:.7}
+.emo-edit-note{margin:0;font-size:12px;min-height:1.4em;opacity:.85}
+.emo-edit-row{display:flex;flex-wrap:wrap;gap:6px}
+.emo-edit-row button{flex:1;min-height:36px}
+.emo-edit-row button[aria-pressed="true"]{border-color:#7132f5;background:#7132f533}
+.emo-edit-assets{display:flex;flex-direction:column;gap:6px}
+.emo-edit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;max-height:220px;overflow:auto}
+.emo-edit-grid button{display:flex;flex-direction:column;gap:2px;padding:4px;min-height:0}
+.emo-edit-grid span{aspect-ratio:2/3;border-radius:6px;background:#0b0e14 center/contain no-repeat}
+.emo-edit-grid small{font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emo-edit-cut{display:flex;flex-direction:column;gap:6px}
+.emo-edit-cut b{font-size:12px}
+.emo-edit-tol{display:flex;align-items:center;gap:8px;font-size:12px}
+.emo-edit-tol input{flex:1}
+.emo-edit-foot{display:flex;gap:8px;justify-content:flex-end}
+.emo-edit-foot button{min-height:36px;min-width:84px}
 `;

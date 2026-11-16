@@ -18,6 +18,7 @@ import { resolveGenerationCfgParams } from '../domain/style-preset-overrides';
 import { matchIllustrationSpeaker, resolveTtsSpeaker } from '../domain/tts/identity';
 import { parseTtsMessage } from '../domain/tts/segment';
 import { imageBackendKind } from '../providers/comfy/client';
+import { cutoutBytes } from './sprite-cutout';
 import { generateT2i, getNaiQuotaDetail } from '../providers/nai/client';
 import { getNaiInflight } from '../providers/nai/http';
 import { sleep } from '../core/util/async';
@@ -248,7 +249,7 @@ function openChatId(bot: EmotionBot): string {
  * a picture every bot shares, Omni's), saved as a Risu asset. Waits for NovelAI to be free first (one generation at a
  * time per account: an illustration job running alongside would make one of them fail).
  */
-async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number; bot: EmotionBot | null; noPreset?: boolean }): Promise<{ bytes: Uint8Array; path: string }> {
+async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5' | 'v4') => string; negative?: string; width: number; height: number; family?: 'v5' | 'v4'; effort?: 'high' | 'medium'; webp?: number; bot: EmotionBot | null; noPreset?: boolean; finish?: (bytes: Uint8Array, family: 'v5' | 'v4') => Promise<Uint8Array> }): Promise<{ bytes: Uint8Array; path: string }> {
   const settings = (await loadEmotionData()).settings, config = getConfig();
   const nai = input.effort ? { ...config.nai, effort_v5: input.effort } : config.nai;
   if (imageBackendKind(nai) === 'comfy') throw new Error('감정 에셋은 NovelAI로만 만듭니다.');
@@ -273,11 +274,28 @@ async function drawAndSave(input: { prompt: (presetPositive: string, family: 'v5
     const out = await encodeWebpQuality(bytes, input.webp).catch(() => null);
     if (out && isWebpBytes(new Uint8Array(out))) bytes = new Uint8Array(out);
   }
+  if (input.finish) bytes = new Uint8Array(await input.finish(bytes, family));
   const host = risuHost();
   if (!host?.saveAsset) throw new Error('Risu 에셋 저장을 쓸 수 없습니다.');
   const path = normalizeAssetPath(cleanText(await host.saveAsset(bytes.slice()), 800));
   if (!path) throw new Error('감정 에셋 파일을 저장하지 못했습니다.');
   return { bytes, path };
+}
+/**
+ * A face put in by hand (편집: a bot asset, a file, or the picture with its background taken): saved as Omni's own under
+ * the name a drawn one has (`omni_이름_감정.png`), in its place. The bot's own picture it came from stays as it was.
+ */
+export async function replaceSprite(c: TtsCharacter, face: string, bot: EmotionBot, bytes: Uint8Array, costume = 0): Promise<EmotionSprite> {
+  if (!bytes.byteLength) throw new Error('그림이 비어 있습니다.');
+  const host = risuHost();
+  if (!host?.saveAsset) throw new Error('Risu 에셋 저장을 쓸 수 없습니다.');
+  const path = normalizeAssetPath(cleanText(await host.saveAsset(bytes.slice()), 800));
+  if (!path) throw new Error('감정 에셋 파일을 저장하지 못했습니다.');
+  const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png', costume);
+  await remember(bot.id, c.id, face, name, path, costume);
+  failures.delete(spriteJobKey(bot.id, c.id, face, costume));
+  notify();
+  return { face, name, path, source: 'omni', ...(costume ? { costume } : {}) };
 }
 async function remember(owner: string, person: string, face: string, name: string, path: string, costume = 0): Promise<void> {
   const data = emotionData();
@@ -295,6 +313,9 @@ async function drawSprite(c: TtsCharacter, face: string, bot: EmotionBot, costum
     // 선행 · 후행 are the user's own words: only what comes from elsewhere is swept. The wear goes on after the sweep.
     prompt: (style, family) => emotionPrompt({ looks: joinTags(excludeTags(style, settings.excludeTags), looks, parts.wear), face, faceTags: settings.faceTags[face],
       pose: settings.pose, prefix: settings.prefix, suffix: settings.suffix, transparent: family === 'v5' && settings.transparent }),
+    // 자동 누끼: drawn on white (V4·V4.5, or V5 with 투명 배경 off), the white goes before it is saved. Drawn transparent,
+    // it is saved as it comes, never read.
+    finish: async (drawn, family) => family === 'v5' && settings.transparent || !settings.autoCutout ? drawn : (await cutoutBytes(drawn)).bytes,
   });
   const name = emotionAssetName(c.name, face, sniffImageMime(bytes) === 'image/webp' ? 'webp' : 'png', costume);
   await remember(bot.id, c.id, face, name, path, costume);
@@ -317,6 +338,8 @@ const recordFor = (m: EmotionMade, k: string) => m.person === PLACE_PERSON && (m
  * enabled module's too, and the 참고이미지 module's shared backgrounds would pass for the bot's.
  */
 const ownAssets = (bot: EmotionBot): RisuNamedAsset[] => parseRisuAssetRows(bot.character.additionalAssets);
+/** The bot's own pictures (its sounds left out), for 감정 에셋 › 편집 › 에셋에서. */
+export const botPictureAssets = (bot: EmotionBot): RisuNamedAsset[] => ownAssets(bot).filter(asset => !/\.(mp3|ogg|wav|m4a|aac|flac|opus|webm|mp4)$/i.test(asset.key));
 /** Every place this bot has its own background for: Omni's records and its assets named by their tags. */
 export async function backgroundPlaces(bot: EmotionBot): Promise<string[]> {
   const out: string[] = [];
