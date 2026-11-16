@@ -2,7 +2,8 @@ import type { TtsCharacter } from '../../core/tts-types';
 
 /**
  * 첫 대사 이모지: with the TTS switch on, each character's first cue in a reply carries two emoji before
- * the name, `👩🥺 하린 (soft tone): "…"`: age and gender, then personality. They are read
+ * the name, `👩🥺 하린 (soft tone): "…"`: age and gender, then personality (and a third for the voice itself, when
+ * it stands out: 🔔 🎻 🍯 🪨 🥁). They are read
  * here into what a new character's voice is chosen by: the gender outright, the age and
  * personality as mood tags in the words the sample voices are tagged with (청년, 소심한…).
  *
@@ -73,13 +74,16 @@ const PERSONALITY: Record<string, readonly string[]> = {
   '🧪': ['지적인', '엉뚱한'], '💻': ['지적인', '무뚝뚝한'], '☕': ['차분함', '편안한'], '🍺': ['친근한', '수다스러운'], '🍻': ['친근한', '수다스러운'],
   '🚬': ['허스키', '피곤한'], '💤': ['나른한', '피곤한'], '💢': ['화난', '툴툴대는'], '💦': ['소심한', '허당'], '🙏': ['상냥한', '존댓말'],
   '👍': ['친근한', '당당한'], '💪': ['활기찬', '당당한'], '🫦': ['요염한', '섹시한'], '👅': ['장난기 있는', '요염한'], '👀': ['엉뚱한', '수다스러운'],
+  // The voice itself (the third emoji, when the writer gives one): its pitch, its timbre, its pace.
+  '🔔': ['높음', '맑은'], '🎻': ['낮음', '깊은'], '🍯': ['달콤한', '소프트'], '🪨': ['낮음', '거친 목소리'], '🥁': ['빠른 말투', '또박또박'],
   // Animals.
   '🐺': ['거친 목소리', '쿨함'], '🐍': ['능글맞은', '요염한'], '🐉': ['위엄 있는', '권위 있는'], '🐲': ['위엄 있는', '권위 있는'],
   '🦋': ['몽환적인', '우아한'], '🐻': ['다정한', '느릿느릿'], '🐼': ['귀여운', '나른한'], '🐹': ['귀여운', '소심한'], '🦄': ['몽환적인', '순수한'],
   '🐯': ['당당한', '자신감 있는'], '🦅': ['위엄 있는', '냉철한'], '🐧': ['귀여운', '허당'], '🐸': ['엉뚱한'], '🐷': ['귀여운', '애교'],
   '🐮': ['느릿느릿', '편안한'], '🦉': ['지적인', '차분함'], '🐦': ['명랑한', '수다스러운'], '🐟': ['무덤덤한'],
 };
-const MOST_TAGS = 4;
+// Age (one or two words), a personality's two, a voice's two.
+const MOST_TAGS = 6;
 /** Every tag word the table can give (each must have its English: tests/voice-variety). */
 export function cueEmojiWords(): string[] { return [...new Set([...Object.values(PEOPLE).flatMap(([, tags]) => tags), ...Object.values(PERSONALITY).flat()])]; }
 

@@ -34,34 +34,59 @@ export function geminiPersona(c: Pick<TtsCharacter, 'tags' | 'voiceKey' | 'gende
   const words = traits(c), gender = GENDER[c.gender];
   return words.length ? `${gender ? `${gender} ` : ''}character voice: ${words.join(', ')}` : '';
 }
-/** What a card's own voice is designed from: their gender and traits, and the language they are read in. */
+/**
+ * What a card's voice is designed from: their gender and traits (in one order, whatever order the card holds them
+ * in), and the language they are read in. The description is the voice's name among the designed ones: two cards it
+ * comes out the same for speak with one voice.
+ */
 export function voiceDesignOf(c: TtsCharacter, settings: Pick<TtsSettings, 'translation'> = ttsData().settings): { name: string; description: string; gender?: 'female' | 'male'; language?: string } {
-  const words = traits(c), gender = c.gender === 'female' || c.gender === 'male' ? c.gender : undefined;
+  const words = traits(c).sort(), gender = c.gender === 'female' || c.gender === 'male' ? c.gender : undefined;
   const language = LANGUAGE[readLanguage(c, settings)] ?? LANGUAGE.ko;
   const description = `A distinctive ${gender ? `${gender} ` : ''}voice for a story character${words.length ? `: ${words.join(', ')}` : ''}. Natural and expressive, as a voice actor would play them.`;
   return { name: c.name.slice(0, 80), description, ...(gender ? { gender } : {}), language };
 }
-/** Whether the card speaks with a voice no other card has. */
-function hasOwnVoice(c: TtsCharacter): boolean {
-  if (!c.geminiKey || !ttsData().geminiVoices.some(v => v.key === c.geminiKey)) return false;
-  return !ttsData().characters.some(other => other.id !== c.id && other.geminiKey === c.geminiKey);
+/** The designed voice already made for these very traits (and gender), if any. With no traits there is none to share: gender alone would give a whole cast one voice. */
+function voiceOfTraits(c: TtsCharacter): TtsVoice | undefined {
+  if (!traits(c).length) return undefined;
+  const design = voiceDesignOf(c);
+  return ttsData().geminiVoices.find(v => own(v) && v.caption === design.description);
 }
-/** A bot's people (and the shared ones) with no Gemini voice, or one another card speaks with too: who 「캐릭터마다 새 목소리」 makes one for. */
+/** Whether the card speaks with the voice of its traits (with none: a designed voice no other card has). */
+function hasTraitVoice(c: TtsCharacter): boolean {
+  const voice = c.geminiKey ? ttsData().geminiVoices.find(v => v.key === c.geminiKey) : undefined;
+  if (!voice || !own(voice)) return false;
+  // (One made for them alone carries their name after the same words: theirs, and kept.)
+  return traits(c).length ? !!voice.caption?.startsWith(voiceDesignOf(c).description) : !ttsData().characters.some(other => other.id !== c.id && other.geminiKey === c.geminiKey);
+}
+/** A bot's people (and the shared ones) not yet speaking with the voice of their traits: who 「캐릭터마다 새 목소리」 gives one. */
 export function cardsWithoutOwnVoice(scope: string): TtsCharacter[] {
-  return ttsData().characters.filter(c => !c.role && !c.fixed && (c.scope === scope || c.scope === 'global') && !hasOwnVoice(c));
+  return ttsData().characters.filter(c => !c.role && !c.fixed && (c.scope === scope || c.scope === 'global') && !hasTraitVoice(c));
 }
-const designing = new Map<string, Promise<{ voice: TtsVoice; sample?: ArrayBuffer }>>();
+/** A shared voice's name in the list: the traits it is the voice of (Korean, as the card shows them). */
+const traitName = (c: TtsCharacter): string => [c.gender === 'female' ? '여성' : c.gender === 'male' ? '남성' : '', ...c.tags.filter(tag => !EMOJI.test(tag)).slice(0, 4)].filter(Boolean).join(' · ').slice(0, 80) || c.name.slice(0, 80);
+const designing = new Map<string, Promise<{ voice: TtsVoice; sample?: ArrayBuffer; reused?: boolean }>>();
 /**
- * A voice of the card's own: designed, kept among the presets, and the card's from now on. `description`: in its
- * place, the words to design from (the tab's own form). One at a time a card.
+ * The voice of the card's traits, the card's from now on: the one already made for that combination (`reused`), else
+ * designed now and kept among the presets under the traits' own name. `fresh`: a new one whatever exists (the
+ * sheet's 새로 만들기: this one is theirs alone). One at a time a card; the same combination asked for by two cards
+ * at once is made once.
  */
-export function designVoiceFor(c: TtsCharacter, description = ''): Promise<{ voice: TtsVoice; sample?: ArrayBuffer }> {
+const making = new Map<string, Promise<{ voice: TtsVoice; sample?: ArrayBuffer }>>();
+export function designVoiceFor(c: TtsCharacter, fresh = false): Promise<{ voice: TtsVoice; sample?: ArrayBuffer; reused?: boolean }> {
   const running = designing.get(c.id);
   if (running) return running;
   const job = (async () => {
-    const design = voiceDesignOf(c), made = await designGeminiVoice({ gemini: ttsData().settings.gemini }, description.trim() ? { ...design, description: description.trim() } : design);
+    const design = voiceDesignOf(c), shared = !fresh && traits(c).length > 0, held = shared ? voiceOfTraits(c) : undefined;
+    const bind = async (voice: TtsVoice) => { const card = ttsData().characters.find(row => row.id === c.id); if (card) card.geminiKey = voice.key; await saveTtsData(); };
+    if (held) { await bind(held); return { voice: held, reused: true }; }
+    const inFlight = shared ? making.get(design.description) : undefined;
+    if (inFlight) { const first = await inFlight; await bind(first.voice); return { voice: first.voice, reused: true }; }
+    const create = designGeminiVoice({ gemini: ttsData().settings.gemini }, shared ? { ...design, name: traitName(c) } : design);
+    if (shared) { making.set(design.description, create); void create.catch(() => undefined).finally(() => making.delete(design.description)); }
+    // A voice made for one card alone is named by a description of its own: no other card's traits come out as it.
+    const made = shared ? await create : await create.then(m => ({ ...m, voice: { ...m.voice, caption: `${design.description} [${c.name}]` } }));
     const data = ttsData(), card = data.characters.find(row => row.id === c.id);
-    data.geminiVoices = [...data.geminiVoices.filter(v => v.key !== made.voice.key), { ...made.voice, tags: c.tags.slice(0, 8) }];
+    data.geminiVoices = [...data.geminiVoices.filter(v => v.key !== made.voice.key), { ...made.voice, tags: c.tags.filter(tag => !EMOJI.test(tag)).slice(0, 8) }];
     if (card) card.geminiKey = made.voice.key;
     await saveTtsData();
     return made;

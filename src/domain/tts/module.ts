@@ -12,7 +12,9 @@ Narration stays plain prose, in the reply's language. Never cue code, hidden rea
 // 첫 대사 이모지: each speaker's first cue in a reply. The model knows its own reply, where "first in the story" was a guess
 // (an early reply cut from its prompt). The six age-gender emoji are named (they become the voice library's ages); the
 // personality one is the model's own pick.
-const cueEmoji = (example: string): string => `Each character's first cue in every reply starts with two emoji, age-gender then personality: ${example} Age-gender: 👧👦 elementary school age or younger only; 👩👨 middle schooler to young adult, students included; 👩‍🦰👨‍🦰 30s-40s; 👵👴 elderly. Later cues in that reply have none.`;
+// A third emoji says the voice itself, and only for a voice that stands out: most characters need none, and one more
+// emoji on every first line is paid for in every reply.
+const cueEmoji = (example: string): string => `Each character's first cue in every reply starts with two emoji, age-gender then personality: ${example} Age-gender: 👧👦 elementary school age or younger only; 👩👨 middle schooler to young adult, students included; 👩‍🦰👨‍🦰 30s-40s; 👵👴 elderly. Only if their voice stands out, a third for it: 🔔 high and clear, 🎻 low and deep, 🍯 sweet and soft, 🪨 low and rough, 🥁 fast and crisp. Later cues in that reply have none.`;
 const CUE_EMOJI = cueEmoji('👩🥺 Harin (soft tone): "Hi."');
 // Irodori takes no delivery word: the manner is written into the line itself, as the emoji it was trained on. The
 // list is the whole of it (a model cannot use what it is not shown), and the names are short on purpose.

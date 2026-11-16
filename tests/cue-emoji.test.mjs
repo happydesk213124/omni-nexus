@@ -8,6 +8,10 @@ const api = await import('data:text/javascript;base64,' + Buffer.from(built.outp
 test('첫 대사 이모지: age-gender then personality, read into a gender and the sample voices\' own tags', () => {
   assert.deepEqual(api.cueHint('👩🥺'), { gender: 'female', tags: ['청년', '소심한', '부드러운'] });
   assert.deepEqual(api.cueHint('👦😤'), { gender: 'male', tags: ['어린이', '츤데레', '툴툴대는'] });
+  // A third emoji, when the writer gives one: the voice itself (its pitch, timbre, pace), after the personality.
+  assert.deepEqual(api.cueHint('👩🥺🔔'), { gender: 'female', tags: ['청년', '소심한', '부드러운', '높음', '맑은'] });
+  assert.deepEqual(api.cueHint('👨😎🪨'), { gender: 'male', tags: ['청년', '쿨함', '자신감 있는', '낮음', '거친 목소리'] });
+  assert.deepEqual(['🎻', '🍯', '🥁'].map(e => api.cueHint(e).tags), [['낮음', '깊은'], ['달콤한', '소프트'], ['빠른 말투', '또박또박']]);
   // The voice library's ages are six: a mature grown-up is 성인 and 성숙한, the elderly 노인.
   assert.deepEqual(api.cueHint('👴'), { gender: 'male', tags: ['노인'] });
   assert.deepEqual(api.cueHint('🧓'), { tags: ['노인'] });

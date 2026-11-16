@@ -127,6 +127,21 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     await page.waitForFunction(() => /새 목소리 1개를 만들어 캐릭터에 지정했습니다/.test(document.getElementById('gv-status').textContent));
     assert.equal(await page.evaluate(() => window.ttsData().characters.find(c => c.id === 't-mina').geminiKey), 'gemini:voice_new3');
     assert.equal(await page.evaluate(() => window.ttsData().characters.find(c => c.id === 't-haru').geminiKey), 'gemini:voice_new2', 'hers stays');
+    // The voice of a combination of traits: made the first time it comes up, the same one for whoever has it after
+    // (in whatever order their card holds the words).
+    await page.evaluate(async () => {
+      const card = (id, name, tags) => ({ id, scope: 'global', name, surname: '', givenName: name, surnameAliases: [], givenAliases: [], triggers: [name], tags, gender: 'female', voiceKey: '', fishId: '', fixed: false, gain: 0 });
+      window.ttsData().characters.push(card('t-a', '가은', ['소심한', '부드러운']), card('t-b', '나은', ['부드러운', '소심한']), card('t-c', '다은', ['쿨함']));
+      await window.saveTtsData();
+    });
+    await page.locator('#gv-each').click();
+    await page.waitForFunction(() => /새 목소리 2개를 만들어 캐릭터에 지정했습니다\. 같은 특징이라 이미 만든 목소리를 쓴 캐릭터 1명/.test(document.getElementById('gv-status').textContent));
+    const keys = await page.evaluate(() => ['t-a', 't-b', 't-c'].map(id => window.ttsData().characters.find(c => c.id === id).geminiKey));
+    assert.equal(keys[0], keys[1], 'the same traits: one voice');
+    assert.notEqual(keys[0], keys[2]);
+    assert.equal(await page.evaluate(key => window.ttsData().geminiVoices.find(v => v.key === key).name, keys[0]), '여성 · 소심한 · 부드러운');
+    assert.match(await page.evaluate(key => window.ttsData().geminiVoices.find(v => v.key === key).caption, keys[0]), /^A distinctive female voice for a story character: gentle, timid\./);
+    assert.equal(await page.evaluate(() => window.ttsData().settings.gemini.assign), 'design', 'a speaker with no voice gets the voice of their traits unless switched to the list');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

@@ -36,7 +36,7 @@ const PANEL = `<section class="panel" id="${GEMINI_VOICES_TAB}" role="tabpanel" 
   + '<button type="button" id="gv-new" title="설명을 적어 새 목소리를 만듭니다">+ 목소리 만들기</button>'
   + '<button type="button" id="gv-each" title="자기만의 목소리가 없는 캐릭터마다 새 목소리를 만들어 줍니다">캐릭터마다 새 목소리</button>'
   + '<button type="button" id="gv-reset" title="불러온 목소리를 지우고 기본 목소리 30개로 되돌립니다(만든 목소리는 남습니다)">기본 30개로</button></div></div>'
-  + '<p class="gv-note">기본 목소리는 30개뿐이라 캐릭터가 많으면 같은 목소리가 겹칩니다. 「목록 불러오기」로 Google의 목소리를 더 가져오거나, 「캐릭터마다 새 목소리」로 캐릭터의 성별·특징에 맞춘 목소리를 하나씩 만들 수 있습니다(만든 목소리는 Google 프로젝트에 저장, 200개까지). 고르지 않은 캐릭터와 나레이션은 모델 설정의 기본 목소리로 읽습니다.</p>'
+  + '<p class="gv-note">기본 목소리는 30개뿐이라 캐릭터가 많으면 같은 목소리가 겹칩니다. 「목록 불러오기」로 Google의 목소리를 더 가져오거나, 「캐릭터마다 새 목소리」로 캐릭터의 성별·특징 태그에 맞춘 목소리를 만들 수 있습니다(특징 조합이 같으면 같은 목소리를 쓰고, 만든 목소리는 Google 프로젝트에 저장, 200개까지). 고르지 않은 캐릭터와 나레이션은 모델 설정의 기본 목소리로 읽습니다.</p>'
   + '<div id="gv-form" class="gv-form" hidden><input id="gv-new-name" maxlength="80" placeholder="목소리 이름" aria-label="목소리 이름"><select id="gv-new-gender" aria-label="성별"><option value="">성별 미지정</option><option value="female">여성</option><option value="male">남성</option></select>'
   + '<textarea id="gv-new-about" rows="2" maxlength="2000" placeholder="어떤 목소리인지 · 예: 낮고 나른한 20대 여성, 말끝을 흐리는" aria-label="목소리 설명"></textarea>'
   + '<div class="actions"><button type="button" id="gv-new-make">만들어 듣기</button><button type="button" id="gv-new-close">닫기</button></div></div>'
@@ -144,17 +144,17 @@ export class GeminiVoices {
     on('gv-each', async () => {
       const button = input('gv-each');
       const context = await currentTtsContext().catch(() => null), cards = cardsWithoutOwnVoice(context?.rosterScope || 'global');
-      if (!cards.length) { text('gv-status', '모든 캐릭터가 이미 자기만의 목소리를 쓰고 있습니다.'); return; }
-      if (!confirm(`자기만의 목소리가 없거나 다른 캐릭터와 겹치는 캐릭터 ${cards.length}명에게 새 목소리를 하나씩 만들까요?\n만든 목소리는 Google 프로젝트에 저장됩니다(200개까지).`)) return;
+      if (!cards.length) { text('gv-status', '모든 캐릭터가 이미 자기 특징에 맞춘 목소리를 쓰고 있습니다.'); return; }
+      if (!confirm(`캐릭터 ${cards.length}명에게 성별·특징 태그에 맞춘 목소리를 줄까요?\n처음 나온 특징 조합은 새로 만들고, 이미 만든 조합은 그 목소리를 같이 씁니다. 만든 목소리는 Google 프로젝트에 저장됩니다(200개까지).`)) return;
       button.disabled = true;
-      let made = 0; const failed: string[] = [];
+      let made = 0, shared = 0; const failed: string[] = [];
       for (const [i, card] of cards.entries()) {
-        text('gv-status', `목소리 만드는 중 ${i + 1}/${cards.length} · ${card.name}`);
-        try { await designVoiceFor(card); made++; }
-        catch (error) { failed.push(`${card.name}: ${String((error as Error)?.message || error).slice(0, 80)}`); if (failed.length >= 3 && !made) break; }
+        text('gv-status', `목소리 맞추는 중 ${i + 1}/${cards.length} · ${card.name}`);
+        try { if ((await designVoiceFor(card)).reused) shared++; else made++; }
+        catch (error) { failed.push(`${card.name}: ${String((error as Error)?.message || error).slice(0, 200)}`); if (failed.length >= 3 && !made && !shared) break; }
       }
       button.disabled = false;
-      text('gv-status', `새 목소리 ${made}개를 만들어 캐릭터에 지정했습니다.${failed.length ? ` 실패 ${failed.length}명 · ${failed[0]}` : ''}`);
+      text('gv-status', `새 목소리 ${made}개를 만들어 캐릭터에 지정했습니다.${shared ? ` 같은 특징이라 이미 만든 목소리를 쓴 캐릭터 ${shared}명.` : ''}${failed.length ? ` 실패 ${failed.length}명 · ${failed[0]}` : ''}`);
       document.dispatchEvent(new Event('omnitts-library')); this.render();
     });
     // The catalog, once by itself (the thirty prebuilt ones are all there is until then).

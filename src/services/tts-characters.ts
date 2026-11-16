@@ -131,30 +131,39 @@ const failed = new Map<string, number>();
 export function ensureTtsSpeakers(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
   const data = ttsData();
-  if (data.settings.engine === 'gemini' && data.settings.gemini.design) return ensureOwnVoices(context, names, current, messageIds, marks);
+  if (data.settings.engine === 'gemini' && data.settings.gemini.assign === 'design') return ensureOwnVoices(context, names, current, messageIds, marks);
   return ensureListedVoices(context, names, current, messageIds, marks);
 }
 /**
- * Gemini › 새 화자마다 목소리 만들기: a speaker with no voice gets one designed for them (voice design), one after
- * another. Someone not yet a card is made one the usual way first (their gender and traits are what the voice is
- * designed from). A design that fails (the project's 200 voices used up, a model that designs none) leaves them the
- * voice the list gave, or the default one, and is not tried again for a while.
+ * Gemini › 특징에 맞춰 만들기: a speaker with no voice gets the voice of their traits (their gender, and the tags their
+ * 첫 대사 이모지 or their card give): made the first time that combination comes up, the same one for whoever has it
+ * after. Someone not yet a card is made one the usual way first (the list's voice until theirs is made). A design
+ * that fails (a project that designs none, its 200 voices used up) leaves them a voice from the list, and designing
+ * is not tried again for a while: every line would pay for a refusal.
  */
-const designFailed = new Map<string, number>();
+let designDownUntil = 0;
 async function ensureOwnVoices(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[], marks: ReadonlyMap<string, string>): Promise<void> {
   const known = (name: string) => resolveTtsSpeaker(name, ttsData().characters, context.rosterScope);
   const unknown = [...new Set(names)].filter(name => !known(name));
   if (unknown.length) await ensureListedVoices(context, unknown, current, messageIds, marks).catch(error => dbg('tts.gemini', { message: String((error as Error)?.message || error) }, 'warn'));
-  const fresh = new Set(unknown.map(ttsNameKey));
+  const fresh = new Set(unknown.map(ttsNameKey)), hints = ttsData().settings.cueEmoji ? speakerHints(context, names, marks) : new Map<string, CueHint>(), listed: string[] = [];
   for (const name of new Set(names)) {
     const c = known(name);
     if (!c || c.fixed || !current()) continue;
-    // Their own already, or one given before this was switched on: kept. One the list gave a moment ago is replaced.
+    // A voice they already have is kept; one the list gave a moment ago (a card just made) gives way to their own.
     if (c.geminiKey && !fresh.has(ttsNameKey(name))) continue;
-    if ((designFailed.get(c.id) ?? 0) > Date.now() - 5 * 60_000) continue;
+    // Their emoji fill an unknown gender and empty tags first: the voice is made from these.
+    const hint = [c.name, ...c.triggers].map(n => hints.get(ttsNameKey(n))).find(Boolean);
+    if (hint) applyCueHint(c, hint, false);
+    if (Date.now() < designDownUntil) { if (!c.geminiKey) listed.push(name); continue; }
     try { await designVoiceFor(c); }
-    catch (error) { designFailed.set(c.id, Date.now()); if (designFailed.size > 200) designFailed.delete(designFailed.keys().next().value!); dbg('tts.gemini', { message: `${c.name} 목소리 만들기: ${String((error as Error)?.message || error)}` }, 'warn'); }
+    catch (error) {
+      designDownUntil = Date.now() + 10 * 60_000;
+      dbg('tts.gemini', { message: `${c.name} 목소리 만들기: ${String((error as Error)?.message || error)}` }, 'warn');
+      if (!c.geminiKey) listed.push(name);
+    }
   }
+  if (listed.length && current()) await ensureListedVoices(context, listed, current, messageIds, marks);
 }
 function ensureListedVoices(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   const data = ttsData();

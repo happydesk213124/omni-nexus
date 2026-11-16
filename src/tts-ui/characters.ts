@@ -529,7 +529,7 @@ export class TtsCharacters {
       try {
         const card = this.read(); clearTimeout(this.saveTimer); this.saveTimer = undefined;
         ttsData().characters = ttsData().characters.map(row => row.id === card.id ? card : row);
-        const made = await designVoiceFor(card);
+        const made = await designVoiceFor(card, true);
         this.draft = { ...card, geminiKey: made.voice.key };
         this.fillIrodori(this.draft); this.save(); text('character-voice-choice', `${made.voice.name} · 새로 만든 목소리`);
         if (made.sample && omniTts.player.ready) await omniTts.playBytes(`gemini-design:${made.voice.fishId}`, made.sample);
