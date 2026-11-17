@@ -1193,8 +1193,19 @@ test('image markers leave only the request: 리퀘스트 데이터 수정 strips
   assert.deepEqual(display.lorebook.map(l=>l.comment),['mine'],'the do-not-imitate lore is gone; nothing else is touched');
   const strip=display.regex.find(r=>r.comment==='omni-request-strip-markers');
   assert.equal(strip.type,'editprocess','request only: stored chat and display keep the markers');
-  const sent='앞 문단\n[[@inrayspinner::job_1::832::1216]][[@inray::card::inxshot_a.png::832::1216]]\n[[@inraywait::w_2::1024::1024]]\n뒤 [[other::x]]'.replace(new RegExp(strip.in,strip.flag.replace(/<[^>]*>/g,'')),strip.out);
-  assert.equal(sent,'앞 문단\n\n\n뒤 [[other::x]]','only our markers go; other modules\' [[…]] stay');
+  const send=text=>text.replace(new RegExp(strip.in,strip.flag.replace(/<[^>]*>/g,'')),strip.out);
+  const sent=send('앞 문단\n[[@inrayspinner::job_1::832::1216]][[@inray::card::inxshot_a.png::832::1216]]\n[[@inraywait::w_2::1024::1024]]\n뒤 [[other::x]]');
+  assert.equal(sent,'앞 문단\n뒤 [[other::x]]','only our markers go, and their lines with them; other modules\' [[…]] stay');
+  // A reply sent back reads as if it never held a picture: 문단 / 문단, not 문단 / (blank lines) / 문단, which a model
+  // copied as "leave the block's place empty" and wrote no block at all.
+  const image=n=>`[[@inray::card::inxshot_${n}.png::832::1216]]`;
+  const plain='첫 문단이다.\n\n둘째 문단이다.\n\n셋째 문단이다.';
+  assert.equal(send(`첫 문단이다.\n\n${image('a')}\n\n둘째 문단이다.\n\n${image('b')}\n\n셋째 문단이다.`),plain,'a picture between paragraphs');
+  assert.equal(send(`${image('a')}\n\n첫 문단이다.\n\n둘째 문단이다.\n\n셋째 문단이다.\n\n${image('b')}`),plain,'a picture opening or closing the reply');
+  assert.equal(send(`첫 문단이다.\n\n${image('a')}\n\n${image('b')}\n\n둘째 문단이다.\n\n셋째 문단이다.`),plain,'two pictures in a row');
+  assert.equal(send(`첫 문단이다.\r\n\r\n${image('a')}\r\n\r\n둘째 문단이다.`),'첫 문단이다.\r\n\r\n둘째 문단이다.','CRLF line breaks too');
+  assert.equal(send(`그녀가 웃었다. ${image('a')} 그리고 말했다.`),'그녀가 웃었다. 그리고 말했다.','one in a line leaves the words apart');
+  assert.equal(send(plain),plain,'a reply without pictures is sent as it is');
   assert.ok(display.regex.some(r=>r.type==='editdisplay'&&r.comment==='omni-spinner-display'),'display rules are still there');
   const writes=JSON.stringify((await risuai.getDatabase()).modules);await f.api.ensureInrayDisplayModule();
   assert.equal(JSON.stringify((await risuai.getDatabase()).modules),writes,'a second run changes nothing');

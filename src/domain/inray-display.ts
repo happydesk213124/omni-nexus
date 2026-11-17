@@ -160,9 +160,15 @@ export const REQUEST_MARKER_SCRIPT_COMMENT = 'omni-request-strip-markers';
  * and every bake/reroll path still see them. This replaces a lorebook that asked
  * the model not to imitate markers it could see.
  */
+/**
+ * A marker goes with the line breaks before it (after it, when it opens the message), so a reply sent back reads as
+ * if no picture had ever been in it: 문단 / 문단. Taking the marker alone left 문단 / (blank lines) / 문단, and a
+ * model reading its earlier replies that way copied the hole and wrote no block at all.
+ */
+const REQUEST_MARK = String.raw`\[\[@inray(?:spinner|wait)?::[^\[\]\n]{1,4096}\]\]`;
 export function requestMarkerStripScript() {
   return { comment: REQUEST_MARKER_SCRIPT_COMMENT, type: 'editprocess' as const, ableFlag: true, flag: 'g',
-    in: '\\[\\[@inray(?:spinner|wait)?::[^\\[\\]\\n]{1,4096}\\]\\][ \\t]*', out: '' };
+    in: String.raw`^[ \t]*(?:${REQUEST_MARK}[ \t]*(?:\r?\n[ \t]*)*)+|(?:\r?\n[ \t]*)*${REQUEST_MARK}[ \t]*`, out: '' };
 }
 
 /**

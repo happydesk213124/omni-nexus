@@ -141,6 +141,7 @@ test('a reply with pictures is drawn as before, through the module\'s rules', as
   assert.match(html, /data-inray-wait="w1"/);
   assert.equal((html.match(/data-omni-footer="2"/g) || []).length, 2, 'a row above and below');
   assert.doesNotMatch(html, /<style|\[\[@inray||||/, 'no sheet in the message, no mark or mask left');
-  // The request never sees a marker.
-  assert.equal(runRules(text, rules, { mode: 'editprocess', index: 2, role: 'char' }), 'Story.\n\nMore.\n');
+  // The request never sees a marker, nor the lines it stood on: the reply reads as if it held no picture
+  // ('Story.\n\nMore.\n' left holes a model copied as "write no block").
+  assert.equal(runRules(text, rules, { mode: 'editprocess', index: 2, role: 'char' }), 'Story.\nMore.');
 });
