@@ -25,6 +25,7 @@ export function geminiPrebuiltVoices(): TtsVoice[] {
   return PREBUILT.map(([name, gender, manner, korean]) => ({ key: `gemini:${name}`, name: `${name} · ${korean}`, fishId: name, tags: [korean, manner], gender, folder: '' }));
 }
 
+const PITCH_TAG: Record<string, string> = { low: 'low-pitched', medium: 'mid-pitched', high: 'high-pitched' };
 /** One voice of Gemini's voice list (`GET /v1beta/voices`), as a preset; null for a row with no id. */
 export function geminiListedVoice(row: Record<string, unknown>): TtsVoice | null {
   const pick = (...keys: string[]) => { for (const k of keys) { const v = row[k]; if (typeof v === 'string' && v.trim()) return v.trim(); } return ''; };
@@ -32,7 +33,11 @@ export function geminiListedVoice(row: Record<string, unknown>): TtsVoice | null
   if (!id) return null;
   const shown = pick('display_name', 'displayName') || id, gender = pick('gender').toLowerCase();
   const about = pick('description', 'persona'), accent = pick('accent'), language = pick('language_code', 'languageCode');
-  const tags = [...new Set([about, accent, pick('pitch'), pick('persona')].flatMap(t => t.split(/[,;]/)).map(t => t.trim()).filter(t => t && t.length <= 40))].slice(0, 8);
+  // The pitch is one of three, and is kept as the tag a character's own pitch is (high-pitched): a bare 「low」 says
+  // nothing to whoever reads the tags. It and the persona (a few plain words) go first: eight tags are kept, and a
+  // long description's pieces would crowd them out.
+  const pitch = PITCH_TAG[pick('pitch').toLowerCase()] ?? '';
+  const tags = [...new Set([pick('persona'), pitch, about, pick('context'), accent].flatMap(t => t.split(/[,;]/)).map(t => t.trim()).filter(t => t && t.length <= 40))].slice(0, 8);
   return {
     key: `gemini:${id}`, name: about && shown !== about ? `${shown} · ${about.slice(0, 40)}` : shown, fishId: id, tags,
     gender: gender.startsWith('f') ? 'female' : gender.startsWith('m') ? 'male' : 'unknown', folder: '',

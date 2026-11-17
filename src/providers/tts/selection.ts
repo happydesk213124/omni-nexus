@@ -5,6 +5,7 @@ import { parseLlmJson } from './translation';
 import { embedScores } from '../sound/embed';
 import type { EmbeddingSettings } from '../embedding/client';
 import { englishVoiceTags, voiceNameForModel } from '../../domain/tts/voice-words';
+import { ofPitch, sharedWords, voicePitch, wantedPitch } from '../../domain/tts/voice-fit';
 
 export interface VoiceCandidate { number: number; voice: TtsVoice }
 export function numberedVoices(voices: TtsVoice[]): VoiceCandidate[] {
@@ -26,6 +27,13 @@ export interface VoicePickOptions {
   current?: ReadonlyMap<string, string>;
   /** By character id, a few lines about them (lore), for the embedding, which has no other source. */
   about?: ReadonlyMap<string, string>;
+  /**
+   * The embedding engine chooses among the voices of the pitch the character's tags ask for, where the list has one
+   * (Gemini's states each voice's pitch): an embedding puts 「high-pitched」 and 「low-pitched」 side by side.
+   */
+  pitch?: boolean;
+  /** The embedding engine with no embedding set: by the words the character's tags and the voice share, not an error. */
+  words?: boolean;
 }
 /** Model and embedding answers ask for this many, so a taken one can give way. */
 const ASKED = 5;
@@ -64,20 +72,31 @@ export async function selectTtsVoices(characters: TtsCharacter[], voices: TtsVoi
   const allowed = characters.map(character => candidates.filter(c => character.gender === 'unknown' || character.gender === 'other' || c.voice.gender === character.gender || c.voice.gender === 'unknown'));
   if (allowed.some(v => !v.length)) throw new Error('캐릭터 성별에 맞는 음성이 후보 폴더에 없습니다.');
   if (engine === 'embedding') {
-    if (!embed) throw new Error('임베딩이 설정되지 않았습니다. TTS·BGM·JEV 모델 설정의 임베딩을 먼저 넣어 주세요.');
+    if (!embed && !options.words) throw new Error('임베딩이 설정되지 않았습니다. TTS·BGM·JEV 모델 설정의 임베딩을 먼저 넣어 주세요.');
     // No model call: the character (gender, name, tags, a few lines of lore) against each voice (gender, the known
     // character it is, its tags), all in English. With no tags or lore a character is known by name and gender only,
     // and the pick is as rough as that.
     const picked = new Map<string, TtsVoice[]>(), given = new Set<string>();
     for (let i = 0; i < characters.length; i++) {
-      const c = characters[i]!, rows = allowed[i]!;
-      const query = [`${c.gender} character`, c.name, modelTags(c.tags, true).join(', '), options.about?.get(c.id)?.slice(0, 400)].filter(Boolean).join(' — ');
-      const scores = await embedScores(query, rows.map(r => [`${r.voice.gender} voice`, voiceNameForModel(r.voice), modelTags(r.voice.tags, true).join(', ') || voiceCaption(r.voice)].filter(Boolean).join(' — ')), embed);
-      const best = rows.map((row, k) => ({ voice: row.voice, score: scores[k] ?? 0 })).sort((a, b) => b.score - a.score).slice(0, ASKED);
-      if (!best.length) throw new Error(`${c.name}: 유효한 음성 추천 결과가 없습니다.`);
-      // Near equals by how often they are already used, fewest first.
+      const c = characters[i]!, wanted = modelTags(c.tags, true);
+      const rows = options.pitch ? ofPitch(allowed[i]!, wantedPitch(wanted), row => voicePitch(modelTags(row.voice.tags, true))) : allowed[i]!;
       const uses = (voice: TtsVoice) => options.uses?.get(voice.key) ?? 0;
-      best.sort((a, b) => Math.abs(a.score - b.score) < NEAR ? uses(a.voice) - uses(b.voice) || b.score - a.score : b.score - a.score);
+      let best: Array<{ voice: TtsVoice; score: number }>;
+      if (embed) {
+        const query = [`${c.gender} character`, c.name, wanted.join(', '), options.about?.get(c.id)?.slice(0, 400)].filter(Boolean).join(' — ');
+        const scores = await embedScores(query, rows.map(r => [`${r.voice.gender} voice`, voiceNameForModel(r.voice), modelTags(r.voice.tags, true).join(', ') || voiceCaption(r.voice)].filter(Boolean).join(' — ')), embed);
+        best = rows.map((row, k) => ({ voice: row.voice, score: scores[k] ?? 0 })).sort((a, b) => b.score - a.score).slice(0, ASKED);
+        // Near equals by how often they are already used, fewest first.
+        best.sort((a, b) => Math.abs(a.score - b.score) < NEAR ? uses(a.voice) - uses(b.voice) || b.score - a.score : b.score - a.score);
+      } else {
+        // By shared words: many voices score alike (most share none), so a free and less used one is taken before
+        // the list is cut to a handful; the seeded order settles the rest, and a cast is not one voice.
+        const now = options.current?.get(c.id) || '';
+        const cost = (voice: TtsVoice) => voice.key === now ? 2 : options.taken?.has(voice.key) || given.has(voice.key) ? 1 : 0;
+        best = rows.map((row, k) => ({ voice: row.voice, k, score: sharedWords(wanted, [voiceNameForModel(row.voice), modelTags(row.voice.tags, true).join(', '), voiceCaption(row.voice)].join(' ')) }))
+          .sort((a, b) => b.score - a.score || cost(a.voice) - cost(b.voice) || uses(a.voice) - uses(b.voice) || a.k - b.k).slice(0, ASKED);
+      }
+      if (!best.length) throw new Error(`${c.name}: 유효한 음성 추천 결과가 없습니다.`);
       const order = arranged(best.map(row => row.voice), c.id, given, options);
       given.add(order[0]!.key);
       picked.set(c.id, order);

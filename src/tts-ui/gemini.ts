@@ -11,7 +11,7 @@ import { el, esc, on, set, text, val } from './common';
  */
 const MODELS = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'];
 /** 새 화자의 목소리: in 모델 설정's Gemini group, and again in TTS 설정 beside 음성 선택 모델 (where one looks for it). */
-export const GEMINI_ASSIGN_OPTIONS = '<option value="design">특징에 맞춰 만들기 · 같은 특징은 같은 목소리</option><option value="embedding">Google 목록에서 임베딩으로 고르기 · 바로</option><option value="list">목록에서 고르기 · 음성 선택 모델로</option>';
+export const GEMINI_ASSIGN_OPTIONS = '<option value="design">특징에 맞춰 만들기 · 같은 특징은 같은 목소리</option><option value="embedding">Google 목록에서 바로 고르기 · 태그/임베딩</option><option value="list">목록에서 고르기 · 음성 선택 모델로</option>';
 export const GEMINI_GROUP = `<div class="group" id="tts-gemini-group" hidden><h3>Gemini TTS · 음성 생성</h3><div class="fields">`
   + `<label class="field full"><span>연결 방식</span><select id="tts-gemini-via" aria-label="Gemini 연결 방식"><option value="studio">AI Studio · API 키</option><option value="vertex">Vertex AI · 서비스 계정 JSON</option></select></label>`
   + `<label class="field full" id="tts-gemini-key-wrap"><span>Gemini API Key (AI Studio)</span><input id="tts-gemini-key" type="password" autocomplete="off" placeholder="AIza…" aria-label="Gemini API Key"></label>`

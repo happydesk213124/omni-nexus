@@ -2,6 +2,7 @@ import type { TtsCharacter, TtsSettings, TtsVoice } from '../core/tts-types';
 import { dbg } from '../core/debug';
 import { GEMINI_PREBUILT_NAMES, geminiPrebuiltVoices } from '../domain/tts/gemini-voices';
 import { englishVoiceTags } from '../domain/tts/voice-words';
+import { spreadEvenly, voicePitch } from '../domain/tts/voice-fit';
 import { deleteGeminiVoice, designGeminiVoice, geminiReady, listGeminiVoices } from '../providers/tts/gemini';
 import { saveTtsData, ttsData, updateTtsSettings } from '../storage/tts-store';
 
@@ -122,7 +123,7 @@ export async function removeGeminiVoice(key: string): Promise<void> {
 /**
  * The voice list read in: the prebuilt thirty first (cards speak with them), the voices designed here kept, then
  * what the list holds, each once. Kept to `max`: the whole list is saved with the TTS data, and a few thousand rows
- * is a write of half a megabyte every time anything in it changes.
+ * is a write of half a megabyte every time anything in it changes. The count returned is what the list offered.
  */
 export async function loadGeminiVoiceList(language = '', max = 300): Promise<number> {
   const data = ttsData(), listed = await listGeminiVoices({ gemini: data.settings.gemini }, language, 1000);
@@ -132,7 +133,8 @@ export async function loadGeminiVoiceList(language = '', max = 300): Promise<num
   const kept = data.geminiVoices.filter(v => bound.has(v.key) && !have.has(v.fishId));
   for (const v of kept) have.add(v.fishId);
   const fresh = listed.filter(v => !have.has(v.fishId) && !prebuilt.has(v.fishId));
-  data.geminiVoices = [...keep, ...kept, ...fresh].slice(0, Math.max(max, keep.length + kept.length));
+  // What room is left is filled evenly, by gender and pitch: cut off its top, the list is whatever it opens with.
+  data.geminiVoices = [...keep, ...kept, ...spreadEvenly(fresh, max - keep.length - kept.length, v => `${v.gender}|${voicePitch(v.tags)}`)];
   await saveTtsData();
   return fresh.length;
 }

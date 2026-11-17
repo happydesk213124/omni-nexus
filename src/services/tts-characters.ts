@@ -23,7 +23,10 @@ import type { EmbeddingSettings } from '../providers/embedding/client';
 export async function voiceEmbedding(): Promise<EmbeddingSettings | null> {
   return soundEmbedSettings((await loadSoundData()).settings, ttsData().settings);
 }
-/** Gemini › Google 목록에서 임베딩으로 고르기: the embedding picks, whatever the 음성 선택 모델 is. */
+/**
+ * Gemini › Google 목록에서 바로 고르기: the voice is chosen from Google's list at once, whatever the 음성 선택 모델 is: by the
+ * embedding when one is set, else by the pitch and words the list states of each voice (no key, no call).
+ */
 const geminiEmbeds = (): boolean => ttsData().settings.engine === 'gemini' && ttsData().settings.gemini.assign === 'embedding';
 const voiceSelector = () => geminiEmbeds() ? 'embedding' as const : ttsData().settings.selector;
 /** What the embedding chooses among: the whole Gemini list (it reads no prompt, so none is cut for length). */
@@ -43,7 +46,7 @@ export function voicePickOptions(picking: readonly TtsCharacter[], about?: Reado
   const uses = new Map<string, number>();
   for (const c of characters) if (key(c)) uses.set(key(c), (uses.get(key(c)) ?? 0) + 1);
   const current = new Map(picking.filter(c => key(c)).map(c => [c.id, key(c)]));
-  return { taken, uses, current, ...(about?.size ? { about } : {}) };
+  return { taken, uses, current, ...(about?.size ? { about } : {}), ...(engine === 'gemini' ? { pitch: true } : {}), ...(geminiEmbeds() ? { words: true } : {}) };
 }
 /**
  * A few lines about each character from the lorebook, for the embedding engine, which otherwise knows a character by
@@ -137,8 +140,6 @@ export function ensureTtsSpeakers(context: TtsChatContext, names: string[], curr
   if (!ttsData().settings.autoAssign || !names.length || !current()) return Promise.resolve();
   const data = ttsData();
   if (data.settings.engine === 'gemini' && data.settings.gemini.assign === 'design') return ensureOwnVoices(context, names, current, messageIds, marks);
-  // With no embedding to pick by, the voice of their traits is made, as by default.
-  if (geminiEmbeds()) return voiceEmbedding().then(embed => embed ? ensureListedVoices(context, names, current, messageIds, marks) : ensureOwnVoices(context, names, current, messageIds, marks));
   return ensureListedVoices(context, names, current, messageIds, marks);
 }
 /**
@@ -251,7 +252,8 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
       // lines of lore, beside the emoji's gender and tags.
       const sources = engine === 'jev' ? await voicePickSources('jev', context, unknown, messageIds) : undefined;
       const embed = engine === 'embedding' ? await voiceEmbedding() : null;
-      const about = engine === 'embedding' ? await voiceAbout(context, drafts) : undefined;
+      // (Lore is read for the embedding alone: with none set the pick is by the tags' words.)
+      const about = embed ? await voiceAbout(context, drafts) : undefined;
       const selected = drafts.length ? await selectTtsVoices(drafts, pickableVoices(engine), ttsData().settings, engine, sources, embed, voicePickOptions(drafts, about)) : new Map<string, TtsVoice[]>();
       for (const proposal of proposals) { const voice = selected.get(proposal.draft.id)?.[0]; if (!voice) continue; bindVoice(proposal.draft, voice, data.settings.engine); adoptVoiceTags(proposal.draft, voice); }
     }
@@ -261,5 +263,5 @@ async function assignSpeakers(context: TtsChatContext, names: string[], messageI
   const empty=[...new Map(names.flatMap(name=>{const c=resolveTtsSpeaker(name,ttsData().characters,context.rosterScope);return c&&!c.fixed&&!voiced(c,true)&&suited(c)?[[c.id,c] as const]:[];})).values()];
   // One known but still voiceless keeps what it holds: its emoji fill only an unknown gender and empty tags.
   for (const c of empty) { const hint = [c.name, ...c.triggers].map(n => hints.get(ttsNameKey(n))).find(Boolean); if (hint) applyCueHint(c, hint, false); }
-  if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selector=voiceSelector();const selected=await selectTtsVoices(empty,pickableVoices(selector),ttsData().settings,selector,await voicePickSources(selector,context,empty.flatMap(c=>[c.name,...c.triggers]),messageIds),selector==='embedding'?await voiceEmbedding():null,voicePickOptions(empty,selector==='embedding'?await voiceAbout(context,empty):undefined));if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];bindVoice(c,voice,data.settings.engine);adoptVoiceTags(c,voice);}await saveTtsData();}
+  if(empty.length){const snapshots=empty.map(c=>JSON.stringify(c));const selector=voiceSelector();const embed=selector==='embedding'?await voiceEmbedding():null;const selected=await selectTtsVoices(empty,pickableVoices(selector),ttsData().settings,selector,await voicePickSources(selector,context,empty.flatMap(c=>[c.name,...c.triggers]),messageIds),embed,voicePickOptions(empty,embed?await voiceAbout(context,empty):undefined));if(!ttsData().settings.enabled)return;for(let i=0;i<empty.length;i++){const c=ttsData().characters.find(row=>row.id===empty[i].id);if(!c||JSON.stringify(c)!==snapshots[i])continue;const voice=selected.get(c.id)![0];bindVoice(c,voice,data.settings.engine);adoptVoiceTags(c,voice);}await saveTtsData();}
 }
