@@ -43,6 +43,7 @@ export async function registerInlineCast(body: Record<string, unknown>): Promise
         unifiedSessionId: sessionId, characterId, sourceSessionIds: [],
         // Never a character write mid-reply: it goes out with the reply's bake, or after the reply ends.
         bufferWrites: true,
+        keepSavedLooks: true,
       });
       flushWhenReplyEnds();
       // The buffered rows are what the roster reads: the names a cue may wear are read again now, not in 30 s.

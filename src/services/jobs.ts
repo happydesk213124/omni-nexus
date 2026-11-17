@@ -1143,6 +1143,8 @@ async function runJob(jobId: string): Promise<void> {
       sourceSessionIds,
       // People it registers go out with its bake's character write (character-roster).
       bufferWrites: true,
+      // A streaming block's model knew only this chat's people: a saved one written as new keeps the saved looks.
+      keepSavedLooks: inlineBlock !== null,
     });
     if (inlineBlock !== null) rosterWritten(request);
     roster = rosterWithSessionOutfits(roster, await getSessionAuthorNote(noteSessionId));

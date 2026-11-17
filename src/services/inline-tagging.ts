@@ -12,7 +12,7 @@ import { castInTexts, orderCast } from '../domain/tagging/recent-cast';
 import { authorNoteSystemContent } from '../domain/tagging/session-note';
 import { isOwnLlmRequest } from '../providers/llm/own-requests';
 import { auditCues, lastCueAudit } from './cue-audit';
-import { globalOnlyCharacters, loadTaggerRoster } from './characters';
+import { loadTaggerRoster } from './characters';
 import { getConfig } from './context';
 import { loadEmotionData } from '../storage/emotion-store';
 import { holdBot, readOpenBot, type Bot } from '../storage/current-bot';
@@ -109,21 +109,19 @@ export interface InlineScope { sessionId?: unknown; characterId?: unknown; chatI
 const texts = (value: unknown): string[] => Array.isArray(value) ? value.map(text => String(text ?? '')) : [];
 
 /**
- * A global character is a person kept for any bot, not one of this story's: their name in the list is enough for the
- * model to write them in as an extra, and in an empty bot the list is all it knows. So they are listed once this chat
- * has them, named lately or drawn; the reply tagger reads only who is named, too. One the model brings in unlisted
- * still draws with the saved looks: a same-named row never replaces a filled global one.
+ * Only this chat's people are listed: their name in the list is enough for the model to write them in, so a list of
+ * everyone the bot ever met made every new chat the old story's cast again (and a global character, kept for any bot,
+ * an extra in all of them). A person is this chat's once named in its last messages (the greeting too), drawn in it,
+ * or in the order it remembers (named before its last messages); POV 참고 and the persona always are, the user's own
+ * word that they belong. Someone saved the model brings back unlisted is written as new, and keeps the saved looks
+ * (mergeRosterFromTagged's keepSavedLooks): no second costume.
  */
-async function withoutAbsentGlobals(roster: CharacterRecord[], characterId: string, story: string[], note: unknown): Promise<CharacterRecord[]> {
-  const globals = await globalOnlyCharacters(roster, characterId);
-  if (!globals.length) return roster;
-  const named = new Set(castInTexts([story.join('\n')], globals)), drawn = sessionDrawnCast(note);
-  const absent = new Set(globals.filter(char => {
+function withoutAbsentCast(roster: CharacterRecord[], story: string[], note: unknown, remembered: readonly string[]): CharacterRecord[] {
+  const named = new Set([...castInTexts([story.join('\n')], roster), ...remembered]), drawn = sessionDrawnCast(note);
+  return roster.filter(char => {
     const id = cleanText(char.id || char.name, 200);
-    // POV 참고 and the persona are the user's own word that this one belongs here.
-    return char.pov_reference !== true && char.persona_active !== true && !named.has(id) && !drawn.has(id);
-  }));
-  return roster.filter(char => !absent.has(char));
+    return char.pov_reference === true || char.persona_active === true || named.has(id) || drawn.has(id);
+  });
 }
 
 function rosterLine(char: CharacterRecord, withCostumes: boolean): string {
@@ -151,9 +149,10 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
   if (note) roster = rosterWithSessionOutfits(roster, note);
   roster = roster.filter(char => cleanText(char.name, 200));
   const recent = texts(scope.recent);
-  roster = await withoutAbsentGlobals(roster, characterId, [...texts(scope.story), ...recent], note);
+  const remembered = noteId ? await sessionRecentCast(noteId) : [];
+  roster = withoutAbsentCast(roster, [...texts(scope.story), ...recent], note, remembered);
   if (noteId) {
-    const order = orderCast(roster, castInTexts(recent, roster), await sessionRecentCast(noteId));
+    const order = orderCast(roster, castInTexts(recent, roster), remembered);
     rememberRecentCast(noteId, order.map(char => cleanText(char.id || char.name, 200)));
     roster = order;
   }

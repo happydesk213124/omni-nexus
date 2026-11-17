@@ -343,6 +343,20 @@ test('a cast block registers an outfit worn in this reply before its first line,
   assert.deepEqual(f.api.costumesOf('bot:bot', 'bot')('오미선'), ['default', 'idol_dress'], 'read again at once, not 30 s later');
 });
 
+test('a saved person a new chat\'s cast block writes as new keeps the saved looks: no second costume, nothing rewritten', async () => {
+  const f = await fixture();
+  const scope = unifiedSessionIdForCharacter('bot');
+  await f.api.upsertCharacter(scope, { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform' }] });
+  // The chat model was told only this chat's people, so it met her as a stranger and made up her looks and outfit.
+  const res = await f.api.registerInlineCast({ character_id: 'bot', chat_id: 'chat2', stream_id: 's2', host_message_id: 'm1', body: JSON.stringify({ place: 'park', new_characters: [{ name: '미선', appearance: 'girl, red hair', attire: 'maid outfit' }, { name: '민수', gender: 'boy', appearance: 'boy, brown hair', attire: 'hoodie' }], new_costumes: [{ name: '미선', costumes: [{ name: 'maid', attire: 'maid outfit' }] }] }) });
+  assert.equal(res.ok, true);
+  assert.deepEqual((await f.api.spriteCostumes(f.person, f.bot)).map(c => c.name), ['default'], 'no 오미선_default, no maid');
+  const roster = await f.api.loadTaggerRoster({ sessionId: scope, unifiedSessionId: scope, characterId: 'bot' });
+  assert.match(roster.find(c => c.name === '오미선').appearance, /black hair/);
+  assert.doesNotMatch(roster.find(c => c.name === '오미선').appearance, /red hair/);
+  assert.ok(roster.some(c => c.name === '민수'), 'a stranger is still registered');
+});
+
 test('a costume named in a cue (이름_2) has its own sprites: drawn in that costume, saved and found apart from the default ones', async () => {
   const f = await fixture();
   await f.api.upsertCharacter(unifiedSessionIdForCharacter('bot'), { name: '오미선', aliases: ['미선'], gender: 'girl', appearance: 'girl, black hair', costumes: [{ name: 'default', attire: 'school uniform, pleated skirt' }, { name: 'swim', attire: 'red bikini' }] });

@@ -73,6 +73,12 @@ export interface MergeRosterArgs {
   originalHints?: Record<string, string>;
   /** An image job: roster writes wait for the bake's character write (character-roster). */
   bufferWrites?: boolean;
+  /**
+   * A streaming reply: the chat model is told only this chat's people (inline-tagging), so someone saved it meets
+   * again in a new chat comes back as new_characters, with looks of its own making (and new_costumes for them). The
+   * saved looks stand: nothing of that row is written, and no `하린_default` costume is added beside them.
+   */
+  keepSavedLooks?: boolean;
 }
 
 interface SessionEditCount {
@@ -282,12 +288,6 @@ export async function rosterForSession(
 ): Promise<CharacterRecord[]> {
   if(sessionId===GLOBAL_SCOPE)return listCharacters(GLOBAL_SCOPE);
   return mergeSessionAndGlobalRoster(await listCharacters(characterId || _unifiedSessionId || sessionId), await personaGlobals(await listCharacters(GLOBAL_SCOPE)), {hasAppearance:characterHasAppearance,resolve:resolveCharacter}) as CharacterRecord[];
-}
-
-/** Who of this merged roster only the global list holds: no row of the bot's is the same person. */
-export async function globalOnlyCharacters(roster: CharacterRecord[], characterId: string): Promise<CharacterRecord[]> {
-  const own = await listCharacters(characterId);
-  return roster.filter(char => !own.some(row => resolveCharacter(row.name, [char])));
 }
 
 /** Same arguments `buildTaggerMessages` threads into `rosterForSession`. */
@@ -613,6 +613,8 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     : roster;
   const newList = [...(tagged.new_characters || [])];
   const savedCostumeOwners = new Set<string>();
+  // Saved people a streaming reply wrote as new (keepSavedLooks): their new_costumes are of the same making.
+  const keptAsSaved = new Set<string>();
   const covered = new Set(newList.map((raw) => normalizeAlias(raw?.name)));
   for (const row of pool) {
     const key = normalizeAlias(row.name);
@@ -690,6 +692,12 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     rec.bottoms = buckets.bottoms;
     rec.accessories = buckets.accessories;
     const existing = resolveCharacter(rec.name, pool) || resolveCharacter(rec.name, roster);
+    if (existing && args.keepSavedLooks && characterHasAppearance(existing)) {
+      savedCostumeOwners.add(rec.name);
+      keptAsSaved.add(normalizeAlias(existing.name));
+      keptAsSaved.add(normalizeAlias(rec.name));
+      continue;
+    }
     const newApp = cleanText(rec.appearance || '');
     const newAttire = cleanText(rec.attire || '');
     const newBottoms = cleanText(rec.bottoms || '');
@@ -786,8 +794,11 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
       roster = await readRoster();
     }
   };
+  const newCostumes = (tagged as { new_costumes?: unknown }).new_costumes;
   await saveCostumes(collectCostumePairs({
-    new_costumes: (tagged as { new_costumes?: unknown }).new_costumes,
+    new_costumes: Array.isArray(newCostumes) && keptAsSaved.size
+      ? newCostumes.filter(row => !keptAsSaved.has(normalizeAlias((row as { name?: unknown } | null)?.name)))
+      : newCostumes,
     // These designs were already snapshotted above. Re-merging by costume name
     // here would overwrite an existing named costume after preserving it.
     new_characters: tagged.new_characters?.filter(row => !savedCostumeOwners.has(cleanText(row.name))),

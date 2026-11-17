@@ -397,7 +397,7 @@ test('a chat request that comes before the settings load waits for them, instead
   assert.equal(f.api.inlineTagStatus().last.startsWith('inserted'),true);
 });
 
-test('the chat model hears of a global character only once this chat has them, so an empty bot gets no extras',async()=>{
+test('the chat model hears only of this chat\'s people (the bot\'s own too), so a new chat is not the old story\'s cast again',async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true});
   let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
   await f.api.installInlineTags();
@@ -412,14 +412,15 @@ test('the chat model hears of a global character only once this chat has them, s
     return [...(sent.find(m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK))?.content ?? '').matchAll(/^- (\S+)/gm)].map(m=>m[1]).sort();
   };
   const row=(role,data)=>({role,chatId:'m'+data,data});
-  assert.deepEqual(await listed(row('user','안녕')),['레이','하나'],'the bot\'s own, and the one on both lists; no global stranger');
-  assert.deepEqual(await listed(row('user','유리를 불렀다')),['레이','유리','하나'],'the user names one: the reply that follows knows them');
-  const older=[row('char','유리가 노래했다.'),...Array.from({length:9},(_,i)=>row('char','조용한 밤 '+i))];
+  assert.deepEqual(await listed(row('user','안녕')),[],'a new chat: nobody yet, the bot\'s own neither');
+  assert.deepEqual(await listed(row('char','하나가 문을 열었다.')),['하나'],'the greeting names one: the bot\'s own, listed');
+  assert.deepEqual(await listed(row('user','유리를 불렀다')),['유리','하나'],'the user names a global one; 하나 is remembered from before');
+  const older=[row('char','레이가 노래했다.'),...Array.from({length:9},(_,i)=>row('char','조용한 밤 '+i))];
   assert.deepEqual(await listed(...older),['레이','유리','하나'],'named well before the last two replies: still of this chat');
   await f.api.setSessionAuthorNote(sid,{wear:{[(await f.api.listCharacters('__global__')).find(c=>c.name==='소라').id]:{name:'소라',wear:'topless'}}});
-  assert.deepEqual(await listed(row('user','안녕')),['레이','소라','하나'],'drawn in this chat, though no message here names them');
+  assert.deepEqual(await listed(row('user','안녕')),['레이','소라','유리','하나'],'drawn in this chat, though no message here names them');
   await f.api.upsertCharacter('__global__',{...(await f.api.listCharacters('__global__')).find(c=>c.name==='미오'),pov_reference:true});
-  assert.deepEqual(await listed(row('user','안녕')),['레이','미오','소라','하나'],'POV 참고 stays: the user put them here');
+  assert.deepEqual(await listed(row('user','안녕')),['레이','미오','소라','유리','하나'],'POV 참고 stays: the user put them here');
 });
 
 test('the chat model gets this chat\'s people, most recently named first, with their costumes; the order is kept in the note once a reply is done',async()=>{
@@ -440,7 +441,8 @@ test('the chat model gets this chat\'s people, most recently named first, with t
   };
   const note=async()=>JSON.parse((await f.chat()).localLore?.find(e=>e.comment==='omni.nexus.note')?.content ?? '{"note":{}}').note;
   // Older replies are not read: only the last two.
-  let {state,order}=await say('예원이 노래했다.','하나가 민아를 불렀다.','조용한 밤이었다.');
+  // (Everyone is of this chat: the first reply names them all.)
+  let {state,order}=await say(`${names.join(', ')}이 모였다.`,'예원이 노래했다.','하나가 민아를 불렀다.','조용한 밤이었다.');
   assert.deepEqual(order.slice(0,2),['하나','민아'],'named in the last two replies: first');
   assert.notEqual(order[2],'예원','예원, three replies back, is not read');
   assert.equal(order.length,20,'twenty at most');
@@ -1334,6 +1336,8 @@ test('a chat request reads its bot once: its rosters and this chat\'s note come 
   let replacer;risuai.addRisuReplacer=async(type,fn)=>{if(type==='beforeRequest')replacer=fn;};
   await f.api.installInlineTags();
   await f.api.upsertCharacter('c',{name:'하나',appearance:'1girl, blue hair',attire:'school uniform'});
+  // She is of this chat: its greeting names her (only this chat's people are listed).
+  const bot=await risuai.getCharacterFromIndex(0);await risuai.setCharacterToIndex(0,{...bot,chats:[{...bot.chats[0],message:[{role:'char',chatId:'g',data:'하나가 손을 흔들었다.'}]}]});
   // Past the directory's own two-second reuse (the write above read it): a directory read would show.
   await new Promise(r=>setTimeout(r,2100));
   const counts={directory:0,getCharacterFromIndex:0,getCharacter:0,getChatFromIndex:0};
@@ -1360,7 +1364,7 @@ test('전역 캐릭터는 현재 페르소나만, streaming: the persona heads t
   risuai.getDatabase=async(...args)=>({...await read(...args),personas:[{name:'주인공'}],selectedPersona:0});
   try {
     const character=await risuai.getCharacterFromIndex(0);
-    await risuai.setCharacterToIndex(0,{...character,chats:[{...character.chats[0],message:[{role:'user',chatId:'u',data:'안녕'},{role:'char',chatId:'r',data:'유리가 웃었다.'}]}]});
+    await risuai.setCharacterToIndex(0,{...character,chats:[{...character.chats[0],message:[{role:'user',chatId:'u',data:'안녕'},{role:'char',chatId:'r',data:'유리가 하나를 보고 웃었다.'}]}]});
     const sent=await replacer([{role:'system',content:'main'},{role:'user',content:'go'}],'model');
     const state=sent.find(m=>String(m.content).startsWith(f.api.INLINE_STATE_MARK))?.content ?? '';
     assert.deepEqual([...state.matchAll(/^- (\S+)/gm)].map(m=>m[1]),['소라','하나'],'an alias finds them; 유리 is named and still out');
