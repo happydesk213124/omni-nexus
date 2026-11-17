@@ -138,6 +138,14 @@ export async function loadGeminiVoiceList(language = '', max = 300): Promise<num
   await saveTtsData();
   return fresh.length;
 }
+/**
+ * The list as a new install reads it: in the language lines are read in, else the whole catalog (one with no voice
+ * so marked), kept to 300 and even by gender and pitch. What was read before goes; the prebuilt, the designed and
+ * those a card speaks with stay. Returns how many the list offered.
+ */
+export async function loadDefaultGeminiVoiceList(settings: Pick<TtsSettings, 'translation'> = ttsData().settings): Promise<number> {
+  return await loadGeminiVoiceList(readLanguage(undefined, settings), 300) || await loadGeminiVoiceList('', 300);
+}
 let listing: Promise<void> | undefined;
 /**
  * Once, by itself, the first time Gemini is ready to speak: the catalog's voices in the language read (the thirty
@@ -150,7 +158,7 @@ export function ensureGeminiVoiceList(): Promise<void> {
   return listing ??= (async () => {
     await updateTtsSettings({ gemini: { ...ttsData().settings.gemini, listed: true } });
     // In the language read first (a voice of that language reads it as its own); a catalog with none so marked, whole.
-    const added = await loadGeminiVoiceList(readLanguage(undefined, s), 300) || await loadGeminiVoiceList('', 300);
+    const added = await loadDefaultGeminiVoiceList(s);
     dbg('tts.gemini', { message: `목소리 목록 ${added}개를 불러왔습니다.` });
     if (typeof document !== 'undefined') document.dispatchEvent(new Event('omnitts-library'));
   })().catch(error => { dbg('tts.gemini', { message: `목소리 목록: ${String((error as Error)?.message || error)}` }, 'warn'); }).finally(() => { listing = undefined; });

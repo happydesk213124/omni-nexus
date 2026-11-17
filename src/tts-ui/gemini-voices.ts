@@ -1,9 +1,8 @@
 import type { TtsVoice } from '../core/tts-types';
-import { geminiPrebuiltVoices } from '../domain/tts/gemini-voices';
 import { matchesVoiceSearch } from '../domain/tts/library';
-import { cardsWithoutOwnVoice, designVoice, designVoiceFor, ensureGeminiVoiceList, loadGeminiVoiceList, removeGeminiVoice } from '../services/gemini-voices';
+import { cardsWithoutOwnVoice, designVoice, designVoiceFor, ensureGeminiVoiceList, loadDefaultGeminiVoiceList, loadGeminiVoiceList, removeGeminiVoice } from '../services/gemini-voices';
 import { currentTtsContext } from '../services/tts-context';
-import { saveTtsData, ttsData } from '../storage/tts-store';
+import { ttsData } from '../storage/tts-store';
 import { el, esc, genderLabel, hearNewVoice, input, listenButton, on, text, val } from './common';
 
 /**
@@ -32,7 +31,7 @@ const PANEL = `<section class="panel" id="${GEMINI_VOICES_TAB}" role="tabpanel" 
   + '<button type="button" id="gv-load" title="이 키(또는 Vertex 계정)로 쓸 수 있는 목소리를 Google에서 불러옵니다">목록 불러오기</button>'
   + '<button type="button" id="gv-new" title="설명을 적어 새 목소리를 만듭니다">+ 목소리 만들기</button>'
   + '<button type="button" id="gv-each" title="자기만의 목소리가 없는 캐릭터마다 새 목소리를 만들어 줍니다">캐릭터마다 새 목소리</button>'
-  + '<button type="button" id="gv-reset" title="불러온 목소리를 지우고 기본 목소리 30개로 되돌립니다(만든 목소리는 남습니다)">기본 30개로</button></div></div>'
+  + '<button type="button" id="gv-reset" title="처음 설치했을 때처럼 Google 목록을 새로 받아 기본 목록 300개로 맞춥니다(만든 목소리와 캐릭터가 쓰는 목소리는 남습니다)">기본 목록 불러오기</button></div></div>'
   + '<p class="gv-note">기본 목소리는 30개뿐이라 캐릭터가 많으면 같은 목소리가 겹칩니다. 「목록 불러오기」로 Google의 목소리를 더 가져오거나, 「캐릭터마다 새 목소리」로 캐릭터의 성별·특징 태그에 맞춘 목소리를 만들 수 있습니다(특징 조합이 같으면 같은 목소리를 쓰고, 만든 목소리는 Google 프로젝트에 저장, 200개까지). 고르지 않은 캐릭터와 나레이션은 모델 설정의 기본 목소리로 읽습니다.</p>'
   + '<div id="gv-form" class="gv-form" hidden><input id="gv-new-name" maxlength="80" placeholder="목소리 이름" aria-label="목소리 이름"><select id="gv-new-gender" aria-label="성별"><option value="">성별 미지정</option><option value="female">여성</option><option value="male">남성</option></select>'
   + '<textarea id="gv-new-about" rows="2" maxlength="2000" placeholder="어떤 목소리인지 · 예: 낮고 나른한 20대 여성, 말끝을 흐리는" aria-label="목소리 설명"></textarea>'
@@ -72,7 +71,7 @@ export class GeminiVoices {
     el('gv-apply-picked').hidden = !this.picking; el('gv-cancel-picked').hidden = !this.picking; input('gv-apply-picked').disabled = !this.selected;
     text('gv-selected', this.picking ? (this.selected ? `선택: ${all.find(v => v.key === this.selected)?.name || ''}` : '캐릭터에 줄 목소리를 고르세요') : '');
     root.replaceChildren();
-    if (!visible.length) { const empty = document.createElement('p'); empty.className = 'gv-empty'; empty.textContent = all.length ? '검색에 맞는 목소리가 없습니다.' : '목소리가 없습니다. 「기본 30개로」를 눌러 주세요.'; root.append(empty); return; }
+    if (!visible.length) { const empty = document.createElement('p'); empty.className = 'gv-empty'; empty.textContent = all.length ? '검색에 맞는 목소리가 없습니다.' : '목소리가 없습니다. 「기본 목록 불러오기」를 눌러 주세요.'; root.append(empty); return; }
     // A long list (a voice library read) is drawn a page at a time: the first few hundred, the search narrows the rest.
     const numbers = new Map(all.map((v, i) => [v.key, i + 1]));
     for (const voice of visible.slice(0, 400)) {
@@ -118,11 +117,17 @@ export class GeminiVoices {
       } catch (error) { text('gv-status', String((error as Error)?.message || error)); }
       finally { button.disabled = false; }
     });
+    // 기본 목록 불러오기: the list as a new install reads it (300, even by gender and pitch). Read first, then replaced:
+    // a list that cannot be read leaves the one there. Voices designed here, and those a card speaks with, stay.
     on('gv-reset', async () => {
-      if (!confirm('불러온 목소리를 지우고 기본 목소리 30개로 되돌릴까요? 지운 목소리를 쓰던 캐릭터는 기본 목소리로 읽습니다.')) return;
-      // Voices designed here are stored at Google: they stay until taken off one by one (삭제).
-      ttsData().geminiVoices = [...geminiPrebuiltVoices(), ...ttsData().geminiVoices.filter(v => /^voice(key)?_/.test(v.fishId))]; await saveTtsData();
-      text('gv-status', '기본 목소리 30개로 되돌렸습니다.'); this.render();
+      if (!confirm('Google 목록을 새로 받아 기본 목록(300개)으로 맞출까요? 지금 불러와 있는 목록은 바뀌고, 만든 목소리와 캐릭터가 쓰는 목소리는 남습니다.')) return;
+      const button = input('gv-reset'); button.disabled = true; text('gv-status', '기본 목록을 불러오는 중…');
+      try {
+        const offered = await loadDefaultGeminiVoiceList();
+        text('gv-status', offered ? `기본 목록으로 맞췄습니다. 지금 ${ttsData().geminiVoices.length}개입니다.` : `Google 목록에 새 목소리가 없습니다(지금 ${ttsData().geminiVoices.length}개).`);
+        this.render();
+      } catch (error) { text('gv-status', String((error as Error)?.message || error)); }
+      finally { button.disabled = false; }
     });
     // + 목소리 만들기: a description in words, heard as soon as it is made.
     on('gv-new', () => { el('gv-form').hidden = !el('gv-form').hidden; });

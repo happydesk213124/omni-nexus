@@ -96,6 +96,15 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     await page.locator('#gv-load').click();
     await page.waitForFunction(() => /목록에 새 목소리가 없습니다\(지금 31개\)/.test(document.getElementById('gv-status').textContent));
     assert.match(await page.evaluate(() => window.asked.at(-1).url), /language_code=ko$/);
+    // 기본 목록 불러오기: the list read again as a new install reads it (the reading language, else the whole catalog);
+    // a voice read before that the list no longer holds, and no card speaks with, goes.
+    await page.evaluate(() => window.ttsData().geminiVoices.push({ key: 'gemini:old1', name: 'Old', fishId: 'old1', tags: [], gender: 'female', folder: '' }));
+    const before = await lists();
+    await page.locator('#gv-reset').click();
+    await page.waitForFunction(() => /새 목소리가 없습니다\(지금 31개\)/.test(document.getElementById('gv-status').textContent));
+    assert.deepEqual(await page.evaluate(n => window.asked.filter(a => a.method === 'GET' && a.url.includes('/v1beta/voices')).slice(n).map(a => (/language_code=(\w+)/.exec(a.url) || [])[1] || ''), before), ['ja', ''], 'the language read first (the translation\'s, Japanese, here), then the whole catalog');
+    assert.equal(await page.evaluate(() => window.ttsData().geminiVoices.some(v => v.fishId === 'old1')), false);
+    assert.equal(await page.locator('#gv-reset').textContent(), '기본 목록 불러오기');
     // + 목소리 만들기: a description, a stored voice, in the list as one made here (it can be taken off).
     await page.locator('#gv-new').click();
     await page.locator('#gv-new-name').fill('나른한 언니'); await page.locator('#gv-new-gender').selectOption('female');
