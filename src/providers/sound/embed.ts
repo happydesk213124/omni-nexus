@@ -1,6 +1,7 @@
 import type { SoundItem, SoundSettings } from '../../core/sound-types';
 import type { TtsSettings } from '../../core/tts-types';
 import { embedTexts, embeddingProviderNeedsApiKey, normalizeEmbeddingProvider, type EmbeddingSettings } from '../embedding/client';
+import { sfxHintOf } from '../../domain/sound/audio';
 
 /**
  * The embedding step of matching: the item whose description (name, tags and
@@ -77,7 +78,9 @@ export const SFX_TAG_BONUS = 0.08;
  */
 export async function embedPickSfx(queries: readonly SfxQuery[], items: readonly SoundItem[], describe: (item: SoundItem) => string, settings: EmbeddingSettings, exact: (word: string, item: SoundItem) => boolean = () => false, limit = 1): Promise<Array<Array<{ item: SoundItem; score: number }>>> {
   if (!items.length) return queries.map(() => []);
-  const words = queries.map(q => `효과음 의성어: ${q.word.trim()}`), stories = queries.map(q => q.context.trim() ? `장면: ${q.context.trim()}` : '');
+  // The writer's description of the sound (`§티틱|불 타는 소리§`) is what is heard as much as the word: it goes with the word.
+  const told = queries.map(q => sfxHintOf(q.context));
+  const words = queries.map((q, k) => `효과음 의성어: ${q.word.trim()}${told[k]!.hint ? ` (${told[k]!.hint})` : ''}`), stories = told.map(t => t.story.trim() ? `장면: ${t.story.trim()}` : '');
   const texts = items.map(describe), all = await vectorsFor(settings, [...words, ...stories.filter(Boolean), ...texts]);
   const vector = new Map<string, number[]>();
   [...words, ...stories.filter(Boolean), ...texts].forEach((text, i) => vector.set(text, all[i]!));

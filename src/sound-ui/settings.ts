@@ -75,7 +75,7 @@ function renderCueStatus(): void {
   node.textContent = sfxCueStatusText(soundData().settings, hook?.cues?.() ?? null, hook?.status?.().registered);
 }
 
-const SWITCHES = [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst'], ['snd-sfx-autocreate', 'sfxAutoCreate'], ['snd-youtube', 'youtubeBgm'], ['snd-youtube-hidden', 'youtubeHidden']] as const;
+const SWITCHES = [['snd-bgm-enabled', 'bgmEnabled'], ['snd-sfx-enabled', 'sfxEnabled'], ['snd-bgm-prompt', 'bgmPrompt'], ['snd-sfx-cue', 'sfxCue'], ['snd-sfx-hint', 'sfxHint'], ['snd-list-bgm', 'listBgm'], ['snd-list-sfx', 'listSfx'], ['snd-sfx-normalize', 'sfxNormalize'], ['snd-sfx-trim', 'sfxTrim'], ['snd-sfx-first', 'sfxFirst'], ['snd-sfx-autocreate', 'sfxAutoCreate'], ['snd-youtube', 'youtubeBgm'], ['snd-youtube-hidden', 'youtubeHidden']] as const;
 const RANGES = [['snd-bgm-volume', 'bgmVolume'], ['snd-sfx-volume', 'sfxVolume'], ['snd-duck', 'duck']] as const;
 const SELECTS = [['snd-bgm-matcher', 'bgmMatcher'], ['snd-bgm-basis', 'bgmBasis'], ['snd-sfx-matcher', 'sfxMatcher'], ['snd-sfx-auto', 'sfxAutoPlay']] as const;
 

@@ -3,6 +3,7 @@ import { dbg } from '../core/debug';
 import { risuHost } from '../core/host';
 import { DEFAULT_EXPRESSION, NUDE_COSTUME } from '../domain/emotion/emotions';
 import { compactHash, cueLineKey, isSoundSegment, parseTtsMessage } from '../domain/tts/segment';
+import { sfxHintOf, withSfxHint } from '../domain/sound/audio';
 import { revealSegments } from '../domain/tts/base64-words';
 import { namedCostumes } from '../domain/tts/costume-cue';
 import { costumesOf, nudeAllowedFor, refreshCostumeNames } from '../services/costume-names';
@@ -508,7 +509,8 @@ function playCues(scene: ViewerScene, again = false): void {
     }
     // Only an effect at this scene sounds: ones passed over by a jump are not replayed.
     // 효과음 off: passed over, never kept for later.
-    else if (cue.kind === 'sfx' && cue.start >= scene.start - 400 && viewerPrefs().sfx) playEffect(cue.text, scene.text);
+    // The scene is the effect's story here; the writer's description of the sound (sfxHintOf) goes with it.
+    else if (cue.kind === 'sfx' && cue.start >= scene.start - 400 && viewerPrefs().sfx) playEffect(cue.text, withSfxHint(scene.text, sfxHintOf(cue.context || '').hint));
   }
 }
 /**

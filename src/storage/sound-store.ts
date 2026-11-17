@@ -66,7 +66,7 @@ function term(raw: unknown): SfxTerm | null {
 }
 export function normalizeSoundSettings(raw: Partial<SoundSettings>): SoundSettings {
   const d = soundDefaults(), s = { ...d, ...raw };
-  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate', 'sfxCue', 'sfxFirst', 'sfxTrim', 'sfxNormalize', 'youtubeBgm', 'youtubeHidden'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
+  for (const key of ['bgmEnabled', 'sfxEnabled', 'bgmPrompt', 'listBgm', 'listSfx', 'viewerBgm', 'sfxAutoCreate', 'sfxCue', 'sfxHint', 'sfxFirst', 'sfxTrim', 'sfxNormalize', 'youtubeBgm', 'youtubeHidden'] as const) if (typeof s[key] !== 'boolean') (s as Record<string, unknown>)[key] = d[key];
   s.sfxMaxSec = Math.round(clamp(s.sfxMaxSec, 0, 60, d.sfxMaxSec) * 10) / 10;
   s.sfxStorySpan = Math.round(clamp(s.sfxStorySpan, 1, 3, d.sfxStorySpan));
   s.bgmVolume = clamp(s.bgmVolume, 0, 1, d.bgmVolume); s.sfxVolume = clamp(s.sfxVolume, 0, 1, d.sfxVolume);

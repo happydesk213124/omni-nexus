@@ -17,7 +17,8 @@ export const AUDIO_EXTENSIONS: Record<string, string> = {
   'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/ogg': 'ogg', 'audio/flac': 'flac', 'audio/mp4': 'm4a', 'audio/webm': 'webm',
 };
 
-export interface SfxHit { rule: string; word: string; index: number; length: number }
+/** `hint`: what the writer says the sound is (`§티틱|불 타는 소리§`), when they said it. */
+export interface SfxHit { rule: string; word: string; hint?: string; index: number; length: number }
 
 // Unicode-mode regexes accept an escape only where it is needed: `\-` is an error
 // outside a class, so the two places get their own escaping.
@@ -34,13 +35,23 @@ const escapeClass = (text: string) => text.replace(/[\]\\^-]/g, '\\$&');
  * `*\/` to the ▶ and commented out every rule after it.
  */
 const INSIDE_RAW_BLOCK = String.raw`(?!(?:[^<]|<(?!\/?(?:style|script)\b))*<\/(?:style|script)\s*>)`;
-export function sfxRuleMarks(rule: Pick<SfxRule, 'open' | 'close'>): { open: string; word: string; close: string } {
-  const marks = escapeClass([...new Set([...rule.open, ...rule.close])].join(''));
-  return { open: escapeRegex(rule.open), word: `[^${marks}\\n<>]{1,60}`, close: `${escapeRegex(rule.close)}(?![^<>]*>)${INSIDE_RAW_BLOCK}` };
+/**
+ * `hint`: the writer's description after the word (`|불 타는 소리`), without a group of its own; empty when the
+ * marks hold a `|` themselves, where the bar is the mark and a word has no description.
+ */
+export function sfxRuleMarks(rule: Pick<SfxRule, 'open' | 'close'>): { open: string; word: string; hint: string; close: string } {
+  const text = hintText(rule), marks = escapeClass([...new Set([...rule.open, ...rule.close])].join(''));
+  return { open: escapeRegex(rule.open), word: `[^${marks}${text ? '|' : ''}\\n<>]{1,60}`, hint: text ? `(?:\\|${text})?` : '', close: `${escapeRegex(rule.close)}(?![^<>]*>)${INSIDE_RAW_BLOCK}` };
 }
+/** A description's own letters, or '' for marks that hold a `|`. */
+function hintText(rule: Pick<SfxRule, 'open' | 'close'>): string {
+  if ((rule.open + rule.close).includes('|')) return '';
+  return `[^${escapeClass([...new Set([...rule.open, ...rule.close])].join(''))}|\\n<>]{0,80}`;
+}
+/** The marks around a word and its description: group 1 is the word, group 2 the description (when the marks allow one). */
 export function sfxRuleSource(rule: Pick<SfxRule, 'open' | 'close'>): string {
-  const marks = sfxRuleMarks(rule);
-  return `${marks.open}(${marks.word})${marks.close}`;
+  const marks = sfxRuleMarks(rule), text = hintText(rule);
+  return `${marks.open}(${marks.word})${text ? `(?:\\|(${text}))?` : ''}${marks.close}`;
 }
 /** Why a pair of marks cannot be a rule; empty when it can. */
 export function sfxMarksProblem(open: string, close: string): string {
@@ -65,12 +76,24 @@ export function sfxHits(text: string, rules: readonly SfxRule[]): SfxHit[] {
   for (const rule of rules) {
     if (!rule.enabled || sfxMarksProblem(rule.open, rule.close)) continue;
     for (const match of String(text || '').matchAll(new RegExp(sfxRuleSource(rule), 'gu'))) {
-      const word = String(match[1] ?? '').trim();
-      if (word) hits.push({ rule: rule.id, word, index: match.index ?? 0, length: match[0].length });
+      const word = String(match[1] ?? '').trim(), hint = String(match[2] ?? '').replace(/\s+/g, ' ').trim();
+      if (word) hits.push({ rule: rule.id, word, ...(hint ? { hint } : {}), index: match.index ?? 0, length: match[0].length });
       if (hits.length >= 200) break;
     }
   }
   return hits.sort((a, b) => a.index - b.index);
+}
+/**
+ * The writer's description of a sound rides at the head of its story (the story already goes everywhere the word
+ * goes: ahead of time, on a tap, to JEV, the LLM and the embedding), and each step that wants it apart takes it off.
+ */
+const HINT_LINE = '소리 설명: ';
+export function withSfxHint(story: string, hint = ''): string { return hint ? `${HINT_LINE}${hint}\n${story}` : story; }
+export function sfxHintOf(context: string): { hint: string; story: string } {
+  const text = String(context || '');
+  if (!text.startsWith(HINT_LINE)) return { hint: '', story: text };
+  const end = text.indexOf('\n');
+  return end < 0 ? { hint: text.slice(HINT_LINE.length).trim(), story: '' } : { hint: text.slice(HINT_LINE.length, end).trim(), story: text.slice(end + 1) };
 }
 /** The line as spoken: marked effect words are played, not read aloud. */
 export function withoutSfx(text: string, rules: readonly SfxRule[]): string {

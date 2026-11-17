@@ -1,6 +1,6 @@
 import type { SfxRule, SoundItem, SoundKind, SoundSettings } from '../../core/sound-types';
 import { bgmPromptText } from './tags';
-import { escapeRegex, sfxMarksProblem, sfxRuleMarks, sfxRuleSource } from './audio';
+import { escapeRegex, sfxMarksProblem, sfxRuleMarks } from './audio';
 import { tokenGuardScripts } from '../inray-display';
 
 export const SOUND_MODULES: Record<SoundKind, { id: string; name: string; description: string }> = {
@@ -48,12 +48,17 @@ const bgmButton = '<span data-omni-bgm-tail="1"><button type="button" data-omni-
 const sfxButton = '<span data-omni-sfx-tail="1"><button type="button" data-omni-sfx="1" x-omni-sfx="1" title="효과음 재생" aria-label="효과음 재생"></button></span>';
 /** The built-in rule: § 효과음 §. */
 export const SFX_SECTION_RULE = 'section-sign';
-/** The effect instruction, in the marks of the rule the chat will show. */
-export function sfxCuePrompt(rule: Pick<SfxRule, 'open' | 'close'>): string {
+/**
+ * The effect instruction, in the marks of the rule the chat will show. `hint` (효과음 설명 붙이기): the word is followed
+ * by `|` and a few words of what makes the sound, which picking reads and the chat hides; marks that hold a `|`
+ * themselves cannot carry one.
+ */
+export function sfxCuePrompt(rule: Pick<SfxRule, 'open' | 'close'>, hint = false): string {
+  const described = hint && !(rule.open + rule.close).includes('|');
   return `@@depth 0
 <OmniSFX>
-A distinct sound (door slam, thunder, footsteps, gunshot, kiss, slurping): a 1–4 word sound word in the reply's language between ${rule.open} and ${rule.close}, on a line of its own, just before the line it belongs to, at most five per reply:
-${rule.open}쾅${rule.close}
+A distinct sound (door slam, thunder, footsteps, gunshot, kiss, slurping): a 1–4 word sound word in the reply's language between ${rule.open} and ${rule.close}, ${described ? 'then | and 2–5 words of what makes the sound, ' : ''}on a line of its own, just before the line it belongs to, at most five per reply:
+${rule.open}${described ? '쾅|문 닫히는 소리' : '쾅'}${rule.close}
 문이 닫혔다.
 Never inside a narration or dialogue line, quotes, names or code; never explain the marks.
 </OmniSFX>`;
@@ -74,12 +79,13 @@ export function soundModule(kind: SoundKind, settings: SoundSettings, items: rea
     ? [{ comment: 'omni-bgm-marker', type: 'editdisplay', ableFlag: true, flag: `gi<order ${SOUND_DISPLAY_ORDER.bgm},no_end_nl>`, in: '\\[\\[bgm:[^\\]\\n]{1,200}\\]\\][ \\t]*', out: bgmButton }, ...tokenGuardScripts()]
     : rules.flatMap(rule => {
       const effect = (suffix: string, order: number, input: string, output: string) => ({ comment: `omni-sfx-${rule.id}${suffix}`, type: 'editdisplay', ableFlag: true, flag: `gu<order ${order},no_end_nl>`, in: input, out: output });
-      if (!settings.sfxFirst) return [effect('', SOUND_DISPLAY_ORDER.sfx, `(${sfxRuleSource(rule)})`, `$1${sfxButton}`)];
+      // The writer's description (`§티틱|불 타는 소리§`) is for picking the sound: the chat shows the word alone.
       const marks = sfxRuleMarks(rule);
+      if (!settings.sfxFirst) return [effect('', SOUND_DISPLAY_ORDER.sfx, `(${marks.open})(${marks.word})${marks.hint}(${marks.close})`, `$1$2$3${sfxButton}`)];
       return [
         // First, ▶ goes inside the marks: a module that restyles `§…§` into its own
         // box carries it along, so it sits right after the word, on the same line.
-        effect('', SOUND_DISPLAY_ORDER.sfxFirst, `(${marks.open})(${marks.word})(${marks.close})`, `$1$2${sfxButton}$3`),
+        effect('', SOUND_DISPLAY_ORDER.sfxFirst, `(${marks.open})(${marks.word})${marks.hint}(${marks.close})`, `$1$2${sfxButton}$3`),
         // Last, when no module took the marks: ▶ steps out after the closing mark.
         effect('-after', SOUND_DISPLAY_ORDER.sfx, `${escapeRegex(sfxButton)}(${marks.close})`, `$1${sfxButton}`),
       ];
@@ -87,6 +93,6 @@ export function soundModule(kind: SoundKind, settings: SoundSettings, items: rea
   const book = (comment: string, content: string, insertorder: number) => ({ key: '', secondkey: '', comment, content, mode: 'normal', insertorder, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 });
   const lorebook = kind === 'bgm'
     ? settings.bgmPrompt ? [book('omni-bgm-cues', `@@depth 0\n<OmniBGM>\n${bgmPromptText(settings.bgmTags)}\n</OmniBGM>`, 998)] : []
-    : settings.sfxCue && rules[0] ? [book('omni-sfx-cues', sfxCuePrompt(rules[0]), 997)] : [];
+    : settings.sfxCue && rules[0] ? [book('omni-sfx-cues', sfxCuePrompt(rules[0], settings.sfxHint), 997)] : [];
   return { id: meta.id, namespace: meta.id, name: meta.name, description: meta.description, hideIcon: false, lowLevelAccess: false, backgroundEmbedding: `<style>${SOUND_MODULE_CSS[kind]}</style>`, trigger: [], lorebook, regex, assets: assets(items) };
 }

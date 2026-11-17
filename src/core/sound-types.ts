@@ -55,6 +55,8 @@ export interface SoundSettings {
   sfxRules: SfxRule[];
   /** Ask the chat model to mark sound effects with the first rule in use (§word§ by default). */
   sfxCue: boolean;
+  /** 효과음 설명 붙이기: the marked word carries what makes the sound (`§티틱|불 타는 소리§`), for picking; the chat shows the word. */
+  sfxHint: boolean;
   /** 'reply': a new reply and continuous reading play effects; 'button': only a tap does. */
   sfxAutoPlay: 'reply' | 'button';
   /** Longest effect in seconds (a longer one fades out there); 0 plays it to the end. */

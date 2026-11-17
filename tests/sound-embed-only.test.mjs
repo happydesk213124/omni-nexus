@@ -67,17 +67,17 @@ test('임베딩만: the scene decides which 쾅; the glossary is not read or tau
     await page.evaluate(() => window.updateSoundSettings({ sfxMatcher: 'embedding' }));
     assert.deepEqual(await plan('쾅', '그가 방아쇠를 당겼다.\n총을 쐈다.'), ['door'], 'with the glossary: its answer');
 
-    // JEV with a long list: the effect that fits is the 70th, and JEV is shown it among the nearest.
+    // JEV with a long list: the effect that fits is the 300th, and JEV is shown it among the nearest.
     await page.evaluate(async () => {
-      const filler = Array.from({ length: 70 }, (_, i) => ({ key: `f${i}`, kind: 'sfx', name: `소리 ${i}`, tags: [`잡음${i}`], folder: '', source: 'url', url: `https://snd.test/f${i}.mp3` }));
-      filler[69] = { key: 'drum', kind: 'sfx', name: '드럼롤', tags: ['두구두구'], folder: '', source: 'url', url: 'https://snd.test/drum.mp3' };
+      const filler = Array.from({ length: 300 }, (_, i) => ({ key: `f${i}`, kind: 'sfx', name: `소리 ${i}`, tags: [`잡음${i}`], folder: '', source: 'url', url: `https://snd.test/f${i}.mp3` }));
+      filler[299] = { key: 'drum', kind: 'sfx', name: '드럼롤', tags: ['두구두구'], folder: '', source: 'url', url: 'https://snd.test/drum.mp3' };
       window.soundData().sfx.push(...filler); window.jevAsked = [];
       await window.updateSoundSettings({ sfxMatcher: 'jev' });
     });
     await plan('두구두구둥', '드럼이 울렸다');
     const shown = await page.evaluate(() => Object.values(window.jevAsked[0].questions[0].criteria));
-    assert.ok(shown.length <= 61, `at most sixty effects and "new": ${shown.length}`);
-    assert.ok(shown.some(line => line.startsWith('드럼롤')), 'the 70th effect is among them');
+    assert.equal(shown.length, 256, `255 effects and "new": ${shown.length}`);
+    assert.ok(shown.some(line => line.startsWith('드럼롤')), 'the 300th effect is among them');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
@@ -126,6 +126,16 @@ test('JEV만: every word asked of JEV with its scene; the glossary is not read o
     // 「용어집 → JEV」: the glossary answers first, as before.
     await page.evaluate(() => window.updateSoundSettings({ sfxMatcher: 'jev' }));
     assert.deepEqual(await plan('쾅', '그가 방아쇠를 당겼다.\n총을 쐈다.'), ['door']);
+    // 효과음 설명 붙이기: a described 쾅 is asked of JEV with its description apart, past the glossary, and teaches it nothing.
+    const before = await asked();
+    assert.deepEqual(await plan('쾅', '소리 설명: 방아쇠를 당기는 총소리\n그가 문 앞에 섰다.'), ['gun'], 'the description decides, not the glossary\'s door');
+    assert.equal(await asked(), before + 1);
+    const told = await page.evaluate(() => window.jevAsked.at(-1).questions[0].instructions);
+    assert.equal(told.sound_description, '방아쇠를 당기는 총소리');
+    assert.equal(told.context, '그가 문 앞에 섰다.', 'the story goes without the description line');
+    assert.deepEqual(await plan('쾅', '소리 설명: 방아쇠를 당기는 총소리\n그가 문 앞에 섰다.'), ['gun']);
+    assert.equal(await asked(), before + 1, 'the same described word in the same story is remembered');
+    assert.deepEqual(await page.evaluate(() => window.soundData().glossary.flatMap(row => row.terms.map(term => `${term}>${row.sfxKey}`))), ['쾅>door'], 'a described word is never taught');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

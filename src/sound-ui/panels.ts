@@ -56,6 +56,7 @@ ${row('▶를 다른 모듈보다 먼저 붙이기', sw('snd-sfx-first', '▶를
 ${row('앞뒤 무음 건너뛰기', sw('snd-sfx-trim', '앞뒤 무음 건너뛰기'))}
 ${row('효과음 최대 길이', `<div class="control"><input id="snd-sfx-max" type="number" min="0" max="60" step="0.5" aria-label="효과음 최대 길이 초" style="width:72px"><span>초</span></div>`)}
 ${row('LLM에게 효과음 표시 요청', sw('snd-sfx-cue', 'LLM에게 효과음 표시 요청'), '<span id="snd-sfx-cue-status"></span>')}
+${row('효과음 설명 붙이기', sw('snd-sfx-hint', '효과음 설명 붙이기'))}
 ${row('TTS 목록·이어 읽기에 효과음', sw('snd-list-sfx', 'TTS 목록·이어 읽기에 효과음'))}
 ${row('자동 재생', `<select id="snd-sfx-auto" aria-label="효과음 자동 재생"><option value="reply">새 답변 · 이어 읽기 중</option><option value="button">버튼을 눌렀을 때만</option></select>`)}
 ${row('효과음 고르는 방식', matcher('snd-sfx-matcher', true))}

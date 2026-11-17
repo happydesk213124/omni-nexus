@@ -123,6 +123,32 @@ test('modules: ⚛️ names, display rules run before OmniTTS, files become modu
   assert.equal(render(sfx.regex, '<div title="§쾅§">x</div>'), '<div title="§쾅§">x</div>', 'a mark inside a tag attribute gets no button');
 });
 
+test('효과음 설명 붙이기: §티틱|불 타는 소리§ is the word 티틱 with its description, which the chat hides and picking reads', () => {
+  const settings = { ...api.soundDefaults(), bgmEnabled: true, sfxEnabled: true }, rules = settings.sfxRules;
+  assert.deepEqual(api.sfxHits('§티틱|불 타는 소리§\n불꽃이 튀었다.', rules).map(hit => [hit.word, hit.hint]), [['티틱', '불 타는 소리']]);
+  assert.deepEqual(api.sfxHits('§쾅§', rules).map(hit => [hit.word, hit.hint]), [['쾅', undefined]], 'a word with none has none');
+  assert.equal(api.withoutSfx('§티틱|불 타는 소리§ 불꽃이 튀었다.', rules), '불꽃이 튀었다.', 'neither is read aloud');
+  // Marks that hold a bar themselves: the bar is the mark, and a word has no description.
+  assert.deepEqual(api.sfxHits('|쾅| 그리고', [{ id: 'b', name: 'b', open: '|', close: '|', enabled: true }]).map(hit => [hit.word, hit.hint]), [['쾅', undefined]]);
+  // The chat shows the word alone, either way round.
+  for (const sfxFirst of [true, false]) {
+    const shown = render(api.soundModule('sfx', { ...settings, sfxFirst }, []).regex, '§티틱|불 타는 소리§');
+    assert.equal(shown, render(api.soundModule('sfx', { ...settings, sfxFirst }, []).regex, '§티틱§'), `the description is hidden (sfxFirst ${sfxFirst})`);
+  }
+  // The instruction asks for it only when the switch is on.
+  assert.doesNotMatch(api.soundModule('sfx', settings, []).lorebook[0].content, /\|/, 'off: as before');
+  const on = api.soundModule('sfx', { ...settings, sfxHint: true }, []).lorebook[0].content;
+  assert.match(on, /then \| and 2–5 words of what makes the sound/); assert.match(on, /\n§쾅\|문 닫히는 소리§\n문이 닫혔다\./);
+  assert.ok(api.sfxCuePrompt({ open: '§', close: '§' }, true).length <= 420, 'the described instruction stays short');
+  assert.doesNotMatch(api.sfxCuePrompt({ open: '|', close: '|' }, true), /what makes the sound/, 'marks with a bar cannot carry one');
+  // The description rides at the head of the effect's story, and comes off whole.
+  const effect = api.parseTtsMessage('§티틱|불 타는 소리§\n불꽃이 튀었다.', [], 1, true, { sfxRules: rules, bgm: false }).find(s => s.kind === 'sfx');
+  assert.equal(effect.text, '티틱');
+  assert.deepEqual(api.sfxHintOf(effect.context), { hint: '불 타는 소리', story: '불꽃이 튀었다.' });
+  assert.deepEqual(api.sfxHintOf('불꽃이 튀었다.'), { hint: '', story: '불꽃이 튀었다.' }, 'a story without one is the story');
+  assert.equal(api.normalizeSoundData({ settings: {} }).settings.sfxHint, false, 'off by default');
+});
+
 test('cues join the TTS lines in order; effect words are played, not read', () => {
   const rules = api.soundDefaults().sfxRules;
   const reply = '[[bgm:calm,cafe,slow]]\n그가 문을 열었다. §문 쾅§ 소리가 울렸다.\n하린 (calm): "괜찮아."\n[[bgm:tense,chase,fast]]\n§우르르 쾅§';

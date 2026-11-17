@@ -2,7 +2,7 @@ import type { TtsSegment, TtsSettings } from '../../core/tts-types';
 import type { SfxRule } from '../../core/sound-types';
 import { allowedTtsText } from './filter';
 import { BGM_CUE_SCENE_MAX, bgmMarkers } from '../sound/tags';
-import { sfxHits, withoutSfx } from '../sound/audio';
+import { sfxHits, withSfxHint, withoutSfx } from '../sound/audio';
 import { INLINE_CAST_MASK_SOURCE, INLINE_SHOT_MASK_SOURCE, INLINE_WAIT_BLOCK_SOURCE, PLACE_MARKER_SOURCE } from '../prompt/inline-shot-pattern';
 import { NUDE_COSTUME } from '../emotion/emotions';
 
@@ -151,10 +151,10 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
     const middle = from + (spoken ? spoken.length : line.trimEnd().length - from) / 2;
     const found = [
       ...(sound!.bgm ? bgmMarkers(line).map(hit => ({ index: hit.index, length: hit.length, kind: 'bgm' as const, text: hit.tags.join(', '), tags: hit.tags })) : []),
-      ...sfxHits(line, sound!.sfxRules).map(hit => ({ index: hit.index, length: hit.length, kind: 'sfx' as const, text: hit.word, tags: undefined })),
+      ...sfxHits(line, sound!.sfxRules).map(hit => ({ index: hit.index, length: hit.length, kind: 'sfx' as const, text: hit.word, tags: undefined, hint: hit.hint })),
     ].sort((a, b) => a.index - b.index);
     // A BGM cue always comes first: the music is set before the line.
-    found.forEach((cue, k) => { if (cue.text) (cue.kind === 'sfx' && cue.index + cue.length / 2 > middle ? out.after : out.before).push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags, context: scene(number, line, cue.index + cue.length) } : { context: story(number, line) }), start: at + cue.index, end: at + cue.index + cue.length }); });
+    found.forEach((cue, k) => { if (cue.text) (cue.kind === 'sfx' && cue.index + cue.length / 2 > middle ? out.after : out.before).push({ id: `${number}:${cue.kind}${k}`, speaker: '', tone: '', text: cue.text, kind: cue.kind, ...(cue.tags ? { tags: cue.tags, context: scene(number, line, cue.index + cue.length) } : { context: withSfxHint(story(number, line), 'hint' in cue ? cue.hint : '') }), start: at + cue.index, end: at + cue.index + cue.length }); });
     return out;
   };
   const none = { before: [] as TtsSegment[], after: [] as TtsSegment[] };

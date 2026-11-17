@@ -10,7 +10,7 @@ export function soundDefaults(): SoundSettings {
     bgmMatcher: 'auto', sfxMatcher: 'auto', bgmBasis: 'tags', bgmTags: [...BGM_TAGS], bgmPrompt: true,
     // The common `§덜컹§` style; more rules can be added in settings.
     sfxRules: [{ id: 'section-sign', name: '§ 효과음 §', open: '§', close: '§', enabled: true }],
-    sfxCue: true,
+    sfxCue: true, sfxHint: false,
     sfxAutoPlay: 'reply', sfxMaxSec: 3, sfxStorySpan: 1,sfxFirst: true, sfxTrim: true, sfxNormalize: true, listBgm: true, listSfx: true, viewerBgm: false, maxFileMb: 8, bgmCacheMb: 200, youtubeBgm: true, youtubeHidden: true,
     elevenKey: '', embed: { provider: 'openrouter', model: 'openai/text-embedding-3-small', endpoint: '', key: '' }, sfxAutoCreate: false, sfxPrompt: '{word} sound effect, short and clean, no music, no speech', sfxDuration: 0,
   };
