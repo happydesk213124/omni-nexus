@@ -19,7 +19,8 @@ async function setup() {
     runLLMModel: async options => { calls.llm.push(JSON.parse(options.messages.at(-1).content)); return { success: true, content: '{"0":[1]}' }; },
   };
   const data = await api.loadTtsData();
-  data.settings = { ...api.ttsDefaults(), enabled: true, autoAssign: false, continuous: false };
+  // Replacements picked by the LLM here (a new install picks by the embedding, which these tests do not set up).
+  data.settings = { ...api.ttsDefaults(), selector: 'llm', enabled: true, autoAssign: false, continuous: false };
   data.settings.translation.provider = 'off';
   data.settings.fish.key = 'mock';
   data.voices = [

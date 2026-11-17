@@ -75,7 +75,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.gemini = { ...defaults.gemini, ...result.gemini };
   for (const field of ['key', 'serviceAccountJson', 'location', 'model', 'voice'] as const) if (typeof result.gemini[field] !== 'string') result.gemini[field] = defaults.gemini[field];
   if (result.gemini.via !== 'vertex') result.gemini.via = 'studio';
-  result.gemini.persona = result.gemini.persona !== false; result.gemini.assign = result.gemini.assign === 'list' ? 'list' : 'design'; result.gemini.listed = result.gemini.listed === true;
+  result.gemini.persona = result.gemini.persona !== false; result.gemini.assign = result.gemini.assign === 'list' || result.gemini.assign === 'embedding' ? result.gemini.assign : 'design'; result.gemini.listed = result.gemini.listed === true;
   result.gemini.concurrency = Math.floor(clamp(result.gemini.concurrency, 1, 5, 3));
   for (const field of ['url', 'key', 'model', 'voice'] as const) if (typeof result.irodori[field] !== 'string') result.irodori[field] = defaults.irodori[field];
   if (result.irodori.format !== 'wav') result.irodori.format = 'mp3';

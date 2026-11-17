@@ -155,10 +155,11 @@ export interface TtsSettings {
    * `location`). `voice` is the voice a card with no preset speaks with (a prebuilt name, or a `voice_…` id).
    * `persona`: a card's traits go with each of its lines as their style (two cards on one voice sound apart).
    * `assign`: how a speaker with no voice gets one. 'design': a voice designed from their gender and traits (one a
-   * combination: the same traits, the same voice); 'list': one picked from the list. `listed`: the voice list was
+   * combination: the same traits, the same voice); 'list': one picked from the list by the 음성 선택 모델; 'embedding':
+   * one picked from Google's list by the embedding alone, whatever that model is (no wait, no model call). `listed`: the voice list was
    * read in by itself once.
    */
-  gemini: { via: 'studio' | 'vertex'; key: string; serviceAccountJson: string; location: string; model: string; voice: string; concurrency: number; persona: boolean; assign: 'design' | 'list'; listed: boolean };
+  gemini: { via: 'studio' | 'vertex'; key: string; serviceAccountJson: string; location: string; model: string; voice: string; concurrency: number; persona: boolean; assign: 'design' | 'list' | 'embedding'; listed: boolean };
   llm: LlmSettings;
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';

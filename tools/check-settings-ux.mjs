@@ -393,6 +393,8 @@ try {
   // Back to 모델 by the rail: with Risu's helper model and effects no longer by 임베딩만, OpenRouter is not asked for.
   await qsPress('[data-qs-step="models"]');
   await qsPress('[data-qs-choice="helper"][data-value="aux"]');
+  // A new install picks voices by the embedding (it needs the OpenRouter key): 안 씀 here, or the key is still called for.
+  await qsPress('[data-qs-choice="picker"][data-value="off"]');
   await qsPress('[data-qs-step="sound"]');
   await qsPress('[data-qs-choice="sfxMatcher"][data-value="auto"]');
   await qsPress('[data-qs-step="keys"]');

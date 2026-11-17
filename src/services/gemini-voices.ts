@@ -124,7 +124,7 @@ export async function removeGeminiVoice(key: string): Promise<void> {
  * what the list holds, each once. Kept to `max`: the whole list is saved with the TTS data, and a few thousand rows
  * is a write of half a megabyte every time anything in it changes.
  */
-export async function loadGeminiVoiceList(language = '', max = 600): Promise<number> {
+export async function loadGeminiVoiceList(language = '', max = 300): Promise<number> {
   const data = ttsData(), listed = await listGeminiVoices({ gemini: data.settings.gemini }, language, 1000);
   const keep = [...geminiPrebuiltVoices(), ...data.geminiVoices.filter(own)], have = new Set(keep.map(v => v.fishId));
   const bound = new Set(data.characters.map(c => c.geminiKey).filter(Boolean));
