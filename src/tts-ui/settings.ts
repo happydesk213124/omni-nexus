@@ -5,12 +5,30 @@ import { parseRates } from '../domain/tts/library';
 import { omniTts } from '../services/tts-runtime';
 import { el, input, val, set, text, on, run } from './common';
 import { promptAudioActivation } from './activation';
+import { GEMINI_ASSIGN_OPTIONS } from './gemini';
 
 const booleans: Record<string, keyof TtsSettings> = { 'tts-normalize': 'normalize', 'click-play': 'clickPlay', 'hover-play': 'hoverPlay', 'auto-play': 'autoReply', 'illustration-read': 'illustration', continuous: 'continuous', narration: 'narration', floating: 'viewer', 'hide-name': 'hideName', 'hide-tone': 'hideTone', 'hide-emoji': 'hideEmoji', 'control-gutter': 'controlGutter', 'tts-toast-enabled': 'toast', 'auto-voice': 'autoAssign', 'auto-voice-chat': 'assignWithChat', 'cue-emoji': 'cueEmoji', 'skip-symbol-only': 'skipSymbolOnly', 'tts-omit-paren-text': 'omitParenText' };
 const numbers: Record<string, keyof TtsSettings> = { speed: 'rate', volume: 'volume', 'tts-skip-chars': 'skipChars', prefetch: 'prefetch', concurrency: 'concurrency', 'background-concurrency': 'background', 'cache-limit': 'cacheMb' };
 const source: Record<string, LlmSettings['source']> = { model: 'main', submodel: 'aux', emotion: 'emotion', translate: 'translate', memory: 'memory', otherAx: 'other' };
 function llmChoice(model: LlmSettings): string { return Object.entries(source).find(([,v]) => v === model.source)?.[0] || (model.provider === 'google' ? 'Gemini' : model.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 호환'); }
 function llmFrom(choice: string, old: LlmSettings, prefix: string): LlmSettings { return { ...old, source: source[choice] || 'custom', provider: choice === 'Gemini' ? 'google' : choice === 'Anthropic' ? 'anthropic' : 'openai', model: val(`${prefix}-model`), endpoint: val(`${prefix}-url`), api_key: val(`${prefix}-key`) }; }
+/**
+ * Gemini's 새 화자의 목소리, here too, under 음성 선택 모델 (it decides whether that model is asked at all): the same
+ * setting as 모델 설정's, shown while Gemini is the engine.
+ */
+function geminiAssignHere(): void {
+  const selector = el('voice-selector-engine')?.closest('label');
+  if (!selector || el('tts-gemini-assign-here')) return;
+  selector.insertAdjacentHTML('afterend', `<label class="field" id="tts-gemini-assign-here-wrap"><span>Gemini · 새 화자의 목소리</span><select id="tts-gemini-assign-here" aria-label="Gemini 새 화자의 목소리">${GEMINI_ASSIGN_OPTIONS}</select></label>`);
+  const s = ttsData().settings;
+  el('tts-gemini-assign-here-wrap').hidden = s.engine !== 'gemini';
+  set('tts-gemini-assign-here', s.gemini.assign);
+  on('tts-gemini-assign-here', async () => {
+    const assign = val('tts-gemini-assign-here') as TtsSettings['gemini']['assign'];
+    await updateTtsSettings({ gemini: { ...ttsData().settings.gemini, assign } });
+    set('tts-gemini-design', assign);
+  }, 'change');
+}
 export function syncPower(): void {
   const s = ttsData().settings;
   if (!el('tts-controls')) return;
@@ -53,6 +71,7 @@ export function bindTtsSettings(): void {
   el('volume')?.addEventListener('input', () => { if (ttsData().settings.narrationVolume === null) narrationShown(Number(val('volume')) / 100); });
   set('speed-presets', s.rates.join(', ')); on('speed-presets', async () => { await updateTtsSettings({ rates: parseRates(val('speed-presets'), ttsData().settings.rates) }); speedOptions(); }, 'change');
   set('voice-selector-engine', s.selector); on('voice-selector-engine', () => updateTtsSettings({ selector: val('voice-selector-engine') as TtsSettings['selector'] }), 'change');
+  geminiAssignHere();
   on('tts-power', async () => { await omniTts.power(input('tts-power').checked); if(input('tts-power').checked)promptAudioActivation(); }, 'change');
   on('audio-enable-settings', promptAudioActivation);
   on('clear-cache', async () => { if (confirm('TTS 음성·번역 캐시를 비울까요?')) await omniTts.clearCache(); });

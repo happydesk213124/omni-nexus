@@ -10,6 +10,8 @@ import { el, esc, on, set, text, val } from './common';
  * its file). Standing where Fish's fields do while Gemini is the engine (irodori.ts shows one engine's at a time).
  */
 const MODELS = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'];
+/** 새 화자의 목소리: in 모델 설정's Gemini group, and again in TTS 설정 beside 음성 선택 모델 (where one looks for it). */
+export const GEMINI_ASSIGN_OPTIONS = '<option value="design">특징에 맞춰 만들기 · 같은 특징은 같은 목소리</option><option value="embedding">Google 목록에서 임베딩으로 고르기 · 바로</option><option value="list">목록에서 고르기 · 음성 선택 모델로</option>';
 export const GEMINI_GROUP = `<div class="group" id="tts-gemini-group" hidden><h3>Gemini TTS · 음성 생성</h3><div class="fields">`
   + `<label class="field full"><span>연결 방식</span><select id="tts-gemini-via" aria-label="Gemini 연결 방식"><option value="studio">AI Studio · API 키</option><option value="vertex">Vertex AI · 서비스 계정 JSON</option></select></label>`
   + `<label class="field full" id="tts-gemini-key-wrap"><span>Gemini API Key (AI Studio)</span><input id="tts-gemini-key" type="password" autocomplete="off" placeholder="AIza…" aria-label="Gemini API Key"></label>`
@@ -20,7 +22,7 @@ export const GEMINI_GROUP = `<div class="group" id="tts-gemini-group" hidden><h3
   + `<label class="field"><span>기본 목소리</span><input id="tts-gemini-voice" list="tts-gemini-voice-list" maxlength="200" placeholder="Kore" aria-label="Gemini 기본 목소리"><datalist id="tts-gemini-voice-list">${GEMINI_PREBUILT_NAMES.map(n => `<option value="${n}"></option>`).join('')}</datalist></label>`
   + `<label class="field"><span>동시 생성 수</span><input id="tts-gemini-concurrency" type="number" min="1" max="5" step="1" aria-label="Gemini 동시 생성 수"></label>`
   + `<label class="field"><span>캐릭터 특징을 말투에 반영</span><select id="tts-gemini-persona" aria-label="캐릭터 특징을 말투에 반영"><option value="1">켜기 · 같은 목소리도 다르게</option><option value="0">끄기</option></select></label>`
-  + `<label class="field"><span>새 화자의 목소리</span><select id="tts-gemini-design" aria-label="새 화자의 목소리"><option value="design">특징에 맞춰 만들기 · 같은 특징은 같은 목소리</option><option value="embedding">Google 목록에서 임베딩으로 고르기 · 바로</option><option value="list">목록에서 고르기 · 음성 선택 모델로</option></select></label>`
+  + `<label class="field"><span>새 화자의 목소리</span><select id="tts-gemini-design" aria-label="새 화자의 목소리">${GEMINI_ASSIGN_OPTIONS}</select></label>`
   + `</div><div class="actions" style="margin-top:10px"><button type="button" id="tts-test-gemini">연결 테스트</button><span id="tts-test-gemini-result" role="status" style="font-size:12px;overflow-wrap:anywhere"></span></div></div><hr id="tts-gemini-rule" hidden>`;
 
 export function bindGeminiSettings(): void {
@@ -43,7 +45,7 @@ export function bindGeminiSettings(): void {
     location: val('tts-gemini-location').trim() || 'global', model: val('tts-gemini-model').trim() || GEMINI_DEFAULT_MODEL, voice: val('tts-gemini-voice').trim(), concurrency: Number(val('tts-gemini-concurrency')) || 3,
     persona: val('tts-gemini-persona') !== '0', assign: val('tts-gemini-design') === 'list' || val('tts-gemini-design') === 'embedding' ? val('tts-gemini-design') as 'list' | 'embedding' : 'design', listed: ttsData().settings.gemini.listed });
   for (const id of ['tts-gemini-via', 'tts-gemini-key', 'tts-gemini-sa', 'tts-gemini-location', 'tts-gemini-model', 'tts-gemini-voice', 'tts-gemini-concurrency', 'tts-gemini-persona', 'tts-gemini-design'])
-    on(id, async () => { show(); account(); await updateTtsSettings({ gemini: read() }); void ensureGeminiVoiceList(); }, 'change');
+    on(id, async () => { show(); account(); await updateTtsSettings({ gemini: read() }); set('tts-gemini-assign-here', ttsData().settings.gemini.assign); void ensureGeminiVoiceList(); }, 'change');
   el('tts-gemini-sa')?.addEventListener('input', account);
   on('tts-gemini-sa-file', () => el<HTMLInputElement>('tts-gemini-sa-input')?.click());
   el('tts-gemini-sa-input')?.addEventListener('change', () => void (async () => {

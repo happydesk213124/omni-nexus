@@ -38,6 +38,7 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     // The tap on the switch unlocked the voice by itself: no popup.
     await page.waitForFunction(() => window.omniTts.player.ready);
     assert.equal(await page.evaluate(() => document.getElementById('audio-unlock-dialog').open), false);
+    assert.equal(await page.evaluate(() => document.getElementById('tts-gemini-assign-here-wrap').hidden), true, 'Gemini\'s choice is not shown for Fish');
     await open('models');
     await page.waitForFunction(() => !document.getElementById('tts-models').hidden);
     assert.equal(await page.locator('#tts-gemini-group').isVisible(), false, 'Fish first, as every save was');
@@ -71,8 +72,19 @@ test('모델 설정 › Gemini TTS: its fields saved, its connection tested; 「
     assert.equal(await page.locator('#tts-gemini-sa-status').textContent(), 'tts@proj-1.iam.gserviceaccount.com · 프로젝트 proj-1');
     await page.locator('#tts-gemini-via').selectOption('studio');
     await page.waitForFunction(() => window.ttsData().settings.gemini.via === 'studio');
+    // 새 화자의 목소리 in TTS 설정 too, under 음성 선택 모델, while Gemini is the engine: one setting with 모델 설정's.
+    await open('tts');
+    assert.equal(await page.evaluate(() => document.getElementById('tts-gemini-assign-here-wrap').hidden), false);
+    assert.equal(await page.evaluate(() => document.getElementById('voice-selector-engine').closest('label').nextElementSibling.id), 'tts-gemini-assign-here-wrap', 'right under 음성 선택 모델');
+    await page.evaluate(() => { const node = document.getElementById('tts-gemini-assign-here'); node.value = 'embedding'; node.dispatchEvent(new Event('change')); });
+    await page.waitForFunction(() => window.ttsData().settings.gemini.assign === 'embedding');
+    await open('models');
+    assert.equal(await page.locator('#tts-gemini-design').inputValue(), 'embedding', '모델 설정 shows what was chosen there');
+    await page.locator('#tts-gemini-design').selectOption('design');
+    await page.waitForFunction(() => window.ttsData().settings.gemini.assign === 'design');
     // 「Gemini 목소리」 where 음성 목록 is: the 30 prebuilt and what the list held (Kore once).
     await open('tts');
+    assert.equal(await page.evaluate(() => document.getElementById('tts-gemini-assign-here').value), 'design');
     assert.equal(await page.locator('[data-tts-tab="tts-voices"]').isVisible(), false);
     assert.equal(await page.locator('[data-tts-tab="tts-gemini-voices"]').isVisible(), true);
     await page.locator('[data-tts-tab="tts-gemini-voices"]').click();
