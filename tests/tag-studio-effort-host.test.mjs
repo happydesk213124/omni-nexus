@@ -121,3 +121,39 @@ test('studio imports Medium, switches effort in requests, and fits the seed row 
     }
   } finally { await browser.close(); }
 });
+
+test('좌표보기: a slot linked to a character carries its name under C1; one linked to no one shows C1 alone', async () => {
+  const bundle = await build({ entryPoints: ['src/tag-studio/mount.ts'], bundle: true, write: false, format: 'iife', globalName: 'Studio' });
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.setContent('<body></body>');
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.evaluate(() => {
+      globalThis.__INLAY_NATIVE__ = { fetch: async (path) => {
+        if (path.endsWith('/nai-prompt')) return { model: 'nai-diffusion-4-5-full', width: 832, height: 1216, steps: 23, seed: 1, main_prompt: 'cafe',
+          characters: [{ prompt: 'girl', center_x: 0.3, center_y: 0.5 }, { prompt: 'boy', center_x: 0.7, center_y: 0.5 }] };
+        if (path === '/v1/settings') return { settings: { card: { studio_coord_mode: 'manual', studio_coords_visible: true } } };
+        if (path.startsWith('/v1/characters')) return { characters: [], global: [] };
+        return { ok: true };
+      } };
+      void Studio.openTagStudio({ id: 'two', session_id: 's' });
+    });
+    const dots = page.locator('#dots .dot');
+    await dots.nth(1).waitFor();
+    assert.equal(await page.locator('#dots .dot-name').count(), 0, 'no one linked, no name');
+    await page.locator('.tab', { hasText: 'C1' }).first().click();
+    const name = page.locator('[data-c="charName"]').first();
+    await name.fill('오미선');
+    await page.locator('#dots .dot-name').first().waitFor();
+    assert.deepEqual(await dots.evaluateAll(list => list.map(el => [el.dataset.label, el.querySelector('.dot-name')?.textContent || ''])), [['C1', '오미선'], ['C2', '']]);
+    // The number stays on top, the name under it, both inside the button.
+    const [label, who, box] = await page.evaluate(() => {
+      const dot = document.querySelector('#dots .dot'), span = dot.querySelector('.dot-name');
+      return [getComputedStyle(dot, '::before').content, span.getBoundingClientRect().toJSON(), dot.getBoundingClientRect().toJSON()];
+    });
+    assert.equal(label, '"C1"');
+    assert.ok(who.top >= box.top && who.bottom <= box.bottom + 0.5 && who.left >= box.left - 0.5 && who.right <= box.right + 0.5, 'the name sits inside the button');
+    assert.equal(await dots.first().getAttribute('aria-label'), 'C1 오미선');
+  } finally { await browser.close(); }
+});

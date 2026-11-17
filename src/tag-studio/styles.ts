@@ -215,8 +215,8 @@ export function tagStudioCss(): string {
 }
 #nx-tag-studio .dot {
   position: absolute; transform: translate(-50%, -50%);
-  min-width: 96px; height: 64px; padding: 0 16px;
-  display: grid; place-items: center;
+  min-width: 96px; min-height: 64px; padding: 6px 16px; box-sizing: border-box;
+  display: grid; place-items: center; align-content: center; line-height: 1.1;
   font-size: 22px; font-weight: 800; color: #12101c;
   background: var(--accent); border-radius: 999px;
   box-shadow: 0 0 0 4px rgba(183,164,255,.28);
@@ -228,10 +228,17 @@ export function tagStudioCss(): string {
   -webkit-user-drag: none;
   z-index: 4;
 }
-#nx-tag-studio .dot::after {
+/* The number first (::before comes ahead of the name inside), the linked character's name under it. */
+#nx-tag-studio .dot::before {
   content: attr(data-label);
   pointer-events: none;
   user-select: none;
+}
+#nx-tag-studio .dot .dot-name {
+  max-width: 160px; margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis;
+  font-size: 13px; font-weight: 700;
+  pointer-events: none;
 }
 #nx-tag-studio .dot:active { cursor: grabbing; }
 #nx-tag-studio.is-dragging, #nx-tag-studio.is-dragging * {

@@ -406,14 +406,19 @@ export async function openTagStudio(card: unknown): Promise<void> {
     return state.selChar;
   }
 
+  /** The character a slot is linked to, by name: the roster's when it is one of them, else the name typed; '' for none. */
+  function linkedName(tabId: string): string {
+    const ch = state.chars[tabId];
+    const stored = rosterById(ch?.rosterId || '') || (ch?.charName ? resolveCharacter(ch.charName, roster) : null);
+    return stored?.name || ch?.charName || '';
+  }
+
   function relabel(): void {
     let i = 0;
     for (const t of state.tabs) {
       if (t.kind !== 'char') continue;
       i += 1;
-      const ch = state.chars[t.id];
-      const stored = rosterById(ch?.rosterId || '') || (ch?.charName ? resolveCharacter(ch.charName, roster) : null);
-      const name = stored?.name || ch?.charName || '';
+      const name = linkedName(t.id);
       t.label = name ? `C${i} ${clipLabel(name)}` : `C${i}`;
     }
   }
@@ -970,9 +975,17 @@ export async function openTagStudio(card: unknown): Promise<void> {
         const el = document.createElement('div');
         el.className = ['dot', state.selChar === c.tab.id ? 'sel' : ''].filter(Boolean).join(' ');
         el.setAttribute('role', 'button');
-        el.setAttribute('aria-label', `C${c.i + 1}`);
+        // Whose slot it is, under its number, when it is linked to someone: C1 alone says nothing on a busy picture.
+        const name = linkedName(c.tab.id);
+        el.setAttribute('aria-label', name ? `C${c.i + 1} ${name}` : `C${c.i + 1}`);
         el.dataset.dot = c.tab.id;
         el.dataset.label = `C${c.i + 1}`;
+        if (name) {
+          const who = document.createElement('span');
+          who.className = 'dot-name';
+          who.textContent = clipLabel(name);
+          el.append(who);
+        }
         el.draggable = false;
         el.style.left = `${c.x * 100}%`;
         el.style.top = `${c.y * 100}%`;
@@ -2105,6 +2118,8 @@ export async function openTagStudio(card: unknown): Promise<void> {
       }
       if (k === 'charName' || k === 'costumeName' || k === 'costumeTags' || k === 'costumeBottoms' || k === 'costumeNote') {
         c[k] = el.value;
+        // The dot on the picture carries the name under its number.
+        if (k === 'charName') renderDots();
         renderPeek();
         return;
       }
