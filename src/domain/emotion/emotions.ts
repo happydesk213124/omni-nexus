@@ -153,9 +153,16 @@ export const DEFAULT_POSE = '2::cowboy shot::, standing, looking at viewer, solo
 
 const joinTags = (...parts: unknown[]): string => parts.map(part => String(part ?? '').trim().replace(/^,+|,+$/g, '').trim()).filter(Boolean).join(', ');
 
+/**
+ * Faces no base expression owns that come up all the same, as the tags NovelAI knows them by. A face's own word is
+ * sent otherwise (`2::word::`), and `muffled` (Irodori's 🤐 delivery) is no Danbooru tag: the mouth came out open.
+ */
+const WORD_FACE_TAGS: Readonly<Record<string, string>> = {
+  muffled: '2::covering own mouth, hand over own mouth::',
+};
 /** One sprite's prompt: settings prefix, looks, the face, the pose, the background, settings suffix. */
 export function emotionPrompt(input: EmotionPromptInput): string {
-  const tags = input.faceTags?.trim() || baseExpression(input.face)?.tags || `2::${input.face}::`;
+  const tags = input.faceTags?.trim() || baseExpression(input.face)?.tags || WORD_FACE_TAGS[input.face] || `2::${input.face}::`;
   const background = input.transparent ? 'transparent background' : 'white background, simple background';
   return joinTags(input.prefix, input.looks, tags, input.pose?.trim() || DEFAULT_POSE, background, input.suffix);
 }

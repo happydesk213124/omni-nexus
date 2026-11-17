@@ -1065,6 +1065,33 @@ async function onPreview(p: PreviewSlot): Promise<void> {
   if (lastCg === PENDING && slotKey(shownAt?.cg) === slot) { lastCg = id; cgThumb = null; await restyle(); }
 }
 /**
+ * What the newest reply had while the viewer was open, kept when it closes (going to 설정 and back closes and opens
+ * it too). The stream's pictures as they finished: each is handed over once, and a viewer opened again showed
+ * "그리는 중" until the stream ended. The cues already played: opened again, the reply's music was picked anew from
+ * a scene that had grown meanwhile and could change, and its effects sounded twice.
+ */
+const handed: PreviewSlot[] = [];
+let kept: { head: string; fired: Set<string> } | null = null;
+function hand(p: PreviewSlot): void {
+  const slot = previewKey(p);
+  if (!slot || !String(p?.url || '').startsWith('data:image/')) return;
+  // Slot numbers start again in every reply: another reply's pictures go.
+  if (handed.length && Number(handed[0]!.messageIndex) !== Number(p?.messageIndex)) handed.length = 0;
+  const at = handed.findIndex(row => previewKey(row) === slot);
+  if (at >= 0) handed[at] = p; else handed.push(p);
+  if (handed.length > 16) handed.shift();
+}
+/** A reply known again by how it begins: the stream's text grows at its end, and the saved reply is the same text. */
+const replyHead = (text: string): string => text.slice(0, 200);
+function sameReply(a: string, b: string): boolean {
+  return Math.min(a.length, b.length) >= 20 && (a.startsWith(b) || b.startsWith(a));
+}
+/** Opened again on the reply it was closed on: the cues it played stay played, and the stream's pictures are back. */
+async function takeUpKept(): Promise<void> {
+  if (kept && sameReply(replyHead(source), kept.head)) for (const cue of kept.fired) fired.add(cue);
+  for (const p of handed) await onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn'));
+}
+/**
  * While the reply on stage still has slots: a look every few seconds at how many the chat
  * shows (a JS timer, one call). When one is gone it was baked: the reply is read again.
  * During a stream nothing is looked at: its end reads the saved reply anyway.
@@ -2484,6 +2511,7 @@ export async function openViewer(from: ViewerFrom = 'resume'): Promise<void> {
     positionTimer = setInterval(() => { if (open && !away && !stepping && !streaming && drawing < 0 && Date.now() - lastTapAt > 1500) void measure().catch(() => {}); }, 2000);
     streaming = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__')?.() === true;
     if (centered >= 0) await openAt(centered); else await resume();
+    await takeUpKept();
     // The clock comes with the first line (see clockAt).
     await render();
     // The voice needs a press inside the plugin before it can sound: asked for now, so the first line speaks.
@@ -2501,6 +2529,7 @@ export async function closeViewer(): Promise<void> {
   finally { setViewerCovering(false); }
 }
 async function takeDown(): Promise<void> {
+  kept = source ? { head: replyHead(source), fired: new Set(fired) } : null;
   open = false; epoch++; clearTimeout(autoTimer); autoDue = 0; clearInterval(positionTimer); clearInterval(awayTimer); if (away) closeInspect(); away = false; stopPending();
   clearInterval(shotWatch); shotWatch = undefined; unsubscribeVoice?.(); unsubscribeVoice = undefined;
   if (markTimer) flushMarks();
@@ -2566,7 +2595,8 @@ export async function installOmniViewer(): Promise<void> {
   await syncViewerShortcuts(host, toggle);
   subscribeViewerPrefs(() => void syncViewerShortcuts(host, toggle));
   Reflect.set(globalThis, '__OMNI_STREAM_TICK__', onStreamTick);
-  Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')));
+  // Kept whether or not the viewer is open (hand): one opened during the stream shows what is done already.
+  Reflect.set(globalThis, '__OMNI_VIEWER_PREVIEW__', (p: PreviewSlot) => { hand(p); void onPreview(p).catch(error => dbg('viewer.preview', { message: String(error) }, 'warn')); });
   // Taps on the viewer are not taps on the chat beneath (TTS lines, pink slots, message gestures, illustration presses),
   // nor are taps on Omni's controls floating over the chat (viewer-presence.ts).
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', (x: number, y: number) => (open && inside({ clientX: x, clientY: y }, rect)) || chatCovered(x, y));

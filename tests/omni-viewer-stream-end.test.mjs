@@ -226,6 +226,37 @@ test('옴니 뷰어 over a restricted SafeDOM, AUTO while a reply streams in: a 
   } finally { await browser.close(); }
 });
 
+test('옴니 뷰어 closed and opened again while a reply streams (설정 and back does it too): the pictures done are there, the music is not picked again', async () => {
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  try {
+    const { page, errors, shows, tick } = await viewerPage(browser);
+    await page.evaluate(async () => {
+      window.picked = [];
+      window.omniSound.playBgmForTags = async tags => { window.picked.push(tags.join(',')); };
+      await window.updateSoundSettings({ bgmEnabled: true });
+    });
+    const part = '[[bgm:calm,cafe,slow]]\n하린: "하나야."\n[[inx1]]{"shot":1}[[/inx1]]\n하린: "둘이야."\n하린: "셋이야."\n';
+    await page.evaluate(t => { window.bot.chats[0].message.push({ role: 'char', chatId: 'r1', data: t.trim() }); window.renderChat(); }, part);
+    await tick(part);
+    await shows(/하나야/);
+    await page.waitForFunction(() => window.picked.length === 1);
+    // The picture is done while the reply still streams, and the viewer is closed meanwhile (to 설정, say).
+    await page.evaluate(() => { window.__OMNI_REPLY_STREAMING__ = () => true; return window.buttons['omni-viewer-chat'](); });
+    await page.waitForFunction(() => !document.querySelector('[x-omni-vn]'));
+    await page.evaluate(png => window.__OMNI_VIEWER_PREVIEW__({ messageIndex: 2, inlineSlot: 1, url: 'data:image/png;base64,' + png }), PNG);
+    await page.evaluate(() => window.buttons['omni-viewer-chat']());
+    await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent);
+    // Its picture is in the viewer again, and on its scene it is the picture, not "그리는 중".
+    await page.waitForFunction(() => !!document.querySelector('[x-omni-vn] img[x-vn-cg^="pv"]'));
+    const shown = () => page.evaluate(() => { const img = document.querySelector('[x-omni-vn] img[x-vn-cg^="pv"]'); return !!img && getComputedStyle(img).display !== 'none'; });
+    for (let i = 0; i < 6 && !await shown(); i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(450); }
+    assert.equal(await shown(), true, 'the picture done while it was closed shows on its scene');
+    await page.waitForTimeout(800);
+    assert.deepEqual(await page.evaluate(() => window.picked), ['calm,cafe,slow'], 'the music played before it closed is not picked again');
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
 test('옴니 뷰어 over a restricted SafeDOM, a reply that ends while its last line speaks: the voice goes on, the music is not picked again', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {

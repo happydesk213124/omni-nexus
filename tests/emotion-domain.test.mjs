@@ -37,6 +37,10 @@ test('a sprite prompt is looks plus fixed tags: no LLM', () => {
   assert.equal(p, 'best quality, girl, black hair, short hair, blue eyes, 2::smile::, open mouth, happy, 2::cowboy shot::, standing, looking at viewer, solo, white background, simple background, anime coloring');
   assert.match(api.emotionPrompt({ looks: 'girl', face: 'sad', transparent: true, pose: 'full body' }), /^girl, 2::sad::, frown, downcast eyes, full body, transparent background$/);
   assert.match(api.emotionPrompt({ looks: 'girl', face: 'pouting' }), /2::pouting::/, 'an unmapped face is its own weighted tag');
+  // muffled (Irodori's 🤐) is no Danbooru tag: it goes as the hand over the mouth NovelAI knows.
+  assert.match(api.emotionPrompt({ looks: 'girl', face: 'muffled' }), /^girl, 2::covering own mouth, hand over own mouth::, /);
+  assert.doesNotMatch(api.emotionPrompt({ looks: 'girl', face: 'muffled' }), /2::muffled::/);
+  assert.match(api.emotionPrompt({ looks: 'girl', face: 'muffled', faceTags: 'hand over mouth' }), /^girl, hand over mouth, /, 'the user\'s own tags for it still come first');
 });
 
 test("a costume's sprite is named apart (omni_c2_이름_face) and is never taken for the default costume's", () => {
