@@ -17,13 +17,11 @@ export const GEMINI_VOICES_TAB = 'tts-gemini-voices';
 const CSS = '#tts-gemini-voices .gv-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}'
   + '#tts-gemini-voices .gv-bar input{flex:1 1 160px;min-width:0}#tts-gemini-voices .gv-bar select{flex:0 0 auto;width:auto;min-width:0}'
   + '#tts-gemini-voices .gv-bar .actions{padding:0;flex-wrap:wrap}#tts-gemini-voices .gv-note{margin:0 0 12px;font-size:12px;line-height:1.5;color:var(--muted)}'
-  + '#tts-gemini-voices .gv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}'
-  + '#tts-gemini-voices .gv-row{display:flex;flex-direction:column;gap:4px;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}'
-  + '#tts-gemini-voices .gv-row[aria-selected="true"]{border-color:#7132f5;background:#7132f522}'
-  + '#tts-gemini-voices .gv-row strong,#tts-gemini-voices .gv-row small{overflow-wrap:anywhere}#tts-gemini-voices .gv-row small{font-size:11px;color:var(--muted)}'
-  + '#tts-gemini-voices .gv-row .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:0}#tts-gemini-voices .gv-row button{min-height:36px;padding:6px 9px;font-size:12px}'
+  // The list and its tiles are 음성 목록's (sound-ui/style.ts copies its rules over): number, name, tags, the voice's
+  // id where the folder is, ▶ 듣기 in the corner; a voice made here has 삭제 in the other.
+  + '#tts-gemini-voices .gv-row{cursor:pointer}#tts-gemini-voices .gv-row strong{overflow-wrap:anywhere}'
+  + '#tts-gemini-voices .gv-row .gv-drop{position:absolute;top:8px;right:8px;min-height:30px;padding:4px 8px;font-size:11px;z-index:1}'
   + '#tts-gemini-voices .gv-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin:0 0 12px;padding:10px;border:1px solid var(--line);border-radius:10px}#tts-gemini-voices .gv-form textarea,#tts-gemini-voices .gv-form .actions{grid-column:1/-1}#tts-gemini-voices .gv-form .actions{display:flex;gap:6px;padding:0}'
-  + '#tts-gemini-voices .gv-row[data-own="1"] strong::after{content:" · 만든 목소리";font-weight:400;font-size:11px;color:var(--muted)}'
   + '#tts-gemini-voices .gv-empty{grid-column:1/-1;padding:28px 12px;text-align:center;font-size:13px;color:var(--muted)}#tts-gemini-voices .voice-selection-bar{margin-bottom:8px}';
 const TAB = `<button role="tab" id="tab-gemini-voices" aria-controls="${GEMINI_VOICES_TAB}" aria-selected="false" tabindex="-1" data-tts-tab="${GEMINI_VOICES_TAB}" hidden>Gemini 목소리</button>`;
 const PANEL = `<section class="panel" id="${GEMINI_VOICES_TAB}" role="tabpanel" aria-labelledby="tab-gemini-voices" hidden><style>${CSS}</style>`
@@ -76,24 +74,26 @@ export class GeminiVoices {
     root.replaceChildren();
     if (!visible.length) { const empty = document.createElement('p'); empty.className = 'gv-empty'; empty.textContent = all.length ? '검색에 맞는 목소리가 없습니다.' : '목소리가 없습니다. 「기본 30개로」를 눌러 주세요.'; root.append(empty); return; }
     // A long list (a voice library read) is drawn a page at a time: the first few hundred, the search narrows the rest.
+    const numbers = new Map(all.map((v, i) => [v.key, i + 1]));
     for (const voice of visible.slice(0, 400)) {
       const users = ttsData().characters.filter(c => c.geminiKey === voice.key).length;
       const mine = /^voice(key)?_/.test(voice.fishId);
       const row = document.createElement('div'); row.className = 'voice-row gv-row'; row.tabIndex = 0; row.dataset.key = voice.key; if (mine) row.dataset.own = '1';
       row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(this.selected === voice.key));
-      row.innerHTML = `<strong>${esc(voice.name)}</strong><small>${esc([genderLabel(voice.gender), ...voice.tags].join(', '))}</small><small>ID ${esc(voice.fishId)}${voice.languages?.length ? ` · ${esc(voice.languages.join(', '))}` : ''}${users ? ` · 캐릭터 ${users}명` : ''}</small><div class="actions"></div>`;
-      const listen = listenButton(() => ({ fishId: voice.fishId, engine: 'gemini' }));
+      // 음성 목록's tile: the voice's id (and who speaks with it) stands where a Fish voice's folder does.
+      row.innerHTML = `<div class="voice-top"><small>${numbers.get(voice.key)}</small></div><strong>${esc(voice.name)}</strong><p class="voice-tags">${esc([genderLabel(voice.gender), ...voice.tags].join(', '))}</p><small class="voice-folder-label">${mine ? '만든 목소리 · ' : ''}ID ${esc(voice.fishId)}${voice.languages?.length ? ` · ${esc(voice.languages.join(', '))}` : ''}${users ? ` · 캐릭터 ${users}명` : ''}</small>`;
+      const listen = listenButton(() => ({ fishId: voice.fishId, engine: 'gemini' })); listen.classList.add('tile-audition');
       listen.addEventListener('click', event => event.stopPropagation());
-      row.querySelector('.actions')!.append(listen);
+      row.append(listen);
       if (mine) {
-        const drop = document.createElement('button'); drop.type = 'button'; drop.className = 'danger'; drop.textContent = '삭제';
+        const drop = document.createElement('button'); drop.type = 'button'; drop.className = 'danger gv-drop'; drop.textContent = '삭제';
         drop.addEventListener('click', event => {
           event.stopPropagation();
           if (!confirm(`「${voice.name}」 목소리를 지울까요? Google에 저장된 목소리도 지워지고, 이 목소리를 쓰던 캐릭터는 기본 목소리로 읽습니다.`)) return;
           drop.disabled = true;
           void removeGeminiVoice(voice.key).then(() => { text('gv-status', '목소리를 지웠습니다.'); this.render(); }, error => { text('gv-status', String((error as Error)?.message || error)); drop.disabled = false; });
         });
-        row.querySelector('.actions')!.append(drop);
+        row.append(drop);
       }
       row.addEventListener('click', () => { if (this.picking && this.selected === voice.key) { this.applyPick(); return; } this.selected = voice.key; this.render(); });
       row.addEventListener('keydown', event => { if (event.target === row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); this.selected = voice.key; if (this.picking) this.applyPick(); else this.render(); } });

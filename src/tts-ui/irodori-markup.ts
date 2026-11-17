@@ -7,10 +7,9 @@ export const IRODORI_VOICES_TAB = 'tts-irodori-voices';
 const CSS = '#tts-irodori-voices .iv-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}'
   + '#tts-irodori-voices .iv-bar input{flex:1 1 180px;min-width:0}#tts-irodori-voices .iv-bar .actions{padding:0;flex-wrap:wrap}'
   + '#tts-irodori-voices .iv-note{margin:0 0 12px;font-size:12px;line-height:1.5;color:var(--muted)}'
-  + '#tts-irodori-voices .iv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}'
-  + '#tts-irodori-voices .iv-row{display:flex;flex-direction:column;gap:4px;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px}'
-  + '#tts-irodori-voices .iv-row strong,#tts-irodori-voices .iv-row small{overflow-wrap:anywhere}#tts-irodori-voices .iv-row small{font-size:11px;color:var(--muted)}'
-  + '#tts-irodori-voices .iv-row .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;padding:0}#tts-irodori-voices .iv-row button{min-height:36px;padding:6px 9px;font-size:12px}'
+  // The list and its tiles are 음성 목록's (sound-ui/style.ts copies its rules over): number, name, tags, the voice's
+  // id where the folder is, ▶ 듣기 in the corner.
+  + '#tts-irodori-voices .iv-row strong{overflow-wrap:anywhere}'
   + '#tts-irodori-voices .iv-empty{grid-column:1/-1;padding:28px 12px;text-align:center;font-size:13px;color:var(--muted)}'
   + '#tts-irodori-voices .iv-bar select{flex:0 0 auto;width:auto;min-width:0}#tts-irodori-voices .voice-selection-bar{margin-bottom:8px}#tts-irodori-voices .iv-row{cursor:pointer}';
 const TAB = `<button role="tab" id="tab-irodori-voices" aria-controls="${IRODORI_VOICES_TAB}" aria-selected="false" tabindex="-1" data-tts-tab="${IRODORI_VOICES_TAB}" hidden>Irodori 목소리</button>`;

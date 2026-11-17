@@ -1,6 +1,6 @@
 import { SOUND_PANELS, SOUND_TABS } from './panels';
 import { SOUND_PAGE_OPENS, SOUND_PAGE_TABS, markSoundNav, soundFocus, soundPage } from './page';
-import { SOUND_LIST_CSS, SOUND_PAGE_CSS, voiceListCssFor } from './style';
+import { SOUND_LIST_CSS, SOUND_PAGE_CSS, engineVoiceListCss, voiceListCssFor } from './style';
 import layout from '../tts-ui/layout.json';
 import { EMBEDDING_PROVIDERS } from '../providers/embedding/client';
 import { attachSoundHelp } from './help';
@@ -64,7 +64,7 @@ export function markSoundPage(root: HTMLElement, openPanel?: string): void {
   if (!tts) toggle('#tts-off-notice', false);
 }
 
-const SOUND_STYLE = () => SOUND_PAGE_CSS + voiceListCssFor(layout.css) + SOUND_LIST_CSS + emotionStyleText();
+const SOUND_STYLE = () => SOUND_PAGE_CSS + voiceListCssFor(layout.css) + engineVoiceListCss(layout.css) + SOUND_LIST_CSS + emotionStyleText();
 /** The TTS area's markup for the open page, with its styles, ready before any script runs. */
 export function soundAwareHtml(html: string): string {
   if (typeof document === 'undefined') return html;

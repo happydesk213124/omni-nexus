@@ -27,11 +27,8 @@ function splitSelectors(list: string): string[] {
   out.push(list.slice(start));
   return out.map(s => s.trim()).filter(Boolean);
 }
-function rewrite(selector: string): string[] {
-  if (!selector.match(ID_PATTERN)) return [];
-  return (['bgm', 'sfx'] as const).map(kind => selector.replace(ID_PATTERN, (_m, id: string) => '#' + IDS[id]!(kind)));
-}
-export function voiceListCssFor(css: string): string {
+/** Every rule of `css` with a selector `rewrite` gives copies for, those copies in its place; the rest left out. */
+function copiedRules(css: string, rewrite: (selector: string) => string[]): string {
   let out = '', i = 0;
   while (i < css.length) {
     const open = css.indexOf('{', i); if (open < 0) break;
@@ -39,7 +36,7 @@ export function voiceListCssFor(css: string): string {
     if (head.startsWith('@')) {
       let depth = 1, j = open + 1;
       while (j < css.length && depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
-      const inner = voiceListCssFor(css.slice(open + 1, j - 1));
+      const inner = copiedRules(css.slice(open + 1, j - 1), rewrite);
       if (inner) out += `${head}{${inner}}`;
       i = j; continue;
     }
@@ -49,6 +46,20 @@ export function voiceListCssFor(css: string): string {
     i = close + 1;
   }
   return out;
+}
+export function voiceListCssFor(css: string): string {
+  return copiedRules(css, selector => selector.match(ID_PATTERN) ? (['bgm', 'sfx'] as const).map(kind => selector.replace(ID_PATTERN, (_m, id: string) => '#' + IDS[id]!(kind))) : []);
+}
+/**
+ * Irodori's and Gemini's presets stand where 음성 목록 does and are drawn as its tiles: the rules that make 음성 목록
+ * fill the height and lay its tiles out (the panel, the list) are theirs too. Without them their lists stopped at
+ * the old 485 px height with the page empty below, and the tiles were a looser grid of their own.
+ */
+const ENGINE_LISTS = [['tts-irodori-voices', 'iv-list'], ['tts-gemini-voices', 'gv-list']] as const;
+const ENGINE_PATTERN = /#(tts-voices|voice-list)(?![\w-])/g;
+export function engineVoiceListCss(css: string): string {
+  return copiedRules(css, selector => selector.match(ENGINE_PATTERN)
+    ? ENGINE_LISTS.map(([panel, list]) => selector.replace(ENGINE_PATTERN, (_m, id: string) => '#' + (id === 'tts-voices' ? panel : list))) : []);
 }
 
 /** Page rules the voice list has no counterpart for. */

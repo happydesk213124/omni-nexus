@@ -77,11 +77,12 @@ export class IrodoriVoices {
       const picked = this.selected.has(voice.key), users = ttsData().characters.filter(c => c.irodoriKey === voice.key).length;
       const row = document.createElement('div'); row.className = 'voice-row iv-row'; row.tabIndex = 0; row.dataset.key = voice.key;
       row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(picked));
-      row.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(voice.name)} 선택" ${picked ? 'checked' : ''}><small>${numbers.get(voice.key)}</small></div><strong>${esc(voice.name)}</strong><small>${esc([genderLabel(voice.gender), ...voice.tags].join(', '))}</small><small>ID ${esc(voice.fishId || '없음')}${users ? ` · 캐릭터 ${users}명` : ''}</small><div class="actions"></div>`;
-      const listen = listenButton(() => ({ fishId: voice.fishId, engine: 'irodori' }));
+      // 음성 목록's tile: the server voice's id stands where a Fish voice's folder does.
+      row.innerHTML = `<div class="voice-top"><input type="checkbox" aria-label="${esc(voice.name)} 선택" ${picked ? 'checked' : ''}><small>${numbers.get(voice.key)}</small></div><strong>${esc(voice.name)}</strong><p class="voice-tags">${esc([genderLabel(voice.gender), ...voice.tags].join(', '))}</p><small class="voice-folder-label">ID ${esc(voice.fishId || '없음')}${users ? ` · 캐릭터 ${users}명` : ''}</small>`;
+      const listen = listenButton(() => ({ fishId: voice.fishId, engine: 'irodori' })); listen.classList.add('tile-audition');
       // Hearing a voice is not choosing it.
       listen.addEventListener('click', event => event.stopPropagation()); listen.addEventListener('dblclick', event => event.stopPropagation());
-      row.querySelector('.actions')!.append(listen);
+      row.append(listen);
       row.addEventListener('click', event => this.pick(voice, visible, event));
       row.addEventListener('keydown', event => { if (event.target === row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); this.pick(voice, visible, event); } });
       row.addEventListener('dblclick', () => { if (this.picking) { this.selected.clear(); this.selected.add(voice.key); this.applyPick(); } else this.edit(voice); });
