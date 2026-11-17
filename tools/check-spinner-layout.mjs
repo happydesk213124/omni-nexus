@@ -26,8 +26,11 @@ try {
    assert.equal(await page.locator('.inray-history').count(),1,'one pair of history arrows for the completed image');
    assert.equal(await page.locator('.inray-bottom').count(),0,'all controls share the inside top-right bar');
    const toolbar=await page.locator('[data-inray-toolbar]').evaluate(node=>{const r=node.getBoundingClientRect(),f=node.closest('.inray-clip').getBoundingClientRect();return {inside:r.left>=f.left&&r.right<=f.right&&r.top>=f.top&&r.bottom<=f.bottom,right:f.right-r.right,top:r.top-f.top,count:node.children.length};});
-   assert.equal(toolbar.count,4);assert.equal(toolbar.inside,true);assert.ok(Math.abs(toolbar.right-8)<1&&Math.abs(toolbar.top-8)<1);
-   assert.deepEqual(await page.locator('[data-inray-toolbar]').evaluate(node=>[...node.children].map(button=>button.getAttribute('aria-label'))),['리롤','이 이미지 고정','접기 / 펼치기','전체화면']);
+   assert.equal(toolbar.count,5);assert.equal(toolbar.inside,true);assert.ok(Math.abs(toolbar.right-8)<1&&Math.abs(toolbar.top-8)<1);
+   assert.deepEqual(await page.locator('[data-inray-toolbar]').evaluate(node=>[...node.children].map(button=>button.getAttribute('aria-label'))),['즐겨찾기','리롤','이 이미지 고정','접기 / 펼치기','전체화면']);
+   // ✕ (out of the chat) is the one control outside the bar: inside the frame, in its bottom left.
+   const cross=await page.locator('.inray-del').evaluate(node=>{const r=node.getBoundingClientRect(),f=node.closest('.inray-clip').getBoundingClientRect();return {left:r.left-f.left,bottom:f.bottom-r.bottom};});
+   assert.ok(Math.abs(cross.left-8)<1&&Math.abs(cross.bottom-8)<1,'✕ in the frame\'s bottom left: '+JSON.stringify(cross));
    assert.equal(await page.locator('animate').count(),0,'completed pair has no running spinner animation');
    await page.evaluate(({w,h})=>{document.querySelector('.inray-shot-img').src='data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="purple"/></svg>`);}, {w,h});
    await page.waitForFunction(()=>document.querySelector('.inray-shot-img').naturalWidth>0);

@@ -2,7 +2,7 @@ import type { ApiResult } from '../core/types';
 import { imageHistoryRoot, nextImageRevision } from '../domain/gallery/image-history';
 import { idbGet, idbGetAll, imageLocation, imageAssetRef } from '../storage/stores';
 import { findAssetMessage } from '../storage/asset-message';
-import { rewriteBakedCardInChatMessage } from './chat-bake';
+import { removeBakedCardFromChatMessage, rewriteBakedCardInChatMessage } from './chat-bake';
 import { deleteCard } from './gallery';
 
 // Serialize revision allocation through publication, including studio generation.
@@ -51,6 +51,20 @@ export function deleteImageRevision(id: string): Promise<ApiResult> {
       return { ok: false, error: { code: 'in_chat', message: '채팅에 걸린 이미지는 지울 수 없습니다. 다른 이미지를 저장한 뒤 지워 주세요.' } };
     }
     return deleteCard(id);
+  });
+}
+
+/**
+ * ✕ on a picture in the chat: it leaves the message that shows it, and only that message. Its card and file stay
+ * (이미지 탐색 still has it). Nothing is written when no message shows it.
+ */
+export function removeImageFromChat(id: string): Promise<ApiResult> {
+  return imageRevisionLock.run(async () => {
+    const loc = await findAssetMessage(id, await imageLocation(id));
+    if (!loc) return { ok: false, error: { code: 'not_found', message: '이 이미지가 걸린 메시지를 찾지 못했습니다.' } };
+    const ok = await removeBakedCardFromChatMessage({ charIndex: Number(loc.char_index), chatIndex: Number(loc.chat_index),
+      messageIndex: Number(loc.message_index), cardId: id });
+    return ok ? { ok: true, card_id: id } : { ok: false, error: { code: 'not_found', message: '메시지에서 이 이미지를 찾지 못했습니다.' } };
   });
 }
 

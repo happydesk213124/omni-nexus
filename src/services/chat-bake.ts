@@ -10,7 +10,7 @@ import { flushShotAssets } from '../storage/shot-character';
 import { characterDirectory, directoryWarm } from '../storage/character-directory';
 import { risuHost } from '../core/host';
 import { toInt } from '../core/util/text';
-import { appendBakeRevision, bakeTokenForCard, waitToken, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
+import { appendBakeRevision, bakeTokenForCard, waitToken, bakeDimensions, spinnerDimensions, spinnerToken, attachBakeToSpinner, stripBakedReferences, parkSpinners, removeJobSpinners, replaceBakeTokenCard, replaceWaitToken, takeBakeTokenOutForCard, stripBakeTokens, stripBakeTokensExceptJobs, stripWaitSlots, waitTokenDimensions } from '../domain/chat-bake';
 import { isShotAssetName, shotAssetName } from '../domain/gallery/shot-assets';
 import { normalizeInlineChatTextSide } from '../domain/inline-chat';
 import { applyBakeTokensToBody, insertSnippetAtStrippedLine, chatBodyLineCount, probeDataUrlPixelSize } from '../ui-contract/viewer-core';
@@ -187,6 +187,25 @@ export async function stripBakedImagesFromChatMessage(opts: {
   const msg = messages[idx]!;
   const prev = messageBody(msg);
   const next = stripBakedReferences(prev).replace(/\[\[@inrayspinner::[^\]]+\]\]/g, '');
+  if (next === prev) return false;
+  setMessageBody(msg, next);
+  messages[idx] = msg;
+  if (Array.isArray(loaded.chat.message)) loaded.chat.message = messages;
+  else loaded.chat.messages = messages;
+  await writeChat(loaded.host, opts.charIndex, opts.chatIndex, loaded.chat, { messageIndex: idx, previousBody: prev });
+  return true;
+}
+
+/** ✕ on a picture in the chat: that one picture out of its message (takeBakeTokenOutForCard). false when it is not there. */
+export async function removeBakedCardFromChatMessage(opts: { charIndex: number; chatIndex: number; messageIndex: number; cardId: string }): Promise<boolean> {
+  const loaded = await loadTargetChat(opts.charIndex, opts.chatIndex);
+  if (!loaded) return false;
+  const messages = chatMessageList(loaded.chat);
+  const idx = Math.floor(Number(opts.messageIndex));
+  if (!Number.isFinite(idx) || idx < 0 || idx >= messages.length) return false;
+  const msg = messages[idx]!;
+  const prev = messageBody(msg);
+  const next = takeBakeTokenOutForCard(prev, opts.cardId);
   if (next === prev) return false;
   setMessageBody(msg, next);
   messages[idx] = msg;

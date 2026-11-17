@@ -1035,6 +1035,8 @@ export async function runScenario(N, handles) {
   // 2.0 only: deleting one history revision. Nothing here is deleted (the counts
   // below are asserted); the image-history unit test deletes and refuses the chat's.
   await rec('cards.history_delete_missing', () => post('/v1/cards/no_such_card/history-delete', {}));
+  // 2.0 only: ✕ on a picture in the chat. One no message shows writes nothing and says not_found.
+  await rec('cards.unbake_missing', () => post('/v1/cards/no_such_card/unbake', {}));
   await rec('messages.reroll', () => post('/v1/messages/reroll', {
     session_id: 'sess_main', content_hash: 'hash_main', message_index: 1,
   }));

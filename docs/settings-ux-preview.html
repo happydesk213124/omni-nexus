@@ -979,6 +979,15 @@
     #nx-explorer-grid .explorer-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
     #nx-explorer-grid .explorer-card .cap { display:none; }
     #nx-explorer-grid .explorer-card.selected { border-color:#7132f5; box-shadow:inset 0 0 0 2px #7132f5; }
+    /* ✓ in the tile's top left, ☆ in its top right, both over the picture: they had no place of their own, stood in a
+       column at the left, and the picture lay over ☆, so a tap on it reached the tile instead. */
+    #nx-explorer-grid .explorer-card .ex-check { position:absolute; left:6px; top:6px; z-index:3; box-sizing:border-box; width:24px; height:24px; display:grid; place-items:center; border:2px solid rgba(255,255,255,.8); border-radius:7px; background:rgba(8,12,20,.55); color:#fff; font:800 14px/1 system-ui,sans-serif; pointer-events:none; opacity:0; transition:opacity .15s; }
+    #nx-explorer-grid .explorer-card:hover .ex-check, #nx-explorer-grid .explorer-card.selected .ex-check { opacity:1; }
+    #nx-explorer-grid .explorer-card.selected .ex-check { background:#7132f5; border-color:#7132f5; }
+    #nx-explorer-grid .explorer-card .ex-star { position:absolute; right:6px; top:6px; z-index:3; box-sizing:border-box; width:32px; height:32px; min-width:32px; min-height:32px; margin:0; padding:0; display:grid; place-items:center; border:0; border-radius:999px; background:rgba(8,12,20,.72); color:#fbbf24; font-size:18px; line-height:1; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+    #nx-explorer-grid .explorer-card .ex-star:hover { background:rgba(20,28,44,.9); }
+    #nx-explorer-grid .explorer-card .ex-star.is-on { background:rgba(251,191,36,.25); color:#fcd34d; }
+    @media(hover:none) { #nx-explorer-grid .explorer-card .ex-check { opacity:1; } }
     @media(max-width:768px) {
       .brand {display:none;} .top {gap:4px;padding:6px;} .top-right {gap:4px;flex:1;min-width:0;flex-wrap:nowrap;} .top-right button {padding:6px;font-size:11px;min-width:28px;} .live {font-size:10px;flex:1;white-space:nowrap;}
       #characters .preset-current { display:block; padding:7px 8px; }

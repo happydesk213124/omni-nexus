@@ -25,6 +25,7 @@ function omniHistoryTouch(event) {
         const parent=await el.getParent();
         try {
           const id=await omniHistoryAttr(parent,'inlay-inline-shot');
+          if(id && typeof omniPaintFavoriteIn==='function')await omniPaintFavoriteIn(el,id).catch(error=>y('warn','image.favorite',String(error)));
           if(id)void omniHistoryRows(id).then(rows=>{
             omniTouchWork=omniTouchWork.catch(()=>{}).then(()=>omniTouchImage===row?omniHistoryPaint(el,id,rows):null);
             return omniTouchWork;
@@ -33,7 +34,7 @@ function omniHistoryTouch(event) {
         // Consume hidden control hits, but keep image taps in the existing
         // double/triple-tap fullscreen gesture rather than dropping its first tap.
         if(!shown) {
-          const controls=await nxUnwrapSafeNodes(await el.querySelectorAll('[data-inray-toolbar],[data-inray-history-layer] button'));
+          const controls=await nxUnwrapSafeNodes(await el.querySelectorAll('[data-inray-toolbar],[data-inray-history-layer] button,[data-inray-del]'));
           try {return (await Promise.all(controls.map(control=>hitEl(control,event.clientX,event.clientY)))).some(Boolean);}
           finally {for(const control of controls)await omniRelease(control);}
         }
@@ -92,6 +93,8 @@ async function omniHistoryHover() {
     for (const node of nodes || []) {
     const id = await omniHistoryAttr(node,'inlay-inline-shot');
     if (id) {
+      // The ⭐ lights when the picture is a favourite already (chat-image-actions.js rides beside this file).
+      if (typeof omniPaintFavoriteIn === 'function') await omniPaintFavoriteIn(node, id).catch(error => y('warn', 'image.favorite', String(error)));
       const rows = await omniHistoryRows(id);
       if (await omniHistoryAttr(node,'inlay-inline-shot') === id) await omniHistoryPaint(node, id, rows);
     }
@@ -156,12 +159,13 @@ async function omniHistoryHit(root, event, focused = false) {
               await wrap.setAttribute('x-inlay-inline-shot', next.id);
               await wrap.setAttribute('x-inray-asset', next.asset_name);
               // Actions follow the preview; the wrapper identity continues to own the slot.
-              for (const attr of ['fs', 'refresh']) {
+              for (const attr of ['fs', 'refresh', 'fav']) {
                 const controls = await nxUnwrapSafeNodes(await wrap.querySelectorAll('[x-inray-' + attr + '],[data-inray-' + attr + ']'));
                 try { for (const control of controls) await control.setAttribute('x-inray-' + attr, next.id); }
                 finally { for (const control of controls) await omniRelease(control); }
               }
               await omniHistoryPaint(wrap, next.id, cards);
+              if (typeof omniPaintFavoriteIn === 'function') await omniPaintFavoriteIn(wrap, next.id);
             }
           }
           return true;
@@ -235,7 +239,8 @@ async function omniInspectHistoryHoverPaint(shell) {
     }
     if (!inspectOpen || gen !== t._inspectGen) return;
     if (action !== shell.hoverAction) {
-      if (shell.hoverAction) await shell.hoverAction.setStyle('background','rgba(255,255,255,.08)');
+      // A lit ⭐ (a favourite, inspect-runtime.js) goes back to its own colour, not the plain one.
+      if (shell.hoverAction) await shell.hoverAction.setStyle('background', shell.hoverAction === shell.favBtn && shell.favOn ? 'rgba(251,191,36,.3)' : 'rgba(255,255,255,.08)');
       if (action) await action.setStyle('background','rgba(65,55,90,.85)');
       shell.hoverAction = action;
     }

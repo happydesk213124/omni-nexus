@@ -23,7 +23,7 @@ import { base64ToBytes, u8ToArrayBuffer } from '../core/util/bytes';
 import { cleanText } from '../core/util/text';
 import { GLOBAL_SCOPE, normalizeCharRefScope } from '../core/constants';
 import { getConfig, getPresetVibePreviewUrl } from '../services/context';
-import { readImageHistory, pinImageRevision, deleteImageRevision } from '../services/image-history';
+import { readImageHistory, pinImageRevision, deleteImageRevision, removeImageFromChat } from '../services/image-history';
 import * as cards from '../services/cards';
 import * as characters from '../services/characters';
 import * as rosterCommand from '../services/roster-command';
@@ -462,6 +462,7 @@ const WRITE_ROUTES: readonly Route[] = [
   },
   { match: wrapped('/v1/cards/', '/pin'), handler: async ({ param }) => ok(await pinImageRevision(param)) },
   { match: wrapped('/v1/cards/', '/history-delete'), handler: async ({ param }) => ok(await deleteImageRevision(param)) },
+  { match: wrapped('/v1/cards/', '/unbake'), handler: async ({ param }) => ok(await removeImageFromChat(param)) },
   { match: wrapped('/v1/cards/', '/upscale'), handler: async ({ param, body }) => ok(await cards.upscaleCard(param, body)) },
   { match: wrapped('/v1/cards/', '/original'), handler: async ({ param, body }) => ok(await cards.fetchOriginalCard(param, body)) },
   {

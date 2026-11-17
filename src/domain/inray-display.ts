@@ -61,9 +61,14 @@ export function chatDisplayCss(scalePct: unknown = 100): string {
     '.inray-fold-cb:checked~.inray-clip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1.6em;pointer-events:none;background:linear-gradient(transparent,rgba(8,10,16,.45))}',
     '.inray-bar{position:absolute;top:8px;right:8px;z-index:3;display:flex;flex-wrap:wrap;max-width:calc(100% - 16px);gap:4px;opacity:0;transition:opacity .15s}',
     '.inray-shot[data-inlay-inline-shot]:hover .inray-bar,.inray-shot[data-inlay-inline-shot]:focus-within .inray-bar,.inray-fold-cb:checked~.inray-clip .inray-bar{opacity:1}',
-    '.inray-fold,.inray-fs,.inray-refresh{width:40px;height:40px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(15,20,30,.65);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;box-shadow:none}',
-    '.inray-fold:hover,.inray-fs:hover,.inray-refresh:hover{background:rgba(65,55,90,.85)}',
-    '[data-inray-toolbar]~[data-inray-history-layer] [data-inray-history-dots]{left:8px;transform:none}@media(hover:none){.inray-shot[data-inlay-inline-shot] .inray-bar{opacity:0!important;pointer-events:none}[data-inray-history-host][x-inray-touch="1"] .inray-bar{opacity:1!important;pointer-events:auto}}',
+    '.inray-fold,.inray-fs,.inray-refresh,.inray-fav,.inray-del{width:40px;height:40px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(15,20,30,.65);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;box-shadow:none}',
+    '.inray-fold:hover,.inray-fs:hover,.inray-refresh:hover,.inray-fav:hover,.inray-del:hover{background:rgba(65,55,90,.85)}',
+    // ⭐ grey until the plugin has said it is a favourite (it reads the list on hover or tap).
+    '.inray-fav{filter:grayscale(1)}.inray-fav[x-inray-fav-on="1"]{filter:none;background:rgba(251,191,36,.28);border-color:rgba(251,191,36,.6)}',
+    '.inray-del{position:absolute;left:8px;bottom:8px;z-index:3;width:auto;min-width:40px;padding:0 10px;font-size:18px;opacity:0;transition:opacity .15s}.inray-del::before{content:"✕"}',
+    '.inray-del[x-inray-del-armed="1"]{background:#b91c1c;border-color:#fca5a5;font-size:13px;font-weight:700}.inray-del[x-inray-del-armed="1"]::before{content:"✕ 한 번 더 누르면 채팅에서 빠져요"}',
+    '.inray-shot[data-inlay-inline-shot]:hover .inray-del,.inray-shot[data-inlay-inline-shot]:focus-within .inray-del,.inray-del[x-inray-del-armed="1"]{opacity:1}',
+    '[data-inray-toolbar]~[data-inray-history-layer] [data-inray-history-dots]{left:8px;transform:none}@media(hover:none){.inray-shot[data-inlay-inline-shot] .inray-bar,.inray-shot[data-inlay-inline-shot] .inray-del{opacity:0!important;pointer-events:none}[data-inray-history-host][x-inray-touch="1"] .inray-bar,[data-inray-history-host][x-inray-touch="1"] .inray-del,.inray-shot[data-inlay-inline-shot] .inray-del[x-inray-del-armed="1"]{opacity:1!important;pointer-events:auto}}',
     '.inray-fold::before{content:"▲"}',
     '.inray-fold-cb:checked~.inray-clip .inray-fold::before{content:"▼"}', imageHistoryCss(), chatImageResponsiveCss(),
   ].join('');
@@ -77,10 +82,13 @@ export function inrayDisplayOut(folded = false, scalePct: unknown = 100): string
     `<input type="checkbox" class="inray-fold-cb" id="inray-fold-$1"${checked}>`,
     `<div class="inray-clip" data-inray-history-host="1" x-inray-history-host="1" style="${chatImageFrameStyle('$3', '$4', scalePct)};margin:0 auto"><div class="inray-image-plane" style="position:relative;width:100%;aspect-ratio:$3/$4"><img class="inray-shot-img" width="$3" height="$4" src="{{raw::$2}}" alt=""></div>`,
     '<div class="inray-bar" data-inray-toolbar="1">',
+    '<button type="button" class="inray-fav" data-inray-fav="$1" x-inray-fav="$1" aria-label="즐겨찾기" title="즐겨찾기 · 이미지 탐색">⭐</button>',
     '<button type="button" class="inray-refresh" data-inray-refresh="$1" x-inray-refresh="$1" aria-label="리롤" title="리롤">🎲</button>',
     '<button type="button" class="inray-fs" data-inray-history="pin" x-inray-history="pin" title="이 이미지 고정" aria-label="이 이미지 고정">📌</button>',
     '<label class="inray-fold" for="inray-fold-$1" title="접기 / 펼치기" aria-label="접기 / 펼치기" style="margin-left:8px"></label>',
     '<button type="button" class="inray-fs" data-inray-fs="$1" x-inray-fs="$1" aria-label="전체화면" title="전체화면">⛶</button></div>',
+    // ✕ takes the picture out of the message (pressed twice). The mark is CSS, so nothing in the line is read aloud.
+    '<button type="button" class="inray-del" data-inray-del="$1" x-inray-del="$1" aria-label="채팅에서 빼기" title="채팅에서 빼기 · 두 번 누르기"></button>',
     imageHistoryControls(), '</div>',
     '</div><br>',
   ].join('');

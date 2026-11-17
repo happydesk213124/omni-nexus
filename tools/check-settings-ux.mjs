@@ -939,6 +939,21 @@ try {
     await page.locator('#nx-explorer-grid').evaluate(grid=>{grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));});
     await page.waitForFunction(()=>!!document.querySelector('[data-explorer-id="ex-299"]'));
     assert.ok(await page.locator('#nx-explorer-grid [data-explorer-id]').count()<100);
+    // A tile: ☆ in its top right over the picture (it lay under it, in a column with ✓, and a tap reached the tile),
+    // ✓ in its top left; ☆ pressed is a favourite at once and selects nothing.
+    await page.evaluate(()=>{uxTestRuntime.t.explorer.favorites=[];uxTestRuntime.t.explorer.selection=null;return seedExplorer();});
+    const tile=await page.locator('[data-explorer-id="ex-0"]').evaluate(card=>{
+      const r=card.getBoundingClientRect(),star=card.querySelector('[data-explorer-star]').getBoundingClientRect(),check=card.querySelector('.ex-check').getBoundingClientRect();
+      const hit=document.elementFromPoint(star.left+star.width/2,star.top+star.height/2);
+      return {card:[r.left,r.top,r.right],star:[star.left,star.top,star.right],check:[check.left,check.top],starOnTop:!!hit?.closest?.('[data-explorer-star]')};
+    });
+    assert.ok(tile.starOnTop,'☆ lies over the picture, so a tap reaches it: '+JSON.stringify(tile));
+    assert.ok(tile.star[2]<=tile.card[2] && tile.card[2]-tile.star[2]<=12 && tile.star[1]-tile.card[1]<=12,'☆ in the tile\'s top right: '+JSON.stringify(tile));
+    assert.ok(tile.check[0]-tile.card[0]<=12 && tile.check[1]-tile.card[1]<=12,'✓ in its top left: '+JSON.stringify(tile));
+    await page.locator('[data-explorer-id="ex-0"] [data-explorer-star]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-explorer-id="ex-0"] [data-explorer-star]')?.classList.contains('is-on'));
+    assert.equal(await page.evaluate(()=>uxTestRuntime.t.explorer.favorites.includes('ex-0')),true);
+    assert.equal(await page.locator('[data-explorer-id="ex-0"]').evaluate(card=>card.classList.contains('selected')),false,'☆ selects nothing');
     await page.evaluate(()=>seedExplorer());
     await page.locator('[data-explorer-id="ex-0"]').dblclick();
     await page.locator('#nx-explorer-lightbox.show').waitFor({state:'visible',timeout:5000});

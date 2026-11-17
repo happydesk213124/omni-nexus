@@ -17,6 +17,11 @@ test('display regex rewrites Inray tokens to centered gallery assets', () => {
   assert.match(out, /data-inray-bake="1"/);
   assert.match(out, /data-inray-fs="card-1"/);
   assert.match(out, /data-inray-refresh="card-1"/);
+  // ⭐ (이미지 탐색's favourite) first in the bar, ✕ (out of the chat) in the bottom left, both naming the picture.
+  assert.match(out, /data-inray-toolbar="1"><button type="button" class="inray-fav" data-inray-fav="card-1" x-inray-fav="card-1"[^>]*>⭐<\/button><button[^>]*data-inray-refresh/);
+  assert.match(out, /<button type="button" class="inray-del" data-inray-del="card-1" x-inray-del="card-1"[^>]*><\/button>/, '✕ is CSS: no text in the line to read aloud');
+  assert.match(out, /\.inray-del\{position:absolute;left:8px;bottom:8px;[^}]*opacity:0/, 'hidden until the picture is hovered or tapped');
+  assert.match(out, /\.inray-del\[x-inray-del-armed="1"\]::before\{content:"✕ 한 번 더 누르면 채팅에서 빠져요"\}/, 'the first press says what a second does');
   assert.equal(/data-inray-tag/.test(out), false);
   assert.equal(/data-inray-regen/.test(out), false);
   assert.equal(/>태그</.test(out), false);

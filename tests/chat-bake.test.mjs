@@ -11,7 +11,19 @@ import {
   stripBakeTokenForCard,
   stripBakeTokens,
   stripBakeTokensExceptJobs,
+  takeBakeTokenOutForCard,
 } from '../.test-build/chat-bake.mjs';
+
+test('✕ takes one picture out and the text closes up as if it had never been there', () => {
+  const pic = id => `[[@inray::${id}::inxshot_${id}.webp::832::1216]]`, frame = '[[@inrayspinner::job_0::832::1216]]';
+  const plain = '첫 문단.\n\n둘째 문단.';
+  assert.equal(takeBakeTokenOutForCard(`첫 문단.\n\n${frame}${pic('a')}\n\n둘째 문단.`, 'a'), plain, 'with its frame, between paragraphs');
+  assert.equal(takeBakeTokenOutForCard(`${pic('a')}\n\n${plain}`, 'a'), plain, 'opening the message');
+  assert.equal(takeBakeTokenOutForCard(`${plain}\n\n${pic('a')}`, 'a'), plain, 'closing it');
+  assert.equal(takeBakeTokenOutForCard(`그녀가 웃었다. ${pic('a')} 그리고 말했다.`, 'a'), '그녀가 웃었다. 그리고 말했다.', 'inside a line');
+  assert.equal(takeBakeTokenOutForCard(`첫 문단.\n\n${pic('a')}\n\n${pic('a_r1')}\n\n둘째 문단.`, 'a'), `첫 문단.\n\n${pic('a_r1')}\n\n둘째 문단.`, 'another picture, even a revision of it, stays');
+  assert.equal(takeBakeTokenOutForCard(plain, 'a'), plain);
+});
 import {
   applyBakeTokensToBody,
   injectInlineImagesIntoHtml,

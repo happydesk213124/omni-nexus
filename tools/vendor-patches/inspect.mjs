@@ -23,13 +23,14 @@ export function repairAsyncInspect(source) {
   // statement (showFullscreen = ..., ..., findActHit = ...), so names added
   // to the runtime file are const declarators there — do NOT also declare
   // them in the injected let below (duplicate declaration breaks the build).
-  return out.replace(state, '    const nxInspectDroppedImages = new WeakSet();\n    let nxInspectSurface = null, nxInspectSurfaceBuild = null, nxInspectShell = null, nxInspectBuild = null, nxInspectImageHtml = "", nxInspectMirroredImage = null, nxInspectPaint = Promise.resolve();\n' + state);
+  return out.replace(state, '    const nxInspectDroppedImages = new WeakSet();\n    let nxInspectSurface = null, nxInspectSurfaceBuild = null, nxInspectShell = null, nxInspectBuild = null, nxInspectImageHtml = "", nxInspectMirroredImage = null, nxInspectPaint = Promise.resolve(), nxInspectFavAt = 0;\n' + state);
 }
 
 /** Close must not wait for host hides: fire-and-forget so the tap returns now. */
 export function repairInspectCloseNow(source) {
   const needle = '      if (!card || act === "close") {\n        await hideInspect();\n        return;\n      }';
-  const patch = '      if (!card || act === "close") {\n        hideInspect().catch(() => {});\n        return;\n      }';
+  // ⭐ (in 🔃's place) is ours: the sheet stays open and the button lights (inspect-runtime.js nxInspectFavorite).
+  const patch = '      if (!card || act === "close") {\n        hideInspect().catch(() => {});\n        return;\n      }\n      if (act === "fav") {\n        await nxInspectFavorite(card);\n        return;\n      }';
   if (source.split(needle).length !== 2) throw new Error('[inspect repair] close dispatch needle drift');
   return source.replace(needle, patch);
 }

@@ -82,14 +82,15 @@ showFullscreen = async (f) => {
     await closeRow.appendChild(spinner);
     const specs = [
       [actRow, "⚛️", "retag", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
-      [actRow, "🔃", "regen", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
+      // ⭐ where 🔃 (the whole message again) was: that one is in the chat's own row, and a favourite is this picture's.
+      [actRow, "⭐", "fav", `${actStyle};background:rgba(255,255,255,.08);color:#fff;filter:grayscale(1)`],
       [actRow, "🎲", "reroll", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
       [actRow, "🔮", "base", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
       [actRow, "🆙", "upscale", `${actStyle};background:rgba(255,255,255,.08);color:#fff`],
       [closeRow, "닫기", "close", `${actStyle};font-size:14px;background:rgba(255,255,255,.08);color:#fff`]
     ];
     const buttons = await Promise.all(specs.map(([, text, , style]) => H(e, "button", { text, style })));
-    const names = ['태그 생성','메시지 이미지 재생성','이 이미지 리롤','샷 태그 수정','PNG 원본 · 업스케일','닫기'];
+    const names = ['태그 생성','즐겨찾기','이 이미지 리롤','샷 태그 수정','PNG 원본 · 업스케일','닫기'];
     await Promise.all(buttons.map((button, i) => button.setInnerHTML(`<span data-inray-inspect-action="1" role="img" aria-label="${names[i]}">${specs[i][1]}</span>`)));
     // Keep action identity beside its node for coordinate hit testing.
     await Promise.all(buttons.map((button, i) => specs[i][0].appendChild(button)));
@@ -98,7 +99,7 @@ showFullscreen = async (f) => {
     await actRow.appendChild(closeRow);
     await Promise.all([chipRow, status, actRow].map(row => sheet.appendChild(row)));
     await actionMenu.appendChild(sheet);
-    nxInspectShell = { sheet, castRow, status, chipStyle, charKey: "", statusText: "", charZones: [],
+    nxInspectShell = { sheet, castRow, status, chipStyle, charKey: "", statusText: "", charZones: [], favBtn: buttons[1], actStyle, favShown: "",
       spinner, spinShow, spinHide, spinOn: false,
       zones: buttons.map((el, i) => ({ el, act: specs[i][2], charI: -1 })) };
     return nxInspectShell;
@@ -146,6 +147,8 @@ showFullscreen = async (f) => {
     }
     if (!live()) return;
     inspectZones = [...shell.zones, ...shell.charZones];
+    // The favourites list is chat-image-actions.js's, which rides beside the history runtime.
+    if (typeof omniFavoriteIds === 'function') void nxPaintInspectFav(shell, snapshot.id, live).catch(error => y('warn', 'inspect.favorite', String(error)));
     if (typeof omniInspectHistoryPaint === 'function') void omniInspectHistoryPaint(snapshot, fullscreen, live).catch(error=>y('warn','inspect.history',String(error)));
     // Cast names load behind the open sheet: a spinner above 닫기, never a
     // full-width "불러오는 중" row. Only hard errors keep the status line.
@@ -158,6 +161,22 @@ showFullscreen = async (f) => {
   // replace a newer image or make a closed sheet visible again.
   nxInspectPaint = task.catch(() => {});
   return task;
+}, nxPaintInspectFav = async (shell, id, live) => {
+  // ⭐ lit when this picture is a favourite of 이미지 탐색, grey when it is not.
+  if (!shell?.favBtn || !id) return;
+  const on = (await omniFavoriteIds()).has(String(id));
+  if (live && !live()) return;
+  shell.favOn = on;
+  const style = shell.actStyle + (on ? ";background:rgba(251,191,36,.3);color:#fff" : ";background:rgba(255,255,255,.08);color:#fff;filter:grayscale(1)");
+  if (style !== shell.favShown) { await shell.favBtn.setStyleAttribute(style); shell.favShown = style; }
+}, nxInspectFavorite = async (card) => {
+  // The sheet's tap reaches here by its click and by the chat's press both: one toggle per tap, not two that cancel.
+  if (!card?.id || Date.now() - nxInspectFavAt < 600) return;
+  nxInspectFavAt = Date.now();
+  try {
+    await omniToggleFavorite(String(card.id));
+    await nxPaintInspectFav(nxInspectShell, card.id);
+  } catch (error) { Pe("즐겨찾기", error); }
 }, updateStickyInspect = async (f) => {
   if (!inspectOpen || actionCard !== f || t.uiOpen) return;
   return nxPaintInspect(f, t._inspectGen, false);

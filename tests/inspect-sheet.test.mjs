@@ -92,8 +92,9 @@ test('frozen sheet exposes close during loading and reuses all nodes on reopen',
   await c.show(view);
   assert.match(c.fullscreen.html,/이미지 불러오는 중/);
   assert.match(c.fullscreen.style,/display:flex/);
-  assert.deepEqual(Array.from(c.inspectZones,z=>z.act),['retag','regen','reroll','base','upscale','close']);
-  assert.deepEqual(Array.from(c.inspectZones,z=>z.el.text),['⚛️','🔃','🎲','🔮','🆙','닫기']);
+  // ⭐ where 🔃 was: a favourite is this picture's; the whole message again is the chat row's.
+  assert.deepEqual(Array.from(c.inspectZones,z=>z.act),['retag','fav','reroll','base','upscale','close']);
+  assert.deepEqual(Array.from(c.inspectZones,z=>z.el.text),['⚛️','⭐','🎲','🔮','🆙','닫기']);
   const upscale=c.inspectZones.find(z=>z.act==='upscale').el;
   assert.match(upscale.html,/🆙/);assert.match(upscale.html,/PNG 원본 · 업스케일/);
   const edit=c.inspectZones.find(z=>z.act==='base').el,reroll=c.inspectZones.find(z=>z.act==='reroll').el;

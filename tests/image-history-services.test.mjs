@@ -181,6 +181,24 @@ test('a history revision can be deleted, but not the one a chat message shows', 
   assert.equal((await f.api.deleteImageRevision('nope')).error.code, 'not_found');
 });
 
+test('✕ in the chat: the picture leaves its message, its frame and blank lines with it; its card and file stay', async () => {
+  const f = await fixture();
+  const asset = await f.api.imageAssetRef('root');
+  const chat = await f.chat();
+  chat.message[0].data = `첫 문단이다.\n\n[[@inrayspinner::job_0::832::1216]][[@inray::root::${asset.name}::832::1216]]\n\n둘째 문단이다.\n\n[[@inray::other::inxshot_other.webp::832::1216]]`;
+  await risuai.setChatToIndex(0, 0, chat);
+  const removed = await f.api.removeImageFromChat('root');
+  assert.equal(removed.ok, true);
+  assert.equal((await f.chat()).message[0].data, '첫 문단이다.\n\n둘째 문단이다.\n\n[[@inray::other::inxshot_other.webp::832::1216]]', 'only that picture goes, and the text closes up');
+  assert.ok(await f.api.idbGet('cards', 'root'), 'its card stays (이미지 탐색 still has it)');
+  assert.ok((await f.api.imageAssetRef('root'))?.path, 'and its file');
+  // Again, or a picture no message shows: nothing is written.
+  const before = (await f.chat()).message[0].data;
+  assert.equal((await f.api.removeImageFromChat('root')).error.code, 'not_found');
+  assert.equal((await f.api.removeImageFromChat('nope')).error.code, 'not_found');
+  assert.equal((await f.chat()).message[0].data, before);
+});
+
 test('studio restores filename cast across bot/chat scopes ahead of stale image identities', async () => {
   const f = await fixture();
   await risuai.setDatabase({modules:[...(await risuai.getDatabase(['modules'])).modules,

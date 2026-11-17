@@ -69,6 +69,21 @@ export function stripBakeTokens(text: unknown): string {
 }
 
 /**
+ * One picture out of a message (✕ on it in the chat): its token, the spinner it is framed with just before it, and
+ * the line breaks before them (after them when they open the message), so the text closes up as if the picture had
+ * never been there. Its card stays in the gallery. Other pictures are left as they are. (stripBakeTokenForCard
+ * below takes a token for a rebake and leaves the blank lines, which a rebake fills again.)
+ */
+export function takeBakeTokenOutForCard(text: unknown, cardId: unknown): string {
+  const raw = String(text ?? '');
+  const id = sanitizeShotId(cardId);
+  if (!id) return raw;
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const token = String.raw`(?:\[\[@inrayspinner::[^\]\n]+\]\][ \t]*)?\[\[@inray::${escaped}::[^\]\n]*\]\]`;
+  return raw.replace(new RegExp(String.raw`^[ \t]*${token}[ \t]*(?:\r?\n[ \t]*)*|(?:\r?\n[ \t]*)*${token}[ \t]*`, 'g'), '');
+}
+
+/**
  * Pink waiting slots: the streaming-tag blocks in their waiting form and older
  * [[@inraywait]] tokens. A tag job that lays its spinners out afresh takes them
  * out with the old spinners and baked images: the message's pictures start over,
