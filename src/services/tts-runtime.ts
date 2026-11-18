@@ -7,7 +7,7 @@ import { geminiDefaultVoice } from '../providers/tts/gemini';
 import { ensureGeminiVoiceList, geminiPersona } from './gemini-voices';
 import { boundVoiceKey, ownVoiceEngine } from '../domain/tts/engine-voice';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
-import { spokenWithVoiceTags, voiceTagsOn } from '../domain/tts/voice-tags';
+import { spokenWithVoiceTags, voiceTagMode, type VoiceTagLanguage } from '../domain/tts/voice-tags';
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
@@ -24,11 +24,11 @@ import { clearTtsVoiceError, recordTtsVoiceError, TtsVoiceRecovery } from './tts
 /** tone / model: a preview's own base delivery and model (the character popup's unsaved fields). */
 /**
  * What Fish is sent: the words inside parentheses too unless 「괄호 안의 말도 빼고 읽기」, then the omitted characters out.
- * `tags` (대사 중간 감정 태그): an English [tag] keeps its brackets whatever the omitted characters say.
+ * `tags` (대사 중간 감정 태그): a [tag] in that language keeps its brackets whatever the omitted characters say.
  */
-const spokenText = (text: string, settings: Pick<TtsSettings, 'omitCharacters' | 'omitParenText'>, tags = false) => {
+const spokenText = (text: string, settings: Pick<TtsSettings, 'omitCharacters' | 'omitParenText'>, tags: VoiceTagLanguage | null = null) => {
   const kept = settings.omitParenText ? ttsWithoutParentheticals(text) : text;
-  return tags ? spokenWithVoiceTags(kept, settings.omitCharacters) : ttsSpokenText(kept, settings.omitCharacters);
+  return tags ? spokenWithVoiceTags(kept, settings.omitCharacters, tags) : ttsSpokenText(kept, settings.omitCharacters);
 };
 /** engine: whose voice a named `fishId` is (an audition of an Irodori voice); absent, a named voice is Fish's. */
 export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number; tone?: string; model?: string; engine?: TtsSettings['engine'] }
@@ -123,7 +123,7 @@ export class OmniTtsRuntime {
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
     const marks = this.sound?.marks?.() ?? [];
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, s.engine, s.inlineTags, marks]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, s.engine, s.inlineTags, voiceTagMode(s), marks]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s, marks); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
@@ -298,7 +298,7 @@ export class OmniTtsRuntime {
       const voiceSettings = model || engine !== settings.engine ? { ...settings, engine, fish: model ? { ...settings.fish, model } : settings.fish } : settings;
       // 대사 중간 감정 태그: the voice is in the line; the cue's parentheses chose only the face. The card's own base
       // delivery still goes along, as it is the character's and not the line's.
-      const tags = voiceTagsOn(voiceSettings);
+      const tags = voiceTagMode(voiceSettings);
       return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings, tags), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: [engine === 'gemini' && settings.gemini.persona ? geminiPersona(character ?? undefined, fishId) : '', speechTone(tags ? '' : request.segment.tone, base)].filter(Boolean).join('; '), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error(irodori ? `TTS 모델 설정에서 ${current === 'gemini' ? 'Gemini' : 'Irodori'} 목소리를 먼저 골라 주세요.` : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
@@ -323,7 +323,7 @@ export class OmniTtsRuntime {
       for (const route of new Set(fresh.map(p => JSON.stringify([provider(p), target(p)])))) {
         const [via, language] = JSON.parse(route) as [TtsSettings['translation']['provider'], string];
         const group = fresh.filter(p => provider(p) === via && target(p) === language);
-        const batch = translateTts(group.map(p=>({...p.request.segment,text:p.request.segment.spoken??p.request.segment.text})),{ ...settings, translation: { ...settings.translation, provider: via, language } });
+        const batch = translateTts(group.map(p=>({...p.request.segment,text:p.request.segment.spoken??p.request.segment.text})),{ ...settings, translation: { ...settings.translation, provider: via, language } },voiceTagMode(settings));
         group.forEach((p,i)=>{const key=cacheKey(p), row=batch.then(values=>values[i]);this.translating.set(key,row);void row.finally(()=>{if(this.translating.get(key)===row)this.translating.delete(key);}).catch(()=>{});});
       }
       const translated=await Promise.all(missing.map(p=>this.translating.get(cacheKey(p))!));
@@ -332,7 +332,7 @@ export class OmniTtsRuntime {
       void this.translations.flush().catch(error => this.report(error));
     }
     for (const p of prepared) {
-      p.text = spokenText(p.text, settings, voiceTagsOn(p.settings));
+      p.text = spokenText(p.text, settings, voiceTagMode(p.settings));
       // Irodori: its voice emoji in the form it knows, through the translation too; every other emoji out; a line
       // still written for Fish gives its delivery as the nearest emoji. An audition is said as it is.
       if (japanese(p) && p.request.segment.kind !== 'audition') p.text = irodoriLine(p.request.segment.spoken ?? p.request.segment.text, p.text, p.request.segment.tone);

@@ -1,3 +1,4 @@
+import { settleVoiceTags } from './voice-tags';
 import type { TtsSegment, TtsSettings } from '../../core/tts-types';
 import type { SfxRule } from '../../core/sound-types';
 import { allowedTtsText } from './filter';
@@ -103,7 +104,7 @@ function oneLineTag(line: string): boolean {
 export function parseTtsMessage(text: string, excludeTerms: readonly string[] = [], skipChars = 1, requireLetter = true, sound?: TtsSoundCues): TtsSegment[] {
   // Streaming-tag blocks are image slots (a cast block a registration), never read; nor is a place mark.
   // Blanked in place, so every offset still points at the source.
-  const lines = text.replace(new RegExp(`${INLINE_WAIT_BLOCK_SOURCE}|${INLINE_CAST_MASK_SOURCE}|${INLINE_SHOT_MASK_SOURCE}|${PLACE_MARKER_SOURCE}`, 'gi'), block => block.replace(/[^\n]/g, ' ')).split('\n');
+  const lines = text.replace(new RegExp(`${INLINE_WAIT_BLOCK_SOURCE}|${INLINE_CAST_MASK_SOURCE}|${INLINE_SHOT_MASK_SOURCE}|${PLACE_MARKER_SOURCE}`, 'gi'), block => block.replace(/[^\n]/g, ' ')).split('\n').map(settleVoiceTags);
   const response = /^#[*\t ]*(?:Response|응답|応答|响应|OOC)[*\t ]*$/;
   const beginning = lines.findIndex(line => response.test(line.trim()));
   let fenced = false, html = false, hidden = '', post = false, offset = 0;

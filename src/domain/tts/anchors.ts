@@ -1,7 +1,7 @@
 import type { TtsSegment } from '../../core/tts-types';
-import { VOICE_TAG_SOURCE } from './voice-tags';
+import { voiceTagSource } from './voice-tags';
 
-const VOICE_TAGS = new RegExp(VOICE_TAG_SOURCE, 'g');
+const VOICE_TAGS = new RegExp(voiceTagSource('ja'), 'gu');
 
 /** `text` is the rendered line; `span` is everything since the previous control. */
 export interface TtsAnchorText { kind: 'dialogue' | 'narration'; text: string; span?: string }

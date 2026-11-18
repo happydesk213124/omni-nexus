@@ -506,7 +506,7 @@ test("Irodori's cue entry: no delivery word, the 39 voice emoji inside the quote
   assert.match(first, /starts with two emoji before the name, age-gender then personality: 👩🥺 Harin: "Hi\."/);
   assert.equal(api.ttsModule({ ...visible, engine: 'irodori' }).lorebook[0].content, irodori);
   // 대사 중간 감정 태그 is on by default: Fish's entry asks for the tags; switched off, it is the delivery entry as it was.
-  assert.equal(api.ttsModule({ ...visible, engine: 'fish' }).lorebook[0].content, api.ttsCuePrompt(false, 'fish', true));
+  assert.equal(api.ttsModule({ ...visible, engine: 'fish' }).lorebook[0].content, api.ttsCuePrompt(false, 'fish', 'ja'), 'the default translation goes to Japanese, so the tags are written in Japanese');
   assert.equal(api.ttsModule({ ...visible, engine: 'fish', inlineTags: false }).lorebook[0].content, api.TTS_CUE_PROMPT);
   assert.equal(api.ttsModule({ ...visible, inlineTags: false }).lorebook[0].content, api.TTS_CUE_PROMPT);
 });

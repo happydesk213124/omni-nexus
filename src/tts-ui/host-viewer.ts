@@ -12,7 +12,7 @@ import { onViewerUncovered, viewerCovering } from '../services/viewer-presence';
 import { watchChatScreen } from '../services/chat-screen-watch';
 import { focusSoundPanel, setSoundPage } from '../sound-ui/page';
 import { parseTtsMessage } from '../domain/tts/segment';
-import { voiceTagsOn, withoutVoiceTags } from '../domain/tts/voice-tags';
+import { voiceTagMode, withoutVoiceTags } from '../domain/tts/voice-tags';
 import { resolveTtsSpeaker } from '../domain/tts/identity';
 
 /** The BGM bar opens above the header; a top-anchored viewer moves up by this much so the header stays put. */
@@ -213,7 +213,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   function stateIcon(state:string):string{return state==='playing'?'◉':state==='loading'?'◌':state==='paused'?'Ⅱ':'○';}
   const CUE:Partial<Record<TtsSegment['kind'],[string,string,string]>>={bgm:['♪','BGM','#9aa3b5'],sfx:['▶','효과음','#9aa3b5']};
   // 대사 중간 감정 태그 are heard, not shown: the list reads like the chat.
-  function shownText(segment:TtsSegment):string{const text=segment.spoken??segment.text;return voiceTagsOn(ttsData().settings)?withoutVoiceTags(text):text;}
+  function shownText(segment:TtsSegment):string{const text=segment.spoken??segment.text;const tags=voiceTagMode(ttsData().settings);return tags?withoutVoiceTags(text,tags):text;}
   function lineLabel(segment:TtsSegment):string{const cue=CUE[segment.kind];if(cue)return `${cue[1]}: ${segment.text}`;const text=shownText(segment);return segment.speaker?`${segment.speaker}: ${text}`:segment.monologue?`혼잣말: ${text}`:text;}
   // One line per entry: "speaker: text", narration without a colon, tone as a chip.
   // BGM·효과음 cues are gray rows: what plays there, never read aloud.

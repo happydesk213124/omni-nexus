@@ -1,6 +1,6 @@
 import type { TtsSegment } from '../../core/tts-types';
 import { expressionOfTone } from '../emotion/emotions';
-import { withoutVoiceTags } from '../tts/voice-tags';
+import { withoutVoiceTags, type VoiceTagLanguage } from '../tts/voice-tags';
 import { INLINE_CAST_MASK_SOURCE } from '../prompt/inline-shot-pattern';
 import { imageHistoryRoot } from '../gallery/image-history';
 import { clockLines, clockOf, labeledClock } from './clock';
@@ -71,7 +71,7 @@ export function replyImages(raw: string): Array<{ at: number; cg: ViewerCg }> {
  * splitter the voice uses), so a scene and its voice are always the same line.
  * Sound cues (BGM, effects) are not scenes.
  */
-export function buildScenes(raw: string, segments: readonly TtsSegment[], words: Readonly<Record<string, string>> = {}, voiceTags = false): ViewerScene[] {
+export function buildScenes(raw: string, segments: readonly TtsSegment[], words: Readonly<Record<string, string>> = {}, voiceTags: VoiceTagLanguage | null = null): ViewerScene[] {
   const faces = new Map<string, string>(), out: ViewerScene[] = [];
   const images = replyImages(raw), clocks = clockLines(raw);
   let next = 0;
@@ -92,7 +92,7 @@ export function buildScenes(raw: string, segments: readonly TtsSegment[], words:
       face = expressionOfTone(s.tone, words) ?? faces.get(s.speaker) ?? null;
       if (face) faces.set(s.speaker, face);
     }
-    out.push({ id: `l:${s.id}`, kind: line ? 'line' : 'narration', speaker: line ? s.speaker : '', face, text: voiceTags ? withoutVoiceTags(s.text) : s.text, start: s.start, end: s.end, segmentId: s.id, ...(line && s.costume ? { costume: s.costume } : {}) });
+    out.push({ id: `l:${s.id}`, kind: line ? 'line' : 'narration', speaker: line ? s.speaker : '', face, text: voiceTags ? withoutVoiceTags(s.text, voiceTags) : s.text, start: s.start, end: s.end, segmentId: s.id, ...(line && s.costume ? { costume: s.costume } : {}) });
   }
   flushImages(Infinity);
   return out;
