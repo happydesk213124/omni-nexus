@@ -37,9 +37,9 @@ test('the message row as the settings ask for it, folded to 🟪 only with its o
   assert.deepEqual(messageControlsOf(undefined), { enabled: false, userchat: false, folded: false });
 });
 
-const bundle = await build({ stdin: { contents: "import {installTagFloat} from './src/image-ui/tag-float';import {getConfig} from './src/services/context';import {setViewerCovering} from './src/services/viewer-presence';Object.assign(window,{installTagFloat,getConfig,setViewerCovering});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
+const bundle = await build({ stdin: { contents: "import {installTagFloat} from './src/image-ui/tag-float';import {getConfig,setConfig} from './src/services/context';import {setViewerCovering} from './src/services/viewer-presence';Object.assign(window,{installTagFloat,getConfig,setConfig,setViewerCovering,switchTo:on=>setConfig({...getConfig(),card:{...getConfig().card,floating_tag_bar:on}})});", resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife' });
 
-test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only while switched on and the chat is in sight; its row runs on the reply on screen; 🔢 opens − + 1~3 − +', async () => {
+test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only while switched on and the chat is in sight, under Omni\'s windows (never hidden for them); its row runs on the reply on screen; 🔢 opens − + 1~3 − +', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } }), errors = [];
@@ -109,7 +109,8 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     await page.waitForTimeout(1300);
     assert.equal(await bar(), 'absent');
     // Switched on: 🟪 alone at the right edge.
-    await page.evaluate(() => { window.getConfig().card.floating_tag_bar = true; });
+    // A settings save says so (setConfig): nothing polls for the switch.
+    await page.evaluate(() => window.switchTo(true));
     await page.waitForFunction(() => { const n = document.querySelector('[x-omni-tagfloat]'); return n && getComputedStyle(n).display !== 'none'; });
     const handle = await page.locator('[x-omni-tagfloat] [data-tf-act="toggle"]').boundingBox();
     assert.equal(await page.locator('[x-omni-tagfloat] [data-tf-act="toggle"]').textContent(), '🟪');
@@ -195,12 +196,19 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     assert.equal(await page.evaluate(() => window.messageCalls.length), 2);
     await page.evaluate(() => { window.streamingNow = false; });
 
-    // The settings window (the frozen UI's block) or 옴니 뷰어 over the chat: out of sight, and covering nothing.
+    // A window of ours over the chat (settings in Risu's plugin frame at z-index 1000, 크게보기 at 100001): 🟪 sits
+    // under it and stays drawn, never hidden and shown again. What lies on it there is the window's: no press, no cover.
+    assert.ok(await page.evaluate(() => Number(getComputedStyle(document.querySelector('[x-omni-tagfloat]')).zIndex)) < 1000, 'under Risu\'s plugin frame');
     await page.evaluate(() => { window.blocked = true; });
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-tagfloat]')).display === 'none');
+    await page.waitForTimeout(300);
+    assert.notEqual(await bar(), 'none', 'still drawn beneath the window');
     assert.equal(await page.evaluate(([x, y]) => window.__OMNI_VIEWER_COVERS__(x, y), [handle.x + 5, handle.y + 5]), false);
+    await tap('[data-tf-act="toggle"]');
+    await page.waitForTimeout(450);
+    assert.equal(await page.evaluate(() => document.querySelector('[x-omni-tagfloat]').getAttribute('x-tf-open')), '0', 'a press on the window over it is not one on 🟪');
     await page.evaluate(() => { window.blocked = false; });
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-tagfloat]')).display !== 'none');
+    assert.equal(await page.evaluate(([x, y]) => window.__OMNI_VIEWER_COVERS__(x, y), [handle.x + 5, handle.y + 5]), true, 'the window gone: its own again');
+    // 옴니 뷰어 has its own 태그: 🟪 steps aside for it, told as it opens and closes.
     await page.evaluate(() => window.setViewerCovering(true));
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-tagfloat]')).display === 'none');
     await page.evaluate(() => window.setViewerCovering(false));
@@ -212,7 +220,7 @@ test('플로팅 태그 over a restricted SafeDOM: 🟪 at the right edge only wh
     await page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-tagfloat]')).display !== 'none', null, { timeout: 4000 });
 
     // Switched off: gone from the page.
-    await page.evaluate(() => { window.getConfig().card.floating_tag_bar = false; });
+    await page.evaluate(() => window.switchTo(false));
     await page.waitForFunction(() => !document.querySelector('[x-omni-tagfloat],[x-omni-tagfloat-style]'));
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

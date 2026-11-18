@@ -732,10 +732,12 @@ async function openSoundWindow(): Promise<boolean> {
 /**
  * A page of the settings window, from the viewer: typing never comes back from Risu's screen
  * layer, so what takes typing is there. The spinner turns from the tap until the page (or the
- * sheet asked for) is up, and the viewer closes only then; the window closed (or that sheet),
- * the viewer comes back where it was.
+ * sheet asked for) is up. The viewer stays open under the window, which is Risu's plugin frame
+ * at z-index 1000 over the viewer's 45. It used to close and open again where it was, and that
+ * re-picked the BGM and dropped the stream's pictures. When the window closes (or that sheet),
+ * the stage reads again what was changed there: a TTS card, a face.
  */
-let toSettingsBusy = false;
+let toSettingsBusy = false, awaitingBack = false;
 async function toSettings(page: SoundPage, focus: Omit<SoundFocus, 'shown'>): Promise<void> {
   if (toSettingsBusy) return;
   toSettingsBusy = true;
@@ -747,10 +749,9 @@ async function toSettings(page: SoundPage, focus: Omit<SoundFocus, 'shown'>): Pr
       opened = await openSoundWindow();
       if (opened) await up;
     });
-    // No window to go to: the viewer stays, and nothing waits for a mount that will not come.
+    // No window to go to: nothing waits for a mount that will not come.
     if (!opened) { takeSoundFocus(); return; }
-    await closeViewer();
-    watchForBack();
+    awaitingBack = true;
   } finally { toSettingsBusy = false; }
 }
 /** A person's TTS 캐릭터 sheet, by the name a line is spoken under: theirs, or a new card in that name. */
@@ -758,24 +759,17 @@ function toSheetOf(speaker: string): Promise<void> {
   const person = context ? resolveTtsSpeaker(speaker, ttsData().characters, context.rosterScope) : null, name = person?.name || speaker;
   return toSettings('people', { panel: 'tts-characters', search: name, sheet: { id: person?.id ?? '', name }, done: () => void backToViewer(true) });
 }
-// Only a local flag is read: the window's own, in this frame (no call to Risu).
-let backWatch: ReturnType<typeof setInterval> | undefined;
-function watchForBack(): void {
-  clearInterval(backWatch);
-  // Up already as a rule (the viewer waited for it): closed before the first look is closed too.
-  let seen = soundWindowOpen();
-  const watch = backWatch = setInterval(() => {
-    // Up, then down: the reader is done there.
-    if (soundWindowOpen()) { seen = true; return; }
-    if (seen) void backToViewer(false);
-  }, 500);
-  // Never up within a while: nothing to wait for.
-  setTimeout(() => { if (!seen && backWatch === watch) { clearInterval(watch); backWatch = undefined; } }, 8000);
+/** The settings window closed. Told by the window, so nothing polls for it. Only a window the viewer sent the reader to counts. */
+function settingsClosed(): void {
+  if (awaitingBack) void backToViewer(false).catch(error => dbg('viewer.back', { message: String(error) }, 'warn'));
 }
 async function backToViewer(closeWindow: boolean): Promise<void> {
-  clearInterval(backWatch); backWatch = undefined;
+  awaitingBack = false;
   if (closeWindow && soundWindowOpen()) closeSoundWindow();
-  if (!open) await openViewer('resume');
+  if (!open) { await openViewer('resume'); return; }
+  // The roster is read by identity (stageLines), so a TTS card changed there is seen; a face drawn there, by bgFor.
+  bgFor = '';
+  await refreshStage();
 }
 function resolveName(speaker: string): string {
   const person = context ? resolveTtsSpeaker(speaker, ttsData().characters, context.rosterScope) : null;
@@ -2609,4 +2603,7 @@ export async function installOmniViewer(): Promise<void> {
   // A picture made (or begun): the stage takes it up, faces and background. Only the stage: the whole scene
   // drawn again with it showed the picture up front anew, a blink at the reply's end where they are asked.
   subscribeSprites(() => { if (open) { bgFor = ''; void refreshStage().catch(error => dbg('viewer.sprites', { message: String(error) }, 'warn')); } });
+  // The settings window closed (tools/vendor-patches: nx-close and the shell-gone watch): the stage reads what the
+  // reader changed there, when the viewer sent them.
+  Reflect.set(globalThis, '__OMNI_SETTINGS_CLOSED__', settingsClosed);
 }

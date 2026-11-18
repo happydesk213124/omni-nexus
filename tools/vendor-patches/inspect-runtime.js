@@ -185,7 +185,8 @@ showFullscreen = async (f) => {
   const gen = t._inspectGen = (t._inspectGen || 0) + 1;
   actionCard = f; inspectOpen = true; pendingSheetHit = null;
   t._nxHostInspectOpen = true;
-  await nxFloatHide();
+  // 크게보기 sits above the floating viewer, so the viewer stays drawn beneath it and only stops working.
+  await nxFloatPause();
   inspectGuardUntil = Date.now() + 400; inspectZones = []; inspectSheetEl = null;
   hidePressFill().catch(() => {});
   return nxPaintInspect(f, gen, true);

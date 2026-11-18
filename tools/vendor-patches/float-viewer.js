@@ -53,8 +53,19 @@ function nxFloatViewport() { return nxFloatViewportSize; }
 function nxFloatBlocked() {
   return t.unloading || t.uiOpen || t._nxHostInspectOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings || t.backendSettings?.card?.floating_viewer === false;
 }
+// Blocked is "at rest", not "hidden". Omni's own windows sit higher than the floating three (this viewer, the TTS
+// window, 🟪), so they cover them. That includes its settings (Risu's plugin frame, z-index 1000), the windows that open
+// in that frame, and 크게보기. While covered, the three only stop working: no scan, no drag, no tap. They are never taken
+// down and put back up, so closing settings brings back nothing (it used to remount this viewer, with a toast).
+// Gone is when they hide: the page is going, or Risu has drawn its own settings in place of the chat screen.
+function nxFloatAway() {
+  return !!(t.unloading || t._viewerHiddenForRisuSettings || t.backendSettings?.card?.floating_viewer === false);
+}
 // TTS shares screen visibility, but never the illustration power/viewer setting.
 globalThis.__OMNI_TTS_HOST_BLOCKED__ = () => !!(t.unloading || t.uiOpen || t._nxHostInspectOpen || t._hostChromeBlocked || t._viewerHiddenForModal || t._viewerHiddenForRisuSettings);
+globalThis.__OMNI_HOST_GONE__ = () => !!(t.unloading || t._viewerHiddenForRisuSettings);
+// The TTS window and 🟪 show only once the frozen UI is up. Now it is, so they look; they no longer poll for it.
+queueMicrotask(() => nxNotifyTtsVisibility());
 // 옴니 뷰어's 전체화면 is this same 크게보기 for a baked shot: its card id and file name,
 // as the chat's ⛶ chip has them. false when it cannot open (the card is not in the gallery).
 globalThis.__OMNI_INSPECT_SHOT__ = async (cardId, asset) => {
@@ -108,10 +119,12 @@ globalThis.__OMNI_INSPECT_CLOSE__ = async () => { if (t._nxHostInspectOpen && ty
 // A tap on the floating viewer (folding it, its arrows, its picture) is the viewer's, not the chat's beneath: TTS
 // lines, pink slots and message gestures each hit-tested the chat under it, and TTS scanned the chat for it. Told
 // from the frame the viewer keeps (nxFloatBounds), with no call.
-globalThis.__OMNI_CHAT_COVER__?.((x, y) => { try { return !!nxFloatRoot && !nxFloatHidden && nxFloatContains(nxFloatBounds, x, y); } catch { return false; } });
+globalThis.__OMNI_CHAT_COVER__?.((x, y) => { try { return !!nxFloatRoot && !nxFloatHidden && !nxFloatBlocked() && nxFloatContains(nxFloatBounds, x, y); } catch { return false; } });
 function nxNotifyTtsVisibility() {
   const refresh = globalThis.__OMNI_TTS_REFRESH_VISIBILITY__;
   if (typeof refresh === 'function') refresh();
+  // 🟪 hears it too (src/services/viewer-presence.ts onHostScreenChange).
+  try { globalThis.__OMNI_HOST_SCREEN_CHANGED__?.(); } catch {}
 }
 async function nxFloatSetTarget(card, bubbleHtml, valid = () => true) {
   const scope = await omniReadScope().catch(() => null);
@@ -331,7 +344,8 @@ async function nxFloatMount() {
 async function nxFloatMountTimed(mark) {
   const on = (t.backendSettings?.card?.floating_viewer) !== !1;
   if (!on) { await nxFloatDispose(); return false; }
-  if (nxFloatBlocked()) { await nxFloatHide(); return false; }
+  // Under a window of ours it stays as drawn; the mount waits for that window to close.
+  if (nxFloatBlocked()) { if (nxFloatAway()) await nxFloatHide(); return false; }
   const h = await nxFloatChat();
   mark('chat');
   if (!h) { await nxFloatHide(); return false; }
@@ -359,7 +373,7 @@ async function nxFloatMountTimed(mark) {
     omniFooterTargets.delete(nxFloatKey);
     await nxFloatPaintImg('');
   }
-  if (nxFloatBlocked()) { await nxFloatHide(); return false; }
+  if (nxFloatBlocked()) { if (nxFloatAway()) await nxFloatHide(); return false; }
   // SafeElement wrappers do not preserve JS identity; use a DOM marker for remount detection.
   if(nxFloatRoot){const mounted=await h.doc.querySelector('[x-nx-float]');try{if(!mounted)await nxFloatDispose(false);}finally{await omniRelease(mounted);}}
   mark(nxFloatRoot ? 'kept' : 'gone');
@@ -459,7 +473,7 @@ async function nxFloatMountTimed(mark) {
     nxFloatArmIdle();
   }
   mark('built');
-  nxFloatHidden = !!nxFloatBlocked();
+  nxFloatHidden = nxFloatAway();
   // The frame must be visible before position reads; pixels need no gallery.
   await nxFloatApply();
   mark('shown');
@@ -488,8 +502,15 @@ async function nxFloatHide() {
 }
 async function nxFloatShow() {
   nxNotifyTtsVisibility();
-  nxFloatHidden = !!nxFloatBlocked();
+  nxFloatHidden = nxFloatAway();
   await nxFloatEnsure();
+}
+// A window of ours opens over it: it stays drawn beneath and only lets go of what a press had started.
+async function nxFloatPause() {
+  // The TTS window lets go of a drag too.
+  nxNotifyTtsVisibility();
+  nxFloatHovered = false;
+  await nxFloatEndDrag(true);
 }
 async function nxFloatDispose(resetSession = true) {
   ++nxFloatGen; ++nxFloatSelecting; ++nxFloatEpoch;

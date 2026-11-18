@@ -15,7 +15,7 @@ async function nxFloatCover(on) {
   if (nxFloatRoot) void nxFloatRoot.setStyle('transition', on ? 'transform 8ms linear' : '').catch(() => {});
   try {
     if (!nxFloatShield) {
-      nxFloatShield = await H(nxFloatDoc, 'div', {style:'position:fixed;inset:0;z-index:99989;display:none;background:transparent;cursor:grabbing;touch-action:none;'});
+      nxFloatShield = await H(nxFloatDoc, 'div', {style:'position:fixed;inset:0;z-index:939;display:none;background:transparent;cursor:grabbing;touch-action:none;'});
       await nxFloatShield.setAttribute('x-nx-float-shield', '1');
       await nxFloatChatRoot.appendChild(nxFloatShield);
     }

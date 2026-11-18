@@ -333,7 +333,7 @@ test('옴니 뷰어 over a restricted SafeDOM: the top bar keeps the clock of th
   } finally { await browser.close(); }
 });
 
-test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line opens that person\'s TTS 캐릭터 sheet — the spinner until it is up, and back on the same line once it closes', async () => {
+test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line opens that person\'s TTS 캐릭터 sheet — the spinner until it is up; the viewer stays open beneath it, on the same line', async () => {
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const v = await viewerOn(browser, ['오미선: "왔어? 오늘은 일찍 왔네."', '하린: "응, 수업이 빨리 끝났어."']);
@@ -345,7 +345,10 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line ope
         window.settingsUp = true;
         setTimeout(() => { const ask = window.takeSoundFocus(); window.asked.push(ask); ask?.shown?.(); }, 900);
       };
-      const close = document.createElement('button'); close.id = 'nx-close'; close.onclick = () => { window.settingsUp = false; }; document.body.append(close);
+      // Its ✕ tells the viewer it closed, as the frozen UI's settings close does (__OMNI_SETTINGS_CLOSED__).
+      const close = document.createElement('button'); close.id = 'nx-close'; close.onclick = () => { window.settingsUp = false; window.__OMNI_SETTINGS_CLOSED__?.(); }; document.body.append(close);
+      // The window is Risu's plugin frame over the viewer: the viewer is never closed and opened again for it.
+      window.everClosed = false; setInterval(() => { if (!window.viewerOpen()) window.everClosed = true; }, 20);
     });
     const tapName = async () => { const r = await v.rect('[x-omni-vn] [data-vn-name]'); await v.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2); };
     await v.shows(/일찍 왔네/);
@@ -353,19 +356,20 @@ test('옴니 뷰어 over a restricted SafeDOM: a tap on the name over a line ope
     await tapName();
     await v.page.waitForFunction(() => getComputedStyle(document.querySelector('[x-omni-vn] [data-vn-busy]')).display !== 'none', null, { timeout: 800 });
     assert.equal(await v.page.evaluate(() => window.viewerOpen()), true, 'the viewer stays up, its spinner turning, until the sheet is');
-    await v.page.waitForFunction(() => !window.viewerOpen());
+    await v.page.waitForFunction(() => window.asked.length === 1);
     const ask = await v.page.evaluate(() => { const { panel, search, sheet } = window.asked[0]; return { panel, search, sheet }; });
     assert.deepEqual(ask, { panel: 'tts-characters', search: '오미선', sheet: { id: 't-misun', name: '오미선' } });
-    // The sheet closed for good: the window goes as by its ✕, and the viewer is back where it was.
+    // The sheet closed for good: the window goes as by its ✕, and the viewer is where it was.
     await v.page.evaluate(() => window.asked[0].done());
-    await v.page.waitForFunction(() => window.viewerOpen() && /일찍 왔네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
-    assert.equal(await v.page.evaluate(() => window.settingsUp), false, 'the settings window closed with it');
-    // The window closed instead (its ✕): back as well.
+    await v.page.waitForFunction(() => !window.settingsUp);
+    assert.equal(await v.page.evaluate(() => window.viewerOpen() && /일찍 왔네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '')), true, 'the settings window closed with it, the viewer on the same line');
+    // The window closed instead (its ✕): the same.
     await v.page.waitForTimeout(700);
     await tapName();
-    await v.page.waitForFunction(() => !window.viewerOpen());
-    await v.page.evaluate(() => { window.settingsUp = false; });
-    await v.page.waitForFunction(() => window.viewerOpen() && /일찍 왔네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || ''));
+    await v.page.waitForFunction(() => window.asked.length === 2);
+    await v.page.evaluate(() => document.getElementById('nx-close').click());
+    assert.equal(await v.page.evaluate(() => window.viewerOpen() && /일찍 왔네/.test(document.querySelector('[x-omni-vn] [data-vn-text]')?.textContent || '')), true);
+    assert.equal(await v.page.evaluate(() => window.everClosed), false, 'never closed for the window (that re-picked the BGM and dropped the stream\'s pictures)');
     // Off the name, a tap still turns the line.
     await v.page.waitForTimeout(700);
     await v.tapUntil(async () => /수업이/.test(await v.text()));

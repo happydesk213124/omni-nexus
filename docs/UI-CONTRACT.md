@@ -365,6 +365,14 @@ reply at the chat's bottom,
 else the reply in the middle of the screen. Its `🔢`, and 옴니 뷰어 태그's, open
 `− + 1~3 − +` and step the counts through `__OMNI_IMAGE_COUNTS__` (the chat's own
 serialized write) instead of opening 생성 옵션.
+The three floating windows sit between 옴니 뷰어 (z-index 45) and Omni's own windows.
+They are the floating viewer (940), `🟪` (950) and the TTS·BGM window (970, toast 980).
+Omni's settings is Risu's plugin frame (1000), and the windows that open in it stand
+there too. 크게보기 is 100001. These cover the floating windows, so nothing hides or
+restores them when settings opens or closes, and nothing polls for that. Under such a
+window they stay drawn and take no press, scan or tick (`__OMNI_TTS_HOST_BLOCKED__`).
+They hide only where there is no chat to float over: when the page is going, or when
+Risu has drawn its own settings in place of the chat screen (`__OMNI_HOST_GONE__`).
 The sixth chip is `refresh` (`🔃`). It abandons inline frames on that DOM
 bubble and restamps from linked cards / pending spinners. It does not unlink
 hashes and does not start a tagger job.

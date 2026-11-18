@@ -14,6 +14,9 @@ export function setViewerCovering(on: boolean): void {
   covering = on;
   // The vendor's scroll holds (tools/vendor-patches/scroll-runtime.js) cannot import this: they ask the global.
   Reflect.set(globalThis, '__OMNI_VIEWER_COVERING__', viewerCovering);
+  for (const fn of [...coverChanged]) {
+    try { fn(); } catch { /* one listener failing never stops the others */ }
+  }
   if (on) return;
   for (const fn of [...uncovered]) {
     try { fn(); } catch { /* one catching up never stops the others */ }
@@ -25,6 +28,30 @@ export function onViewerUncovered(fn: () => void): () => void {
   uncovered.add(fn);
   return () => { uncovered.delete(fn); };
 }
+
+const coverChanged = new Set<() => void>();
+/** Called each time the viewer starts or stops covering the chat; returns how to stop being called. */
+export function onViewerCoverChange(fn: () => void): () => void {
+  coverChanged.add(fn);
+  return () => { coverChanged.delete(fn); };
+}
+
+/**
+ * The frozen UI's screen changed in a way the floating windows show or hide by: it booted, the page is going, or Risu
+ * drew its own settings in place of the chat. The floating viewer says so (nxNotifyTtsVisibility in
+ * tools/vendor-patches/float-viewer.js) and they look again, so none of them has to poll for it. Omni's own windows
+ * opening or closing are not among these. Those sit higher and cover the floating windows, which stay as they are.
+ */
+const hostScreen = new Set<() => void>();
+export function onHostScreenChange(fn: () => void): () => void {
+  hostScreen.add(fn);
+  return () => { hostScreen.delete(fn); };
+}
+Reflect.set(globalThis, '__OMNI_HOST_SCREEN_CHANGED__', () => {
+  for (const fn of [...hostScreen]) {
+    try { fn(); } catch { /* one listener failing never stops the others */ }
+  }
+});
 
 /**
  * Omni's own controls floating over the chat (the 🟪 플로팅 태그): a press on one is no press on the chat beneath,

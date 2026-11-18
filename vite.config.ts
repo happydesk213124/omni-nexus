@@ -7709,6 +7709,8 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
       await hiding;
       closeMark("hide");
       if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
+      // 옴니 뷰어 stayed open under the window. This is its cue to read what was changed there (a TTS card, a face).
+      try { globalThis.__OMNI_SETTINGS_CLOSED__?.(); } catch {}
       invalidateOverlayLayoutCache();
       Promise.resolve().then(async () => {
         let stayInRisu = !!t._viewerHiddenForRisuSettings || !!t._chatScreenGone;
@@ -7726,10 +7728,8 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
           try { await hideFloatingViewerForRisuSettings(); } catch {}
           return;
         }
-        try {
-          typeof nxHostToast == "function" && nxHostToast("뷰어 복구 중…", { ms: 8e3 });
-        } catch {
-        }
+        // The floating viewer was never taken down (it waited, drawn, under the window), so nothing is "restored" and
+        // no toast says so. It catches up below with whatever changed in settings.
         try { await restoreFloatingViewerAfterModal(); } catch {}
         closeMark("show[" + (omniPerf.lastMount || "") + "]");
         if (t.uiOpen || closeEpoch !== t._settingsCloseEpoch) return;
@@ -7743,10 +7743,6 @@ const VENDOR_SETTINGS_CLOSE_STICKY_PATCH = `    document.getElementById("nx-clos
         try { await nxFloatEnsure(); } catch {}
         closeMark("ensure[" + (omniPerf.lastMount || "") + "]");
         y("info", "settings.close.timing", closeSteps.join(" "));
-        try {
-          typeof nxHostToast == "function" && await nxHostToast("뷰어 복구됨", { ms: 1500 });
-        } catch {
-        }
       }).catch((err) => {
         y("warn", "settings.close.restore", err?.message || err);
       });
@@ -7817,6 +7813,7 @@ const VENDOR_SETTINGS_WATCH_STICKY_NEEDLE = `        t.uiOpen = !1, t._hostReape
 const VENDOR_SETTINGS_WATCH_STICKY_PATCH = `        t.uiOpen = !1, t._hostReaper && (clearInterval(t._hostReaper), t._hostReaper = null), clearInterval(t._settingsWatch), t._settingsWatch = null;
         if (t.overlayUi) t.overlayUi._stickyEditorOpen = !1;
         xa({ silent: !0 }).catch(() => {});
+        try { globalThis.__OMNI_SETTINGS_CLOSED__?.(); } catch {}
         Promise.resolve().then(async () => {
           let stayInRisu = !!t._viewerHiddenForRisuSettings || !!t._chatScreenGone;
           if (!stayInRisu) {
@@ -17229,7 +17226,8 @@ const VENDOR_HIDE_MODAL_CANCEL_EXPAND_PATCH =
   `  async function hideFloatingViewerForModal() {
     t._viewerHiddenForModal = !0;
     try { await Ht(); } catch {}
-    try { await nxFloatHide(); } catch {}
+    // Our windows sit higher than the floating viewer, so it stays drawn beneath them and only stops working.
+    try { await nxFloatPause(); } catch {}
   }`;
 
 const PLUGIN_HEADER = `//@name ${PLUGIN_ID}
@@ -18721,10 +18719,13 @@ const loadVendorUi = (): string => {
       throw new Error('[build] missing photo evict / inline refresh');
     }
     {
-      const from = out.indexOf('nxHostToast("뷰어 복구 중…');
-      const to = out.indexOf('nxHostToast("뷰어 복구됨"');
+      // The settings close path, from the look at Risu's screen to its timing line. (Bounded by the 뷰어 복구 toasts
+      // before; those are gone: the floating viewer waits, drawn, under the window.)
+      const from = out.indexOf('closeMark("risu");');
+      const to = out.indexOf('y("info", "settings.close.timing"', from);
       const body = from >= 0 && to > from ? out.slice(from, to) : '';
-      if (!body) throw new Error('[build] viewer restore toast pair missing');
+      if (!body) throw new Error('[build] settings close restore path missing');
+      if (out.includes('뷰어 복구')) throw new Error('[build] settings close must not toast 뷰어 복구: nothing was taken down');
       if (body.includes('refreshSelectedInlineImages')) {
         throw new Error('[build] settings close must not restamp inline shots');
       }

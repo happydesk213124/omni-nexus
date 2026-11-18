@@ -2,12 +2,14 @@ function nxFloatRootCss(state) {
   // Single builder for the root frame: geometry + alpha surface + idle transparency.
   // (No classList on SafeElement, so idle/bubble/collapsed all go inline.
   // Transparency needs !important to beat the surface colors in NX_FLOAT_CSS.)
+  // z-index 940 puts it over the chat and 옴니 뷰어 (45). It stays under Omni's settings (Risu's plugin frame, 1000) and
+  // under 크게보기 (100001), so those cover it and it never has to hide for them. See nxFloatAway.
   const vp = nxFloatViewport();
   if (state.iconfold) {
     const g = nxFloatIconGeo || { left: 120, top: 120 };
     const left = Math.min(Math.max(Math.round(g.left), 0), Math.max(0, vp.w - 52));
     const top = Math.min(Math.max(Math.round(g.top), 0), Math.max(0, vp.h - 52));
-    return `position:fixed;left:${left}px;top:${top}px;width:52px;height:52px;z-index:99990;border-radius:50% !important;overflow:hidden;cursor:grab;pointer-events:auto;padding:0;gap:0;display:flex;align-items:center;justify-content:center;background:rgba(24,28,40,.78);border:1px solid rgba(255,255,255,.25);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;box-sizing:border-box;`;
+    return `position:fixed;left:${left}px;top:${top}px;width:52px;height:52px;z-index:940;border-radius:50% !important;overflow:hidden;cursor:grab;pointer-events:auto;padding:0;gap:0;display:flex;align-items:center;justify-content:center;background:rgba(24,28,40,.78);border:1px solid rgba(255,255,255,.25);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;box-sizing:border-box;`;
   }
   const geo = nxFloatGeo || { left: 60, top: 60, w: 360, h: 560 };
   const idle = state.idle
@@ -17,20 +19,20 @@ function nxFloatRootCss(state) {
     // Keep the saved viewer geometry intact so + restores the previous layout.
     const left = Math.min(Math.max(Math.round(geo.left), 0), Math.max(0, vp.w - 64));
     const top = Math.min(Math.max(Math.round(geo.top), 0), Math.max(0, vp.h - 82));
-    return `position:fixed;left:${left}px;top:${top}px;width:64px;height:82px;z-index:99990;pointer-events:auto;display:flex;flex-direction:column;gap:0;padding:6px;box-sizing:border-box;${idle}`;
+    return `position:fixed;left:${left}px;top:${top}px;width:64px;height:82px;z-index:940;pointer-events:auto;display:flex;flex-direction:column;gap:0;padding:6px;box-sizing:border-box;${idle}`;
   }
   if (state.collapsed) {
     // Prototype collapsed: image gone, tight padding, height auto.
     const width = Math.min(280, vp.w - 16);
     const left = Math.min(Math.max(Math.round(geo.left), 0), Math.max(0, vp.w - width));
     const top = Math.min(Math.max(Math.round(geo.top), 0), Math.max(0, vp.h - 144));
-    return `position:fixed;left:${left}px;top:${top}px;width:${width}px;z-index:99990;pointer-events:auto;display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:20px;box-sizing:border-box;${idle}`;
+    return `position:fixed;left:${left}px;top:${top}px;width:${width}px;z-index:940;pointer-events:auto;display:flex;flex-direction:column;gap:4px;padding:6px;border-radius:20px;box-sizing:border-box;${idle}`;
   }
   const w = Math.min(vp.w - 16, Math.max(240, Math.round(geo.w || 360))), hh = Math.min(vp.h - 16, Math.max(320, Math.round(geo.h || 560)));
   const left = Math.min(Math.max(Math.round(geo.left), 0), Math.max(0, vp.w - w));
   const top = Math.min(Math.max(Math.round(geo.top), 0), Math.max(0, vp.h - hh));
   const button = Math.min(40, Math.floor((w - 40) / 8));
-  return `position:fixed;left:${left}px;top:${top}px;width:${w}px;height:${hh}px;--nx-float-button:${button}px;--nx-float-glyph:${Math.min(20,button-6)}px;max-height:calc(100vh - 20px);z-index:99990;pointer-events:auto;display:flex;flex-direction:column;gap:0;padding:8px;border-radius:20px;box-sizing:border-box;${idle}`;
+  return `position:fixed;left:${left}px;top:${top}px;width:${w}px;height:${hh}px;--nx-float-button:${button}px;--nx-float-glyph:${Math.min(20,button-6)}px;max-height:calc(100vh - 20px);z-index:940;pointer-events:auto;display:flex;flex-direction:column;gap:0;padding:8px;border-radius:20px;box-sizing:border-box;${idle}`;
 }
 // SafeElement calls cross Risu's bridge; unchanged chrome must cost no writes.
 const nxFloatStyleCache = new WeakMap(), nxFloatTextCache = new WeakMap(), nxFloatOverlayCache = new WeakMap();
@@ -104,7 +106,7 @@ function nxFloatButtonAt(x, y) {
 async function nxFloatRender() {
   if (!nxFloatRoot || nxFloatDrag) return;
   const mode = nxFloatMode(), collapsed = !!nxFloatCollapsed;
-  const hidden = nxFloatHidden || nxFloatBlocked();
+  const hidden = nxFloatHidden || nxFloatAway();
   if (hidden) {
     nxFloatBounds = null;
     await nxFloatStyle(nxFloatRoot,"position:fixed;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none;visibility:hidden;overflow:hidden;");

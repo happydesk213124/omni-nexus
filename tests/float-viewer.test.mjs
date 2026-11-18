@@ -133,27 +133,32 @@ async function setup(page, width = 1000, cacheGallery = true, runtimeSource = ru
   await page.evaluate(()=>Promise.all([fixture.api.ensure(),fixture.api.ensure(),fixture.api.ensure()]));
 }
 
-test('fullscreen hides the floating viewer until the latest inspect closes',async()=>{
+test('fullscreen and settings cover the floating viewer; it stays drawn beneath them, at rest, and is never put back',async()=>{
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
  try {
   const page=await browser.newPage();await setup(page);
   const before=await page.locator('[x-nx-float]').boundingBox();
+  // Under 크게보기 (100001) and Omni's settings (Risu's plugin frame, 1000), over 옴니 뷰어 (45).
+  assert.equal(await page.evaluate(()=>Number(getComputedStyle(document.querySelector('[x-nx-float]')).zIndex)),940);
   await page.evaluate(()=>{fixture.t._nxInspectOpener=fixture.api.inspect;});
   await clickAt(page,'[x-nx-float-head] [x-nx-float-btn="full"]');
-  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'fullscreen button hides the floater');
+  assert.deepEqual(await page.locator('[x-nx-float]').boundingBox(),before,'fullscreen covers the floater; it stays drawn where it was');
   await page.evaluate(()=>fixture.api.show());
-  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'background refresh cannot reveal it');
+  assert.deepEqual(await page.locator('[x-nx-float]').boundingBox(),before,'a background refresh beneath it changes nothing');
   await page.evaluate(()=>fixture.api.closeInspect());
-  assert.deepEqual(await page.locator('[x-nx-float]').boundingBox(),before,'close restores the original position and size');
+  assert.deepEqual(await page.locator('[x-nx-float]').boundingBox(),before,'closing finds it where it was');
   await clickAt(page,'[x-nx-float-head] [x-nx-float-btn="fold"]');
   await page.evaluate(()=>fixture.api.inspect({id:'a'}));
-  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'opening from chat also hides folded controls');
+  assert.equal(await page.locator('[x-nx-float-foldgrid]').isVisible(),true,'opening from chat leaves the folded controls drawn beneath');
   await page.evaluate(()=>Promise.all([fixture.api.closeInspect(),fixture.api.inspect({id:'b'})]));
-  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'old close cannot reveal it over a newer fullscreen');
+  assert.equal(await page.locator('[x-nx-float-foldgrid]').isVisible(),true,'an old close over a newer fullscreen changes nothing either');
   await page.evaluate(()=>fixture.api.closeInspect());
   assert.equal(await page.locator('[x-nx-float-foldgrid]').isVisible(),true);
   await page.evaluate(async()=>{await fixture.api.inspect({id:'a'});fixture.t.uiOpen=true;await fixture.api.closeInspect();});
-  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'settings still block restore');
+  assert.equal(await page.locator('[x-nx-float-foldgrid]').isVisible(),true,'settings over it: still drawn, never hidden for them');
+  // Only where there is no chat to float over (Risu's own settings in its place) does it hide.
+  await page.evaluate(async()=>{fixture.t.uiOpen=false;fixture.t._viewerHiddenForRisuSettings=true;await fixture.api.hide();});
+  assert.equal(await page.locator('[x-nx-float]').isVisible(),false,'Risu\'s settings drawn in place of the chat: hidden');
   await page.evaluate(()=>fixture.api.dispose());
  }finally{await browser.close();}
 });

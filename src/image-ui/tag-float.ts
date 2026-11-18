@@ -3,9 +3,9 @@ import { risuHost } from '../core/host';
 import { IMAGE_COUNT_STEPS } from '../domain/image-count';
 import { MESSAGE_CONTROL_KINDS } from '../domain/message-controls';
 import { readingReply } from '../domain/viewer/reply-at';
-import { getConfig } from '../services/context';
+import { getConfig, onConfigChange } from '../services/context';
 import { currentTtsContext } from '../services/tts-context';
-import { addChatCover, chatCovered, viewerCovering } from '../services/viewer-presence';
+import { addChatCover, chatCovered, onHostScreenChange, onViewerCoverChange, viewerCovering } from '../services/viewer-presence';
 import { watchChatScreen, type ChatScreen } from '../services/chat-screen-watch';
 import { chatView } from '../viewer/chat-screen';
 import { quiet, release, unwrap } from '../viewer/safe-dom';
@@ -16,10 +16,13 @@ import { quiet, release, unwrap } from '../viewer/safe-dom';
  * bottom, else the one in the middle of the screen. 🔢 opens − + 1~3 − + under it. The buttons are the chat's own
  * (__OMNI_MESSAGE_ACTION__, __OMNI_IMAGE_COUNTS__: tools/vendor-patches/message-runtime.js).
  *
- * The switch (대시보드 › 플로팅 태그) is read from memory once a second: off, nothing of it is in Risu's page and nothing
- * is read from it. On, it hears whether the chat screen is up, and its size, from the one check the TTS window and the
- * floating viewer hear too (chat-screen-watch.ts); it looked every other second itself before. A tap costs no
- * call unless it is on a button: the buttons' rectangles are read when they show.
+ * It polls nothing. It looks again when it is told something changed: the switch (대시보드 › 플로팅 태그, onConfigChange),
+ * 옴니 뷰어 opening or closing, the frozen UI's screen (onHostScreenChange), or the chat screen, whose presence and size
+ * come from the one check the TTS window and the floating viewer hear too (chat-screen-watch.ts). Off, nothing of it is
+ * in Risu's page and nothing is read from it. It used to look once a second, mostly to find Omni's settings open and
+ * hide. It no longer hides for them: at z-index 950 it sits under them (Risu's plugin frame is 1000, 크게보기 100001), so
+ * it stays drawn beneath and only takes no press. A tap costs no call unless it is on a button: the buttons' rectangles
+ * are read when they show.
  */
 interface HostPoint { clientX: number; clientY: number }
 type Box = { left: number; top: number; right: number; bottom: number };
@@ -38,7 +41,7 @@ export const TAG_FLOAT_HTML = `<div data-tf-bar><div data-tf-row>${MESSAGE_CONTR
 // The row slides out from behind 🟪 to its left and back in, as 태그's row slides from its edge. It stays laid out
 // when in, so 🟪 never moves (centred on a row that came and went, it jumped). Unseen, it takes no tap: its
 // visibility waits out the slide, and the bar around it lets taps through.
-const CSS = `[x-omni-tagfloat]{position:fixed;right:0;top:42%;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100vw - 16px);pointer-events:none;font:13px/1.4 system-ui,sans-serif;color:#eee;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+const CSS = `[x-omni-tagfloat]{position:fixed;right:0;top:42%;z-index:950;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:calc(100vw - 16px);pointer-events:none;font:13px/1.4 system-ui,sans-serif;color:#eee;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 [x-omni-tagfloat] [data-tf-bar]{display:flex;align-items:center;gap:6px;overflow:hidden;pointer-events:none}
 [x-omni-tagfloat] [data-tf-row]{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:calc(100vw - 72px);padding:5px;box-sizing:border-box;border:1px solid #344052;border-radius:12px;background:rgba(22,30,44,.95);pointer-events:auto;translate:calc(100% + 54px) 0;visibility:hidden;transition:translate .32s cubic-bezier(.2,.8,.25,1),visibility 0s .32s}
 [x-omni-tagfloat][x-tf-open="1"] [data-tf-row]{translate:0 0;visibility:visible;transition:translate .32s cubic-bezier(.2,.8,.25,1)}
@@ -69,9 +72,14 @@ let hits: Array<{ act: string; r: Box }> = [], areas: Box[] = [];
 
 const inside = (p: HostPoint, r: Box) => p.clientX >= r.left && p.clientX <= r.right && p.clientY >= r.top && p.clientY <= r.bottom;
 const box = (r: DOMRect): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-const covered = (x: number, y: number): boolean => shown && areas.some(r => inside({ clientX: x, clientY: y }, r));
-// The frozen UI's screen state (settings open, 크게보기, a modal): the TTS window's rule. Unknown until it boots.
-const hostAllows = (): boolean => { const blocked = Reflect.get(globalThis, '__OMNI_TTS_HOST_BLOCKED__'); return typeof blocked === 'function' && !blocked(); };
+// Booted: the frozen UI is up (unknown until then), and the page is not going and has its chat screen.
+const hostUp = (): boolean => {
+  const blocked = Reflect.get(globalThis, '__OMNI_TTS_HOST_BLOCKED__'), gone = Reflect.get(globalThis, '__OMNI_HOST_GONE__');
+  return typeof blocked === 'function' && !(typeof gone === 'function' && gone());
+};
+// A window of ours over it (settings, 크게보기, a modal) or 옴니 뷰어: what lies on 🟪 there is that window's, not 🟪's.
+const atRest = (): boolean => { const blocked = Reflect.get(globalThis, '__OMNI_TTS_HOST_BLOCKED__'); return viewerCovering() || (typeof blocked === 'function' && !!blocked()); };
+const covered = (x: number, y: number): boolean => shown && !atRest() && areas.some(r => inside({ clientX: x, clientY: y }, r));
 const streaming = (): boolean => { const live = Reflect.get(globalThis, '__OMNI_REPLY_STREAMING__'); return typeof live === 'function' && !!live(); };
 
 async function write(node: SafeElement | null, key: string, value: string, put: (node: SafeElement) => unknown): Promise<void> {
@@ -173,7 +181,7 @@ async function press(act: string): Promise<void> {
 }
 
 function onClick(p: HostPoint): void {
-  if (!shown || !Number.isFinite(p?.clientX) || !Number.isFinite(p?.clientY)) return;
+  if (!shown || atRest() || !Number.isFinite(p?.clientX) || !Number.isFinite(p?.clientY)) return;
   const hit = hits.find(h => inside(p, h.r));
   if (hit) { void press(hit.act).catch(error => dbg('tagfloat.press', { message: String(error) }, 'warn')); return; }
   // A tap anywhere else puts the row away; the tap is still the chat's.
@@ -233,14 +241,14 @@ async function step(): Promise<void> {
   if (getConfig().card?.floating_tag_bar !== true) { if (mounted) await unmount(); return; }
   if (!mounted) await mount();
   if (!mounted) return;
-  const allowed = !viewerCovering() && hostAllows();
-  const next = allowed && inChat;
+  // 옴니 뷰어 has its own 태그, so 🟪 steps aside for it. Omni's other windows only cover it (atRest).
+  const next = !viewerCovering() && hostUp() && inChat;
   // Out of sight it folds: what it was over has moved on by the time it is back.
   if (next !== shown) { shown = next; if (!shown) { open = false; countsOpen = false; } await paint(); }
   else if (shown && !written.has('measured')) await measure();
 }
 
-/** A step now; asked for while one is under way, one more as it ends (what changed is not left for the next second). */
+/** A step now; asked for while one is under way, one more as it ends (what changed is never dropped). */
 function run(): void {
   if (ticking) { rerun = true; return; }
   ticking = true; rerun = false;
@@ -253,8 +261,9 @@ export function installTagFloat(): void {
   // 옴니 뷰어 asks the covers too once it is up; until then (or on a host without its button) this one answers.
   if (typeof Reflect.get(globalThis, '__OMNI_VIEWER_COVERS__') !== 'function') Reflect.set(globalThis, '__OMNI_VIEWER_COVERS__', chatCovered);
   addChatCover(covered);
-  // The second's own step is dropped while one runs; only news of the chat screen waits for it.
-  const timer = setInterval(() => { if (!ticking) run(); }, 1000);
-  // Node hosts (smoke, audit) boot the bundle and end when nothing is left to run: a held tick kept them up for hours.
-  (timer as unknown as { unref?: () => void }).unref?.();
+  // Told, never polled: the switch, 옴니 뷰어, the frozen UI's screen. The chat screen is heard once mounted.
+  onConfigChange(run);
+  onViewerCoverChange(run);
+  onHostScreenChange(run);
+  run();
 }

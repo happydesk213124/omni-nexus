@@ -14,7 +14,7 @@ export async function bindTtsDrag(doc:SafeDocument,viewer:SafeElement,allowed:()
   for(const old of await safeArray(await doc.querySelectorAll('[x-omnitts-shield]'))){await old.remove();await releaseHost(old);}
   const shield=await doc.createElement('div'),body=await doc.querySelector('body');
   await shield.setAttribute('x-omnitts-shield','1');
-  await shield.setStyleAttribute('position:fixed;inset:0;z-index:2147483099;display:none;background:transparent;cursor:grabbing;touch-action:none');
+  await shield.setStyleAttribute('position:fixed;inset:0;z-index:969;display:none;background:transparent;cursor:grabbing;touch-action:none');
   await body?.appendChild(shield);await releaseHost(body);
   let shielded=false;
   // Pointer events cross the bridge in bursts, so moves land unevenly. A short

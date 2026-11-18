@@ -28,9 +28,15 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   const viewer = await doc.createElement('div'), toast = await doc.createElement('div');
   await viewer.setAttribute('x-omnitts-viewer','1'); await toast.setAttribute('x-omnitts-toast','1');
   await body.appendChild(viewer); await body.appendChild(toast);await releaseHost(body);
-  let inChat = false, lastAllowed = false, disposed=false, clickEpoch=0;
-  // Behind 옴니 뷰어 it is out of sight too: no hit test or drag on a press there, nothing painted.
-  const allowed = () => { const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__'); return !disposed && inChat && !viewerCovering() && typeof blocked === 'function' && !blocked(); };
+  let inChat = false, disposed=false, clickEpoch=0;
+  // When it shows: on the chat screen, with the frozen UI up, and 옴니 뷰어 not over it. It hides when the page is going or
+  // Risu has drawn its own settings in place of the chat (__OMNI_HOST_GONE__); the floating viewer tells it when that
+  // changes (__OMNI_TTS_REFRESH_VISIBILITY__).
+  const shownHere = () => { const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__'),gone=Reflect.get(globalThis,'__OMNI_HOST_GONE__'); return !disposed && inChat && !viewerCovering() && typeof blocked === 'function' && !(typeof gone === 'function' && gone()); };
+  // When it works: shown, and no window of ours over it (settings, 크게보기). Those sit higher (z-index 1000 and up, this
+  // window 970), so they cover it. It stays drawn under them and takes no press, drag or tick, and nothing has to watch
+  // for them to open or close.
+  const allowed = () => { const blocked=Reflect.get(globalThis,'__OMNI_TTS_HOST_BLOCKED__'); return shownHere() && typeof blocked === 'function' && !blocked(); };
   const actions=new Map<string,{node:SafeElement;run:()=>unknown}>(),events:{type:string;id:string}[]=[];
   let listViewport: SafeElement | undefined;
   let drag:Awaited<ReturnType<typeof bindTtsDrag>>|undefined;
@@ -49,16 +55,16 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
       // A failed click explains itself; background generation keeps the opt-in toast.
       const failing=!!notice&&Date.now()<noticeUntil;
       const status=failing?notice:`음성 생성 ${q.active}/${s.concurrency}${q.waiting?' · 대기 '+q.waiting:''}`;
-      const shown=s.enabled&&allowed()&&(failing||(s.toast&&q.active>0));
+      const shown=s.enabled&&shownHere()&&(failing||(s.toast&&q.active>0));
       // Hidden, it does not follow the queue: every voice made changed its text, two calls each.
       const toastNext=shown?JSON.stringify([status,failing,shown]):'hidden';
       if(toastNext!==toastSignature){toastSignature=toastNext;await toast.setTextContent(status);
-      await toast.setStyleAttribute(`position:fixed;right:16px;top:18px;z-index:2147483200;width:min(290px,calc(100vw - 32px));${failing?'min-height:44px;max-height:120px':'height:44px'};box-sizing:border-box;padding:12px;border:1px solid ${failing?'#f8717188':'#ffffff24'};border-radius:12px;color:#eee;background:${failing?'rgba(69,20,28,.95)':'rgba(23,32,49,.93)'};font:12px/18px sans-serif;overflow:hidden;overflow-wrap:anywhere;pointer-events:none;display:${shown?'block':'none'}`);}
+      await toast.setStyleAttribute(`position:fixed;right:16px;top:18px;z-index:980;width:min(290px,calc(100vw - 32px));${failing?'min-height:44px;max-height:120px':'height:44px'};box-sizing:border-box;padding:12px;border:1px solid ${failing?'#f8717188':'#ffffff24'};border-radius:12px;color:#eee;background:${failing?'rgba(69,20,28,.95)':'rgba(23,32,49,.93)'};font:12px/18px sans-serif;overflow:hidden;overflow-wrap:anywhere;pointer-events:none;display:${shown?'block':'none'}`);}
       if(drag?.busy)return;
       const bgmLift=!s.minimized&&bgmOpen()?BGM_H:0;
       const placement=s.viewerAnchor?`right:min(${Math.max(8,s.viewerAnchor.right)}px,calc(100vw - ${s.minimized?46:310}px));top:min(${Math.max(8,s.viewerAnchor.top-bgmLift)}px,calc(100dvh - 64px));max-height:calc(100dvh - min(${Math.max(8,s.viewerAnchor.top-bgmLift)}px,calc(100dvh - 64px)) - 8px)`:'right:16px;bottom:16px;max-height:80vh';
-      const visible=s.enabled&&s.viewer&&allowed();
-      const frame=`position:fixed;${placement};z-index:2147483100;will-change:transform;contain:layout style;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.82);color:#eee;text-shadow:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none;user-select:none;-webkit-user-select:none;font:12px/1.5 sans-serif;display:${visible?'block':'none'}`;
+      const visible=s.enabled&&s.viewer&&shownHere();
+      const frame=`position:fixed;${placement};z-index:970;will-change:transform;contain:layout style;width:${s.minimized?'38px':'min(302px,calc(100vw - 24px))'};overflow:auto;border:1px solid #ffffff26;border-radius:12px;background:rgba(16,22,34,.82);color:#eee;text-shadow:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;box-shadow:none;user-select:none;-webkit-user-select:none;font:12px/1.5 sans-serif;display:${visible?'block':'none'}`;
       if(frame!==frameSignature){frameSignature=frame;await viewer.setStyleAttribute(frame);}
       // Out of sight nothing inside is drawn: it is drawn afresh, once, when it shows again.
       if(!visible){signature='';stateSignature='';return;}
@@ -240,7 +246,7 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
     const volume=actions.get('volume');if(allowed()&&volume&&['ArrowLeft','ArrowRight'].includes(e.key)&&await volume.node.matches(':focus'))await updateTtsSettings({volume:ttsData().settings.volume+(e.key==='ArrowRight'?.05:-.05)});
   }))});
   drag=await bindTtsDrag(doc,viewer,()=>allowed()&&ttsData().settings.enabled&&ttsData().settings.viewer,paint,()=>!ttsData().settings.minimized&&bgmOpen()?BGM_H:0);
-  const apply=()=>{if(!allowed()&&drag?.busy)void drag.cancel();lastAllowed=allowed();render();};
+  const apply=()=>{if(!allowed()&&drag?.busy)void drag.cancel();render();};
   // Whether Risu's chat screen is up comes from the one check everyone shares (chat-screen-watch.ts), and only while
   // TTS is on: off, the window shows nothing whatever the screen, so it asks nothing. It looked for the screen itself
   // once a second before (two calls and a release), TTS on or off, and every chat scan did it once more.
@@ -257,9 +263,9 @@ export async function installTtsViewer(doc: SafeDocument, revealInChat: () => Pr
   const unsubscribeScreenSetting=subscribeTts(syncScreenWatch);
   syncScreenWatch();
   let ticking=false;
-  // Twice a second, with no call: the window follows what allowed() hears (옴니 뷰어 over it, the host's block), and
-  // the line playing shows its time.
-  const interval=setInterval(()=>{const visible=allowed();if(visible!==lastAllowed){lastAllowed=visible;refreshSignal();}const s=ttsData().settings;if(!visible||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
+  // Twice a second, only while a line plays: its time and seek bar. Nothing here watches whether it may show; that is
+  // told (the chat screen, 옴니 뷰어, the floating viewer's hide). Under a window of ours it skips the tick.
+  const interval=setInterval(()=>{const s=ttsData().settings;if(!allowed()||ticking||painting||drag?.busy||!s.enabled||!s.viewer||s.minimized||omniTts.player.status!=='playing')return;ticking=true;void(async()=>{const progress=omniTts.player.progress,time=await viewer.querySelector('[data-tts-time]'),seek=actions.get('seek')?.node;const format=(n:number)=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;try{if(time)await time.setTextContent(`${format(progress.current)} / ${format(Number.isFinite(progress.duration)?progress.duration:0)}`);if(seek)await seek.setStyle('background',`linear-gradient(to right,#7132f5 ${progress.duration>0?progress.current/progress.duration*100:0}%,#283043 0)`);}finally{await releaseHost(time);}})().catch(()=>{}).finally(()=>{ticking=false;});},500);
   // BGM time, once a second while the bar is open and music plays (never during a drag).
   const bgmTick=setInterval(()=>{if(!allowed()||painting||drag?.busy||ttsData().settings.minimized||!bgmOpen()||!omniSound.player.bgmPlaying)return;void paintBgmTime().catch(()=>{});},1000);
   const flash=(message:string)=>{

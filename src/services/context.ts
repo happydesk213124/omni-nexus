@@ -29,8 +29,23 @@ export function getConfig(): Settings {
   return config;
 }
 
+const configListeners = new Set<() => void>();
+
 export function setConfig(next: Settings): void {
   config = next;
+  for (const fn of [...configListeners]) {
+    try { fn(); } catch { /* one listener failing never stops the others */ }
+  }
+}
+
+/**
+ * Called after each setConfig (a settings save, a preset, a backup restored, boot); returns how to stop being called.
+ * For what shows by a setting and would otherwise poll for it (the 🟪 플로팅 태그). Listeners must be cheap: a save
+ * while typing in settings calls them.
+ */
+export function onConfigChange(fn: () => void): () => void {
+  configListeners.add(fn);
+  return () => { configListeners.delete(fn); };
 }
 
 /**

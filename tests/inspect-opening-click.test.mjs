@@ -43,7 +43,7 @@ function harness(clickSource=click) {
     const nxPressedOn=async()=>true;
     const cancelMobilePress=()=>{if(mobilePress?.timer)clearTimeout(mobilePress.timer);mobilePress=null;};
     const hidePressFill=async()=>{};
-    const nxFloatHide=async()=>{};
+    const nxFloatHide=async()=>{},nxFloatPause=async()=>{};
     const nxPaintInspect=async()=>{opens++;inspectZones=[{el:closeButton,act:'close'}];};
     const runInspectAction=async act=>{if(act==='close'){closes++;inspectOpen=false;t._nxHostInspectOpen=false;t._inspectGen++;t._inspectEpoch=(t._inspectEpoch||0)+1;}};
     const y=(...args)=>{throw Error(args.join(' '));};

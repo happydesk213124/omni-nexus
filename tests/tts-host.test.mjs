@@ -11,9 +11,9 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     const page=await browser.newPage(),errors=[];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
     await page.route('https://tts.test/',r=>r.fulfill({contentType:'text/html',body:'<body></body>'}));await page.goto('https://tts.test/');
     await page.addScriptTag({content:readFileSync('node_modules/dompurify/dist/purify.min.js','utf8')});
-    const blockedSource=readFileSync('tools/vendor-patches/float-viewer.js','utf8').match(/globalThis\.__OMNI_TTS_HOST_BLOCKED__ = (.*);/)[1];
-    await page.evaluate(blockedSource=>{
-      window.hostScreenState={};window.__OMNI_TTS_HOST_BLOCKED__=new Function('t','return '+blockedSource)(window.hostScreenState);
+    const floatSource=readFileSync('tools/vendor-patches/float-viewer.js','utf8'),blockedSource=floatSource.match(/globalThis\.__OMNI_TTS_HOST_BLOCKED__ = (.*);/)[1],goneSource=floatSource.match(/globalThis\.__OMNI_HOST_GONE__ = (.*);/)[1];
+    await page.evaluate(([blockedSource,goneSource])=>{
+      window.hostScreenState={};window.__OMNI_TTS_HOST_BLOCKED__=new Function('t','return '+blockedSource)(window.hostScreenState);window.__OMNI_HOST_GONE__=new Function('t','return '+goneSource)(window.hostScreenState);
       // An existing save with empty sound lists, not a first run (which starts with the examples).
       const saved=new Map([['omnisound.data','{}']]),local=new Map(),hostUUID=crypto.randomUUID.bind(crypto);window.moduleWrites=0;window.requests=[];window.pending=[];window.played=[];window.apiEvents=[];let active=0;window.peak=0;
       class Safe {
@@ -47,7 +47,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
         nativeFetch:async(_url,options)=>{window.requests.push(JSON.parse(options.body));active++;window.peak=Math.max(window.peak,active);return new Promise(resolve=>window.pending.push(()=>{active--;resolve({ok:true,arrayBuffer:async()=>new Uint8Array(32).buffer});}));}};
       window.Audio=class{src='';currentTime=0;duration=1;async play(){window.played.push(this.src);}pause(){}load(){}removeAttribute(){this.src='';}};
       window.AudioContext=class{state='running';destination={};async resume(){}createGain(){return {gain:{value:1},connect(){return this;}};}createMediaElementSource(){return {connect(node){return node;}};}};
-    },blockedSource);
+    },[blockedSource,goneSource]);
     await page.evaluate(()=>{window.crypto.randomUUID=undefined;});
     await page.addScriptTag({content:built.outputFiles[0].text});
     await page.evaluate(async()=>{await window.loadTtsData();const d=window.ttsData();d.settings.translation.provider='off';d.settings.enabled=true;d.settings.autoAssign=false;d.settings.fish.key='test-key';d.settings.continuous=false;d.characters=[{id:'h',scope:'global',name:'하린',surname:'',givenName:'하린',surnameAliases:[],givenAliases:[],triggers:['하린'],tags:[],gender:'female',voiceKey:d.voices[0].key,fishId:d.voices[0].fishId,fixed:false,gain:0}];await window.installTtsHost();await window.omniTts.player.unlock();window.played=[];});
@@ -109,12 +109,23 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     assert.equal(independent.latest,independent.normal,'late metadata lookup cannot replace a newer click');
     assert.equal(independent.current,'illustration');assert.ok(independent.list.every(k=>k!=='illustration'),'illustration stays out of the message playlist');
     assert.equal(await page.evaluate(()=>window.requests.length),before);
-    for(const flag of ['uiOpen','_nxHostInspectOpen','_hostChromeBlocked','_viewerHiddenForModal','_viewerHiddenForRisuSettings']) {
+    // A window of ours over it (settings in Risu's plugin frame at z-index 1000, 크게보기, a modal): the window sits
+    // under it and stays drawn, never hidden and shown again, and a press there is the window's, not this one's.
+    assert.ok(await page.evaluate(()=>Number(document.querySelector('[x-omnitts-viewer]').style.zIndex))<1000,'under Risu\'s plugin frame');
+    for(const flag of ['uiOpen','_nxHostInspectOpen','_hostChromeBlocked','_viewerHiddenForModal']) {
       await page.evaluate(flag=>{window.hostScreenState[flag]=true;window.__OMNI_TTS_REFRESH_VISIBILITY__();},flag);
-      await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');
+      await page.waitForTimeout(150);
+      assert.equal(await page.evaluate(()=>document.querySelector('[x-omnitts-viewer]').style.display),'block',flag+': still drawn');
+      const narration=await page.evaluate(()=>window.ttsData().settings.narration);
+      await page.locator('[data-tts-control="narration"]').click();await page.waitForTimeout(200);
+      assert.equal(await page.evaluate(()=>window.ttsData().settings.narration),narration,flag+': a press on the window over it is not one on this');
       await page.evaluate(flag=>{window.hostScreenState[flag]=false;window.__OMNI_TTS_REFRESH_VISIBILITY__();},flag);
-      await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='block');
     }
+    // Risu draws its own settings in place of the chat: no chat to float over, so it hides, and comes back with it.
+    await page.evaluate(()=>{window.hostScreenState._viewerHiddenForRisuSettings=true;window.__OMNI_TTS_REFRESH_VISIBILITY__();});
+    await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='none');
+    await page.evaluate(()=>{window.hostScreenState._viewerHiddenForRisuSettings=false;window.__OMNI_TTS_REFRESH_VISIBILITY__();});
+    await page.waitForFunction(()=>document.querySelector('[x-omnitts-viewer]').style.display==='block');
     assert.equal(await page.evaluate(()=>window.omniTts.notice),'','native observer arrays must not cause a repeated error toast');
     await page.waitForTimeout(700); // let pending chat scans settle before faking a long list
     await page.evaluate(()=>{window.omniTts.stop();const first=window.omniTts.list[0];window.omniTts.reading(Array.from({length:30},(_,i)=>({...first,segment:{...first.segment,id:String(i)}})));});
