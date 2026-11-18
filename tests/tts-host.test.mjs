@@ -50,7 +50,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     },[blockedSource,goneSource]);
     await page.evaluate(()=>{window.crypto.randomUUID=undefined;});
     await page.addScriptTag({content:built.outputFiles[0].text});
-    await page.evaluate(async()=>{await window.loadTtsData();const d=window.ttsData();d.settings.translation.provider='off';d.settings.enabled=true;d.settings.autoAssign=false;d.settings.fish.key='test-key';d.settings.continuous=false;d.characters=[{id:'h',scope:'global',name:'하린',surname:'',givenName:'하린',surnameAliases:[],givenAliases:[],triggers:['하린'],tags:[],gender:'female',voiceKey:d.voices[0].key,fishId:d.voices[0].fishId,fixed:false,gain:0}];await window.installTtsHost();await window.omniTts.player.unlock();window.played=[];});
+    await page.evaluate(async()=>{await window.loadTtsData();const d=window.ttsData();d.settings.translation.provider='off';d.settings.enabled=true;d.settings.autoAssign=false;d.settings.fish.key='test-key';d.settings.continuous=false;d.settings.inlineTags=false;d.characters=[{id:'h',scope:'global',name:'하린',surname:'',givenName:'하린',surnameAliases:[],givenAliases:[],triggers:['하린'],tags:[],gender:'female',voiceKey:d.voices[0].key,fishId:d.voices[0].fishId,fixed:false,gain:0}];await window.installTtsHost();await window.omniTts.player.unlock();window.played=[];});
     await page.evaluate(()=>window.contextReady=true);
     await page.waitForFunction(()=>window.omniTts.list.length===1);
     assert.equal(await page.locator('[x-omnitts-viewer]').isVisible(),true,'existing chat works on startup without leaving and reopening it');
@@ -97,6 +97,7 @@ test('restricted SafeDOM host binds module buttons, honors five slots, stop inte
     await page.mouse.click(...at);await page.waitForFunction(()=>window.plays===2,undefined,{timeout:3000});
     await page.evaluate(()=>{window.omniTts.stop();delete window.omniTts.play;window.__OMNI_VIEWER_DRAGGING__=false;});
     assert.ok(await page.evaluate(()=>window.apiEvents.length)<15,'listeners must not grow with dialogue count or viewer repaint');
+    // The line's own delivery ([happy]) reaches Fish: 대사 중간 감정 태그 is switched off above for this.
     assert.equal(await page.evaluate(()=>window.requests.every(r=>r.text.startsWith('[happy]')&&r.reference_id&&r.prosody.speed===1)),true);
     const independent = await page.evaluate(async()=>{
       const runtime=window.omniTts, normal=runtime.current, old=runtime.reservePlayback();

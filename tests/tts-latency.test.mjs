@@ -23,7 +23,7 @@ test('ready playback bypasses unrelated voice assignment, audio writes and trans
     runLLMModel:async()=>({success:true,content:'[[0,"Hello"]]'})};
   let assigning;
   try{
-    const data=await api.loadTtsData();data.settings.translation.provider='off';Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'jev',continuous:false});data.settings.fish.key='fake';data.settings.jev.key='fake';
+    const data=await api.loadTtsData();data.settings.translation.provider='off';Object.assign(data.settings,{enabled:true,autoAssign:true,selector:'jev',continuous:false,inlineTags:false});data.settings.fish.key='fake';data.settings.jev.key='fake';
     data.voices=[{key:'voice',name:'voice',fishId:voiceId,gender:'female',tags:[],folder:''}];
     data.characters=[{...api.blankTtsCharacter('global','Ready'),fishId:voiceId,voiceKey:'voice'}];
     const runtime=new api.OmniTtsRuntime();await runtime.init();

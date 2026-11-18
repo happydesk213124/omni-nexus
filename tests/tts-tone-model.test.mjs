@@ -29,7 +29,8 @@ test('each character speaks with its own base delivery and model; the settings\'
     getDatabase:async()=>({modules:[],enabledModules:[],personas:[]}),setDatabase:async()=>{},getCurrentLorebookEntries:async()=>[],
     nativeFetch:async(url,options)=>{const body=JSON.parse(options.body);fish.push({url:String(url),model:options.headers.model??body.model,text:body.text??body.input,voice:body.reference_id??body.voice});return {ok:true,data:new Uint8Array(32)};}};
   try{
-    const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:false,continuous:false,tone:'calm'});data.settings.translation.provider='off';data.settings.fish.key='fake';data.settings.fish.model='s2.1-pro';
+    // 대사 중간 감정 태그 off first: the cue's parentheses are the line's delivery (on, at the end, they are not).
+    const data=await api.loadTtsData();Object.assign(data.settings,{enabled:true,autoAssign:false,continuous:false,tone:'calm',inlineTags:false});data.settings.translation.provider='off';data.settings.fish.key='fake';data.settings.fish.model='s2.1-pro';
     data.characters=[{...api.blankTtsCharacter('global','하린'),fishId:voiceA,tone:'husky, slow',model:'drama-3'},{...api.blankTtsCharacter('global','민수'),fishId:voiceB}];
     const runtime=new api.OmniTtsRuntime();await runtime.init();
     const say=async request=>{const before=fish.length;await runtime.play([request],0);while(fish.length===before)await tick();return fish.at(-1);};
@@ -56,5 +57,9 @@ test('each character speaks with its own base delivery and model; the settings\'
     // A preview carries the popup's unsaved base delivery and model.
     const preview=await say({context,messageId:'audition',fishId:voiceB,tone:'whispering',model:'s2-pro',segment:{id:voiceB,kind:'audition',speaker:'',tone:'',text:'안녕하세요',start:0,end:0}});
     assert.equal(preview.text,'[whispering]안녕하세요');assert.equal(preview.model,'fish-audio/s2-pro');
+    // 대사 중간 감정 태그 on: the parentheses chose only the face; the card's base delivery, then the line's own tags,
+    // which keep their brackets though 「생략할 문자들」 holds [ and ]; a bracket of Korean words is still read.
+    data.settings.inlineTags=true;
+    assert.equal((await say(line('하린','angry','[sad] 그만해 [sobbing] 제발 [속삭임]'))).text,'[husky][slow][sad] 그만해 [sobbing] 제발 속삭임');
   }finally{delete globalThis.risuai;}
 });

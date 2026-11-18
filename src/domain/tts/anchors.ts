@@ -1,4 +1,7 @@
 import type { TtsSegment } from '../../core/tts-types';
+import { VOICE_TAG_SOURCE } from './voice-tags';
+
+const VOICE_TAGS = new RegExp(VOICE_TAG_SOURCE, 'g');
 
 /** `text` is the rendered line; `span` is everything since the previous control. */
 export interface TtsAnchorText { kind: 'dialogue' | 'narration'; text: string; span?: string }
@@ -34,8 +37,9 @@ export function ttsAnchorTexts(html: string): TtsAnchorText[] {
 // display as bots' regexes redraw it: markdown emphasis, quote marks, spacing; ♡ drawn
 // as a picture or another emoji; … written as .. (… is ... after NFKC). A line that
 // differed only there found no control and was hidden. None of it is read aloud.
+// 대사 중간 감정 태그 ([sobbing]) are not shown in the chat, so they are out of both sides.
 export function ttsComparable(value: string): string {
-  return value.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  return value.normalize('NFKC').replace(VOICE_TAGS, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 }
 
 /**

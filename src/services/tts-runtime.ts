@@ -7,6 +7,7 @@ import { geminiDefaultVoice } from '../providers/tts/gemini';
 import { ensureGeminiVoiceList, geminiPersona } from './gemini-voices';
 import { boundVoiceKey, ownVoiceEngine } from '../domain/tts/engine-voice';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
+import { spokenWithVoiceTags, voiceTagsOn } from '../domain/tts/voice-tags';
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
 import { TtsAudioCache } from '../storage/tts-cache';
 import { TtsTranslationCache } from '../storage/tts-translations';
@@ -21,8 +22,14 @@ import type { TtsChatContext } from './tts-context';
 import { clearTtsVoiceError, recordTtsVoiceError, TtsVoiceRecovery } from './tts-recovery';
 
 /** tone / model: a preview's own base delivery and model (the character popup's unsaved fields). */
-/** What Fish is sent: the words inside parentheses too unless 「괄호 안의 말도 빼고 읽기」, then the omitted characters out. */
-const spokenText = (text: string, settings: Pick<TtsSettings, 'omitCharacters' | 'omitParenText'>) => ttsSpokenText(settings.omitParenText ? ttsWithoutParentheticals(text) : text, settings.omitCharacters);
+/**
+ * What Fish is sent: the words inside parentheses too unless 「괄호 안의 말도 빼고 읽기」, then the omitted characters out.
+ * `tags` (대사 중간 감정 태그): an English [tag] keeps its brackets whatever the omitted characters say.
+ */
+const spokenText = (text: string, settings: Pick<TtsSettings, 'omitCharacters' | 'omitParenText'>, tags = false) => {
+  const kept = settings.omitParenText ? ttsWithoutParentheticals(text) : text;
+  return tags ? spokenWithVoiceTags(kept, settings.omitCharacters) : ttsSpokenText(kept, settings.omitCharacters);
+};
 /** engine: whose voice a named `fishId` is (an audition of an Irodori voice); absent, a named voice is Fish's. */
 export interface TtsRequest { segment: TtsSegment; context: TtsChatContext; messageId: string; sourceKey?: string; fishId?: string; gain?: number; tone?: string; model?: string; engine?: TtsSettings['engine'] }
 /**
@@ -106,7 +113,7 @@ export class OmniTtsRuntime {
     this.queue.configure(slots, Math.min(s.background, slots));
     // The line playing keeps its own kind's level (a narration line, narration's): a level moved meanwhile is heard at once.
     this.player.configure(s.rate, ttsVolumeOf(s, this.current?.segment.kind));
-    const generation = JSON.stringify([s.enabled, s.engine, s.irodori, { ...s.gemini, concurrency: 0 }, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly]);
+    const generation = JSON.stringify([s.enabled, s.engine, s.irodori, { ...s.gemini, concurrency: 0 }, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly, s.inlineTags]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
@@ -116,7 +123,7 @@ export class OmniTtsRuntime {
     this.emit();
     if (!s.enabled && !this.moduleSignature) return;
     const marks = this.sound?.marks?.() ?? [];
-    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, s.engine, marks]);
+    const moduleKey = JSON.stringify([s.enabled, s.hideName, s.hideTone, s.controlGutter, s.illustration, s.passageLine, s.excludeText, s.skipChars, s.skipSymbolOnly, s.cueEmoji, s.hideEmoji, s.engine, s.inlineTags, marks]);
     if (moduleKey !== this.moduleSignature) { await ensureTtsModule(s, marks); this.moduleSignature = moduleKey; }
     if (s.enabled && this.cacheBudget !== s.cacheMb) { await this.cache.configure(s.cacheMb); this.cacheBudget = s.cacheMb; }
   }
@@ -289,7 +296,10 @@ export class OmniTtsRuntime {
       const base = word(request.tone) || word(character?.tone) || settings.tone, model = word(request.model) || word(character?.model);
       const engine: TtsSettings['engine'] = own ? ownEngine : 'fish';
       const voiceSettings = model || engine !== settings.engine ? { ...settings, engine, fish: model ? { ...settings.fish, model } : settings.fish } : settings;
-      return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: [engine === 'gemini' && settings.gemini.persona ? geminiPersona(character ?? undefined, fishId) : '', speechTone(request.segment.tone, base)].filter(Boolean).join('; '), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
+      // 대사 중간 감정 태그: the voice is in the line; the cue's parentheses chose only the face. The card's own base
+      // delivery still goes along, as it is the character's and not the line's.
+      const tags = voiceTagsOn(voiceSettings);
+      return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings, tags), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: [engine === 'gemini' && settings.gemini.persona ? geminiPersona(character ?? undefined, fishId) : '', speechTone(tags ? '' : request.segment.tone, base)].filter(Boolean).join('; '), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
     if (!prepared.length) throw new Error(irodori ? `TTS 모델 설정에서 ${current === 'gemini' ? 'Gemini' : 'Irodori'} 목소리를 먼저 골라 주세요.` : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
@@ -322,7 +332,7 @@ export class OmniTtsRuntime {
       void this.translations.flush().catch(error => this.report(error));
     }
     for (const p of prepared) {
-      p.text = spokenText(p.text, settings);
+      p.text = spokenText(p.text, settings, voiceTagsOn(p.settings));
       // Irodori: its voice emoji in the form it knows, through the translation too; every other emoji out; a line
       // still written for Fish gives its delivery as the nearest emoji. An audition is said as it is.
       if (japanese(p) && p.request.segment.kind !== 'audition') p.text = irodoriLine(p.request.segment.spoken ?? p.request.segment.text, p.text, p.request.segment.tone);

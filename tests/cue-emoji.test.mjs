@@ -65,8 +65,9 @@ test('the cue keeps the emoji it opened with; the name is the name', () => {
 });
 
 test('the cue prompt asks for the emoji only with the switch on, and stays short', () => {
-  const off = api.ttsModule({ ...api.ttsDefaults() }).lorebook[0].content;
-  const on = api.ttsModule({ ...api.ttsDefaults(), cueEmoji: true }).lorebook[0].content;
+  // The tag switch (on by default) has a test of its own (voice-tags); here it is off, so the baseline is the delivery entry.
+  const off = api.ttsModule({ ...api.ttsDefaults(), inlineTags: false }).lorebook[0].content;
+  const on = api.ttsModule({ ...api.ttsDefaults(), inlineTags: false, cueEmoji: true }).lorebook[0].content;
   assert.equal(off, api.TTS_CUE_PROMPT);
   assert.doesNotMatch(off, /emoji/);
   assert.match(on, /Each character's first cue in every reply starts with two emoji/);

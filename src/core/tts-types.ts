@@ -88,6 +88,11 @@ export interface TtsSettings {
   assignWithChat: boolean;
   /** 첫 대사 이모지: the cue prompt asks for age-gender and personality emoji on each character's first line in a reply; a new character's voice is chosen by them. */
   cueEmoji: boolean;
+  /**
+   * 대사 중간 감정 태그 (Fish, Gemini): the voice is written into the line as English tags where it changes
+   * (`"[sad] 괜찮아… [sobbing] 정말"`), and the cue's parentheses only choose the 감정 에셋 face.
+   */
+  inlineTags: boolean;
   /** Hide the emoji before a cue's name on screen (화자 이름 숨기기 switches it on with it). */
   hideEmoji: boolean;
   selector: 'llm' | 'jev' | 'embedding';

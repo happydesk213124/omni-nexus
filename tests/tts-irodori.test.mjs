@@ -353,8 +353,9 @@ test("Irodori is sent a line's voice emoji through the translation; the lorebook
     assert.equal(await said('그래.', 'calm'), '訳:그래.');
     // Back on Fish the entry is Fish's again.
     data.settings.engine = 'fish'; data.settings.fish.key = 'fake'; await api.saveTtsData();
-    for (let i = 0; i < 50 && !cues().includes('Fish Audio cue'); i++) await new Promise(r => setImmediate(r));
-    assert.ok(cues().includes('Fish Audio cue') && !cues().includes('Voice emoji'), 'the entry follows the engine');
+    // 대사 중간 감정 태그 is on by default: Fish's entry is the one asking for [tags].
+    for (let i = 0; i < 50 && !cues().includes('Voice tags go inside the quotes'); i++) await new Promise(r => setImmediate(r));
+    assert.ok(cues().includes('Voice tags go inside the quotes') && !cues().includes('Voice emoji'), 'the entry follows the engine');
   } finally { delete globalThis.risuai; globalThis.Audio = originalAudio; globalThis.AudioContext = originalContext; }
 });
 

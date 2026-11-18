@@ -2,6 +2,8 @@ import type { TtsSettings } from '../../core/tts-types';
 import { ttsExcludeTerms } from './filter';
 import { quietFlag } from '../inray-display';
 import { IRODORI_EMOJI_SOURCE, irodoriEmojiList } from './irodori-emoji';
+import { VOICE_TAG_SOURCE, voiceTagsOn } from './voice-tags';
+import { BASE_EXPRESSIONS } from '../emotion/emotions';
 
 export const OMNI_TTS_MODULE = 'omni-tts';
 // Sent with every reply: each line keeps a rule a reply once broke, in as few words as it takes.
@@ -22,10 +24,22 @@ const IRODORI_CUE_RULES = `Dialogue, one cue per line: Name: "Dialogue". Thought
 Name: the speaker's established full name; never invent a name, identity or gender. In first person too, the narrator's own lines take their real name, never I/나/저: I said hi -> Harin: "Hi." Their actions stay plain prose.
 Voice emoji go inside the quotes, right where that sound or manner comes; several in a line, none if plain, doubled for stronger: Harin: "Haha🤭, really? …😮‍💨 Fine, as you like." Only these: ${irodoriEmojiList()}.
 Narration stays plain prose, in the reply's language, with no emoji. Never cue code, hidden reasoning, images or status panels.`;
+// 대사 중간 감정 태그 (voice-tags.ts): the voice moves into the line, where it changes, and the parentheses keep
+// only the face, from the 감정 에셋 list (a word outside it would show no picture). The example changes its feeling
+// midway on purpose: one tag for the whole line is what a model does when it is not shown otherwise.
+const TAG_CUE_RULES = `Dialogue, one cue per line: Name (face): "Dialogue". Thoughts: Name (face): 'Thought'. Both quotes on the same line.
+Name: the speaker's established full name; never invent a name, identity or gender. In first person too, the narrator's own lines take their real name, never I/나/저: I said hi -> Harin (happy): "Hi." Their actions stay plain prose.
+Face: one of ${BASE_EXPRESSIONS.map(row => row.key).join(', ')}; neutral if plain.
+Voice tags go inside the quotes in English square brackets, right before the words they color or where the sound comes: feelings and delivery ([sad], [excited], [whispering]) and sounds ([sobbing], [giggle], [sigh], [gasp], [panting]). Change them as the feeling changes, none if plain: Harin (sad): "[sad] I'm fine… [sobbing] really. [happy] No, I mean it [giggle]." In dialogue, square brackets are for voice tags only.
+Narration stays plain prose, in the reply's language. Never cue code, hidden reasoning, images or status panels.`;
+const TAG_CUE_EMOJI = cueEmoji('👩🥺 Harin (shy): "Hi."');
 const IRODORI_CUE_EMOJI = cueEmoji('👩🥺 Harin: "Hi."').replace('starts with two emoji,', 'starts with two emoji before the name,');
-/** `engine` 'irodori': the cue has no delivery word, and the line carries Irodori's voice emoji instead. */
-export const ttsCuePrompt = (emoji = false, engine: TtsSettings['engine'] = 'fish'): string => {
-  const [rules, first] = engine === 'irodori' ? [IRODORI_CUE_RULES, IRODORI_CUE_EMOJI] : [CUE_RULES, CUE_EMOJI];
+/**
+ * `engine` 'irodori': the cue has no delivery word, and the line carries Irodori's voice emoji instead.
+ * `tags` (대사 중간 감정 태그, Fish and Gemini): the voice in the line as tags, the parentheses the face.
+ */
+export const ttsCuePrompt = (emoji = false, engine: TtsSettings['engine'] = 'fish', tags = false): string => {
+  const [rules, first] = engine === 'irodori' ? [IRODORI_CUE_RULES, IRODORI_CUE_EMOJI] : tags ? [TAG_CUE_RULES, TAG_CUE_EMOJI] : [CUE_RULES, CUE_EMOJI];
   return `@@depth 0\n<OmniTTS>\n${rules}${emoji ? `\n${first}` : ''}\n</OmniTTS>`;
 };
 export const TTS_CUE_PROMPT = ttsCuePrompt();
@@ -34,7 +48,7 @@ export const TTS_CUE_PROMPT = ttsCuePrompt();
 // Other modules therefore see the reply exactly as written: no token, no moved
 // line break, no rewritten name. We only append a zero-width control to lines
 // that are still plain prose once every other module has finished.
-export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, costume: -10219, hideTone: -10220, hideName: -10221, voiceEmoji: -10222, unguard: -10230 } as const;
+export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, costume: -10219, hideTone: -10220, hideName: -10221, voiceEmoji: -10222, voiceTags: -10223, unguard: -10230 } as const;
 const GUARD_OPEN = '\uf8f0', GUARD_CLOSE = '\uf8f1';
 // img: a bot's regex may draw a heart or an emoji as a picture inside the line.
 const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|img|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
@@ -117,7 +131,7 @@ export const TTS_MODULE_CSS = [
   '@media (prefers-reduced-motion:reduce){[data-omnitts-play][x-omnitts-state]{animation:none!important}[data-omnitts-play][x-omnitts-state]::before{animation-duration:2s!important}}',
 ].join('');
 
-export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter' | 'cueEmoji' | 'hideEmoji' | 'engine'>>, sfxMarks: TtsSfxMarks = []) {
+export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 'narration' | 'illustration' | 'passageLine'> & Partial<Pick<TtsSettings, 'excludeText' | 'skipChars' | 'skipSymbolOnly' | 'controlGutter' | 'cueEmoji' | 'hideEmoji' | 'engine' | 'inlineTags'>>, sfxMarks: TtsSfxMarks = []) {
   const excluded = exclusion(settings.excludeText || '');
   const head = `${GUARDED}|(^|\\n)${PROSE_START}${NO_BGM_CUE}${effectOnly(sfxMarks)}${settings.skipSymbolOnly === false ? '' : HAS_WORD}${excluded}`;
   const imageCss = `[data-omnitts-image]{display:${settings.illustration ? 'flex' : 'none'};align-items:center;gap:6px;max-width:100%;overflow-x:auto}[data-omnitts-image] [data-omnitts-cast]{display:flex;gap:6px}[data-inlay-inline-shot]:has(>[data-omnitts-image]){display:flex!important;flex-direction:column}[data-omnitts-image]{order:10;justify-content:flex-start;margin-top:8px;min-height:40px}[data-omnitts-image] [data-omnitts-play]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 4px;margin-left:0;border:1px solid #5ad49b88;border-radius:8px;background:#137448;color:#e3fff0;cursor:pointer}[data-omnitts-image] [data-omnitts-play]:hover{background:#219c63;border-color:#9effcc}`;
@@ -126,6 +140,7 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
     in: `(^|\\n)${HEADER_PREFIX}${SPEAKER}${tone ? '[ \\t]*\\(([A-Za-z][A-Za-z ,\\-]{0,99})\\)' : ''}${BEFORE_ANCHORED_QUOTE}`, out });
   // $3 is the emoji before the name, $4 the name, $5 the tone: each stays unless hidden.
   const { hideName: name, hideTone: tone } = settings, emoji = settings.hideEmoji ? '' : '$3';
+  const tags = voiceTagsOn({ inlineTags: settings.inlineTags === true, engine: settings.engine ?? 'fish' });
   const hideRules = [
     ...(name || tone || settings.hideEmoji ? [hide('gu', TTS_DISPLAY_ORDER.hideTone, true, `$1$2${emoji}${name ? '' : '$4'}${tone ? '' : name ? '($5)' : ' ($5)'}${name ? (tone ? '' : ' ') : ': '}`)] : []),
     ...(name || settings.hideEmoji ? [hide('gu', TTS_DISPLAY_ORDER.hideName, false, `$1$2${emoji}${name ? '' : '$4: '}`)] : []),
@@ -134,12 +149,18 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
     // in a dialogue control, so an emoji in narration or before the name is not this rule's.
     ...(settings.engine === 'irodori' && settings.hideEmoji ? [{ comment: 'omnitts-hide-voice-emoji', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.voiceEmoji}>`,
       in: `(?<=["“‘'「『][^\\n]*?)${IRODORI_EMOJI_SOURCE}[ \\t]?(?=[^\\n]*data-omnitts-kind="dialogue")`, out: '' }] : []),
+    // 대사 중간 감정 태그 are for the voice alone: never on screen. The same reach as the emoji above (inside a quote,
+    // on a dialogue line), so a [System] in narration stays; a control still finds its line, as ttsComparable drops
+    // the tags from both sides.
+    ...(tags ? [{ comment: 'omnitts-hide-voice-tags', type: 'editdisplay', ableFlag: true, flag: `g<order ${TTS_DISPLAY_ORDER.voiceTags}>`,
+      // Right after the opening quote the space after the tag goes with it; anywhere else, the space before.
+      in: `(?<=["“‘'「『][^\\n]*?)(?:(?<=["“‘'「『])${VOICE_TAG_SOURCE}[ \\t]?|[ \\t]?${VOICE_TAG_SOURCE})(?=[^\\n]*data-omnitts-kind="dialogue")`, out: '' }] : []),
   ];
   return {
     id: OMNI_TTS_MODULE, namespace: OMNI_TTS_MODULE, name: '⚛️ omni tts',
     description: '이름·영문 억양 규칙과 채팅 재생 버튼. 음성 처리는 Omni Nexus 플러그인이 담당합니다.',
     hideIcon: false, lowLevelAccess: false, assets: [], backgroundEmbedding: `<style>${TTS_MODULE_CSS}${settings.controlGutter ? TTS_GUTTER_CSS : ''}${imageCss}</style>`,
-    lorebook: [{ key: '', secondkey: '', comment: 'omnitts-cues', content: ttsCuePrompt(!!settings.cueEmoji, settings.engine), mode: 'normal', insertorder: 999, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 }],
+    lorebook: [{ key: '', secondkey: '', comment: 'omnitts-cues', content: ttsCuePrompt(!!settings.cueEmoji, settings.engine, tags), mode: 'normal', insertorder: 999, alwaysActive: true, selective: false, useRegex: false, bookVersion: 2 }],
     trigger: [],
     regex: [
       { comment: 'omnitts-image-controls', type: 'editdisplay', ableFlag: true, flag: 'g<order -10110>',

@@ -41,6 +41,7 @@ import { emotionData, loadEmotionData } from '../storage/emotion-store';
 import { loadViewerMarks, saveViewerMarks } from '../storage/viewer-marks';
 import { chatCovered, setViewerCovering } from '../services/viewer-presence';
 import { loadTtsData, ttsData, ttsVolumeOf, updateTtsSettings } from '../storage/tts-store';
+import { voiceTagsOn } from '../domain/tts/voice-tags';
 import { levelAt, levelText, levelWidth, SOUND_CONTROLS, soundPanelHtml, type SoundControl, type SoundLevel, type SoundLevels, type SoundSwitches } from './sound-panel';
 import { boxHtml, CAST_CHIPS, COUNT_STEPS, FRAME, ovalBox, personHtml, STATIC_CSS, stageCss, type StageState } from './look';
 import { centerIn, inSightNow, quiet, release, rowAt, unwrap } from './safe-dom';
@@ -451,7 +452,8 @@ function setSource(text: string, keepPlace: boolean, shown = ''): void {
   // Kept by what was read, not by its number or offset (keep-place.ts): the saved reply holds fewer scenes than the
   // stream did, and shorter text before them.
   const before = keepPlace ? scenes : [], was = at;
-  scenes = buildScenes(settled, segments, emotionData().settings.words);
+  // 대사 중간 감정 태그 are the voice's: the box shows the line as the chat does; the voice finds its segment by id.
+  scenes = buildScenes(settled, segments, emotionData().settings.words, voiceTagsOn(t));
   clockMarks = clockLines(settled);
   // The stage keeps its background until the new reply's place is up (or the reply says none).
   if (!keepPlace) { at = 0; fired.clear(); cuedScene = ''; lastCg = ''; lastCgAt = -1; cgView = 'none'; cgThumb = null; }
