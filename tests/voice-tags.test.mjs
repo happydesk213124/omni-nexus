@@ -65,45 +65,22 @@ test('the cue prompt: the parentheses are the face from the 감정 에셋 list, 
   assert.match(module({ inlineTags: true, engine: 'fish', cueEmoji: true }).lorebook[0].content, /👩🥺 Harin \(shy\): "Hi\."/);
 });
 
-test('the chat never shows a tag on a line it reads, slipped ones too; Korean brackets and lines without a control stay', () => {
+test('the chat never shows a tag inside a dialogue quote; narration, Korean brackets and lines without a control stay', () => {
   const rule = module({ inlineTags: true, engine: 'fish' }).regex.find(r => r.comment === 'omnitts-hide-voice-tags');
   assert.ok(rule, 'the rule is there when the switch is on');
   const hide = text => text.replace(new RegExp(rule.in, 'gu'), rule.out);
   const control = '<button data-omnitts-kind="dialogue"></button>';
   assert.equal(hide(`하린 (sad): "[sad] 괜찮아… [sobbing] 정말 [giggle]."${control}`), `하린 (sad): "괜찮아… 정말."${control}`);
   assert.equal(hide(`하린 (sad): "[속마음] 응"${control}`), `하린 (sad): "[속마음] 응"${control}`);
-  assert.equal(hide(`하린 (sad): [sigh] "응."${control}`), `하린 (sad): "응."${control}`, 'before the quote');
-  assert.equal(hide(`하린 (sad): "응." [sigh]${control}`), `하린 (sad): "응."${control}`, 'after the quote');
-  assert.equal(hide('[sigh] 하린은 고개를 숙였다.<button data-omnitts-kind="narration"></button>'), '하린은 고개를 숙였다.<button data-omnitts-kind="narration"></button>', 'a narration line read with its tag');
+  assert.equal(hide('[System] 접속했다.<button data-omnitts-kind="narration"></button>'), '[System] 접속했다.<button data-omnitts-kind="narration"></button>', 'narration is not touched');
   assert.equal(hide('[sigh] 코드 블록 안'), '[sigh] 코드 블록 안', 'no control on the line: not ours');
-  assert.ok(api.TTS_DISPLAY_ORDER.voiceTags > api.TTS_DISPLAY_ORDER.hideTone, 'it runs before the name and delivery are hidden (lower runs later)');
-  assert.ok(api.TTS_DISPLAY_ORDER.voiceTags < api.TTS_DISPLAY_ORDER.dialogue && api.TTS_DISPLAY_ORDER.voiceTags < api.TTS_DISPLAY_ORDER.narration, 'and after the controls are there');
+  assert.ok(api.TTS_DISPLAY_ORDER.voiceTags < api.TTS_DISPLAY_ORDER.dialogue, 'after the controls are there (lower runs later)');
   // Japanese tags only when the tags are written in Japanese.
   const jaRule = module({ inlineTags: true, engine: 'fish', translation: toJapanese }).regex.find(r => r.comment === 'omnitts-hide-voice-tags');
   assert.equal(`하린 (sad): "[ため息] 응 [すすり泣き]."${control}`.replace(new RegExp(jaRule.in, 'gu'), ''), `하린 (sad): "응."${control}`);
   assert.equal(hide(`하린 (sad): "[メモ] 응"${control}`), `하린 (sad): "[メモ] 응"${control}`);
   assert.equal(module({ inlineTags: false, engine: 'fish' }).regex.find(r => r.comment === 'omnitts-hide-voice-tags'), undefined);
   assert.equal(module({ inlineTags: true, engine: 'irodori' }).regex.find(r => r.comment === 'omnitts-hide-voice-tags'), undefined);
-});
-
-test('a dialogue line ending in a slipped tag still gets its control', () => {
-  const rule = module({ inlineTags: true, engine: 'fish', excludeText: '' }).regex.find(r => r.comment === 'omnitts-dialogue');
-  const run = text => text.replace(new RegExp(rule.in, 'gu'), rule.out);
-  assert.match(run('하린 (sad): "응." [sigh]'), /data-omnitts-kind="dialogue"/);
-  const off = module({ inlineTags: false, engine: 'fish', excludeText: '' }).regex.find(r => r.comment === 'omnitts-dialogue');
-  assert.doesNotMatch('하린 (sad): "응." [sigh]'.replace(new RegExp(off.in, 'gu'), off.out), /data-omnitts-kind="dialogue"/, 'off: as before');
-});
-
-test('tags a model slipped outside the quotes are read inside them, and one by the name is the face', () => {
-  const parsed = line => api.parseTtsMessage(line).map(s => ({ kind: s.kind, speaker: s.speaker, tone: s.tone, text: s.text }));
-  assert.deepEqual(parsed('하린 (sad): [sigh] "괜찮아."'), [{ kind: 'dialogue', speaker: '하린', tone: 'sad', text: '[sigh] 괜찮아.' }]);
-  assert.deepEqual(parsed('하린 (sad): "괜찮아." [sigh]'), [{ kind: 'dialogue', speaker: '하린', tone: 'sad', text: '괜찮아. [sigh]' }]);
-  assert.deepEqual(parsed('하린 [sad]: "괜찮아."'), [{ kind: 'dialogue', speaker: '하린', tone: 'sad', text: '괜찮아.' }]);
-  assert.deepEqual(parsed('하린 (sad): [ため息] "괜찮아." [すすり泣き]'), [{ kind: 'dialogue', speaker: '하린', tone: 'sad', text: '[ため息] 괜찮아. [すすり泣き]' }]);
-  // Only characters move: a line keeps its length, so every offset into the message holds.
-  for (const line of ['하린 (sad): [sigh] "괜찮아."', '하린 (sad): "괜찮아." [sigh]', '하린 [sad]: "괜찮아."']) assert.equal(api.settleVoiceTags(line).length, line.length);
-  assert.equal(api.settleVoiceTags('[System] 하린: "응."'), '[System] 하린: "응."', 'a bracket before the name is not the name\'s');
-  assert.equal(api.settleVoiceTags('하린 (sad): "[sad] 응."'), '하린 (sad): "[sad] 응."', 'written right: untouched');
 });
 
 test('옴니 뷰어 shows the line without its tags and keeps the face from the parentheses', () => {

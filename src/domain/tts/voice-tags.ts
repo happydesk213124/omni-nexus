@@ -55,21 +55,3 @@ export function voiceTagsForTarget(text: string, language: VoiceTagLanguage, tar
   if (!keep) return withoutVoiceTags(text, language);
   return text.replace(new RegExp(String.raw`[ \t]*(${voiceTagSource(language)})`, 'gu'), (all, tag: string) => keep.test(tag) ? all : '').replace(/[ \t]{2,}/g, ' ').trim();
 }
-
-const OPENING = `["“‘'「『]`, CLOSING = `["”’'」』]`;
-const SLIPPED_BEFORE = new RegExp(String.raw`([:：][ \t]*)((?:${voiceTagSource('ja')}[ \t]*)+)(${OPENING})`, 'u');
-const SLIPPED_AFTER = new RegExp(String.raw`(${CLOSING})((?:[ \t]*${voiceTagSource('ja')})+)([ \t]*)$`, 'u');
-const NAME_TAG = /^([^\n"“”‘’「」『』:：()[\]]{1,80}?[^\s"“”‘’「」『』:：()[\]])([ \t]*)\[([A-Za-z][A-Za-z ,-]{0,59})\](?=[ \t]*[:：])/;
-/**
- * Tags a model put just outside the quotes, as its habit of action before speech has it: before the opening quote
- * (`하린 (sad): [sigh] "응."`) or after the closing one (`"응." [sigh]`) they move inside; one standing for the
- * parentheses (`하린 [sad]: "응."`) becomes them. Left as written the first was read as narration, name and all, and
- * the others not at all. Only characters move, so every offset into the line still holds.
- */
-export function settleVoiceTags(line: string): string {
-  if (!line.includes('[')) return line;
-  return line
-    .replace(NAME_TAG, (_, name: string, gap: string, tag: string) => `${name}${gap}(${tag})`)
-    .replace(SLIPPED_BEFORE, (_, colon: string, tags: string, quote: string) => `${colon}${quote}${tags}`)
-    .replace(SLIPPED_AFTER, (_, quote: string, tags: string, tail: string) => `${tags}${quote}${tail}`);
-}

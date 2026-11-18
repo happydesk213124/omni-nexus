@@ -27,8 +27,8 @@ Narration stays plain prose, in the reply's language, with no emoji. Never cue c
 // 대사 중간 감정 태그 (voice-tags.ts): the voice moves into the line, where it changes, and the parentheses keep
 // only the face, from the 감정 에셋 list (a word outside it would show no picture). A model uses what it is shown and
 // little else, so the palette is shown by kind; told only "tags", it put one [sad] in front and the same few on every
-// line. "Only inside the quotes" is said outright: a tag before the quote, as its habit of action before speech has
-// it, is settled back in by settleVoiceTags, but one that is never there costs nothing.
+// line. "Only inside the quotes" is said outright: a tag outside them is read as it stands (a line with one before its
+// quote as narration, one after its quote not at all), so the model is told plainly.
 const TAG_PALETTE: Record<VoiceTagLanguage, { words: string; lines: string[]; example: string }> = {
   en: { words: 'short English words', example: 'Harin (embarrassed): "[whispering] Ah, hnn… M-Minsu…? [short pause] [nervous laugh] N-no, it\'s nothing!"', lines: [
     'feelings: sad, happy, excited, nervous, flustered, annoyed, tender, scared',
@@ -67,7 +67,7 @@ export const TTS_CUE_PROMPT = ttsCuePrompt();
 // Other modules therefore see the reply exactly as written: no token, no moved
 // line break, no rewritten name. We only append a zero-width control to lines
 // that are still plain prose once every other module has finished.
-export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, voiceTags: -10218, costume: -10219, hideTone: -10220, hideName: -10221, voiceEmoji: -10222, unguard: -10230 } as const;
+export const TTS_DISPLAY_ORDER = { guard: -10200, dialogue: -10210, narration: -10211, release: -10215, costume: -10219, hideTone: -10220, hideName: -10221, voiceEmoji: -10222, voiceTags: -10223, unguard: -10230 } as const;
 const GUARD_OPEN = '\uf8f0', GUARD_CLOSE = '\uf8f1';
 // img: a bot's regex may draw a heart or an emoji as a picture inside the line.
 const TAGS = 'a|abbr|b|big|blockquote|br|center|cite|del|dfn|div|em|font|i|img|ins|label|li|mark|p|q|rp|rt|ruby|s|small|span|strike|strong|sub|sup|u';
@@ -160,8 +160,6 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
   // $3 is the emoji before the name, $4 the name, $5 the tone: each stays unless hidden.
   const { hideName: name, hideTone: tone } = settings, emoji = settings.hideEmoji ? '' : '$3';
   const tags = voiceTagMode({ inlineTags: settings.inlineTags === true, engine: settings.engine ?? 'fish', translation: settings.translation ?? { provider: 'off', language: '' } as TtsSettings['translation'] });
-  // A tag a model left after the closing quote (`"응." [sigh]`) still ends a dialogue line: the parser moves it in.
-  const trailingTags = tags ? `(?:[ \\t]*${voiceTagSource(tags)})*` : '';
   const hideRules = [
     ...(name || tone || settings.hideEmoji ? [hide('gu', TTS_DISPLAY_ORDER.hideTone, true, `$1$2${emoji}${name ? '' : '$4'}${tone ? '' : name ? '($5)' : ' ($5)'}${name ? (tone ? '' : ' ') : ': '}`)] : []),
     ...(name || settings.hideEmoji ? [hide('gu', TTS_DISPLAY_ORDER.hideName, false, `$1$2${emoji}${name ? '' : '$4: '}`)] : []),
@@ -170,12 +168,12 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
     // in a dialogue control, so an emoji in narration or before the name is not this rule's.
     ...(settings.engine === 'irodori' && settings.hideEmoji ? [{ comment: 'omnitts-hide-voice-emoji', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.voiceEmoji}>`,
       in: `(?<=["“‘'「『][^\\n]*?)${IRODORI_EMOJI_SOURCE}[ \\t]?(?=[^\\n]*data-omnitts-kind="dialogue")`, out: '' }] : []),
-    // 대사 중간 감정 태그 are for the voice alone: never on screen, on any line that gets a control (a dialogue's
-    // slipped ones before or after its quotes, a [sigh] in narration). Before the name and delivery are hidden, whose
-    // rules want the quote right after the colon. A control still finds its line: ttsComparable drops tags both sides.
+    // 대사 중간 감정 태그 are for the voice alone: never on screen. The same reach as the emoji above (inside a quote,
+    // on a dialogue line), so a [System] in narration stays; a control still finds its line, as ttsComparable drops
+    // the tags from both sides.
     ...(tags ? [{ comment: 'omnitts-hide-voice-tags', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.voiceTags}>`,
-      // Right after an opening quote or at a line's start the space after the tag goes with it; elsewhere the one before.
-      in: `(?:(?<=["“‘'「『]|^|\\n)${voiceTagSource(tags)}[ \\t]?|[ \\t]?${voiceTagSource(tags)})(?=[^\\n]*data-omnitts-kind="(?:dialogue|narration)")`, out: '' }] : []),
+      // Right after the opening quote the space after the tag goes with it; anywhere else, the space before.
+      in: `(?<=["“‘'「『][^\\n]*?)(?:(?<=["“‘'「『])${voiceTagSource(tags)}[ \\t]?|[ \\t]?${voiceTagSource(tags)})(?=[^\\n]*data-omnitts-kind="dialogue")`, out: '' }] : []),
   ];
   return {
     id: OMNI_TTS_MODULE, namespace: OMNI_TTS_MODULE, name: '⚛️ omni tts',
@@ -193,7 +191,7 @@ export function ttsModule(settings: Pick<TtsSettings, 'hideName' | 'hideTone' | 
         out: `${GUARD_OPEN}$1${GUARD_CLOSE}` },
       { comment: 'omnitts-dialogue', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.dialogue}>`,
         // A line may end in the effect ▶ (문을 닫았다 §쾅§▶): the line's own control goes after it.
-        in: `${head}(?=(?:[^\\n<>\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?["“‘'「『][^\\n]*?(?:["”’'」』]${trailingTags}|${SOUND_TAIL}))${LINE_END}`,
+        in: `${head}(?=(?:[^\\n<>\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?["“‘'「『][^\\n]*?(?:["”’'」』]|${SOUND_TAIL}))${LINE_END}`,
         out: `$1$2$3${anchor('dialogue')}$4$5` },
       { comment: 'omnitts-narration', type: 'editdisplay', ableFlag: true, flag: `gu<order ${TTS_DISPLAY_ORDER.narration}>`,
         in: `${head}(?=(?:[^\\n<>"“”‘’「」『』\\uF8F0\\uF8F1]|${TAG})*(?:\\n|$))([^\\n]*?(?:[^\\s<>:：]|${SOUND_TAIL}))${LINE_END}`,
