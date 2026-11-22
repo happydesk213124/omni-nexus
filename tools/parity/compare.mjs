@@ -500,6 +500,9 @@ function expectedAssetChange(a,b,at) {
   // and speech.bubble_on_caption asserts the weighted tags on the wire.
   if (/\.value\.(?:settings|json)\.card\.speech_bubble_weight$/.test(at)) return a === undefined && b === 1;
   if (/\.value\.(?:settings|json)\.card\.speech_huge_text$/.test(at)) return a === undefined && b === false;
+  // 텍스트 대사도 같이 강조하기 is opt-in (off: the bubble's group does not hold the line, as before);
+  // speech.text_weight asserts its save and export, tests/nai-routing the tag it writes.
+  if (/\.value\.(?:settings|json)\.card\.speech_text_weight$/.test(at)) return a === undefined && b === false;
   // 원본으로 저장 is opt-in; settings.image_output asserts its save and export, and
   // tests/image-publish-preview asserts the PNG is stored and previewed untouched.
   if (/\.value\.(?:settings|json)\.card\.image_png_original$/.test(at)) return a === undefined && b === false;
@@ -735,6 +738,7 @@ const NEW_ONLY_STEPS = new Map([
   ['cards.original_missing', v => v?.ok === false && v.error?.code === 'not_found' ? null : 'PNG 원본 받아오기 must reject missing cards before generating'],
   ['settings.location_weight', v => v?.saved === 0.5 && v?.exported === 0.5 ? null : 'Location weight must persist and export its decimal value'],
   ['settings.nai_effort_contract', v => v?.persisted && v?.models && v?.steps && v?.comfyKept && v?.exported ? null : 'NAI family model/steps or V5 effort did not survive backend switching/export'],
+  ['speech.text_weight',v=>v?.saved===true && v?.exported===true && v?.after===false ? null : '텍스트 대사도 같이 강조하기 must persist, export and turn off'],
   ['speech.style_on',v=>JSON.stringify(v?.saved)==='[2,true]' && JSON.stringify(v?.exported)==='[2,true]' ? null : 'Speech bubble weight/huge text must persist and export'],
   ['cards.history_delete_missing',v=>v?.ok === false && v.error?.code === 'not_found' ? null : 'Deleting an unknown history revision must say not_found'],
   ['cards.unbake_missing',v=>v?.ok === false && v.error?.code === 'not_found' ? null : 'Taking a picture no message shows out of the chat must say not_found'],

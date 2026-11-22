@@ -1534,6 +1534,14 @@ export async function runScenario(N, handles) {
       bubbles: charCaptions.filter((c) => /speech ?bubble/.test(c)).length,
     };
   });
+  // 텍스트 대사도 같이 강조하기 (2.0 only): saved, exported, and off again so the steps below see the default.
+  await rec('speech.text_weight', async () => {
+    await put('/v1/settings', { card: { speech_text_weight: true } });
+    const saved = (await get('/v1/settings'))?.settings?.card?.speech_text_weight;
+    const exported = JSON.parse((await get('/v1/settings/export'))?.json || '{}')?.card?.speech_text_weight;
+    const after = (await put('/v1/settings', { card: { speech_text_weight: false } }))?.settings?.card?.speech_text_weight;
+    return { saved, exported, after };
+  });
   handles.setLlmReply?.(DEFAULT_LLM_REPLY);
   await rec('speech.off', () => put('/v1/settings', {
     card: { nai5_speech: false, nai5_only: false, speech_bubble_weight: 1, speech_huge_text: false },
