@@ -20,7 +20,8 @@ import { fetchHostLorebookEntries } from './lorefilter';
 import { getPrompt } from './settings';
 import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionDrawnCast, sessionRecentCast } from './session-author-note';
 import { collectAssetTagsForTagger, taggerRules, type TaggerArgs } from './tagger';
-import { rosterWithFolderLooks } from './folders';
+import { folderListForLlm, rosterWithFolderLooks } from './folders';
+import { streamingFolderNote } from '../domain/character/create';
 
 /**
  * Streaming tag generation (생성 옵션 → "Risu 메인 모델 메시지 스트리밍 중에 태그 생성").
@@ -166,10 +167,13 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
   const location = formatPrevLocationLine((note as { location?: unknown } | null)?.location ?? '');
   // This chat's outfits leave out whoever a line above already dresses (a line of missing looks dresses nobody).
   const sessionNote = noteId ? await sessionAuthorNoteLlmContent(noteId, { roster, listed: listed.filter(char => characterHasAppearance(char)) }) : '';
-  if (!people.length && !location && !sessionNote) return '';
+  // 폴더 메모: the folders with one, so a person this reply registers can be filed. None, no line.
+  const folders = await folderListForLlm(sessionId, characterId);
+  if (!people.length && !location && !sessionNote && !folders.length) return '';
   return [
     INLINE_STATE_MARK,
     people.length ? `Registered characters, most recently in the story first (reuse these exact names in "characters"; never repeat a saved one in new_characters; pick a listed costume instead of registering the same look again). Unless a line says otherwise: ${withCostumes ? 'costume default[0], ' : ''}wear_state=clothed.\n${people.join('\n')}` : '',
+    folders.length ? streamingFolderNote(folders) : '',
     location,
     sessionNote,
   ].filter(Boolean).join('\n\n');

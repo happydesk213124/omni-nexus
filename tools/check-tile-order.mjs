@@ -97,7 +97,7 @@ try {
     // Some browsers send a tap when a long press lets go: it must choose nothing.
     if (lift) { fire('touchend', false); el.click(); }
   }, [selector, ms, release]);
-  await hold('#nx-char-session-list [data-ux-character-tile="delta"]', 520);
+  await hold('#nx-char-session-list [data-ux-character-tile="delta"]', 1950);
   assert.equal(await tile('Delta').evaluate(el => el.classList.contains('nx-picked')), true, 'the held tile is picked');
   assert.equal(await page.locator('.nx-button-menu .nx-menu-title').textContent(), '1명 선택');
   assert.deepEqual(await page.locator('.nx-button-menu button').allTextContents(), ['비활성화', '활성화', '폴더로', 'LLM 명령', '참고컷 생성', 'vibe레퍼로', '전역 로스터로', '삭제']);
@@ -109,17 +109,24 @@ try {
   await page.locator('#nx-char-select').click();
 
   // Out of 선택 mode a held finger gets the tile's own ⋯ menu: still down after a moment where it was lifted…
+  // A ring fills on the lifted tile first; until it is full there is no menu, so a move is never cut short by one.
   await hold('#nx-char-session-list [data-ux-character-tile="alpha"]', 900, false);
-  assert.equal(await page.locator('#nx-char-more-menu').isVisible(), true, 'the menu comes while the finger is still down');
+  assert.equal(await page.locator('.nx-drag-ghost .nx-hold-ring').count(), 1, 'the ring is filling');
+  assert.equal(await page.locator('#nx-char-more-menu').isHidden(), true, 'no menu yet');
+  await page.waitForFunction(() => !document.getElementById('nx-char-more-menu').hidden, undefined, { timeout: 2500 });
+  assert.equal(await page.locator('#nx-char-more-menu').isVisible(), true, 'the menu comes when the ring is full, the finger still down');
   assert.equal(await page.locator('#nx-char-more-title').textContent(), 'Alpha');
   await settled();
   await page.keyboard.press('Escape');
-  // …or let go where it was lifted. It opened no editor and started no move.
+  // Let go before the ring is full: nothing at all. No menu, no editor, no move.
   await page.locator('[data-folder-scope="session"] [data-folder-crumb]').click();
   await folderTile('학교').click();
-  await hold('#nx-char-session-list [data-ux-character-tile="delta"]', 520);
-  assert.equal(await page.locator('#nx-char-more-menu').isVisible(), true);
-  assert.equal(await page.locator('#nx-char-more-title').textContent(), 'Delta');
+  await page.evaluate(async () => {
+    const el = document.querySelector('#nx-char-session-list [data-ux-character-tile="delta"]'), r = el.getBoundingClientRect(), p = { clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 };
+    const fire = (type, live) => el.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: live ? [new Touch({ identifier: 1, target: el, ...p })] : [], changedTouches: [new Touch({ identifier: 1, target: el, ...p })] }));
+    fire('touchstart', true); await new Promise(done => setTimeout(done, 700)); fire('touchend', false);
+  });
+  assert.equal(await page.locator('#nx-char-more-menu').isHidden(), true, 'let go early: no menu');
   assert.equal(await page.locator('#nx-char-sheet.open').count(), 0);
   await settled();
   await page.keyboard.press('Escape');

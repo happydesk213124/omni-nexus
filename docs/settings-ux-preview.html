@@ -1172,6 +1172,11 @@
     .preset-tile.nx-insert-before, .preset-tile.nx-insert-after { transition: transform .12s ease-out; animation: none !important; }
     .preset-tile.nx-insert-before { transform: translateX(7px); box-shadow: inset 5px 0 0 #a98bff; }
     .preset-tile.nx-insert-after { transform: translateX(-7px); box-shadow: inset -5px 0 0 #a98bff; }
+    /* 길게 누르기: a ring fills on the lifted tile; full, the tile's menu opens. Moving the tile away takes the ring off. */
+    .nx-hold-ring { position: absolute; left: 50%; top: 50%; z-index: 4; width: 44px; height: 44px; margin: -22px 0 0 -22px; transform: rotate(-90deg); filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .6)); }
+    .nx-hold-ring circle { fill: rgba(8, 11, 18, .55); stroke: rgba(255, 255, 255, .25); stroke-width: 3; }
+    .nx-hold-ring circle.fill { fill: none; stroke: #fff; stroke-linecap: round; stroke-dasharray: 94.25; stroke-dashoffset: 94.25; animation: nx-hold-fill linear forwards; }
+    @keyframes nx-hold-fill { to { stroke-dashoffset: 0; } }
     /* Several lifted together: the copy is a small stack with their number on it. */
     .nx-drag-ghost.nx-drag-many { box-shadow: 6px 6px 0 -1px #4a2aa8, 12px 12px 0 -2px #2f1c6b, 0 14px 34px rgba(0, 0, 0, .55), 0 0 0 2px #7132f5; }
     @keyframes nx-drop-done { 30% { transform: scale(1.1); background: rgba(113, 50, 245, .45); } }
@@ -1196,6 +1201,9 @@
     .nx-folder-field input:focus, .nx-folder-field textarea:focus { outline: 2px solid #7132f5; outline-offset: -1px; }
     .nx-folder-field.name input { min-height: 44px; font-size: 16px; font-weight: 600; }
     .nx-folder-field .nx-invalid { border-color: #ff8f8f; }
+    .nx-folder-field > span > small { margin-left: 4px; opacity: .85; }
+    .nx-folder-hint { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .preset-tile.nx-folder-tile[data-folder-memo]::after { content: '✎'; position: absolute; right: 7px; top: 6px; color: #c4b5fd; font-size: 12px; }
     .nx-folder-looks { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--row); }
     .nx-folder-looks > header { display: flex; flex-direction: column; gap: 3px; }
     .nx-folder-looks > header > b { font-size: 14px; }

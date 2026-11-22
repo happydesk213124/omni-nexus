@@ -8,8 +8,9 @@
  * it may be dropped light up for as long as the drag lasts, the list scrolls when it is held near an edge, and on
  * release the copy flies into place (or back where it came from).
  *
- * A finger that holds a tile and does not carry it anywhere wants its menu, not a drag: `held` is told, while the
- * finger is still down once it has stayed put a moment more, or on a release where it was lifted.
+ * A finger that holds a tile and does not carry it anywhere wants its menu, not a drag. That takes a deliberate wait:
+ * a ring fills on the lifted tile, and `held` is told when it is full (the finger still down). Carrying the tile off,
+ * or letting go before then, is never a menu: a menu that came sooner kept coming up on people who meant to move.
  */
 export interface DropPlace { el: HTMLElement; /** Between tiles (a reorder): before or after `el`. Absent, onto it. */ side?: 'before' | 'after' }
 export interface TileDragOptions {
@@ -27,7 +28,7 @@ export interface TileDragOptions {
   held?: (tile: HTMLElement, x: number, y: number) => void;
   mouse: boolean;
 }
-const HOLD_MS = 360, MENU_MS = 420, MOUSE_SLOP = 6, TOUCH_SLOP = 10, HELD_SLOP = 12, EDGE = 64, GHOST_MAX = 104;
+const HOLD_MS = 360, MENU_MS = 1420, MOUSE_SLOP = 6, TOUCH_SLOP = 10, HELD_SLOP = 12, EDGE = 64, GHOST_MAX = 104;
 const MARKS = ['nx-drop', 'nx-insert-before', 'nx-insert-after'];
 const buzz = (ms: number) => { try { navigator.vibrate?.(ms); } catch { /* no haptics */ } };
 
@@ -69,8 +70,11 @@ export function bindTileDrag(o: TileDragOptions): () => void {
     if (touching) buzz(14);
     move(x, y);
     if (!frame) frame = requestAnimationFrame(edgeScroll);
-    // Still held where it was lifted a moment later: the finger wants the tile's menu.
-    if (touching && o.held) menu = window.setTimeout(() => { if (tile && dragging && moved <= HELD_SLOP) heldHere(); }, MENU_MS);
+    // Still held where it was lifted until the ring is full: the finger wants the tile's menu.
+    if (touching && o.held) {
+      ghost.insertAdjacentHTML('beforeend', `<svg class="nx-hold-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15"></circle><circle class="fill" cx="18" cy="18" r="15" style="animation-duration:${MENU_MS}ms"></circle></svg>`);
+      menu = window.setTimeout(() => { if (tile && dragging && moved <= HELD_SLOP) heldHere(); }, MENU_MS);
+    }
   };
   const heldHere = () => {
     const from = tile, x = startX, y = startY;
@@ -81,7 +85,7 @@ export function bindTileDrag(o: TileDragOptions): () => void {
   };
   const move = (x: number, y: number) => {
     lastX = x; lastY = y; moved = Math.max(moved, Math.hypot(x - startX, y - startY));
-    if (moved > HELD_SLOP) window.clearTimeout(menu);
+    if (moved > HELD_SLOP) { window.clearTimeout(menu); ghost?.querySelector('.nx-hold-ring')?.remove(); }
     position(x, y);
     if (tile) mark(under(x, y, tile));
   };
@@ -99,7 +103,7 @@ export function bindTileDrag(o: TileDragOptions): () => void {
   };
   const end = (commit: boolean, mouse = false) => {
     window.clearTimeout(hold); window.clearTimeout(menu);
-    const from = tile, to = commit ? over : null, was = dragging, copy = ghost, group = moving, finger = touching;
+    const from = tile, to = commit ? over : null, was = dragging, copy = ghost, group = moving;
     if (from) { from.classList.remove('nx-press'); if (wasDraggable) from.draggable = true; }
     wasDraggable = false; tile = null; ghost = null; dragging = false; touching = false; moving = [];
     if (frame) { cancelAnimationFrame(frame); frame = 0; }
@@ -114,8 +118,6 @@ export function bindTileDrag(o: TileDragOptions): () => void {
       doc.addEventListener('click', swallow, { capture: true, once: true });
       window.setTimeout(() => doc.removeEventListener('click', swallow, true), 0);
     }
-    // Lifted and let go where it was: the tile's menu, not a move.
-    const inPlace = commit && finger && !to && moved <= HELD_SLOP && !!o.held;
     // The copy flies into place, or back to where it was lifted from; the tiles show again when it lands.
     const land = to ? to.el.getBoundingClientRect() : null;
     const goal = land ? { x: to!.side === 'before' ? land.left : to!.side === 'after' ? land.right : land.left + land.width / 2, y: land.top + land.height / 2 } : origin;
@@ -129,7 +131,7 @@ export function bindTileDrag(o: TileDragOptions): () => void {
     if (to && from) {
       if (!to.side) { to.el.classList.add('nx-drop-done'); window.setTimeout(() => to.el.classList.remove('nx-drop-done'), 420); }
       o.drop(from, to);
-    } else if (inPlace && from) { quietUntil = performance.now() + 500; o.held!(from, startX, startY); }
+    }
   };
   const listeners: Array<[EventTarget, string, EventListener, AddEventListenerOptions?]> = [];
   const on = (node: EventTarget, type: string, fn: EventListener, options?: AddEventListenerOptions) => { node.addEventListener(type, fn, options); listeners.push([node, type, fn, options]); };

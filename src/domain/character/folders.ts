@@ -11,7 +11,11 @@ import { splitTagTokens } from '../../core/util/text';
 export const FOLDER_LOOK_FIELDS = ['appearance', 'hair_color', 'hair_style', 'eye_color', 'height', 'age', 'attire', 'bottoms', 'accessories'] as const;
 export type FolderLookField = typeof FOLDER_LOOK_FIELDS[number];
 export interface ItemFolder { id: string; name: string; members: string[] }
-export type LookFolder = ItemFolder & Partial<Record<FolderLookField, string>>;
+/**
+ * `memo` (폴더 메모): who belongs in the folder, in the user's words. It is what the character LLM files a new person
+ * by, and the switch for it: a folder with no memo is never shown to the LLM, however many there are.
+ */
+export type LookFolder = ItemFolder & Partial<Record<FolderLookField, string>> & { memo?: string };
 /** `order`: the 캐릭터 tab's tiles as the user arranged them, per roster (ids; anyone not listed follows in the roster's own order). */
 export interface FolderData { version: 1; characters: Record<string, LookFolder[]>; presets: ItemFolder[]; order?: Record<string, string[]> }
 
@@ -27,6 +31,8 @@ function folder(raw: unknown, looks: boolean, seen: Set<string>, taken: Set<stri
   const members = (Array.isArray(row.members) ? row.members : []).map(v => text(v, 200)).filter(member => member && !taken.has(member) && (taken.add(member), true)).slice(0, MEMBER_MAX);
   const out: LookFolder = { id, name, members };
   if (looks) for (const field of FOLDER_LOOK_FIELDS) { const value = text(row[field], 2000); if (value) out[field] = value; }
+  const memo = looks ? text(row.memo, 600) : '';
+  if (memo) out.memo = memo;
   return out;
 }
 export function normalizeFolderList(raw: unknown, looks: boolean): LookFolder[] {
@@ -93,7 +99,10 @@ export function withFolderLooks<T extends Looks>(row: T, f: LookFolder | undefin
   }
   return out as T;
 }
-/** What the character LLM is shown of the folders: each name, and the looks its members share (to file a new person by). */
-export function folderBrief(folders: readonly LookFolder[]): Array<{ name: string; looks?: string }> {
-  return folders.map(f => { const looks = FOLDER_LOOK_FIELDS.map(field => f[field]).filter(Boolean).join(', ').slice(0, 300); return looks ? { name: f.name, looks } : { name: f.name }; });
+/**
+ * What the character LLM is shown of the folders: the ones with a memo, each by its name and that memo. A folder the
+ * user wrote no memo for is theirs to fill by hand; none with a memo, nothing is shown and the request is as before.
+ */
+export function folderBrief(folders: readonly LookFolder[]): Array<{ name: string; note: string }> {
+  return folders.flatMap(f => f.memo ? [{ name: f.name, note: f.memo }] : []);
 }

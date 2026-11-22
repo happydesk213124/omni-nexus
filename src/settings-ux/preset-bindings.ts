@@ -93,9 +93,13 @@ export function bindPresetSheet(): void {
         const actions = settingsActions(), card = actions?.config()?.card;
         const presets = ids.map(id => card?.presets?.find(p => String(p.id) === id)).filter((p): p is StylePreset => !!p);
         if (!actions || !card || presets.length !== (card.presets || []).length) return;
+        const top = document.querySelector<HTMLElement>('#style_presets .preset-mid')?.scrollTop ?? 0;
         await actions.flush();
         await actions.save({ card: { ...card, presets } });
         await actions.reload();
+        // The tab was drawn again: back to where the list stood.
+        const box = document.querySelector<HTMLElement>('#style_presets .preset-mid');
+        if (box) { box.scrollTop = top; requestAnimationFrame(() => { box.scrollTop = top; }); }
       } },
       itemMenu: (tile, x, y) => tileMenu(tile, x, y),
       // What is picked is what is seen: a tile filed away is let go.
@@ -123,9 +127,45 @@ export function bindPresetSheet(): void {
     } else if (select?.value === id) more?.openAt(x, y);
     else {
       const row = (label: string, run: () => void) => { const button = document.createElement('button'); button.textContent = label; button.onclick = run; return button; };
-      openButtonMenu(x, y, tile.title || tile.textContent || '', [row('이 프리셋 적용', () => tile.click()), row('폴더로 이동…', () => { void folderView?.choose([id]); })]);
+      const preset = getConfig().card?.presets?.find(p => String(p.id) === id), second = String(getConfig().card?.secondary_preset_id ?? '') === id;
+      const guarded = (work: () => Promise<void>) => () => { void work().catch(error => window.alert(String((error as Error)?.message || error))); };
+      openButtonMenu(x, y, tile.title || tile.textContent || '', [
+        row('이 프리셋 적용', () => tile.click()),
+        row(second ? '2순위 해제' : '2순위로 사용하기', guarded(() => setSecondary(second ? '' : id))),
+        row('복제', guarded(() => duplicatePreset(id))),
+        row('폴더로 이동…', () => { void folderView?.choose([id]); }),
+        row('참고컷 생성', () => { void picking.lookGen([id]); }),
+        ...(hasLook(preset) ? [row('참고컷 제거', guarded(() => clearLook(id)))] : []),
+        row('삭제', () => { void picking.remove([id]); }),
+      ]);
     }
   }
+  // What the ⋯ menu does to the applied preset, for any other one: one settings write each, nothing applied.
+  const writeCard = async (change: (card: CardSettings) => CardSettings | null) => {
+    const actions = settingsActions();
+    if (!actions) throw new Error('설정 연결을 찾을 수 없습니다.');
+    await actions.flush();
+    const card = actions.config()?.card, next = card ? change(card) : null;
+    if (!next) throw new Error('설정을 읽지 못했습니다.');
+    await actions.save({ card: next });
+    await actions.reload();
+  };
+  const setSecondary = (id: string) => writeCard(card => ({ ...card, secondary_preset_id: id }));
+  const duplicatePreset = (id: string) => writeCard(card => {
+    const all = card.presets || [], at = all.findIndex(p => String(p.id) === id);
+    if (at < 0) return null;
+    // Its own id, and no 참고컷: a look is kept by the preset's id, and the copy has drawn none.
+    const { look_hash: _hash, look_preview_url: _url, look_configured: _configured, ...rest } = structuredClone(all[at]!) as StylePreset & Record<string, unknown>;
+    void _hash; void _url; void _configured;
+    const copy = { ...rest, id: `preset_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, name: `${String(all[at]!.name || '프리셋')} 복사` } as StylePreset;
+    return { ...card, presets: [...all.slice(0, at + 1), copy, ...all.slice(at + 1)] };
+  });
+  const clearLook = async (id: string) => {
+    const actions = settingsActions();
+    if (!actions) throw new Error('설정 연결을 찾을 수 없습니다.');
+    await actions.request('/v1/presets/look/clear', { preset_id: id });
+    await actions.reload();
+  };
   document.getElementById('nx-preset-chips')?.addEventListener('contextmenu', event => {
     const tile = (event.target as Element).closest<HTMLElement>('[data-preset-select]');
     if (!tile) return;
@@ -182,8 +222,9 @@ export function bindPresetSheet(): void {
  * on all of them. 참고컷 생성 runs one preset after another (NovelAI draws one
  * image at a time per account); 삭제 removes them in one settings write.
  */
-function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder: (ids: string[]) => Promise<void>): { on: boolean; toggle: (tile: HTMLElement) => void; ids: () => string[] } {
-  const state = { on: false, toggle: (_tile: HTMLElement) => {}, ids: (): string[] => [] };
+interface PresetPicking { on: boolean; toggle: (tile: HTMLElement) => void; ids: () => string[]; /** 참고컷 생성 · 삭제 for these presets, applied or not. */ lookGen: (ids: string[]) => Promise<void>; remove: (ids: string[]) => Promise<void> }
+function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder: (ids: string[]) => Promise<void>): PresetPicking {
+  const state: PresetPicking = { on: false, toggle: (_tile: HTMLElement) => {}, ids: (): string[] => [], lookGen: async () => {}, remove: async () => {} };
   const toggleButton = document.getElementById('nx-preset-pick');
   const row = toggleButton?.parentElement;
   if (!toggleButton || !row) return state;
@@ -217,8 +258,8 @@ function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder
     paint();
   };
   toggleButton.addEventListener('click', () => setMode(!state.on));
-  const run = async (work: (ids: string[], actions: Actions) => Promise<void>) => {
-    const ids = chosen(), actions = settingsActions();
+  const run = async (work: (ids: string[], actions: Actions) => Promise<void>, ids = chosen()) => {
+    const actions = settingsActions();
     if (!ids.length || running) return;
     if (!actions) { window.alert('설정 연결을 찾을 수 없습니다.'); return; }
     running = true; note = ''; paint();
@@ -229,7 +270,10 @@ function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder
     const action = (event.target as Element).closest<HTMLElement>('[data-sel]')?.dataset.sel;
     if (action === 'all') { for (const tile of tiles) if (!tile.hidden) { picked.add(tile.dataset.presetSelect || ''); setTile(tile, true); } paint(); return; }
     if (action === 'folder') void run(ids => toFolder(ids));
-    if (action === 'look-gen') void run(async (ids, actions) => {
+    if (action === 'look-gen') void run(lookGen);
+    if (action === 'delete') void run(remove);
+  });
+  const lookGen = async (ids: string[], actions: Actions) => {
       let done = 0;
       for (const [i, id] of ids.entries()) {
         note = '참고컷 ' + (i + 1) + '/' + ids.length + '…'; paint();
@@ -243,9 +287,10 @@ function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder
       }
       note = done === ids.length ? '참고컷 ' + done + '개 완료' : '참고컷 ' + done + '/' + ids.length + '개 완료';
       repaint();
-    });
-    if (action === 'delete') void run(async (ids, actions) => {
-      if (!window.confirm('고른 프리셋 ' + ids.length + '개를 삭제할까요?')) return;
+  };
+  const remove = async (ids: string[], actions: Actions) => {
+      const names = ids.map(id => actions.config()?.card?.presets?.find(p => String(p.id) === id)?.name || '');
+      if (!window.confirm(ids.length === 1 ? `「${names[0]}」 프리셋을 삭제할까요?` : '고른 프리셋 ' + ids.length + '개를 삭제할까요?')) return;
       await actions.flush();
       const card = actions.config()?.card;
       if (!card) throw new Error('설정을 읽지 못했습니다.');
@@ -264,8 +309,8 @@ function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder
       for (const id of ids) void actions.request('/v1/nai/vibe/clear', { preset_id: id }).catch(() => {});
       setMode(false);
       await actions.reload();
-    });
-  });
+  };
+  state.lookGen = ids => run(lookGen, ids); state.remove = ids => run(remove, ids);
   paint();
   return state;
 }

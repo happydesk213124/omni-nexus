@@ -68,6 +68,8 @@ try {
   await page.locator('#nx-folder-pop [data-folder-field="name"]').fill('네일샵 직원');
   await page.locator('#nx-folder-pop [data-folder-field="attire"]').fill('black nail salon apron');
   await page.locator('#nx-folder-pop [data-folder-field="appearance"]').fill('friendly look');
+  await page.locator('#nx-folder-pop [data-folder-field="memo"]').fill('네일샵에서 일하는 직원들');
+  assert.match(await page.locator('#nx-folder-pop .nx-folder-hint').textContent(), /비워 두면 이 폴더는 LLM에게 알리지 않습니다/);
   assert.match(await page.locator('#nx-folder-pop .nx-folder-looks > header').textContent(), /샷을 만들 때 이 폴더의 캐릭터에게 함께 들어갑니다/);
   assert.equal(await page.locator('#nx-folder-pop [data-folder-remove]').count(), 0, 'a new folder has nothing to delete');
   // The sheet fits the screen with its buttons in reach.
@@ -75,7 +77,8 @@ try {
   await page.locator('#nx-folder-pop [data-folder-save]').click();
   await folderTile('네일샵 직원').waitFor();
   const [made] = await folders();
-  assert.deepEqual({ ...made, id: '' }, { id: '', name: '네일샵 직원', members: [], appearance: 'friendly look', attire: 'black nail salon apron' });
+  assert.deepEqual({ ...made, id: '' }, { id: '', name: '네일샵 직원', members: [], appearance: 'friendly look', attire: 'black nail salon apron', memo: '네일샵에서 일하는 직원들' });
+  assert.equal(await folderTile('네일샵 직원').getAttribute('data-folder-memo'), '1', 'a folder the LLM fills is marked');
   assert.equal(await page.locator('#nx-char-folder-path .nx-folder-path:not([hidden])').count(), 1, 'the path bar is there now');
   assert.equal(await page.evaluate(() => document.querySelector('#nx-char-session-list').firstElementChild.matches('[data-ux-folder]')), true, 'folders stand first in the grid');
   // The vendor reads every [data-char-scope] node as a character: a folder must never be one.
@@ -117,7 +120,7 @@ try {
     const folder = document.querySelector('#nx-char-session-list [data-ux-folder]'), r = folder.getBoundingClientRect(), p = { clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 };
     const fire = (type, live) => folder.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: live ? [new Touch({ identifier: 1, target: folder, ...p })] : [], changedTouches: [new Touch({ identifier: 1, target: folder, ...p })] }));
     fire('touchstart', true);
-    await new Promise(done => setTimeout(done, 520));
+    await new Promise(done => setTimeout(done, 1950));
     fire('touchend', false);
     folder.click();
   });

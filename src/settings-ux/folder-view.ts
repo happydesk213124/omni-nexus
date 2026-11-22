@@ -68,8 +68,18 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
     const rank = new Map(o.order.saved().map((id, i) => [id, i]));
     return tiles.map((tile, i) => ({ tile, at: rank.get(o.idOf(tile)) ?? rank.size + i })).sort((a, b) => a.at - b.at).map(row => row.tile);
   };
+  /** The scrolling box the list sits in: a repaint (folder tiles redrawn, the choice moved) must leave it where it was. */
+  const scroller = (): HTMLElement | null => o.list.closest<HTMLElement>('.preset-mid') || o.list.parentElement;
   function paint(): void {
     if (disposed) return;
+    const box = scroller(), top = box?.scrollTop ?? 0;
+    try { draw(); } finally {
+      if (box && box.scrollTop !== top) box.scrollTop = top;
+      // Once more after layout: a tile the repaint chose may have been scrolled to.
+      if (box) requestAnimationFrame(() => { if (box.isConnected && box.scrollTop !== top && !box.dataset.nxScrolling) box.scrollTop = top; });
+    }
+  }
+  function draw(): void {
     for (const old of o.list.querySelectorAll('[data-ux-folder]')) old.remove();
     const tiles = o.tiles(), here = folders.find(f => f.id === current());
     if (current() && !here) opened.set(o.key, '');
@@ -87,7 +97,8 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
         tile.type = 'button'; tile.className = 'preset-tile nx-folder-tile'; tile.dataset.uxFolder = f.id;
         tile.style.order = String(-100000 + i); tile.draggable = !!o.nativeDrag;
         const count = f.members.filter(member => ids.has(member)).length;
-        tile.title = `${f.name} · ${count}개`;
+        tile.title = `${f.name} · ${count}개${f.memo ? ` · 메모: ${f.memo}` : ''}`;
+        if (f.memo) tile.dataset.folderMemo = '1';
         tile.innerHTML = `<i aria-hidden="true">📁</i><span data-folder-name>${esc(f.name)}</span><small>${count}개</small>`;
         o.list.insertBefore(tile, first);
       }
@@ -257,6 +268,7 @@ function folderDialog(f: LookFolder, o: { looks: boolean; fresh: boolean; noun: 
       `<div class="nx-sheet-head"><i aria-hidden="true">📁</i><b>${o.fresh ? '새 폴더' : '폴더 수정'}</b>${o.fresh ? '' : `<small>${esc(o.noun)} ${o.count}개</small>`}<button type="button" class="nx-sheet-x" data-folder-cancel aria-label="닫기">✕</button></div>`
       + `<div class="nx-sheet-body">`
       + `<label class="nx-folder-field name"><span>폴더 이름</span><input data-folder-field="name" maxlength="80" value="${esc(f.name)}" placeholder="예: 네일샵 직원" autocomplete="off"></label>`
+      + (o.looks ? `<label class="nx-folder-field memo"><span>폴더 메모 <small>어떤 캐릭터를 이 폴더에 넣을지</small></span><textarea rows="2" data-folder-field="memo" maxlength="600" placeholder="예: 네일샵에서 일하는 직원들">${esc(f.memo || '')}</textarea><small class="nx-folder-hint">적어 두면 LLM이 새 캐릭터를 만들 때 이 메모를 읽고 맞는 폴더에 넣습니다. 비워 두면 이 폴더는 LLM에게 알리지 않습니다.</small></label>` : '')
       + (o.looks ? `<section class="nx-folder-looks"><header><b>폴더 공통 태그</b><small>샷을 만들 때 이 폴더의 캐릭터에게 함께 들어갑니다. 캐릭터에 저장되지는 않습니다.</small></header>`
         + `<div class="nx-folder-group"><h4>외형 <small>캐릭터의 외형 태그와 합쳐집니다</small></h4>${area('appearance')}</div>`
         + `<div class="nx-folder-group"><h4>머리 · 눈 · 키 · 나이 <small>캐릭터의 그 칸이 비어 있을 때만 쓰입니다</small></h4><div class="nx-folder-grid">${(['hair_color', 'hair_style', 'eye_color', 'height', 'age'] as const).map(input).join('')}</div></div>`
@@ -270,6 +282,8 @@ function folderDialog(f: LookFolder, o: { looks: boolean; fresh: boolean; noun: 
       if (!name) { nameInput.focus(); nameInput.classList.add('nx-invalid'); return; }
       const next: LookFolder = { id: f.id, name, members: f.members };
       if (o.looks) for (const key of FOLDER_LOOK_FIELDS) { const value = read(key); if (value) next[key] = value; }
+      const memo = o.looks ? read('memo') : '';
+      if (memo) next.memo = memo;
       close(); resolve(next);
     };
     box.addEventListener('click', event => {

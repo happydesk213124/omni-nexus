@@ -68,7 +68,26 @@ type Row = { id?: string; scope?: string } & Partial<Record<FolderLookField, unk
  * the saved rows (those come back through the roster writes). With no folder anywhere the rows return as they came.
  */
 export async function rosterWithFolderLooks<T extends Row>(rows: T[], characterId: string): Promise<T[]> {
+  return (await folderLooksReader(characterId))(rows);
+}
+/**
+ * The same, in two steps: the folders are read now, and the join itself is plain code with no await in it. An image
+ * job reads them before its ordered stretch (streaming blocks of one reply take their turns there, each handing the
+ * next its running wear and place): a read in the middle of it let a later block overtake an earlier one.
+ */
+export async function folderLooksReader(characterId: string): Promise<<T extends Row>(rows: T[]) => T[]> {
   const data = await load();
+  return rows => joinFolderLooks(rows, data, characterId);
+}
+/**
+ * The join with no await at all, from what has been read (`readFolders` at the start of a job): the running job has
+ * stretches where its turn must not be given up. Nothing read yet, the rows return as they came.
+ */
+export function rosterWithFolderLooksNow<T extends Row>(rows: T[], characterId: string): T[] {
+  return cache ? joinFolderLooks(rows, cache, characterId) : rows;
+}
+export async function readFolders(): Promise<void> { await load(); }
+function joinFolderLooks<T extends Row>(rows: T[], data: FolderData, characterId: string): T[] {
   const own = data.characters[cleanText(characterId, 200)] || [], shared = data.characters[GLOBAL_SCOPE] || [];
   if (!own.length && !shared.length) return rows;
   return rows.map(row => {
@@ -79,15 +98,16 @@ export async function rosterWithFolderLooks<T extends Row>(rows: T[], characterI
     return withFolderLooks(row, folder);
   });
 }
-/** The folders the character LLM may file a new person in: none listed when the roster has none (the request is as before). */
-export async function folderListForLlm(scope: string, characterId: string): Promise<Array<{ name: string; looks?: string }>> {
+/** The folders the character LLM may file a new person in: those with a 폴더 메모. None, and the request is as before. */
+export async function folderListForLlm(scope: string, characterId: string): Promise<Array<{ name: string; note: string }>> {
   return folderBrief(await characterFolders(scope, characterId));
 }
 /** A person the LLM just made, filed in the folder it named. Someone already in a folder stays there. */
 export async function fileNewCharacter(scope: string, characterId: string, memberId: string, folderName: unknown): Promise<void> {
   const key = await ownerKey(scope, characterId);
   if (!key || !memberId) return;
-  const data = await load(), folders = data.characters[key] || [], target = folderNamed(folders, folderName);
+  // Only a folder the LLM was shown (one with a memo) can be named by it.
+  const data = await load(), folders = data.characters[key] || [], target = folderNamed(folders.filter(f => f.memo), folderName);
   if (!target || folderOf(folders, memberId)) return;
   data.characters[key] = moveToFolder(folders, [memberId], target.id);
   await save();

@@ -185,12 +185,26 @@ try {
     else { fire('touchend', mid(el), false); el.click(); }
   }, [selector, wait, toSelector || '']);
   const ids = await order(), applied = await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), other = ids.find(id => id !== applied);
-  await touch(`#nx-preset-chips [data-preset-select="${other}"]`, 520);
-  assert.deepEqual(await page.locator('.nx-button-menu button').allTextContents(), ['이 프리셋 적용', '폴더로 이동…']);
+  await touch(`#nx-preset-chips [data-preset-select="${other}"]`, 1950);
+  const menuRows = await page.locator('.nx-button-menu button').allTextContents();
+  assert.deepEqual(menuRows.filter(row => row !== '참고컷 제거'), ['이 프리셋 적용', '2순위로 사용하기', '복제', '폴더로 이동…', '참고컷 생성', '삭제'], 'everything the ⋯ menu does, for a preset that is not applied');
   assert.equal(await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), applied, 'holding a preset applies nothing');
-  await page.keyboard.press('Escape');
+  // 복제 and 삭제 from that menu, the applied preset left alone.
+  const count = () => page.evaluate(() => presetRuntime.t.backendSettings.card.presets.length), was = await count();
+  await page.waitForTimeout(520);
+  await page.locator('.nx-button-menu button', { hasText: '복제' }).click();
+  await page.waitForFunction(n => presetRuntime.t.backendSettings.card.presets.length === n + 1, was);
+  const copy = await page.evaluate(id => { const all = presetRuntime.t.backendSettings.card.presets, at = all.findIndex(p => String(p.id) === id); return { source: all[at].name, name: all[at + 1].name, id: String(all[at + 1].id), look: all[at + 1].look_hash || '' }; }, other);
+  assert.equal(copy.name, copy.source + ' 복사', 'the copy stands right after its source');
+  assert.ok(copy.id && copy.id !== other); assert.equal(copy.look, '', 'a copy has drawn no 참고컷');
+  assert.equal(await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), applied);
+  await page.locator(`#nx-preset-chips [data-preset-select="${copy.id}"]`).click({ button: 'right' });
+  await page.locator('.nx-button-menu button', { hasText: '삭제' }).click();
+  await page.waitForFunction(n => presetRuntime.t.backendSettings.card.presets.length === n, was);
+  assert.equal(await page.evaluate(id => presetRuntime.t.backendSettings.card.presets.some(p => String(p.id) === id), copy.id), false);
+  assert.equal(await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), applied, 'deleting another preset leaves the applied one applied');
   // On the applied one: its ⋯ menu.
-  await touch(`#nx-preset-chips [data-preset-select="${applied}"]`, 520);
+  await touch(`#nx-preset-chips [data-preset-select="${applied}"]`, 1950);
   assert.equal(await page.locator('#nx-preset-more-menu').isVisible(), true);
   await page.keyboard.press('Escape');
   // A carried finger sets a preset down after another: the presets' own order, in one settings write.

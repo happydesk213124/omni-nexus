@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 
 // 폴더 (캐릭터 · 스타일 프리셋): members by id beside the rosters, never in them. A character folder's shared looks
 // (폴더 공통 태그) join a member only as a shot is built; the character LLM is shown the folders and may file a new person.
-const built = await build({ stdin: { contents: "export * from './src/domain/character/folders';export * from './src/services/folders';export {characterCreateMessages,parseCharacterCreateReply,characterFolderNote} from './src/domain/character/create';export {GLOBAL_SCOPE,FOLDERS_KEY} from './src/core/constants';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node' });
+const built = await build({ stdin: { contents: "export * from './src/domain/character/folders';export * from './src/services/folders';export {characterCreateMessages,parseCharacterCreateReply,characterFolderNote,streamingFolderNote} from './src/domain/character/create';export {GLOBAL_SCOPE,FOLDERS_KEY} from './src/core/constants';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, format: 'esm', platform: 'node' });
 const api = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 
 // One store for the file: the plugin opens Risu's storage once and keeps it.
@@ -90,29 +90,40 @@ test('folders are kept in plugin storage under one key and read back', async () 
   assert.equal(told, 1, 'a change is told while listening');
 });
 
-test('the character LLM: no folder, the request is word for word as before; with folders it is shown them and may file a new person', async () => {
+test('the character LLM is shown only the folders with a 폴더 메모; none, and the request is word for word as before', async () => {
   const base = { instruction: '네일샵 직원 유나를 추가', sharedPrompt: 'RULES', notes: [], roster: [], lore: [] };
   const before = api.characterCreateMessages(base);
   assert.deepEqual(api.characterCreateMessages({ ...base, folders: [] }), before);
-  const withFolders = api.characterCreateMessages({ ...base, folders: [{ name: '네일샵', looks: 'black apron' }, { name: '학교' }] });
+  const withFolders = api.characterCreateMessages({ ...base, folders: [{ name: '네일샵', note: '네일샵에서 일하는 직원들' }] });
   assert.equal(withFolders.length, before.length + 1);
   const note = withFolders.at(-2).content;
-  assert.match(note, /^# Reference: character folders\n\[\{"name":"네일샵","looks":"black apron"\},\{"name":"학교"\}\]/);
+  assert.match(note, /^# Reference: character folders\n\[\{"name":"네일샵","note":"네일샵에서 일하는 직원들"\}\]/);
+  assert.match(note, /Each folder's note says who belongs in it/);
   assert.match(note, /add "folder": "<that folder's name>"/);
   assert.match(note, /Never invent a folder/);
   assert.equal(withFolders.at(-1).content, before.at(-1).content, 'the request itself stays last');
   assert.deepEqual(withFolders.slice(0, -2), before.slice(0, -1));
+  // The streaming state carries the same list as one line.
+  assert.match(api.streamingFolderNote([{ name: '네일샵', note: '직원들' }]), /^Character folders \(each note says who belongs there;.*"folder":"<that name>".*\): \[\{"name":"네일샵","note":"직원들"\}\]$/);
   // The reply's folder rides with the row, to be filed after the save.
   const [row] = api.parseCharacterCreateReply('{"new_characters":[{"name":"유나","appearance":"1girl, brown hair","folder":" 네일샵 "}]}');
   assert.equal(row.folder, '네일샵');
   assert.equal('folder' in api.parseCharacterCreateReply('{"new_characters":[{"name":"유나","appearance":"1girl, brown hair"}]}')[0], false);
 
+  // The memo is the switch: a folder without one is never shown, however many there are, and cannot be filed into.
+  assert.deepEqual(api.normalizeFolderList([{ id: 'f', name: 'A', members: [], memo: '  직원들  ' }], true)[0].memo, '직원들');
+  assert.equal('memo' in api.normalizeFolderList([{ id: 'p', name: 'A', members: [], memo: '프리셋 폴더에는 메모가 없다' }], false)[0], false);
   host();
-  await api.saveCharacterFolders('s1', 'bot', [{ id: 'f1', name: '네일샵', members: [], attire: 'apron' }, { id: 'f2', name: '학교', members: ['old'] }]);
-  assert.deepEqual(await api.folderListForLlm('s1', 'bot'), [{ name: '네일샵', looks: 'apron' }, { name: '학교' }]);
+  await api.saveCharacterFolders('s1', 'bot', [{ id: 'f1', name: '네일샵', members: [], attire: 'apron' }, { id: 'f2', name: '학교', members: ['old'] }, { id: 'f3', name: '회사', members: [] }]);
+  assert.deepEqual(await api.folderListForLlm('s1', 'bot'), [], 'three folders, no memo: nothing is shown');
+  await api.fileNewCharacter('s1', 'bot', 'yuna', '네일샵');
+  assert.deepEqual((await api.characterFolders('s1', 'bot')).map(f => f.members), [[], ['old'], []], 'a folder the LLM was not shown takes nobody from it');
+  await api.saveCharacterFolders('s1', 'bot', [{ id: 'f1', name: '네일샵', members: [], attire: 'apron', memo: '네일샵에서 일하는 직원들' }, { id: 'f2', name: '학교', members: ['old'], memo: '학생과 선생님' }, { id: 'f3', name: '회사', members: [] }]);
+  assert.deepEqual(await api.folderListForLlm('s1', 'bot'), [{ name: '네일샵', note: '네일샵에서 일하는 직원들' }, { name: '학교', note: '학생과 선생님' }], 'the two with a memo, by name and memo alone');
   assert.deepEqual(await api.folderListForLlm('s1', 'another-bot'), []);
   await api.fileNewCharacter('s1', 'bot', 'yuna', '네일 샵');
   await api.fileNewCharacter('s1', 'bot', 'old', '네일샵');
   await api.fileNewCharacter('s1', 'bot', 'ghost', '없는 폴더');
-  assert.deepEqual((await api.characterFolders('s1', 'bot')).map(f => f.members), [['yuna'], ['old']], 'filed by name; someone already filed stays; an unknown folder files nobody');
+  await api.fileNewCharacter('s1', 'bot', 'worker', '회사');
+  assert.deepEqual((await api.characterFolders('s1', 'bot')).map(f => f.members), [['yuna'], ['old'], []], 'filed by name; someone already filed stays; an unknown or memo-less folder files nobody');
 });

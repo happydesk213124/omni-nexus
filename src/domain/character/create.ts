@@ -14,9 +14,13 @@ export function characterCreateInstruction(value: unknown): string {
 }
 
 /** The folder list as the character LLM reads it, in the create request and beside the tagger's roster. */
-export function characterFolderNote(folders: ReadonlyArray<{ name: string; looks?: string }>): string {
+export function characterFolderNote(folders: ReadonlyArray<{ name: string; note: string }>): string {
   return '# Reference: character folders\n' + JSON.stringify(folders)
-    + '\nFor each new_characters entry that clearly belongs in one of these folders, add "folder": "<that folder\'s name>" (exactly as listed); omit it otherwise. Never invent a folder. A folder\'s looks are added to its members automatically: do not repeat them in the character.';
+    + '\nEach folder\'s note says who belongs in it. For each new_characters entry a note fits, add "folder": "<that folder\'s name>" (exactly as listed); omit it otherwise. Never invent a folder.';
+}
+/** The same list, as one line of the streaming state: the chat model files the people its cast block registers. */
+export function streamingFolderNote(folders: ReadonlyArray<{ name: string; note: string }>): string {
+  return 'Character folders (each note says who belongs there; for a person you register in new_characters whom a note fits, add "folder":"<that name>", else omit it; never invent a folder): ' + JSON.stringify(folders);
 }
 
 export function characterCreateMessages(input: {
@@ -26,7 +30,7 @@ export function characterCreateMessages(input: {
   roster: readonly CharacterRecord[];
   lore: readonly LoreEntry[];
   /** 폴더 the roster has: a new person may be filed in one. Empty or absent, the request is word for word as before. */
-  folders?: ReadonlyArray<{ name: string; looks?: string }>;
+  folders?: ReadonlyArray<{ name: string; note: string }>;
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [{
     role: 'system',
