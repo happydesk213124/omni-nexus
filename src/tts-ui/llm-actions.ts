@@ -35,7 +35,7 @@ export function bindTtsLlmActions(refresh: () => void): void {
     const context = await currentTtsContext();
     proposals = await proposeTtsCharacters(context,val('source-command') || '자료에서 등장인물을 정리하고 캐릭터와 음성을 배정하세요.',{ lore:checked('source-lore'), persona:checked('source-persona'), illustration:checked('source-illustration') },val('source-scope') === 'global' ? 'global' : context.rosterScope,[],model('source-model'));
     proposals = proposals.filter(p => p.previous ? checked('source-update-existing') : checked('source-add-new'));
-    if (!checked('source-assign-voice')) for (const p of proposals) { const old = ttsData().characters.find(c => c.id === p.draft.id); p.draft.voiceKey = old?.voiceKey || ''; p.draft.fishId = old?.fishId || ''; if (old?.irodoriKey) p.draft.irodoriKey = old.irodoriKey; else delete p.draft.irodoriKey; }
+    if (!checked('source-assign-voice')) for (const p of proposals) { const old = ttsData().characters.find(c => c.id === p.draft.id); p.draft.voiceKey = old?.voiceKey || ''; p.draft.fishId = old?.fishId || ''; if (old?.irodoriKey) p.draft.irodoriKey = old.irodoriKey; else delete p.draft.irodoriKey; if (old?.elevenKey) p.draft.elevenKey = old.elevenKey; else delete p.draft.elevenKey; }
     review('source-results',proposals.map(p => `${p.previous ? '수정' : '추가'} · ${esc(p.draft.name)} · ${esc(p.draft.tags.join(', '))} · ${esc(ttsEngineVoices().find(v => v.key === boundVoiceKey(p.draft, ttsData().settings.engine))?.name || '음성 미지정')}`));
     text('source-status',`${proposals.length}명 · 선택한 결과만 적용`); input('source-apply').disabled = !proposals.length;
   }));

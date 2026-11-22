@@ -28,10 +28,23 @@ const GEMINI_HINTS: Record<number, string> = {
   500: ' · Gemini 서버 오류입니다. 잠시 뒤 다시 시도해 주세요',
   503: ' · Gemini 서버가 바쁩니다. 잠시 뒤 다시 시도해 주세요',
 };
-export type TtsService = 'fish' | 'irodori' | 'gemini';
+/** ElevenLabs: its API key, the voices of that account, a monthly character quota. */
+const ELEVEN_HINTS: Record<number, string> = {
+  400: ' · ElevenLabs가 요청을 거절했습니다. 모델 이름과 목소리 ID를 확인해 주세요',
+  401: ' · ElevenLabs API 키를 확인해 주세요(크레딧을 다 썼을 때도 이 코드가 옵니다)',
+  402: ' · 이 요금제로는 쓸 수 없는 목소리나 모델입니다',
+  403: ' · 이 키로는 쓸 수 없는 요청입니다. 키의 권한(Text to Speech, Voices 읽기)을 확인해 주세요',
+  404: ' · 그 목소리가 이 계정에 없습니다. ElevenLabs 목소리 탭에서 목록을 다시 불러와 주세요',
+  422: ' · ElevenLabs가 요청 내용을 받아들이지 않았습니다. 모델 이름과 목소리 ID를 확인해 주세요',
+  429: ' · ElevenLabs 요청 한도에 걸렸습니다. 동시 생성 수를 줄이거나 잠시 뒤 다시 시도해 주세요',
+  500: ' · ElevenLabs 서버 오류입니다. 잠시 뒤 다시 시도해 주세요',
+  503: ' · ElevenLabs 서버가 바쁩니다. 잠시 뒤 다시 시도해 주세요',
+};
+export type TtsService = 'fish' | 'irodori' | 'gemini' | 'elevenlabs';
 /** Fish's own reading of the common failures, so the toast says what to fix. */
 function ttsStatusHint(status: number | undefined, service: TtsService = 'fish'): string {
   if (service === 'gemini') return status ? GEMINI_HINTS[status] || '' : '';
+  if (service === 'elevenlabs') return status ? ELEVEN_HINTS[status] || '' : '';
   if (service === 'irodori') return status ? IRODORI_HINTS[status] || '' : ' · Irodori 서버에 닿지 못했습니다. 서버가 켜져 있는지, 주소가 맞는지 확인해 주세요. 브라우저에서 여는 Risu라면 서버를 IRODORI_CORS_ORIGINS=["*"] 설정으로 띄워야 합니다';
   const hints: Record<number, string> = {
     401: ' · API 키를 확인해 주세요',
@@ -50,14 +63,18 @@ export class TtsHttpError extends Error {
   }
 }
 /**
- * What a refusal's body says is wrong: Google answers `{ error: { message, status } }`. Read for Gemini only (a 400
- * there is "something in the request", and only the message says what); never thrown from.
+ * What a refusal's body says is wrong: Google answers `{ error: { message, status } }`. Read for Gemini (a 400 there
+ * is "something in the request", and only the message says what) and for ElevenLabs, which answers
+ * `{ detail: { status, message } }` (quota_exceeded, voice_not_found …) or, for a field it refuses, a list
+ * `{ detail: [{ loc, msg }] }`. Never thrown from.
  */
 async function refusalDetail(response: TtsResponse): Promise<string> {
   try {
     const body: unknown = response.json ? await response.json() : typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
-    const error = objectValue(objectValue(Array.isArray(body) ? body[0] : body).error);
-    return [typeof error.status === 'string' ? error.status : '', typeof error.message === 'string' ? error.message : ''].filter(Boolean).join(': ').replace(/\s+/g, ' ').slice(0, 300);
+    const top = objectValue(Array.isArray(body) ? body[0] : body), detail = top.detail;
+    const said = (row: Record<string, unknown>) => [typeof row.status === 'string' ? row.status : '', typeof row.message === 'string' ? row.message : typeof row.msg === 'string' ? row.msg : ''].filter(Boolean).join(': ');
+    const text = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(row => said(objectValue(row))).filter(Boolean).join(' | ') : detail ? said(objectValue(detail)) : said(objectValue(top.error));
+    return text.replace(/\s+/g, ' ').slice(0, 300);
   } catch { return ''; }
 }
 /**
@@ -83,7 +100,7 @@ export async function ttsFetch(url: string, options: RequestInit = {}, service: 
     // translation must explicitly use GET or Risu rejects the missing body.
     const request:RequestInit & {requestTimeoutMs:number}={method:'GET',...options,signal:controller.signal,requestTimeoutMs:90_000};
     const response: TtsResponse = await host.nativeFetch(url, request);
-    if (response.ok === false || (response.status != null && response.status >= 400)) throw new TtsHttpError(response.status, service, service === 'gemini' ? await refusalDetail(response) : '');
+    if (response.ok === false || (response.status != null && response.status >= 400)) throw new TtsHttpError(response.status, service, service === 'gemini' || service === 'elevenlabs' ? await refusalDetail(response) : '');
     return { ok:response.ok, status:response.status, data:response.data, headers:response.headers,
       json:response.json ? () => response.json!() : undefined, arrayBuffer:response.arrayBuffer ? () => response.arrayBuffer!() : undefined, finish };
   } catch(error) {

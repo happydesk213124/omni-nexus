@@ -47,8 +47,8 @@ export function addIrodoriVoicesStructure(root: ParentNode): void {
   root.querySelector('#tts-voices')?.insertAdjacentHTML('afterend', PANEL);
 }
 /** A page's tabs under the engine in use: Irodori's presets stand where Fish's library does. */
-export function engineTabs(tabs: readonly string[], engine: 'fish' | 'irodori' | 'gemini'): readonly string[] {
-  // Gemini's presets the same way (gemini-voices.ts names that tab; this file imports nothing, so its id is here).
-  const own = engine === 'irodori' ? IRODORI_VOICES_TAB : engine === 'gemini' ? 'tts-gemini-voices' : '';
+export function engineTabs(tabs: readonly string[], engine: 'fish' | 'irodori' | 'gemini' | 'elevenlabs'): readonly string[] {
+  // Gemini's and ElevenLabs's the same way (their own files name those tabs; this file imports nothing, so the ids are here).
+  const own = engine === 'irodori' ? IRODORI_VOICES_TAB : engine === 'gemini' ? 'tts-gemini-voices' : engine === 'elevenlabs' ? 'tts-eleven-voices' : '';
   return own ? tabs.map(tab => tab === 'tts-voices' ? own : tab) : tabs;
 }

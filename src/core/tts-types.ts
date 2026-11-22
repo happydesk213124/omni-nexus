@@ -34,6 +34,8 @@ export interface TtsCharacter {
   irodoriKey?: string;
   /** The Gemini preset the card speaks with while Gemini is the engine (its Fish and Irodori voices kept beside it). */
   geminiKey?: string;
+  /** The ElevenLabs voice the card speaks with while ElevenLabs is the engine (its other engines' voices kept beside it). */
+  elevenKey?: string;
   fixed: boolean;
   gain: number;
   /** true: leave loudness to automatic normalization and ignore gain. Absent on older rows (nonzero gain = manual). */
@@ -152,8 +154,8 @@ export interface TtsSettings {
    * is the OpenRouter key (empty: JEV's, when JEV goes through OpenRouter).
    */
   fish: { url: string; key: string; model: string; via: 'fish' | 'openrouter'; routerKey: string };
-  /** Which service speaks: Fish Audio, the user's own Irodori-TTS server, or Gemini TTS. */
-  engine: 'fish' | 'irodori' | 'gemini';
+  /** Which service speaks: Fish Audio, the user's own Irodori-TTS server, Gemini TTS, or ElevenLabs. */
+  engine: 'fish' | 'irodori' | 'gemini' | 'elevenlabs';
   /**
    * Irodori-TTS-Server: self-hosted, the OpenAI speech API, Japanese only. `voice` is the server's voice every line
    * speaks with. The server makes one line at a time unless it is set up for more, hence its own `concurrency`.
@@ -170,6 +172,12 @@ export interface TtsSettings {
    * read in by itself once.
    */
   gemini: { via: 'studio' | 'vertex'; key: string; serviceAccountJson: string; location: string; model: string; voice: string; concurrency: number; persona: boolean; assign: 'design' | 'list' | 'embedding'; listed: boolean };
+  /**
+   * ElevenLabs: an API key, the model that speaks (`eleven_v3` and the v4 ones take [audio tags] in the text; the
+   * multilingual and flash ones read them aloud, so none is sent there) and `voice`, the voice id a card with no voice
+   * of its own speaks with. `listed`: the account's voices were read in by themselves once.
+   */
+  eleven: { key: string; model: string; voice: string; concurrency: number; listed: boolean };
   llm: LlmSettings;
   translation: {
     provider: 'off' | 'llm' | 'google-free' | 'google' | 'deepl';
@@ -196,4 +204,6 @@ export interface TtsData {
   irodoriVoices: TtsVoice[];
   /** Gemini's voice presets: the prebuilt ones from the start, and those read from its voice list. */
   geminiVoices: TtsVoice[];
+  /** ElevenLabs's voices: the account's own (its library, cloned and designed ones), read from its voice list. */
+  elevenVoices: TtsVoice[];
 }

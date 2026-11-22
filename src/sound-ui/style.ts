@@ -55,7 +55,7 @@ export function voiceListCssFor(css: string): string {
  * fill the height and lay its tiles out (the panel, the list) are theirs too. Without them their lists stopped at
  * the old 485 px height with the page empty below, and the tiles were a looser grid of their own.
  */
-const ENGINE_LISTS = [['tts-irodori-voices', 'iv-list'], ['tts-gemini-voices', 'gv-list']] as const;
+const ENGINE_LISTS = [['tts-irodori-voices', 'iv-list'], ['tts-gemini-voices', 'gv-list'], ['tts-eleven-voices', 'ev-list']] as const;
 const ENGINE_PATTERN = /#(tts-voices|voice-list)(?![\w-])/g;
 export function engineVoiceListCss(css: string): string {
   return copiedRules(css, selector => selector.match(ENGINE_PATTERN)

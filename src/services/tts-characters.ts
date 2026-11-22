@@ -13,7 +13,7 @@ import { costumeCue } from '../domain/tts/costume-cue';
 import { costumesOf, refreshCostumeNames } from './costume-names';
 import { callLlm } from '../providers/llm/client';
 import { ttsData, saveTtsData, ttsCandidateVoices, ttsEngineVoices } from '../storage/tts-store';
-import { bindVoice, boundVoiceKey } from '../domain/tts/engine-voice';
+import { bindVoice, boundVoiceKey, ownVoiceEngine, ownVoices } from '../domain/tts/engine-voice';
 import { ttsCharacterSources, voicePickSources, type TtsChatContext, type TtsSourceOptions } from './tts-context';
 import { loadSoundData } from '../storage/sound-store';
 import { soundEmbedSettings } from '../providers/sound/embed';
@@ -46,7 +46,7 @@ export function voicePickOptions(picking: readonly TtsCharacter[], about?: Reado
   const uses = new Map<string, number>();
   for (const c of characters) if (key(c)) uses.set(key(c), (uses.get(key(c)) ?? 0) + 1);
   const current = new Map(picking.filter(c => key(c)).map(c => [c.id, key(c)]));
-  return { taken, uses, current, ...(about?.size ? { about } : {}), ...(engine === 'gemini' ? { pitch: true } : {}), ...(geminiEmbeds() ? { words: true } : {}) };
+  return { taken, uses, current, ...(about?.size ? { about } : {}), ...(engine === 'gemini' ? { pitch: true } : {}), ...(geminiEmbeds() || engine === 'elevenlabs' ? { words: true } : {}) };
 }
 /**
  * A few lines about each character from the lorebook, for the embedding engine, which otherwise knows a character by
@@ -117,8 +117,7 @@ export function deleteTtsCharacters(rows: readonly TtsCharacter[]): void {
 /** Whether the card already speaks with a voice of its own under the engine in use. */
 function voiced(character: TtsCharacter, listed = false): boolean {
   const data = ttsData();
-  if (data.settings.engine === 'irodori') return data.irodoriVoices.some(v => v.key === character.irodoriKey);
-  if (data.settings.engine === 'gemini') return data.geminiVoices.some(v => v.key === character.geminiKey);
+  if (ownVoiceEngine(data.settings.engine)) { const key = boundVoiceKey(character, data.settings.engine); return !!key && ownVoices(data, data.settings.engine).some(v => v.key === key); }
   return !!character.fishId || data.voices.some(v => v.key === character.voiceKey && (listed || v.fishId));
 }
 /**
@@ -176,7 +175,7 @@ async function ensureOwnVoices(context: TtsChatContext, names: string[], current
 function ensureListedVoices(context: TtsChatContext, names: string[], current: () => boolean, messageIds: string[] = [], marks: ReadonlyMap<string, string> = new Map()): Promise<void> {
   const data = ttsData();
   // Irodori with no presets: there is nothing to choose among, and every line has the default voice.
-  if (data.settings.engine === 'irodori' && !data.irodoriVoices.length || data.settings.engine === 'gemini' && !data.geminiVoices.length) return Promise.resolve();
+  if (ownVoiceEngine(data.settings.engine) && !ownVoices(data, data.settings.engine).length) return Promise.resolve();
   // A ready voice must not join the scope-wide queue for unrelated new people.
   names = [...new Set(names)].filter(name => {
     const character = resolveTtsSpeaker(name, data.characters, context.rosterScope);

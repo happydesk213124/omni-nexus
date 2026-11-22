@@ -18,7 +18,7 @@ export function resolveTtsRole(role: TtsRole, roster: readonly TtsCharacter[], s
   const cards = roster.filter(c => c.role === role);
   const card = (scope !== 'global' ? cards.find(c => c.scope === scope && c.followGlobal === false) : undefined) || cards.find(c => c.scope === 'global') || null;
   const followed = card?.followId ? roster.find(c => c.id === card.followId && !c.role) : undefined;
-  return card && followed ? { ...card, voiceKey: followed.voiceKey, fishId: followed.fishId, irodoriKey: followed.irodoriKey, gain: followed.gain, autoGain: followed.autoGain } : card;
+  return card && followed ? { ...card, voiceKey: followed.voiceKey, fishId: followed.fishId, irodoriKey: followed.irodoriKey, elevenKey: followed.elevenKey, gain: followed.gain, autoGain: followed.autoGain } : card;
 }
 export const ttsSegmentRole = (s: Pick<TtsSegment, 'kind' | 'speaker' | 'monologue'>): TtsRole | null => s.kind === 'narration' || (s.kind === 'illustration' && !s.speaker) ? 'narrator' : s.monologue ? 'monologue' : null;
 /** Who voices a line: its role card, else the named speaker's card. */
@@ -69,7 +69,7 @@ export function mergeTtsCharacter(roster: TtsCharacter[], draft: TtsCharacter): 
   if (group.some((a, i) => group.slice(i + 1).some(b => !sameTtsPerson(a, b)))) throw new Error('같은 이름의 후보가 여러 명입니다. 성을 입력해 주세요.');
   const previous = original || candidates[0];
   const merged = { ...draft, id: previous?.id || draft.id, triggers: [...new Set([...draft.triggers, ...candidates.flatMap(c => c.triggers)])] };
-  if (!original && previous) Object.assign(merged, { voiceKey: previous.voiceKey, fishId: previous.fishId, fixed: previous.fixed, gain: previous.gain }, previous.irodoriKey ? { irodoriKey: previous.irodoriKey } : {});
+  if (!original && previous) Object.assign(merged, { voiceKey: previous.voiceKey, fishId: previous.fishId, fixed: previous.fixed, gain: previous.gain }, previous.irodoriKey ? { irodoriKey: previous.irodoriKey } : {}, previous.elevenKey ? { elevenKey: previous.elevenKey } : {});
   if (!original) for (const field of ['surname', 'givenName'] as const) merged[field] ||= previous?.[field] || '';
   merged.surnameAliases = [...new Set([...merged.surnameAliases, ...candidates.flatMap(c => c.surnameAliases)])];
   merged.givenAliases = [...new Set([...merged.givenAliases, ...candidates.flatMap(c => c.givenAliases)])];

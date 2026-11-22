@@ -4,8 +4,10 @@ import { isSoundSegment, speechTone, synthesisSignature } from '../domain/tts/se
 import { irodoriLine } from '../domain/tts/irodori-emoji';
 import { irodoriDefaultVoice } from '../providers/tts/irodori';
 import { geminiDefaultVoice } from '../providers/tts/gemini';
+import { elevenDefaultVoice } from '../providers/tts/eleven';
+import { ensureElevenVoiceList } from './eleven-voices';
 import { ensureGeminiVoiceList, geminiPersona } from './gemini-voices';
-import { boundVoiceKey, ownVoiceEngine } from '../domain/tts/engine-voice';
+import { boundVoiceKey, OWN_ENGINE_NAME, ownVoiceEngine, ownVoices, type OwnVoiceEngine } from '../domain/tts/engine-voice';
 import { allowedTtsText, ttsExcludeTerms, ttsSpokenText, ttsWithoutParentheticals } from '../domain/tts/filter';
 import { spokenWithVoiceTags, voiceTagMode, type VoiceTagLanguage } from '../domain/tts/voice-tags';
 import { costumeVoiceOf, ttsCharacterGain, ttsSegmentOwner, ttsSegmentRole } from '../domain/tts/identity';
@@ -109,11 +111,11 @@ export class OmniTtsRuntime {
   private async changed(): Promise<void> {
     const s = ttsData().settings;
     // Irodori's server makes one line at a time unless it was set up for more: requests past that only wait in its queue.
-    const slots = s.engine === 'irodori' ? s.irodori.concurrency : s.engine === 'gemini' ? s.gemini.concurrency : s.concurrency;
+    const slots = s.engine === 'irodori' ? s.irodori.concurrency : s.engine === 'gemini' ? s.gemini.concurrency : s.engine === 'elevenlabs' ? s.eleven.concurrency : s.concurrency;
     this.queue.configure(slots, Math.min(s.background, slots));
     // The line playing keeps its own kind's level (a narration line, narration's): a level moved meanwhile is heard at once.
     this.player.configure(s.rate, ttsVolumeOf(s, this.current?.segment.kind));
-    const generation = JSON.stringify([s.enabled, s.engine, s.irodori, { ...s.gemini, concurrency: 0 }, s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly, s.inlineTags]);
+    const generation = JSON.stringify([s.enabled, s.engine, s.irodori, { ...s.gemini, concurrency: 0 }, [s.eleven.key, s.eleven.model], s.fish, s.translation, s.normalize, s.excludeText, s.skipChars, s.stripBrackets, s.omitCharacters, s.omitParenText, s.skipSymbolOnly, s.inlineTags]);
     if (generation !== this.settingsSignature) {
       this.failedAudio.clear();
       this.settingsSignature = generation; this.viewport++; this.queue.cancelPending(); this.stop();
@@ -267,7 +269,10 @@ export class OmniTtsRuntime {
     const current = ttsData().settings.engine, irodori = ownVoiceEngine(current);
     // Gemini's catalog, once, behind: the thirty prebuilt voices are all a cast has until it is read.
     if (current === 'gemini') void ensureGeminiVoiceList();
-    const presetsOf = (engine: 'irodori' | 'gemini') => engine === 'gemini' ? ttsData().geminiVoices : ttsData().irodoriVoices;
+    // ElevenLabs's own voices the same way: until they are read there is none to give a cast. With no default voice
+    // either there is none to speak with at all, so the very first line waits for the list (its first voice then speaks).
+    if (current === 'elevenlabs') { const listed = ensureElevenVoiceList(); if (!ttsData().elevenVoices.length && !ttsData().settings.eleven.voice.trim()) await listed; if (!valid()) return []; }
+    const presetsOf = (engine: OwnVoiceEngine) => ownVoices(ttsData(), engine);
     const speaking = irodori && !presetsOf(current).length ? [] : requests.filter(r => !r.fishId && r.segment.speaker);
     // 첫 대사 이모지: the emoji a speaker's line opened with tell a new voice's gender and age.
     const marks = new Map(speaking.flatMap(r => r.segment.marks ? [[r.segment.speaker, r.segment.marks] as const] : []));
@@ -287,10 +292,10 @@ export class OmniTtsRuntime {
       // A voice named outright (a Fish voice auditioned in the library) is Fish's whatever engine is chosen, unless
       // the request says whose it is. Otherwise Irodori speaks with the card's preset, else the settings' default voice.
       const own = request.engine ? ownVoiceEngine(request.engine) : irodori && !request.fishId;
-      const ownEngine: 'irodori' | 'gemini' = request.engine && ownVoiceEngine(request.engine) ? request.engine : current === 'gemini' ? 'gemini' : 'irodori';
+      const ownEngine: OwnVoiceEngine = request.engine && ownVoiceEngine(request.engine) ? request.engine : ownVoiceEngine(current) ? current : 'irodori';
       const presetKey = character ? boundVoiceKey(character, ownEngine) : '';
       const preset = own && !request.fishId && presetKey ? presetsOf(ownEngine).find(v => v.key === presetKey) : undefined;
-      const fallback = ownEngine === 'gemini' ? geminiDefaultVoice(settings) : irodoriDefaultVoice(settings);
+      const fallback = ownEngine === 'gemini' ? geminiDefaultVoice(settings) : ownEngine === 'elevenlabs' ? elevenDefaultVoice(settings) : irodoriDefaultVoice(settings);
       const fishId = own ? (request.fishId || preset?.fishId || '').trim() || fallback : request.fishId || worn || character?.fishId || voice?.fishId || '';
       // A costume's voice that fails is not replaced by another for the whole card.
       const recoverable = !own && !request.fishId && !worn && character && request.segment.kind !== 'audition' && !role;
@@ -304,7 +309,7 @@ export class OmniTtsRuntime {
       const tags = voiceTagMode(voiceSettings);
       return fishId ? [{ request, text: spokenText(request.segment.spoken ?? request.segment.text, settings, tags), signature: '', fishId, gain: request.gain ?? (character ? ttsCharacterGain(character) : 0), rate: character?.rate, settings: voiceSettings, language: (character?.language || '').trim(), tone: [engine === 'gemini' && settings.gemini.persona ? geminiPersona(character ?? undefined, fishId) : '', speechTone(tags ? '' : request.segment.tone, base)].filter(Boolean).join('; '), character: recoverable ? JSON.parse(JSON.stringify(character)) as TtsCharacter : undefined }] : [];
     });
-    if (!prepared.length) throw new Error(irodori ? `TTS 모델 설정에서 ${current === 'gemini' ? 'Gemini' : 'Irodori'} 목소리를 먼저 골라 주세요.` : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
+    if (!prepared.length) throw new Error(irodori ? `TTS 모델 설정에서 ${ownVoiceEngine(current) ? OWN_ENGINE_NAME[current] : 'Irodori'} 목소리를 먼저 골라 주세요.` : '캐릭터 또는 나레이션 음성을 먼저 지정해 주세요.');
     const missing: Prepared[] = [];
     // A character's own language wins over the setting; with translation OFF
     // it still translates through the key-free Google service.

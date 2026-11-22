@@ -5,12 +5,13 @@ import { callLlm } from '../providers/llm/client';
 import { synthesizeFish } from '../providers/tts/fish';
 import { synthesizeIrodori } from '../providers/tts/irodori';
 import { geminiDefaultVoice, synthesizeGemini } from '../providers/tts/gemini';
+import { elevenDefaultVoice, elevenModel, synthesizeEleven } from '../providers/tts/eleven';
 import { selectTtsVoices } from '../providers/tts/selection';
 import { translateTts } from '../providers/tts/translation';
 import { input, on, text } from './common';
 
 export function bindTtsConnectionTests(): void {
-  for(const kind of ['fish','irodori','gemini','llm','jev','translation'] as const){
+  for(const kind of ['fish','irodori','gemini','elevenlabs','llm','jev','translation'] as const){
     const id=`tts-test-${kind}`,node=input(id);
     if(!node)continue;
     on(id,async()=>{
@@ -30,6 +31,11 @@ export function bindTtsConnectionTests(): void {
         }else if(kind==='gemini'){
           const bytes=await omniTts.queue.request('connection-gemini',()=>synthesizeGemini('안녕하세요. 연결 테스트입니다.','',geminiDefaultVoice(settings),settings),0);
           if(node.isConnected)text(id+'-result',`연결 성공 · 음성 ${(bytes.byteLength/1024).toFixed(1)} KB (${settings.gemini.model} · ${geminiDefaultVoice(settings)})`);
+        }else if(kind==='elevenlabs'){
+          // The default voice, else the first one read in: a key with no voice chosen yet can still be tested.
+          const voice=elevenDefaultVoice(settings)||data.elevenVoices[0]?.fishId||'';
+          const bytes=await omniTts.queue.request('connection-elevenlabs',()=>synthesizeEleven('안녕하세요. 연결 테스트입니다.','',voice,settings),0);
+          if(node.isConnected)text(id+'-result',`연결 성공 · 음성 ${(bytes.byteLength/1024).toFixed(1)} KB (${elevenModel(settings)} · ${voice})`);
         }else if(kind==='llm'){
           const answer=await callLlm({...settings.llm,max_tokens:32},[{role:'user',content:'Connection test. Reply only OK.'}]);
           if(!answer.trim())throw Error('모델 응답이 비어 있습니다.');

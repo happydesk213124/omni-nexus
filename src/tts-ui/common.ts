@@ -1,4 +1,5 @@
 import type { TtsCharacterGender } from '../core/tts-types';
+import { ownVoiceEngine, type TtsEngine } from '../domain/tts/engine-voice';
 import { omniTts } from '../services/tts-runtime';
 import { currentTtsContext } from '../services/tts-context';
 import { saveTtsData } from '../storage/tts-store';
@@ -23,10 +24,10 @@ export function download(value: unknown, name: string): void { const url = URL.c
 export async function readJson(file: File): Promise<unknown> { if (file.size > 5 * 1024 * 1024) throw new Error('JSON 파일은 5 MB 이하로 가져와 주세요.'); return JSON.parse(await file.text()); }
 export async function persist(): Promise<void> { omniTts.stop(); await saveTtsData(); document.dispatchEvent(new Event('omnitts-library')); }
 /** `voice.engine` 'irodori': the id is a voice on the user's Irodori server, heard in Japanese (all it reads). */
-export async function audition(fishId: string, gain = 0, voice: { tone?: string; model?: string; engine?: 'fish' | 'irodori' | 'gemini' } = {}): Promise<void> {
-  const irodori = voice.engine === 'irodori', gemini = voice.engine === 'gemini';
-  // Irodori or Gemini with no id: the default voice, which the runtime fills in.
-  if (!fishId && !irodori && !gemini) throw new Error('Fish 음성을 먼저 선택해 주세요.');
+export async function audition(fishId: string, gain = 0, voice: { tone?: string; model?: string; engine?: TtsEngine } = {}): Promise<void> {
+  const irodori = voice.engine === 'irodori', own = !!voice.engine && ownVoiceEngine(voice.engine);
+  // An engine of its own presets with no id: the default voice, which the runtime fills in.
+  if (!fishId && !own) throw new Error('Fish 음성을 먼저 선택해 주세요.');
   const reservation = omniTts.reservePlayback();
   await omniTts.player.unlock();
   if (!omniTts.player.ready) return;
@@ -45,7 +46,7 @@ export async function hearNewVoice(made: { voice: { fishId: string }; sample?: A
 }
 const LISTEN_LABEL = '듣기';
 // Fish has to synthesize before anything is heard, so the ▶ turns into a spinner.
-export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number; tone?: string; model?: string; engine?: 'fish' | 'irodori' | 'gemini' }): HTMLButtonElement {
+export function auditionButton(node: HTMLButtonElement, read: () => { fishId: string; gain?: number; tone?: string; model?: string; engine?: TtsEngine }): HTMLButtonElement {
   node.classList.add('tts-listen');
   node.innerHTML = `<span class="tts-listen-icon" aria-hidden="true">▶</span> ${LISTEN_LABEL}`;
   node.addEventListener('click', event => {
@@ -58,7 +59,7 @@ export function auditionButton(node: HTMLButtonElement, read: () => { fishId: st
   });
   return node;
 }
-export function listenButton(read: () => { fishId: string; gain?: number; engine?: 'fish' | 'irodori' | 'gemini' }): HTMLButtonElement { const node = document.createElement('button'); node.type = 'button'; return auditionButton(node, read); }
+export function listenButton(read: () => { fishId: string; gain?: number; engine?: TtsEngine }): HTMLButtonElement { const node = document.createElement('button'); node.type = 'button'; return auditionButton(node, read); }
 export const LISTEN_CSS = '.tts-listen-icon{display:inline-block;width:1em;text-align:center}.tts-listen.is-loading .tts-listen-icon{width:.85em;height:.85em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;font-size:0;vertical-align:-.1em;animation:tts-listen-spin .8s linear infinite}@keyframes tts-listen-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.tts-listen.is-loading .tts-listen-icon{animation-duration:2s}}';
 /**
  * Risu sandboxes the plugin frame without allow-forms, so a submit button never
