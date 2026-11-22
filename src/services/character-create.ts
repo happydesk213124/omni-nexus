@@ -14,6 +14,7 @@ import { callLlm } from './llm-call';
 import { fetchCharacterLorebookEntries } from './lorefilter';
 import { chatNoteSessionId, sessionAuthorNoteLlmContent } from './session-author-note';
 import { getPrompt } from './settings';
+import { folderListForLlm } from './folders';
 
 export async function createCharactersFromDescription(body: Record<string, unknown>): Promise<ApiResult> {
   const instruction = characterCreateInstruction(body.instruction);
@@ -38,7 +39,7 @@ export async function createCharactersFromDescription(body: Record<string, unkno
     await sessionAuthorNoteLlmContent(chatNoteSessionId(body.session_id || scope, { character_id: characterId })),
     characterImageExtraPriorityNote(lorebook, [...keys, ...names]),
   ];
-  const messages = characterCreateMessages({ instruction, sharedPrompt: await characterPrompt('batch'), notes, roster, lore });
+  const messages = characterCreateMessages({ instruction, sharedPrompt: await characterPrompt('batch'), notes, roster, lore, folders: await folderListForLlm(scope, characterId) });
   const raw = await callLlm(resolveLlmRole(getConfig(), 'asset_char'), messages);
   const chars = parseCharacterCreateReply(raw);
   await mergeRosterFromTagged({ sessionId: scope, characterId, tagged: { new_characters: chars, scenes: [] }, shotChars: [] });

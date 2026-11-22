@@ -68,6 +68,8 @@ export const SESSION_AUTHOR_NOTE_PRESETS_KEY = 'onx_session_author_note_presets'
 export const AUTHOR_NOTE_PRESETS_KEY = 'onx_author_note_presets';
 /** Image preset per bot and per session: {characters:{[chaId]:presetId}, sessions:{[noteSessionId]:'omni'|presetId}}. */
 export const PRESET_BINDINGS_KEY = 'onx_preset_bindings';
+/** 폴더 of the 캐릭터 and 스타일 프리셋 tabs (services/folders.ts). */
+export const FOLDERS_KEY = 'onx_folders';
 export const SETTINGS_PRESETS_KEY = 'onx_settings_presets';
 export const IMAGE_KEY = (id: string): string => `onx_nximg_${String(id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 /** Wall-clock of the previous boot — a diagnostic stamp, never read for behaviour. */

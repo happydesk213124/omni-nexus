@@ -3,6 +3,8 @@ import { getConfig, setConfig } from '../services/context';
 import type { CardSettings, StylePreset } from '../core/types';
 import { lookFilterAllows, presetModelBadge, splitLookFilter } from './preset-tiles';
 import { pickPresetAsset } from './preset-assets';
+import { presetFolders, savePresetFolders } from '../services/folders';
+import { mountFolderView, type FolderView } from './folder-view';
 
 interface Actions {
   config: () => { card?: CardSettings } | undefined;
@@ -13,6 +15,7 @@ interface Actions {
 }
 const settingsActions = (): Actions | undefined => Reflect.get(globalThis, '__OMNI_SETTINGS_ACTIONS__') as Actions | undefined;
 const hasLook = (preset: StylePreset | undefined): boolean => !!(preset?.look_hash || preset?.look_configured || preset?.look_preview_url);
+let mountedFolders: FolderView | undefined;
 /** Preview-only chrome around vendor preset handlers, which own persistence. */
 export function bindPresetSheet(): void {
   const search = document.querySelector<HTMLInputElement>('#nx-preset-search');
@@ -70,7 +73,26 @@ export function bindPresetSheet(): void {
   select?.addEventListener('change', update);
   update();
   paintReferenceProgress();
-  const picking = bindPresetSelection(tiles, update);
+  // 폴더: folders first in the grid; a tile dragged onto one is filed there (the tiles already drag, to reorder).
+  // Each repaint binds anew: the view over the last grid lets go of its listeners first.
+  mountedFolders?.dispose(); mountedFolders = undefined;
+  let folderView: FolderView | undefined;
+  const picking = bindPresetSelection(tiles, update, async ids => { await folderView?.choose(ids); });
+  const chips = document.getElementById('nx-preset-chips'), pathHost = document.getElementById('nx-preset-folder-path');
+  if (chips && pathHost) {
+    const path = document.createElement('div'); path.className = 'nx-folder-path'; path.hidden = true;
+    pathHost.replaceChildren(path);
+    folderView = mountFolderView({
+      key: 'preset', list: chips, path, tiles: () => tiles.filter(tile => tile.isConnected), looks: false, noun: '프리셋', nativeDrag: true,
+      idOf: tile => tile.dataset.presetSelect || '', nameOf: tile => tile.title || tile.textContent || '',
+      load: presetFolders, save: savePresetFolders,
+      searching: () => !!search.value.trim(), picked: () => picking.on ? picking.ids() : [],
+    });
+    search.addEventListener('input', () => folderView?.paint());
+    document.getElementById('nx-preset-new-folder')?.addEventListener('click', () => { void folderView?.create(); });
+    mountedFolders = folderView;
+    void folderView.refresh();
+  }
   for (const tile of tiles) tile.addEventListener('click', event => {
     // Selection mode: a tap picks or unpicks; the preset is neither applied nor opened.
     if (picking.on) { event.stopImmediatePropagation(); picking.toggle(tile); return; }
@@ -120,19 +142,20 @@ export function bindPresetSheet(): void {
  * on all of them. 참고컷 생성 runs one preset after another (NovelAI draws one
  * image at a time per account); 삭제 removes them in one settings write.
  */
-function bindPresetSelection(tiles: HTMLElement[], repaint: () => void): { on: boolean; toggle: (tile: HTMLElement) => void } {
-  const state = { on: false, toggle: (_tile: HTMLElement) => {} };
+function bindPresetSelection(tiles: HTMLElement[], repaint: () => void, toFolder: (ids: string[]) => Promise<void>): { on: boolean; toggle: (tile: HTMLElement) => void; ids: () => string[] } {
+  const state = { on: false, toggle: (_tile: HTMLElement) => {}, ids: (): string[] => [] };
   const toggleButton = document.getElementById('nx-preset-pick');
   const row = toggleButton?.parentElement;
   if (!toggleButton || !row) return state;
   const bar = document.createElement('div');
   bar.id = 'nx-preset-pick-bar'; bar.hidden = true; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '고른 프리셋');
   bar.innerHTML = '<span data-sel-count></span><button type="button" class="dock-btn" data-sel="all">전체 선택</button>'
-    + '<button type="button" class="dock-btn" data-sel="look-gen">참고컷 생성</button><button type="button" class="dock-btn" data-sel="delete">삭제</button>';
+    + '<button type="button" class="dock-btn" data-sel="folder">폴더로</button><button type="button" class="dock-btn" data-sel="look-gen">참고컷 생성</button><button type="button" class="dock-btn" data-sel="delete">삭제</button>';
   toggleButton.after(bar);
   const picked = new Set<string>();
   let note = '', running = false;
   const chosen = () => tiles.filter(tile => picked.has(tile.dataset.presetSelect || '') && tile.isConnected).map(tile => tile.dataset.presetSelect || '');
+  state.ids = chosen;
   const paint = () => {
     const n = chosen().length;
     bar.querySelector('[data-sel-count]')!.textContent = n + '개 선택' + (note ? ' · ' + note : '');
@@ -165,6 +188,7 @@ function bindPresetSelection(tiles: HTMLElement[], repaint: () => void): { on: b
   bar.addEventListener('click', event => {
     const action = (event.target as Element).closest<HTMLElement>('[data-sel]')?.dataset.sel;
     if (action === 'all') { for (const tile of tiles) if (!tile.hidden) { picked.add(tile.dataset.presetSelect || ''); setTile(tile, true); } paint(); return; }
+    if (action === 'folder') void run(ids => toFolder(ids));
     if (action === 'look-gen') void run(async (ids, actions) => {
       let done = 0;
       for (const [i, id] of ids.entries()) {

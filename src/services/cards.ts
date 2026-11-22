@@ -64,6 +64,7 @@ import { idbGet, idbPut } from '../storage/stores';
 import { callLlm } from './llm-call';
 import type { LlmMessage } from '../providers/llm/transform';
 import { rosterForSession } from './characters';
+import { rosterWithFolderLooks } from './folders';
 import { getConfig, messageBusyKeys, clearMessageRerollStop, isMessageRerollStopRequested } from './context';
 import {
   cardMetaFromLocation,
@@ -696,7 +697,8 @@ async function createRerollRevision(
   } catch {
     /* no readable job request means no cross-session sources */
   }
-  const roster = await rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds);
+  // 폴더 공통 태그: a reroll draws its people as a new shot would.
+  const roster = await rosterWithFolderLooks(await rosterForSession(sessionId, unifiedSessionId, characterId, sourceSessionIds), characterId);
 
   if (mode === 'full') {
     const job = await idbGet('jobs', row.job_id);

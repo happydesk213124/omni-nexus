@@ -49,6 +49,7 @@ import { idbDelete, idbGetAll, idbPut } from '../storage/stores';
 import { getLastAssetWeightMap } from './asset-tags';
 import { getCharRefPreviewUrl, getConfig, getExamplePreviewUrl } from './context';
 import { personaGlobals } from './persona-global';
+import { fileNewCharacter } from './folders';
 import { seedCharRefsFromLooks } from './nai-assets';
 
 export interface ReplaceOptions {
@@ -774,6 +775,9 @@ export async function mergeRosterFromTagged(args: MergeRosterArgs): Promise<Char
     }, writeOpts);
     savedCostumeOwners.add(rec.name);
     roster = await readRoster();
+    // 폴더: a new person the LLM filed (`folder`, a name from the list it was shown) goes into that folder.
+    const wish = cleanText((raw as { folder?: unknown } | null)?.folder, 80), made = wish ? resolveCharacter(rec.name, roster) : null;
+    if (made?.id) await fileNewCharacter(writeSessionId, writeSessionId === GLOBAL_SCOPE ? '' : characterId, made.id, wish).catch(() => undefined);
   }
 
   const saveCostumes = async (pairs: CostumePair[], onlyUnsaved = false): Promise<void> => {

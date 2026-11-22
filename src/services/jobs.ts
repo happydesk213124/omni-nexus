@@ -119,6 +119,7 @@ import {
   jobMatchesMessageIdentity,
 } from '../ui-contract/viewer-core';
 import { stripBakeTokens } from '../domain/chat-bake';
+import { rosterWithFolderLooks } from './folders';
 import {
   bakeCardsIntoChatMessage,
   jobChatTarget,
@@ -1148,6 +1149,8 @@ async function runJob(jobId: string): Promise<void> {
     });
     if (inlineBlock !== null) rosterWritten(request);
     roster = rosterWithSessionOutfits(roster, await getSessionAuthorNote(noteSessionId));
+    // 폴더 공통 태그: joined here, on the copy every shot of this job resolves its people from (never saved back).
+    roster = await rosterWithFolderLooks(roster, characterId);
     const successfulOutfitShots = new Map<number, TaggedShot>();
     dbg('job.roster', { roster: roster.length });
     const charMax = characterMaxLimit(card);

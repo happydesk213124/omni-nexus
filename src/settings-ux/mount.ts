@@ -127,7 +127,7 @@ function bindRisuPick(): void {
     bg.classList.toggle('on', on);
     pick.setAttribute('aria-hidden', on ? 'false' : 'true');
     railBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
-    railBtn.textContent = on ? '›' : '‹';
+    railBtn.textContent = on ? '다른 봇 ▴' : '다른 봇 ▾';
     if (on) void fillRisuTiles(document.getElementById('nx-risu-pick-tiles'));
   };
   railBtn.addEventListener('click', () => setOpen(!pick.classList.contains('open')));

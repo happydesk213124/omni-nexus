@@ -32,6 +32,7 @@ try {
   await page.goto('about:blank');
   await page.evaluate(shots => {
     const kv = new Map();
+    globalThis.stored = key => structuredClone(kv.get(key));
     const character = { chaId: 'preset-bot', name: 'Preset', chats: [{ id: 'preset-chat', message: [] }], globalLore: [],
       additionalAssets: [['NAI shot', 'assets/meta.png', 'png'], ['Plain art', 'assets/plain.png', 'png']] };
     globalThis.risuai = {
@@ -139,5 +140,27 @@ try {
   assert.match(made.positive, /artist:testpainter/);
   assert.equal(made.negative, 'lowres');
   await page.waitForFunction(() => !document.querySelector('dialog[aria-label="캐릭터 에셋으로 스타일 프리셋"]'));
-  console.log('[preset select] PASS: NAI5/NAI4.5 marks, JSON 관리 popup, pick without applying, 참고컷 생성 one by one, 참고컷 없는/있는 search, bulk delete, 에셋에서 with the metadata-only search');
+  // 폴더: none until one is made; a tile dragged onto a folder is filed there and the presets themselves are not rewritten.
+  assert.equal(await page.locator('#nx-preset-chips [data-ux-folder]').count(), 0);
+  assert.equal(await page.locator('#nx-preset-folder-path .nx-folder-path:not([hidden])').count(), 0, 'no path bar before a folder exists');
+  const order = () => page.evaluate(() => presetRuntime.t.backendSettings.card.presets.map(p => String(p.id)));
+  const presetsBefore = await order();
+  await page.locator('#nx-preset-new-folder').click();
+  assert.equal(await page.locator('#nx-folder-pop [data-folder-field="attire"]').count(), 0, 'a preset folder has no looks');
+  await page.locator('#nx-folder-pop [data-folder-field="name"]').fill('실사풍');
+  await page.locator('#nx-folder-pop [data-folder-save]').click();
+  const folder = page.locator('#nx-preset-chips [data-ux-folder]');
+  await folder.waitFor();
+  const first = page.locator('#nx-preset-chips [data-preset-select]').first(), firstId = await first.getAttribute('data-preset-select');
+  await first.dragTo(page.locator('#nx-preset-chips [data-ux-folder]'));
+  await page.waitForFunction(id => stored('onx_folders')?.presets?.[0]?.members?.includes(id), firstId);
+  assert.deepEqual(await order(), presetsBefore, 'filing a preset reorders and rewrites none');
+  assert.equal(await page.locator(`#nx-preset-chips [data-preset-select="${firstId}"]`).isVisible(), false, 'a filed preset leaves 전체');
+  await page.locator('#nx-preset-chips [data-ux-folder]').click();
+  assert.deepEqual(await page.locator('#nx-preset-chips [data-preset-select]').evaluateAll(tiles => tiles.filter(t => t.getClientRects().length).map(t => t.dataset.presetSelect)), [firstId]);
+  await page.locator(`#nx-preset-chips [data-preset-select="${firstId}"]`).dragTo(page.locator('#nx-preset-folder-path [data-folder-crumb]'));
+  await page.waitForFunction(() => stored('onx_folders').presets[0].members.length === 0);
+  await page.locator('#nx-preset-folder-path [data-folder-crumb]').click();
+  assert.equal(await page.locator(`#nx-preset-chips [data-preset-select="${firstId}"]`).isVisible(), true);
+  console.log('[preset select] PASS: NAI5/NAI4.5 marks, JSON 관리 popup, pick without applying, 참고컷 생성 one by one, 참고컷 없는/있는 search, bulk delete, 에셋에서 with the metadata-only search, folders by drag');
 } finally { await browser.close(); }

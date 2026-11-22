@@ -1122,7 +1122,56 @@
     .preset-tile.nx-off { opacity:.45; }
     .preset-tile.nx-persona::after { content:"페르소나"; position:absolute; top:4px; right:4px; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; }
     .preset-tile.nx-off::after { content:"꺼짐"; position:absolute; top:4px; right:4px; font-size:10px; line-height:1.4; padding:1px 5px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; }
-</style>
+
+    /* 캐릭터 탭 메뉴 (⋯, 가져오기 · 내보내기): one list of plainly named actions instead of a row of buttons. */
+    .nx-menu { position: fixed; z-index: 40; display: flex; flex-direction: column; min-width: 208px; max-width: min(300px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+    .nx-menu[hidden] { display: none; }
+    .nx-menu > button { display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; }
+    .nx-menu > button[hidden] { display: none; }
+    .nx-menu > button:hover, .nx-menu > button:focus-visible { background: var(--surface-2); }
+    .nx-menu > button:disabled { opacity: .45; }
+    .nx-menu > button.danger { color: #ff8f8f; }
+    .nx-menu > hr { width: 100%; height: 1px; margin: 5px 0; border: 0; background: var(--border); }
+    .nx-menu-title { display: block; padding: 4px 10px 3px; color: var(--muted); font-size: 11px; }
+    .nx-menu-title:empty { display: none; }
+    #nx-char-more { min-width: 38px; font-weight: 700; letter-spacing: 1px; }
+    #nx-char-risu-open { min-height: 38px; white-space: nowrap; }
+    /* 폴더: a path bar over the grid, folders first in it. Nothing of it shows until a folder is made. */
+    #nx-char-folder-path:empty, #nx-preset-folder-path:empty, .nx-folder-path[hidden], .nx-folder-wrap[hidden] { display: none; }
+    .nx-folder-path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 40px; padding: 6px 12px; border-top: 1px solid var(--border); }
+    .nx-folder-crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+    .nx-folder-crumbs > button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: inherit; font: inherit; white-space: nowrap; }
+    .nx-folder-crumbs > button[aria-current] { border-color: transparent; background: transparent; padding-left: 0; font-weight: 600; }
+    .nx-folder-crumbs > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nx-folder-crumbs > i { color: var(--muted); font-style: normal; }
+    .nx-folder-crumbs > small, .nx-folder-tip { color: var(--muted); font-size: 12px; }
+    .nx-folder-actions { display: flex; gap: 6px; }
+    .nx-folder-actions > button { padding: 6px 10px; white-space: nowrap; }
+    .nx-folder-empty { flex-basis: 100%; }
+    .preset-tile.nx-folder-out { display: none !important; }
+    .preset-tile.nx-folder-tile { gap: 4px; border-style: dashed; background: transparent; text-align: center; }
+    .preset-tile.nx-folder-tile > i { font-size: 34px; font-style: normal; line-height: 1; }
+    .preset-tile.nx-folder-tile > [data-folder-name] { padding: 0 6px; font-weight: 600; white-space: nowrap; }
+    .preset-tile.nx-folder-tile > small { color: var(--muted); font-size: 11px; }
+    .nx-drop { outline: 2px solid #7132f5 !important; outline-offset: -2px; background: rgba(113, 50, 245, .22) !important; }
+    .preset-tile.nx-dragging { opacity: .45; }
+    .nx-drag-ghost { position: fixed; left: 0; top: 0; z-index: 60; max-width: 180px; padding: 6px 10px; overflow: hidden; border-radius: 8px; background: #7132f5; color: #fff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+    .nx-folder-pop { max-height: calc(100vh - 32px); overflow: auto; }
+    .nx-folder-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; }
+    .nx-folder-field > span { color: var(--muted); }
+    .nx-folder-field input, .nx-folder-field textarea { width: 100%; max-width: none; box-sizing: border-box; }
+    .nx-folder-field .nx-invalid { border-color: #ff8f8f; }
+    .nx-folder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+    .nx-folder-grid > .wide { grid-column: 1 / -1; }
+    .nx-folder-note { margin: 10px 0 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .nx-folder-choices { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+    .nx-folder-choices > button { padding: 10px; text-align: left; }
+    /* 캐릭터 탭: 검색 옆의 「다른 봇」은 좁은 화면에서도 한 줄, 아래 두 버튼은 반씩. */
+    #nx-shell.nx-ux #characters .preset-search { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; }
+    #nx-shell.nx-ux #characters .preset-search > #nx-char-risu-open { width: auto; margin: 0; }
+    #nx-shell.nx-ux #characters .preset-dock { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #nx-shell.nx-ux #characters .preset-dock > .dock-up { grid-column: 1 / -1; }
+  </style>
 </head>
 <body>
   <div class="drawer-bg" id="drawerBg"></div>
@@ -1430,10 +1479,12 @@
                 <button class="btn-ghost" type="button" id="nx-preset-pick" aria-pressed="false">선택</button>
                 <button class="btn-ghost" type="button" id="nx-preset-second">2순위로 사용하기</button>
                 <button class="btn-ghost" type="button" id="nx-preset-new">새 프리셋</button>
+                <button class="btn-ghost" type="button" id="nx-preset-new-folder">📁 새 폴더</button>
                 <button class="btn-ghost" type="button" id="nx-preset-dup">복제</button>
                 <button class="btn-ghost" type="button" id="nx-preset-del">삭제</button>
               </div>
             </div>
+            <div id="nx-preset-folder-path"></div>
             <select id="nx-preset-select" hidden></select>
           </div>
           <div class="preset-mid">
@@ -1468,24 +1519,22 @@
             </div>
             <div class="preset-search">
               <input type="search" id="nx-char-search" placeholder="이름 · 별칭 · 원작 · 외형 태그 · 참고컷 없는" aria-label="캐릭터 검색">
+              <button class="btn-ghost" type="button" id="nx-char-risu-open" aria-expanded="false" aria-controls="nx-risu-pick" title="다른 봇의 캐릭터 목록 보기">다른 봇 ▾</button>
             </div>
             <div id="nx-lorefilter-slot"></div>
             <div class="preset-current">
               <b id="nx-char-current">린</b>
               <div class="actions">
                 <button class="btn-ghost" type="button" id="nx-char-select" aria-pressed="false">선택</button>
-                <button class="btn-ghost" type="button" id="nx-char-to-global">전역 로스터로</button>
-                <button class="btn-ghost" type="button" id="nx-char-to-session" hidden>현재 챗으로</button>
-                <button class="btn-ghost" type="button" id="nx-char-add-session">새 캐릭터</button>
-                <button class="btn-ghost" type="button" id="nx-char-add-global" hidden>새 캐릭터</button>
-                <button class="btn-ghost" type="button" id="nx-char-dup">복제</button>
-                <button class="btn-ghost" type="button" id="nx-char-del">삭제</button>
-                <button class="btn-ghost" type="button" id="nx-char-head-look-gen">참고컷 생성</button>
-                <button class="btn-ghost" type="button" id="nx-char-look-vibe">참고컷 vibe레퍼로</button>
+                <button class="btn-ghost" type="button" id="nx-char-add-session">＋ 새 캐릭터</button>
+                <button class="btn-ghost" type="button" id="nx-char-add-global" hidden>＋ 새 캐릭터</button>
+                <button class="btn-ghost" type="button" id="nx-char-new-folder">📁 새 폴더</button>
+                <button class="btn-ghost" type="button" id="nx-char-more" aria-haspopup="menu" aria-expanded="false" aria-controls="nx-char-more-menu" aria-label="이 캐릭터로 할 일" title="이 캐릭터로 할 일">⋯</button>
                 <button type="button" id="nx-save-chars" hidden></button>
                 <button type="button" id="nx-save-global-chars" hidden></button>
               </div>
             </div>
+            <div id="nx-char-folder-path"></div>
             <select id="nx-scope-char" hidden><option selected>린</option></select>
             <select id="nx-scope-chat" hidden><option value="unified" selected>통합 챗</option></select>
           </div>
@@ -1495,16 +1544,8 @@
             <div class="preset-empty" id="nx-char-empty">캐릭터가 없습니다.</div>
           </div>
           <div class="preset-dock">
-            <button class="dock-btn" type="button" id="nx-char-look-act">참고컷 등록</button>
-            <button class="dock-btn" type="button" id="nx-char-look-gen">참고컷 생성</button>
-
-            <button class="dock-btn" type="button" id="nx-char-import-session">로어북에서</button><button class="dock-btn" type="button" id="nx-char-import-global">페르소나에서</button><button class="dock-btn" type="button" id="nx-char-create-llm">LLM한테 시키기</button>
-            <div class="char-json-actions" role="group" aria-label="캐릭터 JSON">
-              <button class="dock-btn" type="button" id="nx-export-session-chars" aria-label="JSON 내보내기">내보내기</button>
-              <button class="dock-btn" type="button" id="nx-export-global-chars" aria-label="JSON 내보내기" hidden>내보내기</button>
-              <button class="dock-btn" type="button" id="nx-import-session-chars" aria-label="JSON 불러오기">불러오기</button>
-              <button class="dock-btn" type="button" id="nx-import-global-chars" aria-label="JSON 불러오기" hidden>불러오기</button>
-            </div>
+            <button class="dock-btn" type="button" id="nx-char-bring" aria-haspopup="menu" aria-expanded="false" aria-controls="nx-char-bring-menu">가져오기 · 내보내기 ▾</button>
+            <button class="dock-btn" type="button" id="nx-char-create-llm">LLM한테 시키기</button>
             <input id="nx-import-session-chars-file" type="file" accept=".json,application/json,text/plain" hidden>
             <input id="nx-import-global-chars-file" type="file" accept=".json,application/json,text/plain" hidden>
             <input id="nx-char-look-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
@@ -1515,8 +1556,31 @@
             <button class="dock-btn dock-up" type="button" id="nx-char-edit-btn" aria-expanded="false" aria-controls="nx-char-sheet">▲ 캐릭터 수정</button>
           </div>
         </div>
-        <div class="char-rail">
-          <button type="button" id="nx-char-risu-open" aria-expanded="false" aria-controls="nx-risu-pick">‹</button>
+        <div class="nx-menu" id="nx-char-more-menu" role="menu" aria-label="이 캐릭터로 할 일" hidden>
+          <small class="nx-menu-title" id="nx-char-more-title"></small>
+          <button type="button" role="menuitem" id="nx-char-menu-edit">수정</button>
+          <button type="button" role="menuitem" id="nx-char-dup">복제</button>
+          <button type="button" role="menuitem" id="nx-char-to-folder">폴더로 이동…</button>
+          <button type="button" role="menuitem" id="nx-char-to-global">전역 로스터로 보내기</button>
+          <button type="button" role="menuitem" id="nx-char-to-session" hidden>현재 챗으로 보내기</button>
+          <hr>
+          <small class="nx-menu-title">참고컷</small>
+          <button type="button" role="menuitem" id="nx-char-look-act">이미지 파일로 등록</button>
+          <button type="button" role="menuitem" id="nx-char-head-look-gen">참고컷 생성</button>
+          <button type="button" role="menuitem" id="nx-char-look-vibe">참고컷을 vibe 레퍼런스로</button>
+          <hr>
+          <button type="button" role="menuitem" class="danger" id="nx-char-del">삭제</button>
+        </div>
+        <div class="nx-menu" id="nx-char-bring-menu" role="menu" aria-label="가져오기 · 내보내기" hidden>
+          <small class="nx-menu-title">가져오기</small>
+          <button type="button" role="menuitem" id="nx-char-import-session">로어북에서 가져오기</button>
+          <button type="button" role="menuitem" id="nx-char-import-global">페르소나에서 가져오기</button>
+          <button type="button" role="menuitem" id="nx-import-session-chars">JSON 파일 불러오기</button>
+          <button type="button" role="menuitem" id="nx-import-global-chars" hidden>JSON 파일 불러오기</button>
+          <hr>
+          <small class="nx-menu-title">내보내기</small>
+          <button type="button" role="menuitem" id="nx-export-session-chars">JSON 파일로 내보내기</button>
+          <button type="button" role="menuitem" id="nx-export-global-chars" hidden>JSON 파일로 내보내기</button>
         </div>
       </section>
 

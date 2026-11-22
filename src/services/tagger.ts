@@ -1,3 +1,5 @@
+import { folderListForLlm } from './folders';
+import { characterFolderNote } from '../domain/character/create';
 import { readModulesDb } from '../storage/host-database';
 import { analysisBody } from '../domain/prompt/message-body';
 import { streamLineRange, streamLineImageLimits } from '../domain/prompt/stream-lines';
@@ -410,6 +412,9 @@ export async function buildCharacterLooksMessages(
   ));
 
   pushReferenceUser(messages, 'NovelAI asset tags', assetBlock);
+  // 폴더: the tagger may file the people it registers. No folder, no line: the request is as it was.
+  const folders = await folderListForLlm(sessionId, cleanText(request.character_id || '', 200));
+  if (folders.length) messages.push({ role: 'user', content: characterFolderNote(folders) });
 
   const incomplete = incompleteTargetsForLooks(rosterEarly, assetNames, assistant);
   if (incomplete.length) {

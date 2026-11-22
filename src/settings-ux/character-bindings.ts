@@ -14,9 +14,13 @@ import { connectCharacterImages, paintReferenceProgress, syncCharacterTilePrevie
 import { listCharacters, upsertCharacter, deleteCharacter } from '../services/characters';
 import { linkedTts, openLinkedTts, ttsReady } from './linked-tts';
 import { resetCharacterPreviewIndex, registerCharacterPreview, unregisterCharacterPreview, characterCardForTile } from './character-preview-index';
+import { characterFolders, onFoldersChange, saveCharacterFolders } from '../services/folders';
+import { mountFolderView, type FolderView } from './folder-view';
+import { bindMenu } from './menu';
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const isField = (element: Element): element is Field => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
 let selectedId = '';
+const mountedFolders: FolderView[] = [];
 let selectedScope = 'session';
 
 /** Keep vendor cards intact so oe(), costume handlers and unified saves retain their context. */
@@ -61,7 +65,7 @@ export function bindCharacterSheet(): void {
   if (penis && ![...penis.options].some(o => o.value === '[base]')) penis.add(new Option('[base]', '[base]'));
   let current: HTMLElement | undefined;
   // Filled in below, once tiles and deletion exist; tile clicks only read it.
-  const selection = { on: false, toggle: (_card: HTMLElement, _tile: HTMLElement) => {}, clear: () => {} };
+  const selection = { on: false, toggle: (_card: HTMLElement, _tile: HTMLElement) => {}, clear: () => {}, ids: (): string[] => [] };
   const mirrors =[...sheet.querySelectorAll<HTMLElement>('*')].flatMap(element => {
     const attr = element.getAttributeNames().find(name => name.startsWith('data-char-'));
     return attr ? [{ element, selector: `[${attr}]` }] : [];
@@ -359,7 +363,76 @@ export function bindCharacterSheet(): void {
     });
   }
   if(empty) empty.textContent='등록된 캐릭터가 없습니다.';
-  bindSelection({ cards: () => cards, scope: () => selectedScope, removeCharacters, selection });
+  // 폴더: one view per roster list (this bot's, 전역 로스터's), the shown one following the scope switch.
+  const searchBox = document.getElementById('nx-char-search') as HTMLInputElement | null;
+  const pathHost = document.getElementById('nx-char-folder-path');
+  const views = new Map<string, FolderView>();
+  // Each repaint binds anew: the views over the last lists let go of their listeners first.
+  for (const old of mountedFolders.splice(0)) old.dispose();
+  const rosterScope = (kind: string): string => kind === 'global' ? '__global__' : (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '';
+  if (pathHost) for (const kind of ['session', 'global']) {
+    const list = document.getElementById(`nx-char-${kind}-list`);
+    if (!list) continue;
+    const wrap = document.createElement('div'); wrap.className = 'nx-folder-wrap'; wrap.dataset.folderScope = kind;
+    const path = document.createElement('div'); path.className = 'nx-folder-path'; path.hidden = true;
+    wrap.append(path); pathHost.append(wrap);
+    const tiles = () => [...list.querySelectorAll<HTMLElement>('[data-ux-character-tile]')];
+    const view = mountFolderView({
+      key: `character:${kind}:${rosterScope(kind)}`, list, path, tiles, looks: true, noun: '캐릭터',
+      idOf: tile => tile.dataset.uxCharacterTile || '', nameOf: tile => tile.title,
+      load: () => characterFolders(rosterScope(kind)), save: folders => saveCharacterFolders(rosterScope(kind), '', folders),
+      searching: () => !!searchBox?.value.trim(), picked: () => selection.on ? selection.ids() : [],
+      // The chosen character is one that is shown: opening a folder moves the choice into it.
+      painted: () => {
+        if (selectedScope !== kind) return;
+        const shown = (tile: HTMLElement | undefined) => !!tile && !tile.hidden && !tile.classList.contains('nx-folder-out');
+        if (current && shown(tileFor(current))) return;
+        const next = tiles().find(shown);
+        if (next || current) choose(next ? characterCardForTile(next) : undefined);
+      },
+    });
+    views.set(kind, view); mountedFolders.push(view);
+    // A tile added or removed (a new character, a delete) repaints; one made inside an open folder is filed there.
+    new MutationObserver(records => {
+      const added = records.flatMap(r => [...r.addedNodes]).filter((n): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.uxCharacterTile);
+      const removed = records.some(r => [...r.removedNodes].some(n => n instanceof HTMLElement && !!n.dataset.uxCharacterTile));
+      if (!added.length && !removed) return;
+      const fresh = added.map(tile => tile.dataset.uxCharacterTile || '').filter(id => id.startsWith('new_'));
+      if (fresh.length && view.current()) void view.move(fresh, view.current()); else view.paint();
+    }).observe(list, { childList: true });
+    void view.refresh();
+  }
+  const view = () => views.get(selectedScope);
+  const showFolderScope = () => { for (const wrap of pathHost?.querySelectorAll<HTMLElement>('[data-folder-scope]') || []) wrap.hidden = wrap.dataset.folderScope !== selectedScope; view()?.paint(); };
+  bar.addEventListener('omni-roster-scope', showFolderScope);
+  searchBox?.addEventListener('input', () => view()?.paint());
+  // A person the LLM filed while this tab is open shows in its folder at once.
+  const stopFolders = onFoldersChange(() => { if (!sheet.isConnected) { stopFolders(); return; } });
+  document.getElementById('nx-char-new-folder')?.addEventListener('click', () => { void view()?.create(); });
+  document.getElementById('nx-char-to-folder')?.addEventListener('click', () => { if (current) void view()?.choose([current.dataset.charId || '']); });
+  showFolderScope();
+
+  // ⋯: what is done to the chosen character, by name. The same menu opens on a tile's right-click (a long press on a phone).
+  const moreMenu = document.getElementById('nx-char-more-menu'), moreButton = document.getElementById('nx-char-more');
+  if (moreMenu) {
+    const title = document.getElementById('nx-char-more-title');
+    const more = bindMenu(moreMenu, moreButton, () => {
+      const name = current?.querySelector<HTMLInputElement>('[data-char-name]')?.value || '';
+      if (title) title.textContent = name || '캐릭터를 먼저 골라 주세요';
+      for (const item of moreMenu.querySelectorAll<HTMLButtonElement>('button')) item.disabled = !current;
+    });
+    document.getElementById('nx-char-menu-edit')?.addEventListener('click', () => { if (!document.getElementById('nx-char-sheet')?.classList.contains('open')) document.getElementById('nx-char-edit-btn')?.click(); });
+    for (const kind of ['session', 'global']) document.getElementById(`nx-char-${kind}-list`)?.addEventListener('contextmenu', event => {
+      const tile = (event.target as Element).closest<HTMLElement>('[data-ux-character-tile]'), card = tile && characterCardForTile(tile);
+      if (!card || selection.on) return;
+      event.preventDefault();
+      choose(card);
+      more.openAt(event.clientX, event.clientY);
+    });
+  }
+  const bringMenu = document.getElementById('nx-char-bring-menu');
+  if (bringMenu) bindMenu(bringMenu, document.getElementById('nx-char-bring'));
+  bindSelection({ cards: () => cards, scope: () => selectedScope, removeCharacters, selection, toFolder: async ids => { await view()?.choose(ids); } });
   document.getElementById('nx-char-search')?.dispatchEvent(new Event('input', {bubbles:true}));
 }
 
@@ -436,7 +509,9 @@ function bindSelection(ctx: {
   cards: () => HTMLElement[];
   scope: () => string;
   removeCharacters: (targets: HTMLElement[]) => Promise<void>;
-  selection: { on: boolean; toggle: (card: HTMLElement, tile: HTMLElement) => void; clear: () => void };
+  selection: { on: boolean; toggle: (card: HTMLElement, tile: HTMLElement) => void; clear: () => void; ids: () => string[] };
+  /** 폴더로: asks which folder, then files the picked there. */
+  toFolder: (ids: string[]) => Promise<void>;
 }): void {
   // In the current character's row: when on, its own buttons give way to the bar, so no line is added.
   const toggleButton = document.getElementById('nx-char-select');
@@ -450,7 +525,7 @@ function bindSelection(ctx: {
   // No 완료: turning 선택 off is how selection ends.
   bar.innerHTML = '<span data-sel-count></span><button type="button" class="dock-btn" data-sel="all">전체 선택</button>'
     + '<button type="button" class="dock-btn" data-sel="off">비활성화</button><button type="button" class="dock-btn" data-sel="on">활성화</button>'
-    + '<button type="button" class="dock-btn" data-sel="llm">LLM 명령</button><button type="button" class="dock-btn" data-sel="look-gen">참고컷 생성</button>'
+    + '<button type="button" class="dock-btn" data-sel="folder">폴더로</button><button type="button" class="dock-btn" data-sel="llm">LLM 명령</button><button type="button" class="dock-btn" data-sel="look-gen">참고컷 생성</button>'
     + '<button type="button" class="dock-btn" data-sel="look-vibe">vibe레퍼로</button><button type="button" class="dock-btn" data-sel="to-global">전역 로스터로</button>'
     + '<button type="button" class="dock-btn" data-sel="to-session">현재 챗으로</button><button type="button" class="dock-btn" data-sel="delete">삭제</button>';
   const chosen = () => [...picked].filter(card => card.isConnected && card.dataset.charScope === ctx.scope());
@@ -474,6 +549,7 @@ function bindSelection(ctx: {
   };
   ctx.selection.toggle = (card) => { const on = !picked.has(card); if (on) picked.add(card); else picked.delete(card); setTile(card, on); paint(); };
   ctx.selection.clear = () => { for (const card of picked) setTile(card, false); picked.clear(); paint(); };
+  ctx.selection.ids = () => chosen().map(card => card.dataset.charId || '');
   const setMode = (on: boolean) => {
     ctx.selection.on = on; bar.hidden = !on;
     // A class, not hidden: the scope switch owns which of the row's buttons are hidden.
@@ -511,6 +587,7 @@ function bindSelection(ctx: {
       await moveCharacters(cards.map(card => card.dataset.charId || ''), rosterOf(cards[0], ctx.scope()), await moveTarget(action === 'to-global' ? 'global' : 'session'));
       for (const card of cards) picked.delete(card);
     });
+    if (action === 'folder') void run(cards => ctx.toFolder(cards.map(card => card.dataset.charId || '')));
     if (action === 'llm') void run(async cards => {
       const actions = (globalThis as Bridge).__OMNI_SETTINGS_ACTIONS__;
       if (!actions?.characterTarget || !actions.request) throw new Error('설정 연결을 찾을 수 없습니다.');

@@ -13,12 +13,20 @@ export function characterCreateInstruction(value: unknown): string {
   return text;
 }
 
+/** The folder list as the character LLM reads it, in the create request and beside the tagger's roster. */
+export function characterFolderNote(folders: ReadonlyArray<{ name: string; looks?: string }>): string {
+  return '# Reference: character folders\n' + JSON.stringify(folders)
+    + '\nFor each new_characters entry that clearly belongs in one of these folders, add "folder": "<that folder\'s name>" (exactly as listed); omit it otherwise. Never invent a folder. A folder\'s looks are added to its members automatically: do not repeat them in the character.';
+}
+
 export function characterCreateMessages(input: {
   instruction: string;
   sharedPrompt: string;
   notes: readonly string[];
   roster: readonly CharacterRecord[];
   lore: readonly LoreEntry[];
+  /** 폴더 the roster has: a new person may be filed in one. Empty or absent, the request is word for word as before. */
+  folders?: ReadonlyArray<{ name: string; looks?: string }>;
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [{
     role: 'system',
@@ -47,12 +55,13 @@ export function characterCreateMessages(input: {
   if (input.lore.length) {
     messages.push({ role: 'user', content: '# Reference: trigger-matched lorebook\n' + JSON.stringify(input.lore) });
   }
+  if (input.folders?.length) messages.push({ role: 'user', content: characterFolderNote(input.folders) });
   messages.push({ role: 'user', content: '# Characters to add\n' + input.instruction });
   return messages;
 }
 
 /** Validate the entire reply before any write so a malformed batch cannot partly register. */
-export function parseCharacterCreateReply(raw: unknown): Partial<CharacterRecord>[] {
+export function parseCharacterCreateReply(raw: unknown): Array<Partial<CharacterRecord> & { folder?: string }> {
   const parsed: unknown = parseJsonLoose(String(raw ?? ''));
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('LLM 응답에 new_characters 배열이 없습니다.');
   const list = (parsed as Record<string, unknown>).new_characters;
@@ -63,6 +72,7 @@ export function parseCharacterCreateReply(raw: unknown): Partial<CharacterRecord
     if (typeof record.name !== 'string' || !record.name.trim()) throw new Error('이름이 없는 캐릭터가 반환됐습니다.');
     const row = normalizeCharacterRecord(record);
     if (!row || !characterHasAppearance(row)) throw new Error(`${record.name}: 외형 정보가 없는 캐릭터가 반환됐습니다.`);
-    return { ...row, aliases: parseAliasList([row.name, ...row.aliases]) };
+    const folder = cleanText(record.folder, 80);
+    return { ...row, aliases: parseAliasList([row.name, ...row.aliases]), ...(folder ? { folder } : {}) };
   });
 }

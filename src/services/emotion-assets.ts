@@ -36,6 +36,7 @@ import { characterPreviewTags } from './character-preview';
 import { ensureCostumes, resolveCostumeFields } from '../domain/character/costume';
 import { wearTagsForWearState } from '../domain/character/wear-state';
 import { listCharacters } from './characters';
+import { rosterWithFolderLooks } from './folders';
 import { getConfig } from './context';
 
 /**
@@ -147,7 +148,8 @@ export async function findSprite(c: TtsCharacter, face: string, bot: EmotionBot,
 
 /** The illustration roster's person for a TTS character, if any. */
 async function rosterPerson(c: TtsCharacter, bot: EmotionBot): Promise<CharacterRecord | null> {
-  const people = [...await listCharacters(GLOBAL_SCOPE).catch(() => []), ...await listCharacters(unifiedSessionIdForCharacter(bot.id)).catch(() => [])];
+  // 폴더 공통 태그 go with the person here too: a sprite is drawn, and its age and looks judged, by what a shot would use.
+  const people = await rosterWithFolderLooks([...await listCharacters(GLOBAL_SCOPE).catch(() => []), ...await listCharacters(unifiedSessionIdForCharacter(bot.id)).catch(() => [])], bot.id);
   return people.find(p => matchIllustrationSpeaker(p, [c], c.scope) === c) ?? null;
 }
 /**

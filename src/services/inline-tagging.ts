@@ -20,6 +20,7 @@ import { fetchHostLorebookEntries } from './lorefilter';
 import { getPrompt } from './settings';
 import { chatNoteSessionId, getSessionAuthorNote, rememberRecentCast, rosterWithSessionOutfits, sessionAuthorNoteLlmContent, sessionDrawnCast, sessionRecentCast } from './session-author-note';
 import { collectAssetTagsForTagger, taggerRules, type TaggerArgs } from './tagger';
+import { rosterWithFolderLooks } from './folders';
 
 /**
  * Streaming tag generation (생성 옵션 → "Risu 메인 모델 메시지 스트리밍 중에 태그 생성").
@@ -147,6 +148,8 @@ export async function inlineTagState(scope: InlineScope): Promise<string> {
   let roster = await loadTaggerRoster({ sessionId, unifiedSessionId: sessionId, characterId });
   const note = noteId ? await getSessionAuthorNote(noteId).catch(() => null) : null;
   if (note) roster = rosterWithSessionOutfits(roster, note);
+  // 폴더 공통 태그: the streaming model writes its shots from these looks, so it sees what a shot will be drawn with.
+  roster = await rosterWithFolderLooks(roster, characterId);
   roster = roster.filter(char => cleanText(char.name, 200));
   const recent = texts(scope.recent);
   const remembered = noteId ? await sessionRecentCast(noteId) : [];

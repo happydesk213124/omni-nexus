@@ -50,11 +50,26 @@ try {
   assert.equal(await select.textContent(), '선택');
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);
   assert.equal(await page.locator('#nx-char-del-all').count(), 0, '전체삭제 is 선택 → 전체 선택 → 삭제 now');
-  for (const id of ['#nx-char-head-look-gen', '#nx-char-look-vibe', '#nx-char-dup']) assert.equal(await page.locator(id).isVisible(), true, id + ' in the name row');
+  // The name row keeps what starts something; what is done to the chosen character is in its ⋯ menu, by name.
+  for (const id of ['#nx-char-add-session', '#nx-char-new-folder', '#nx-char-more']) assert.equal(await page.locator(id).isVisible(), true, id + ' in the name row');
+  const menuIds = ['#nx-char-menu-edit', '#nx-char-dup', '#nx-char-to-folder', '#nx-char-to-global', '#nx-char-look-act', '#nx-char-head-look-gen', '#nx-char-look-vibe', '#nx-char-del'];
+  for (const id of menuIds) assert.equal(await page.locator(id).isVisible(), false, id + ' is in the menu, closed');
+  await page.locator('#nx-char-more').click();
+  for (const id of menuIds) assert.equal(await page.locator(id).isVisible(), true, id + ' in the open menu');
+  assert.equal(await page.locator('#nx-char-more-title').textContent(), await page.locator('#nx-char-current').textContent(), 'the menu says whose it is');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#nx-char-more-menu').isHidden(), true);
+  // The same menu on a tile's right-click, for that tile.
+  await tile('Beta').click({ button: 'right' });
+  assert.equal(await page.locator('#nx-char-more-menu').isVisible(), true);
+  assert.equal(await page.locator('#nx-char-more-title').textContent(), 'Beta');
+  await page.keyboard.press('Escape');
+  // Back on the tile that was chosen, as the steps below expect.
+  await tile('Alpha').click();
   await select.click();
   assert.equal(await page.locator('#nx-char-select-bar').isVisible(), true);
   // The bar takes the row's place: same line, the row's own buttons out of the way.
-  assert.equal(await page.locator('#nx-char-dup').isVisible(), false);
+  assert.equal(await page.locator('#nx-char-new-folder').isVisible(), false);
   const sameLine = await page.evaluate(() => Math.abs(document.getElementById('nx-char-select').getBoundingClientRect().top - document.querySelector('#nx-char-select-bar [data-sel="all"]').getBoundingClientRect().top) < 8);
   assert.ok(sameLine, 'the bar sits in the name row');
   await tile('Alpha').click();
@@ -84,7 +99,7 @@ try {
   for (const gone of ['copy']) assert.equal(await page.locator(`#nx-char-select-bar [data-sel="${gone}"]`).count(), 0, gone + ' gave way to 참고컷 생성 · vibe레퍼로');
   await select.click();
   assert.equal(await page.locator('#nx-char-select-bar').isHidden(), true);
-  assert.equal(await page.locator('#nx-char-dup').isVisible(), true, 'the row comes back');
+  assert.equal(await page.locator('#nx-char-new-folder').isVisible(), true, 'the row comes back');
   assert.equal(await page.locator('#nx-char-add-global').isVisible(), false, 'a scope-hidden button stays hidden');
   assert.equal(await page.locator('[data-ux-character-tile].nx-picked').count(), 0);
   // 참고컷 생성 / vibe레퍼로 over the picked: one card at a time, in tile order, each painted on its own card.
@@ -147,10 +162,13 @@ try {
   const moved = (scope, id, from) => page.waitForFunction(([there, gone]) => !!document.querySelector(there) && !document.querySelector(gone), [on(scope, id), on(from, id)]);
   const pane = id => page.locator('#' + id), sel = name => page.locator(`#nx-char-select-bar [data-sel="${name}"]`);
   await page.locator('[data-ux-scope="global"]').dispatchEvent('click');
-  assert.deepEqual([await pane('nx-char-to-global').isVisible(), await pane('nx-char-to-session').isVisible()], [false, true], 'the global tab sends to the chat');
   await page.locator(on('global', 'g-me')).click();
+  await page.locator('#nx-char-more').click();
+  assert.deepEqual([await pane('nx-char-to-global').isVisible(), await pane('nx-char-to-session').isVisible()], [false, true], 'the global tab sends to the chat');
+  await page.keyboard.press('Escape');
   // The chat open in Risu, though the tab was last showing another bot.
   await page.evaluate(() => { globalThis.lastShown = globalThis.__OMNI_CHARACTER_SCOPE__; globalThis.__OMNI_CHARACTER_SCOPE__ = () => 'another-bot'; });
+  await page.locator('#nx-char-more').click();
   await pane('nx-char-to-session').click();
   await moved('session', 'g-me', 'global');
   assert.equal(await page.evaluate(() => rosterNow().some(row => row.id === 'g-me')), true, 'in the open bot');
