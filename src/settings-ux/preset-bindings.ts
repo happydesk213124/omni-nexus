@@ -5,7 +5,7 @@ import { lookFilterAllows, presetModelBadge, splitLookFilter } from './preset-ti
 import { pickPresetAsset } from './preset-assets';
 import { presetFolders, savePresetFolders } from '../services/folders';
 import { mountFolderView, type FolderView } from './folder-view';
-import { bindMenu } from './menu';
+import { bindMenu, openButtonMenu } from './menu';
 
 interface Actions {
   config: () => { card?: CardSettings } | undefined;
@@ -88,6 +88,18 @@ export function bindPresetSheet(): void {
       idOf: tile => tile.dataset.presetSelect || '', nameOf: tile => tile.title || tile.textContent || '',
       load: presetFolders, save: savePresetFolders,
       searching: () => !!search.value.trim(), picked: () => picking.on ? picking.ids() : [],
+      // The presets' own order is the order: a reorder is one settings write, then the tab is drawn again.
+      order: { css: false, saved: () => [], save: async ids => {
+        const actions = settingsActions(), card = actions?.config()?.card;
+        const presets = ids.map(id => card?.presets?.find(p => String(p.id) === id)).filter((p): p is StylePreset => !!p);
+        if (!actions || !card || presets.length !== (card.presets || []).length) return;
+        await actions.flush();
+        await actions.save({ card: { ...card, presets } });
+        await actions.reload();
+      } },
+      itemMenu: (tile, x, y) => tileMenu(tile, x, y),
+      // What is picked is what is seen: a tile filed away is let go.
+      painted: () => { if (picking.on) for (const hiddenTile of chips.querySelectorAll<HTMLElement>('[data-preset-select].nx-picked.nx-folder-out')) picking.toggle(hiddenTile); },
     });
     search.addEventListener('input', () => folderView?.paint());
     document.getElementById('nx-preset-new-folder')?.addEventListener('click', () => { void folderView?.create(); });
@@ -97,9 +109,28 @@ export function bindPresetSheet(): void {
   }
   // ⋯: what is done to the chosen preset, by name; 가져오기 · 내보내기: where presets come from and go to.
   const moreMenu = document.getElementById('nx-preset-more-menu'), bringMenu = document.getElementById('nx-preset-bring-menu');
-  if (moreMenu) bindMenu(moreMenu, document.getElementById('nx-preset-more'), () => {
+  const more = moreMenu ? bindMenu(moreMenu, document.getElementById('nx-preset-more'), () => {
     const title = document.getElementById('nx-preset-more-title');
     if (title) title.textContent = current?.textContent || '';
+  }) : undefined;
+  // A tile's menu, for a held finger or a right-click. A tap on a preset tile applies it, so the menu of one that is
+  // not applied does not: it offers to apply it, or to file it. In 선택 mode it is the bar's actions for the picked.
+  function tileMenu(tile: HTMLElement, x: number, y: number): void {
+    const id = tile.dataset.presetSelect || '';
+    if (picking.on) {
+      if (!tile.classList.contains('nx-picked')) picking.toggle(tile);
+      openButtonMenu(x, y, `${picking.ids().length}개 선택`, [...document.querySelectorAll<HTMLButtonElement>('#nx-preset-pick-bar [data-sel]:not([data-sel="all"])')]);
+    } else if (select?.value === id) more?.openAt(x, y);
+    else {
+      const row = (label: string, run: () => void) => { const button = document.createElement('button'); button.textContent = label; button.onclick = run; return button; };
+      openButtonMenu(x, y, tile.title || tile.textContent || '', [row('이 프리셋 적용', () => tile.click()), row('폴더로 이동…', () => { void folderView?.choose([id]); })]);
+    }
+  }
+  document.getElementById('nx-preset-chips')?.addEventListener('contextmenu', event => {
+    const tile = (event.target as Element).closest<HTMLElement>('[data-preset-select]');
+    if (!tile) return;
+    event.preventDefault();
+    tileMenu(tile, (event as MouseEvent).clientX, (event as MouseEvent).clientY);
   });
   if (bringMenu) bindMenu(bringMenu, document.getElementById('nx-preset-bring'));
   for (const tile of tiles) tile.addEventListener('click', event => {

@@ -1168,6 +1168,12 @@
     @keyframes nx-drop-ready { 50% { box-shadow: 0 0 0 4px rgba(113, 50, 245, .18); } }
     .nx-drop { border-style: solid !important; border-color: #a98bff !important; background: rgba(113, 50, 245, .32) !important; transform: scale(1.05); transition: transform .12s ease-out; animation: none !important; }
     .nx-drop-done { animation: nx-drop-done .4s ease-out !important; }
+    /* Between two tiles (a reorder): the tile it would land beside steps aside, a bar on the side it lands on. */
+    .preset-tile.nx-insert-before, .preset-tile.nx-insert-after { transition: transform .12s ease-out; animation: none !important; }
+    .preset-tile.nx-insert-before { transform: translateX(7px); box-shadow: inset 5px 0 0 #a98bff; }
+    .preset-tile.nx-insert-after { transform: translateX(-7px); box-shadow: inset -5px 0 0 #a98bff; }
+    /* Several lifted together: the copy is a small stack with their number on it. */
+    .nx-drag-ghost.nx-drag-many { box-shadow: 6px 6px 0 -1px #4a2aa8, 12px 12px 0 -2px #2f1c6b, 0 14px 34px rgba(0, 0, 0, .55), 0 0 0 2px #7132f5; }
     @keyframes nx-drop-done { 30% { transform: scale(1.1); background: rgba(113, 50, 245, .45); } }
     @media (prefers-reduced-motion: reduce) { .nx-drag-ghost, .nx-drop-done, html.nx-tile-drag .preset-tile.nx-folder-tile, html.nx-tile-drag .nx-folder-crumbs > button { animation: none !important; } }
     /* 폴더 창: a header, a body that scrolls, a footer that stays. A bottom sheet on a phone. */

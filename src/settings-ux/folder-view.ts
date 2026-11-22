@@ -1,11 +1,12 @@
 import { uuid } from '../core/util/text';
-import { FOLDER_LOOK_FIELDS, folderOf, moveToFolder, type FolderLookField, type LookFolder } from '../domain/character/folders';
+import { FOLDER_LOOK_FIELDS, folderOf, moveToFolder, reorderIds, type FolderLookField, type LookFolder } from '../domain/character/folders';
 import { bindTileDrag } from './tile-drag';
 import { bindMenu } from './menu';
 
 /**
  * 폴더 over a grid of tiles (캐릭터, 스타일 프리셋), as in a file window: folders stand first in the grid and open on a
  * tap, a path bar leads back to 전체, and a tile is filed by dragging it onto a folder (or onto 전체, out of one).
+ * Dragged between two tiles it is set down there instead: the order of the tiles, and of the folders, is the user's.
  * With no folder made, nothing of this shows: the grid is as it always was.
  */
 export interface FolderViewOptions {
@@ -29,6 +30,13 @@ export interface FolderViewOptions {
   picked?: () => string[];
   /** After every paint: what is shown changed (a folder opened, a tile filed). */
   painted?: () => void;
+  /**
+   * The tiles may be reordered. `css`: their order is ours to draw (`saved` ids first, the rest as the list has them);
+   * otherwise the list's own order is the order, and `save` rewrites it.
+   */
+  order?: { css: boolean; saved: () => string[]; save: (ids: string[]) => Promise<void> };
+  /** A tile's menu: a finger held it where it was. */
+  itemMenu?: (tile: HTMLElement, x: number, y: number) => void;
   noun: string;
 }
 export interface FolderView {
@@ -53,6 +61,13 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
   const open = (id: string) => { opened.set(o.key, id); paint(); };
   const persist = async (next: LookFolder[]) => { folders = await o.save(next); paint(); };
 
+  /** The tiles in the order they are shown: the saved order first where it is ours to draw, else as the list has them. */
+  const ordered = (): HTMLElement[] => {
+    const tiles = o.tiles();
+    if (!o.order?.css) return tiles;
+    const rank = new Map(o.order.saved().map((id, i) => [id, i]));
+    return tiles.map((tile, i) => ({ tile, at: rank.get(o.idOf(tile)) ?? rank.size + i })).sort((a, b) => a.at - b.at).map(row => row.tile);
+  };
   function paint(): void {
     if (disposed) return;
     for (const old of o.list.querySelectorAll('[data-ux-folder]')) old.remove();
@@ -63,11 +78,14 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
       const home = folderOf(folders, o.idOf(tile));
       tile.classList.toggle('nx-folder-out', !searching && (here ? home?.id !== here.id : !!home));
     }
+    // Folders first, then the tiles as arranged: drawn by `order`, so no card is moved in the list.
+    if (o.order?.css) ordered().forEach((tile, i) => { tile.style.order = String(i); });
     if (!here && !searching) {
       const first = o.list.firstChild;
-      for (const f of folders) {
+      for (const [i, f] of folders.entries()) {
         const tile = document.createElement('button');
         tile.type = 'button'; tile.className = 'preset-tile nx-folder-tile'; tile.dataset.uxFolder = f.id;
+        tile.style.order = String(-100000 + i); tile.draggable = !!o.nativeDrag;
         const count = f.members.filter(member => ids.has(member)).length;
         tile.title = `${f.name} · ${count}개`;
         tile.innerHTML = `<i aria-hidden="true">📁</i><span data-folder-name>${esc(f.name)}</span><small>${count}개</small>`;
@@ -79,7 +97,7 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
     o.path.innerHTML = searching
       ? '<span class="nx-folder-crumbs"><b>검색 결과</b><small>모든 폴더에서 찾습니다</small></span>'
       : `<span class="nx-folder-crumbs"><button type="button" data-folder-crumb="" ${here ? '' : 'aria-current="true"'}>📁 전체</button>${here ? `<i aria-hidden="true">›</i><b data-folder-current>${esc(here.name)}</b>` : ''}</span>`
-        + (here ? `<span class="nx-folder-actions"><button type="button" class="btn-ghost" data-folder-edit>폴더 수정</button><button type="button" class="btn-ghost" data-folder-delete>폴더 삭제</button></span>` : '<small class="nx-folder-tip">끌어서 폴더에 넣기 · 폴더를 길게 누르면 수정 · 삭제</small>')
+        + (here ? `<span class="nx-folder-actions"><button type="button" class="btn-ghost" data-folder-edit>폴더 수정</button><button type="button" class="btn-ghost" data-folder-delete>폴더 삭제</button></span>` : '<small class="nx-folder-tip">끌어서 폴더에 넣거나 순서 바꾸기 · 길게 누르면 메뉴</small>')
         + (here && !here.members.some(member => ids.has(member)) ? `<small class="nx-folder-tip nx-folder-empty">빈 폴더입니다. 📁 전체에서 ${esc(o.noun)}를 끌어다 놓으세요.</small>` : '');
     o.painted?.();
   }
@@ -117,7 +135,7 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
   menu.innerHTML = '<small class="nx-menu-title" data-fm-title></small><button type="button" role="menuitem" data-fm="open">열기</button><button type="button" role="menuitem" data-fm="edit">폴더 수정</button><hr><button type="button" role="menuitem" class="danger" data-fm="delete">폴더 삭제</button>';
   document.body.append(menu);
   const folderMenu = bindMenu(menu);
-  let menuFor = '', held = 0, heldOpen = false;
+  let menuFor = '';
   const openMenu = (id: string, x: number, y: number) => {
     const f = folders.find(row => row.id === id);
     if (!f) return;
@@ -133,30 +151,13 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
     const folderTile = (event.target as Element).closest<HTMLElement>('[data-ux-folder]');
     if (!folderTile) return;
     event.preventDefault(); event.stopPropagation();
-    // A held finger has opened it already where the browser also sends this (Android).
-    if (!folderMenu.open) openMenu(folderTile.dataset.uxFolder || '', (event as MouseEvent).clientX, (event as MouseEvent).clientY);
+    openMenu(folderTile.dataset.uxFolder || '', (event as MouseEvent).clientX, (event as MouseEvent).clientY);
   };
-  // Not every phone sends a contextmenu for a held finger (iOS sends none): the hold is timed here.
-  const touchStart = (event: Event) => {
-    const e = event as TouchEvent, folderTile = (e.target as Element).closest<HTMLElement>('[data-ux-folder]'), t = e.touches[0];
-    window.clearTimeout(held); heldOpen = false;
-    if (!folderTile || !t || e.touches.length !== 1) return;
-    const x = t.clientX, y = t.clientY;
-    folderTile.classList.add('nx-press');
-    held = window.setTimeout(() => { folderTile.classList.remove('nx-press'); heldOpen = true; try { navigator.vibrate?.(12); } catch { /* no haptics */ }
-      openMenu(folderTile.dataset.uxFolder || '', x, y);
-      // The finger is still down where the menu opened: its release must not choose the item under it.
-      menu.style.pointerEvents = 'none'; window.setTimeout(() => { menu.style.pointerEvents = ''; }, 400);
-    }, 450);
-  };
-  const touchStop = () => { window.clearTimeout(held); for (const pressed of o.list.querySelectorAll('[data-ux-folder].nx-press')) pressed.classList.remove('nx-press'); };
   const click = (event: Event) => {
     const target = event.target as Element;
     const folderTile = target.closest<HTMLElement>('[data-ux-folder]');
     if (!folderTile) return;
     event.stopPropagation();
-    // The tap that ends a hold opened the menu: it does not also open the folder.
-    if (heldOpen) { heldOpen = false; event.preventDefault(); return; }
     open(folderTile.dataset.uxFolder || '');
   };
   const pathClick = (event: Event) => {
@@ -167,25 +168,47 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
   };
   o.list.addEventListener('click', click, true);
   o.list.addEventListener('contextmenu', context);
-  o.list.addEventListener('touchstart', touchStart, { passive: true });
-  for (const type of ['touchmove', 'touchend', 'touchcancel']) o.list.addEventListener(type, touchStop, { passive: true });
   o.path.addEventListener('click', pathClick);
+  const isItem = (tile: HTMLElement | null): tile is HTMLElement => !!tile && o.tiles().includes(tile);
+  const itemAt = (at: Element): HTMLElement | null => { const tile = at.closest<HTMLElement>('button, [draggable]'); return isItem(tile) ? tile : null; };
+  /** The tiles that move with one: all the picked when it is one of them, else itself alone. */
+  const group = (tile: HTMLElement): string[] => { const id = o.idOf(tile), picked = o.picked?.() || []; return picked.includes(id) ? picked : [id]; };
   const stopDrag = bindTileDrag({
     list: o.list, mouse: !o.nativeDrag,
-    source: target => { const tile = target.closest<HTMLElement>('button, [draggable]'); return tile && o.tiles().includes(tile) ? tile : null; },
-    target: at => at.closest<HTMLElement>('[data-ux-folder], [data-folder-crumb]'),
-    count: tile => { const picked = o.picked?.() || []; return picked.includes(o.idOf(tile)) ? picked.length : 1; },
-    drop: (tile, to) => {
-      const id = o.idOf(tile), picked = o.picked?.() || [];
-      void move(picked.includes(id) ? picked : [id], to.dataset.uxFolder ?? '');
+    source: target => target.closest<HTMLElement>('[data-ux-folder]') || itemAt(target),
+    count: tile => tile.dataset.uxFolder ? 1 : group(tile).length,
+    companions: tile => { if (tile.dataset.uxFolder) return []; const ids = new Set(group(tile)); return o.tiles().filter(other => ids.has(o.idOf(other))); },
+    place: (at, x, _y, tile, touch) => {
+      const folderDragged = !!tile.dataset.uxFolder;
+      // A tile onto a folder (or 📁 전체) is filed; anything between two of its own kind is set down there.
+      if (!folderDragged) { const into = at.closest<HTMLElement>('[data-ux-folder], [data-folder-crumb]'); if (into) return { el: into }; }
+      if (o.searching()) return null;
+      const over = folderDragged ? at.closest<HTMLElement>('[data-ux-folder]') : itemAt(at);
+      if (!over || over === tile) return null;
+      if (!folderDragged) {
+        // Where the tiles reorder natively under a mouse (the presets), that drag is the list's own.
+        if (!o.order || (o.nativeDrag && !touch) || group(tile).includes(o.idOf(over))) return null;
+      }
+      const box = over.getBoundingClientRect();
+      return { el: over, side: x < box.left + box.width / 2 ? 'before' : 'after' };
     },
+    drop: (tile, to) => {
+      if (tile.dataset.uxFolder) {
+        if (!to.side) return;
+        const ids = reorderIds(folders.map(row => row.id), [tile.dataset.uxFolder], to.el.dataset.uxFolder || '', to.side);
+        void persist(ids.map(id => folders.find(row => row.id === id)!).filter(Boolean));
+      } else if (to.side && o.order) {
+        const next = reorderIds(ordered().map(o.idOf), group(tile), o.idOf(to.el), to.side);
+        void o.order.save(next).then(paint);
+      } else void move(group(tile), to.el.dataset.uxFolder ?? '');
+    },
+    held: (tile, x, y) => { if (tile.dataset.uxFolder) openMenu(tile.dataset.uxFolder, x, y); else o.itemMenu?.(tile, x, y); },
   });
   return {
     refresh, paint, folders: () => folders, current, open, move, create, choose,
     dispose() {
-      disposed = true; stopDrag(); folderMenu.close(); menu.remove(); window.clearTimeout(held);
-      o.list.removeEventListener('click', click, true); o.list.removeEventListener('contextmenu', context); o.list.removeEventListener('touchstart', touchStart);
-      for (const type of ['touchmove', 'touchend', 'touchcancel']) o.list.removeEventListener(type, touchStop);
+      disposed = true; stopDrag(); folderMenu.close(); menu.remove();
+      o.list.removeEventListener('click', click, true); o.list.removeEventListener('contextmenu', context);
       o.path.removeEventListener('click', pathClick);
     },
   };

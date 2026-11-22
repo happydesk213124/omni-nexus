@@ -12,7 +12,8 @@ export const FOLDER_LOOK_FIELDS = ['appearance', 'hair_color', 'hair_style', 'ey
 export type FolderLookField = typeof FOLDER_LOOK_FIELDS[number];
 export interface ItemFolder { id: string; name: string; members: string[] }
 export type LookFolder = ItemFolder & Partial<Record<FolderLookField, string>>;
-export interface FolderData { version: 1; characters: Record<string, LookFolder[]>; presets: ItemFolder[] }
+/** `order`: the 캐릭터 tab's tiles as the user arranged them, per roster (ids; anyone not listed follows in the roster's own order). */
+export interface FolderData { version: 1; characters: Record<string, LookFolder[]>; presets: ItemFolder[]; order?: Record<string, string[]> }
 
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : '';
 const FOLDER_MAX = 200, MEMBER_MAX = 2000;
@@ -37,7 +38,22 @@ export function normalizeFolderData(raw: unknown): FolderData {
   const lists = data.characters && typeof data.characters === 'object' && !Array.isArray(data.characters) ? data.characters as Record<string, unknown> : {};
   const characters: Record<string, LookFolder[]> = {};
   for (const [scope, list] of Object.entries(lists)) { const folders = normalizeFolderList(list, true); if (scope && folders.length) characters[scope] = folders; }
-  return { version: 1, characters, presets: normalizeFolderList(data.presets, false) };
+  const orders = data.order && typeof data.order === 'object' && !Array.isArray(data.order) ? data.order as Record<string, unknown> : {};
+  const order: Record<string, string[]> = {};
+  for (const [scope, list] of Object.entries(orders)) { const ids = normalizeOrder(list); if (scope && ids.length) order[scope] = ids; }
+  // No order saved: no key, so a save without one is as it was.
+  return { version: 1, characters, presets: normalizeFolderList(data.presets, false), ...(Object.keys(order).length ? { order } : {}) };
+}
+
+export function normalizeOrder(raw: unknown): string[] {
+  return [...new Set((Array.isArray(raw) ? raw : []).map(v => text(v, 200)).filter(Boolean))].slice(0, MEMBER_MAX);
+}
+/** `ids` as they stand, with `moving` taken out and set down before or after `target`. */
+export function reorderIds(ids: readonly string[], moving: readonly string[], target: string, side: 'before' | 'after'): string[] {
+  const lifted = new Set(moving), rest = ids.filter(id => !lifted.has(id)), at = rest.indexOf(target);
+  if (at < 0 || lifted.has(target)) return [...ids];
+  rest.splice(at + (side === 'after' ? 1 : 0), 0, ...ids.filter(id => lifted.has(id)));
+  return rest;
 }
 
 export const folderOf = <T extends ItemFolder>(folders: readonly T[], member: string): T | undefined => folders.find(f => f.members.includes(member));

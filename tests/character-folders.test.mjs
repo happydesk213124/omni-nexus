@@ -34,6 +34,26 @@ test('moving files a member in one folder only, and out of all with no target', 
   assert.equal(api.folderNamed(folders, 'C'), undefined);
 });
 
+test('an order of tiles: set down before or after another, several keeping their own order; kept per roster and absent until made', async () => {
+  const ids = ['a', 'b', 'c', 'd'];
+  assert.deepEqual(api.reorderIds(ids, ['d'], 'a', 'before'), ['d', 'a', 'b', 'c']);
+  assert.deepEqual(api.reorderIds(ids, ['a'], 'c', 'after'), ['b', 'c', 'a', 'd']);
+  assert.deepEqual(api.reorderIds(ids, ['d', 'b'], 'a', 'after'), ['a', 'b', 'd', 'c'], 'the moved keep the order they stood in');
+  assert.deepEqual(api.reorderIds(ids, ['a'], 'a', 'before'), ids, 'onto itself: nothing');
+  assert.deepEqual(api.reorderIds(ids, ['a'], 'nobody', 'before'), ids);
+  assert.deepEqual(api.normalizeOrder(['a', 'a', '', 3, ' b ']), ['a', 'b']);
+  assert.equal('order' in api.normalizeFolderData({}), false, 'no order saved: no key');
+  const kv = host();
+  assert.deepEqual(await api.characterOrder('s1', 'bot'), []);
+  await api.saveCharacterOrder('s1', 'bot', ['b', 'a']);
+  assert.deepEqual(kv.get(api.FOLDERS_KEY), { version: 1, characters: {}, presets: [], order: { bot: ['b', 'a'] } });
+  api.resetFolderCache();
+  assert.deepEqual(await api.characterOrder('s1', 'bot'), ['b', 'a']);
+  assert.deepEqual(await api.characterOrder('s1', 'other-bot'), []);
+  await api.saveCharacterOrder('s1', 'bot', []);
+  assert.equal('order' in kv.get(api.FOLDERS_KEY), false, 'cleared: the key goes');
+});
+
 test('폴더 공통 태그: look tags are joined (folder first, each once); every other field fills only what the member left empty', () => {
   const folder = { id: 'f', name: '네일샵', members: ['a'], appearance: 'slim, friendly look', hair_color: 'brown hair', attire: 'black nail salon apron', age: '20s' };
   const member = { id: 'a', name: '진우', appearance: '1girl, Slim', hair_color: 'black hair', attire: '', bottoms: 'black pants' };

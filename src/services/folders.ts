@@ -1,6 +1,6 @@
 import { FOLDERS_KEY, GLOBAL_SCOPE } from '../core/constants';
 import { cleanText } from '../core/util/text';
-import { folderBrief, folderNamed, folderOf, moveToFolder, normalizeFolderData, normalizeFolderList, withFolderLooks, type FolderData, type FolderLookField, type ItemFolder, type LookFolder } from '../domain/character/folders';
+import { folderBrief, folderNamed, folderOf, moveToFolder, normalizeFolderData, normalizeFolderList, normalizeOrder, withFolderLooks, type FolderData, type FolderLookField, type ItemFolder, type LookFolder } from '../domain/character/folders';
 import { psGet, psSet } from '../storage/device-store';
 import { characterIdForRosterScope } from '../storage/character-roster';
 
@@ -37,6 +37,20 @@ export async function saveCharacterFolders(scope: string, characterId: string, f
   if (!key) throw new Error('폴더를 저장할 캐릭터 목록을 찾지 못했습니다.');
   const data = await load(), list = normalizeFolderList(folders, true);
   if (list.length) data.characters[key] = list; else delete data.characters[key];
+  await save();
+  return list;
+}
+/** The 캐릭터 tab's tiles as the user arranged them (ids). Empty: the roster's own order. */
+export async function characterOrder(scope: string, characterId = ''): Promise<string[]> {
+  const key = await ownerKey(scope, characterId);
+  return key ? (await load()).order?.[key] || [] : [];
+}
+export async function saveCharacterOrder(scope: string, characterId: string, ids: unknown): Promise<string[]> {
+  const key = await ownerKey(scope, characterId);
+  if (!key) throw new Error('순서를 저장할 캐릭터 목록을 찾지 못했습니다.');
+  const data = await load(), list = normalizeOrder(ids), order = { ...(data.order || {}) };
+  if (list.length) order[key] = list; else delete order[key];
+  if (Object.keys(order).length) data.order = order; else delete data.order;
   await save();
   return list;
 }

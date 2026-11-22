@@ -14,9 +14,9 @@ import { connectCharacterImages, paintReferenceProgress, syncCharacterTilePrevie
 import { listCharacters, upsertCharacter, deleteCharacter } from '../services/characters';
 import { linkedTts, openLinkedTts, ttsReady } from './linked-tts';
 import { resetCharacterPreviewIndex, registerCharacterPreview, unregisterCharacterPreview, characterCardForTile } from './character-preview-index';
-import { characterFolders, onFoldersChange, saveCharacterFolders } from '../services/folders';
+import { characterFolders, characterOrder, onFoldersChange, saveCharacterFolders, saveCharacterOrder } from '../services/folders';
 import { mountFolderView, type FolderView } from './folder-view';
-import { bindMenu } from './menu';
+import { bindMenu, openButtonMenu } from './menu';
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const isField = (element: Element): element is Field => element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement;
 let selectedId = '';
@@ -370,6 +370,16 @@ export function bindCharacterSheet(): void {
   // Each repaint binds anew: the views over the last lists let go of their listeners first.
   for (const old of mountedFolders.splice(0)) old.dispose();
   const rosterScope = (kind: string): string => kind === 'global' ? '__global__' : (globalThis as Bridge).__OMNI_CHARACTER_SCOPE__?.() || '';
+  // A tile's menu, for a held finger or a right-click: the chosen character's ⋯, or in 선택 mode the bar's actions
+  // for everyone picked (the held tile joins them first).
+  let openMore: ((x: number, y: number) => void) | undefined;
+  const tileMenu = (tile: HTMLElement, x: number, y: number) => {
+    const card = characterCardForTile(tile);
+    if (!card) return;
+    if (!selection.on) { choose(card); openMore?.(x, y); return; }
+    if (!tile.classList.contains('nx-picked')) selection.toggle(card, tile);
+    openButtonMenu(x, y, `${selection.ids().length}명 선택`, [...document.querySelectorAll<HTMLButtonElement>('#nx-char-select-bar [data-sel]:not([data-sel="all"])')]);
+  };
   if (pathHost) for (const kind of ['session', 'global']) {
     const list = document.getElementById(`nx-char-${kind}-list`);
     if (!list) continue;
@@ -377,13 +387,19 @@ export function bindCharacterSheet(): void {
     const path = document.createElement('div'); path.className = 'nx-folder-path'; path.hidden = true;
     wrap.append(path); pathHost.append(wrap);
     const tiles = () => [...list.querySelectorAll<HTMLElement>('[data-ux-character-tile]')];
+    // The tiles as the user arranged them; nobody arranged, the roster's own order.
+    let order: string[] = [];
     const view = mountFolderView({
       key: `character:${kind}:${rosterScope(kind)}`, list, path, tiles, looks: true, noun: '캐릭터',
       idOf: tile => tile.dataset.uxCharacterTile || '', nameOf: tile => tile.title,
       load: () => characterFolders(rosterScope(kind)), save: folders => saveCharacterFolders(rosterScope(kind), '', folders),
       searching: () => !!searchBox?.value.trim(), picked: () => selection.on ? selection.ids() : [],
+      order: { css: true, saved: () => order, save: async ids => { order = await saveCharacterOrder(rosterScope(kind), '', ids); } },
+      itemMenu: tileMenu,
       // The chosen character is one that is shown: opening a folder moves the choice into it.
       painted: () => {
+        // What is picked is what is seen: a tile filed away (or left behind in another folder) is let go.
+        if (selection.on) for (const hiddenTile of list.querySelectorAll<HTMLElement>('[data-ux-character-tile].nx-picked.nx-folder-out')) { const card = characterCardForTile(hiddenTile); if (card) selection.toggle(card, hiddenTile); }
         if (selectedScope !== kind) return;
         const shown = (tile: HTMLElement | undefined) => !!tile && !tile.hidden && !tile.classList.contains('nx-folder-out');
         if (current && shown(tileFor(current))) return;
@@ -400,7 +416,7 @@ export function bindCharacterSheet(): void {
       const fresh = added.map(tile => tile.dataset.uxCharacterTile || '').filter(id => id.startsWith('new_'));
       if (fresh.length && view.current()) void view.move(fresh, view.current()); else view.paint();
     }).observe(list, { childList: true });
-    void view.refresh();
+    void characterOrder(rosterScope(kind)).then(ids => { order = ids; return view.refresh(); });
   }
   const view = () => views.get(selectedScope);
   const showFolderScope = () => { for (const wrap of pathHost?.querySelectorAll<HTMLElement>('[data-folder-scope]') || []) wrap.hidden = wrap.dataset.folderScope !== selectedScope; view()?.paint(); };
@@ -423,13 +439,12 @@ export function bindCharacterSheet(): void {
     });
     document.getElementById('nx-char-menu-edit')?.addEventListener('click', () => { if (!document.getElementById('nx-char-sheet')?.classList.contains('open')) document.getElementById('nx-char-edit-btn')?.click(); });
     for (const kind of ['session', 'global']) document.getElementById(`nx-char-${kind}-list`)?.addEventListener('contextmenu', event => {
-      const tile = (event.target as Element).closest<HTMLElement>('[data-ux-character-tile]'), card = tile && characterCardForTile(tile);
-      // A held finger lifts the tile to drag it; the menu is the ⋯ button's then.
-      if (!card || selection.on || document.documentElement.classList.contains('nx-tile-drag')) return;
+      const tile = (event.target as Element).closest<HTMLElement>('[data-ux-character-tile]');
+      if (!tile) return;
       event.preventDefault();
-      choose(card);
-      more.openAt(event.clientX, event.clientY);
+      tileMenu(tile, event.clientX, event.clientY);
     });
+    openMore = (x, y) => more.openAt(x, y);
   }
   const bringMenu = document.getElementById('nx-char-bring-menu');
   if (bringMenu) bindMenu(bringMenu, document.getElementById('nx-char-bring'));

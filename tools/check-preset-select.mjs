@@ -175,5 +175,29 @@ try {
   await page.waitForFunction(() => stored('onx_folders').presets[0].members.length === 0);
   await page.locator('#nx-preset-folder-path [data-folder-crumb]').click();
   assert.equal(await page.locator(`#nx-preset-chips [data-preset-select="${firstId}"]`).isVisible(), true);
-  console.log('[preset select] PASS: NAI5/NAI4.5 marks, JSON 관리 popup, pick without applying, 참고컷 생성 one by one, 참고컷 없는/있는 search, bulk delete, 에셋에서 with the metadata-only search, folders by drag');
+  // A held finger on a preset that is not the applied one: a menu that does not apply it by itself.
+  const touch = (selector, wait, toSelector) => page.evaluate(async ([sel, ms, to]) => {
+    const el = document.querySelector(sel), mid = node => { const r = node.getBoundingClientRect(); return { clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 }; };
+    const fire = (type, p, live = true) => el.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: live ? [new Touch({ identifier: 1, target: el, ...p })] : [], changedTouches: [new Touch({ identifier: 1, target: el, ...p })] }));
+    fire('touchstart', mid(el));
+    await new Promise(done => setTimeout(done, ms));
+    if (to) { const node = document.querySelector(to), r = node.getBoundingClientRect(), p = { clientX: r.x + r.width * .85, clientY: r.y + r.height / 2 }; fire('touchmove', p); fire('touchend', p, false); }
+    else { fire('touchend', mid(el), false); el.click(); }
+  }, [selector, wait, toSelector || '']);
+  const ids = await order(), applied = await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), other = ids.find(id => id !== applied);
+  await touch(`#nx-preset-chips [data-preset-select="${other}"]`, 520);
+  assert.deepEqual(await page.locator('.nx-button-menu button').allTextContents(), ['이 프리셋 적용', '폴더로 이동…']);
+  assert.equal(await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), applied, 'holding a preset applies nothing');
+  await page.keyboard.press('Escape');
+  // On the applied one: its ⋯ menu.
+  await touch(`#nx-preset-chips [data-preset-select="${applied}"]`, 520);
+  assert.equal(await page.locator('#nx-preset-more-menu').isVisible(), true);
+  await page.keyboard.press('Escape');
+  // A carried finger sets a preset down after another: the presets' own order, in one settings write.
+  const [a, b] = ids;
+  await touch(`#nx-preset-chips [data-preset-select="${a}"]`, 480, `#nx-preset-chips [data-preset-select="${b}"]`);
+  await page.waitForFunction(([first, second]) => { const now = presetRuntime.t.backendSettings.card.presets.map(p => String(p.id)); return now.indexOf(second) < now.indexOf(first); }, [a, b]);
+  assert.deepEqual([...(await order())].sort(), [...ids].sort(), 'reordered, none lost');
+  assert.equal(await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), applied);
+  console.log('[preset select] PASS: NAI5/NAI4.5 marks, JSON 관리 popup, pick without applying, 참고컷 생성 one by one, 참고컷 없는/있는 search, bulk delete, 에셋에서 with the metadata-only search, folders by drag, a finger reorder and held menus');
 } finally { await browser.close(); }
