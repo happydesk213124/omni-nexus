@@ -64,6 +64,7 @@ try {
     assert.match(search.text, /다른 봇/);
     // 가져오기 · 내보내기: the menu opens over the dock, on screen, and names each way plainly.
     await page.locator('#nx-char-bring').click();
+    await page.waitForTimeout(260);
     const menu = await page.evaluate(() => {
       const menu = document.getElementById('nx-char-bring-menu'), r = menu.getBoundingClientRect();
       return { open: !menu.hidden, inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1, expanded: document.getElementById('nx-char-bring').getAttribute('aria-expanded'),

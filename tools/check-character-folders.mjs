@@ -48,8 +48,11 @@ try {
     await page.mouse.move(x + 12, y + 8, { steps: 3 }); await page.mouse.move(tx, ty, { steps: 6 });
     assert.equal(await page.locator('.nx-drag-ghost').count(), 1, 'a ghost follows the pointer');
     assert.equal(await page.evaluate(([px, py]) => !!document.elementFromPoint(px, py)?.closest('.nx-drop'), [tx, ty]), true, 'the place under the pointer lights up');
+    assert.equal(await page.evaluate(() => document.documentElement.classList.contains('nx-tile-drag')), true, 'the places to drop are lit for as long as the drag lasts');
+    // What is dragged is a copy of the tile with nothing to find it by.
+    assert.equal(await page.evaluate(() => { const g = document.querySelector('.nx-drag-ghost'); return g.matches('[data-ux-character-tile]') || !!g.querySelector('[id], [data-character-label]'); }), false);
     await page.mouse.up();
-    assert.equal(await page.locator('.nx-drag-ghost').count(), 0);
+    await page.waitForFunction(() => !document.querySelector('.nx-drag-ghost') && !document.querySelector('.nx-dragging') && !document.documentElement.classList.contains('nx-tile-drag'));
   };
 
   // No folder yet: the tab is as it was before folders.
@@ -65,7 +68,10 @@ try {
   await page.locator('#nx-folder-pop [data-folder-field="name"]').fill('네일샵 직원');
   await page.locator('#nx-folder-pop [data-folder-field="attire"]').fill('black nail salon apron');
   await page.locator('#nx-folder-pop [data-folder-field="appearance"]').fill('friendly look');
-  assert.match(await page.locator('#nx-folder-pop .nx-folder-note').textContent(), /샷을 만들 때 함께 들어갑니다/);
+  assert.match(await page.locator('#nx-folder-pop .nx-folder-looks > header').textContent(), /샷을 만들 때 이 폴더의 캐릭터에게 함께 들어갑니다/);
+  assert.equal(await page.locator('#nx-folder-pop [data-folder-remove]').count(), 0, 'a new folder has nothing to delete');
+  // The sheet fits the screen with its buttons in reach.
+  assert.equal(await page.evaluate(() => { const r = document.querySelector('#nx-folder-pop [data-folder-save]').getBoundingClientRect(); return r.bottom <= innerHeight && r.top >= 0; }), true);
   await page.locator('#nx-folder-pop [data-folder-save]').click();
   await folderTile('네일샵 직원').waitFor();
   const [made] = await folders();
@@ -96,6 +102,30 @@ try {
   await page.locator('#nx-folder-pop [data-folder-field="attire"]').fill('white apron');
   await page.locator('#nx-folder-pop [data-folder-save]').click();
   await saved([{ ...made, members: ['alpha'], attire: 'white apron' }]);
+  // A folder's own menu: a right-click (a held finger on a phone) on its tile.
+  await page.locator('[data-folder-scope="session"] [data-folder-crumb]').click();
+  await folderTile('네일샵 직원').click({ button: 'right' });
+  assert.deepEqual(await page.locator('.nx-folder-menu:not([hidden]) button').allTextContents(), ['열기', '폴더 수정', '폴더 삭제']);
+  assert.equal(await page.locator('.nx-folder-menu:not([hidden]) [data-fm-title]').textContent(), '📁 네일샵 직원');
+  await page.locator('.nx-folder-menu:not([hidden]) [data-fm="edit"]').click();
+  assert.equal(await page.locator('#nx-folder-pop [data-folder-field="name"]').inputValue(), '네일샵 직원');
+  assert.equal(await page.locator('#nx-folder-pop [data-folder-remove]').count(), 1, 'the sheet of a saved folder can delete it');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#nx-folder-pop').count(), 0, 'Esc closes the sheet, saving nothing');
+  // A held finger opens the same menu, and the release that ends the hold does not open the folder.
+  await page.evaluate(async () => {
+    const folder = document.querySelector('#nx-char-session-list [data-ux-folder]'), r = folder.getBoundingClientRect(), p = { clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 };
+    const fire = (type, live) => folder.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: live ? [new Touch({ identifier: 1, target: folder, ...p })] : [], changedTouches: [new Touch({ identifier: 1, target: folder, ...p })] }));
+    fire('touchstart', true);
+    await new Promise(done => setTimeout(done, 520));
+    fire('touchend', false);
+    folder.click();
+  });
+  assert.equal(await page.locator('.nx-folder-menu:not([hidden])').isVisible(), true, 'the hold opened the menu');
+  assert.equal(await page.locator('[data-folder-scope="session"] [data-folder-current]').count(), 0, 'and the folder stayed closed');
+  await page.waitForTimeout(450);
+  await page.locator('.nx-folder-menu:not([hidden]) [data-fm="open"]').click();
+  assert.equal(await page.locator('[data-folder-scope="session"] [data-folder-current]').textContent(), '네일샵 직원');
   // Dragged onto 📁 전체: out of the folder.
   await drag(tile('Alpha'), page.locator('[data-folder-scope="session"] [data-folder-crumb]'));
   await saved([{ ...made, members: [], attire: 'white apron' }]);
@@ -120,7 +150,7 @@ try {
   await page.locator('#nx-char-select').click();
   await tile('Gamma').click(); await tile('Delta').click();
   await page.locator('#nx-char-select-bar [data-sel="folder"]').click();
-  assert.deepEqual(await page.locator('#nx-folder-pick [data-folder-choice]').allTextContents(), ['📁 전체 (폴더 밖)', '📁 네일샵 직원']);
+  assert.deepEqual(await page.locator('#nx-folder-pick [data-folder-choice] span').allTextContents(), ['📁 전체 (폴더 밖)', '네일샵 직원']);
   await page.locator('#nx-folder-pick [data-folder-choice-new]').click();
   await page.locator('#nx-folder-pop [data-folder-field="name"]').fill('학교');
   await page.locator('#nx-folder-pop [data-folder-save]').click();

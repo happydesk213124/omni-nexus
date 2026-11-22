@@ -460,9 +460,11 @@ try {
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),1,'secondary preset tile keeps its green mark');
   assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('[data-preset-select="rename-probe"].second')).outlineColor),'rgb(20, 158, 97)');
   assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('[data-preset-select="rename-probe"].second'),'::after').content),'"적용 중 · 2순위"');
+  await page.locator('#nx-preset-more').click();
   await page.locator('#nx-preset-second').click();
   await page.waitForFunction(()=>!globalThis.uxTestRuntime.t.backendSettings.card.secondary_preset_id);
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),0,'unsetting secondary clears the mark without reopening settings');
+  await page.locator('#nx-preset-more').click();
   await page.locator('#nx-preset-second').click();
   await page.waitForFunction(()=>globalThis.uxTestRuntime.t.backendSettings.card.secondary_preset_id==='rename-probe');
   assert.equal(await page.locator('[data-preset-select="rename-probe"].second').count(),1,'setting secondary marks the tile without reopening settings');

@@ -424,7 +424,8 @@ export function bindCharacterSheet(): void {
     document.getElementById('nx-char-menu-edit')?.addEventListener('click', () => { if (!document.getElementById('nx-char-sheet')?.classList.contains('open')) document.getElementById('nx-char-edit-btn')?.click(); });
     for (const kind of ['session', 'global']) document.getElementById(`nx-char-${kind}-list`)?.addEventListener('contextmenu', event => {
       const tile = (event.target as Element).closest<HTMLElement>('[data-ux-character-tile]'), card = tile && characterCardForTile(tile);
-      if (!card || selection.on) return;
+      // A held finger lifts the tile to drag it; the menu is the ⋯ button's then.
+      if (!card || selection.on || document.documentElement.classList.contains('nx-tile-drag')) return;
       event.preventDefault();
       choose(card);
       more.openAt(event.clientX, event.clientY);

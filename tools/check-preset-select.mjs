@@ -61,6 +61,18 @@ try {
 
   // JSON 관리: one dock button; export and file load inside the paste popup.
   for (const id of ['#nx-preset-export', '#nx-preset-file', '#nx-preset-import']) assert.equal(await page.locator(id).isVisible(), false, id + ' folds into JSON 관리');
+  // The name row keeps what starts something; the rest is two named menus.
+  for (const id of ['#nx-preset-pick', '#nx-preset-new', '#nx-preset-new-folder', '#nx-preset-more']) assert.equal(await page.locator(id).isVisible(), true, id + ' in the name row');
+  const inMore = ['#nx-preset-second', '#nx-preset-dup', '#nx-preset-to-folder', '#nx-preset-look-act', '#nx-preset-look-gen', '#nx-preset-del'], inBring = ['#nx-preset-from-asset', '#nx-preset-from-module', '#nx-preset-json'];
+  for (const id of [...inMore, ...inBring]) assert.equal(await page.locator(id).isVisible(), false, id + ' is in a menu, closed');
+  await page.locator('#nx-preset-more').click();
+  for (const id of inMore) assert.equal(await page.locator(id).isVisible(), true, id + ' in ⋯');
+  assert.equal(await page.locator('#nx-preset-more-title').textContent(), await page.locator('#nx-preset-current').textContent(), 'the menu says whose it is');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#nx-preset-more-menu').isHidden(), true);
+  assert.deepEqual(await page.locator('#style_presets .preset-dock > button').evaluateAll(buttons => buttons.filter(b => b.getClientRects().length).map(b => b.id)), ['nx-preset-bring', 'nx-preset-edit-btn'], 'the dock is the bring menu and the editor');
+  await page.locator('#nx-preset-bring').click();
+  for (const id of inBring) assert.equal(await page.locator(id).isVisible(), true, id + ' in 가져오기 · 내보내기');
   await page.locator('#nx-preset-json').click();
   assert.equal(await page.locator('#nx-preset-import-pop').isVisible(), true);
   for (const id of ['#nx-preset-json-export', '#nx-preset-json-file', '#nx-preset-import-text', '#nx-preset-import-ok']) assert.equal(await page.locator(id).isVisible(), true, id + ' in the popup');
@@ -84,7 +96,7 @@ try {
   const pick = page.locator('#nx-preset-pick');
   await pick.click();
   assert.equal(await page.locator('#nx-preset-pick-bar').isVisible(), true);
-  assert.equal(await page.locator('#nx-preset-dup').isVisible(), false, 'the bar takes the row');
+  assert.equal(await page.locator('#nx-preset-new-folder').isVisible(), false, 'the bar takes the row');
   await tile('p2').click();
   await tile('p3').click();
   assert.match(await page.locator('#nx-preset-pick-bar [data-sel-count]').textContent(), /2개 선택/);
@@ -126,6 +138,7 @@ try {
 
   // 에셋에서: a picture without NovelAI's data says so; "메타데이터 있는 것만" finds the one with it,
   // which then becomes a preset named after the asset.
+  await page.locator('#nx-preset-bring').click();
   await page.locator('#nx-preset-from-asset').click();
   const dialog = page.locator('dialog[aria-label="캐릭터 에셋으로 스타일 프리셋"]');
   await dialog.locator('button[data-asset-key]').nth(1).waitFor();

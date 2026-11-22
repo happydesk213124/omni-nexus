@@ -1153,19 +1153,79 @@
     .preset-tile.nx-folder-tile > i { font-size: 34px; font-style: normal; line-height: 1; }
     .preset-tile.nx-folder-tile > [data-folder-name] { padding: 0 6px; font-weight: 600; white-space: nowrap; }
     .preset-tile.nx-folder-tile > small { color: var(--muted); font-size: 11px; }
-    .nx-drop { outline: 2px solid #7132f5 !important; outline-offset: -2px; background: rgba(113, 50, 245, .22) !important; }
-    .preset-tile.nx-dragging { opacity: .45; }
-    .nx-drag-ghost { position: fixed; left: 0; top: 0; z-index: 60; max-width: 180px; padding: 6px 10px; overflow: hidden; border-radius: 8px; background: #7132f5; color: #fff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
-    .nx-folder-pop { max-height: calc(100vh - 32px); overflow: auto; }
-    .nx-folder-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; }
+    /* 끌어다 놓기: the tile itself is lifted. A copy follows the pointer, the places to drop light up for as long as
+       the drag lasts, and on release the copy flies in (or back). */
+    .preset-tile { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    .preset-tile.nx-press { transform: scale(.94); transition: transform .34s ease-out; }
+    .preset-tile.nx-dragging { opacity: .28; }
+    .nx-drag-ghost { position: fixed !important; left: 0; top: 0; z-index: 60; margin: 0 !important; aspect-ratio: auto !important; border-radius: 12px; box-shadow: 0 14px 34px rgba(0, 0, 0, .55), 0 0 0 2px #7132f5; opacity: .96; pointer-events: none; transform-origin: 50% 50%; will-change: transform; animation: nx-drag-lift .14s ease-out; }
+    .nx-drag-ghost.nx-drag-land { transition: transform .18s ease-in, opacity .18s ease-in; }
+    .nx-drag-ghost > em { position: absolute; right: -8px; top: -8px; z-index: 3; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #7132f5; color: #fff; font: 700 12px/22px var(--font); font-style: normal; text-align: center; }
+    @keyframes nx-drag-lift { from { opacity: .5; filter: brightness(1.4); } }
+    html.nx-tile-drag, html.nx-tile-drag body { cursor: grabbing; }
+    html.nx-tile-drag .preset-tile.nx-folder-tile, html.nx-tile-drag .nx-folder-crumbs > button:not([aria-current]) { border: 2px dashed #8f6bff; background: rgba(113, 50, 245, .1); animation: nx-drop-ready 1s ease-in-out infinite; }
+    html.nx-tile-drag .nx-folder-crumbs > button:not([aria-current])::after { content: ' ← 여기에 놓으면 폴더에서 꺼냅니다'; font-size: 12px; opacity: .85; }
+    @keyframes nx-drop-ready { 50% { box-shadow: 0 0 0 4px rgba(113, 50, 245, .18); } }
+    .nx-drop { border-style: solid !important; border-color: #a98bff !important; background: rgba(113, 50, 245, .32) !important; transform: scale(1.05); transition: transform .12s ease-out; animation: none !important; }
+    .nx-drop-done { animation: nx-drop-done .4s ease-out !important; }
+    @keyframes nx-drop-done { 30% { transform: scale(1.1); background: rgba(113, 50, 245, .45); } }
+    @media (prefers-reduced-motion: reduce) { .nx-drag-ghost, .nx-drop-done, html.nx-tile-drag .preset-tile.nx-folder-tile, html.nx-tile-drag .nx-folder-crumbs > button { animation: none !important; } }
+    /* 폴더 창: a header, a body that scrolls, a footer that stays. A bottom sheet on a phone. */
+    .pop.nx-folder-pop { display: flex; flex-direction: column; width: min(520px, calc(100vw - 24px)); max-height: min(86vh, 720px); padding: 0; overflow: hidden; }
+    .nx-sheet-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 12px 16px; border-bottom: 1px solid var(--border); }
+    .nx-sheet-head > i { font-style: normal; font-size: 20px; line-height: 1; }
+    .nx-sheet-head > b { flex: 1; min-width: 0; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nx-sheet-head > small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .nx-sheet-x { width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 16px; }
+    .nx-sheet-x:hover { background: var(--surface-2); color: inherit; }
+    .nx-sheet-body { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+    .nx-sheet-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); background: var(--surface); }
+    .nx-sheet-foot > span { flex: 1; }
+    .nx-sheet-foot > button { min-height: 38px; padding: 8px 16px; white-space: nowrap; }
+    .nx-sheet-foot > .danger { color: #ff8f8f; border-color: rgba(255, 143, 143, .45); }
+    .nx-folder-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 12px; }
     .nx-folder-field > span { color: var(--muted); }
-    .nx-folder-field input, .nx-folder-field textarea { width: 100%; max-width: none; box-sizing: border-box; }
+    .nx-folder-field input, .nx-folder-field textarea { width: 100%; max-width: none; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: inherit; font-size: 14px; }
+    .pop.nx-folder-pop textarea { min-height: 58px; resize: vertical; }
+    .nx-folder-field input:focus, .nx-folder-field textarea:focus { outline: 2px solid #7132f5; outline-offset: -1px; }
+    .nx-folder-field.name input { min-height: 44px; font-size: 16px; font-weight: 600; }
     .nx-folder-field .nx-invalid { border-color: #ff8f8f; }
-    .nx-folder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-    .nx-folder-grid > .wide { grid-column: 1 / -1; }
-    .nx-folder-note { margin: 10px 0 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
-    .nx-folder-choices { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
-    .nx-folder-choices > button { padding: 10px; text-align: left; }
+    .nx-folder-looks { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--row); }
+    .nx-folder-looks > header { display: flex; flex-direction: column; gap: 3px; }
+    .nx-folder-looks > header > b { font-size: 14px; }
+    .nx-folder-looks > header > small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .nx-folder-group { display: flex; flex-direction: column; gap: 8px; }
+    .nx-folder-group > h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0; font-size: 13px; font-weight: 600; }
+    .nx-folder-group > h4 > small { color: var(--muted); font-size: 11px; font-weight: 400; }
+    .nx-folder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
+    .nx-folder-choices { gap: 6px; }
+    .nx-folder-choices > button { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: inherit; font: inherit; text-align: left; }
+    .nx-folder-choices > button:hover { border-color: #7132f5; }
+    .nx-folder-choices > button > i { width: 22px; font-style: normal; text-align: center; }
+    .nx-folder-choices > button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 640px) {
+      .pop.nx-folder-pop { left: 0; right: 0; top: auto; bottom: 0; width: 100%; max-height: 88vh; transform: none; border-radius: 18px 18px 0 0; border-bottom: 0; animation: nx-sheet-up .2s ease-out; }
+      .nx-sheet-head::before { content: ''; position: absolute; left: 50%; top: 6px; width: 38px; height: 4px; margin-left: -19px; border-radius: 2px; background: var(--border); }
+      .nx-sheet-head { position: relative; padding-top: 18px; }
+      .nx-folder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      /* A menu is a sheet of big rows from the bottom on a phone, wherever it was opened from. */
+      .nx-menu { left: 8px !important; right: 8px; top: auto !important; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-width: none; min-width: 0; padding: 8px; border-radius: 16px; animation: nx-sheet-up .16s ease-out; }
+      .nx-menu > button { padding: 13px 12px; font-size: 15px; }
+    }
+    @keyframes nx-sheet-up { from { transform: translateY(24px); opacity: 0; } }
+    /* 스타일 프리셋 탭: 이름 줄에는 선택 · 새 프리셋 · 새 폴더 · ⋯, 아래에는 가져오기 · 내보내기와 프리셋 수정. */
+    #style_presets .preset-current .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+    #style_presets .preset-current .actions button { flex: 0 0 auto; padding: 7px 10px; white-space: nowrap; }
+    #nx-preset-more { min-width: 38px; font-weight: 700; letter-spacing: 1px; }
+    #nx-shell.nx-ux #style_presets .preset-dock { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px; }
+    #nx-shell.nx-ux #style_presets .preset-dock > button.dock-btn { min-width: 0; min-height: 38px; grid-column: auto; }
+    @media (max-width: 640px) {
+      #style_presets .preset-current { display: block; padding: 7px 8px; }
+      #style_presets .preset-current > b { display: block; margin: 0 0 6px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #style_presets .preset-current .actions { justify-content: stretch; gap: 4px; }
+      #style_presets .preset-current .actions button { flex: 1 1 0; min-width: 0; min-height: 34px; padding: 5px 4px; font-size: 11px; letter-spacing: -.03em; }
+      #style_presets .preset-current .actions #nx-preset-more { flex: 0 0 40px; }
+    }
     /* 캐릭터 탭: 검색 옆의 「다른 봇」은 좁은 화면에서도 한 줄, 아래 두 버튼은 반씩. */
     #nx-shell.nx-ux #characters .preset-search { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; }
     #nx-shell.nx-ux #characters .preset-search > #nx-char-risu-open { width: auto; margin: 0; }
@@ -1477,11 +1537,9 @@
               <b id="nx-preset-current">프리셋 1</b>
               <div class="actions">
                 <button class="btn-ghost" type="button" id="nx-preset-pick" aria-pressed="false">선택</button>
-                <button class="btn-ghost" type="button" id="nx-preset-second">2순위로 사용하기</button>
-                <button class="btn-ghost" type="button" id="nx-preset-new">새 프리셋</button>
+                <button class="btn-ghost" type="button" id="nx-preset-new">＋ 새 프리셋</button>
                 <button class="btn-ghost" type="button" id="nx-preset-new-folder">📁 새 폴더</button>
-                <button class="btn-ghost" type="button" id="nx-preset-dup">복제</button>
-                <button class="btn-ghost" type="button" id="nx-preset-del">삭제</button>
+                <button class="btn-ghost" type="button" id="nx-preset-more" aria-haspopup="menu" aria-expanded="false" aria-controls="nx-preset-more-menu" aria-label="이 프리셋으로 할 일" title="이 프리셋으로 할 일">⋯</button>
               </div>
             </div>
             <div id="nx-preset-folder-path"></div>
@@ -1493,11 +1551,7 @@
             <div class="look" id="nx-preset-look-thumb" hidden></div>
           </div>
           <div class="preset-dock">
-            <button class="dock-btn" type="button" id="nx-preset-look-act">참고컷 등록</button>
-            <button class="dock-btn" type="button" id="nx-preset-look-gen">참고컷 생성</button>
-            <button class="dock-btn" type="button" id="nx-preset-json">JSON 관리</button>
-            <button class="dock-btn" type="button" id="nx-preset-from-asset">에셋에서</button>
-            <button class="dock-btn" type="button" id="nx-preset-from-module">모듈에서</button>
+            <button class="dock-btn" type="button" id="nx-preset-bring" aria-haspopup="menu" aria-expanded="false" aria-controls="nx-preset-bring-menu">가져오기 · 내보내기 ▾</button>
             <button class="dock-btn" type="button" id="nx-preset-export" hidden>JSON 내보내기</button>
             <button class="dock-btn" type="button" id="nx-preset-file" hidden>JSON 불러오기</button>
             <button class="dock-btn" type="button" id="nx-preset-import" hidden>붙여넣기 가져오기</button>
@@ -1505,6 +1559,26 @@
             <input id="nx-preset-file-input" type="file" accept=".json,application/json,text/plain" hidden>
             <button class="dock-btn dock-up" type="button" id="nx-preset-edit-btn" aria-expanded="false" aria-controls="nx-preset-sheet">▲ 프리셋 수정</button>
           </div>
+        </div>
+        <div class="nx-menu" id="nx-preset-more-menu" role="menu" aria-label="이 프리셋으로 할 일" hidden>
+          <small class="nx-menu-title" id="nx-preset-more-title"></small>
+          <button type="button" role="menuitem" id="nx-preset-second">2순위로 사용하기</button>
+          <button type="button" role="menuitem" id="nx-preset-dup">복제</button>
+          <button type="button" role="menuitem" id="nx-preset-to-folder">폴더로 이동…</button>
+          <hr>
+          <small class="nx-menu-title">참고컷</small>
+          <button type="button" role="menuitem" id="nx-preset-look-act">참고컷 등록</button>
+          <button type="button" role="menuitem" id="nx-preset-look-gen">참고컷 생성</button>
+          <hr>
+          <button type="button" role="menuitem" class="danger" id="nx-preset-del">삭제</button>
+        </div>
+        <div class="nx-menu" id="nx-preset-bring-menu" role="menu" aria-label="가져오기 · 내보내기" hidden>
+          <small class="nx-menu-title">가져오기</small>
+          <button type="button" role="menuitem" id="nx-preset-from-asset">에셋에서</button>
+          <button type="button" role="menuitem" id="nx-preset-from-module">모듈에서</button>
+          <hr>
+          <small class="nx-menu-title">JSON 불러오기 · 내보내기</small>
+          <button type="button" role="menuitem" id="nx-preset-json">JSON 관리</button>
         </div>
       </section>
 

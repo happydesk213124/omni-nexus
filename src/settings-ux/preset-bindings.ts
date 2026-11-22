@@ -5,6 +5,7 @@ import { lookFilterAllows, presetModelBadge, splitLookFilter } from './preset-ti
 import { pickPresetAsset } from './preset-assets';
 import { presetFolders, savePresetFolders } from '../services/folders';
 import { mountFolderView, type FolderView } from './folder-view';
+import { bindMenu } from './menu';
 
 interface Actions {
   config: () => { card?: CardSettings } | undefined;
@@ -90,9 +91,17 @@ export function bindPresetSheet(): void {
     });
     search.addEventListener('input', () => folderView?.paint());
     document.getElementById('nx-preset-new-folder')?.addEventListener('click', () => { void folderView?.create(); });
+    document.getElementById('nx-preset-to-folder')?.addEventListener('click', () => { if (select?.value) void folderView?.choose([select.value]); });
     mountedFolders = folderView;
     void folderView.refresh();
   }
+  // ⋯: what is done to the chosen preset, by name; 가져오기 · 내보내기: where presets come from and go to.
+  const moreMenu = document.getElementById('nx-preset-more-menu'), bringMenu = document.getElementById('nx-preset-bring-menu');
+  if (moreMenu) bindMenu(moreMenu, document.getElementById('nx-preset-more'), () => {
+    const title = document.getElementById('nx-preset-more-title');
+    if (title) title.textContent = current?.textContent || '';
+  });
+  if (bringMenu) bindMenu(bringMenu, document.getElementById('nx-preset-bring'));
   for (const tile of tiles) tile.addEventListener('click', event => {
     // Selection mode: a tap picks or unpicks; the preset is neither applied nor opened.
     if (picking.on) { event.stopImmediatePropagation(); picking.toggle(tile); return; }
