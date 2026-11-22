@@ -66,6 +66,8 @@ export interface TtsSegment {
   kind: 'dialogue' | 'narration' | 'illustration' | 'audition' | 'bgm' | 'sfx';
   /** A whole line in single quotes with no speaker: spoken by the monologue card. */
   monologue?: boolean;
+  /** A named cue in single quotes (`이름 (tone): '생각'`): a thought, heard with 생각 에코 when that is on. */
+  thought?: boolean;
   /** The costume a cue names (`이름_2 (tone):`): its number in the speaker's illustration character's list; absent, the default one. */
   costume?: number;
   /** The emoji the cue opened with (`👩🥺 하린 (shy):`): 첫 대사 이모지, read by cue-emoji.ts. */
@@ -138,6 +140,8 @@ export interface TtsSettings {
   volume: number;
   /** Narration's own level (옴니 뷰어 › 소리, TTS 설정); null: as the voice's. */
   narrationVolume: number | null;
+  /** 생각 에코: an echo laid over thoughts (`이름: '생각'`, a nameless `'혼잣말'`) as they play. The audio itself is not remade. */
+  thoughtEcho: 'off' | 'light' | 'medium' | 'strong';
   normalize: boolean;
   prefetch: number;
   concurrency: number;

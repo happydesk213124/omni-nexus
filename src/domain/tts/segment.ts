@@ -66,6 +66,8 @@ export function cueHeader(value:string): {speaker:string;tone:string;costume?:nu
   if(worn)return costume?{speaker:worn[1]!.trim(),tone,costume,...marks}:{speaker:worn[1]!.trim(),tone,...marks};
   return {speaker,tone,...marks};
 }
+/** A quote opened by a single mark: the cue prompt's form for a thought (`Name (delivery): 'Thought'`). */
+const isThought=(quote:string):boolean=>/^['‘]/.test(quote.trim());
 export function quotedCue(value:string):string|null {
   const body=value.trim();
   if(body.length>8002)return null;
@@ -76,7 +78,7 @@ export function parseCueLine(line: string, id: string): TtsSegment | null {
   const value = line.trim();
   if (!value || value.length > 8000 || /[<>]/.test(value) || value.includes('{{') || value.includes('[[@') || /\[\[bgm:/i.test(value) || /^[|#!`~]/.test(value)) return null;
   const quotes=['"','“',"'",'‘','「','『'].map(q=>value.indexOf(q)).filter(n=>n>0).sort((a,b)=>a-b);
-  for(const quote of quotes){const header=cueHeader(value.slice(0,quote)),speech=quotedCue(value.slice(quote));if(header&&speech)return {id,...header,text:speech,kind:'dialogue',start:0,end:line.length};}
+  for(const quote of quotes){const header=cueHeader(value.slice(0,quote)),speech=quotedCue(value.slice(quote));if(header&&speech)return {id,...header,text:speech,kind:'dialogue',...(isThought(value.slice(quote))?{thought:true}:{}),start:0,end:line.length};}
   if(/[:：]\s*$/.test(value)&&cueHeader(value))return null;
   // `'혼잣말'` with nobody named: the monologue card speaks it. Apostrophes inside words (don't) don't count as quotes.
   const whole=/^['‘]/.test(value)?quotedCue(value):null;
@@ -180,7 +182,7 @@ export function parseTtsMessage(text: string, excludeTerms: readonly string[] = 
           const spoken = sound ? withoutSfx(speech, sound.sfxRules) : speech;
           const around = sound ? cues(next, index + 2, offset + line.length + 1, speech) : none;
           result.push(...around.before);
-          if (allowedTtsText(spoken, excludeTerms, skipChars, requireLetter)) result.push({id:String(index+1),...header,text:speech,...(spoken !== speech ? { spoken } : {}),kind:'dialogue',start:offset,end:offset+line.length+1+next.length});
+          if (allowedTtsText(spoken, excludeTerms, skipChars, requireLetter)) result.push({id:String(index+1),...header,text:speech,...(spoken !== speech ? { spoken } : {}),kind:'dialogue',...(isThought(next)?{thought:true}:{}),start:offset,end:offset+line.length+1+next.length});
           result.push(...around.after);
           offset+=line.length+1+next.length+1;index++;continue;
         }

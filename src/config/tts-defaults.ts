@@ -19,7 +19,7 @@ export function ttsDefaults(): TtsSettings {
     clickPlay: true, hoverPlay: false, autoReply: false, continuous: true,
     illustration: false, hideName: false, hideTone: false, hideEmoji: false, passageLine: true, excludeText: TTS_DEFAULT_EXCLUDES.join(', '), excludeSeed: 1, stripBrackets: true, skipSymbolOnly: true, omitCharacters: TTS_DEFAULT_OMITS.join(', '), omitSeed: 1, omitParenText: false, controlGutter: false, tone: '', skipChars: 1,
     toast: true, viewer: true, minimized: false, viewerAnchor: null, panel: '', characterFilter: 'all', characterFolder: '*',
-    rate: 1, rates: [...TTS_RATES], volume: .95, narrationVolume: null, normalize: true,
+    rate: 1, rates: [...TTS_RATES], volume: .95, narrationVolume: null, thoughtEcho: 'off', normalize: true,
     prefetch: 50, concurrency: 5, background: 5, cacheMb: 10,
     fish: { url: 'https://api.fish.audio/v1/tts', key: '', model: 's2.1-pro', via: 'fish', routerKey: '' },
     engine: 'fish', irodori: { url: 'http://127.0.0.1:8088', key: '', model: 'irodori-tts', voice: '', format: 'mp3', concurrency: 1 },

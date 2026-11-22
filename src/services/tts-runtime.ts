@@ -172,6 +172,8 @@ export class OmniTtsRuntime {
     this.standalone = request.segment.kind === 'audition';
     this.notice = '';
     const valid = () => ticket === this.intent && request.context.scope === this.scope && ttsData().settings.enabled && this.eligible(request);
+    // 생각 에코: a thought (`이름: '생각'`, a nameless `'혼잣말'`) rings; the same audio, laid over as it plays.
+    this.player.echo(request.segment.thought || request.segment.monologue ? ttsData().settings.thoughtEcho : 'off');
     await this.player.play(key, async () => {
       const prepared = await this.prepare([request], valid);
       if (!valid() || !prepared[0]) throw new Error('재생 요청이 변경되었습니다.');
@@ -185,6 +187,7 @@ export class OmniTtsRuntime {
     this.stop();
     this.standalone = true; this.notice = '';
     this.player.configure(1, ttsData().settings.volume, 0);
+    this.player.echo('off');
     await this.player.play(key, async () => bytes);
   }
   /** An effect from its chat ▶: like tapping a line, it takes over from whatever is playing. */

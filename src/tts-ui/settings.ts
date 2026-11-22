@@ -89,6 +89,7 @@ export function bindTtsSettings(): void {
   on('jev-provider', () => { const kind = val('jev-provider'); if (kind !== 'custom') { set('jev-url', kind === 'typesafe' ? 'https://api.typesafe.ai/v1/systemone' : 'https://openrouter.ai/api/alpha/decisions'); set('jev-model', kind === 'typesafe' ? 'jev-1.13.0' : 'typesafe/jev-1.13'); } saveJev(); }, 'change');
   const saveJev = () => updateTtsSettings({ jev: { url: val('jev-url'), model: val('jev-model'), key: val('jev-key'), format: val('jev-format') === 'systemone' ? 'typesafe' : 'openrouter' } });
   for (const id of ['jev-url', 'jev-model', 'jev-key', 'jev-format']) on(id, saveJev, 'change');
+  set('thought-echo', s.thoughtEcho); on('thought-echo', () => updateTtsSettings({ thoughtEcho: val('thought-echo') as typeof s.thoughtEcho }), 'change');
   set('translation', s.translation.provider); set('language', ['en', 'ja'].includes(s.translation.language) ? s.translation.language : 'custom'); set('custom-lang', s.translation.language);
   set('tts-google-key', s.translation.googleKey || ''); set('tts-deepl-key', s.translation.deeplKey || ''); set('tts-deepl-plan', s.translation.url.includes('api-free') ? 'API Free' : 'API Pro');
   set('translation-model', Object.entries(source).find(([,v]) => v === s.translation.llm.source)?.[0] || 'separate');

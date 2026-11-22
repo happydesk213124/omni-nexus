@@ -6,10 +6,17 @@ export function audioMime(bytes: ArrayBuffer): string {
     return tag(0) === 'RIFF' && tag(8) === 'WAVE' ? 'audio/wav' : 'audio/mpeg';
   } catch { return 'audio/mpeg'; }
 }
+export type EchoLevel = 'off' | 'light' | 'medium' | 'strong';
+/** 생각 에코: how much of the voice goes into the echo, and how much of each repeat comes back. */
+const ECHO: Record<EchoLevel, { send: number; feedback: number }> = { off: { send: 0, feedback: 0 }, light: { send: .22, feedback: .25 }, medium: { send: .36, feedback: .38 }, strong: { send: .52, feedback: .5 } };
+const ECHO_SECONDS = .17;
 export class TtsPlayer {
   private audio?: HTMLAudioElement;
   private context?: AudioContext;
   private gain?: GainNode;
+  private echoSend?: GainNode;
+  private echoFeedback?: GainNode;
+  private echoLevel: EchoLevel = 'off';
   private url = '';
   private epoch = 0;
   private current = '';
@@ -33,6 +40,15 @@ export class TtsPlayer {
       this.context = new AudioContext();
       this.gain = this.context.createGain();
       this.context.createMediaElementSource(this.audio).connect(this.gain).connect(this.context.destination);
+      // 생각 에코: a send beside the dry path (voice → send → delay ⟲ feedback → out). Only the send is switched, so the
+      // tail of a thought rings out under the next line instead of being cut. Absent where the engine has no delay node.
+      if (typeof this.context.createDelay === 'function') {
+        const delay = this.context.createDelay(1);
+        delay.delayTime.value = ECHO_SECONDS;
+        this.echoSend = this.context.createGain(); this.echoFeedback = this.context.createGain();
+        this.gain.connect(this.echoSend); this.echoSend.connect(delay); delay.connect(this.echoFeedback); this.echoFeedback.connect(delay); delay.connect(this.context.destination);
+        this.echo(this.echoLevel);
+      }
       this.configure(this.rate, this.volume, this.decibels);
     }
     return this.audio;
@@ -94,6 +110,12 @@ export class TtsPlayer {
     // Assigning src resets playbackRate to defaultPlaybackRate, so set both.
     if (this.audio) { this.audio.defaultPlaybackRate = this.rate; this.audio.playbackRate = this.rate; this.audio.preservesPitch = true; }
     if (this.gain) this.gain.gain.value = this.volume * 10 ** (this.decibels / 20);
+  }
+  /** 생각 에코 for what plays next (and what is playing): 'off' lets a tail already ringing die away by itself. */
+  echo(level: EchoLevel): void {
+    this.echoLevel = level;
+    if (this.echoSend) this.echoSend.gain.value = ECHO[level].send;
+    if (this.echoFeedback && level !== 'off') this.echoFeedback.gain.value = ECHO[level].feedback;
   }
   stop(): void { this.halt(); this.emit('idle'); }
   /**

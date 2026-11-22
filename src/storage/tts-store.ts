@@ -58,6 +58,7 @@ export function normalizeTtsSettings(raw: Partial<TtsSettings>): TtsSettings {
   result.volume = clamp(result.volume, 0, 1, .8);
   // Until it is set, narration is as loud as the voice (older saves have none).
   result.narrationVolume = typeof result.narrationVolume === 'number' && Number.isFinite(result.narrationVolume) ? clamp(result.narrationVolume, 0, 1, result.volume) : null;
+  if (!['off', 'light', 'medium', 'strong'].includes(result.thoughtEcho)) result.thoughtEcho = 'off';
   result.concurrency = Math.floor(clamp(result.concurrency, 1, 5, 5));
   result.background = Math.floor(clamp(result.background, 1, result.concurrency, 5));
   result.prefetch = Math.floor(clamp(result.prefetch, 0, 50, 50));
