@@ -189,6 +189,7 @@ export function tabHtml(tab: string, vendorHtml: string, settings?: {card?: Reco
     ['nx-stream-inline-asset-meta', 'stream_inline_asset_meta', true],
     ['nx-omni-helper', 'omni_helper_prompt', false],
     ['nx-speech-huge-text', 'speech_huge_text', false],
+    ['nx-speech-text-weight', 'speech_text_weight', false],
     ['nx-image-webp-lossless', 'image_webp_lossless', false],
     ['nx-image-webp-metadata', 'image_webp_metadata', true],
     ['nx-image-png-original', 'image_png_original', false],

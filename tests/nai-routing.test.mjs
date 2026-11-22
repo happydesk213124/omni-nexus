@@ -248,7 +248,16 @@ test('speech tag names no one; suppression groups are stripped', () => {
   assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 1, huge: false }), speechCaptionTag('안돼!!'), 'the defaults change nothing');
   assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 9 }), '5::speech bubble::, korean text:안돼!!', 'at most 5');
   assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 'x' }), 'speech bubble, korean text:안돼!!');
-  assert.deepEqual(speechStyleFromCard({ speech_bubble_weight: 2, speech_huge_text: true }), { weight: 2, huge: true });
+  assert.deepEqual(speechStyleFromCard({ speech_bubble_weight: 2, speech_huge_text: true }), { weight: 2, huge: true, text: false });
+  // 텍스트 대사도 같이 강조하기: the bubble and its line in one weight group.
+  assert.deepEqual(speechStyleFromCard({ speech_bubble_weight: 2, speech_text_weight: true }), { weight: 2, huge: false, text: true });
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 2, text: true }), '2::speech bubble, korean text:안돼!!::');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 2, huge: true, text: true }), '2::speech bubble, huge text, korean text:안돼!!::');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 1.5, text: true }, 'thought bubble'), '1.5::thought bubble, korean text:안돼!!::');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 1, text: true }), 'speech bubble, korean text:안돼!!', 'weight 1: nothing to share, the plain tag');
+  assert.equal(speechCaptionTag('안돼!!', undefined, { weight: 2, text: false }), '2::speech bubble::, korean text:안돼!!', 'off: as before');
+  assert.equal(speechCaptionTag('뭐:: 진짜?', undefined, { weight: 2, text: true }), '2::speech bubble, korean text:뭐: 진짜?::', 'a :: in the line would close the group early');
+  assert.equal(captionWithSpeech('girl, 2::speech bubble, korean text:a::', 'speech bubble, korean text:b'), 'girl, 2::speech bubble, korean text:a::', 'still one bubble on a reroll');
   assert.equal(captionWithSpeech('girl, 2::speech bubble:: 2::huge text::, korean text:a', 'speech bubble, korean text:b'), 'girl, 2::speech bubble:: 2::huge text::, korean text:a', 'a weighted bubble is still a bubble');
   assert.equal(captionWithSpeech('girl, speechbubble, korean text:a', 'speech bubble, korean text:b'), 'girl, speechbubble, korean text:a', 'and so is the old spelling on older images');
   const stripped = stripSpokenBubbleSuppression(

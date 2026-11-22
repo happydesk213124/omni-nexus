@@ -73,6 +73,7 @@ export function rebuildMessageRuntime(source) {
       character_age: document.getElementById("nx-character-age") ? ee("nx-character-age") : e.character_age !== false,
       speech_bubble_weight: document.getElementById("nx-speech-bubble-weight") ? (() => { const r = N("nx-speech-bubble-weight"), n = r == null || String(r).trim() === "" ? 1 : Number(r); return Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 1; })() : (e.speech_bubble_weight ?? 1),
       speech_huge_text: document.getElementById("nx-speech-huge-text") ? ee("nx-speech-huge-text") : e.speech_huge_text === true,
+      speech_text_weight: document.getElementById("nx-speech-text-weight") ? ee("nx-speech-text-weight") : e.speech_text_weight === true,
       auto_aspect: document.getElementById("nx-auto-aspect")`);
   // ⭐ and ✕ on a chat picture (chat-image-actions.js) before its history arrows: ✕ sits over the ‹ strip.
   once('          const rawAct = typeof e.querySelectorAll', '          if (await omniChatImageAction(e, f)) return;\n          if (await omniHistoryHit(e, f)) return;\n          const rawAct = typeof e.querySelectorAll');

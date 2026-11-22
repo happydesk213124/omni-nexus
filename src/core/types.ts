@@ -98,6 +98,8 @@ export interface CardSettings {
   speech_bubble_weight?: number;
   /** NAI5 대사삽입: adds huge text to every bubble, at the bubble's weight. */
   speech_huge_text?: boolean;
+  /** NAI5 대사삽입: the line itself goes inside the bubble's weight group (`2::speech bubble, korean text:대사::`). */
+  speech_text_weight?: boolean;
   /** 명령수정: send this character's lb-xnai section / lorebook entries naming it. */
   char_command_xnai?: boolean;
   char_command_lore?: boolean;

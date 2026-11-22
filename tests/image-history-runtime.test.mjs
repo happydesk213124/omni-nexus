@@ -38,14 +38,15 @@ test('history arrows preview, pin posts the viewed revision, and scale updates c
     assert.match(seenOnly.help.body,/x-ray/);
     // 말풍선 강조 / 글씨 크게 sit under NAI5 대사삽입 and show what is saved.
     const speech = await page.evaluate(()=>{
-      const read=()=>[document.getElementById('nx-speech-bubble-weight').value,document.getElementById('nx-speech-huge-text').checked,
+      const read=()=>[document.getElementById('nx-speech-bubble-weight').value,document.getElementById('nx-speech-huge-text').checked,document.getElementById('nx-speech-text-weight').checked,
         document.getElementById('nx-nai5-speech').closest('label').nextElementSibling?.querySelector('input')?.id];
-      document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{speech_bubble_weight:2,speech_huge_text:true}});
+      document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{speech_bubble_weight:2,speech_huge_text:true,speech_text_weight:true}});
       const saved=read();
       document.body.innerHTML=SettingsTabs.tabHtml('gen_options','',{card:{}});
-      return {saved,defaults:read(),help:SettingsTabs.previewHelp('nx-speech-huge-text')?.body,sound:SettingsTabs.previewHelp('snd-rules-head')?.title};
+      return {saved,defaults:read(),help:SettingsTabs.previewHelp('nx-speech-huge-text')?.body,textHelp:SettingsTabs.previewHelp('nx-speech-text-weight')?.body,sound:SettingsTabs.previewHelp('snd-rules-head')?.title};
     });
-    assert.deepEqual(speech.saved,['2',true,'nx-speech-bubble-weight']);assert.deepEqual(speech.defaults,['1',false,'nx-speech-bubble-weight']);
+    assert.deepEqual(speech.saved,['2',true,true,'nx-speech-bubble-weight']);assert.deepEqual(speech.defaults,['1',false,false,'nx-speech-bubble-weight']);
+    assert.match(speech.textHelp,/2::speech bubble, korean text:대사::/);
     assert.match(speech.help,/2::speech bubble:: 2::huge text::/);
     assert.equal(speech.sound,'효과음 규칙','BGM·효과음 rows answer the settings head 「?」 too');
     for (const [width,height] of [[832,1216],[1216,832],[1024,1024]]) {

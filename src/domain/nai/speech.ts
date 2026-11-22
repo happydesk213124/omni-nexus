@@ -42,12 +42,12 @@ function speechLangTag(text: string, langRaw: unknown): string {
   return 'english text';
 }
 
-/** 생성 옵션 → 말풍선 강조 / 글씨 크게. Weight 1 (or 0) is the plain tag. */
-export interface SpeechStyle { weight?: unknown; huge?: unknown }
+/** 생성 옵션 → 말풍선 강조 / 글씨 크게 / 텍스트 대사도 같이 강조. Weight 1 (or 0) is the plain tag. */
+export interface SpeechStyle { weight?: unknown; huge?: unknown; text?: unknown }
 export type SpeechBubble = 'speech bubble' | 'thought bubble' | 'narration box';
 
-export function speechStyleFromCard(card: { speech_bubble_weight?: unknown; speech_huge_text?: unknown } | null | undefined): SpeechStyle {
-  return { weight: card?.speech_bubble_weight, huge: card?.speech_huge_text === true };
+export function speechStyleFromCard(card: { speech_bubble_weight?: unknown; speech_huge_text?: unknown; speech_text_weight?: unknown } | null | undefined): SpeechStyle {
+  return { weight: card?.speech_bubble_weight, huge: card?.speech_huge_text === true, text: card?.speech_text_weight === true };
 }
 
 /** 0–5 in tenths; 1 and anything unusable mean no weight. */
@@ -59,13 +59,17 @@ export function speechBubbleWeight(raw: unknown): number {
 /**
  * `speech bubble, korean text:안돼!!` — appended to the speaker's own caption.
  * With a weight the bubble (and 「글씨 크게」's huge text) take it as NAI groups:
- * `2::speech bubble:: 2::huge text::, korean text:안돼!!`. The line itself is never weighted.
+ * `2::speech bubble:: 2::huge text::, korean text:안돼!!`. The line itself is not weighted,
+ * unless 「텍스트 대사도 같이 강조」 is on: then the bubble and its line are one group,
+ * `2::speech bubble, huge text, korean text:안돼!!::` (the letters came out cleaner that way). A `::` in the line would
+ * close the group early, so it is written as `:` there.
  */
 export function speechCaptionTag(speech: unknown, speechLang?: unknown, style: SpeechStyle = {}, bubble: SpeechBubble = 'speech bubble'): string {
   const text = cleanText(speech, 200);
   if (!text) return '';
   const weight = speechBubbleWeight(style.weight);
   const tags = style.huge === true ? [bubble, 'huge text'] : [bubble];
+  if (weight !== 1 && style.text === true) return `${weight}::${tags.join(', ')}, ${speechLangTag(text, speechLang)}:${text.replace(/:{2,}/g, ':')}::`;
   const head = weight === 1 ? tags.join(', ') : tags.map(tag => `${weight}::${tag}::`).join(' ');
   return `${head}, ${speechLangTag(text, speechLang)}:${text}`;
 }

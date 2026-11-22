@@ -33,7 +33,7 @@ export function comicSpeechCaption(bubble: unknown, text: unknown, style: Speech
 export function composeComicSlotCaption(
   stored: Partial<CharacterRecord> | null | undefined,
   slot: ShotCharacter & { bubble?: unknown },
-  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown; speech_bubble_weight?: unknown; speech_huge_text?: unknown; } = {},
+  options: { character_height?: unknown; character_age?: unknown; comic_closeup_character_half?: unknown; comic_closeup_character_weight?: unknown; speech_bubble_weight?: unknown; speech_huge_text?: unknown; speech_text_weight?: unknown; } = {},
 ): string {
   const half = options.comic_closeup_character_half === true
     && normalizeComicCutKind((slot as { cut_kind?: unknown }).cut_kind) === 'closeup';
