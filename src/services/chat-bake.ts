@@ -93,8 +93,8 @@ async function writeChat(
   opts: { refreshAssets?: boolean; messageIndex: number; previousBody: string; scrollSlot?: { waitId: string; cardId: string } },
 ): Promise<void> {
   // The tokens this write bakes name shots that must be registered first: the
-  // waiting ones go out now, in one character write.
-  await flushShotAssets();
+  // waiting ones go out now, in one character write. Only this bot's registration can fail this bake.
+  await flushShotAssets(charIndex);
   const work = async () => {
     // Character asset registration refreshes host lookup without toggling modules.
     await serializeSessionStorage(async () => {

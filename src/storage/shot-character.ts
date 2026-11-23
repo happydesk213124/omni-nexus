@@ -9,7 +9,7 @@ import { forgetBots, heldBot, openBotFor } from './current-bot';
 import { storeShotBytes, readShotAssetBytes, type ShotAssetRow } from './shot-module';
 import { isShotAssetName, idFromShotAssetName, sessionFromShotAssetName } from '../domain/gallery/shot-assets';
 import { psGet, psRemove, psSet } from './device-store';
-import { bufferedRosterLore, bufferedRosterTargets } from './character-roster';
+import { bufferedRosterLore, bufferedRosterTargets, forgetBufferedRoster } from './character-roster';
 export { readShotAssetBytes };
 type Row=Record<string,unknown>;
 type Target={id:string;index:number};
@@ -48,8 +48,11 @@ async function read(target:Target) {
  if(!host?.getCharacterFromIndex || !host.setCharacterToIndex)throw new Error('Character assets unavailable');
  let index=target.index,char=obj(await host.getCharacterFromIndex(index));
  if(String(char.chaId || char.id)!==target.id) {
-  const match=(await directory(true)).filter(r=>String(r.char.chaId || r.char.id)===target.id);
-  if(match.length!==1)throw new Error('Character assets unavailable');
+  const listed=await characterDirectory({fresh:true});
+  const match=(listed || []).filter(r=>String(r.chaId || r.id)===target.id);
+  // Gone only when a list that holds bots was read and it is in none of them: a list that could not be read, or an
+  // empty one (a host not ready), says nothing, and two bots with one id are refused as before.
+  if(match.length!==1)throw Object.assign(new Error('Character assets unavailable'),{botGone:!!listed?.length && !match.length});
   index=match[0]!.index;char=obj(await host.getCharacterFromIndex(index));
  }
  if(char.additionalAssets==null && char.additionalAssetManifest==null) char.additionalAssets=[];
@@ -135,10 +138,16 @@ export async function removeCharacterAssetRows(target: Target, names: readonly s
   });
   invalidateShotListing(target.id);
 }
-/** Registers every waiting shot and roster change: one character write per character. */
-export async function flushShotAssets(): Promise<void> {
+/**
+ * Registers every waiting shot and roster change: one character write per character.
+ *
+ * What waits for a bot that is gone (deleted, or imported again under a new id) is dropped: it can never be written,
+ * and the list is kept across restarts, so it failed every image job of every bot from then on. A bake names its own
+ * bot (`forIndex`) and fails only on that bot's registration: another bot's is tried again later, not this job's error.
+ */
+export async function flushShotAssets(forIndex?: number): Promise<void> {
   clearTimeout(shotTimer); shotTimer = undefined;
-  let failure: unknown;
+  let failure: unknown, own: unknown;
   const ids = new Set([...pendingShots.keys(), ...bufferedRosterTargets().map(t => t.id)]);
   for (const key of ids) {
     const entry = pendingShots.get(key);
@@ -151,10 +160,20 @@ export async function flushShotAssets(): Promise<void> {
         entry.rows = entry.rows.filter(row => !rows.some(done => done.name === row.name));
         if (!entry.rows.length) pendingShots.delete(key);
       }
-    } catch (error) { failure = error; }
+    } catch (error) {
+      if ((error as { botGone?: unknown })?.botGone === true) {
+        pendingShots.delete(key); forgetBufferedRoster(key);
+        console.warn('[omni] shot registration dropped: its bot is gone', key, rows.length);
+        continue;
+      }
+      failure = error;
+      if (target.index === forIndex) own = error;
+    }
   }
   await rememberPendingShots().catch(() => {});
-  if (failure) { shotTimer = setTimeout(() => void flushShotAssets().catch(() => {}), SHOT_SAFETY_MS); throw failure; }
+  if (failure) shotTimer = setTimeout(() => void flushShotAssets().catch(() => {}), SHOT_SAFETY_MS);
+  const thrown = forIndex === undefined ? failure : own;
+  if (thrown) throw thrown;
 }
 /** At boot: shots saved but not yet registered when the app last closed. */
 export async function restorePendingShotAssets(): Promise<void> {

@@ -216,6 +216,40 @@ test('a shot saved but not registered when the app closed is registered at the n
   sc.releaseShotAssets();
 });
 
+test('a shot waiting for a bot that is gone is dropped, and never fails another bot\'s bake',{timeout:15000},async()=>{
+  await fixture();
+  const built=await build({entryPoints:['src/storage/shot-character.ts'],bundle:true,write:false,format:'esm',platform:'node',define:{__PLUGIN_ID__:'"omni-nexus"',__PLUGIN_VERSION__:'"t"'}});
+  // Its own copy of the module (a data: URL of the same text is the same module): this host's storage, nothing waiting.
+  const sc=await import('data:text/javascript;base64,'+Buffer.from(built.outputFiles[0].text+'\n// gone-bot').toString('base64'));
+  const waiting=async()=>((await risuai.pluginStorage.getItem('onx_pending_shot_assets'))||[]).map(entry=>entry.target.id);
+  const names=async index=>((await risuai.getCharacterFromIndex(index))?.additionalAssets||[]).map(a=>a[0]);
+  const bot=(index,id)=>risuai.setCharacterToIndex(index,{chaId:id,name:id,chats:[]});
+  await bot(1,'gone');
+  sc.holdShotAssets();
+  await sc.putShotAsset('goneshot1',png(64,64),'',{id:'gone',index:1});
+  const kept=await sc.putShotAsset('keptshot1',png(64,64),'',{id:'c',index:0});
+  // The bot is deleted, and another stands at its index.
+  await bot(1,'other');
+  // A list that cannot be read says nothing: the registration waits on, and is nobody else's failure.
+  const getDatabase=risuai.getDatabase;
+  risuai.getDatabase=async()=>null;
+  await sc.flushShotAssets(0);
+  assert.ok((await names(0)).includes(kept.name),'the bot being baked registers its own shot, the other bot\'s failure aside');
+  await assert.rejects(sc.flushShotAssets(),/Character assets unavailable/);
+  assert.deepEqual(await waiting(),['gone'],'kept while the list cannot say where its bot is');
+  // Two bots with one id are refused as before, not dropped: a bake of that index still fails on it.
+  risuai.getDatabase=getDatabase;
+  await bot(2,'gone');await bot(3,'gone');
+  await assert.rejects(sc.flushShotAssets(1),/Character assets unavailable/);
+  assert.deepEqual(await waiting(),['gone']);
+  // In a list read just now and in none of its bots: dropped, at a restart too, and nothing fails after.
+  await bot(2,'x2');await bot(3,'x3');
+  await sc.restorePendingShotAssets();
+  assert.deepEqual(await waiting(),[],'nothing waits for a bot that is gone');
+  await sc.flushShotAssets();
+  sc.releaseShotAssets();
+});
+
 test('someone block 1 registers is known by name in block 2, even when block 1 registers late',{timeout:15000},async()=>{
   const f=await fixture();Object.assign(f.api.getConfig().card,{stream_inline_tags:true,image_min:3,image_max:3});
   const first='First narrative paragraph long enough for generating images.';

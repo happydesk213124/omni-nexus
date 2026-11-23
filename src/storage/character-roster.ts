@@ -125,6 +125,8 @@ function withBuffered(t: Target, rows: CharacterRecord[]): CharacterRecord[] {
 export function bufferedRosterTargets(): Array<{ index: number; id: string }> {
   return [...bufferedRosters.values()].filter(ops => ops.put.size || ops.drop.size).map(ops => ({ index: ops.target.index, id: ops.target.id }));
 }
+/** A bot that is gone: its waiting roster changes can never be written (shot-character drops its shots with them). */
+export function forgetBufferedRoster(characterId: string): void { bufferedRosters.delete(characterId); }
 /**
  * For one character write (shot-character): this bot's globalLore with its waiting
  * roster changes applied, `check` to verify a re-read character, and `done` to
