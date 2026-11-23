@@ -1168,10 +1168,15 @@
     @keyframes nx-drop-ready { 50% { box-shadow: 0 0 0 4px rgba(113, 50, 245, .18); } }
     .nx-drop { border-style: solid !important; border-color: #a98bff !important; background: rgba(113, 50, 245, .32) !important; transform: scale(1.05); transition: transform .12s ease-out; animation: none !important; }
     .nx-drop-done { animation: nx-drop-done .4s ease-out !important; }
-    /* Between two tiles (a reorder): the tile it would land beside steps aside, a bar on the side it lands on. */
+    /* Between two tiles (a reorder): the tile it would land beside steps aside, a bar on the side it lands on. The bar
+       is drawn over the tile's picture (::before; ::after is the tile's badge): as an inset shadow it sat under a
+       picture that fills the tile and was not seen. */
     .preset-tile.nx-insert-before, .preset-tile.nx-insert-after { transition: transform .12s ease-out; animation: none !important; }
-    .preset-tile.nx-insert-before { transform: translateX(7px); box-shadow: inset 5px 0 0 #a98bff; }
-    .preset-tile.nx-insert-after { transform: translateX(-7px); box-shadow: inset -5px 0 0 #a98bff; }
+    .preset-tile.nx-insert-before { transform: translateX(7px); }
+    .preset-tile.nx-insert-before::before, .preset-tile.nx-insert-after::before { content: ''; position: absolute; top: 0; bottom: 0; z-index: 6; width: 6px; background: #a98bff; box-shadow: 0 0 0 1px rgba(8, 11, 18, .55), 0 0 12px 2px rgba(113, 50, 245, .9); pointer-events: none; }
+    .preset-tile.nx-insert-before::before { left: 0; }
+    .preset-tile.nx-insert-after::before { right: 0; }
+    .preset-tile.nx-insert-after { transform: translateX(-7px); }
     /* 길게 누르기: a ring fills on the lifted tile; full, the tile's menu opens. Moving the tile away takes the ring off. */
     .nx-hold-ring { position: absolute; left: 50%; top: 50%; z-index: 4; width: 44px; height: 44px; margin: -22px 0 0 -22px; transform: rotate(-90deg); filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .6)); }
     .nx-hold-ring circle { fill: rgba(8, 11, 18, .55); stroke: rgba(255, 255, 255, .25); stroke-width: 3; }

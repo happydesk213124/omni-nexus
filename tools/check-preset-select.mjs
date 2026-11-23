@@ -212,6 +212,29 @@ try {
   await touch(`#nx-preset-chips [data-preset-select="${a}"]`, 480, `#nx-preset-chips [data-preset-select="${b}"]`);
   await page.waitForFunction(([first, second]) => { const now = presetRuntime.t.backendSettings.card.presets.map(p => String(p.id)); return now.indexOf(second) < now.indexOf(first); }, [a, b]);
   assert.deepEqual([...(await order())].sort(), [...ids].sort(), 'reordered, none lost');
+  // A mouse sets one down the same way, as in the 캐릭터 tab: our drag, with a bar on the side it would land. The bar is
+  // drawn over the tile's picture (as an inset shadow it sat under a picture that fills the tile).
+  {
+    const [m1, m2] = await order(), sel = id => `#nx-preset-chips [data-preset-select="${id}"]`;
+    // The copy of the tile set down just before is still flying into place.
+    await page.waitForFunction(() => !document.querySelector('.nx-drag-ghost'));
+    await page.waitForFunction(q => document.querySelector(q)?.draggable === false, sel(m2));
+    const from = await page.locator(sel(m1)).boundingBox(), to = await page.locator(sel(m2)).boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width * .85, to.y + to.height / 2, { steps: 8 });
+    assert.equal(await page.locator('.nx-drag-ghost').count(), 1, 'a mouse lifts the tile: our drag, not the browser\'s');
+    const bar = await page.locator(sel(m2)).evaluate(el => { const b = getComputedStyle(el, '::before'), img = el.querySelector('img'); return { side: el.classList.contains('nx-insert-after'), position: b.position, width: b.width, right: b.right, over: Number(b.zIndex) > (Number(img && getComputedStyle(img).zIndex) || 0) }; });
+    assert.deepEqual(bar, { side: true, position: 'absolute', width: '6px', right: '0px', over: true }, 'the bar stands on the side it lands, over the picture');
+    await page.mouse.up();
+    await page.waitForFunction(([first, second]) => { const now = presetRuntime.t.backendSettings.card.presets.map(p => String(p.id)); return now.indexOf(second) < now.indexOf(first); }, [m1, m2]);
+    assert.deepEqual([...(await order())].sort(), [...ids].sort(), 'reordered by mouse, none lost');
+    // The browser's own drag never starts on a preset tile, and upstream's reorder never hears of one: on an unfolded
+    // Fold a held finger started it, which cancelled the touch before the menu could come.
+    await page.waitForFunction(q => document.querySelector(q)?.draggable === false, sel(m2));
+    const own = await page.locator(sel(m2)).evaluate(el => { const e = new DragEvent('dragstart', { bubbles: true, cancelable: true }); el.dispatchEvent(e); return { prevented: e.defaultPrevented, marked: el.classList.contains('dragging') }; });
+    assert.deepEqual(own, { prevented: true, marked: false });
+  }
   assert.equal(await page.evaluate(() => String(presetRuntime.t.backendSettings.card.active_preset_id)), applied);
   console.log('[preset select] PASS: NAI5/NAI4.5 marks, JSON 관리 popup, pick without applying, 참고컷 생성 one by one, 참고컷 없는/있는 search, bulk delete, 에셋에서 with the metadata-only search, folders by drag, a finger reorder and held menus');
 } finally { await browser.close(); }

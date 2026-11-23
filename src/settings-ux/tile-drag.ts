@@ -1,8 +1,8 @@
 /**
  * Dragging tiles in a grid, as in a file window: onto a folder to file them, between two tiles to reorder them. A
- * mouse drags once it has moved a little; a finger after a short hold (a quick swipe still scrolls the list). Where
- * the tiles already drag natively (the preset tiles, to reorder), `mouse` is off and the native drop is taken
- * instead; a finger drags them our way all the same.
+ * mouse drags once it has moved a little; a finger after a short hold (a quick swipe still scrolls the list). The
+ * browser's own drag never starts on a tile: the preset tiles had one (upstream's reorder), and on a wide touch screen
+ * (an unfolded Fold) a held finger started it, which cancelled the touch and with it the hold.
  *
  * What is dragged is the tile itself, lifted: a copy of it follows the pointer a little above the finger, the places
  * it may be dropped light up for as long as the drag lasts, the list scrolls when it is held near an edge, and on
@@ -26,15 +26,14 @@ export interface TileDragOptions {
   companions?: (tile: HTMLElement) => HTMLElement[];
   /** A finger held the tile where it was: its menu. */
   held?: (tile: HTMLElement, x: number, y: number) => void;
-  mouse: boolean;
 }
-const HOLD_MS = 360, MENU_MS = 1420, MOUSE_SLOP = 6, TOUCH_SLOP = 10, HELD_SLOP = 12, EDGE = 64, GHOST_MAX = 104;
+const HOLD_MS = 360, MENU_MS = 1170, MOUSE_SLOP = 6, TOUCH_SLOP = 10, HELD_SLOP = 12, EDGE = 64, GHOST_MAX = 104;
 const MARKS = ['nx-drop', 'nx-insert-before', 'nx-insert-after'];
 const buzz = (ms: number) => { try { navigator.vibrate?.(ms); } catch { /* no haptics */ } };
 
 export function bindTileDrag(o: TileDragOptions): () => void {
   let tile: HTMLElement | null = null, ghost: HTMLElement | null = null, over: DropPlace | null = null, moving: HTMLElement[] = [];
-  let startX = 0, startY = 0, lastX = 0, lastY = 0, moved = 0, dragging = false, touching = false, hold = 0, menu = 0, frame = 0, native: HTMLElement | null = null, wasDraggable = false, quietUntil = 0;
+  let startX = 0, startY = 0, lastX = 0, lastY = 0, moved = 0, dragging = false, touching = false, hold = 0, menu = 0, frame = 0, wasDraggable = false, quietUntil = 0;
   let size = { w: 0, h: 0 }, origin = { x: 0, y: 0 };
   const doc = o.list.ownerDocument, root = doc.documentElement;
   const scroller = (): HTMLElement | null => { for (let el: HTMLElement | null = o.list; el; el = el.parentElement) { const flow = getComputedStyle(el).overflowY; if ((flow === 'auto' || flow === 'scroll') && el.scrollHeight > el.clientHeight) return el; } return null; };
@@ -136,41 +135,23 @@ export function bindTileDrag(o: TileDragOptions): () => void {
   const listeners: Array<[EventTarget, string, EventListener, AddEventListenerOptions?]> = [];
   const on = (node: EventTarget, type: string, fn: EventListener, options?: AddEventListenerOptions) => { node.addEventListener(type, fn, options); listeners.push([node, type, fn, options]); };
 
-  if (o.mouse) {
-    on(o.list, 'pointerdown', event => {
-      const e = event as PointerEvent;
-      if (e.pointerType === 'touch' || e.button !== 0) return;
-      tile = o.source(e.target as Element); startX = e.clientX; startY = e.clientY;
-    });
-    on(doc, 'pointermove', event => {
-      const e = event as PointerEvent;
-      if (!tile || e.pointerType === 'touch' || touching) return;
-      if (!dragging && Math.hypot(e.clientX - startX, e.clientY - startY) > MOUSE_SLOP) begin(e.clientX, e.clientY);
-      if (dragging) { e.preventDefault(); move(e.clientX, e.clientY); }
-    });
-    on(doc, 'pointerup', event => { if ((event as PointerEvent).pointerType !== 'touch' && tile && !touching) end(true, true); });
-    on(doc, 'pointercancel', event => { if ((event as PointerEvent).pointerType !== 'touch' && tile && !touching) end(false); });
-    // A tile is a button: without this a drag selects text or starts a native link drag.
-    on(o.list, 'dragstart', event => { if (o.source(event.target as Element)) event.preventDefault(); });
-  } else {
-    // Native drags (the preset tiles reorder that way): the drop on a folder, and a folder's own move, are ours.
-    on(o.list, 'dragstart', event => { native = o.source(event.target as Element); if (native) root.classList.add('nx-tile-drag'); }, { capture: true });
-    on(doc, 'dragend', () => { native = null; mark(null); root.classList.remove('nx-tile-drag'); });
-    on(doc, 'dragover', event => {
-      if (!native) return;
-      const e = event as DragEvent, to = o.place(e.target as Element, e.clientX, e.clientY, native, false);
-      mark(to);
-      if (to) { event.preventDefault(); event.stopPropagation(); }
-    }, { capture: true });
-    on(doc, 'drop', event => {
-      const e = event as DragEvent, to = native ? o.place(e.target as Element, e.clientX, e.clientY, native, false) : null;
-      if (!native || !to) return;
-      event.preventDefault(); event.stopPropagation();
-      const from = native; native = null; mark(null); root.classList.remove('nx-tile-drag');
-      if (!to.side) { to.el.classList.add('nx-drop-done'); window.setTimeout(() => to.el.classList.remove('nx-drop-done'), 420); }
-      o.drop(from, to);
-    }, { capture: true });
-  }
+  on(o.list, 'pointerdown', event => {
+    const e = event as PointerEvent;
+    if (e.pointerType === 'touch' || e.button !== 0) return;
+    tile = o.source(e.target as Element); startX = e.clientX; startY = e.clientY;
+  });
+  on(doc, 'pointermove', event => {
+    const e = event as PointerEvent;
+    if (!tile || e.pointerType === 'touch' || touching) return;
+    if (!dragging && Math.hypot(e.clientX - startX, e.clientY - startY) > MOUSE_SLOP) begin(e.clientX, e.clientY);
+    if (dragging) { e.preventDefault(); move(e.clientX, e.clientY); }
+  });
+  on(doc, 'pointerup', event => { if ((event as PointerEvent).pointerType !== 'touch' && tile && !touching) end(true, true); });
+  on(doc, 'pointercancel', event => { if ((event as PointerEvent).pointerType !== 'touch' && tile && !touching) end(false); });
+  // No drag of the browser's own on a tile, and nobody hears of one: upstream's preset tiles are draggable (its own
+  // reorder, which would also mark the tile as dragging), and a wide touch screen starts one under a held finger,
+  // cancelling the touch. Ours is the only drag; without this a drag also selects text or drags a tile's picture.
+  on(o.list, 'dragstart', event => { if (o.source(event.target as Element)) { event.preventDefault(); event.stopPropagation(); } }, { capture: true });
   on(o.list, 'touchstart', event => {
     const e = event as TouchEvent;
     if (e.touches.length !== 1) { end(false); return; }

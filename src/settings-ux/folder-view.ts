@@ -24,8 +24,6 @@ export interface FolderViewOptions {
   looks: boolean;
   /** A search is on: it looks through every folder, and the folders step aside. */
   searching: () => boolean;
-  /** The tiles drag natively already (to reorder): only the drop on a folder is taken. */
-  nativeDrag?: boolean;
   /** Tiles picked in 선택 mode: dragging one of them moves them all. */
   picked?: () => string[];
   /** After every paint: what is shown changed (a folder opened, a tile filed). */
@@ -87,6 +85,8 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
     for (const tile of tiles) {
       const home = folderOf(folders, o.idOf(tile));
       tile.classList.toggle('nx-folder-out', !searching && (here ? home?.id !== here.id : !!home));
+      // Upstream draws the preset tiles draggable (its own reorder): every drag here is tile-drag's.
+      if (tile.draggable) tile.draggable = false;
     }
     // Folders first, then the tiles as arranged: drawn by `order`, so no card is moved in the list.
     if (o.order?.css) ordered().forEach((tile, i) => { tile.style.order = String(i); });
@@ -95,7 +95,7 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
       for (const [i, f] of folders.entries()) {
         const tile = document.createElement('button');
         tile.type = 'button'; tile.className = 'preset-tile nx-folder-tile'; tile.dataset.uxFolder = f.id;
-        tile.style.order = String(-100000 + i); tile.draggable = !!o.nativeDrag;
+        tile.style.order = String(-100000 + i);
         const count = f.members.filter(member => ids.has(member)).length;
         tile.title = `${f.name} · ${count}개${f.memo ? ` · 메모: ${f.memo}` : ''}`;
         if (f.memo) tile.dataset.folderMemo = '1';
@@ -185,11 +185,11 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
   /** The tiles that move with one: all the picked when it is one of them, else itself alone. */
   const group = (tile: HTMLElement): string[] => { const id = o.idOf(tile), picked = o.picked?.() || []; return picked.includes(id) ? picked : [id]; };
   const stopDrag = bindTileDrag({
-    list: o.list, mouse: !o.nativeDrag,
+    list: o.list,
     source: target => target.closest<HTMLElement>('[data-ux-folder]') || itemAt(target),
     count: tile => tile.dataset.uxFolder ? 1 : group(tile).length,
     companions: tile => { if (tile.dataset.uxFolder) return []; const ids = new Set(group(tile)); return o.tiles().filter(other => ids.has(o.idOf(other))); },
-    place: (at, x, _y, tile, touch) => {
+    place: (at, x, _y, tile) => {
       const folderDragged = !!tile.dataset.uxFolder;
       // A tile onto a folder (or 📁 전체) is filed; anything between two of its own kind is set down there.
       if (!folderDragged) { const into = at.closest<HTMLElement>('[data-ux-folder], [data-folder-crumb]'); if (into) return { el: into }; }
@@ -197,8 +197,7 @@ export function mountFolderView(o: FolderViewOptions): FolderView {
       const over = folderDragged ? at.closest<HTMLElement>('[data-ux-folder]') : itemAt(at);
       if (!over || over === tile) return null;
       if (!folderDragged) {
-        // Where the tiles reorder natively under a mouse (the presets), that drag is the list's own.
-        if (!o.order || (o.nativeDrag && !touch) || group(tile).includes(o.idOf(over))) return null;
+        if (!o.order || group(tile).includes(o.idOf(over))) return null;
       }
       const box = over.getBoundingClientRect();
       return { el: over, side: x < box.left + box.width / 2 ? 'before' : 'after' };

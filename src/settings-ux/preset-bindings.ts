@@ -74,7 +74,8 @@ export function bindPresetSheet(): void {
   select?.addEventListener('change', update);
   update();
   paintReferenceProgress();
-  // 폴더: folders first in the grid; a tile dragged onto one is filed there (the tiles already drag, to reorder).
+  // 폴더: folders first in the grid; a tile dragged onto one is filed there, beside another it is set down there
+  // (tile-drag's drag, as in the 캐릭터 tab; upstream's own reorder drag is not used).
   // Each repaint binds anew: the view over the last grid lets go of its listeners first.
   mountedFolders?.dispose(); mountedFolders = undefined;
   let folderView: FolderView | undefined;
@@ -84,7 +85,7 @@ export function bindPresetSheet(): void {
     const path = document.createElement('div'); path.className = 'nx-folder-path'; path.hidden = true;
     pathHost.replaceChildren(path);
     folderView = mountFolderView({
-      key: 'preset', list: chips, path, tiles: () => tiles.filter(tile => tile.isConnected), looks: false, noun: '프리셋', nativeDrag: true,
+      key: 'preset', list: chips, path, tiles: () => tiles.filter(tile => tile.isConnected), looks: false, noun: '프리셋',
       idOf: tile => tile.dataset.presetSelect || '', nameOf: tile => tile.title || tile.textContent || '',
       load: presetFolders, save: savePresetFolders,
       searching: () => !!search.value.trim(), picked: () => picking.on ? picking.ids() : [],
